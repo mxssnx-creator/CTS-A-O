@@ -1,0 +1,983 @@
+> node scripts/test.mjs --without-core
+2026-10-24T14:16:27.0232704Z 
+2026-10-24T14:16:27.0448144Z [npm test] scripts (offline fixtures only)
+2026-10-24T14:16:27.1680727Z ✔ flat amendment supplements dual endpoint marks without changing original execution, study, or curves (22.209067ms)
+2026-10-24T14:16:27.1858215Z ✔ chunked amendment supplements dual endpoint marks without changing original execution, study, or curves (18.056431ms)
+2026-10-24T14:16:27.1920344Z ✔ corrupt raw sidecar evidence is rejected before creating an amended report (6.615671ms)
+2026-10-24T14:16:27.1975828Z ✔ corrupt report sidecar evidence is rejected before creating an amended report (5.392168ms)
+2026-10-24T14:16:27.2011164Z ✔ amendment output rejects the original source directory and any pre-existing directory (3.496949ms)
+2026-10-24T14:16:27.2894044Z ✔ the CLI writes the verified amendment and receipt through its public argument contract (80.432077ms)
+2026-10-24T14:16:27.2955392Z ✔ empty endpoint arrays do not waive finite ordered windows or a known finite cost (12.201129ms)
+2026-10-24T14:16:27.3023494Z ✔ an explicitly unknown original endpoint P&L cannot be replaced by inferred engine aliases (4.543417ms)
+2026-10-24T14:16:27.3053241Z ✔ an endpoint allocation with a contradictory order key cannot gain amended evidence (4.524939ms)
+2026-10-24T14:16:27.3167724Z ▶ frozen session independent audit
+2026-10-24T14:16:27.3175622Z   ✔ rejects unloaded trade and allocation placeholders as incomplete evidence (1.396602ms)
+2026-10-24T14:16:27.3176748Z   ✔ reconciles legacy and chunked files identically and verifies unloaded history chunks (27.733568ms)
+2026-10-24T14:16:27.3177734Z   ✔ keeps funded unit PF, weighted cash, cohorts, directions and every hour separate (0.829713ms)
+2026-10-24T14:16:27.3178639Z   ✔ never treats zero allocations as funded performance or permits duplicate allocation joins (0.606068ms)
+2026-10-24T14:16:27.3184288Z   ✔ preserves missing unit or allocation evidence as unknown and prevents pruning (0.963013ms)
+2026-10-24T14:16:27.3185276Z   ✔ proposes only adequately sampled persistent losing cells after the completed 22x24 selection audit (2.147757ms)
+2026-10-24T14:16:27.3186124Z ✔ frozen session independent audit (34.650992ms)
+2026-10-24T14:16:27.5789220Z ✔ keeps empty contexts and full Last-8 readiness separate from older/window samples (0.801561ms)
+2026-10-24T14:16:27.5792556Z ✔ measures completed and still-open drawdown periods from own chronological returns (0.142604ms)
+2026-10-24T14:16:27.5797909Z ✔ requires full tape provenance and rejects mismatched universe/type/protection (2.742709ms)
+2026-10-24T14:16:27.5804963Z ✔ separates own entry qualification from the selected hourly cohort without reading future losses (14.812451ms)
+2026-10-24T14:16:27.9870043Z ✔ matches every enabled ladder build identity/protection across source and coordinator lanes (311.381026ms)
+2026-10-24T14:16:27.9876543Z ✔ does not invent ladders when those historical strategy sets are disabled (5.455483ms)
+2026-10-24T14:16:28.0055008Z ✔ fails and records missing enabled ladder cells instead of certifying a partial catalog (28.872765ms)
+2026-10-24T14:16:28.1016528Z ✔ non-canvas app with no custom card gets a soft BRAND NOTE (utility exception) (1.502041ms)
+2026-10-24T14:16:28.1020542Z ✔ non-canvas app with a compliant card is silent (0.935231ms)
+2026-10-24T14:16:28.1025266Z ✔ card file without site.json card=custom warns (0.568642ms)
+2026-10-24T14:16:28.1025998Z ✔ card file with missing site.json warns for card=custom (1.205597ms)
+2026-10-24T14:16:28.1027232Z ✔ card file with invalid site.json warns for card=custom (0.516895ms)
+2026-10-24T14:16:28.1055738Z ✔ oversized card warns for non-canvas apps too (0.784605ms)
+2026-10-24T14:16:28.1061404Z ✔ canvas app with no card warns 'missing' and missing og:type (0.561311ms)
+2026-10-24T14:16:28.1069901Z ✔ canvas card without type still warns for og:type (0.60077ms)
+2026-10-24T14:16:28.1070745Z ✔ oversized card warns on the scraper budget (jpg and legacy png) (1.955369ms)
+2026-10-24T14:16:28.1071600Z ✔ compliant game (custom card + site.json type + x-banner) is silent (0.850784ms)
+2026-10-24T14:16:28.1072352Z ✔ __root.tsx og:type no longer satisfies the canvas gate (0.706859ms)
+2026-10-24T14:16:28.1072729Z ✔ oversized x-banner warns on the same scraper budget as og.jpg (0.916954ms)
+2026-10-24T14:16:28.1073477Z ✔ legacy png + site.json type still needs the X feed card (0.541762ms)
+2026-10-24T14:16:28.1073823Z ✔ siteDeclaresOgTypeGame reads the site contract (0.117987ms)
+2026-10-24T14:16:28.1074210Z ✔ a fresh og-pending marker silences the whole gate view (0.418717ms)
+2026-10-24T14:16:28.1074887Z ✔ a stale og-pending marker is ignored and the warnings return (0.341321ms)
+2026-10-24T14:16:28.1075270Z ✔ the marker goes stale on the clock, not on the file (0.407911ms)
+2026-10-24T14:16:28.1075577Z ✔ no marker means nothing is in flight (0.234811ms)
+2026-10-24T14:16:28.1076002Z ✔ parseBrandCheckArgs takes --game, --placeholder-ok and --root, and rejects the rest (0.189033ms)
+2026-10-24T14:16:28.1076593Z ✔ cli: a game missing its card reports JSON and exits 1 (52.724262ms)
+2026-10-24T14:16:28.1077062Z ✔ cli: a compliant game passes (64.848727ms)
+2026-10-24T14:16:28.1077545Z ✔ cli: the task's own marker is reported, not honoured (54.83519ms)
+2026-10-24T14:16:28.1078054Z ✔ cli: a bad argument fails with JSON on stderr (48.12024ms)
+2026-10-24T14:16:28.1078656Z ✔ cli: a non-game with no card fails too — the pass exists to produce one (49.670914ms)
+2026-10-24T14:16:28.1079380Z ✔ cli: --placeholder-ok is how a plain-utility pass reports no card as expected (104.830899ms)
+2026-10-24T14:16:28.1079994Z ✔ cli: a non-game with a compliant card passes (52.130929ms)
+2026-10-24T14:16:28.1080725Z ﹣ SKILL.md and AGENTS.md name the marker path and bound this script uses (0.06649ms) # .grok/skills/og not present
+2026-10-24T14:16:28.1081600Z ﹣ the sections that own the brand-task prohibition never affirm a wait (0.048703ms) # .grok/skills/og not present
+2026-10-24T14:16:28.1082750Z ﹣ SKILL.md tells the pass to self-check with the flag this CLI accepts (0.043656ms) # .grok/skills/og not present
+2026-10-24T14:16:28.1196035Z ✔ normalizes whitespace before hashing (1.130233ms)
+2026-10-24T14:16:28.1196754Z ✔ nullish and blank body text normalize to the empty string (0.119189ms)
+2026-10-24T14:16:28.1197334Z ✔ body text prefix is normalized and capped (0.122274ms)
+2026-10-24T14:16:28.1197743Z ✔ identical runs do not diverge (0.505267ms)
+2026-10-24T14:16:28.1198097Z ✔ status change diverges (3.378382ms)
+2026-10-24T14:16:28.1198422Z ✔ title change diverges (0.148923ms)
+2026-10-24T14:16:28.1198881Z ✔ title comparison is skipped when either side lacks one (0.088983ms)
+2026-10-24T14:16:28.1199432Z ✔ canvas disappearing diverges; canvas appearing does not (0.105097ms)
+2026-10-24T14:16:28.1199988Z ✔ horizontal overflow appearing diverges; clearing does not (0.178667ms)
+2026-10-24T14:16:28.1200422Z ✔ new console errors diverge (0.183084ms)
+2026-10-24T14:16:28.1200892Z ✔ errors already present in the baseline do not re-diverge (0.126029ms)
+2026-10-24T14:16:28.1201316Z ✔ body text collapse diverges (0.072479ms)
+2026-10-24T14:16:28.1201732Z ✔ body text dropping to zero reports collapse (0.082123ms)
+2026-10-24T14:16:28.1202398Z ✔ zero-length baseline reports growth via the hash branch, not collapse (0.132378ms)
+2026-10-24T14:16:28.1203076Z ✔ hash mismatch with a trivial length delta and same page start is tolerated (0.058748ms)
+2026-10-24T14:16:28.1203738Z ✔ hash mismatch with a trivial length delta but changed page start diverges (0.048002ms)
+2026-10-24T14:16:28.1204321Z ✔ prefix check is skipped when either side lacks a prefix (0.088062ms)
+2026-10-24T14:16:28.1205240Z ✔ length-delta tolerance boundary: 50 tolerated, 51 diverges (500-char baseline) (0.058908ms)
+2026-10-24T14:16:28.1206026Z ✔ length-delta floor dominates small baselines: 20 tolerated, 21 diverges (100-char baseline) (0.051157ms)
+2026-10-24T14:16:28.1206731Z ✔ collapse boundary: exactly half is 'changed', one below is 'collapsed' (0.052058ms)
+2026-10-24T14:16:28.1207231Z ✔ missing baseline viewport diverges (0.047802ms)
+2026-10-24T14:16:28.1207695Z ✔ empty or null baseline diverges for every viewport (0.139208ms)
+2026-10-24T14:16:28.1208154Z ✔ degenerate current verdict fails closed (0.162323ms)
+2026-10-24T14:16:28.1208623Z ✔ multiple signals across viewports all accumulate (0.067291ms)
+2026-10-24T14:16:28.1209073Z ✔ baselineComparison round-trips a valid baseline (0.105247ms)
+2026-10-24T14:16:28.1209438Z ✔ baselineComparison fails closed on malformed or wrong-shape baselines (0.215923ms)
+2026-10-24T14:16:28.1209771Z ✔ parseSmokeArgs defaults (0.255532ms)
+2026-10-24T14:16:28.1210095Z ✔ parseSmokeArgs consumes --baseline without shifting positionals (0.070376ms)
+2026-10-24T14:16:28.1210439Z ✔ parseSmokeArgs rejects a trailing --baseline flag (0.054742ms)
+2026-10-24T14:16:28.1210746Z ✔ parseSmokeArgs supports the --baseline= form (0.040891ms)
+2026-10-24T14:16:28.1211123Z ✔ parseSmokeArgs rejects unknown flags instead of treating them as positionals (0.051888ms)
+2026-10-24T14:16:28.1211484Z ✔ parseSmokeArgs env fallback and flag precedence (0.059599ms)
+2026-10-24T14:16:28.1211819Z ✔ derivedPaths handles .png, .PNG, and extensionless inputs (0.137816ms)
+2026-10-24T14:16:28.1212306Z ✔ exitCodeFor: clean run exits 0 (0.131777ms)
+2026-10-24T14:16:28.1212587Z ✔ exitCodeFor: errors in any single viewport exit 2 (0.052319ms)
+2026-10-24T14:16:28.1213240Z ✔ exitCodeFor: navigation failure in any viewport exits 1, beating errors (0.055223ms)
+2026-10-24T14:16:28.1213997Z ✔ exitCodeFor: 4xx boundary and missing status (0.038738ms)
+2026-10-24T14:16:28.1214285Z ✔ exitCodeFor: no viewport data is a failure (0.049885ms)
+2026-10-24T14:16:28.1214582Z ✔ browser-smoke wires the guard and verdict helpers (0.257496ms)
+2026-10-24T14:16:28.1214955Z ✔ browser-smoke file I/O only touches guarded paths (0.263565ms)
+2026-10-24T14:16:28.1709695Z ✔ finds the generated Nitro Node entry layout and excludes browser, edge and unrelated API outputs (10.683255ms)
+2026-10-24T14:16:28.1771065Z ✔ fails without a real Nitro server entry before creating worker artifacts (1.571494ms)
+2026-10-24T14:16:28.4458160Z ✔ bundles one real standalone ESM worker, preserves server assets, and completes Base config work without TypeScript flags (272.987934ms)
+2026-10-24T14:16:28.4468748Z ✔ both build modes package the worker after Vite and before production database migration (1.013889ms)
+2026-10-24T14:16:28.4633413Z ✔ daily archive parsing accepts official header, milliseconds/microseconds and genuine zero volume (1.556261ms)
+2026-10-24T14:16:28.4634648Z ✔ bad OHLCV, malformed rows, duplicate timestamps and invalid close boundaries fail closed (0.35357ms)
+2026-10-24T14:16:28.4635682Z ✔ full daily coverage rejects gaps, extra/short data and wrong day without filling candles (7.901773ms)
+2026-10-24T14:16:28.4636574Z ✔ official checksum must match archive bytes and exact filename (0.658026ms)
+2026-10-24T14:16:28.4637349Z ✔ UTC archive days use inclusive-exclusive bounds (0.442483ms)
+2026-10-24T14:16:28.4638222Z ✔ no script reads the runtime's candles as arrays (27.92814ms)
+2026-10-24T14:16:28.4638742Z ✔ the flag predicate matches src/lib/auth (0.698726ms)
+2026-10-24T14:16:28.4639218Z ✔ reads the value a live dev server resolved (0.182614ms)
+2026-10-24T14:16:28.4639807Z ✔ a server started without the flag reads as sign-in on (0.084988ms)
+2026-10-24T14:16:28.4640323Z ✔ agreement passes (0.111837ms)
+2026-10-24T14:16:28.4640705Z ✔ divergence fails in either direction (0.12721ms)
+2026-10-24T14:16:28.4641226Z ✔ an unobservable dev server is indeterminate, not agreement (0.069214ms)
+2026-10-24T14:16:28.4642262Z ✔ a dev server that cannot be reached probes as null (0.105949ms)
+2026-10-24T14:16:28.4642868Z ✔ a server without the endpoint probes as null, not as agreement (0.189123ms)
+2026-10-24T14:16:28.4643382Z ✔ only a divergence warns the smoke verdict (0.58745ms)
+2026-10-24T14:16:28.4644044Z ﹣ the build side resolves the template's shipped app-env (0.149414ms) # .grok/app-env.json not present
+2026-10-24T14:16:28.4644760Z ✔ the CLI reports rather than silently passing when run via a symlink (55.791713ms)
+2026-10-24T14:16:28.4798716Z ✔ public acquisition permits only unsigned public GET routes (1.753066ms)
+2026-10-24T14:16:28.4823028Z ✔ public acquisition rejects HTTP failures before parsing (0.191007ms)
+2026-10-24T14:16:28.4824479Z ✔ frozen universe correction depends on availability, launch history and exact symbol (0.663364ms)
+2026-10-24T14:16:28.4825409Z ✔ OHLCV accepts complete reverse-ordered public pages without filling (0.257135ms)
+2026-10-24T14:16:28.4826249Z ✔ OHLCV rejects gaps, duplicates, bad values and future boundaries (0.277055ms)
+2026-10-24T14:16:28.4827086Z ✔ ranking hours require all60 contiguous aligned completed minutes (1.048931ms)
+2026-10-24T14:16:28.5222670Z ✔ final reducer verifies hourly sums, explicit costs and frozen provenance (1.889671ms)
+2026-10-24T14:16:28.5233162Z ✔ final reducer rejects shifted/missing hours and incorrect measured PF (0.296324ms)
+2026-10-24T14:16:28.5273912Z {
+2026-10-24T14:16:28.5274177Z   "artifacts": 4,
+2026-10-24T14:16:28.5274444Z   "baseArchive": {
+2026-10-24T14:16:28.5274743Z     "path": "/tmp/cts-final-report-YmudyO/absent.zip",
+2026-10-24T14:16:28.5275199Z     "status": "not available locally"
+2026-10-24T14:16:28.5275626Z   },
+2026-10-24T14:16:28.5275843Z   "cases": [
+2026-10-24T14:16:28.5276102Z     {
+2026-10-24T14:16:28.5276344Z       "id": "baseline/baseline-20",
+2026-10-24T14:16:28.5276602Z       "status": "invalid"
+2026-10-24T14:16:28.5276836Z     },
+2026-10-24T14:16:28.5277042Z     {
+2026-10-24T14:16:28.5277271Z       "id": "baseline/baseline-22",
+2026-10-24T14:16:28.5277526Z       "status": "pending"
+2026-10-24T14:16:28.5277775Z     },
+2026-10-24T14:16:28.5277977Z     {
+2026-10-24T14:16:28.5278214Z       "id": "prune-variant/baseline-20",
+2026-10-24T14:16:28.5278470Z       "status": "pending"
+2026-10-24T14:16:28.5278696Z     },
+2026-10-24T14:16:28.5278899Z     {
+2026-10-24T14:16:28.5279128Z       "id": "prune-variant/baseline-22",
+2026-10-24T14:16:28.5279381Z       "status": "pending"
+2026-10-24T14:16:28.5279605Z     }
+2026-10-24T14:16:28.5279806Z   ],
+2026-10-24T14:16:28.5280017Z   "complete": false,
+2026-10-24T14:16:28.5280357Z   "output": "/tmp/cts-final-report-YmudyO/report"
+2026-10-24T14:16:28.5280773Z }
+2026-10-24T14:16:28.5280994Z 
+2026-10-24T14:16:28.5288195Z ✔ invalid run never parses or reports its stale summary PF (10.650125ms)
+2026-10-24T14:16:28.5312251Z ✔ actual feed byte tampering fails even with unchanged recorded links (2.265759ms)
+2026-10-24T14:16:28.5332282Z ✔ actual source byte tampering fails and valid files produce an explicit archive snapshot (1.923967ms)
+2026-10-24T14:16:28.5333577Z ✔ empty final report does not imply completed tests or hourly profitability (0.351206ms)
+2026-10-24T14:16:28.5564129Z ✔ study freezes24h evaluated prehistory,24h trade and separate205h indicator warmup (1.047309ms)
+2026-10-24T14:16:28.5565430Z ✔ strict study memory admission uses known host and ancestor headroom, crediting measured inactive cache only (1.235221ms)
+2026-10-24T14:16:28.5566615Z ✔ hosted CI root without non-root-only memory files is known host-bound, with all real ancestor caps retained (1.616973ms)
+2026-10-24T14:16:28.5567940Z ✔ root exemption needs proven ENOENT, real hierarchy evidence and readable controller accounting (1.011775ms)
+2026-10-24T14:16:28.5653735Z ✔ shared nonblocking flock rejects a second study and releases without stale ownership (15.343547ms)
+2026-10-24T14:16:28.7825180Z ✔ owned child interruption and timeout resolve complete failure evidence without hanging (216.045563ms)
+2026-10-24T14:16:29.8851445Z ✔ a running child retains the shared resource flock after its launcher descriptor closes (451.901393ms)
+2026-10-24T14:16:29.8853088Z ✔ case feed trims397h and derives each ranking solely from its prior24h (270.189096ms)
+2026-10-24T14:16:29.8856079Z ✔ feed validation rejects missing bars, extra symbols and omitted ranking history (3.374866ms)
+2026-10-24T14:16:29.8858812Z ✔ preflight uses production complete nested ladders and unchanged gates with explicit loading coverage (364.785774ms)
+2026-10-24T14:16:29.8862688Z ✔ commands run the causal runtime offline with variants off and immutable replay output (0.565928ms)
+2026-10-24T14:16:29.8876329Z ✔ right-closed hour convention retains exact-hour closes in the preceding hour (0.197686ms)
+2026-10-24T14:16:29.8878706Z ✔ summary separates virtual/funded settled cohorts, unscales returns and retains all24 hours (3.455056ms)
+2026-10-24T14:16:29.8879612Z ✔ summary rejects absent or malformed Base coverage and a reordered forced universe (3.544219ms)
+2026-10-24T14:16:29.8880475Z ✔ Base hourly placeholder zeroes remain unavailable while recorded config progress remains visible (1.27485ms)
+2026-10-24T14:16:29.8881365Z ✔ summary rejects a winning diagnostic config outside its independently admitted Base range (0.813469ms)
+2026-10-24T14:16:29.8882458Z ✔ summary uses production qualification for explicitly admitted untagged ladders (1.184364ms)
+2026-10-24T14:16:29.8883274Z ✔ summary detects nested settings, book sizing and missing performance evidence (0.622413ms)
+2026-10-24T14:16:29.8884111Z ✔ summary fails closed when independent WF controls or native accounting checks change (0.565137ms)
+2026-10-24T14:16:29.8885066Z ✔ summary fails closed on memory fallback, partial universe, missing validation or unknown allocations (2.556029ms)
+2026-10-24T14:16:29.9169460Z ✔ frozen candles reject gaps, future bars, invalid OHLC and a changed universe (3.262517ms)
+2026-10-24T14:16:29.9218811Z ✔ actual stopped runtime settings remain default-positive and retain full exit ladders (287.735337ms)
+2026-10-24T14:16:29.9236363Z ✔ child command keeps replay-only history floor, exact settings, guard and bounded native book (0.652288ms)
+2026-10-24T14:16:29.9283307Z ✔ prune plan reads only exact initial IS checks and never later profits/passes (1.179076ms)
+2026-10-24T14:16:29.9301225Z ✔ only engine Micro/Minimal ranges with25 distinct adequately sampled failures may be cropped (1.07444ms)
+2026-10-24T14:16:29.9312918Z ✔ startup memory fallback is rejected before rendering even when engine exits successfully (0.210816ms)
+2026-10-24T14:16:29.9353033Z ✔ actual runtime trial reduces engine combos while preserving all Signal configuration identities (509.56908ms)
+2026-10-24T14:16:29.9413241Z ✔ pools only disjoint verified unit evidence, with no-loss state and no virtual winner promotion (10.164537ms)
+2026-10-24T14:16:29.9442946Z ✔ retains unknown losing evidence and never turns null into zero (0.39391ms)
+2026-10-24T14:16:29.9443901Z ✔ refuses legacy, overlapping, duplicate and configuration-mismatched windows (2.237622ms)
+2026-10-24T14:16:29.9472798Z ✔ canonical unit returns, exact close-index allocations, zero funding and endpoints stay separate (2.006756ms)
+2026-10-24T14:16:29.9503023Z ✔ hourly engine validations and Signal ranking activity retain separate source scopes and unknown samples (0.913659ms)
+2026-10-24T14:16:29.9532842Z ✔ review labels run-start all-cell and post-Base gate denominators separately and displays24 parallel hourly rows (6.763172ms)
+2026-10-24T14:16:29.9534022Z ✔ hourly, config and reclaim win rates include exactly flat funded closes and retain unknown denominators (0.545788ms)
+2026-10-24T14:16:29.9557955Z ✔ unit-return signs preserve the smallest nonzero gains and losses without an epsilon (0.265929ms)
+2026-10-24T14:16:29.9587810Z ✔ unknown unit evidence and mismatched or duplicate allocations cannot drop losses to improve PF (0.76065ms)
+2026-10-24T14:16:29.9603362Z ✔ cash inconsistencies invalidate completeness and sub-epsilon funding does not invent an order (0.330826ms)
+2026-10-24T14:16:29.9604962Z ✔ exclusion rule needs both complete22 cases and matches each scope within the same policy (8.29736ms)
+2026-10-24T14:16:29.9605973Z ✔ minimum samples, unknown returns and exact identity cannot borrow qualification from siblings (3.178622ms)
+2026-10-24T14:16:29.9606907Z ✔ matched comparisons reject sizing, source, feed and chronological split changes (7.041209ms)
+2026-10-24T14:16:29.9607890Z ✔ loader verifies complete-result and protocol/source/feed/raw/book hashes from tiny synthetic files (4.332571ms)
+2026-10-24T14:16:29.9608877Z ✔ all four completion envelopes are required before opening any final raw market evidence (1.760387ms)
+2026-10-24T14:16:31.6561753Z ▶ heatmap evidence provenance
+2026-10-24T14:16:31.6562667Z   ✔ labels profitable forward paper as paper, while losing cash execution remains unverified per cell (228.889328ms)
+2026-10-24T14:16:31.6563892Z   ✔ accepts legacy --live input only as the same explicitly labeled paper source (188.836836ms)
+2026-10-24T14:16:31.6564640Z   ✔ renders no-loss convention, measured 99, tiny losses and empty samples from actual embedded JSON (412.139545ms)
+2026-10-24T14:16:31.6565432Z   ✔ retains legacy weighted/unknown WF diagnostics without inventing unit-return qualification (180.04099ms)
+2026-10-24T14:16:31.6566166Z   ✔ never pools a legacy weighted window into known unit-return WF evidence (152.124063ms)
+2026-10-24T14:16:31.6566949Z   ✔ normalizes direct simulated WF trades only and records probe bypass, model cost and weighted diagnostics (507.532926ms)
+2026-10-24T14:16:31.6567578Z ✔ heatmap evidence provenance (1671.198397ms)
+2026-10-24T14:16:31.6729883Z ▶ walk-forward hourly reporting
+2026-10-24T14:16:31.6744020Z   ✔ assigns before/exact/after-boundary exits and the final end to the shared settled hours (2.36961ms)
+2026-10-24T14:16:31.6761762Z   ✔ the CLI renders the helper's actual clipped window and exposes matching machine-readable hourly counts (541.071711ms)
+2026-10-24T14:16:31.6763185Z   ✔ honors verified unit overrides and makes the entire primary unavailable for an unknown or invalid row (1.957633ms)
+2026-10-24T14:16:31.6764483Z   ✔ uses one settled sample for totals, kinds and exit-bar-end hours, including the final boundary (1.338049ms)
+2026-10-24T14:16:31.6765361Z   ✔ keeps losing endpoint marks visible and separate from primary settled PF (0.43414ms)
+2026-10-24T14:16:31.6766500Z   ✔ reverses the direct walkForward execution multiplier once: return PF 1.36 versus sized PF 0.20 (0.520289ms)
+2026-10-24T14:16:31.6767549Z   ✔ preserves already-unit modeled returns when mult is missing or one and does not mutate inputs (0.489303ms)
+2026-10-24T14:16:31.6768775Z   ✔ uses actual run bounds, retains partial hours, and excludes old entries and unsettled/future exits (0.667931ms)
+2026-10-24T14:16:31.6769852Z   ✔ discloses no-loss sentinel and supports empty windows without inventing trades (0.958466ms)
+2026-10-24T14:16:31.6770703Z ✔ walk-forward hourly reporting (552.002031ms)
+2026-10-24T14:16:32.0552581Z ✔ coordinator labels profitable paper return evidence even when exchange and cash PF conflict (107.212708ms)
+2026-10-24T14:16:32.0573896Z ✔ profitable exchange fields do not replace losing or absent reference paper evidence (212.841186ms)
+2026-10-24T14:16:32.0574996Z ✔ missing reference preserves opt-in and opt-out range starts and the closed opening gate (112.187716ms)
+2026-10-24T14:16:32.0576047Z ✔ default minimum counts and PF hysteresis preserve range and opening decisions (589.857235ms)
+2026-10-24T14:16:32.0577111Z ✔ opening gate includes unmanaged ranges and excludes disabled managed ranges (79.289683ms)
+2026-10-24T14:16:32.0578041Z ✔ custom gate thresholds still apply and patches preserve unrelated settings (190.839262ms)
+2026-10-24T14:16:33.1614338Z ✔ snapshot report uses verified paper unit returns while venue returns remain unchanged (309.676641ms)
+2026-10-24T14:16:33.1615786Z ✔ legacy snapshots and mixed unknown paper samples keep their identities but have no primary ratio (570.56156ms)
+2026-10-24T14:16:33.1617318Z ✔ a current snapshot without an owned-fill ledger keeps the relation diagnostic and invents no venue positions (552.805768ms)
+2026-10-24T14:16:34.2671022Z ✔ Tactic uses its full-indication minimum and warmup is not reported as PF-qualified (562.004956ms)
+2026-10-24T14:16:34.2673166Z ✔ provided stricter range minima apply and known unit returns are independent of stored sized r (265.186089ms)
+2026-10-24T14:16:34.2674694Z ✔ unknown legacy returns are retained as unknown, block the causal window and never become positive proof (546.431374ms)
+2026-10-24T14:16:34.2675494Z ✔ only finite complete nonnegative-delay forward records enter a window (235.05423ms)
+2026-10-24T14:16:34.2676292Z ✔ a close simultaneous with entry is not visible to that decision and invalid windows fail clearly (541.889228ms)
+2026-10-24T14:16:34.2761590Z ✔ the X02 demo WF patch is at the loader's root and applies with unchanged exact-config gates (34.310154ms)
+2026-10-24T14:16:34.2762681Z ✔ the demo override is isolated from the factory defaults and X01 patch (0.319989ms)
+2026-10-24T14:16:41.4083912Z ✔ legacy nominal rows including NULL cannot retain old ON or manufacture owned-execution proof (309.823601ms)
+2026-10-24T14:16:41.4085743Z ✔ verified complete exact evidence produces a byte-hash-bound proof with original kinds and default thresholds (882.102674ms)
+2026-10-24T14:16:41.4113284Z ✔ winning sibling cannot promote losing opposite side or a distinct protection config (372.265112ms)
+2026-10-24T14:16:41.4114327Z ✔ expired, future, NULL and incomplete artifact evidence revokes previously ON exact identities (4890.431701ms)
+2026-10-24T14:16:41.4143079Z ✔ unreadable/malformed artifacts and unbound reference identity fail closed; dry mode never mutates (1040.735302ms)
+2026-10-24T14:16:41.4144088Z ✔ invalid threshold arguments fail before changing the target patch (265.82818ms)
+2026-10-24T14:16:41.4203233Z ▶ tag-scoped close
+2026-10-24T14:16:41.4213068Z   ✔ an own net overstated by untagged closes never reaches the other systems' part (0.806047ms)
+2026-10-24T14:16:41.4213846Z   ✔ a tag alone on a position closes its whole net; a net below the position closes only the net (0.166309ms)
+2026-10-24T14:16:41.4214478Z   ✔ another system's closed-out history counts as zero, not negative (0.119189ms)
+2026-10-24T14:16:41.4214916Z ✔ tag-scoped close (1.973367ms)
+2026-10-24T14:16:41.4215181Z ▶ order history paging
+2026-10-24T14:16:41.4215712Z   ✔ a busy range (more than one 500-order page) is read in full, whichever 500 the exchange returns (4.60549ms)
+2026-10-24T14:16:41.4216415Z   ✔ retains distinct client ids when venue ids round to the same number or are missing (1.287109ms)
+2026-10-24T14:16:41.4217092Z   ✔ counts the latest cumulative fill of a client order once in a supplied history (1.270513ms)
+2026-10-24T14:16:41.4217581Z ✔ order history paging (7.423482ms)
+2026-10-24T14:16:41.4217886Z ▶ exchange report PF
+2026-10-24T14:16:41.4218494Z   ✔ uses return PF as primary, reports cash PF separately, retains open realized money and recognizes every range (0.997394ms)
+2026-10-24T14:16:41.4219367Z   ✔ per-range return PF uses position returns and cannot turn a dollar-only orphan exit into a return (0.456844ms)
+2026-10-24T14:16:41.4219923Z ✔ exchange report PF (1.683122ms)
+2026-10-24T14:16:41.4220377Z ▶ exchange and UI ledger compare identical settled owned close samples
+2026-10-24T14:16:41.4221016Z   ✔ allocates signed entry fees and variable partial quantities identically after an increase (3.198271ms)
+2026-10-24T14:16:41.4221767Z   ✔ matches the UI's exclusive start/inclusive end, using earlier supplied fills only as inventory (0.737245ms)
+2026-10-24T14:16:41.4222642Z   ✔ discloses model fees and uses the same configured cost as the UI for missing commissions (0.57411ms)
+2026-10-24T14:16:41.4223412Z   ✔ labels an omitted-cost estimate without inventing historical cost or changing measured commissions (0.372017ms)
+2026-10-24T14:16:41.4224244Z   ✔ preserves finite explicit zero commissions while missing or legacy zero evidence retains the configured estimate (0.373871ms)
+2026-10-24T14:16:41.4225599Z   ✔ shares the numeric no-loss sentinel and explicitly marks its convention on the same sample (0.345307ms)
+2026-10-24T14:16:41.4226323Z ✔ exchange and UI ledger compare identical settled owned close samples (5.82712ms)
+2026-10-24T14:16:41.4226736Z ▶ dense order history
+2026-10-24T14:16:41.4227207Z   ✔ reads a burst above 500 orders within one minute without silently dropping fills (0.811095ms)
+2026-10-24T14:16:41.4227885Z   ✔ refuses an incomplete instant instead of issuing an apparently complete PF report (0.378067ms)
+2026-10-24T14:16:41.4228389Z ✔ dense order history (1.311505ms)
+2026-10-24T14:16:41.4228711Z ▶ saved exchange report formatting
+2026-10-24T14:16:41.4229313Z   ✔ shows shared return PF, labels no-loss sentinel, and refuses legacy cash or episode sums (1396.289164ms)
+2026-10-24T14:16:41.4232627Z ✔ saved exchange report formatting (1396.549093ms)
+2026-10-24T14:16:41.4234157Z ▶ R-e: the loss check counts own quantity only (own-first)
+2026-10-24T14:16:41.4236011Z   ✔ a manual close on a merged side reduces our quantity first, carries its share of the money and ends our episode as hand (0.682833ms)
+2026-10-24T14:16:41.4238231Z   ✔ someone else's fill into the position never adds to ours; open P&L is our quantity against our own entry (0.431186ms)
+2026-10-24T14:16:41.4239985Z ✔ R-e: the loss check counts own quantity only (own-first) (1.279777ms)
+2026-10-24T14:16:41.4240389Z ▶ flatten sends market orders
+2026-10-24T14:16:41.4254743Z   ✔ refuses to run without CTS_CORE_LIVE=1, before any request (1.235912ms)
+2026-10-24T14:16:41.4256443Z ✔ flatten sends market orders (1.340208ms)
+2026-10-24T14:16:41.4258330Z ✔ selects only two complete predeclared folds with both finite primary PF axes and30 funded onsets (0.615883ms)
+2026-10-24T14:16:41.4260057Z ✔ preserves no-loss/empty/unknown/incomplete folds as insufficient instead of substituting profitable PF (0.198147ms)
+2026-10-24T14:16:41.4261704Z ✔ reads the complete quoted CSV evidence including escaped quotes and empty cohorts (0.833639ms)
+2026-10-24T14:16:41.4263465Z ✔ whole-book aggregation retains every range and loss with return PF separate from cash PF (0.396745ms)
+2026-10-24T14:16:41.4264251Z ✔ prepares only complete cached candles and rejects conflicts rather than preferring a source (1.346267ms)
+2026-10-24T14:16:41.4266363Z ✔ builds exact frozen-case commands without silently enabling sources or changing gates (293.117336ms)
+2026-10-24T14:16:41.4267265Z ✔ applies every serialized full profile to a stopped real runtime with the sealed settings/WF identity (828.21826ms)
+2026-10-24T14:16:41.4269428Z ✔ seals the exact production/import inventory while excluding test-only file edits (49.383927ms)
+2026-10-24T14:16:41.4270096Z ▶ indication research independent direction simulation
+2026-10-24T14:16:41.4271000Z   ✔ keeps overlapping opposite directions exactly as Base/bothSides rather than suppressing the short slot (5.424828ms)
+2026-10-24T14:16:41.4271691Z   ✔ preserves one-sided, empty and nonoverlapping mixed-signal results (0.331517ms)
+2026-10-24T14:16:41.4272484Z   ✔ preserves closed historical trades under poisoned future bars and next-open causality (0.275553ms)
+2026-10-24T14:16:41.4273126Z   ✔ merges simultaneous exits deterministically in entry-time order (0.151006ms)
+2026-10-24T14:16:41.4273672Z ✔ indication research independent direction simulation (7.127719ms)
+2026-10-24T14:16:51.3237201Z ▶ session CLI settings precedence
+2026-10-24T14:16:51.3237982Z   ✔ applies --focus all after a frozen --settings focus (1.036392ms)
+2026-10-24T14:16:51.3238998Z ✔ session CLI settings precedence (1.709091ms)
+2026-10-24T14:16:51.3239647Z ▶ immutable minute book lookup cache
+2026-10-24T14:16:51.3240321Z   ✔ caches each order and each minute-symbol including zero and missing prices (1.309752ms)
+2026-10-24T14:16:51.3241100Z   ✔ keeps the production minute loop's order, volume, missing-price and unknown-allocation arithmetic (2.618933ms)
+2026-10-24T14:16:51.3241904Z   ✔ keeps secondary capped and uncapped minute passes independent with the legacy multiplication order (1.783763ms)
+2026-10-24T14:16:51.3243033Z ✔ immutable minute book lookup cache (5.98082ms)
+2026-10-24T14:16:51.3243468Z ▶ session CLI sidecar replay preserves complete evidence
+2026-10-24T14:16:51.3243907Z   ✔ matches legacy report data and unit-row SHA while retaining all physical validation history (1671.732769ms)
+2026-10-24T14:16:51.3244338Z   ✔ fails replay when a tape chunk is corrupted instead of skipping stage evidence (361.795122ms)
+2026-10-24T14:16:51.3244761Z   ✔ still fails the stage check when valid sidecar data disagrees with an executed unit return (436.995071ms)
+2026-10-24T14:16:51.3245156Z ✔ session CLI sidecar replay preserves complete evidence (2471.183303ms)
+2026-10-24T14:16:51.3245476Z ▶ session CLI background comparison policy
+2026-10-24T14:16:51.3246175Z   ✔ defaults off before runtime startup and preserves explicit diagnostic opt-in (1067.428383ms)
+2026-10-24T14:16:51.3246710Z ✔ session CLI background comparison policy (1067.576054ms)
+2026-10-24T14:16:51.3254279Z ▶ session reports: return PF primary, simulated provenance
+2026-10-24T14:16:51.3254875Z   ✔ prints CLI help without starting a simulated session (388.999099ms)
+2026-10-24T14:16:51.3255530Z   ✔ reports both ordinary and Signal Exit orders under the independent Exit range (404.815402ms)
+2026-10-24T14:16:51.3288516Z   ✔ keeps first simulated-step seats distinct from the later paper selection in every output (366.435268ms)
+2026-10-24T14:16:51.3301246Z   ✔ reports offline source metadata and never invents a provider for legacy dumps (694.366286ms)
+2026-10-24T14:16:51.3312768Z   ✔ reports the configured Signal horizon separately from available input and engine prehistory (357.077987ms)
+2026-10-24T14:16:51.3313437Z   ✔ rejects replay preload without a cached feed and both explicit replay boundaries before startup (1150.10278ms)
+2026-10-24T14:16:51.3314043Z   ✔ reports an empty Base run as unavailable PF with passing consistency checks (412.973175ms)
+2026-10-24T14:16:51.3314557Z   ✔ checks engine config sets separately from active Signal tapes (281.798173ms)
+2026-10-24T14:16:51.3315101Z   ✔ counts the separately recorded Signal Exit Base pass in legacy replay coverage (283.243961ms)
+2026-10-24T14:16:51.3315721Z   ✔ reports measured no-loss PF separately from the finite Base gate score and labels later funnel stages (285.960213ms)
+2026-10-24T14:16:51.3316309Z   ✔ reports the paper Live last-N gate separately from walk-forward order results (282.477056ms)
+2026-10-24T14:16:51.3316842Z   ✔ keeps equal current range counts labeled as independent measurements (298.770221ms)
+2026-10-24T14:16:51.3317364Z   ✔ marks equal legacy counts as copied when range provenance is absent (277.98555ms)
+2026-10-24T14:16:51.3318165Z   ✔ a type with only zero-funded closes retains virtual hourly cells without inventing funded coverage (309.199165ms)
+2026-10-24T14:16:51.3318952Z   ✔ chunk-allocations preserves complete allocation evidence without enabling Signal research (295.997027ms)
+2026-10-24T14:16:51.3319739Z   ✔ zeros floating-point cap residue before cash/unit allocation and records the original ghost amount (392.969341ms)
+2026-10-24T14:16:51.3320498Z   ✔ keeps return PF primary across JSON, Markdown, write-up and the rendered HTML headline (410.824808ms)
+2026-10-24T14:16:51.3320910Z   ✔ the uncapped comparison uses return PF first on the same closed-order sample (401.784448ms)
+2026-10-24T14:16:51.3321567Z   ✔ removes the execution volume multiple from primary PF while retaining sized cash results (434.422492ms)
+2026-10-24T14:16:51.3322382Z   ✔ does not report a fabricated primary PF when an execution multiplier is invalid (385.910276ms)
+2026-10-24T14:16:51.3323159Z ✔ session reports: return PF primary, simulated provenance (8117.598234ms)
+2026-10-24T14:16:51.3323721Z ▶ session qualification matches the runtime's full indication rules
+2026-10-24T14:16:51.3324361Z   ✔ matches actual runtime admission, Tactic 1.1, range floors and absent own-cell fallback (1.944334ms)
+2026-10-24T14:16:51.3325084Z   ✔ uses runtime Base-set gates, sample/DD gates and the no-loss score rather than infinity (0.365357ms)
+2026-10-24T14:16:51.3325911Z   ✔ records every full indication's effective validation minimum without first-row bias (0.179029ms)
+2026-10-24T14:16:51.3326386Z   ✔ renders mixed current thresholds and marks historical aggregates as unverified without requalifying them (839.432314ms)
+2026-10-24T14:16:51.3326865Z   ✔ discloses partial return normalization without changing or certifying missing multipliers (0.292559ms)
+2026-10-24T14:16:51.3327321Z   ✔ retains legacy variant/preset aggregates while withholding an unrecorded primary unit PF (408.53025ms)
+2026-10-24T14:16:51.3327741Z ✔ session qualification matches the runtime's full indication rules (1251.071464ms)
+2026-10-24T14:16:51.7909886Z ✔ full tape dumps stream never-qualified own history without changing qualified outcomes (26.690314ms)
+2026-10-24T14:16:51.7926355Z ✔ opening counts include endpoint-held and endpoint-entered orders while separating zero funding (434.254449ms)
+2026-10-24T14:16:51.8160676Z ▶ four-source frozen independent Signal research
+2026-10-24T14:16:51.8161533Z   ✔ uses the frozen runtime-parity v2 grid independently of newer production defaults (10.04731ms)
+2026-10-24T14:16:51.8162533Z   ✔ fails before scoring if frozen parameters, protects, cost, source universe or bars differ (22.04257ms)
+2026-10-24T14:16:51.8163397Z   ✔ keeps the exact return-PF threshold, sample floor, endpoint marks and every IS-qualified identity (0.819969ms)
+2026-10-24T14:16:51.8164164Z   ✔ physically rejects future bars in IS and freezes before any OOS calculation (80.682988ms)
+2026-10-24T14:16:51.8164886Z   ✔ all source/range/lane indicator and default-filter prefixes ignore poisoned future data (125.386784ms)
+2026-10-24T14:16:51.8165677Z   ✔ IS selection and all IS row hashes are unchanged by OOS mutations and repeats are deterministic (31.343451ms)
+2026-10-24T14:16:51.8166506Z   ✔ matches direct engine simulation for closed returns and open marks on a fresh OOS slot (13.461308ms)
+2026-10-24T14:16:51.8167398Z   ✔ preserves the frozen v2 requests and explicitly reconciles current capped runtime identities (86.025656ms)
+2026-10-24T14:16:51.8168096Z ✔ four-source frozen independent Signal research (374.016031ms)
+2026-10-24T14:16:51.8168456Z {
+2026-10-24T14:16:51.8168729Z   "out": "/tmp/cts-signal-report-reader-DY5xli/legacy/out",
+2026-10-24T14:16:51.8169074Z   "files": [
+2026-10-24T14:16:51.8169297Z     "signals-six-hour-summary.json",
+2026-10-24T14:16:51.8169575Z     "signals-six-hour-report.md",
+2026-10-24T14:16:51.8169881Z     "signals-hourly-types.csv",
+2026-10-24T14:16:51.8170182Z     "signals-planned-hourly-types-diagnostic.csv",
+2026-10-24T14:16:51.8170557Z     "signals-hourly-account-book.csv",
+2026-10-24T14:16:51.8170902Z     "signals-planned-hourly-flows-diagnostic.csv",
+2026-10-24T14:16:51.8171242Z     "signals-funded-open-endpoint-marks.csv",
+2026-10-24T14:16:51.8171521Z     "signals-planned-open-endpoint-marks-diagnostic.csv",
+2026-10-24T14:16:51.8171764Z     "signals-type-range-lane-side.csv",
+2026-10-24T14:16:51.8172097Z     "signals-source-range-lane-side.csv",
+2026-10-24T14:16:51.8172655Z     "signals-planned-type-range-lane-side-diagnostic.csv",
+2026-10-24T14:16:51.8174260Z     "signals-planned-trades-diagnostic.csv",
+2026-10-24T14:16:51.8174618Z     "signals-hourly-type-range-lane-side.csv",
+2026-10-24T14:16:51.8174913Z     "signals-all-configurations.csv",
+2026-10-24T14:16:51.8175256Z     "signals-requested-to-effective-configurations.csv",
+2026-10-24T14:16:51.8175593Z     "signals-settled-trades.csv",
+2026-10-24T14:16:51.8175860Z     "signals-stage-progress.csv",
+2026-10-24T14:16:51.8176138Z     "whole-system-book-allocations.csv",
+2026-10-24T14:16:51.8176442Z     "signals-base-pair-diagnostics.csv",
+2026-10-24T14:16:51.8176721Z     "signals-source-catalog.csv",
+2026-10-24T14:16:51.8176988Z     "signals-frozen-protocol.json"
+2026-10-24T14:16:51.8177214Z   ],
+2026-10-24T14:16:51.8177382Z   "closes": 2,
+2026-10-24T14:16:51.8177563Z   "returnPf": "2.00",
+2026-10-24T14:16:51.8177751Z   "long": 1,
+2026-10-24T14:16:51.8177922Z   "short": 1,
+2026-10-24T14:16:51.8178097Z   "configsSides": 2,
+2026-10-24T14:16:51.8178718Z   "hourlyTypeRows": 18,
+2026-10-24T14:16:51.8178939Z   "hourlyDetailRows": 72,
+2026-10-24T14:16:51.8179149Z   "inputHashes": {
+2026-10-24T14:16:51.8179331Z     "raw": {
+2026-10-24T14:16:51.8179670Z       "sha256": "96f3fe3d793a3385e7f38deb9a7084f2d07da870fad05c84bfee1b1b6be99a62",
+2026-10-24T14:16:51.8180018Z       "bytes": 2757
+2026-10-24T14:16:51.8180191Z     },
+2026-10-24T14:16:51.8180345Z     "book": {
+2026-10-24T14:16:51.8180676Z       "sha256": "a366430bb52cc2ea0afada64ccc6c68703d78caaa3e657909eedbde6dbb7539c",
+2026-10-24T14:16:51.8181018Z       "bytes": 877
+2026-10-24T14:16:51.8181188Z     },
+2026-10-24T14:16:51.8181373Z     "protocol": {
+2026-10-24T14:16:51.8181901Z       "sha256": "45e299c24ec1f7f8b2e645834cc7a31373fa98d26004f6c72724dfa4bf0db9c8",
+2026-10-24T14:16:51.8182384Z       "bytes": 128
+2026-10-24T14:16:51.8182562Z     }
+2026-10-24T14:16:51.8182715Z   }
+2026-10-24T14:16:51.8182869Z }
+2026-10-24T14:16:51.8183027Z {
+2026-10-24T14:16:51.8183288Z   "out": "/tmp/cts-signal-report-reader-DY5xli/chunked/out",
+2026-10-24T14:16:51.8183573Z   "files": [
+2026-10-24T14:16:51.8183789Z     "signals-six-hour-summary.json",
+2026-10-24T14:16:51.8184062Z     "signals-six-hour-report.md",
+2026-10-24T14:16:51.8184390Z     "signals-hourly-types.csv",
+2026-10-24T14:16:51.8184773Z     "signals-planned-hourly-types-diagnostic.csv",
+2026-10-24T14:16:51.8185261Z     "signals-hourly-account-book.csv",
+2026-10-24T14:16:51.8185738Z     "signals-planned-hourly-flows-diagnostic.csv",
+2026-10-24T14:16:51.8186223Z     "signals-funded-open-endpoint-marks.csv",
+2026-10-24T14:16:51.8186785Z     "signals-planned-open-endpoint-marks-diagnostic.csv",
+2026-10-24T14:16:51.8187305Z     "signals-type-range-lane-side.csv",
+2026-10-24T14:16:51.8187746Z     "signals-source-range-lane-side.csv",
+2026-10-24T14:16:51.8188274Z     "signals-planned-type-range-lane-side-diagnostic.csv",
+2026-10-24T14:16:51.8188813Z     "signals-planned-trades-diagnostic.csv",
+2026-10-24T14:16:51.8189273Z     "signals-hourly-type-range-lane-side.csv",
+2026-10-24T14:16:51.8189742Z     "signals-all-configurations.csv",
+2026-10-24T14:16:51.8190262Z     "signals-requested-to-effective-configurations.csv",
+2026-10-24T14:16:51.8190726Z     "signals-settled-trades.csv",
+2026-10-24T14:16:51.8191111Z     "signals-stage-progress.csv",
+2026-10-24T14:16:51.8191381Z     "whole-system-book-allocations.csv",
+2026-10-24T14:16:51.8191685Z     "signals-base-pair-diagnostics.csv",
+2026-10-24T14:16:51.8194136Z     "signals-source-catalog.csv",
+2026-10-24T14:16:51.8194463Z     "signals-frozen-protocol.json"
+2026-10-24T14:16:51.8194701Z   ],
+2026-10-24T14:16:51.8194877Z   "closes": 2,
+2026-10-24T14:16:51.8195070Z   "returnPf": "2.00",
+2026-10-24T14:16:51.8195279Z   "long": 1,
+2026-10-24T14:16:51.8195460Z   "short": 1,
+2026-10-24T14:16:51.8195650Z   "configsSides": 2,
+2026-10-24T14:16:51.8195858Z   "hourlyTypeRows": 18,
+2026-10-24T14:16:51.8196077Z   "hourlyDetailRows": 72,
+2026-10-24T14:16:51.8196303Z   "inputHashes": {
+2026-10-24T14:16:51.8196495Z     "raw": {
+2026-10-24T14:16:51.8196860Z       "sha256": "9761a19e6feda18358225bf4f9c3639b55dcf9b66c80f665ae3c4a23f34355a3",
+2026-10-24T14:16:51.8197248Z       "bytes": 3269
+2026-10-24T14:16:51.8197437Z     },
+2026-10-24T14:16:51.8197633Z     "book": {
+2026-10-24T14:16:51.8197980Z       "sha256": "f2f08f0807a9c7dbba5bf807b868b01a757066518c918fe3e67e6244608465da",
+2026-10-24T14:16:51.8198349Z       "bytes": 1153
+2026-10-24T14:16:51.8198539Z     },
+2026-10-24T14:16:51.8198716Z     "protocol": {
+2026-10-24T14:16:51.8199074Z       "sha256": "45e299c24ec1f7f8b2e645834cc7a31373fa98d26004f6c72724dfa4bf0db9c8",
+2026-10-24T14:16:51.8199439Z       "bytes": 128
+2026-10-24T14:16:51.8199626Z     }
+2026-10-24T14:16:51.8199799Z   }
+2026-10-24T14:16:51.8199962Z }
+2026-10-24T14:16:51.8200668Z ✔ Signal report reader preserves funded long/short cohorts and physical provenance with sidecars (42.05346ms)
+2026-10-24T14:16:51.8201536Z ✔ Signal report verifies even unloaded raw validation sidecars before publishing a cohort (4.414577ms)
+2026-10-24T14:16:51.8203955Z ✔ hourly type PF aggregates unit-return components and preserves separate cash PF (0.544747ms)
+2026-10-24T14:16:51.8205019Z ✔ unknown unit evidence invalidates the complete hourly sample and no-loss stays labeled (0.338167ms)
+2026-10-24T14:16:51.8205872Z ✔ source, range, kind and direction detail retains losing and empty siblings (0.266139ms)
+2026-10-24T14:16:51.8206369Z ▶ bounded Tactic held-out protocol
+2026-10-24T14:16:51.8206901Z   ✔ counts every technique/range/unique lane and the disclosed 24 protect cells (1.322422ms)
+2026-10-24T14:16:51.8207623Z   ✔ records default entry filters/exemptions/cooldown separately from raw onset diagnostics (29.031486ms)
+2026-10-24T14:16:51.8208570Z   ✔ keeps return PF 1.36 independent of unequal-size cash PF 0.20 and exposes no-loss convention (1.20786ms)
+2026-10-24T14:16:51.8209312Z   ✔ selects only IS-qualifying cells before diagnostic cells and has deterministic ties (6.63156ms)
+2026-10-24T14:16:51.8209977Z   ✔ rejects gaps, duplicates, unequal source bounds and invalid candles (1.070504ms)
+2026-10-24T14:16:51.8210647Z   ✔ uses next-open OOS entry boundaries, closed endpoint bounds and the shared net cost (0.669374ms)
+2026-10-24T14:16:51.8211463Z   ✔ all70 state/signal prefixes and context snapshots survive poisoned future bars; 30m combined deduplicates (362.7278ms)
+2026-10-24T14:16:51.8212545Z   ✔ physically isolates IS selection from poisoned OOS and repeats deterministically with explicit open/closed counts (112.397496ms)
+2026-10-24T14:16:51.8213484Z   ✔ renders standalone raw provenance and exact mode/cache/split reproduction without claiming default parity (5.662608ms)
+2026-10-24T14:16:51.8214116Z ✔ bounded Tactic held-out protocol (521.935651ms)
+2026-10-24T14:16:51.8214761Z ✔ preload is portable, idempotent, clears exchange/proxy credentials and disables live (113.011621ms)
+2026-10-24T14:16:51.8215602Z ✔ denies every nonlocal/custom transport overload before any native transport or dispatcher call (55.297727ms)
+2026-10-24T14:16:51.8216520Z ✔ allows literal loopback overloads, normalizes localhost and keeps in-memory fetch mocks replaceable (55.197527ms)
+2026-10-24T14:16:51.8217379Z ✔ real loopback HTTP, Request clones, fetch and TCP sockets work under the preload (113.453683ms)
+2026-10-24T14:16:51.8218222Z ✔ default 32MB watchdog worker ignores expanded Node --test/V8 flags and guards nested workers (411.606502ms)
+2026-10-24T14:16:51.8219211Z ✔ explicit worker args survive, real preloads run after the guard and TypeScript workers with empty env stay guarded (298.469222ms)
+2026-10-24T14:16:51.8220125Z ✔ DCA research excludes marks/future closes and normalizes verified external sizing once (1.366518ms)
+2026-10-24T14:16:51.8220945Z ✔ all-positive curves have zero DDT and a no-loss state, never a measured PF 99 (0.203245ms)
+2026-10-24T14:16:51.8221738Z ✔ right-closed reporting hours and chronological drawdown survive unordered batches (0.184466ms)
+2026-10-24T14:16:51.8222634Z ✔ unknown unit evidence keeps the sample unknown instead of dropping a losing close (0.126269ms)
+2026-10-24T14:16:52.3610609Z ✔ a span that is not a multiple of 48 h: the last window's session runs over that window only (1.184926ms)
+2026-10-24T14:16:52.3611528Z ✔ the split defaults to D1's only on D1; another span is cut inside it, both halves non-empty (0.544356ms)
+2026-10-24T14:16:52.3612317Z ✔ the warm-up: the engine's 100 h, and with historic signal configs the 96 h lookback when that is longer (0.142063ms)
+2026-10-24T14:16:52.3613251Z ✔ a lane's volatility rank is valid after 336 of its own bars: 5.6 h on 1m, 28 h on 5m, 84 h on 15m, 168 h on 30m (0.249934ms)
+2026-10-24T14:16:52.3615762Z ✔ the feed's start is read from the series' first bars (0.242864ms)
+2026-10-24T14:16:52.3617006Z ✔ eval-gate --plan: per-window run lengths, a split inside the span, and the windows short of warm-up (741.35957ms)
+2026-10-24T14:16:52.3618404Z ✔ the feed's start read in chunks equals the whole-file reading, a chunk boundary at every offset of a key (50.239114ms)
+2026-10-24T14:16:52.3620083Z ✔ eval-gate keeps every window's result in window order when the windows finish out of order (2863.177828ms)
+2026-10-24T14:16:52.3621239Z ✔ eval-gate without --toggles / --window-h gives the session today's arguments byte for byte; --toggles merges over the eval's (1484.987461ms)
+2026-10-24T14:16:52.3622614Z ✔ eval-gate --window-h: N-hour windows, each its own session over its own hours (1661.564213ms)
+2026-10-24T14:16:52.3630939Z ✔ eval-gate's funnel line prints the forward PF over the run (after Base, validated at the start) beside the in-sample one (357.573669ms)
+2026-10-24T14:16:52.3632735Z ✔ eval-gate with Block on: per range the volume-weighted PF and the unit PF of the raised and unraised orders (684.091807ms)
+2026-10-24T14:16:52.3717644Z ▶ evaluation window orders
+2026-10-24T14:16:52.3718189Z   ✔ a loser still open at the window end lowers the window's PF (it was dropped before) (1.271436ms)
+2026-10-24T14:16:52.3718727Z   ✔ a dump without openEnd (older engines) gives the closed orders only (0.12668ms)
+2026-10-24T14:16:52.3719144Z ✔ evaluation window orders (2.318716ms)
+2026-10-24T14:16:52.3719610Z ▶ the eval sees Block: volume-weighted PF and unit PF raised / unraised
+2026-10-24T14:16:52.3720140Z   ✔ splits raised from unraised orders and weighs the book by volume (0.346489ms)
+2026-10-24T14:16:52.3720634Z   ✔ Block off (every order at one unit): both PFs agree, nothing raised (0.20045ms)
+2026-10-24T14:16:52.3721242Z ✔ the eval sees Block: volume-weighted PF and unit PF raised / unraised (0.748832ms)
+2026-10-24T14:16:52.3721778Z ✔ legacy unknown or invalid multiplier evidence makes primary unit PF unavailable (0.308833ms)
+2026-10-24T14:16:53.1671723Z ✔ --json: the rows in order, events against orders, PF with the open order against pfClosed, each verdict (107.279032ms)
+2026-10-24T14:16:53.1713244Z ✔ the forward pair: a valid one makes Long work; one with a memory-fallback window gives no outcome (202.247593ms)
+2026-10-24T14:16:53.1714373Z ✔ text: a section per row with its rule lines and the window flags; an invalid run: rerun and the no-verdict line (318.558017ms)
+2026-10-24T14:16:53.1715818Z ✔ refused (exit 2): another split, another feed, a missing label, an unknown kind, no variant (490.069261ms)
+2026-10-24T14:16:55.2113877Z ✔ eval-gate reads flat and chunked session cohorts with identical losses, marks, and PF (686.898173ms)
+2026-10-24T14:16:55.2114864Z ✔ eval-families reads every flat/chunked window and retains endpoint losses (1400.154772ms)
+2026-10-24T14:16:55.2124649Z ✔ positive-types actual CLI reports the same two settled trades from flat/chunked dumps (706.355031ms)
+2026-10-24T14:16:55.2194547Z ✔ modeled orders need a recorded multiplier or verified unit return (0.976544ms)
+2026-10-24T14:16:55.2195075Z ✔ a marked-open order keeps its multiple through windowOrders, so it scores at one unit too (0.745688ms)
+2026-10-24T14:16:55.2195606Z ✔ open marks retain explicit unknown unit evidence and unknown mark values instead of dropping their samples (0.195453ms)
+2026-10-24T14:16:55.2196153Z ✔ unknown normalized returns stay unscored after JSON null conversion and retain every variant sample (0.768582ms)
+2026-10-24T14:16:55.2196922Z ✔ each evaluator PF helper rejects unknown numeric evidence before it can become a no-loss score (3.207858ms)
+2026-10-24T14:16:55.2197824Z ✔ eval-gate keeps invalid closed/open dump samples and marks whole primary periods and families unavailable (317.464493ms)
+2026-10-24T14:16:55.2198923Z ✔ eval-families never sends an unknown unit group or period into numeric bot-stat qualification (1.762361ms)
+2026-10-24T14:16:55.2199470Z ✔ endpoint marks retain primary unit PF/counts while absent or malformed gross-price basis withholds whole stress sample (0.938707ms)
+2026-10-24T14:16:55.2200266Z ✔ eval-families holds stress-based qualification with a known endpoint loss and retains its complete primary sample (1.136022ms)
+2026-10-24T14:16:55.2200992Z ✔ settled-only positive-types keeps its declared primary sample but withholds stress on a malformed settled exit (0.624897ms)
+2026-10-24T14:16:55.2201917Z ✔ positive-type selection holds archived stress-unavailable or missing-evidence candidates (0.657576ms)
+2026-10-24T14:16:55.2203052Z ✔ eval-gate family stress cannot substitute a profitable closed subset for a known endpoint mark (0.756745ms)
+2026-10-24T14:16:55.2203793Z ✔ validation CLI retains identical hourly checks and executed cohorts for legacy and chunked dumps (149.192568ms)
+2026-10-24T14:16:55.2204569Z ✔ validation CLI rejects corrupt validation chunks instead of reporting zero steps (54.287493ms)
+2026-10-24T14:16:55.2205112Z ✔ injects before </head> (2.032597ms)
+2026-10-24T14:16:55.2205622Z ✔ injects the extensions script without a project id (0.304967ms)
+2026-10-24T14:16:55.2206219Z ✔ injects project id on the script and meta when provided (0.188091ms)
+2026-10-24T14:16:55.2206848Z ✔ does not duplicate grok:app_id (0.387911ms)
+2026-10-24T14:16:55.2207318Z ✔ omits x:creator tags without both creator values (0.540781ms)
+2026-10-24T14:16:55.2207823Z ✔ injects x:creator tags when both creator values are set (0.176725ms)
+2026-10-24T14:16:55.2208245Z ✔ escapes x:creator values (0.104677ms)
+2026-10-24T14:16:55.2208608Z ✔ does not duplicate x:creator tags (0.252318ms)
+2026-10-24T14:16:55.2209138Z ✔ platform chrome overwrites share-card metas and always sets og:title (0.264086ms)
+2026-10-24T14:16:55.2209466Z ✔ does not duplicate twitter:card or og:title (0.4342ms)
+2026-10-24T14:16:55.2209741Z ✔ a baked site.image is treated as a custom card (0.400741ms)
+2026-10-24T14:16:55.2210039Z ✔ baked identity does not need a workspace filesystem (0.275083ms)
+2026-10-24T14:16:55.2210363Z ✔ a public card file wins over a baked site without card=custom (0.312618ms)
+2026-10-24T14:16:55.2210651Z ✔ public/og.png wins when jpg is absent (0.259089ms)
+2026-10-24T14:16:55.2211010Z ✔ resolveOgCardAsset: disk file, then bake, then empty (placeholder) (0.276754ms)
+2026-10-24T14:16:55.2211733Z ✔ snapshotOgIdentity stamps card=custom from a public card file (0.336825ms)
+2026-10-24T14:16:55.2212464Z ✔ snapshotOgIdentity stamps banner from public/x-banner.jpg (0.296234ms)
+2026-10-24T14:16:55.2213035Z ✔ emits x:game:image for a public host when site.banner is set (0.191217ms)
+2026-10-24T14:16:55.2213469Z ✔ does not emit x:game:image without a public host or banner (0.157456ms)
+2026-10-24T14:16:55.2213781Z ✔ site title Grok App is a real name, not a sentinel (0.163555ms)
+2026-10-24T14:16:55.2214077Z ✔ published grok.me slug is still a title fallback (0.154742ms)
+2026-10-24T14:16:55.2214372Z ✔ rejects Vercel system hosts as og:image origins (0.054522ms)
+2026-10-24T14:16:55.2214702Z ✔ published VITE_PUBLIC_HOSTNAME wins over request Host for og:image (0.179399ms)
+2026-10-24T14:16:55.2215041Z ✔ vercel Host without a public hostname emits no og:image (0.076104ms)
+2026-10-24T14:16:55.2215373Z ✔ emits og:image for a public host and prefers a custom card (0.131677ms)
+2026-10-24T14:16:55.2215713Z ✔ placeholder og:image appends site.color when it is 6-digit hex (0.149113ms)
+2026-10-24T14:16:55.2216053Z ✔ document title entities are not double-escaped on og:title (0.060191ms)
+2026-10-24T14:16:55.2216350Z ✔ site.json title wins over the host slug (0.066981ms)
+2026-10-24T14:16:55.2216612Z ✔ injects into documents with no head element (0.129294ms)
+2026-10-24T14:16:55.2216912Z ✔ streaming injector matches </HEAD> case-insensitively (0.276254ms)
+2026-10-24T14:16:55.2217199Z ✔ does not duplicate the extensions script (0.862718ms)
+2026-10-24T14:16:55.2217413Z ✔ is idempotent (0.195423ms)
+2026-10-24T14:16:55.2217641Z ✔ uses the app name in the injected title tag (0.083996ms)
+2026-10-24T14:16:55.2217935Z ✔ streaming injector handles </head> split across chunks (0.295623ms)
+2026-10-24T14:16:55.2218520Z ✔ streaming injector passes post-head chunks through untouched (0.234482ms)
+2026-10-24T14:16:55.2219098Z ✔ streaming injector falls back when no </head> is seen (0.223404ms)
+2026-10-24T14:16:55.2219503Z ✔ detects install query (0.179479ms)
+2026-10-24T14:16:55.2219837Z ✔ filters non-document paths (0.291728ms)
+2026-10-24T14:16:55.2220215Z ✔ strips install params from the app link (0.125008ms)
+2026-10-24T14:16:55.2220814Z ✔ names the install page from host slug (0.064107ms)
+2026-10-24T14:16:55.2221243Z ✔ rejects hosts that are not plain slugs (0.066159ms)
+2026-10-24T14:16:55.2221608Z ✔ renders install page markup (0.188142ms)
+2026-10-24T14:16:55.2222159Z ✔ escapes host-derived values in the install page (0.116825ms)
+2026-10-24T14:16:55.2222628Z ✔ renders the manifest with the per-app name (0.122454ms)
+2026-10-24T14:16:55.2223100Z ✔ vite config keeps the nitro serverDir wiring (0.156845ms)
+2026-10-24T14:16:55.2223567Z ✔ nitro middleware and its bundled assets exist (0.289564ms)
+2026-10-24T14:16:55.2224032Z ✔ vite plugin bakes og identity as a virtual module (0.13393ms)
+2026-10-24T14:16:55.2224777Z ✔ the project's own site.json brands the share card as CTS-A-O (0.381262ms)
+2026-10-24T14:16:55.2225582Z ✔ uses the same positive-owned settled cohort for strict unit PF and cash, retaining zero allocations separately (8.343606ms)
+2026-10-24T14:16:55.2226458Z ✔ retains unknown return provenance in its own exact type, direction, config and hourly samples (2.876832ms)
+2026-10-24T14:16:55.2227385Z ✔ retains missing, mismatched and duplicate allocation slices rather than replacing them with older winning evidence (1.496543ms)
+2026-10-24T14:16:55.2228322Z ✔ preserves partial close slices and makes unreconciled cash unknown without deleting known owned returns (0.826679ms)
+2026-10-24T14:16:55.2229234Z ✔ seeds empty built and requested Signal identities on all symbols and both sides without manufacturing PF passes (0.662503ms)
+2026-10-24T14:16:55.2230124Z ✔ keeps empty, flat, no-loss sentinel and exact measured PF 4 distinct, and excludes endpoint marks (4.653109ms)
+2026-10-24T14:16:55.2230958Z ✔ uses only unique exact positive-owned common slices and preserves full-arm losses, zeros and unknowns (1.295091ms)
+2026-10-24T14:16:55.2231479Z ✔ rejects duplicated parent closes before source legs can inflate funded PF or close frequency (1.698686ms)
+2026-10-24T14:16:55.2232722Z ✔ rejects forged duplicate evidence before common-slice omission or performance assessment (1.22722ms)
+2026-10-24T14:16:55.2233267Z ✔ retains unknown unit evidence inside the common owned intersection and rejects cash sign changes below a tolerance (0.984055ms)
+2026-10-24T14:16:55.2233845Z ✔ rejects relabeled windows, source, costs and duplicate arms before comparing results (0.464066ms)
+2026-10-24T14:16:55.2234401Z ✔ retains independent indication × symbol × direction groups including zero-activity siblings (0.338076ms)
+2026-10-24T14:16:55.2234972Z ✔ separates native minute equity risk from sampled display ratios without inventing liquidation or stop proof (0.278878ms)
+2026-10-24T14:16:55.2235470Z ✔ audits the base plus all Overall source legs against one external stack cap (0.641311ms)
+2026-10-24T14:16:55.2236037Z ✔ uses provenance-bound unrounded minute risk at policy thresholds and rejects stale or invalid evidence (0.434351ms)
+2026-10-24T14:16:55.2236660Z ✔ requires actual return-PF improvement and bounded equity drawdown instead of a cash-weighted improvement (3.807326ms)
+2026-10-24T14:16:55.2237142Z ✔ uses measured native completion instead of allSets mode or an invented complete flag (0.28024ms)
+2026-10-24T14:16:55.2237669Z ✔ Block arms preserve every independent source/type/gate and never mutate shared options (1.956392ms)
+2026-10-24T14:16:55.2238274Z ✔ predeclares ten arms separating weighting, Active selection, Shared sensitivity and configured step arithmetic (0.191727ms)
+2026-10-24T14:16:55.2238784Z ✔ pre-score parity rejects silent settings or WF changes and any prior compute (0.749653ms)
+2026-10-24T14:16:55.2239331Z ✔ normalizes exhausted-cap floating-point residue before it can establish simulated ownership (0.520991ms)
+2026-10-24T14:16:55.2239901Z ✔ keeps meaningful partial allocation and every amount above the frozen numerical threshold (0.14659ms)
+2026-10-24T14:16:55.2240429Z ✔ keeps invalid/unknown monetary evidence unavailable instead of manufacturing zero allocation (0.496935ms)
+2026-10-24T14:16:55.2241184Z ✔ every helper answers on a series as the inline code did on the bars (34.727491ms)
+2026-10-24T14:16:55.2241674Z ✔ two-leg long keeps native engine mark separate from the existing arithmetic-entry book mark (1.838376ms)
+2026-10-24T14:16:55.2242283Z ✔ two-leg short retains the opposite signed engine-versus-book reconciliation difference (0.21339ms)
+2026-10-24T14:16:55.2242781Z ✔ one-leg Normal endpoint agrees across bases while preserving native multiplication order (0.174692ms)
+2026-10-24T14:16:55.2243270Z ✔ explicit engine unit-return evidence is retained without changing the book mark (0.197816ms)
+2026-10-24T14:16:55.2243807Z ✔ confirmed zero funding remains zero while unknown or inconsistent allocations are rejected (0.55385ms)
+2026-10-24T14:16:55.2244398Z ✔ marks only a bar closed by the endpoint and carries a known close across gaps (0.166269ms)
+2026-10-24T14:16:55.2244810Z ✔ precomputed price cannot bypass an unknown or nonfinite endpoint time (0.197115ms)
+2026-10-24T14:16:56.7644554Z ✔ a config id gives its range tag and its target as a fraction (0.735282ms)
+2026-10-24T14:16:56.7645302Z ✔ per range × rule: the pairs, orders, events and PF the rule keeps, by window, beside the run as it was (1.276934ms)
+2026-10-24T14:16:56.7645919Z ✔ eval-gate carries a dump's basePairs[].rules into windows[].pairs and the report rules into summary.baseRules (unset: neither) (1357.548539ms)
+2026-10-24T14:16:56.7646478Z ✔ an Axis config is kept wherever the rule keeps its range (its ladder targets are not Base cells) (0.6006ms)
+2026-10-24T14:16:56.7646999Z ✔ a run whose orders are not its Base pairs' is marked (contrarian seats, every set, ranges without Base) (57.309936ms)
+2026-10-24T14:16:56.7647530Z ✔ eval-gate and core-session refuse a settings patch checkSettings refuses (exit 2, before any run) (603.303822ms)
+2026-10-24T14:16:56.7753340Z ✔ a config id gives its range, trail distance and hold time in hours (1.203824ms)
+2026-10-24T14:16:56.7754286Z ✔ a trail distance reads as a fraction without float noise (112 % of an id is 0.0112, not 0.011200000000000002) (0.181091ms)
+2026-10-24T14:16:56.7755007Z ✔ a range tag before a DCA or Axis suffix still names the range (0.157265ms)
+2026-10-24T14:16:56.7755529Z ✔ an inherited object key is not a range tag (0.127571ms)
+2026-10-24T14:16:56.7756153Z ✔ a signal's lanes are its own variants: two lanes of one signal are not pooled (0.112959ms)
+2026-10-24T14:16:56.7756913Z ✔ ATR protects keep their atr token: ATR variants do not merge with each other or with pct variants (0.363324ms)
+2026-10-24T14:16:56.7757588Z ✔ pf: no loss is 9, no gain is 0, else gross profit over gross loss (0.10029ms)
+2026-10-24T14:16:56.7758260Z ✔ the score is the minimum PF over the windows; a window with no trades counts as 0 (0.289314ms)
+2026-10-24T14:16:56.7759029Z ✔ a window the run did not compute for the range is unscored, not 0 and not a pass (4.854825ms)
+2026-10-24T14:16:56.7759660Z ✔ the minimum trade count is an option, off by default (0.277846ms)
+2026-10-24T14:16:56.7760336Z ✔ variants are kept apart by range, trail, hold and atr, and sorted by their minimum PF (0.275513ms)
+2026-10-24T14:16:56.7761174Z ✔ two signals with the same trail and hold are two variants: a signal's historic configs are never pooled (0.799558ms)
+2026-10-24T14:16:56.7762557Z ✔ a config id's row and kind: its range tag, sig- indications as Signals, untagged as Wide (summary.funnel's names) (1.170995ms)
+2026-10-24T14:16:56.7763437Z ✔ a run reduced per range: orders against events, PF with the open orders against pfClosed, D1a / D1b by entry time (2.542139ms)
+2026-10-24T14:16:56.7764192Z ✔ a run with a short warm-up window or a memory-fallback window gives no verdict (rerun) (0.344016ms)
+2026-10-24T14:16:56.7765058Z ✔ --matched-mirror: a baseline order counts only in a window where the inverted run traded its config's mirror (0.401041ms)
+2026-10-24T14:16:56.7766258Z ✔ the decision rule: valid (≥ 30 events, ≥ 40 % of b0's in both halves), choose (D1a +0.05), judge (D1b +0.03, 3 of 5 windows, no fall > 0.2) (1.030444ms)
+2026-10-24T14:16:56.7767694Z ✔ forward (F: PF ≥ b0's with ≥ 30 events) and the target (PF ≥ 1.2 on D1a, D1b and F, 300 D1 events, 100 F orders, no window < 1) (0.478347ms)
+2026-10-24T14:16:56.7768577Z ✔ no "works" from an invalid run: targetRow takes the runs' problems (the forward pair's among them) (0.161842ms)
+2026-10-24T14:16:56.7769474Z ✔ --matched-mirror keeps the baseline's Signals orders whatever the inverted run traded (signals are never inverted) (0.313129ms)
+2026-10-24T14:16:56.7770252Z ✔ a run carries its feed (size and start); runs on different feeds are not compared (0.675262ms)
+2026-10-24T14:16:56.7770924Z ✔ the /proc readings: MemAvailable and VmHWM in MB, null when the line is missing (0.767079ms)
+2026-10-24T14:16:56.7771819Z ✔ a child is admitted at once when the memory is there, after the others' need when it is not (0.704857ms)
+2026-10-24T14:16:56.7772685Z ✔ past the wait limit a child runs alone, but only once no other child of the runner runs (0.836173ms)
+2026-10-24T14:16:56.7773472Z ✔ workers that ask at once are admitted one at a time: each child counts as running from its admission (0.805958ms)
+2026-10-24T14:16:56.7774299Z ✔ a running child is stopped when the host falls under the floor (the desk's memory comes first) (80.653742ms)
+2026-10-24T14:16:56.7775082Z ✔ schema7 preserves explicit unit returns and weighted diagnostics without dividing twice (2.514327ms)
+2026-10-24T14:16:56.7775832Z ✔ legacy schema3 tuples without explicit unit evidence remain whole and unavailable (0.26691ms)
+2026-10-24T14:16:56.7776642Z ✔ unit metadata requires a recorded basis and follows named columns (0.202013ms)
+2026-10-24T14:16:56.7777353Z ✔ a null unit-return loss blocks the complete period rather than selecting known winners (0.215473ms)
+2026-10-24T14:16:56.7778122Z ✔ cost repricing deducts only missing cost and preserves already greater recorded costs (0.42724ms)
+2026-10-24T14:16:56.7778971Z ✔ endpoint marks stay in the primary sample but missing mark prices block the complete repriced objective (0.187541ms)
+2026-10-24T14:16:56.7779827Z ✔ the frozen no-loss objective stays unbounded while primary evidence retains engine score4 (0.214952ms)
+2026-10-24T14:16:56.7780575Z ✔ D1a alone orders candidates; a better D1b cannot replace its frozen selection (1.516303ms)
+2026-10-24T14:16:56.7781372Z ✔ separates accepted virtual/funded unit PF from cash PF and counts partial closes as one onset (3.671222ms)
+2026-10-24T14:16:56.7782320Z ✔ preserves missing/duplicate ownership as unknown rather than dropping a loss (1.996125ms)
+2026-10-24T14:16:56.7783036Z ✔ requires30 unique own-side historical onsets plus the actual initial gate pass (4.070004ms)
+2026-10-24T14:16:56.7783688Z ✔ does not promote two symbols with15 onsets each from their pooled30 (0.872187ms)
+2026-10-24T14:16:56.7784337Z ✔ never substitutes a later validation verdict for the initial historical gate (0.769143ms)
+2026-10-24T14:16:56.7785065Z ✔ uses total allocated USD precision, preserving a meaningful fill with a tiny unit value (3.044022ms)
+2026-10-24T14:16:56.7785971Z ✔ keeps endpoint marks separate and refuses settled-window contamination (1.111205ms)
+2026-10-24T14:16:56.9294148Z ✔ requires the exact existing regular/combined focus and three actually distinct profiles (90.627508ms)
+2026-10-24T14:16:56.9303449Z ✔ keeps full effective identity universes and PF/sample/cost gates identical across profiles (495.874977ms)
+2026-10-24T14:16:56.9304650Z ✔ keeps historical indicator initialization outside the evaluated entry window (19.994222ms)
+2026-10-24T14:16:56.9835020Z ✔ immutable latest replay refuses superseded, changed and source-stale evidence (9.756621ms)
+2026-10-24T14:16:57.0194329Z ✔ unit return PF and sized P&L remain independent (0.948832ms)
+2026-10-24T14:16:57.0195331Z ✔ unknown legacy loss cannot disappear behind a known winner (0.162223ms)
+2026-10-24T14:16:57.0197845Z ✔ No losses differs from measured PF4 and an empty sample (0.144516ms)
+2026-10-24T14:16:57.0203961Z ✔ merging finalized groups keeps unknown returns unavailable instead of treating null as zero (0.297696ms)
+2026-10-24T14:16:57.0206403Z ✔ missing sized P&L remains unavailable independently of a known unit return (0.180731ms)
+2026-10-24T14:16:57.0593128Z ✔ chunked dump round-trips exact config ordering, empty tapes, split tapes, and UTF-8 rows (16.302259ms)
+2026-10-24T14:16:57.0613630Z ✔ duplicate config IDs and additional tape metadata retain their exact ordering (2.090462ms)
+2026-10-24T14:16:57.0652105Z ✔ legacy flat dumps, absent tapeTrades, and empty tapeTrades remain readable losslessly (2.351304ms)
+2026-10-24T14:16:57.1694393Z ✔ the streamed generic JSON writer preserves normal JSON serialization and escaped data (103.925196ms)
+2026-10-24T14:16:57.1716940Z ✔ streamed JSON retains special own keys and excludes inherited properties (3.188699ms)
+2026-10-24T14:16:57.1760256Z ✔ flat array sidecars reject reserved storage and prototype fields on both write and read (4.906422ms)
+2026-10-24T14:16:57.1790432Z ✔ nonfinite and missing row entries normalize exactly as legacy JSON.stringify (2.548579ms)
+2026-10-24T14:16:57.1808672Z ✔ a failed generic serialization retains the prior file and removes its temporary file (2.22199ms)
+2026-10-24T14:16:57.1837057Z ✔ a later sidecar failure preserves the prior dump and cleans earlier staged sidecars (2.277673ms)
+2026-10-24T14:16:57.1926044Z ✔ dump writes with absent or empty tape arrays retain the exact original JSON shape (8.245225ms)
+2026-10-24T14:16:57.2078013Z ✔ the async tape iterator reconstructs each complete tape, including empty tapes (15.773859ms)
+2026-10-24T14:16:57.2139056Z ✔ a metadata-only read leaves the sidecar manifest without loading chunk files (6.31933ms)
+2026-10-24T14:16:57.2296155Z ✔ the bounded verifier checks complete sidecar counts without hydrating or changing trade order (15.636306ms)
+2026-10-24T14:16:57.2355428Z ✔ projected reads can verify unloaded validation and reject its corrupted physical evidence (5.885349ms)
+2026-10-24T14:16:57.2406863Z ✔ the sidecar writer accepts an iterable without requiring an expanded tape array (5.346702ms)
+2026-10-24T14:16:57.2525115Z ✔ validation history splits checks losslessly and preserves empty steps and metadata (11.729237ms)
+2026-10-24T14:16:57.2541227Z ✔ flat executed trade sidecars retain exact closeIndex and settlement ordering (1.723042ms)
+2026-10-24T14:16:57.2572471Z ✔ reader rejects altered chunk sha256 (2.883681ms)
+2026-10-24T14:16:57.2603023Z ✔ reader rejects altered chunk bytes (3.08996ms)
+2026-10-24T14:16:57.2630015Z ✔ reader rejects altered chunk records (2.955825ms)
+2026-10-24T14:16:57.2658084Z ✔ reader rejects altered chunk tapes (2.668569ms)
+2026-10-24T14:16:57.2686808Z ✔ reader rejects altered chunk rows (2.791778ms)
+2026-10-24T14:16:57.2775844Z ✔ reader rejects altered total records (8.604815ms)
+2026-10-24T14:16:57.2847519Z ✔ reader rejects altered total tapes (7.262714ms)
+2026-10-24T14:16:57.3211651Z ✔ reader rejects altered total rows (28.479247ms)
+2026-10-24T14:16:57.3269258Z ✔ reader rejects modified sidecar bytes even when their length is unchanged (13.128954ms)
+2026-10-24T14:16:57.3434538Z ✔ reader enforces config ordinals even when changed content has a valid checksum (16.083317ms)
+2026-10-24T14:16:57.3495605Z ✔ reader enforces each tape's row offsets even when changed content has valid checksums (5.521564ms)
+2026-10-24T14:16:57.3665847Z ✔ reader validates the ordered whole-sidecar checksum (17.578993ms)
+2026-10-24T14:16:57.3700740Z ✔ reader rejects reversed chunk order rather than silently reordering tape rows (4.047705ms)
+2026-10-24T14:16:57.3737040Z ✔ reader rejects unsafe sidecar path "/tmp/foreign.jsonl" (3.027597ms)
+2026-10-24T14:16:57.3768180Z ✔ reader rejects unsafe sidecar path "../foreign.jsonl" (3.757641ms)
+2026-10-24T14:16:57.3797000Z ✔ reader rejects unsafe sidecar path "parts/../foreign.jsonl" (2.759686ms)
+2026-10-24T14:16:57.3824299Z ✔ reader rejects unsafe sidecar path "parts\\foreign.jsonl" (2.623902ms)
+2026-10-24T14:16:57.3858118Z ✔ reader rejects unsafe sidecar path "C:\\foreign.jsonl" (3.388718ms)
+2026-10-24T14:16:57.3908427Z ✔ reader rejects a relative symlink escaping the dump directory (3.466234ms)
+2026-10-24T14:16:57.3910182Z ✔ writer rejects invalid chunk byte limit 0 (0.48744ms)
+2026-10-24T14:16:57.3911623Z ✔ writer rejects invalid chunk byte limit -1 (0.323575ms)
+2026-10-24T14:16:57.3912394Z ✔ writer rejects invalid chunk byte limit 1.5 (0.271266ms)
+2026-10-24T14:16:57.3913010Z ✔ writer rejects invalid chunk byte limit 8388609 (0.277425ms)
+2026-10-24T14:16:57.3916964Z ✔ writer rejects a single row larger than the chunk bound (1.112587ms)
+2026-10-24T14:16:57.4063545Z ✔ loads plain and gzip frozen market feeds identically (2.152546ms)
+2026-10-24T14:16:57.4064299Z ✔ replay feed honors earlier ranking clocks for both 1H and 5m reads without exposing later bars (0.931075ms)
+2026-10-24T14:16:57.4065249Z ✔ the prune keeps the engine's timeframe and the ranking's 1-hour bars up to the cut; every read answers as before (9.899545ms)
+2026-10-24T14:16:57.4066106Z ✔ the replay's read answers on columns as on the bars; the store writes itself as its bars (106.245357ms)
+2026-10-24T14:16:57.4066958Z ✔ funded PF and virtual PF use explicitly different samples without changing cash or return weighting (1.219948ms)
+2026-10-24T14:16:57.4067725Z ✔ unknown allocation or unknown own return stays in the sample and invalidates PF (0.350365ms)
+2026-10-24T14:16:57.4068567Z ✔ zero allocations never acquire return evidence, while funded loss/zero and no-loss sentinel remain explicit (0.237135ms)
+2026-10-24T14:16:57.4069318Z ✔ empty, unknown-volume and overflowed samples cannot claim a finite primary PF (0.318377ms)
+2026-10-24T14:16:57.4074923Z ✔ missing and malformed allocation evidence cannot invent funded cash while known zero stays zero (0.257916ms)
+2026-10-24T14:16:57.4076025Z ✔ cash PF scales the base-one return by funded unit notional without multiplying execution volume twice (0.171608ms)
+2026-10-24T14:16:57.4140991Z ✔ preserves complete normalized replay controls and serializes Base cohort metadata (1.350323ms)
+2026-10-24T14:16:57.4145807Z ✔ redacts private owned-execution close rows while binding their count and content hash (0.300059ms)
+2026-10-24T14:16:57.4732199Z ▶ frozen full-engine session study
+2026-10-24T14:16:57.4733081Z   ✔ rejects report sizing at preflight instead of wasting a complete history calculation (1.094841ms)
+2026-10-24T14:16:57.4733971Z   ✔ rejects unloaded execution placeholders rather than certifying an empty result (1.185437ms)
+2026-10-24T14:16:57.4734829Z   ✔ checks the actual normalized runtime before compute and records empty evidence honestly (1.173949ms)
+2026-10-24T14:16:57.4735603Z   ✔ rejects changed economic settings, time boundaries and feed bytes (1.249843ms)
+2026-10-24T14:16:57.4736477Z   ✔ rejects an incomplete symbol universe and memory fallback rather than calling them a full test (0.836594ms)
+2026-10-24T14:16:57.4737122Z   ✔ rejects stale source and out-of-scope entries (1.790443ms)
+2026-10-24T14:16:57.4737619Z   ✔ rejects a changed report funding size even when strategy settings are unchanged (0.983003ms)
+2026-10-24T14:16:57.4738154Z ✔ frozen full-engine session study (9.452295ms)
+2026-10-24T14:16:57.4904713Z ✔ limits acquisition to frozen public GET OHLCV symbols, endpoint and exact twelve-hour window (1.233969ms)
+2026-10-24T14:16:57.4906346Z ✔ requires every finite valid completed minute without fills or conflicting duplicate prices (5.277489ms)
+2026-10-24T14:16:57.4941805Z ✔ ticker metadata cannot read the trade window (1.787669ms)
+2026-10-24T14:16:57.4948051Z ✔ merges cached warmup with exact matching overlaps, complete timestamps and six-hour-only metadata (4.32409ms)
+2026-10-24T14:16:59.0404093Z ✖ captures every configured cell separately from actual tapes, active units and executed closes (7.569743ms)
+2026-10-24T14:16:59.0411888Z ✖ accounts for every raw requested cell while deduplicating identical effective hard-floor protections (4.360224ms)
+2026-10-24T14:16:59.0413343Z ✔ excludes endpoint marks from the settled modeled-execution sample (5.301765ms)
+2026-10-24T14:16:59.0453121Z ✔ preserves coordination input masks independently of strategy and protection ranges (0.614932ms)
+2026-10-24T14:16:59.0472883Z ✔ matches the actual builder's full capped source and coordination catalog on 1m and 15m lanes (1168.626302ms)
+2026-10-24T14:16:59.0483771Z ✔ captures all 288 hourly candidate cells and partitions right-closed hours without changing selection (23.561297ms)
+2026-10-24T14:16:59.0914175Z ✔ keeps all zero type/range/lane/direction cells and all six hours without a measured PF (7.750695ms)
+2026-10-24T14:16:59.0915126Z ✔ uses unit returns, settled hour boundaries and both directions while keeping cash book diagnostics separate (7.920099ms)
+2026-10-24T14:16:59.0916312Z ✔ makes positive-notional ownership primary, retains zero-allocation diagnostics and never drops unknown allocation rows (4.038621ms)
+2026-10-24T14:16:59.0917422Z ✔ matches repeated entry allocation units to each partial close's own return, not the last slice P&L (1.984654ms)
+2026-10-24T14:16:59.0918332Z ✔ keeps a missing modeled multiplier inside its funded type and hourly cohort as unknown (1.898726ms)
+2026-10-24T14:16:59.0919279Z ✔ keeps mixed engine book equity separate and reconciles Signal cash from actual shared allocations (2.276511ms)
+2026-10-24T14:16:59.0920292Z ✔ retains unknown losing evidence and rejects endpoint marks or wrong windows instead of creating qualified subsets (2.425004ms)
+2026-10-24T14:16:59.0921129Z ✔ exports full pre/candidate/active/executed gross evidence and literal CSV safely (2.453207ms)
+2026-10-24T14:16:59.0921844Z ✔ comparison primary PF 1.36 and sized PF 0.20 retain the same settled closes (3.086725ms)
+2026-10-24T14:16:59.0923043Z ✔ ranking uses primary PF rather than the opposing sized result (1.126148ms)
+2026-10-24T14:16:59.0923666Z ✔ unknown losing close remains in the full sample and cannot enter ranked results (2.084524ms)
+2026-10-24T14:16:59.0924443Z ✔ aggregate overflow retains the complete sample with unavailable PF and no false no-loss claim (0.384116ms)
+2026-10-24T14:16:59.0925144Z ✔ a positive endpoint mark cannot turn a settled losing run positive (0.451958ms)
+2026-10-24T14:16:59.0925805Z ✔ settled selection keeps end-boundary closes and excludes marks and out-of-window rows (0.280701ms)
+2026-10-24T14:16:59.0926465Z ✔ no-loss score 4 is distinct from a measured finite PF 4 (0.169684ms)
+2026-10-24T14:16:59.0927021Z ✔ verified unit returns override weighted r without a second normalization (0.108112ms)
+2026-10-24T14:16:59.0927620Z ✔ one unavailable run makes the aggregate positive-run count unavailable (0.442744ms)
+2026-10-24T14:16:59.0928400Z ✔ Python losing-config CLI retains both directions, losing closes and PF for flat and chunked dumps (259.449735ms)
+2026-10-24T14:16:59.0929208Z ✔ stage PF includes only individually passing configs and the actual seated subset (1.333438ms)
+2026-10-24T14:16:59.0930041Z ✔ empty, missing evidence and the no-loss gate convention never become measured finite profitability (0.151327ms)
+2026-10-24T14:16:59.0943807Z ✔ source-hour selection assigns exact-hour settlements to the same completed hour as central statistics (5.741784ms)
+2026-10-24T14:17:00.4149676Z ✔ actual study preparation preserves provider metadata, labels unknown input and retains context hold/range options (1899.377464ms)
+2026-10-24T14:17:00.4265264Z ✔ _migrations keys on basename, not path (0.568762ms)
+2026-10-24T14:17:00.4265971Z ✔ a file already applied from another directory does not re-apply (0.42065ms)
+2026-10-24T14:17:00.4266564Z ✔ pending migrations are returned in name order (4.707534ms)
+2026-10-24T14:17:00.4267188Z ✔ non-.sql entries are dropped (readdir also yields the auth/ directory) (0.089704ms)
+2026-10-24T14:17:00.4267806Z ✔ the auth schema ships outside the globbed directory (0.208622ms)
+2026-10-24T14:17:00.4268421Z ✔ this workspace's auth schema copy is byte-identical to its source (0.222133ms)
+2026-10-24T14:17:00.4269353Z ✔ the copy check reads both files and catches an edit (0.590895ms)
+2026-10-24T14:17:00.4269997Z ✔ a range in a patch is merged over the current range, the rest of the grid is kept (0.944635ms)
+2026-10-24T14:17:00.4270707Z ✔ a patch value wins; a range switched off or on stays what the patch says (0.187501ms)
+2026-10-24T14:17:00.4271350Z ✔ settings without a grid pass through; the current grid is not mutated (0.131397ms)
+2026-10-24T14:17:00.4272447Z ✔ exact-hour settlements, empty scope and external weighting retain one fixed hourly cohort (2.783ms)
+2026-10-24T14:17:00.4273083Z ✔ rejects future close instead of proving hourly stability (0.769644ms)
+2026-10-24T14:17:00.4273645Z ✔ rejects missing multiplier instead of proving hourly stability (0.202273ms)
+2026-10-24T14:17:00.4274244Z ✔ rejects unknown persisted return instead of proving hourly stability (0.192819ms)
+2026-10-24T14:17:00.4274834Z ✔ rejects invalid multiplier instead of proving hourly stability (0.268102ms)
+2026-10-24T14:17:00.4275389Z ✔ rejects duplicate instead of proving hourly stability (0.187691ms)
+2026-10-24T14:17:00.4275912Z ✔ rejects endpoint mark instead of proving hourly stability (0.194832ms)
+2026-10-24T14:17:00.4276514Z ✔ rejects a shifted hour, an omitted losing hour and a weighted primary PF (1.016503ms)
+2026-10-24T14:17:01.3722451Z ✔ older post-Base replay windows cannot report settlements from later input candles (1996.421853ms)
+2026-10-24T14:17:01.3825110Z ✔ parsePreviewArgs accepts the two actions (1.092227ms)
+2026-10-24T14:17:01.3825939Z ✔ parsePreviewArgs rejects missing, unknown and extra arguments (0.185578ms)
+2026-10-24T14:17:01.3826611Z ✔ parsePid reads a pidfile and rejects junk (0.123235ms)
+2026-10-24T14:17:01.3827346Z ✔ parsePgid reads the pgrp field past a comm containing spaces (0.154312ms)
+2026-10-24T14:17:01.3828133Z ✔ parseListenerInodes picks LISTEN sockets on the wanted port only (0.249794ms)
+2026-10-24T14:17:01.3828834Z ✔ parseListenerInodes reads the tcp6 dump the same way (0.145198ms)
+2026-10-24T14:17:01.3829586Z ✔ looksLikePreviewProcess matches the npm wrapper and its vite child (0.262474ms)
+2026-10-24T14:17:01.3830352Z ✔ looksLikePreviewProcess spares the sibling scripts and re-used pids (0.137687ms)
+2026-10-24T14:17:01.3831097Z ✔ previewOwners trusts port owners and dedupes the pidfile pid (0.1871ms)
+2026-10-24T14:17:01.3831821Z ✔ previewOwners adds a pidfile pid whose command line is still the preview (0.196434ms)
+2026-10-24T14:17:01.3832726Z ✔ previewOwners drops a stale pidfile pid re-used by another process (0.142103ms)
+2026-10-24T14:17:01.3833424Z ✔ previewOwners drops a pidfile pid that no longer exists (0.124556ms)
+2026-10-24T14:17:01.3834111Z ✔ previewOwners on a free port with no pidfile signals nothing (0.124907ms)
+2026-10-24T14:17:01.3834809Z ✔ stopOutcome fails when a pid survives or the port is still held (0.23352ms)
+2026-10-24T14:17:01.3835417Z ✔ stopOutcome reports a verified free port (0.093821ms)
+2026-10-24T14:17:01.3836109Z ✔ stopOutcome fails on a listener whose owner cannot be attributed (0.074131ms)
+2026-10-24T14:17:01.3837070Z ✔ terminatePids SIGTERMs live pids and skips dead ones (0.364747ms)
+2026-10-24T14:17:01.3837940Z ✔ terminatePids escalates to SIGKILL when SIGTERM is ignored (0.242574ms)
+2026-10-24T14:17:01.3839001Z ✔ terminatePids reports a pid that survives SIGKILL as stubborn (0.211256ms)
+2026-10-24T14:17:01.3839488Z ✔ terminatePids on a free port signals nothing (0.063765ms)
+2026-10-24T14:17:01.3840079Z ✔ report PF uses known net unit returns once and distinguishes empty, flat and no-loss (3.633214ms)
+2026-10-24T14:17:01.3840795Z ✔ same-time order changes preserve a multiset; missing duplicate legs and costs are exposed (0.803354ms)
+2026-10-24T14:17:01.3841342Z ✔ standalone HTML has no external dependencies or unescaped embedded data (0.972627ms)
+2026-10-24T14:17:04.7922960Z ▶ route tree
+2026-10-24T14:17:04.7952311Z   ✔ every route file under src/routes/v2 is registered (0.603464ms)
+2026-10-24T14:17:04.7958697Z   ✔ the app keeps its overview, engine, trading and settings pages (0.127381ms)
+2026-10-24T14:17:04.7960831Z   ✔ the document shell keeps the platform bridge and branding hooks (0.264397ms)
+2026-10-24T14:17:04.7961482Z ✔ route tree (1.675771ms)
+2026-10-24T14:17:04.7962497Z ▶ dev server renders every page
+2026-10-24T14:17:04.7963081Z   ✔ GET /api/core/events streams server-sent events (173.489569ms)
+2026-10-24T14:17:04.7972626Z   ✔ GET / answers without a server error (5.163264ms)
+2026-10-24T14:17:04.8187152Z   ✔ GET /v2 answers without a server error (21.425286ms)
+2026-10-24T14:17:04.8601328Z   ✔ GET /v2/compare answers without a server error (40.729474ms)
+2026-10-24T14:17:04.9071166Z   ✔ GET /v2/engine answers without a server error (42.826375ms)
+2026-10-24T14:17:04.9968012Z   ✔ GET /v2/hourly answers without a server error (93.429615ms)
+2026-10-24T14:17:05.0746269Z   ✔ GET /v2/market answers without a server error (78.584663ms)
+2026-10-24T14:17:05.0981609Z   ✔ GET /v2/matrix answers without a server error (23.450785ms)
+2026-10-24T14:17:05.1331284Z   ✔ GET /v2/presets answers without a server error (34.974678ms)
+2026-10-24T14:17:05.1881482Z   ✔ GET /v2/results answers without a server error (54.944799ms)
+2026-10-24T14:17:05.2161900Z   ✔ GET /v2/settings answers without a server error (28.061447ms)
+2026-10-24T14:17:05.2490619Z   ✔ GET /v2/stages answers without a server error (32.639205ms)
+2026-10-24T14:17:05.2813666Z   ✔ GET /v2/statistics answers without a server error (29.598475ms)
+2026-10-24T14:17:05.2995145Z   ✔ GET /v2/trading answers without a server error (20.772087ms)
+2026-10-24T14:17:05.3012512Z   ✔ GET /v2/ answers without a server error (1.997722ms)
+2026-10-24T14:17:05.3077439Z   ✔ pages carry the CTS-A-O title and description (6.026728ms)
+2026-10-24T14:17:05.3136237Z   ✔ an unknown path is a 404, not a crash (5.741345ms)
+2026-10-24T14:17:05.3137479Z   ✔ the dev server logged no unhandled errors while rendering (0.256555ms)
+2026-10-24T14:17:05.3138256Z ✔ dev server renders every page (4541.336265ms)
+2026-10-24T14:17:05.3940775Z ✔ research disables both optional report variants and background preset comparisons regardless of parent environment (0.888702ms)
+2026-10-24T14:17:05.3941360Z ✔ fixed chronological folds preserve20/22symbols and six evaluated prehistory hours (0.867279ms)
+2026-10-24T14:17:05.3941912Z ✔ 24h folds cannot inherit the development desk's6h simulation, and entry research preserves other gates (0.382283ms)
+2026-10-24T14:17:05.3942785Z ✔ simulation keeps exact source bounds/account and full progress while splitting report memory (0.290656ms)
+2026-10-24T14:17:05.3943574Z ✔ completed-study report provenance verifies full allocation sidecars and rejects changed rows (15.817063ms)
+2026-10-24T14:17:05.3944296Z ✔ development arms reject even one changed range, gate or walk-forward setting (0.661722ms)
+2026-10-24T14:17:05.3944967Z ✔ final window remains locked until exact matching selection conclusion exists (0.518147ms)
+2026-10-24T14:17:05.3945584Z ✔ economic source proof rejects drift and unsealed new files (1.876512ms)
+2026-10-24T14:17:05.3946318Z ✔ completed-study provenance verifies every lossless raw sidecar and rejects a changed chunk (9.406727ms)
+2026-10-24T14:17:05.3947073Z ✔ training selection keeps funded Micro evidence independent of winning siblings and refuses reuse or later windows (1090.620032ms)
+2026-10-24T14:17:05.3948031Z ✔ range and Block file consumers preserve trades, funding, validation and histories for flat and sidecar evidence (32.504363ms)
+2026-10-24T14:17:05.3948577Z ✔ funded stage and parity cohorts exclude a known unfunded winner while keeping every virtual close (1.580157ms)
+2026-10-24T14:17:05.3949173Z ✔ missing, duplicate, wrong-identity, invalid and unknown funding cannot certify a primary execution cohort (1.616341ms)
+2026-10-24T14:17:05.3950258Z ✔ archived all-funded evidence is sufficient only with exactly zero exclusions and unknowns (0.471967ms)
+2026-10-24T14:17:05.3951302Z ✔ saved stage and exact-tape audits reproduce primary report PF on the same funded cohort (14.474784ms)
+2026-10-24T14:17:05.3953709Z ✔ preview: a successful sign-out clears the token, then redirects (1.253218ms)
+2026-10-24T14:17:05.3954399Z ✔ preview: a rejected sign-out still clears the token and redirects (0.226029ms)
+2026-10-24T14:17:05.3955061Z ✔ preview: a sign-out that throws synchronously still clears and redirects (0.151447ms)
+2026-10-24T14:17:05.3955756Z ✔ preview: a sign-out that never settles clears and redirects once the wait expires (4.949459ms)
+2026-10-24T14:17:05.3956382Z ✔ preview: no bearer means nothing to invalidate, so no request is made (0.21332ms)
+2026-10-24T14:17:05.3956986Z ✔ preview: a stored bearer is still invalidated server-side (0.117426ms)
+2026-10-24T14:17:05.3957566Z ✔ deployed: a confirmed sign-out clears the token, then redirects (0.162583ms)
+2026-10-24T14:17:05.3958165Z ✔ deployed: a sign-out that never settles throws and does NOT redirect (20.458748ms)
+2026-10-24T14:17:05.3958770Z ✔ deployed: a rejected sign-out throws and does NOT redirect (0.501401ms)
+2026-10-24T14:17:05.3959372Z ✔ deployed: the timeout is distinguishable from a rejection (20.141813ms)
+2026-10-24T14:17:05.3959926Z ✔ settleWithin reports the outcome and never rejects (19.751228ms)
+2026-10-24T14:17:05.3960505Z ✔ settleWithin waits its full window, then gives up rather than hanging (0.615642ms)
+2026-10-24T14:17:05.3961128Z ✔ pre-sign-in: the preview clear gives up at the preview bound (0.518637ms)
+2026-10-24T14:17:05.3961806Z ✔ pre-sign-in: a deployed session gets the deployed window, not the preview one (0.401381ms)
+2026-10-24T14:17:05.3962507Z ✔ pre-sign-in: a failed clear never blocks sign-in (0.271547ms)
+2026-10-24T14:17:05.3963145Z ✔ pre-sign-in: the preview skips the request when there is no bearer (0.10627ms)
+2026-10-24T14:17:05.3963667Z ✔ every sign-out bound comes from one rule (0.065017ms)
+2026-10-24T14:17:05.3964182Z ✔ the defaults are bounded, and deployed waits longer than preview (0.249804ms)
+2026-10-24T14:17:05.3964705Z ▶ positive family simulation unit-return reporting
+2026-10-24T14:17:05.3965354Z   ✔ honors verified unit overrides and withholds the whole primary/stress sample on unknown unit rows (2.273526ms)
+2026-10-24T14:17:05.3966165Z   ✔ uses return PF 1.36 for total/family/botStats while exposing unequal-size PF 0.20 separately (0.552458ms)
+2026-10-24T14:17:05.3966948Z   ✔ assigns both boundary exits including final close to their completed hours with reconciled counts/net (0.28004ms)
+2026-10-24T14:17:05.3967774Z   ✔ does not mix old entries, future exits, endpoint marks or siblings from another sample (0.244095ms)
+2026-10-24T14:17:05.3968452Z   ✔ keeps full Signal source/range families and empty/no-loss results honest (4.521975ms)
+2026-10-24T14:17:05.3969052Z ✔ positive family simulation unit-return reporting (9.084379ms)
+2026-10-24T14:17:05.3969776Z ✔ identical simulation cohort preserves every return after exactly one external weighting removal (1.053408ms)
+2026-10-24T14:17:05.3970589Z ✔ the audit catches double costs, duplicate executions, wrong side and unknown provenance (0.259739ms)
+2026-10-24T14:17:06.8475676Z ✔ all-runner invocation cleans nested test context and credentials, preserves explicit slow policy, and guards caller preloads first (222.598881ms)
+2026-10-24T14:17:06.8482336Z ✔ real all-runner preserves coverage, pinned END and CommonJS worker protection for one lightweight fixture (344.019362ms)
+2026-10-24T14:17:06.8483897Z ✔ real all-runner retains a fixture's failing exit status and failure report (348.122669ms)
+2026-10-24T14:17:06.8488608Z ✔ real all-runner retains its memory kill governor and reports the killed file (2078.999418ms)
+2026-10-24T14:17:06.9425867Z ✔ core compute workers default to one and an explicit two leaves serial file execution unchanged (1.146157ms)
+2026-10-24T14:17:06.9430417Z ✔ core compute worker selection rejects unsupported values before spawning any test (0.335172ms)
+2026-10-24T14:17:06.9431552Z ✔ the standard core runner installs offline evidence before test imports and preserves failed-test status (413.349962ms)
+2026-10-24T14:17:06.9438279Z ✔ explicit core test inventory refuses missing paths, directories and duplicate aliases (3.570629ms)
+2026-10-24T14:17:06.9439427Z ✔ CI shards execute every explicit fixture exactly once across isolated serial runners (1046.081544ms)
+2026-10-24T14:17:06.9440078Z ✔ invalid or repeated shard specifications cannot silently omit verification (41.063971ms)
+2026-10-24T14:17:10.2660489Z [ui-fixture] starting synthetic dev server +4ms
+2026-10-24T14:17:10.2661217Z [ui-fixture] HTTP ready; launching Chromium +3364ms
+2026-10-24T14:17:10.9951629Z [ui-fixture] Chromium launched; opening Compare +4093ms
+2026-10-24T14:17:15.2923519Z [ui-fixture] Compare loaded; waiting for the real computed comparison table +8390ms
+2026-10-24T14:17:27.8738912Z [ui-fixture] real compute and Compare finished; checking every page +20972ms
+2026-10-24T14:17:27.9097881Z [ui-fixture] desktop: /v2 +21008ms
+2026-10-24T14:17:30.0533497Z [ui-fixture] desktop: /v2/compare +23151ms
+2026-10-24T14:17:31.4157513Z [ui-fixture] desktop: /v2/engine +24514ms
+2026-10-24T14:17:32.8457962Z [ui-fixture] desktop: /v2/hourly +25944ms
+2026-10-24T14:17:34.2355867Z [ui-fixture] desktop: /v2/market +27333ms
+2026-10-24T14:17:35.6763674Z [ui-fixture] desktop: /v2/matrix +28774ms
+2026-10-24T14:17:37.2028006Z [ui-fixture] desktop: /v2/presets +30301ms
+2026-10-24T14:17:38.7301263Z [ui-fixture] desktop: /v2/results +31828ms
+2026-10-24T14:17:40.5186508Z [ui-fixture] desktop: /v2/settings +33617ms
+2026-10-24T14:17:41.9219386Z [ui-fixture] desktop: /v2/stages +35020ms
+2026-10-24T14:17:43.3955734Z [ui-fixture] desktop: /v2/statistics +36493ms
+2026-10-24T14:17:44.8367248Z [ui-fixture] desktop: /v2/trading +37935ms
+2026-10-24T14:17:46.2179952Z ▶ UI functional: every page on computed numbers, desktop and phone
+2026-10-24T14:17:46.2198003Z   ✔ desktop: every page renders numbers, logs no error and never scrolls sideways (18330.67405ms)
+2026-10-24T14:17:46.2222326Z [ui-fixture] phone: /v2 +39321ms
+2026-10-24T14:17:47.8113825Z [ui-fixture] phone: /v2/compare +40908ms
+2026-10-24T14:17:49.2138906Z [ui-fixture] phone: /v2/engine +42312ms
+2026-10-24T14:17:50.5615149Z [ui-fixture] phone: /v2/hourly +43659ms
+2026-10-24T14:17:51.9242634Z [ui-fixture] phone: /v2/market +45022ms
+2026-10-24T14:17:53.2923341Z [ui-fixture] phone: /v2/matrix +46390ms
+2026-10-24T14:17:54.7826392Z [ui-fixture] phone: /v2/presets +47881ms
+2026-10-24T14:17:56.2111831Z [ui-fixture] phone: /v2/results +49309ms
+2026-10-24T14:17:57.7437995Z [ui-fixture] phone: /v2/settings +50842ms
+2026-10-24T14:17:59.1357104Z [ui-fixture] phone: /v2/stages +52234ms
+2026-10-24T14:18:00.5441242Z [ui-fixture] phone: /v2/statistics +53642ms
+2026-10-24T14:18:01.9479974Z [ui-fixture] phone: /v2/trading +55046ms
+2026-10-24T14:18:03.3196456Z   ✔ phone: every page renders numbers, logs no error and never scrolls sideways (17102.94526ms)
+2026-10-24T14:18:09.6972538Z   ✔ Settings: saving unchanged settings succeeds without an error (6367.912201ms)
+2026-10-24T14:18:09.7003535Z   ✔ the dev server logged no unhandled errors (4.732146ms)
+2026-10-24T14:18:09.7963804Z ✔ UI functional: every page on computed numbers, desktop and phone (62891.160409ms)
+2026-10-24T14:18:09.9374831Z ✔ keeps VITE_-prefixed string entries (0.935962ms)
+2026-10-24T14:18:09.9375405Z ✔ drops non-VITE keys, non-string values and malformed documents (0.125458ms)
+2026-10-24T14:18:09.9376392Z ✔ a missing app-env.json is a clean no-op (0.214992ms)
+2026-10-24T14:18:09.9376787Z ✔ reads the app env from a workspace (0.2606ms)
+2026-10-24T14:18:09.9377232Z ✔ an explicit process-env override wins over the file (0.136154ms)
+2026-10-24T14:18:09.9377757Z ﹣ the template ships auth off (0.063816ms) # .grok/app-env.json not present
+2026-10-24T14:18:09.9378206Z ✔ vite loadEnv resolves the wrapped value (0.225698ms)
+2026-10-24T14:18:09.9378615Z ﹣ the wrapped command runs with the app env applied (0.054331ms) # .grok/app-env.json not present
+2026-10-24T14:18:09.9379101Z ✔ the wrapped command sees an explicit override, not the file value (113.904838ms)
+2026-10-24T14:18:09.9379603Z ✔ the wrapper propagates the command's exit code (92.806697ms)
+2026-10-24T14:18:09.9380395Z ✔ a signal-killed command is never reported as success (86.965828ms)
+2026-10-24T14:18:09.9381050Z ﹣ the CLI still runs when invoked through a symlinked path (0.231507ms) # .grok/app-env.json not present
+2026-10-24T14:18:09.9381733Z ✔ parseWriteAtomicArgs needs exactly a staged file and a target (1.256152ms)
+2026-10-24T14:18:09.9382789Z ✔ stagingError refuses a temp inside public/ and a no-op move (0.171777ms)
+2026-10-24T14:18:09.9383323Z ✔ handOver replaces the target and clears the staged file (0.545027ms)
+2026-10-24T14:18:09.9383794Z ✔ handOver creates a missing target directory (0.346118ms)
+2026-10-24T14:18:09.9384204Z ✔ an interrupted pass leaves the target on its old bytes, temp-free (0.530545ms)
+2026-10-24T14:18:09.9384571Z ✔ a failed hand-over creates no directory for the target it never wrote (0.259999ms)
+2026-10-24T14:18:09.9384910Z ✔ a staged file on another filesystem is refused, not copied (0.352357ms)
+2026-10-24T14:18:09.9385252Z ✔ cli: hands the file over, and refuses a temp staged in public/ (107.007871ms)
+2026-10-24T14:18:09.9385619Z ✔ cli: relative paths follow the script's root, not the caller's cwd (49.38484ms)
+2026-10-24T14:18:09.9386036Z ﹣ every hand-over the og skill prints is one this script accepts (0.265929ms) # .grok/skills/og not present
+2026-10-24T14:18:09.9386428Z ✔ cli: a missing staged file fails without touching the target (55.57005ms)
+2026-10-24T14:18:09.9386738Z ✔ a live desk is reported alive and never relaunched (32.032085ms)
+2026-10-24T14:18:09.9387065Z ✔ a down desk is relaunched with the loss percentage and the symbols (19.441464ms)
+2026-10-24T14:18:09.9387387Z ✔ a dry run reports the decision and launches nothing (17.847055ms)
+2026-10-24T14:18:09.9387871Z ✔ the default matcher recognizes the launcher's Node flags and desk arguments (37.877702ms)
+2026-10-24T14:18:09.9388531Z ✔ the default matcher ignores a helper that only mentions the desk command (34.03804ms)
+2026-10-24T14:18:09.9389113Z ✔ a failed process query refuses to launch a possible duplicate desk (7.694146ms)
+2026-10-24T14:18:09.9389650Z ✔ a HALT file stops every relaunch until a person removes it (6.757473ms)
+2026-10-24T14:18:09.9390391Z ✔ an own fill that takes out more than the desk held writes HALT, and the supervisor then refuses to relaunch (7.459064ms)
+2026-10-24T14:18:09.9391024Z ✔ the desk runs the ownership check and writes HALT into its --out folder, the file the supervisor reads (0.803794ms)
+2026-10-24T14:18:09.9391527Z ✔ no launch.json and no argument: the old defaults 80 % / 60 symbols (16.602581ms)
+2026-10-24T14:18:09.9392526Z ✔ launch.json: the active run's loss limit, symbols and heap are used (22.370477ms)
+2026-10-24T14:18:09.9393144Z ✔ an explicit number wins over launch.json, auto fills the other (20.284633ms)
+2026-10-24T14:18:09.9393732Z ✔ the heap from the environment is not overridden by launch.json (16.673217ms)
+2026-10-24T14:18:09.9394166Z ✔ a HALT file stops the relaunch whatever the parameters (5.903083ms)
+2026-10-24T14:18:09.9394510Z ✔ a running desk: its own command line is read for the status line (321.726146ms)
+2026-10-24T14:18:09.9394750Z ℹ tests 723
+2026-10-24T14:18:09.9394877Z ℹ suites 27
+2026-10-24T14:18:09.9395004Z ℹ pass 713
+2026-10-24T14:18:09.9395125Z ℹ fail 2
+2026-10-24T14:18:09.9395248Z ℹ cancelled 0
+2026-10-24T14:18:09.9395375Z ℹ skipped 8
+2026-10-24T14:18:09.9395721Z ℹ todo 0
+2026-10-24T14:18:09.9395864Z ℹ duration_ms 102855.991784
+2026-10-24T14:18:09.9395976Z 
+2026-10-24T14:18:09.9396043Z ✖ failing tests:
+2026-10-24T14:18:09.9396115Z 
+2026-10-24T14:18:09.9396243Z test at scripts/lib/signal-progress.test.mjs:13:1
+2026-10-24T14:18:09.9396641Z ✖ captures every configured cell separately from actual tapes, active units and executed closes (7.569743ms)
+2026-10-24T14:18:09.9397052Z   AssertionError [ERR_ASSERTION]: the actual 3% cap merges aliases; raw requests remain separate
+2026-10-24T14:18:09.9397307Z   
+2026-10-24T14:18:09.9397413Z   166 !== 60
+2026-10-24T14:18:09.9397520Z   
+2026-10-24T14:18:09.9397820Z       at TestContext.<anonymous> (file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/lib/signal-progress.test.mjs:27:10)
+2026-10-24T14:18:09.9398265Z       at Test.runInAsyncScope (node:async_hooks:227:14)
+2026-10-24T14:18:09.9398485Z       at Test.run (node:internal/test_runner/test:1402:25)
+2026-10-24T14:18:09.9398718Z       at Test.start (node:internal/test_runner/test:1262:17)
+2026-10-24T14:18:09.9398985Z       at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+2026-10-24T14:18:09.9399216Z     generatedMessage: false,
+2026-10-24T14:18:09.9399363Z     code: 'ERR_ASSERTION',
+2026-10-24T14:18:09.9399494Z     actual: 166,
+2026-10-24T14:18:09.9399621Z     expected: 60,
+2026-10-24T14:18:09.9399751Z     operator: 'strictEqual',
+2026-10-24T14:18:09.9399885Z     diff: 'simple'
+2026-10-24T14:18:09.9400003Z   }
+2026-10-24T14:18:09.9400061Z 
+2026-10-24T14:18:09.9400172Z test at scripts/lib/signal-progress.test.mjs:40:1
+2026-10-24T14:18:09.9400584Z ✖ accounts for every raw requested cell while deduplicating identical effective hard-floor protections (4.360224ms)
+2026-10-24T14:18:09.9401099Z   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+2026-10-24T14:18:09.9401298Z   
+2026-10-24T14:18:09.9401401Z   207 !== 86
+2026-10-24T14:18:09.9401506Z   
+2026-10-24T14:18:09.9401780Z       at TestContext.<anonymous> (file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/lib/signal-progress.test.mjs:44:10)
+2026-10-24T14:18:09.9402385Z       at Test.runInAsyncScope (node:async_hooks:227:14)
+2026-10-24T14:18:09.9402714Z       at Test.run (node:internal/test_runner/test:1402:25)
+2026-10-24T14:18:09.9402979Z       at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+2026-10-24T14:18:09.9403243Z       at Test.postRun (node:internal/test_runner/test:1542:19)
+2026-10-24T14:18:09.9403468Z       at Test.run (node:internal/test_runner/test:1467:12)
+2026-10-24T14:18:09.9403739Z       at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+2026-10-24T14:18:09.9403976Z     generatedMessage: true,
+2026-10-24T14:18:09.9404122Z     code: 'ERR_ASSERTION',
+2026-10-24T14:18:09.9404254Z     actual: 207,
+2026-10-24T14:18:09.9404372Z     expected: 86,
+2026-10-24T14:18:09.9404498Z     operator: 'strictEqual',
+2026-10-24T14:18:09.9404659Z     diff: 'simple'
+2026-10-24T14:18:09.9404774Z   }
+2026-10-24T14:18:09.9584379Z ##[error]Process completed with exit code 1.
+2026-10-24T14:18:09.9666224Z

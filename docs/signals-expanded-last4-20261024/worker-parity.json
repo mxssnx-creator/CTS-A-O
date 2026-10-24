@@ -1,0 +1,72 @@
+{
+  "schema": "cts-worker-parity-v1",
+  "sourceSha256": "8927a61cff01ac2b91350d73dbb199284cb595b99c46daa2959da90a89795959",
+  "workerCounts": [
+    2,
+    4
+  ],
+  "sameMachine": false,
+  "timingComparisonPermitted": false,
+  "checks": [
+    {
+      "file": "coverage.json",
+      "equal": true,
+      "sha256": "d1067c6a723f811275afe562819c532e31802303178084e05174c0dd862a1eb1",
+      "excludedMetadata": [
+        "protocolSha256",
+        "engine",
+        "audit",
+        "configFile"
+      ]
+    },
+    {
+      "file": "execution-contexts.json",
+      "equal": true,
+      "sha256": "458c10a454747f4b554802b613be9c1bc2e30753e7e5172789a6621bd713de81",
+      "excludedMetadata": [
+        "protocolSha256"
+      ]
+    },
+    {
+      "file": "admission-trace.json",
+      "equal": true,
+      "sha256": "f098d6ac7f11c86329bb56dfcd01720f7863ff026ea10eeef3f818b8abf34876",
+      "excludedMetadata": [
+        "protocolSha256"
+      ]
+    },
+    {
+      "file": "derived-catalog.json",
+      "equal": true,
+      "sha256": "367b9ed1ed2bc4d1b80b90d99e6bf05165ce11c634110499c164034172a256cc",
+      "excludedMetadata": [
+        "protocolSha256"
+      ]
+    }
+  ],
+  "workers2": {
+    "scenario": "last4",
+    "runner": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "cpuCount": 4,
+    "sourceSha256": "8927a61cff01ac2b91350d73dbb199284cb595b99c46daa2959da90a89795959",
+    "exitCode": 0,
+    "wallSeconds": 540.069455162,
+    "childPeakRssMiB": 4543.88671875,
+    "userSeconds": 1029.220755,
+    "systemSeconds": 8.775312999999999
+  },
+  "workers4": {
+    "scenario": "last4",
+    "runner": "Linux-6.18.55-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "cpuCount": 9,
+    "sourceSha256": "8927a61cff01ac2b91350d73dbb199284cb595b99c46daa2959da90a89795959",
+    "exitCode": 0,
+    "wallSeconds": 579.4524854209999,
+    "childPeakRssMiB": 4790.14453125,
+    "userSeconds": 1455.48864,
+    "systemSeconds": 36.844953
+  },
+  "note": "Same frozen feed/settings/window; metadata, process telemetry and protocol host paths differ. Core economic results, all groups, clocks, counts and exact execution-context records are identical. Later Base detail/primary count-label fixes are audited separately."
+}

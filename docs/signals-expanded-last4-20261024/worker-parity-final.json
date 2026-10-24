@@ -1,0 +1,78 @@
+{
+  "schema": "cts-worker-parity-v1",
+  "sourceSha256": "6d18d75b8ae3e437ba069eeb86dacce98d1f76f0b9efde72d5559db8d5cf44ca",
+  "workerCounts": [
+    2,
+    4
+  ],
+  "sameMachine": false,
+  "timingComparisonPermitted": false,
+  "checks": [
+    {
+      "file": "coverage.json",
+      "equal": true,
+      "sha256": "b58c1cd284d1c8a5e52c0dae54944acb7d566819ec8bc0ada6ab6e9f4408d84e",
+      "excludedMetadata": [
+        "protocolSha256",
+        "engine",
+        "audit",
+        "configFile"
+      ]
+    },
+    {
+      "file": "execution-contexts.json",
+      "equal": true,
+      "sha256": "cc08ca05ed69bda2665ec7181e2da8b507cc88009f8d230b7071c72b5450f95e",
+      "excludedMetadata": [
+        "protocolSha256"
+      ]
+    },
+    {
+      "file": "admission-trace.json",
+      "equal": true,
+      "sha256": "49c272b4a979eb36ce1bfba8484f87b88977d1247c1345c326944e19183148a7",
+      "excludedMetadata": [
+        "protocolSha256"
+      ]
+    },
+    {
+      "file": "derived-catalog.json",
+      "equal": true,
+      "sha256": "8fb9a4e60d890415725c88aaef9c9e1837bb166d41ebd7d92f405170325ebbe4",
+      "excludedMetadata": [
+        "protocolSha256"
+      ]
+    }
+  ],
+  "workers2": {
+    "scenario": "last4",
+    "runner": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "cpuCount": 4,
+    "sourceSha256": "6d18d75b8ae3e437ba069eeb86dacce98d1f76f0b9efde72d5559db8d5cf44ca",
+    "exitCode": 0,
+    "wallSeconds": 865.062415693,
+    "childPeakRssMiB": 3809.26171875,
+    "userSeconds": 1690.838576,
+    "systemSeconds": 11.466827
+  },
+  "workers4": {
+    "scenario": "last4",
+    "runner": "Linux-6.18.55-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "cpuCount": 9,
+    "sourceSha256": "6d18d75b8ae3e437ba069eeb86dacce98d1f76f0b9efde72d5559db8d5cf44ca",
+    "exitCode": 0,
+    "wallSeconds": 581.2156643089993,
+    "childPeakRssMiB": 4810.9453125,
+    "userSeconds": 1475.849658,
+    "systemSeconds": 35.231876
+  },
+  "computeSecondsWorkers4": 526.9521641340001,
+  "audit": {
+    "comparisons": 75812256,
+    "elapsedMs": 151744.17485,
+    "peakRssMb": 948.629504
+  },
+  "note": "Final source, same frozen feed/settings/window. Complete catalog, grouped results, hourly calculations, independent position/order ledgers, exact execution contexts and admission outcomes are identical. Only protocol host paths, process telemetry and timing differ."
+}

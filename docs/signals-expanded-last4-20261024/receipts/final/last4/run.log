@@ -1,0 +1,34 @@
+  feed: 8784 bars the engine never reads left out (other timeframes, after the cut)
+post-Base modeled-execution replay gate starts 2026-10-16T21:00:00.000Z · config last-N 25 · group last-N 0
+session: 12 symbols · 100h pre-historic · 12h simulated · tactics default · min PF 1.1 · focus 1191 · toggles {"normal":true,"trailing":true,"exit":true,"block":false,"blockActive":false,"dca":false,"dcaActive":false,"axis":false}
+  [0 s] computing Base 0% (job 10%) Base on 2 cores · 884 combos · symbols 12/12 · computes 0 · paper on #0 · rss 398 MB
+  [30 s] computing Base 85% (job 40%) Base on 2 cores · 884 combos · symbols 12/12 · computes 0 · paper on #0 · rss 931 MB
+  [60 s] computing Base 87% (job 41%) Base on 2 cores · 884 combos · symbols 12/12 · computes 0 · paper on #0 · rss 965 MB
+  [90 s] computing Tapes 84% (job 68%) Signal Exit Base · 884 source lanes · symbols 12/12 · computes 0 · paper on #0 · rss 967 MB
+  [120 s] computing Tapes 86% (job 69%) Signal Exit Base · 884 source lanes · symbols 12/12 · computes 0 · paper on #0 · rss 815 MB
+  [151 s] computing Tapes 6% (job 72%) signal historic configs on 2 cores · 884 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 874 MB
+  [181 s] computing Tapes 39% (job 72%) signal historic configs on 2 cores · 884 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 893 MB
+  [211 s] computing Tapes 84% (job 72%) signal historic configs on 2 cores · 884 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 964 MB
+  [241 s] computing Tapes 98% (job 72%) signal historic configs on 2 cores · 884 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 1066 MB
+  [271 s] computing Signals 4% (job 80%) signal tapes on 2 cores · 824 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 1072 MB
+  [301 s] computing Signals 25% (job 80%) signal tapes on 2 cores · 824 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 1304 MB
+  [331 s] computing Signals 48% (job 80%) signal tapes on 2 cores · 824 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 1460 MB
+  [361 s] computing Signals 68% (job 80%) signal tapes on 2 cores · 824 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 1747 MB
+  [391 s] computing Signals 93% (job 80%) signal tapes on 2 cores · 824 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 2004 MB
+  [421 s] computing Signals 13% (job 80%) signal coordination tapes on 2 cores · 60 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 2378 MB
+  [451 s] computing Signals 29% (job 80%) signal coordination tapes on 2 cores · 60 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 2593 MB
+  [481 s] computing Signals 46% (job 80%) signal coordination tapes on 2 cores · 60 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 2780 MB
+  [512 s] computing Signals 63% (job 80%) signal coordination tapes on 2 cores · 60 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 2910 MB
+  [542 s] computing Signals 79% (job 80%) signal coordination tapes on 2 cores · 60 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 3091 MB
+  [572 s] computing Signals 93% (job 80%) signal coordination tapes on 2 cores · 60 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 3255 MB
+  [602 s] computing Real 0% (job 80%) 12h sim · step 0/12 · symbols 12/12 · computes 0 · paper on #0 · rss 3199 MB
+  [632 s] computing Real 17% (job 83%) 12h sim · step 2/12 · engine 24h pre / Last-15 · Signals 100h / Last-4 · entry Last-0 · symbols 12/12 · computes 0 · paper on #0 · rss 3224 MB
+  [662 s] computing Real 33% (job 85%) 12h sim · step 4/12 · engine 24h pre / Last-15 · Signals 100h / Last-4 · entry Last-0 · symbols 12/12 · computes 0 · paper on #0 · rss 3251 MB
+  [692 s] computing Real 50% (job 88%) 12h sim · step 6/12 · engine 24h pre / Last-15 · Signals 100h / Last-4 · entry Last-0 · symbols 12/12 · computes 0 · paper on #0 · rss 3098 MB
+  [722 s] computing Real 58% (job 89%) 12h sim · step 7/12 · engine 24h pre / Last-15 · Signals 100h / Last-4 · entry Last-0 · symbols 12/12 · computes 0 · paper on #0 · rss 3207 MB
+  [752 s] computing Real 75% (job 91%) 12h sim · step 9/12 · engine 24h pre / Last-15 · Signals 100h / Last-4 · entry Last-0 · symbols 12/12 · computes 0 · paper on #0 · rss 3208 MB
+  [783 s] computing Real 92% (job 94%) 12h sim · step 11/12 · engine 24h pre / Last-15 · Signals 100h / Last-4 · entry Last-0 · symbols 12/12 · computes 0 · paper on #0 · rss 3209 MB
+[core-v2] compute #1 done in 806465 ms · sim PF including 17 open marks: 1.43 n 203 · loop max 1821 ms
+  paper step on compute #1: 1985 paper/current selected configs (1 s after the compute)
+  compute #1 over 12 symbols (12 loaded of 12, 12 asked) after 807 s
+checks: 68/68 ok

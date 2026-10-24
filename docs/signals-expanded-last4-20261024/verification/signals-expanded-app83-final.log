@@ -1,0 +1,123 @@
+✔ return PF is the primary metric and cash PF remains a separate diagnostic (1.261876ms)
+✔ missing, invalid and empty execution ledgers never report profitability (0.184754ms)
+✔ position-only reads cannot claim an exchange balance snapshot (0.14154ms)
+✔ a source, range or connection switch cannot display a prior request's figures (0.127598ms)
+✔ live ledger with no exchange baseline cannot claim a paper-funded account balance (0.114599ms)
+✔ a no-loss return PF sample discloses the sentinel without changing its numeric ranking value (0.331951ms)
+✔ cash PF text uses explicit no-loss provenance without reinterpreting measured or legacy four (0.150022ms)
+✔ preset comparisons distinguish a no-loss score from an actual finite ratio of four (0.207006ms)
+✔ old comparison payloads cannot present a legacy score or delta as a measured ratio (0.319222ms)
+✔ paper close displays use persisted unit returns and never fall back to size-weighted returns (0.225273ms)
+✔ unavailable archived unit history is distinct from a known empty run and a no-loss score (0.220666ms)
+✔ saved preset cards require verified unit evidence while fixed research keeps its disclosed study basis (0.159095ms)
+✔ full-grid cell results do not broaden representative admission across bot, range or lane (0.835947ms)
+✔ registered first-class indication kinds have named UI labels without changing other identities (0.911969ms)
+✔ Signal configs show each actual strategy type in simulation and paper (0.25716ms)
+✔ live aggregate rows never turn a guessed strategy into an executed type (0.110874ms)
+✔ including Tactic merges all ten bases without replacing custom Focus, and is idempotent (0.903196ms)
+✔ empty Focus keeps its all-indications meaning and coverage distinguishes lane-specific pairs (0.361014ms)
+✔ Relate focus includes its exact IDs additively and reports lane coverage (0.324019ms)
+✔ Break focus includes its exact IDs additively and reports anchor-lane coverage (1.010114ms)
+✔ Base pooled PF uses gross evidence rather than treating a no-loss score as an exact ratio (0.815757ms)
+✔ strict promotion evidence never converts unknown or insufficient owned history into a positive PF (0.17541ms)
+✔ Signal discovery counts cannot be inferred from the different representative or config populations (1.136091ms)
+✔ signal unit rows keep types, ranges, lanes, symbols and directions independent (0.944977ms)
+✔ legacy discovery rows are explicit and never labeled as a qualified Normal unit (0.137673ms)
+✔ Historic Exit labels preserve every family and direction without assigning a range or changing the kind (0.422585ms)
+✔ Signal UI counts match the engine and include no-TP sets independently of percent/ATR selection (3.125754ms)
+✔ No-TP labels require the explicit mode, and trailing gap is separate from its activation move (0.345971ms)
+▶ callTool failure memo
+  ✔ replays an identical failure within the memo window without refetching (4.322733ms)
+  ✔ keys by token identity so a reminted token shares the memo entry (0.978467ms)
+  ✔ sweeps expired entries on write so unique keys do not accumulate (1.613436ms)
+  ✔ never memoizes login-required 401s (1.024646ms)
+✔ callTool failure memo (9.225595ms)
+▶ callTool in the workspace preview vs deployed
+  ✔ returns pending (no loginRequired) when the preview has no token yet (0.937988ms)
+  ✔ returns a plain error (no sign-in CTA) when a deployed app has no token (0.427763ms)
+  ✔ treats a gate 401 in the preview as pending and parks the rejected token (1.020169ms)
+  ✔ keeps loginRequired for a gate 401 on a deployed app (0.857598ms)
+✔ callTool in the workspace preview vs deployed (3.611392ms)
+▶ callTool
+  ✔ resolves ok:false for non-serializable args instead of rejecting (0.456275ms)
+✔ callTool (0.592116ms)
+▶ isLoginRequired
+  ✔ is true only for login-required failures (0.188428ms)
+✔ isLoginRequired (0.276739ms)
+▶ redirectToLoginIfRequired
+  ✔ no-ops when login is not required (0.295397ms)
+  ✔ navigates to the server-built loginUrl in the browser (0.215588ms)
+  ✔ opens a new tab instead of navigating when framed (0.133237ms)
+  ✔ falls back to navigation when framed and the popup is blocked (0.195269ms)
+  ✔ returns false when the result has no loginUrl (0.112826ms)
+  ✔ returns false on the server (no window) (0.081681ms)
+✔ redirectToLoginIfRequired (1.815796ms)
+▶ GoogleCalendarTools
+  ✔ does not expose a list_events name (0.089572ms)
+✔ GoogleCalendarTools (0.165775ms)
+▶ classifyCallToolError
+  ✔ returns null for successful results (0.238813ms)
+  ✔ classifies a pending preview token as pending before any other kind (0.164663ms)
+  ✔ classifies a deployed missing token as error, not a login CTA (0.133127ms)
+  ✔ classifies gate loginRequired without a missing-token message as login (0.145815ms)
+  ✔ classifies not_connected and failed_precondition (0.117153ms)
+  ✔ classifies scope_denied without claiming a missing grant (0.100118ms)
+  ✔ classifies access_denied (0.0746ms)
+  ✔ falls back to a generic error with the raw message (0.104094ms)
+✔ classifyCallToolError (1.314895ms)
+▶ readinessProbeDelayMs
+  ✔ backs off through the schedule and then holds the last delay (1.39626ms)
+  ✔ clamps a negative attempt to the first delay (0.145706ms)
+✔ readinessProbeDelayMs (2.463379ms)
+▶ readinessProbeExhausted
+  ✔ gives up only once the total wait budget has elapsed (0.145134ms)
+✔ readinessProbeExhausted (0.315217ms)
+▶ verifyGateIdentityToken
+  ✔ returns the identity for a valid token (10.566389ms)
+  ✔ omits optional claims as nulls (1.879961ms)
+  ✔ rejects a wrong audience (1.651393ms)
+  ✔ rejects a wrong issuer (1.464746ms)
+  ✔ rejects an expired token (1.435263ms)
+  ✔ rejects a token without exp (1.119696ms)
+  ✔ rejects a token signed by a different key with the same kid (1.08179ms)
+  ✔ refetches the JWKS when the kid rotates (2.023483ms)
+✔ verifyGateIdentityToken (22.953781ms)
+▶ gateIdentityFromHeaders
+  ✔ verifies the header token end to end and fails closed without it (4.954138ms)
+  ✔ activates on a deployed-shaped request without GROK_GATE_ORIGIN (1.781064ms)
+  ✔ verifies a preview-audience token with no gate env vars via the loopback default (8.947439ms)
+  ✔ rejects a wrong-issuer token in the loopback default mode (1.590723ms)
+  ✔ verifies a preview-audience token when only GROK_GATE_ORIGIN is set (1.402485ms)
+  ✔ rejects a preview-audience token when GROK_PROJECT_ID is set (1.282497ms)
+  ✔ rejects an app-audience token in preview mode (1.094308ms)
+✔ gateIdentityFromHeaders (21.900178ms)
+▶ gateIdentityEnabled
+  ✔ is enabled by default with no gate env vars (0.096773ms)
+  ✔ is disabled when VITE_AUTH_ENABLED is false (0.068441ms)
+✔ gateIdentityEnabled (0.261787ms)
+▶ gateTokenAudience
+  ✔ pins app:<id> when GROK_PROJECT_ID is set, even alongside GROK_GATE_ORIGIN (0.103543ms)
+  ✔ pins preview when GROK_PROJECT_ID is unset (0.065166ms)
+✔ gateTokenAudience (0.299623ms)
+▶ gateIdentityUserInfo
+  ✔ falls back to a synthetic email and name for sub-only claims (0.120608ms)
+  ✔ keeps real claims, lowercasing the email and marking it verified (0.095692ms)
+✔ gateIdentityUserInfo (0.286524ms)
+▶ sessionBoundToGateIdentity
+  ✔ keeps the session when it is bound to the same gate sub (0.114399ms)
+  ✔ rotates when the session belongs to a different gate sub (0.054721ms)
+  ✔ rotates when the session user has no gate-bound account (0.04717ms)
+✔ sessionBoundToGateIdentity (0.293765ms)
+▶ resolveSignInGateState
+  ✔ is pending while the session check is in flight, user or not (0.630012ms)
+  ✔ is signed_in once a user is present (0.145866ms)
+  ✔ is signed_out only after the check resolved with no user (0.093518ms)
+✔ resolveSignInGateState (1.815675ms)
+ℹ tests 83
+ℹ suites 16
+ℹ pass 83
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 824.795095

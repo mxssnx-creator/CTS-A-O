@@ -1,0 +1,21 @@
+[core-tests] offline Node transport guard; 2 files; concurrency 1; compute workers 1
+[core-v2] compute #1 done in 18981 ms · sim PF including 75 open marks: 0.46 n 738 · loop max 440 ms (worst slice of the last 60 s 411 ms in Tapes, 3 over 40 ms)
+▶ runtime coordination
+  ✔ computes on the synthetic feed and publishes every stage (19517.352688ms)
+✔ runtime coordination (19520.751589ms)
+[core-v2] compute #1 done in 243 ms · sim PF including 0 open marks: ∞ (no loss; gate score 4.00) n 200 · loop max 46 ms (worst slice of the last 60 s 62 ms in Base, 1 over 40 ms)
+[core-v2] compute #1 done in 460 ms · sim PF including 0 open marks: ∞ (no loss; gate score 4.00) n 200 · loop max 94 ms (worst slice of the last 60 s 66 ms in Base, 1 over 40 ms)
+✔ full worker/fallback and incremental rebuilds preserve independent Signal history (815.625903ms)
+[core-v2] compute #1 done in 121 ms · sim PF including 0 open marks: ∞ (no loss; gate score 4.00) n 212 · loop max 47 ms
+✔ local historical fitting reports intermediate progress and completes the job (169.276428ms)
+[core-v2] compute #1 done in 488 ms · sim PF including 0 open marks: ∞ (no loss; gate score 4.00) n 222 · loop max 56 ms
+[core-v2] compute #1 done in 148 ms · sim PF including 0 open marks: ∞ (no loss; gate score 4.00) n 222 · loop max 35 ms
+✔ historical coordinator ranges and exact configs survive incremental rebuilds (947.308667ms)
+ℹ tests 4
+ℹ suites 1
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22359.2227

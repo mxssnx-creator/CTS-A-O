@@ -1,0 +1,969 @@
+﻿2026-10-24T14:54:08.5066400Z Current runner version: '2.338.0'
+2026-10-24T14:54:08.5086433Z ##[group]Runner Image Provisioner
+2026-10-24T14:54:08.5087031Z Hosted Compute Agent
+2026-10-24T14:54:08.5087486Z Version: 20261021.618
+2026-10-24T14:54:08.5087996Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-10-24T14:54:08.5088434Z Build Date: 2026-10-21T00:45:21Z
+2026-10-24T14:54:08.5088938Z Worker ID: {0b6f8691-9bbd-4711-803a-a85d7ca36c62}
+2026-10-24T14:54:08.5089381Z Region: centralus
+2026-10-24T14:54:08.5089757Z Cloud: Azure
+2026-10-24T14:54:08.5090104Z ##[endgroup]
+2026-10-24T14:54:08.5090954Z ##[group]Operating System
+2026-10-24T14:54:08.5091376Z Ubuntu
+2026-10-24T14:54:08.5091752Z 24.04.5
+2026-10-24T14:54:08.5092134Z LTS
+2026-10-24T14:54:08.5092477Z ##[endgroup]
+2026-10-24T14:54:08.5092822Z ##[group]Runner Image
+2026-10-24T14:54:08.5093291Z Image: ubuntu-24.04
+2026-10-24T14:54:08.5093653Z Version: 20261012.334.1
+2026-10-24T14:54:08.5094486Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-24T14:54:08.5095371Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+2026-10-24T14:54:08.5096007Z ##[endgroup]
+2026-10-24T14:54:08.5096741Z ##[group]GITHUB_TOKEN Permissions
+2026-10-24T14:54:08.5098490Z Actions: read
+2026-10-24T14:54:08.5098850Z Contents: read
+2026-10-24T14:54:08.5099175Z Metadata: read
+2026-10-24T14:54:08.5099592Z ##[endgroup]
+2026-10-24T14:54:08.5101098Z Secret source: Actions
+2026-10-24T14:54:08.5101707Z Cache mode: write
+2026-10-24T14:54:08.5102339Z Prepare workflow directory
+2026-10-24T14:54:08.5376180Z Prepare all required actions
+2026-10-24T14:54:08.5411516Z Getting action download info
+2026-10-24T14:54:08.7606760Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-24T14:54:08.8630132Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2026-10-24T14:54:08.9669738Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-10-24T14:54:09.1621393Z Complete job name: Offline checks and production build
+2026-10-24T14:54:09.2198817Z ##[group]Run actions/checkout@v4
+2026-10-24T14:54:09.2199400Z with:
+2026-10-24T14:54:09.2199745Z   persist-credentials: false
+2026-10-24T14:54:09.2200122Z   repository: mxssnx-creator/CTS-A-O
+2026-10-24T14:54:09.2202613Z   token: ***
+2026-10-24T14:54:09.2202884Z   ssh-strict: true
+2026-10-24T14:54:09.2203195Z   ssh-user: git
+2026-10-24T14:54:09.2203465Z   clean: true
+2026-10-24T14:54:09.2203783Z   sparse-checkout-cone-mode: true
+2026-10-24T14:54:09.2204127Z   fetch-depth: 1
+2026-10-24T14:54:09.2204405Z   fetch-tags: false
+2026-10-24T14:54:09.2204697Z   show-progress: true
+2026-10-24T14:54:09.2204991Z   lfs: false
+2026-10-24T14:54:09.2205267Z   submodules: false
+2026-10-24T14:54:09.2205583Z   set-safe-directory: true
+2026-10-24T14:54:09.2205930Z   allow-unsafe-pr-checkout: false
+2026-10-24T14:54:09.2206382Z env:
+2026-10-24T14:54:09.2206671Z   CTS_CORE_STATE: off
+2026-10-24T14:54:09.2206985Z   CTS_CORE_AUTOSTART: 0
+2026-10-24T14:54:09.2207282Z   CTS_CORE_VARIANTS: 0
+2026-10-24T14:54:09.2207712Z   CTS_CORE_COMPARE: 0
+2026-10-24T14:54:09.2208006Z   CTS_CORE_WORKERS: 4
+2026-10-24T14:54:09.2208318Z   CTS_CORE_LIVE: 0
+2026-10-24T14:54:09.2208614Z   CTS_CORE_MEM_SOFT_MB: 2500
+2026-10-24T14:54:09.2208947Z   CTS_CORE_MEM_HARD_MB: 1200
+2026-10-24T14:54:09.2209275Z   MALLOC_ARENA_MAX: 2
+2026-10-24T14:54:09.2209598Z   MALLOC_MMAP_THRESHOLD_: 1048576
+2026-10-24T14:54:09.2209937Z   DATABASE_URL: 
+2026-10-24T14:54:09.2210213Z   TZ: UTC
+2026-10-24T14:54:09.2210486Z ##[endgroup]
+2026-10-24T14:54:09.2933771Z Syncing repository: mxssnx-creator/CTS-A-O
+2026-10-24T14:54:09.2935673Z ##[group]Getting Git version info
+2026-10-24T14:54:09.2936356Z Working directory is '/home/runner/work/CTS-A-O/CTS-A-O'
+2026-10-24T14:54:09.2937385Z [command]/usr/bin/git version
+2026-10-24T14:54:09.2980434Z git version 2.55.0
+2026-10-24T14:54:09.3001621Z ##[endgroup]
+2026-10-24T14:54:09.3014409Z Temporarily overriding HOME='/home/runner/work/_temp/7dc37bba-1556-493a-a165-e597c7ba7436' before making global git config changes
+2026-10-24T14:54:09.3015869Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-24T14:54:09.3019903Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-24T14:54:09.3066524Z Deleting the contents of '/home/runner/work/CTS-A-O/CTS-A-O'
+2026-10-24T14:54:09.3069313Z ##[group]Initializing the repository
+2026-10-24T14:54:09.3072489Z [command]/usr/bin/git init /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-24T14:54:09.3159235Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-24T14:54:09.3160574Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-24T14:54:09.3161695Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-24T14:54:09.3162616Z hint: call:
+2026-10-24T14:54:09.3163142Z hint:
+2026-10-24T14:54:09.3163874Z hint: 	git config --global init.defaultBranch <name>
+2026-10-24T14:54:09.3164628Z hint:
+2026-10-24T14:54:09.3165372Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-24T14:54:09.3166522Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-24T14:54:09.3167412Z hint:
+2026-10-24T14:54:09.3168116Z hint: 	git branch -m <name>
+2026-10-24T14:54:09.3168757Z hint:
+2026-10-24T14:54:09.3169606Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-24T14:54:09.3171083Z Initialized empty Git repository in /home/runner/work/CTS-A-O/CTS-A-O/.git/
+2026-10-24T14:54:09.3173441Z [command]/usr/bin/git remote add origin https://github.com/mxssnx-creator/CTS-A-O
+2026-10-24T14:54:09.3249657Z ##[endgroup]
+2026-10-24T14:54:09.3250676Z ##[group]Disabling automatic garbage collection
+2026-10-24T14:54:09.3251572Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-24T14:54:09.3261828Z ##[endgroup]
+2026-10-24T14:54:09.3262566Z ##[group]Setting up auth
+2026-10-24T14:54:09.3281328Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-24T14:54:09.3329504Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-24T14:54:09.3665541Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-24T14:54:09.3697994Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-24T14:54:09.3884595Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-24T14:54:09.3915924Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-24T14:54:09.4100453Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-24T14:54:09.4325495Z ##[endgroup]
+2026-10-24T14:54:09.4326046Z ##[group]Fetching the repository
+2026-10-24T14:54:09.4333152Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +2cb11c4ced154bab2a0d949a3c4d2a398724429f:refs/remotes/pull/197/merge
+2026-10-24T14:54:12.2120696Z From https://github.com/mxssnx-creator/CTS-A-O
+2026-10-24T14:54:12.2121868Z  * [new ref]         2cb11c4ced154bab2a0d949a3c4d2a398724429f -> pull/197/merge
+2026-10-24T14:54:12.2124046Z ##[endgroup]
+2026-10-24T14:54:12.2124812Z ##[group]Determining the checkout info
+2026-10-24T14:54:12.2126418Z ##[endgroup]
+2026-10-24T14:54:12.2132043Z [command]/usr/bin/git sparse-checkout disable
+2026-10-24T14:54:12.2177686Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-24T14:54:12.2213432Z ##[group]Checking out the ref
+2026-10-24T14:54:12.2215376Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/197/merge
+2026-10-24T14:54:12.5516325Z Note: switching to 'refs/remotes/pull/197/merge'.
+2026-10-24T14:54:12.5516782Z 
+2026-10-24T14:54:12.5517040Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-10-24T14:54:12.5517731Z changes and commit them, and you can discard any commits you make in this
+2026-10-24T14:54:12.5518296Z state without impacting any branches by switching back to a branch.
+2026-10-24T14:54:12.5518632Z 
+2026-10-24T14:54:12.5518883Z If you want to create a new branch to retain commits you create, you may
+2026-10-24T14:54:12.5519406Z do so (now or later) by using -c with the switch command. Example:
+2026-10-24T14:54:12.5519675Z 
+2026-10-24T14:54:12.5519823Z   git switch -c <new-branch-name>
+2026-10-24T14:54:12.5520043Z 
+2026-10-24T14:54:12.5520189Z Or undo this operation with:
+2026-10-24T14:54:12.5520378Z 
+2026-10-24T14:54:12.5520499Z   git switch -
+2026-10-24T14:54:12.5520690Z 
+2026-10-24T14:54:12.5520953Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-10-24T14:54:12.5521295Z 
+2026-10-24T14:54:12.5521674Z HEAD is now at 2cb11c4 Merge 080566d5dde7f66d37ca639f8315de910cd76f73 into 8ee9073ad2c6201ba325905563e33bd730a8fd8e
+2026-10-24T14:54:12.5551311Z ##[endgroup]
+2026-10-24T14:54:12.5592124Z [command]/usr/bin/git log -1 --format=%H
+2026-10-24T14:54:12.5613964Z 2cb11c4ced154bab2a0d949a3c4d2a398724429f
+2026-10-24T14:54:12.5621999Z ##[group]Removing auth
+2026-10-24T14:54:12.5624953Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-24T14:54:12.5651527Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-24T14:54:12.5832106Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-24T14:54:12.5855313Z http.https://github.com/.extraheader
+2026-10-24T14:54:12.5860865Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-24T14:54:12.5919034Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-24T14:54:12.6090151Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-24T14:54:12.6117813Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-24T14:54:12.6289848Z ##[endgroup]
+2026-10-24T14:54:12.6480406Z ##[group]Run actions/setup-node@v4
+2026-10-24T14:54:12.6480640Z with:
+2026-10-24T14:54:12.6480815Z   node-version: 24
+2026-10-24T14:54:12.6480993Z   cache: npm
+2026-10-24T14:54:12.6481165Z   always-auth: false
+2026-10-24T14:54:12.6481347Z   check-latest: false
+2026-10-24T14:54:12.6482869Z   token: ***
+2026-10-24T14:54:12.6483054Z env:
+2026-10-24T14:54:12.6483221Z   CTS_CORE_STATE: off
+2026-10-24T14:54:12.6483439Z   CTS_CORE_AUTOSTART: 0
+2026-10-24T14:54:12.6483626Z   CTS_CORE_VARIANTS: 0
+2026-10-24T14:54:12.6483809Z   CTS_CORE_COMPARE: 0
+2026-10-24T14:54:12.6483990Z   CTS_CORE_WORKERS: 4
+2026-10-24T14:54:12.6484167Z   CTS_CORE_LIVE: 0
+2026-10-24T14:54:12.6484346Z   CTS_CORE_MEM_SOFT_MB: 2500
+2026-10-24T14:54:12.6484543Z   CTS_CORE_MEM_HARD_MB: 1200
+2026-10-24T14:54:12.6484734Z   MALLOC_ARENA_MAX: 2
+2026-10-24T14:54:12.6484923Z   MALLOC_MMAP_THRESHOLD_: 1048576
+2026-10-24T14:54:12.6485123Z   DATABASE_URL: 
+2026-10-24T14:54:12.6485292Z   TZ: UTC
+2026-10-24T14:54:12.6485481Z ##[endgroup]
+2026-10-24T14:54:12.7382675Z (node:2143) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-24T14:54:12.7384179Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-24T14:54:12.7388396Z Found in cache @ /opt/hostedtoolcache/node/24.21.0/x64
+2026-10-24T14:54:12.7389154Z ##[group]Environment details
+2026-10-24T14:54:12.9954293Z node: v24.21.0
+2026-10-24T14:54:12.9954655Z npm: 11.19.0
+2026-10-24T14:54:12.9954816Z yarn: 1.22.22
+2026-10-24T14:54:12.9955534Z ##[endgroup]
+2026-10-24T14:54:12.9983109Z [command]/opt/hostedtoolcache/node/24.21.0/x64/bin/npm config get cache
+2026-10-24T14:54:13.1363394Z /home/runner/.npm
+2026-10-24T14:54:13.2955677Z Cache hit for: node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df
+2026-10-24T14:54:13.3059021Z (node:2143) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-24T14:54:14.4296185Z Received 81556098 of 85750402 (95.1%), 77.7 MBs/sec
+2026-10-24T14:54:14.4780352Z Received 85750402 of 85750402 (100.0%), 78.0 MBs/sec
+2026-10-24T14:54:14.4781057Z Cache Size: ~82 MB (85750402 B)
+2026-10-24T14:54:14.4809934Z [command]/usr/bin/tar -xf /home/runner/work/_temp/bd89cc57-8614-4f22-8596-3b5ab62f64f2/cache.tzst -P -C /home/runner/work/CTS-A-O/CTS-A-O --use-compress-program unzstd
+2026-10-24T14:54:14.6234249Z Cache restored successfully
+2026-10-24T14:54:14.6278860Z Cache restored from key: node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df
+2026-10-24T14:54:14.6495410Z ##[group]Run mkdir -p runs/exact-signal-study-ci/checks/logs
+2026-10-24T14:54:14.6495809Z [36;1mmkdir -p runs/exact-signal-study-ci/checks/logs[0m
+2026-10-24T14:54:14.6496148Z [36;1mnpm ci --ignore-scripts 2>&1 | tee runs/exact-signal-study-ci/checks/logs/install.log[0m
+2026-10-24T14:54:14.6706777Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-24T14:54:14.6707058Z env:
+2026-10-24T14:54:14.6707208Z   CTS_CORE_STATE: off
+2026-10-24T14:54:14.6707347Z   CTS_CORE_AUTOSTART: 0
+2026-10-24T14:54:14.6707482Z   CTS_CORE_VARIANTS: 0
+2026-10-24T14:54:14.6707848Z   CTS_CORE_COMPARE: 0
+2026-10-24T14:54:14.6708022Z   CTS_CORE_WORKERS: 4
+2026-10-24T14:54:14.6708143Z   CTS_CORE_LIVE: 0
+2026-10-24T14:54:14.6708287Z   CTS_CORE_MEM_SOFT_MB: 2500
+2026-10-24T14:54:14.6708446Z   CTS_CORE_MEM_HARD_MB: 1200
+2026-10-24T14:54:14.6708588Z   MALLOC_ARENA_MAX: 2
+2026-10-24T14:54:14.6708724Z   MALLOC_MMAP_THRESHOLD_: 1048576
+2026-10-24T14:54:14.6708909Z   DATABASE_URL: 
+2026-10-24T14:54:14.6709122Z   TZ: UTC
+2026-10-24T14:54:14.6709251Z ##[endgroup]
+2026-10-24T14:54:18.8909584Z npm warn deprecated recharts@2.15.4: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
+2026-10-24T14:54:19.0485231Z npm warn deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+2026-10-24T14:54:20.2113597Z 
+2026-10-24T14:54:20.2114393Z added 423 packages, and audited 424 packages in 5s
+2026-10-24T14:54:20.2114661Z 
+2026-10-24T14:54:20.2114802Z 94 packages are looking for funding
+2026-10-24T14:54:20.2115089Z   run `npm fund` for details
+2026-10-24T14:54:20.2270517Z 
+2026-10-24T14:54:20.2271747Z 2 high severity vulnerabilities
+2026-10-24T14:54:20.2272006Z 
+2026-10-24T14:54:20.2272148Z To address all issues, run:
+2026-10-24T14:54:20.2272396Z   npm audit fix
+2026-10-24T14:54:20.2272510Z 
+2026-10-24T14:54:20.2272657Z Run `npm audit` for details.
+2026-10-24T14:54:20.3064777Z ##[group]Run npm run typecheck 2>&1 | tee runs/exact-signal-study-ci/checks/logs/typecheck.log
+2026-10-24T14:54:20.3065152Z [36;1mnpm run typecheck 2>&1 | tee runs/exact-signal-study-ci/checks/logs/typecheck.log[0m
+2026-10-24T14:54:20.3120817Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-24T14:54:20.3121027Z env:
+2026-10-24T14:54:20.3121148Z   CTS_CORE_STATE: off
+2026-10-24T14:54:20.3121274Z   CTS_CORE_AUTOSTART: 0
+2026-10-24T14:54:20.3121401Z   CTS_CORE_VARIANTS: 0
+2026-10-24T14:54:20.3121522Z   CTS_CORE_COMPARE: 0
+2026-10-24T14:54:20.3121640Z   CTS_CORE_WORKERS: 4
+2026-10-24T14:54:20.3121951Z   CTS_CORE_LIVE: 0
+2026-10-24T14:54:20.3122073Z   CTS_CORE_MEM_SOFT_MB: 2500
+2026-10-24T14:54:20.3122206Z   CTS_CORE_MEM_HARD_MB: 1200
+2026-10-24T14:54:20.3122342Z   MALLOC_ARENA_MAX: 2
+2026-10-24T14:54:20.3122470Z   MALLOC_MMAP_THRESHOLD_: 1048576
+2026-10-24T14:54:20.3122610Z   DATABASE_URL: 
+2026-10-24T14:54:20.3122720Z   TZ: UTC
+2026-10-24T14:54:20.3122860Z ##[endgroup]
+2026-10-24T14:54:20.3846899Z 
+2026-10-24T14:54:20.3847699Z > typecheck
+2026-10-24T14:54:20.3848030Z > tsc --noEmit
+2026-10-24T14:54:20.3848162Z 
+2026-10-24T14:54:30.7044566Z ##[group]Run npm run build 2>&1 | tee runs/exact-signal-study-ci/checks/logs/build.log
+2026-10-24T14:54:30.7044907Z [36;1mnpm run build 2>&1 | tee runs/exact-signal-study-ci/checks/logs/build.log[0m
+2026-10-24T14:54:30.7099725Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-24T14:54:30.7099940Z env:
+2026-10-24T14:54:30.7100064Z   CTS_CORE_STATE: off
+2026-10-24T14:54:30.7100192Z   CTS_CORE_AUTOSTART: 0
+2026-10-24T14:54:30.7100320Z   CTS_CORE_VARIANTS: 0
+2026-10-24T14:54:30.7100466Z   CTS_CORE_COMPARE: 0
+2026-10-24T14:54:30.7100589Z   CTS_CORE_WORKERS: 4
+2026-10-24T14:54:30.7100705Z   CTS_CORE_LIVE: 0
+2026-10-24T14:54:30.7100833Z   CTS_CORE_MEM_SOFT_MB: 2500
+2026-10-24T14:54:30.7100969Z   CTS_CORE_MEM_HARD_MB: 1200
+2026-10-24T14:54:30.7101100Z   MALLOC_ARENA_MAX: 2
+2026-10-24T14:54:30.7101227Z   MALLOC_MMAP_THRESHOLD_: 1048576
+2026-10-24T14:54:30.7101371Z   DATABASE_URL: 
+2026-10-24T14:54:30.7101485Z   TZ: UTC
+2026-10-24T14:54:30.7101596Z ##[endgroup]
+2026-10-24T14:54:30.7825294Z 
+2026-10-24T14:54:30.7826018Z > build
+2026-10-24T14:54:30.7826680Z > node scripts/with-app-env.mjs vite build && npm run build:core-worker && npm run db:migrate
+2026-10-24T14:54:30.7827035Z 
+2026-10-24T14:54:31.3481717Z [info] [nitro:vercel] Using `nodejs24.x` runtime.
+2026-10-24T14:54:31.3482338Z [info] [nitro:vercel] Using `web` entry format.
+2026-10-24T14:54:31.3540834Z [33mBoth esbuild and oxc options were set. oxc options will be used and esbuild options will be ignored.[39m The following esbuild options were set: `{ legalComments: 'none' }`
+2026-10-24T14:54:31.4669171Z [36mvite v8.2.2 [32mbuilding client environment for production...[36m[39m
+2026-10-24T14:54:31.4766165Z transforming...
+2026-10-24T14:54:36.0546384Z ✓ 1955 modules transformed.
+2026-10-24T14:54:36.1125816Z rendering chunks...
+2026-10-24T14:54:36.1799075Z .vercel/output/static/assets/styles-EeajTTjQ.css              34.30 kB
+2026-10-24T14:54:36.1799880Z .vercel/output/static/assets/market-Dey82o26.js                0.07 kB
+2026-10-24T14:54:36.1800529Z .vercel/output/static/assets/trading-BlorcuKE.js               0.07 kB
+2026-10-24T14:54:36.1801140Z .vercel/output/static/assets/settings-BGxS4WrL.js              0.07 kB
+2026-10-24T14:54:36.1801756Z .vercel/output/static/assets/useRouter-VhwLfQSd.js             0.15 kB
+2026-10-24T14:54:36.1802305Z .vercel/output/static/assets/model-cost-BGXH0XjV.js            0.30 kB
+2026-10-24T14:54:36.1802977Z .vercel/output/static/assets/progression-DygnuQpx.js           0.85 kB
+2026-10-24T14:54:36.1803580Z .vercel/output/static/assets/progress-C-M_JKOX.js              0.93 kB
+2026-10-24T14:54:36.1804149Z .vercel/output/static/assets/bots-BxbyHAaK.js                  1.16 kB
+2026-10-24T14:54:36.1804669Z .vercel/output/static/assets/indication-ui-B3C4VKjb.js         1.41 kB
+2026-10-24T14:54:36.1805189Z .vercel/output/static/assets/minimal-coord-iDZCDKap.js         1.42 kB
+2026-10-24T14:54:36.1806087Z .vercel/output/static/assets/execution-summary-B-eCJabb.js     1.54 kB
+2026-10-24T14:54:36.1806630Z .vercel/output/static/assets/matrix-XYxV11P2.js                2.35 kB
+2026-10-24T14:54:36.1807150Z .vercel/output/static/assets/signal-units-D-sbB0bl.js          2.69 kB
+2026-10-24T14:54:36.1807791Z .vercel/output/static/assets/compare-D9Fb5LC-.js               3.84 kB
+2026-10-24T14:54:36.1808203Z .vercel/output/static/assets/promotion-evidence-CoTNMxno.js    4.42 kB
+2026-10-24T14:54:36.1808525Z .vercel/output/static/assets/results-92YFA6bA.js               4.77 kB
+2026-10-24T14:54:36.1809092Z .vercel/output/static/assets/config._id-y3W_8l1_.js            5.34 kB
+2026-10-24T14:54:36.1809392Z .vercel/output/static/assets/hourly-Bdzj7OSx.js                5.78 kB
+2026-10-24T14:54:36.1809686Z .vercel/output/static/assets/config-fGpoIvs3.js                8.43 kB
+2026-10-24T14:54:36.1809994Z .vercel/output/static/assets/v2-5zOazV0m.js                    9.44 kB
+2026-10-24T14:54:36.1810296Z .vercel/output/static/assets/prehistoric-Bl-Mh8v6.js           9.88 kB
+2026-10-24T14:54:36.1810761Z .vercel/output/static/assets/relate-CGfGgKZh.js                9.92 kB
+2026-10-24T14:54:36.1811069Z .vercel/output/static/assets/link-CkKc5ylV.js                 11.26 kB
+2026-10-24T14:54:36.1811392Z .vercel/output/static/assets/preset-settings-DcP5jcyz.js      11.73 kB
+2026-10-24T14:54:36.1811717Z .vercel/output/static/assets/engine-DVrwA4n-.js               11.90 kB
+2026-10-24T14:54:36.1812048Z .vercel/output/static/assets/v2-Bzznx7QA.js                   14.10 kB
+2026-10-24T14:54:36.1812380Z .vercel/output/static/assets/signal-config-BZhPvH24.js        14.91 kB
+2026-10-24T14:54:36.1812711Z .vercel/output/static/assets/charts-BiE6HSJc.js               17.09 kB
+2026-10-24T14:54:36.1813041Z .vercel/output/static/assets/trading-Bd9W3scC.js              18.26 kB
+2026-10-24T14:54:36.1813365Z .vercel/output/static/assets/ui-XsfU_ALq.js                   18.52 kB
+2026-10-24T14:54:36.1813720Z .vercel/output/static/assets/presets-QQjKnXW8.js              19.54 kB
+2026-10-24T14:54:36.1837846Z .vercel/output/static/assets/statistics-CqyGl0da.js           22.65 kB
+2026-10-24T14:54:36.1838370Z .vercel/output/static/assets/stages-QW6AKAsW.js               22.72 kB
+2026-10-24T14:54:36.1838864Z .vercel/output/static/assets/break-config-Cl5wJNxv.js         41.46 kB
+2026-10-24T14:54:36.1839349Z .vercel/output/static/assets/jsx-runtime-D6cXz5cu.js          41.58 kB
+2026-10-24T14:54:36.1839810Z .vercel/output/static/assets/registry-CerdjBJL.js             92.17 kB
+2026-10-24T14:54:36.1840277Z .vercel/output/static/assets/settings-C-8D6QfX.js            127.48 kB
+2026-10-24T14:54:36.1840772Z .vercel/output/static/assets/index-CH0nXHqb.js               351.51 kB
+2026-10-24T14:54:36.1841040Z 
+2026-10-24T14:54:36.1841675Z [32m✓ built in 4.71s[39m
+2026-10-24T14:54:36.1842189Z [33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 4.5s of this 4.7s build (97%).
+2026-10-24T14:54:36.1842952Z The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+2026-10-24T14:54:36.1843610Z   - @tailwindcss/vite:generate:build transform (90%, 4.2s, 1 call)
+2026-10-24T14:54:36.1844130Z Additional hook time came from the hooks below and from hooks under 1s.
+2026-10-24T14:54:36.1845127Z 2 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+2026-10-24T14:54:36.1845970Z   - tanstack-start-core:import-protection resolveId (5737 calls)
+2026-10-24T14:54:36.1846487Z   - tanstack-start-core::server-fn:client transform (15 calls)
+2026-10-24T14:54:36.1847122Z See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+2026-10-24T14:54:36.1847755Z [39m
+2026-10-24T14:54:36.1848173Z [36mvite v8.2.2 [32mbuilding ssr environment for production...[36m[39m
+2026-10-24T14:54:36.1899411Z transforming...
+2026-10-24T14:54:40.5579506Z ✓ 225 modules transformed.
+2026-10-24T14:54:40.5993034Z rendering chunks...
+2026-10-24T14:54:40.6316797Z node_modules/.nitro/vite/services/ssr/assets/styles-EeajTTjQ.css                      34.30 kB
+2026-10-24T14:54:40.6317669Z node_modules/.nitro/vite/services/ssr/assets/start-5Z2QO8AU.js                         0.14 kB
+2026-10-24T14:54:40.6318317Z node_modules/.nitro/vite/services/ssr/assets/market-DWxuyIC4.js                        0.19 kB
+2026-10-24T14:54:40.6318728Z node_modules/.nitro/vite/services/ssr/assets/trading-Mf8BI3QB.js                       0.20 kB
+2026-10-24T14:54:40.6319188Z node_modules/.nitro/vite/services/ssr/assets/settings-DWyqvfr9.js                      0.20 kB
+2026-10-24T14:54:40.6320067Z node_modules/.nitro/vite/services/ssr/assets/empty-plugin-adapters-D9UWiqvJ.js         0.22 kB
+2026-10-24T14:54:40.6320713Z node_modules/.nitro/vite/services/ssr/assets/rolldown-runtime-D7D4PA-g.js              0.36 kB
+2026-10-24T14:54:40.6321363Z node_modules/.nitro/vite/services/ssr/assets/signal-policy-CLNSQ6Os.js                 1.45 kB
+2026-10-24T14:54:40.6322188Z node_modules/.nitro/vite/services/ssr/assets/progression-BUW_uSrV.js                   1.77 kB
+2026-10-24T14:54:40.6322828Z node_modules/.nitro/vite/services/ssr/assets/execution-summary-Bwxc2CkM.js             2.53 kB
+2026-10-24T14:54:40.6323297Z node_modules/.nitro/vite/services/ssr/assets/signal-units-BvZY-Qjk.js                  3.14 kB
+2026-10-24T14:54:40.6323808Z node_modules/.nitro/vite/services/ssr/assets/indication-ui-DG5nFsJ4.js                 3.67 kB
+2026-10-24T14:54:40.6324197Z node_modules/.nitro/vite/services/ssr/assets/matrix-Cc-Hl-9y.js                        3.94 kB
+2026-10-24T14:54:40.6324718Z node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-CywMuqkB.js    4.31 kB
+2026-10-24T14:54:40.6325350Z node_modules/.nitro/vite/services/ssr/assets/progress-HPmQ_PqK.js                      5.27 kB
+2026-10-24T14:54:40.6325995Z node_modules/.nitro/vite/services/ssr/assets/promotion-evidence-BFDXfM0O.js            5.57 kB
+2026-10-24T14:54:40.6326636Z node_modules/.nitro/vite/services/ssr/assets/compare-WndvCmSS.js                       6.53 kB
+2026-10-24T14:54:40.6327271Z node_modules/.nitro/vite/services/ssr/assets/results-CZQcB128.js                       8.32 kB
+2026-10-24T14:54:40.6327957Z node_modules/.nitro/vite/services/ssr/assets/api-B_ap7thP.js                           8.83 kB
+2026-10-24T14:54:40.6328341Z node_modules/.nitro/vite/services/ssr/assets/config._id-D5_iWyAR.js                    9.15 kB
+2026-10-24T14:54:40.6328722Z node_modules/.nitro/vite/services/ssr/assets/v2-Czc2CYaQ.js                            9.75 kB
+2026-10-24T14:54:40.6329269Z node_modules/.nitro/vite/services/ssr/assets/hourly-Bw53nc1I.js                        9.92 kB
+2026-10-24T14:54:40.6329901Z node_modules/.nitro/vite/services/ssr/assets/live-record-DoZRS180.js                  11.17 kB
+2026-10-24T14:54:40.6330538Z node_modules/.nitro/vite/services/ssr/assets/live-validation-D9NSzn03.js              14.84 kB
+2026-10-24T14:54:40.6331176Z node_modules/.nitro/vite/services/ssr/assets/prehistoric-CeCP3PeT.js                  15.38 kB
+2026-10-24T14:54:40.6331816Z node_modules/.nitro/vite/services/ssr/assets/engine-DJbcHBUp.js                       19.66 kB
+2026-10-24T14:54:40.6332355Z node_modules/.nitro/vite/services/ssr/assets/preset-settings-DYRsJTIE.js              19.97 kB
+2026-10-24T14:54:40.6332813Z node_modules/.nitro/vite/services/ssr/assets/router-CR_mKjdb.js                       21.60 kB
+2026-10-24T14:54:40.6333197Z node_modules/.nitro/vite/services/ssr/assets/v2-C57Quj6K.js                           23.28 kB
+2026-10-24T14:54:40.6333579Z node_modules/.nitro/vite/services/ssr/assets/trading-CdYx5RwF.js                      27.46 kB
+2026-10-24T14:54:40.6333959Z node_modules/.nitro/vite/services/ssr/assets/ui-DKSDLesS.js                           27.78 kB
+2026-10-24T14:54:40.6334339Z node_modules/.nitro/vite/services/ssr/assets/charts-DnM24UBU.js                       28.77 kB
+2026-10-24T14:54:40.6334722Z node_modules/.nitro/vite/services/ssr/assets/statistics-B0EjuIXa.js                   29.95 kB
+2026-10-24T14:54:40.6335112Z node_modules/.nitro/vite/services/ssr/assets/presets-CCF5-qkr.js                      30.94 kB
+2026-10-24T14:54:40.6335497Z node_modules/.nitro/vite/services/ssr/assets/bingx.server-gjtjqnMi.js                 32.04 kB
+2026-10-24T14:54:40.6336129Z node_modules/.nitro/vite/services/ssr/assets/statistics-DzsqTaOn.js                   34.57 kB
+2026-10-24T14:54:40.6336759Z node_modules/.nitro/vite/services/ssr/assets/stages-Dw3hZT20.js                       35.27 kB
+2026-10-24T14:54:40.6337379Z node_modules/.nitro/vite/services/ssr/assets/presets-DfWOGON1.js                      37.87 kB
+2026-10-24T14:54:40.6338248Z node_modules/.nitro/vite/services/ssr/assets/live-BUGJyNFW.js                         48.33 kB
+2026-10-24T14:54:40.6338862Z node_modules/.nitro/vite/services/ssr/index.js                                        79.06 kB
+2026-10-24T14:54:40.6339238Z node_modules/.nitro/vite/services/ssr/assets/api-data-DwHxv_T4.js                     92.91 kB
+2026-10-24T14:54:40.6339718Z node_modules/.nitro/vite/services/ssr/assets/live.server-BpY5yAQ3.js                 192.82 kB
+2026-10-24T14:54:40.6340109Z node_modules/.nitro/vite/services/ssr/assets/settings-D5Tz36gS.js                    201.71 kB
+2026-10-24T14:54:40.6340504Z node_modules/.nitro/vite/services/ssr/assets/registry-C83yMO6G.js                    293.28 kB
+2026-10-24T14:54:40.6340888Z node_modules/.nitro/vite/services/ssr/assets/walkforward-CxnQYH0G.js                 417.32 kB
+2026-10-24T14:54:40.6341282Z node_modules/.nitro/vite/services/ssr/assets/runtime.server-BiJerpD1.js              550.62 kB
+2026-10-24T14:54:40.6341488Z 
+2026-10-24T14:54:40.6341837Z [32m✓ built in 4.45s[39m
+2026-10-24T14:54:40.6342167Z [33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 4.4s of this 4.4s build (98%).
+2026-10-24T14:54:40.6342615Z The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+2026-10-24T14:54:40.6343004Z   - @tailwindcss/vite:generate:build transform (94%, 4.2s, 1 call)
+2026-10-24T14:54:40.6343308Z Additional hook time came from the hooks below and from hooks under 1s.
+2026-10-24T14:54:40.6344128Z 2 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+2026-10-24T14:54:40.6344933Z   - tanstack-start-core:import-protection resolveId (717 calls)
+2026-10-24T14:54:40.6345326Z   - tanstack-start-core::server-fn:ssr transform (14 calls)
+2026-10-24T14:54:40.6345784Z See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+2026-10-24T14:54:40.6346247Z [39m
+2026-10-24T14:54:40.6346591Z [start] [nitro] Building [[35mNitro[39m] [2m(preset: `vercel`, compatibility: `2026-10-24`)[22m
+2026-10-24T14:54:40.6370278Z [success] [nitro] Generated public [36m.vercel/output/static[39m
+2026-10-24T14:54:40.6375831Z [36mvite v8.2.2 [32mbuilding nitro environment for production...[36m[39m
+2026-10-24T14:54:40.6445260Z transforming...
+2026-10-24T14:54:40.8714338Z ✓ 2028 modules transformed.
+2026-10-24T14:54:40.9954786Z rendering chunks...
+2026-10-24T14:54:41.0890258Z .vercel/output/functions/__server.func/_ssr/start-5Z2QO8AU.mjs                      0.14 kB
+2026-10-24T14:54:41.0891030Z .vercel/output/functions/__server.func/_ssr/market-DWxuyIC4.mjs                     0.21 kB
+2026-10-24T14:54:41.0891750Z .vercel/output/functions/__server.func/_ssr/trading-Mf8BI3QB.mjs                    0.22 kB
+2026-10-24T14:54:41.0892354Z .vercel/output/functions/__server.func/_ssr/settings-DWyqvfr9.mjs                   0.22 kB
+2026-10-24T14:54:41.0892947Z .vercel/output/functions/__server.func/_ssr/empty-plugin-adapters-D9UWiqvJ.mjs      0.23 kB
+2026-10-24T14:54:41.0893436Z .vercel/output/functions/__server.func/_ssr/rolldown-runtime-D7D4PA-g.mjs           0.41 kB
+2026-10-24T14:54:41.0893863Z .vercel/output/functions/__server.func/_chunks/ssr-renderer.mjs                     0.96 kB
+2026-10-24T14:54:41.0894231Z .vercel/output/functions/__server.func/_libs/hookable.mjs                           1.16 kB
+2026-10-24T14:54:41.0894608Z .vercel/output/functions/__server.func/_runtime.mjs                                 1.58 kB
+2026-10-24T14:54:41.0894976Z .vercel/output/functions/__server.func/_ssr/progression-BUW_uSrV.mjs                1.81 kB
+2026-10-24T14:54:41.0895351Z .vercel/output/functions/__server.func/_ssr/execution-summary-Bwxc2CkM.mjs          2.86 kB
+2026-10-24T14:54:41.0895726Z .vercel/output/functions/__server.func/_ssr/signal-units-BvZY-Qjk.mjs               3.13 kB
+2026-10-24T14:54:41.0896303Z .vercel/output/functions/__server.func/_ssr/indication-ui-DG5nFsJ4.mjs              3.71 kB
+2026-10-24T14:54:41.0896685Z .vercel/output/functions/__server.func/_tanstack-start-manifest_v-CywMuqkB.mjs      4.36 kB
+2026-10-24T14:54:41.0897062Z .vercel/output/functions/__server.func/_ssr/matrix-Cc-Hl-9y.mjs                     4.41 kB
+2026-10-24T14:54:41.0897433Z .vercel/output/functions/__server.func/_ssr/progress-HPmQ_PqK.mjs                   5.31 kB
+2026-10-24T14:54:41.0898000Z .vercel/output/functions/__server.func/_ssr/promotion-evidence-BFDXfM0O.mjs         6.57 kB
+2026-10-24T14:54:41.0898376Z .vercel/output/functions/__server.func/_ssr/compare-WndvCmSS.mjs                    7.69 kB
+2026-10-24T14:54:41.0898746Z .vercel/output/functions/__server.func/_ssr/api-B_ap7thP.mjs                        8.76 kB
+2026-10-24T14:54:41.0899116Z .vercel/output/functions/__server.func/_libs/h3-v2+rou3.mjs                         9.83 kB
+2026-10-24T14:54:41.0899482Z .vercel/output/functions/__server.func/_ssr/results-CZQcB128.mjs                    9.98 kB
+2026-10-24T14:54:41.0899860Z .vercel/output/functions/__server.func/_ssr/config._id-D5_iWyAR.mjs                10.91 kB
+2026-10-24T14:54:41.0900228Z .vercel/output/functions/__server.func/_ssr/live-record-DoZRS180.mjs               11.18 kB
+2026-10-24T14:54:41.0900594Z .vercel/output/functions/__server.func/_libs/lucide-react.mjs                      11.40 kB
+2026-10-24T14:54:41.0900965Z .vercel/output/functions/__server.func/_ssr/v2-Czc2CYaQ.mjs                        11.42 kB
+2026-10-24T14:54:41.0901330Z .vercel/output/functions/__server.func/_ssr/hourly-Bw53nc1I.mjs                    11.78 kB
+2026-10-24T14:54:41.0901694Z .vercel/output/functions/__server.func/_libs/tanstack__history.mjs                 12.50 kB
+2026-10-24T14:54:41.0902066Z .vercel/output/functions/__server.func/_ssr/live-validation-D9NSzn03.mjs           14.55 kB
+2026-10-24T14:54:41.0902444Z .vercel/output/functions/__server.func/_ssr/prehistoric-CeCP3PeT.mjs               17.62 kB
+2026-10-24T14:54:41.0902817Z .vercel/output/functions/__server.func/_ssr/router-CR_mKjdb.mjs                    21.17 kB
+2026-10-24T14:54:41.0903183Z .vercel/output/functions/__server.func/_libs/h3+rou3+srvx.mjs                      22.57 kB
+2026-10-24T14:54:41.0903556Z .vercel/output/functions/__server.func/_ssr/preset-settings-DYRsJTIE.mjs           22.92 kB
+2026-10-24T14:54:41.0903927Z .vercel/output/functions/__server.func/_ssr/engine-DJbcHBUp.mjs                    23.77 kB
+2026-10-24T14:54:41.0904296Z .vercel/output/functions/__server.func/_ssr/v2-C57Quj6K.mjs                        27.19 kB
+2026-10-24T14:54:41.0904657Z .vercel/output/functions/__server.func/_ssr/ui-DKSDLesS.mjs                        29.12 kB
+2026-10-24T14:54:41.0905023Z .vercel/output/functions/__server.func/_libs/@tanstack/router-core+[...].mjs       29.60 kB
+2026-10-24T14:54:41.0905420Z .vercel/output/functions/__server.func/_ssr/statistics-B0EjuIXa.mjs                29.92 kB
+2026-10-24T14:54:41.0905791Z .vercel/output/functions/__server.func/_ssr/charts-DnM24UBU.mjs                    31.92 kB
+2026-10-24T14:54:41.0906168Z .vercel/output/functions/__server.func/_ssr/bingx.server-gjtjqnMi.mjs              32.01 kB
+2026-10-24T14:54:41.0906668Z .vercel/output/functions/__server.func/index.mjs                                   33.11 kB
+2026-10-24T14:54:41.0907030Z .vercel/output/functions/__server.func/_ssr/trading-CdYx5RwF.mjs                   33.18 kB
+2026-10-24T14:54:41.0907401Z .vercel/output/functions/__server.func/_ssr/presets-CCF5-qkr.mjs                   34.99 kB
+2026-10-24T14:54:41.0907994Z .vercel/output/functions/__server.func/_ssr/presets-DfWOGON1.mjs                   37.77 kB
+2026-10-24T14:54:41.0908363Z .vercel/output/functions/__server.func/_ssr/statistics-DzsqTaOn.mjs                40.19 kB
+2026-10-24T14:54:41.0908732Z .vercel/output/functions/__server.func/_ssr/stages-Dw3hZT20.mjs                    40.98 kB
+2026-10-24T14:54:41.0909093Z .vercel/output/functions/__server.func/_ssr/live-BUGJyNFW.mjs                      48.33 kB
+2026-10-24T14:54:41.0909564Z .vercel/output/functions/__server.func/_ssr/ssr.mjs                                77.18 kB
+2026-10-24T14:54:41.0909929Z .vercel/output/functions/__server.func/_ssr/api-data-DwHxv_T4.mjs                  92.94 kB
+2026-10-24T14:54:41.0910290Z .vercel/output/functions/__server.func/_libs/zod.mjs                              159.58 kB
+2026-10-24T14:54:41.0910655Z .vercel/output/functions/__server.func/_ssr/live.server-BpY5yAQ3.mjs              192.72 kB
+2026-10-24T14:54:41.0911147Z .vercel/output/functions/__server.func/_ssr/settings-D5Tz36gS.mjs                 224.53 kB
+2026-10-24T14:54:41.0911512Z .vercel/output/functions/__server.func/_chunks/live.server.mjs                    239.70 kB
+2026-10-24T14:54:41.0912057Z .vercel/output/functions/__server.func/_ssr/runtime.server-BiJerpD1.mjs           549.20 kB
+2026-10-24T14:54:41.0912616Z .vercel/output/functions/__server.func/_ssr/walkforward-CxnQYH0G.mjs              715.56 kB
+2026-10-24T14:54:41.0912988Z .vercel/output/functions/__server.func/_libs/@tanstack/react-router+[...].mjs     776.81 kB
+2026-10-24T14:54:41.0913367Z .vercel/output/functions/__server.func/_chunks/boot.server.mjs                  1,354.75 kB
+2026-10-24T14:54:41.0913561Z 
+2026-10-24T14:54:41.0914077Z [32m✓ built in 451ms[39m
+2026-10-24T14:54:41.0915956Z [info] Generated [36m.vercel/output/nitro.json[39m
+2026-10-24T14:54:41.0918964Z [success] [nitro] You can preview this build using `npx vite preview`
+2026-10-24T14:54:41.0920152Z [success] [nitro] You can deploy this build using `npx nitro deploy --prebuilt`
+2026-10-24T14:54:41.2165456Z 
+2026-10-24T14:54:41.2166023Z > build:core-worker
+2026-10-24T14:54:41.2166306Z > node scripts/build-core-worker.mjs
+2026-10-24T14:54:41.2166434Z 
+2026-10-24T14:54:41.4311422Z [core-worker] packaged cts-core-worker.mjs in /home/runner/work/CTS-A-O/CTS-A-O/.vercel/output/functions/__server.func
+2026-10-24T14:54:41.5083823Z 
+2026-10-24T14:54:41.5084370Z > db:migrate
+2026-10-24T14:54:41.5084681Z > node scripts/migrate.mjs
+2026-10-24T14:54:41.5084894Z 
+2026-10-24T14:54:41.5434183Z [migrate] DATABASE_URL not set — skipping (the PGLite fallback migrates itself).
+2026-10-24T14:54:41.5595087Z ##[group]Run node --input-type=module <<'NODE' 2>&1 | tee runs/exact-signal-study-ci/checks/logs/worker.log
+2026-10-24T14:54:41.5595511Z [36;1mnode --input-type=module <<'NODE' 2>&1 | tee runs/exact-signal-study-ci/checks/logs/worker.log[0m
+2026-10-24T14:54:41.5595782Z [36;1mimport assert from 'node:assert/strict';[0m
+2026-10-24T14:54:41.5595974Z [36;1mimport { stat } from 'node:fs/promises';[0m
+2026-10-24T14:54:41.5596155Z [36;1mimport { join } from 'node:path';[0m
+2026-10-24T14:54:41.5596432Z [36;1mimport { coreWorkerOutputDirs, CORE_WORKER_FILENAME } from './scripts/build-core-worker.mjs';[0m
+2026-10-24T14:54:41.5596726Z [36;1mconst outputs = await coreWorkerOutputDirs();[0m
+2026-10-24T14:54:41.5596973Z [36;1massert.ok(outputs.length, 'No built Nitro Node server output found');[0m
+2026-10-24T14:54:41.5597204Z [36;1mfor (const directory of outputs) {[0m
+2026-10-24T14:54:41.5597420Z [36;1m  const file = join(directory, CORE_WORKER_FILENAME);[0m
+2026-10-24T14:54:41.5597951Z [36;1m  assert.ok((await stat(file)).isFile(), `Missing packaged worker: ${file}`);[0m
+2026-10-24T14:54:41.5598185Z [36;1m  console.log(`Verified ${file}`);[0m
+2026-10-24T14:54:41.5598337Z [36;1m}[0m
+2026-10-24T14:54:41.5598445Z [36;1mNODE[0m
+2026-10-24T14:54:41.5652565Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-24T14:54:41.5652757Z env:
+2026-10-24T14:54:41.5652874Z   CTS_CORE_STATE: off
+2026-10-24T14:54:41.5653001Z   CTS_CORE_AUTOSTART: 0
+2026-10-24T14:54:41.5653131Z   CTS_CORE_VARIANTS: 0
+2026-10-24T14:54:41.5653252Z   CTS_CORE_COMPARE: 0
+2026-10-24T14:54:41.5653373Z   CTS_CORE_WORKERS: 4
+2026-10-24T14:54:41.5653491Z   CTS_CORE_LIVE: 0
+2026-10-24T14:54:41.5653611Z   CTS_CORE_MEM_SOFT_MB: 2500
+2026-10-24T14:54:41.5653746Z   CTS_CORE_MEM_HARD_MB: 1200
+2026-10-24T14:54:41.5653882Z   MALLOC_ARENA_MAX: 2
+2026-10-24T14:54:41.5654164Z   MALLOC_MMAP_THRESHOLD_: 1048576
+2026-10-24T14:54:41.5654309Z   DATABASE_URL: 
+2026-10-24T14:54:41.5654423Z   TZ: UTC
+2026-10-24T14:54:41.5654536Z ##[endgroup]
+2026-10-24T14:54:41.5939171Z Verified /home/runner/work/CTS-A-O/CTS-A-O/.vercel/output/functions/__server.func/cts-core-worker.mjs
+2026-10-24T14:54:41.6019099Z ##[group]Run node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --test --test-concurrency=1 \
+2026-10-24T14:54:41.6019615Z [36;1mnode --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --test --test-concurrency=1 \[0m
+2026-10-24T14:54:41.6019958Z [36;1m  scripts/build-public-eval-feed.test.mjs \[0m
+2026-10-24T14:54:41.6020165Z [36;1m  scripts/run-exact-signal-study.test.mjs \[0m
+2026-10-24T14:54:41.6020360Z [36;1m  scripts/lib/session-study.test.mjs \[0m
+2026-10-24T14:54:41.6020545Z [36;1m  scripts/lib/session-dump.test.mjs \[0m
+2026-10-24T14:54:41.6020730Z [36;1m  scripts/audit-session-study.test.mjs \[0m
+2026-10-24T14:54:41.6020924Z [36;1m  scripts/core-session.test.mjs \[0m
+2026-10-24T14:54:41.6021107Z [36;1m  scripts/session-dump-consumers.test.mjs \[0m
+2026-10-24T14:54:41.6021296Z [36;1m  scripts/losing-configs.test.mjs \[0m
+2026-10-24T14:54:41.6021522Z [36;1m  scripts/core-signal-window-report.test.mjs \[0m
+2026-10-24T14:54:41.6021725Z [36;1m  scripts/eval-session-consumers.test.mjs \[0m
+2026-10-24T14:54:41.6021913Z [36;1m  scripts/eval-unit-basis.test.mjs \[0m
+2026-10-24T14:54:41.6022109Z [36;1m  scripts/eval-validation.test.mjs \[0m
+2026-10-24T14:54:41.6022292Z [36;1m  scripts/eval-gate.test.mjs \[0m
+2026-10-24T14:54:41.6022508Z [36;1m  2>&1 | tee runs/exact-signal-study-ci/checks/logs/reports-tests.log[0m
+2026-10-24T14:54:41.6075587Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-24T14:54:41.6075797Z env:
+2026-10-24T14:54:41.6075913Z   CTS_CORE_STATE: off
+2026-10-24T14:54:41.6076044Z   CTS_CORE_AUTOSTART: 0
+2026-10-24T14:54:41.6076170Z   CTS_CORE_VARIANTS: 0
+2026-10-24T14:54:41.6076303Z   CTS_CORE_COMPARE: 0
+2026-10-24T14:54:41.6076424Z   CTS_CORE_WORKERS: 4
+2026-10-24T14:54:41.6076539Z   CTS_CORE_LIVE: 0
+2026-10-24T14:54:41.6076661Z   CTS_CORE_MEM_SOFT_MB: 2500
+2026-10-24T14:54:41.6076797Z   CTS_CORE_MEM_HARD_MB: 1200
+2026-10-24T14:54:41.6076934Z   MALLOC_ARENA_MAX: 2
+2026-10-24T14:54:41.6077065Z   MALLOC_MMAP_THRESHOLD_: 1048576
+2026-10-24T14:54:41.6077206Z   DATABASE_URL: 
+2026-10-24T14:54:41.6077319Z   TZ: UTC
+2026-10-24T14:54:41.6077686Z   NODE_OPTIONS: --require /home/runner/work/CTS-A-O/CTS-A-O/scripts/lib/core-test-offline-guard.cjs
+2026-10-24T14:54:41.6077944Z ##[endgroup]
+2026-10-24T14:54:41.7151335Z ▶ frozen session independent audit
+2026-10-24T14:54:41.7152035Z   ✔ rejects unloaded trade and allocation placeholders as incomplete evidence (1.258834ms)
+2026-10-24T14:54:41.7411510Z   ✔ reconciles legacy and chunked files identically and verifies unloaded history chunks (24.111743ms)
+2026-10-24T14:54:41.7413007Z   ✔ keeps funded unit PF, weighted cash, cohorts, directions and every hour separate (0.815206ms)
+2026-10-24T14:54:41.7415035Z   ✔ never treats zero allocations as funded performance or permits duplicate allocation joins (0.521844ms)
+2026-10-24T14:54:41.7415898Z   ✔ preserves missing unit or allocation evidence as unknown and prevents pruning (0.850169ms)
+2026-10-24T14:54:41.7416836Z   ✔ proposes only adequately sampled persistent losing cells after the completed 22x24 selection audit (1.459455ms)
+2026-10-24T14:54:41.7417717Z ✔ frozen session independent audit (29.957905ms)
+2026-10-24T14:54:41.8261567Z ✔ daily archive parsing accepts official header, milliseconds/microseconds and genuine zero volume (2.394311ms)
+2026-10-24T14:54:41.8267245Z ✔ bad OHLCV, malformed rows, duplicate timestamps and invalid close boundaries fail closed (0.477969ms)
+2026-10-24T14:54:41.8271248Z ✔ full daily coverage rejects gaps, extra/short data and wrong day without filling candles (8.694686ms)
+2026-10-24T14:54:41.8275705Z ✔ official checksum must match archive bytes and exact filename (1.013575ms)
+2026-10-24T14:54:41.8282994Z ✔ UTC archive days use inclusive-exclusive bounds (0.620013ms)
+2026-10-24T14:54:42.1731078Z ▶ session CLI settings precedence
+2026-10-24T14:54:42.1738711Z   ✔ applies --focus all after a frozen --settings focus (2.958229ms)
+2026-10-24T14:54:42.1740610Z ✔ session CLI settings precedence (4.732247ms)
+2026-10-24T14:54:42.1741164Z ▶ immutable minute book lookup cache
+2026-10-24T14:54:42.1742801Z   ✔ caches each order and each minute-symbol including zero and missing prices (2.966111ms)
+2026-10-24T14:54:42.1745541Z   ✔ keeps the production minute loop's order, volume, missing-price and unknown-allocation arithmetic (5.65139ms)
+2026-10-24T14:54:42.1747874Z   ✔ keeps secondary capped and uncapped minute passes independent with the legacy multiplication order (3.447485ms)
+2026-10-24T14:54:42.1751669Z ✔ immutable minute book lookup cache (12.823716ms)
+2026-10-24T14:54:43.4700406Z ▶ session CLI sidecar replay preserves complete evidence
+2026-10-24T14:54:43.4700955Z   ✔ matches legacy report data and unit-row SHA while retaining all physical validation history (1305.001808ms)
+2026-10-24T14:54:43.8650742Z   ✔ fails replay when a tape chunk is corrupted instead of skipping stage evidence (394.894194ms)
+2026-10-24T14:54:53.0444465Z   ✔ still fails the stage check when valid sidecar data disagrees with an executed unit return (335.903805ms)
+2026-10-24T14:54:53.0446402Z ✔ session CLI sidecar replay preserves complete evidence (2036.536724ms)
+2026-10-24T14:54:53.0446852Z ▶ session CLI background comparison policy
+2026-10-24T14:54:53.0447367Z   ✔ defaults off before runtime startup and preserves explicit diagnostic opt-in (826.634889ms)
+2026-10-24T14:54:53.0447962Z ✔ session CLI background comparison policy (826.794239ms)
+2026-10-24T14:54:53.0456359Z ▶ session reports: return PF primary, simulated provenance
+2026-10-24T14:54:53.0471066Z   ✔ prints CLI help without starting a simulated session (273.449794ms)
+2026-10-24T14:54:53.0471514Z   ✔ reports both ordinary and Signal Exit orders under the independent Exit range (322.826012ms)
+2026-10-24T14:54:53.0471983Z   ✔ keeps first simulated-step seats distinct from the later paper selection in every output (307.194194ms)
+2026-10-24T14:54:53.0472423Z   ✔ reports offline source metadata and never invents a provider for legacy dumps (616.790474ms)
+2026-10-24T14:54:53.0472857Z   ✔ reports the configured Signal horizon separately from available input and engine prehistory (309.932852ms)
+2026-10-24T14:54:53.0473311Z   ✔ rejects replay preload without a cached feed and both explicit replay boundaries before startup (832.631162ms)
+2026-10-24T14:54:53.0473726Z   ✔ reports an empty Base run as unavailable PF with passing consistency checks (301.507377ms)
+2026-10-24T14:54:53.0474081Z   ✔ checks engine config sets separately from active Signal tapes (298.799356ms)
+2026-10-24T14:54:53.0476501Z   ✔ counts the separately recorded Signal Exit Base pass in legacy replay coverage (306.049448ms)
+2026-10-24T14:54:53.0490769Z   ✔ reports measured no-loss PF separately from the finite Base gate score and labels later funnel stages (298.357926ms)
+2026-10-24T14:54:53.0491571Z   ✔ reports the paper Live last-N gate separately from walk-forward order results (316.95307ms)
+2026-10-24T14:54:53.0492190Z   ✔ keeps equal current range counts labeled as independent measurements (314.522926ms)
+2026-10-24T14:54:53.0492773Z   ✔ marks equal legacy counts as copied when range provenance is absent (305.512164ms)
+2026-10-24T14:54:53.0493447Z   ✔ a type with only zero-funded closes retains virtual hourly cells without inventing funded coverage (320.544226ms)
+2026-10-24T14:54:53.0494200Z   ✔ chunk-allocations preserves complete allocation evidence without enabling Signal research (324.566219ms)
+2026-10-24T14:54:53.0494974Z   ✔ zeros floating-point cap residue before cash/unit allocation and records the original ghost amount (318.702956ms)
+2026-10-24T14:54:53.0495745Z   ✔ keeps return PF primary across JSON, Markdown, write-up and the rendered HTML headline (324.721293ms)
+2026-10-24T14:54:53.0496711Z   ✔ the uncapped comparison uses return PF first on the same closed-order sample (330.627068ms)
+2026-10-24T14:54:53.0497415Z   ✔ removes the execution volume multiple from primary PF while retaining sized cash results (324.746476ms)
+2026-10-24T14:54:53.0498532Z   ✔ does not report a fabricated primary PF when an execution multiplier is invalid (323.95479ms)
+2026-10-24T14:54:53.0499154Z ✔ session reports: return PF primary, simulated provenance (7073.923278ms)
+2026-10-24T14:54:53.0499682Z ▶ session qualification matches the runtime's full indication rules
+2026-10-24T14:54:53.0502118Z   ✔ matches actual runtime admission, Tactic 1.1, range floors and absent own-cell fallback (1.929702ms)
+2026-10-24T14:54:53.0502883Z   ✔ uses runtime Base-set gates, sample/DD gates and the no-loss score rather than infinity (0.362685ms)
+2026-10-24T14:54:53.0503529Z   ✔ records every full indication's effective validation minimum without first-row bias (0.190046ms)
+2026-10-24T14:54:53.0504254Z   ✔ renders mixed current thresholds and marks historical aggregates as unverified without requalifying them (640.206765ms)
+2026-10-24T14:54:53.0504995Z   ✔ discloses partial return normalization without changing or certifying missing multipliers (0.229896ms)
+2026-10-24T14:54:53.0505784Z   ✔ retains legacy variant/preset aggregates while withholding an unrecorded primary unit PF (296.54831ms)
+2026-10-24T14:54:53.0518987Z ✔ session qualification matches the runtime's full indication rules (939.852924ms)
+2026-10-24T14:54:53.3670939Z ✔ full tape dumps stream never-qualified own history without changing qualified outcomes (24.001794ms)
+2026-10-24T14:54:53.3672607Z ✔ opening counts include endpoint-held and endpoint-entered orders while separating zero funding (301.308895ms)
+2026-10-24T14:54:53.5801028Z {
+2026-10-24T14:54:53.5801419Z   "out": "/tmp/cts-signal-report-reader-Hgaytn/legacy/out",
+2026-10-24T14:54:53.5801642Z   "files": [
+2026-10-24T14:54:53.5801794Z     "signals-six-hour-summary.json",
+2026-10-24T14:54:53.5801981Z     "signals-six-hour-report.md",
+2026-10-24T14:54:53.5802204Z     "signals-hourly-types.csv",
+2026-10-24T14:54:53.5802404Z     "signals-planned-hourly-types-diagnostic.csv",
+2026-10-24T14:54:53.5802613Z     "signals-hourly-account-book.csv",
+2026-10-24T14:54:53.5802833Z     "signals-planned-hourly-flows-diagnostic.csv",
+2026-10-24T14:54:53.5803043Z     "signals-funded-open-endpoint-marks.csv",
+2026-10-24T14:54:53.5803274Z     "signals-planned-open-endpoint-marks-diagnostic.csv",
+2026-10-24T14:54:53.5803490Z     "signals-type-range-lane-side.csv",
+2026-10-24T14:54:53.5803672Z     "signals-source-range-lane-side.csv",
+2026-10-24T14:54:53.5803892Z     "signals-planned-type-range-lane-side-diagnostic.csv",
+2026-10-24T14:54:53.5804115Z     "signals-planned-trades-diagnostic.csv",
+2026-10-24T14:54:53.5804312Z     "signals-hourly-type-range-lane-side.csv",
+2026-10-24T14:54:53.5804503Z     "signals-all-configurations.csv",
+2026-10-24T14:54:53.5804712Z     "signals-requested-to-effective-configurations.csv",
+2026-10-24T14:54:53.5804922Z     "signals-settled-trades.csv",
+2026-10-24T14:54:53.5805087Z     "signals-stage-progress.csv",
+2026-10-24T14:54:53.5805260Z     "whole-system-book-allocations.csv",
+2026-10-24T14:54:53.5805442Z     "signals-base-pair-diagnostics.csv",
+2026-10-24T14:54:53.5805618Z     "signals-source-catalog.csv",
+2026-10-24T14:54:53.5805799Z     "signals-frozen-protocol.json"
+2026-10-24T14:54:53.5805942Z   ],
+2026-10-24T14:54:53.5806052Z   "closes": 2,
+2026-10-24T14:54:53.5806173Z   "returnPf": "2.00",
+2026-10-24T14:54:53.5806296Z   "long": 1,
+2026-10-24T14:54:53.5806404Z   "short": 1,
+2026-10-24T14:54:53.5806518Z   "configsSides": 2,
+2026-10-24T14:54:53.5806648Z   "hourlyTypeRows": 18,
+2026-10-24T14:54:53.5806782Z   "hourlyDetailRows": 72,
+2026-10-24T14:54:53.5806914Z   "inputHashes": {
+2026-10-24T14:54:53.5807034Z     "raw": {
+2026-10-24T14:54:53.5807251Z       "sha256": "96f3fe3d793a3385e7f38deb9a7084f2d07da870fad05c84bfee1b1b6be99a62",
+2026-10-24T14:54:53.5807476Z       "bytes": 2757
+2026-10-24T14:54:53.5807761Z     },
+2026-10-24T14:54:53.5808353Z     "book": {
+2026-10-24T14:54:53.5808572Z       "sha256": "a366430bb52cc2ea0afada64ccc6c68703d78caaa3e657909eedbde6dbb7539c",
+2026-10-24T14:54:53.5808797Z       "bytes": 877
+2026-10-24T14:54:53.5808948Z     },
+2026-10-24T14:54:53.5809113Z     "protocol": {
+2026-10-24T14:54:53.5809605Z       "sha256": "45e299c24ec1f7f8b2e645834cc7a31373fa98d26004f6c72724dfa4bf0db9c8",
+2026-10-24T14:54:53.5809825Z       "bytes": 128
+2026-10-24T14:54:53.5809937Z     }
+2026-10-24T14:54:53.5810039Z   }
+2026-10-24T14:54:53.5810144Z }
+2026-10-24T14:54:53.5945492Z {
+2026-10-24T14:54:53.5945920Z   "out": "/tmp/cts-signal-report-reader-Hgaytn/chunked/out",
+2026-10-24T14:54:53.5946256Z   "files": [
+2026-10-24T14:54:53.5946493Z     "signals-six-hour-summary.json",
+2026-10-24T14:54:53.5946786Z     "signals-six-hour-report.md",
+2026-10-24T14:54:53.5947059Z     "signals-hourly-types.csv",
+2026-10-24T14:54:53.5947390Z     "signals-planned-hourly-types-diagnostic.csv",
+2026-10-24T14:54:53.5947866Z     "signals-hourly-account-book.csv",
+2026-10-24T14:54:53.5948226Z     "signals-planned-hourly-flows-diagnostic.csv",
+2026-10-24T14:54:53.5948590Z     "signals-funded-open-endpoint-marks.csv",
+2026-10-24T14:54:53.5948977Z     "signals-planned-open-endpoint-marks-diagnostic.csv",
+2026-10-24T14:54:53.5949355Z     "signals-type-range-lane-side.csv",
+2026-10-24T14:54:53.5949666Z     "signals-source-range-lane-side.csv",
+2026-10-24T14:54:53.5950033Z     "signals-planned-type-range-lane-side-diagnostic.csv",
+2026-10-24T14:54:53.5950414Z     "signals-planned-trades-diagnostic.csv",
+2026-10-24T14:54:53.5950747Z     "signals-hourly-type-range-lane-side.csv",
+2026-10-24T14:54:53.5951069Z     "signals-all-configurations.csv",
+2026-10-24T14:54:53.5951421Z     "signals-requested-to-effective-configurations.csv",
+2026-10-24T14:54:53.5951762Z     "signals-settled-trades.csv",
+2026-10-24T14:54:53.5952039Z     "signals-stage-progress.csv",
+2026-10-24T14:54:53.5952328Z     "whole-system-book-allocations.csv",
+2026-10-24T14:54:53.5952633Z     "signals-base-pair-diagnostics.csv",
+2026-10-24T14:54:53.5952935Z     "signals-source-catalog.csv",
+2026-10-24T14:54:53.5953212Z     "signals-frozen-protocol.json"
+2026-10-24T14:54:53.5953446Z   ],
+2026-10-24T14:54:53.5953622Z   "closes": 2,
+2026-10-24T14:54:53.5953818Z   "returnPf": "2.00",
+2026-10-24T14:54:53.5954020Z   "long": 1,
+2026-10-24T14:54:53.5954194Z   "short": 1,
+2026-10-24T14:54:53.5954383Z   "configsSides": 2,
+2026-10-24T14:54:53.5954589Z   "hourlyTypeRows": 18,
+2026-10-24T14:54:53.5954805Z   "hourlyDetailRows": 72,
+2026-10-24T14:54:53.5955022Z   "inputHashes": {
+2026-10-24T14:54:53.5955195Z     "raw": {
+2026-10-24T14:54:53.5955553Z       "sha256": "b2203b0674bada88cac7a63a57c168bdbf3a239ce6bbbaebb0c00466648a581f",
+2026-10-24T14:54:53.5955942Z       "bytes": 3269
+2026-10-24T14:54:53.5956128Z     },
+2026-10-24T14:54:53.5956296Z     "book": {
+2026-10-24T14:54:53.5956649Z       "sha256": "6e3ce568d6c6ace37894cd5f67885a4237e384161aca3b789d47e410bb7bdc37",
+2026-10-24T14:54:53.5957012Z       "bytes": 1153
+2026-10-24T14:54:53.5957197Z     },
+2026-10-24T14:54:53.5957368Z     "protocol": {
+2026-10-24T14:54:53.5957865Z       "sha256": "45e299c24ec1f7f8b2e645834cc7a31373fa98d26004f6c72724dfa4bf0db9c8",
+2026-10-24T14:54:53.5958202Z       "bytes": 128
+2026-10-24T14:54:53.5958374Z     }
+2026-10-24T14:54:53.5958536Z   }
+2026-10-24T14:54:53.5958693Z }
+2026-10-24T14:54:53.5988133Z ✔ Signal report reader preserves funded long/short cohorts and physical provenance with sidecars (41.838129ms)
+2026-10-24T14:54:53.6041347Z ✔ Signal report verifies even unloaded raw validation sidecars before publishing a cohort (4.462426ms)
+2026-10-24T14:54:53.6048410Z ✔ hourly type PF aggregates unit-return components and preserves separate cash PF (0.618991ms)
+2026-10-24T14:54:53.6057453Z ✔ unknown unit evidence invalidates the complete hourly sample and no-loss stays labeled (0.307723ms)
+2026-10-24T14:54:53.6058237Z ✔ source, range, kind and direction detail retains losing and empty siblings (0.210146ms)
+2026-10-24T14:55:00.1654256Z ✔ a span that is not a multiple of 48 h: the last window's session runs over that window only (1.122147ms)
+2026-10-24T14:55:00.1656102Z ✔ the split defaults to D1's only on D1; another span is cut inside it, both halves non-empty (0.518119ms)
+2026-10-24T14:55:00.1657278Z ✔ the warm-up: the engine's 100 h, and with historic signal configs the 96 h lookback when that is longer (0.11272ms)
+2026-10-24T14:55:00.1658297Z ✔ a lane's volatility rank is valid after 336 of its own bars: 5.6 h on 1m, 28 h on 5m, 84 h on 15m, 168 h on 30m (0.248223ms)
+2026-10-24T14:55:00.1658923Z ✔ the feed's start is read from the series' first bars (0.244808ms)
+2026-10-24T14:55:00.1659659Z ✔ eval-gate --plan: per-window run lengths, a split inside the span, and the windows short of warm-up (546.407991ms)
+2026-10-24T14:55:00.1660570Z ✔ the feed's start read in chunks equals the whole-file reading, a chunk boundary at every offset of a key (35.987419ms)
+2026-10-24T14:55:00.1661788Z ✔ eval-gate keeps every window's result in window order when the windows finish out of order (2752.935128ms)
+2026-10-24T14:55:00.1662766Z ✔ eval-gate without --toggles / --window-h gives the session today's arguments byte for byte; --toggles merges over the eval's (1090.997476ms)
+2026-10-24T14:55:00.1663601Z ✔ eval-gate --window-h: N-hour windows, each its own session over its own hours (1253.491176ms)
+2026-10-24T14:55:00.1664580Z ✔ eval-gate's funnel line prints the forward PF over the run (after Base, validated at the start) beside the in-sample one (274.234565ms)
+2026-10-24T14:55:00.1665596Z ✔ eval-gate with Block on: per range the volume-weighted PF and the unit PF of the raised and unraised orders (542.077957ms)
+2026-10-24T14:55:02.5161300Z ✔ eval-gate reads flat and chunked session cohorts with identical losses, marks, and PF (564.122576ms)
+2026-10-24T14:55:02.5165079Z ✔ eval-families reads every flat/chunked window and retains endpoint losses (1197.110217ms)
+2026-10-24T14:55:02.5165914Z ✔ positive-types actual CLI reports the same two settled trades from flat/chunked dumps (535.49647ms)
+2026-10-24T14:55:02.9734952Z ✔ modeled orders need a recorded multiplier or verified unit return (0.959703ms)
+2026-10-24T14:55:02.9735565Z ✔ a marked-open order keeps its multiple through windowOrders, so it scores at one unit too (0.694665ms)
+2026-10-24T14:55:02.9736425Z ✔ open marks retain explicit unknown unit evidence and unknown mark values instead of dropping their samples (0.196065ms)
+2026-10-24T14:55:02.9737642Z ✔ unknown normalized returns stay unscored after JSON null conversion and retain every variant sample (0.676998ms)
+2026-10-24T14:55:02.9738754Z ✔ each evaluator PF helper rejects unknown numeric evidence before it can become a no-loss score (2.986631ms)
+2026-10-24T14:55:02.9741440Z ✔ eval-gate keeps invalid closed/open dump samples and marks whole primary periods and families unavailable (261.943778ms)
+2026-10-24T14:55:02.9749987Z ✔ eval-families never sends an unknown unit group or period into numeric bot-stat qualification (1.818504ms)
+2026-10-24T14:55:02.9752117Z ✔ endpoint marks retain primary unit PF/counts while absent or malformed gross-price basis withholds whole stress sample (0.907955ms)
+2026-10-24T14:55:02.9753317Z ✔ eval-families holds stress-based qualification with a known endpoint loss and retains its complete primary sample (1.106023ms)
+2026-10-24T14:55:02.9754493Z ✔ settled-only positive-types keeps its declared primary sample but withholds stress on a malformed settled exit (0.606362ms)
+2026-10-24T14:55:02.9755570Z ✔ positive-type selection holds archived stress-unavailable or missing-evidence candidates (0.697018ms)
+2026-10-24T14:55:02.9756601Z ✔ eval-gate family stress cannot substitute a profitable closed subset for a known endpoint mark (0.79821ms)
+2026-10-24T14:55:03.1269049Z ✔ validation CLI retains identical hourly checks and executed cohorts for legacy and chunked dumps (96.956844ms)
+2026-10-24T14:55:03.1769503Z ✔ validation CLI rejects corrupt validation chunks instead of reporting zero steps (49.965953ms)
+2026-10-24T14:55:03.2455659Z ✔ chunked dump round-trips exact config ordering, empty tapes, split tapes, and UTF-8 rows (14.388983ms)
+2026-10-24T14:55:03.2472697Z ✔ duplicate config IDs and additional tape metadata retain their exact ordering (1.911094ms)
+2026-10-24T14:55:03.2501091Z ✔ legacy flat dumps, absent tapeTrades, and empty tapeTrades remain readable losslessly (1.590812ms)
+2026-10-24T14:55:03.3128403Z ✔ the streamed generic JSON writer preserves normal JSON serialization and escaped data (63.233481ms)
+2026-10-24T14:55:03.3149543Z ✔ streamed JSON retains special own keys and excludes inherited properties (2.122612ms)
+2026-10-24T14:55:03.3184788Z ✔ flat array sidecars reject reserved storage and prototype fields on both write and read (3.878982ms)
+2026-10-24T14:55:03.3206500Z ✔ nonfinite and missing row entries normalize exactly as legacy JSON.stringify (2.099547ms)
+2026-10-24T14:55:03.3221088Z ✔ a failed generic serialization retains the prior file and removes its temporary file (1.359314ms)
+2026-10-24T14:55:03.3238147Z ✔ a later sidecar failure preserves the prior dump and cleans earlier staged sidecars (1.745935ms)
+2026-10-24T14:55:03.3256045Z ✔ dump writes with absent or empty tape arrays retain the exact original JSON shape (1.739605ms)
+2026-10-24T14:55:03.3294115Z ✔ the async tape iterator reconstructs each complete tape, including empty tapes (3.834465ms)
+2026-10-24T14:55:03.3322734Z ✔ a metadata-only read leaves the sidecar manifest without loading chunk files (2.667611ms)
+2026-10-24T14:55:03.3466649Z ✔ the bounded verifier checks complete sidecar counts without hydrating or changing trade order (14.02723ms)
+2026-10-24T14:55:03.3513355Z ✔ projected reads can verify unloaded validation and reject its corrupted physical evidence (4.851169ms)
+2026-10-24T14:55:03.3549349Z ✔ the sidecar writer accepts an iterable without requiring an expanded tape array (3.611559ms)
+2026-10-24T14:55:03.3638404Z ✔ validation history splits checks losslessly and preserves empty steps and metadata (8.618639ms)
+2026-10-24T14:55:03.3654023Z ✔ flat executed trade sidecars retain exact closeIndex and settlement ordering (1.850432ms)
+2026-10-24T14:55:03.3681028Z ✔ reader rejects altered chunk sha256 (2.64167ms)
+2026-10-24T14:55:03.3709719Z ✔ reader rejects altered chunk bytes (2.84338ms)
+2026-10-24T14:55:03.3738377Z ✔ reader rejects altered chunk records (2.912229ms)
+2026-10-24T14:55:03.3764958Z ✔ reader rejects altered chunk tapes (2.54067ms)
+2026-10-24T14:55:03.3792523Z ✔ reader rejects altered chunk rows (2.671196ms)
+2026-10-24T14:55:03.3832277Z ✔ reader rejects altered total records (4.019173ms)
+2026-10-24T14:55:03.3876049Z ✔ reader rejects altered total tapes (4.324682ms)
+2026-10-24T14:55:03.3932994Z ✔ reader rejects altered total rows (3.8879ms)
+2026-10-24T14:55:03.3954057Z ✔ reader rejects modified sidecar bytes even when their length is unchanged (3.772581ms)
+2026-10-24T14:55:03.3985218Z ✔ reader enforces config ordinals even when changed content has a valid checksum (3.133471ms)
+2026-10-24T14:55:03.4020212Z ✔ reader enforces each tape's row offsets even when changed content has valid checksums (3.464318ms)
+2026-10-24T14:55:03.4091071Z ✔ reader validates the ordered whole-sidecar checksum (6.839302ms)
+2026-10-24T14:55:03.4119788Z ✔ reader rejects reversed chunk order rather than silently reordering tape rows (3.026094ms)
+2026-10-24T14:55:03.4145776Z ✔ reader rejects unsafe sidecar path "/tmp/foreign.jsonl" (2.571633ms)
+2026-10-24T14:55:03.4176584Z ✔ reader rejects unsafe sidecar path "../foreign.jsonl" (3.089686ms)
+2026-10-24T14:55:03.4202986Z ✔ reader rejects unsafe sidecar path "parts/../foreign.jsonl" (2.449893ms)
+2026-10-24T14:55:03.4226321Z ✔ reader rejects unsafe sidecar path "parts\\foreign.jsonl" (2.423248ms)
+2026-10-24T14:55:03.4256274Z ✔ reader rejects unsafe sidecar path "C:\\foreign.jsonl" (2.758818ms)
+2026-10-24T14:55:03.4293526Z ✔ reader rejects a relative symlink escaping the dump directory (2.764717ms)
+2026-10-24T14:55:03.4294058Z ✔ writer rejects invalid chunk byte limit 0 (0.390117ms)
+2026-10-24T14:55:03.4296661Z ✔ writer rejects invalid chunk byte limit -1 (0.23252ms)
+2026-10-24T14:55:03.4297377Z ✔ writer rejects invalid chunk byte limit 1.5 (0.170556ms)
+2026-10-24T14:55:03.4297945Z ✔ writer rejects invalid chunk byte limit 8388609 (0.170206ms)
+2026-10-24T14:55:03.4303655Z ✔ writer rejects a single row larger than the chunk bound (1.102558ms)
+2026-10-24T14:55:03.4934882Z ▶ frozen full-engine session study
+2026-10-24T14:55:03.4935376Z   ✔ rejects report sizing at preflight instead of wasting a complete history calculation (0.790598ms)
+2026-10-24T14:55:03.4941065Z   ✔ rejects unloaded execution placeholders rather than certifying an empty result (1.000434ms)
+2026-10-24T14:55:03.4941998Z   ✔ checks the actual normalized runtime before compute and records empty evidence honestly (0.946473ms)
+2026-10-24T14:55:03.4942543Z   ✔ rejects changed economic settings, time boundaries and feed bytes (1.091221ms)
+2026-10-24T14:55:03.4943633Z   ✔ rejects an incomplete symbol universe and memory fallback rather than calling them a full test (0.63218ms)
+2026-10-24T14:55:03.4945028Z   ✔ rejects stale source and out-of-scope entries (1.411562ms)
+2026-10-24T14:55:03.4949334Z   ✔ rejects a changed report funding size even when strategy settings are unchanged (0.809177ms)
+2026-10-24T14:55:03.4949954Z ✔ frozen full-engine session study (7.560837ms)
+2026-10-24T14:55:03.8140911Z ✔ Python losing-config CLI retains both directions, losing closes and PF for flat and chunked dumps (268.858005ms)
+2026-10-24T14:55:03.8701638Z ✔ research disables both optional report variants and background preset comparisons regardless of parent environment (0.584719ms)
+2026-10-24T14:55:03.8705109Z ✔ fixed chronological folds preserve20/22symbols and six evaluated prehistory hours (0.569025ms)
+2026-10-24T14:55:03.8710174Z ✔ 24h folds cannot inherit the development desk's6h simulation, and entry research preserves other gates (0.249405ms)
+2026-10-24T14:55:03.8710754Z ✔ simulation keeps exact source bounds/account and full progress while splitting report memory (0.188333ms)
+2026-10-24T14:55:03.8775857Z ✔ completed-study report provenance verifies full allocation sidecars and rejects changed rows (7.751565ms)
+2026-10-24T14:55:03.8776573Z ✔ development arms reject even one changed range, gate or walk-forward setting (0.46567ms)
+2026-10-24T14:55:03.8778530Z ✔ final window remains locked until exact matching selection conclusion exists (0.325449ms)
+2026-10-24T14:55:03.8779240Z ✔ economic source proof rejects drift and unsealed new files (1.513486ms)
+2026-10-24T14:55:03.8826791Z ✔ completed-study provenance verifies every lossless raw sidecar and rejects a changed chunk (5.37431ms)
+2026-10-24T14:55:04.1838618Z ✔ range and Block file consumers preserve trades, funding, validation and histories for flat and sidecar evidence (29.835407ms)
+2026-10-24T14:55:04.1964542Z ℹ tests 140
+2026-10-24T14:55:04.1964812Z ℹ suites 8
+2026-10-24T14:55:04.1965012Z ℹ pass 140
+2026-10-24T14:55:04.1965200Z ℹ fail 0
+2026-10-24T14:55:04.1965393Z ℹ cancelled 0
+2026-10-24T14:55:04.1965601Z ℹ skipped 0
+2026-10-24T14:55:04.1965794Z ℹ todo 0
+2026-10-24T14:55:04.1966069Z ℹ duration_ms 22539.211648
+2026-10-24T14:55:04.2065783Z ##[group]Run node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --test --test-concurrency=1 \
+2026-10-24T14:55:04.2066303Z [36;1mnode --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --test --test-concurrency=1 \[0m
+2026-10-24T14:55:04.2066637Z [36;1m  src/core/signal-accept-index.test.ts \[0m
+2026-10-24T14:55:04.2066823Z [36;1m  src/core/signal-hist.test.ts \[0m
+2026-10-24T14:55:04.2067011Z [36;1m  src/core/pipeline/base-pair-rows.test.ts \[0m
+2026-10-24T14:55:04.2067218Z [36;1m  src/core/server/cost-default-runtime.test.ts \[0m
+2026-10-24T14:55:04.2067422Z [36;1m  src/core/server/fee-provenance.test.ts \[0m
+2026-10-24T14:55:04.2067798Z [36;1m  src/core/server/replay-backfill.test.ts \[0m
+2026-10-24T14:55:04.2067989Z [36;1m  src/core/signals-independence.test.ts \[0m
+2026-10-24T14:55:04.2068170Z [36;1m  src/core/sim/independence.test.ts \[0m
+2026-10-24T14:55:04.2068575Z [36;1m  2>&1 | tee runs/exact-signal-study-ci/checks/logs/core-tests.log[0m
+2026-10-24T14:55:04.2122263Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-24T14:55:04.2122454Z env:
+2026-10-24T14:55:04.2122574Z   CTS_CORE_STATE: off
+2026-10-24T14:55:04.2122699Z   CTS_CORE_AUTOSTART: 0
+2026-10-24T14:55:04.2122826Z   CTS_CORE_VARIANTS: 0
+2026-10-24T14:55:04.2122949Z   CTS_CORE_COMPARE: 0
+2026-10-24T14:55:04.2123067Z   CTS_CORE_WORKERS: 4
+2026-10-24T14:55:04.2123185Z   CTS_CORE_LIVE: 0
+2026-10-24T14:55:04.2123306Z   CTS_CORE_MEM_SOFT_MB: 2500
+2026-10-24T14:55:04.2123441Z   CTS_CORE_MEM_HARD_MB: 1200
+2026-10-24T14:55:04.2123569Z   MALLOC_ARENA_MAX: 2
+2026-10-24T14:55:04.2123701Z   MALLOC_MMAP_THRESHOLD_: 1048576
+2026-10-24T14:55:04.2123840Z   DATABASE_URL: 
+2026-10-24T14:55:04.2123950Z   TZ: UTC
+2026-10-24T14:55:04.2124170Z   NODE_OPTIONS: --require /home/runner/work/CTS-A-O/CTS-A-O/scripts/lib/core-test-offline-guard.cjs
+2026-10-24T14:55:04.2124425Z ##[endgroup]
+2026-10-24T14:55:04.4440933Z ✔ Base reporting distinguishes held-only empty results from qualified Wide and tagged ranges (0.914705ms)
+2026-10-24T14:55:04.8226503Z ▶ modeled position cost defaults and migration
+2026-10-24T14:55:04.8227183Z   ✔ fresh defaults use the coherent 0.15% round-trip fee and slippage model (14.025848ms)
+2026-10-24T14:55:04.8228203Z   ✔ fee-only edits derive one round-trip model value; an explicit cost stays authoritative (31.548773ms)
+2026-10-24T14:55:04.8229953Z   ✔ omitted Micro helper costs use the model default while configured range distances keep their fixed basis (0.615946ms)
+2026-10-24T14:55:04.8230738Z   ✔ v34 moves the exact former factory tuple once, including legacy preset copies (7.382059ms)
+2026-10-24T14:55:04.8231385Z   ✔ preserves custom cost, custom fee components and partial saved provenance (32.52425ms)
+2026-10-24T14:55:04.8231912Z   ✔ uses the canonical default only for unmeasured ledger fees and preserves measured fill costs (0.703147ms)
+2026-10-24T14:55:04.8232565Z ✔ modeled position cost defaults and migration (87.751323ms)
+2026-10-24T14:55:05.1597884Z ✔ hot-reloads a retained legacy fills table without certifying its zero placeholders (2.007528ms)
+2026-10-24T14:55:05.1599779Z ✔ migrates legacy zero fees as unknown, including hot reload and snapshot replacement (41.977704ms)
+2026-10-24T14:55:05.1606168Z ✔ keeps an explicit free-fee flag through journal recovery without backfilling legacy placeholders (2.080709ms)
+2026-10-24T14:55:05.1606841Z ✔ charges actual measured zero and only estimates a missing or legacy fee leg (0.541485ms)
+2026-10-24T14:55:05.1607707Z ✔ measured live cost includes confirmed free fills while legacy zero rows remain unmeasured (13.413417ms)
+2026-10-24T14:55:05.4742657Z ▶ offline replay universe backfill
+2026-10-24T14:55:05.4743700Z   ✔ starts a past 5m-distance replay through the actual ranker and keeps the clock replay-only (27.641519ms)
+2026-10-24T14:55:05.4934436Z   ✔ loads all 22 replay symbols before the first strategy compute (17.754154ms)
+2026-10-24T14:55:05.5235928Z   ✔ keeps live start progressive: the first compute sees only the first six symbols (19.921561ms)
+2026-10-24T14:55:05.5236453Z   ✔ extends every existing short-history cache across progressive batches, including young symbols (11.834343ms)
+2026-10-24T14:55:05.5399853Z   ✔ does not compute a partial replay after a reject history and retries only the missing symbol (18.55079ms)
+2026-10-24T14:55:05.5506393Z   ✔ does not compute a partial replay after a short history and retries only the missing symbol (16.067338ms)
+2026-10-24T14:55:05.5507201Z ✔ offline replay universe backfill (112.942538ms)
+2026-10-24T14:55:05.7632695Z ▶ exact Signal acceptance prefix fast path
+2026-10-24T14:55:05.7633478Z   ✔ lazily reconstructs exact causal windows, partial-close counts and forked updates without expanding every context (2.477515ms)
+2026-10-24T14:55:05.7634091Z   ✔ evicts derived groups without losing evidence or changing a reconstructed result (36.559387ms)
+2026-10-24T14:55:05.7637757Z   ✔ matches every generic prefix byte and causal window with both directions, repeated onsets and partial closes (1.562148ms)
+2026-10-24T14:55:05.7639109Z   ✔ falls back for duplicate exact configs and merges their interleaved closes with stable onset de-duplication (0.424208ms)
+2026-10-24T14:55:05.7639892Z   ✔ retains generic sorting for unordered exact tapes and pooled diagnostics (0.329095ms)
+2026-10-24T14:55:05.7640609Z   ✔ counts every close without onset evidence and leaves unit returns independent of execution volumes (0.370978ms)
+2026-10-24T14:55:05.7641405Z   ✔ retains duplicate-symbol alias aggregation and excludes retained duplicates from eligibility (0.594253ms)
+2026-10-24T14:55:05.7642037Z ✔ exact Signal acceptance prefix fast path (43.289526ms)
+2026-10-24T14:55:06.0968119Z ▶ signal historic trailing configs
+2026-10-24T14:55:06.0970864Z   ✔ keeps the pooled fitting sample separate from each config's own close minimum (6.302716ms)
+2026-10-24T14:55:06.0971876Z   ✔ applies the independent PF floor of each coordinator exit range (0.214322ms)
+2026-10-24T14:55:06.0974775Z   ✔ tags historic coordinator configs only for ranges that clear their own PF floor (7.698705ms)
+2026-10-24T14:55:06.0979342Z   ✔ the MFE of each entry: from the next bar's open over the hold, long on highs, short on lows (hand-computed) (0.235884ms)
+2026-10-24T14:55:06.0980218Z   ✔ quantiles interpolate between neighbours (0.104016ms)
+2026-10-24T14:55:06.0981174Z   ✔ caps the historic hold to one quarter of the available minimal sample (0.06675ms)
+2026-10-24T14:55:06.0982030Z   ✔ each signal gets targets at its MFE quantiles on the 0.25 % grid, every trail × stop, the floors held (85.975809ms)
+2026-10-24T14:55:06.3141432Z   ✔ historic preparation retains stage PF and stricter custom floors on local and worker paths (224.697461ms)
+2026-10-24T14:55:06.3143048Z   ✔ the tape builder builds a pair's own configs for that pair only, each its own tape (3.555516ms)
+2026-10-24T14:55:06.3146304Z   ✔ deactivates a signal trail that falls under the minimum after lane scaling (0.723347ms)
+2026-10-24T14:55:06.3147294Z   ✔ a held historic config rebuilds exactly its own id (its open position keeps its tape) (1.98224ms)
+2026-10-24T14:55:06.3149046Z   ✔ only a historic config with an open position is rebuilt; a seated one and the standard configs are not (no pile-up) (1.232383ms)
+2026-10-24T14:55:06.3149844Z   ✔ historic fitting stays on beside the complete expanded standard percent/ATR and multi-trailing grid (0.393271ms)
+2026-10-24T14:55:06.3150409Z ✔ signal historic trailing configs (334.386502ms)
+2026-10-24T14:55:06.3150837Z ▶ historic signal configs: the lookback (hist.lookbackH)
+2026-10-24T14:55:06.3151319Z   ✔ explicit unlimited lookback counts every complete historic entry (0.112539ms)
+2026-10-24T14:55:06.3151998Z   ✔ with a lookback only entries made at or after its start count: 96 h is the last few days, not the whole history (0.058689ms)
+2026-10-24T14:55:06.3152637Z ✔ historic signal configs: the lookback (hist.lookbackH) (0.243296ms)
+2026-10-24T14:55:06.6734708Z ▶ independent signal qualification
+2026-10-24T14:55:06.6735828Z   ✔ empty or losing Trailing configs cannot dilute a winning Normal type (2.257354ms)
+2026-10-24T14:55:06.6736597Z   ✔ a winning Trailing type cannot qualify its losing Normal sibling, including hedge selection (0.364989ms)
+2026-10-24T14:55:06.6737458Z   ✔ Normal and Trailing remain distinct through simulation, live filtering and seated statistics (12.127623ms)
+2026-10-24T14:55:06.6749483Z   ✔ legacy Base/discovery keys never authorize any unmeasured strategy type (0.274463ms)
+2026-10-24T14:55:06.6750285Z   ✔ malformed directions never borrow an independently qualified long or short key (4.804944ms)
+2026-10-24T14:55:06.6751193Z   ✔ an untyped recovered key supplies no execution, live or seated evidence (5.482063ms)
+2026-10-24T14:55:06.6752011Z   ✔ same-type empty or losing protects cannot deactivate an independently winning config (0.311308ms)
+2026-10-24T14:55:06.6752804Z   ✔ same-type losing protects cannot satisfy or veto another config's acceptance PF (0.875977ms)
+2026-10-24T14:55:06.6753961Z   ✔ paper seats only the exact independently active protection config (18.784152ms)
+2026-10-24T14:55:06.6754813Z   ✔ Signal last-N cannot borrow another symbol or direction even with the engine entry gate off (5.641121ms)
+2026-10-24T14:55:06.6755679Z   ✔ retained exit-only configs never reactivate or seed another config's sample (3.245359ms)
+2026-10-24T14:55:06.6756464Z   ✔ cached Signal eligibility follows an in-place transition to held-only and back (4.173975ms)
+2026-10-24T14:55:06.6757320Z   ✔ a retained activation verdict cannot replace a config's own minimum PF (4.288177ms)
+2026-10-24T14:55:06.6758258Z   ✔ winning parameter ranges and lanes cannot supply another signal set's minimum PF (0.265429ms)
+2026-10-24T14:55:06.6758940Z ✔ independent signal qualification (64.138691ms)
+2026-10-24T14:55:07.0345536Z ▶ independent configs (seatPer config)
+2026-10-24T14:55:07.0348156Z   ✔ fixed: every passing variant of one indication takes its own seat (3.896629ms)
+2026-10-24T14:55:07.0348798Z   ✔ fixed: a sibling never changes another config's seat (2.185917ms)
+2026-10-24T14:55:07.0349509Z   ✔ fixed: validation and entry last-N are isolated to each config (4.902701ms)
+2026-10-24T14:55:07.0350435Z   ✔ hourly: every passing variant of one indication takes its own seat (1.365103ms)
+2026-10-24T14:55:07.0353682Z   ✔ hourly: a sibling never changes another config's seat (1.406364ms)
+2026-10-24T14:55:07.0354387Z   ✔ hourly: validation and entry last-N are isolated to each config (1.098632ms)
+2026-10-24T14:55:07.0357373Z   ✔ DCA / Axis are judged on their own results, not against the pair's base (0.307813ms)
+2026-10-24T14:55:07.0358245Z   ✔ a config's trades are the same with and without its siblings (2.464886ms)
+2026-10-24T14:55:07.0358929Z   ✔ Block on the config's own results: the decision ignores every other position (1.231431ms)
+2026-10-24T14:55:07.0359725Z   ✔ signals on their own Block record (signalsOwn): the pooled book never raises or skips a signal (1.052352ms)
+2026-10-24T14:55:07.0360628Z   ✔ a type Block excludes (Axis) trades at its own volume, never raised or skipped by Block Active (0.358398ms)
+2026-10-24T14:55:07.0361294Z ✔ independent configs (seatPer config) (21.44993ms)
+2026-10-24T14:55:07.0362054Z ▶ held-only tapes (held by paper, no longer passing Base for their cell)
+2026-10-24T14:55:07.0363006Z   ✔ fixed: a held-only tape takes no new seat; the same tape unflagged does (0.299491ms)
+2026-10-24T14:55:07.0363788Z   ✔ hourly: a held-only tape takes no new seat; the same tape unflagged does (0.304017ms)
+2026-10-24T14:55:07.0364657Z ✔ held-only tapes (held by paper, no longer passing Base for their cell) (0.714705ms)
+2026-10-24T14:55:07.0365299Z ▶ Micro seats with independent configs
+2026-10-24T14:55:07.0365965Z   ✔ fixed: more than 200 passing Micro configs all take a seat (unlimited seats) (8.518167ms)
+2026-10-24T14:55:07.0366774Z   ✔ fixed: no Micro cap in pair mode either (the 200-seat cap is disabled) (4.324302ms)
+2026-10-24T14:55:07.0367491Z   ✔ fixed: a portfolio limit still caps Micro (2.596804ms)
+2026-10-24T14:55:07.0368865Z   ✔ hourly: more than 200 passing Micro configs all take a seat (unlimited seats) (4.787258ms)
+2026-10-24T14:55:07.0369665Z   ✔ hourly: no Micro cap in pair mode either (the 200-seat cap is disabled) (2.986961ms)
+2026-10-24T14:55:07.0370392Z   ✔ hourly: a portfolio limit still caps Micro (3.001262ms)
+2026-10-24T14:55:07.0371499Z ✔ Micro seats with independent configs (26.535586ms)
+2026-10-24T14:55:07.0373759Z ▶ orders still open at the end of the run
+2026-10-24T14:55:07.0374491Z   ✔ count in the run's PF at their mark (a losing open order is not left out), outside the closed trades (2.451366ms)
+2026-10-24T14:55:07.0392595Z   ✔ stay in the feed flagged open, never a close for the Block book, the signal guard or Stable-02 (9.185841ms)
+2026-10-24T14:55:07.0394253Z ✔ orders still open at the end of the run (11.797738ms)
+2026-10-24T14:55:07.0394664Z ▶ the same order from two indications
+2026-10-24T14:55:07.0395324Z   ✔ executes once: identical trades at the same protect never double the position; different holds both trade (1.778433ms)
+2026-10-24T14:55:07.0396630Z   ✔ Axis depths with identical onsets retain independent simulated and Paper orders (1.64264ms)
+2026-10-24T14:55:07.0397305Z ✔ the same order from two indications (3.551489ms)
+2026-10-24T14:55:07.0398060Z ▶ continuous stability (gates.stableBlocks)
+2026-10-24T14:55:07.0398716Z   ✔ a set that made its PF in one stretch and lost after it is not validated; a steady one is (0.668946ms)
+2026-10-24T14:55:07.0399560Z   ✔ entry crowding (entryCrowd): at most K configs of a range enter one symbol × side × bar, the best first (64.064571ms)
+2026-10-24T14:55:07.0400288Z ✔ continuous stability (gates.stableBlocks) (64.866907ms)
+2026-10-24T14:55:07.0559065Z ℹ tests 79
+2026-10-24T14:55:07.0559280Z ℹ suites 12
+2026-10-24T14:55:07.0559414Z ℹ pass 79
+2026-10-24T14:55:07.0559557Z ℹ fail 0
+2026-10-24T14:55:07.0559688Z ℹ cancelled 0
+2026-10-24T14:55:07.0559827Z ℹ skipped 0
+2026-10-24T14:55:07.0559987Z ℹ todo 0
+2026-10-24T14:55:07.0560153Z ℹ duration_ms 2797.647576
+2026-10-24T14:55:07.0678829Z ##[group]Run actions/upload-artifact@v4
+2026-10-24T14:55:07.0679005Z with:
+2026-10-24T14:55:07.0679135Z   name: exact-signal-study-checks
+2026-10-24T14:55:07.0679309Z   path: runs/exact-signal-study-ci/checks/logs/
+2026-10-24T14:55:07.0679484Z   if-no-files-found: warn
+2026-10-24T14:55:07.0679617Z   retention-days: 90
+2026-10-24T14:55:07.0679747Z   compression-level: 1
+2026-10-24T14:55:07.0679873Z   overwrite: false
+2026-10-24T14:55:07.0679998Z   include-hidden-files: false
+2026-10-24T14:55:07.0680135Z env:
+2026-10-24T14:55:07.0680244Z   CTS_CORE_STATE: off
+2026-10-24T14:55:07.0680400Z   CTS_CORE_AUTOSTART: 0
+2026-10-24T14:55:07.0680528Z   CTS_CORE_VARIANTS: 0
+2026-10-24T14:55:07.0680651Z   CTS_CORE_COMPARE: 0
+2026-10-24T14:55:07.0680771Z   CTS_CORE_WORKERS: 4
+2026-10-24T14:55:07.0680891Z   CTS_CORE_LIVE: 0
+2026-10-24T14:55:07.0681010Z   CTS_CORE_MEM_SOFT_MB: 2500
+2026-10-24T14:55:07.0681148Z   CTS_CORE_MEM_HARD_MB: 1200
+2026-10-24T14:55:07.0681294Z   MALLOC_ARENA_MAX: 2
+2026-10-24T14:55:07.0681455Z   MALLOC_MMAP_THRESHOLD_: 1048576
+2026-10-24T14:55:07.0681685Z   DATABASE_URL: 
+2026-10-24T14:55:07.0681823Z   TZ: UTC
+2026-10-24T14:55:07.0681934Z ##[endgroup]
+2026-10-24T14:55:07.1789496Z (node:3606) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-24T14:55:07.1789968Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-24T14:55:07.1838166Z With the provided path, there will be 6 files uploaded
+2026-10-24T14:55:07.1841831Z Artifact name is valid!
+2026-10-24T14:55:07.1842193Z Root directory input is valid!
+2026-10-24T14:55:07.4401263Z Beginning upload of artifact content to blob storage
+2026-10-24T14:55:07.4582851Z (node:3606) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-24T14:55:07.6338589Z Uploaded bytes 15752
+2026-10-24T14:55:07.6762831Z Finished uploading artifact content to blob storage!
+2026-10-24T14:55:07.6763563Z SHA256 digest of uploaded artifact zip is 34b9778780d759970e158e8d285d0c824a607bcb6c2939739438e696ca83cea8
+2026-10-24T14:55:07.6764048Z Finalizing artifact upload
+2026-10-24T14:55:08.0964110Z Artifact exact-signal-study-checks.zip successfully finalized. Artifact ID 12563609924
+2026-10-24T14:55:08.0964993Z Artifact exact-signal-study-checks has been successfully uploaded! Final size is 15752 bytes. Artifact ID is 12563609924
+2026-10-24T14:55:08.0969450Z Artifact download URL: https://github.com/mxssnx-creator/CTS-A-O/actions/runs/40104548816/artifacts/12563609924
+2026-10-24T14:55:08.1112676Z Post job cleanup.
+2026-10-24T14:55:08.1916301Z (node:3619) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-24T14:55:08.1916791Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-24T14:55:08.1918818Z Cache hit occurred on the primary key node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df, not saving cache.
+2026-10-24T14:55:08.2036920Z Post job cleanup.
+2026-10-24T14:55:08.2605704Z [command]/usr/bin/git version
+2026-10-24T14:55:08.2638042Z git version 2.55.0
+2026-10-24T14:55:08.2662140Z Temporarily overriding HOME='/home/runner/work/_temp/e195cdd5-b740-4585-bd55-e48c1c48a523' before making global git config changes
+2026-10-24T14:55:08.2662913Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-24T14:55:08.2665243Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-24T14:55:08.2699895Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-24T14:55:08.2728557Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-24T14:55:08.2941605Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-24T14:55:08.2974973Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-24T14:55:08.3208513Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-24T14:55:08.3246996Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-24T14:55:08.3593641Z Cleaning up orphan processes
+2026-10-24T14:55:08.3873302Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+

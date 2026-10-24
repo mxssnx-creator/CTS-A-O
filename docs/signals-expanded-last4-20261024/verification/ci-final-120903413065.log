@@ -1,0 +1,419 @@
+﻿2026-10-24T14:54:08.1537672Z Current runner version: '2.338.0'
+2026-10-24T14:54:08.1557355Z ##[group]Runner Image Provisioner
+2026-10-24T14:54:08.1558315Z Hosted Compute Agent
+2026-10-24T14:54:08.1558992Z Version: 20261021.618
+2026-10-24T14:54:08.1559672Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-10-24T14:54:08.1560318Z Build Date: 2026-10-21T00:45:21Z
+2026-10-24T14:54:08.1560887Z Worker ID: {1d36c195-a75c-415f-8d83-a8ad29813791}
+2026-10-24T14:54:08.1561549Z Region: centralus
+2026-10-24T14:54:08.1562013Z Cloud: Azure
+2026-10-24T14:54:08.1562454Z ##[endgroup]
+2026-10-24T14:54:08.1563634Z ##[group]Operating System
+2026-10-24T14:54:08.1564144Z Ubuntu
+2026-10-24T14:54:08.1564589Z 24.04.5
+2026-10-24T14:54:08.1565080Z LTS
+2026-10-24T14:54:08.1565506Z ##[endgroup]
+2026-10-24T14:54:08.1566000Z ##[group]Runner Image
+2026-10-24T14:54:08.1566513Z Image: ubuntu-24.04
+2026-10-24T14:54:08.1567347Z Version: 20261012.334.1
+2026-10-24T14:54:08.1568407Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-24T14:54:08.1569642Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+2026-10-24T14:54:08.1570435Z ##[endgroup]
+2026-10-24T14:54:08.1571385Z ##[group]GITHUB_TOKEN Permissions
+2026-10-24T14:54:08.1573171Z Contents: read
+2026-10-24T14:54:08.1573643Z Metadata: read
+2026-10-24T14:54:08.1574232Z ##[endgroup]
+2026-10-24T14:54:08.1575957Z Secret source: Actions
+2026-10-24T14:54:08.1576987Z Cache mode: write
+2026-10-24T14:54:08.1577807Z Prepare workflow directory
+2026-10-24T14:54:08.1835488Z Prepare all required actions
+2026-10-24T14:54:08.1873319Z Getting action download info
+2026-10-24T14:54:08.5639579Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-24T14:54:08.6975205Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2026-10-24T14:54:08.8899477Z Complete job name: slow-runtime
+2026-10-24T14:54:08.9601521Z ##[group]Run actions/checkout@v4
+2026-10-24T14:54:08.9602296Z with:
+2026-10-24T14:54:08.9602726Z   persist-credentials: false
+2026-10-24T14:54:08.9603225Z   repository: mxssnx-creator/CTS-A-O
+2026-10-24T14:54:08.9607095Z   token: ***
+2026-10-24T14:54:08.9607512Z   ssh-strict: true
+2026-10-24T14:54:08.9607929Z   ssh-user: git
+2026-10-24T14:54:08.9608329Z   clean: true
+2026-10-24T14:54:08.9608741Z   sparse-checkout-cone-mode: true
+2026-10-24T14:54:08.9609221Z   fetch-depth: 1
+2026-10-24T14:54:08.9609647Z   fetch-tags: false
+2026-10-24T14:54:08.9610067Z   show-progress: true
+2026-10-24T14:54:08.9610494Z   lfs: false
+2026-10-24T14:54:08.9610887Z   submodules: false
+2026-10-24T14:54:08.9611358Z   set-safe-directory: true
+2026-10-24T14:54:08.9611839Z   allow-unsafe-pr-checkout: false
+2026-10-24T14:54:08.9612548Z ##[endgroup]
+2026-10-24T14:54:09.0417318Z Syncing repository: mxssnx-creator/CTS-A-O
+2026-10-24T14:54:09.0419555Z ##[group]Getting Git version info
+2026-10-24T14:54:09.0420619Z Working directory is '/home/runner/work/CTS-A-O/CTS-A-O'
+2026-10-24T14:54:09.0422109Z [command]/usr/bin/git version
+2026-10-24T14:54:09.1356115Z git version 2.55.0
+2026-10-24T14:54:09.1373334Z ##[endgroup]
+2026-10-24T14:54:09.1385269Z Temporarily overriding HOME='/home/runner/work/_temp/2bd0683f-3c05-4591-85af-d458be4a98b1' before making global git config changes
+2026-10-24T14:54:09.1386504Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-24T14:54:09.1390007Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-24T14:54:09.1436349Z Deleting the contents of '/home/runner/work/CTS-A-O/CTS-A-O'
+2026-10-24T14:54:09.1440733Z ##[group]Initializing the repository
+2026-10-24T14:54:09.1444466Z [command]/usr/bin/git init /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-24T14:54:09.1511370Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-24T14:54:09.1512319Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-24T14:54:09.1513325Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-24T14:54:09.1513957Z hint: call:
+2026-10-24T14:54:09.1514309Z hint:
+2026-10-24T14:54:09.1514772Z hint: 	git config --global init.defaultBranch <name>
+2026-10-24T14:54:09.1515307Z hint:
+2026-10-24T14:54:09.1515807Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-24T14:54:09.1516586Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-24T14:54:09.1520890Z hint:
+2026-10-24T14:54:09.1521295Z hint: 	git branch -m <name>
+2026-10-24T14:54:09.1521719Z hint:
+2026-10-24T14:54:09.1522264Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-24T14:54:09.1523144Z Initialized empty Git repository in /home/runner/work/CTS-A-O/CTS-A-O/.git/
+2026-10-24T14:54:09.1527982Z [command]/usr/bin/git remote add origin https://github.com/mxssnx-creator/CTS-A-O
+2026-10-24T14:54:09.1566556Z ##[endgroup]
+2026-10-24T14:54:09.1567441Z ##[group]Disabling automatic garbage collection
+2026-10-24T14:54:09.1569284Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-24T14:54:09.1597537Z ##[endgroup]
+2026-10-24T14:54:09.1598195Z ##[group]Setting up auth
+2026-10-24T14:54:09.1602740Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-24T14:54:09.1631230Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-24T14:54:09.1905558Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-24T14:54:09.1938361Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-24T14:54:09.2140224Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-24T14:54:09.2175280Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-24T14:54:09.2370437Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-24T14:54:09.2405375Z ##[endgroup]
+2026-10-24T14:54:09.2406582Z ##[group]Fetching the repository
+2026-10-24T14:54:09.2414319Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +2cb11c4ced154bab2a0d949a3c4d2a398724429f:refs/remotes/pull/197/merge
+2026-10-24T14:54:11.8847166Z From https://github.com/mxssnx-creator/CTS-A-O
+2026-10-24T14:54:11.8849015Z  * [new ref]         2cb11c4ced154bab2a0d949a3c4d2a398724429f -> pull/197/merge
+2026-10-24T14:54:11.8852334Z ##[endgroup]
+2026-10-24T14:54:11.8853617Z ##[group]Determining the checkout info
+2026-10-24T14:54:11.8854943Z ##[endgroup]
+2026-10-24T14:54:11.8856289Z [command]/usr/bin/git sparse-checkout disable
+2026-10-24T14:54:11.8899705Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-24T14:54:11.8933490Z ##[group]Checking out the ref
+2026-10-24T14:54:11.8936317Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/197/merge
+2026-10-24T14:54:12.2244469Z Note: switching to 'refs/remotes/pull/197/merge'.
+2026-10-24T14:54:12.2244884Z 
+2026-10-24T14:54:12.2245093Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-10-24T14:54:12.2245515Z changes and commit them, and you can discard any commits you make in this
+2026-10-24T14:54:12.2245954Z state without impacting any branches by switching back to a branch.
+2026-10-24T14:54:12.2246235Z 
+2026-10-24T14:54:12.2246439Z If you want to create a new branch to retain commits you create, you may
+2026-10-24T14:54:12.2247078Z do so (now or later) by using -c with the switch command. Example:
+2026-10-24T14:54:12.2247314Z 
+2026-10-24T14:54:12.2247495Z   git switch -c <new-branch-name>
+2026-10-24T14:54:12.2247932Z 
+2026-10-24T14:54:12.2248048Z Or undo this operation with:
+2026-10-24T14:54:12.2248194Z 
+2026-10-24T14:54:12.2248298Z   git switch -
+2026-10-24T14:54:12.2248453Z 
+2026-10-24T14:54:12.2248646Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-10-24T14:54:12.2248972Z 
+2026-10-24T14:54:12.2249287Z HEAD is now at 2cb11c4 Merge 080566d5dde7f66d37ca639f8315de910cd76f73 into 8ee9073ad2c6201ba325905563e33bd730a8fd8e
+2026-10-24T14:54:12.2277056Z ##[endgroup]
+2026-10-24T14:54:12.2318147Z [command]/usr/bin/git log -1 --format=%H
+2026-10-24T14:54:12.2341189Z 2cb11c4ced154bab2a0d949a3c4d2a398724429f
+2026-10-24T14:54:12.2352038Z ##[group]Removing auth
+2026-10-24T14:54:12.2352585Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-24T14:54:12.2380975Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-24T14:54:12.2573154Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-24T14:54:12.2596291Z http.https://github.com/.extraheader
+2026-10-24T14:54:12.2602167Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-24T14:54:12.2631460Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-24T14:54:12.2818312Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-24T14:54:12.2846190Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-24T14:54:12.3030797Z ##[endgroup]
+2026-10-24T14:54:12.3309624Z ##[group]Run actions/setup-node@v4
+2026-10-24T14:54:12.3309901Z with:
+2026-10-24T14:54:12.3310111Z   node-version: 24
+2026-10-24T14:54:12.3310336Z   cache: npm
+2026-10-24T14:54:12.3310534Z   always-auth: false
+2026-10-24T14:54:12.3310758Z   check-latest: false
+2026-10-24T14:54:12.3312956Z   token: ***
+2026-10-24T14:54:12.3313160Z ##[endgroup]
+2026-10-24T14:54:12.4399242Z Found in cache @ /opt/hostedtoolcache/node/24.21.0/x64
+2026-10-24T14:54:12.4402761Z (node:2118) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-24T14:54:12.4403533Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-24T14:54:12.4404795Z ##[group]Environment details
+2026-10-24T14:54:12.7156611Z node: v24.21.0
+2026-10-24T14:54:12.7157266Z npm: 11.19.0
+2026-10-24T14:54:12.7157541Z yarn: 1.22.22
+2026-10-24T14:54:12.7158564Z ##[endgroup]
+2026-10-24T14:54:12.7175027Z [command]/opt/hostedtoolcache/node/24.21.0/x64/bin/npm config get cache
+2026-10-24T14:54:12.8239151Z /home/runner/.npm
+2026-10-24T14:54:12.9576210Z Cache hit for: node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df
+2026-10-24T14:54:12.9655764Z (node:2118) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-24T14:54:14.0629522Z Received 85750402 of 85750402 (100.0%), 84.6 MBs/sec
+2026-10-24T14:54:14.0629957Z Cache Size: ~82 MB (85750402 B)
+2026-10-24T14:54:14.0651743Z [command]/usr/bin/tar -xf /home/runner/work/_temp/348f4a55-9ca8-4189-94dc-e1fdeb14248a/cache.tzst -P -C /home/runner/work/CTS-A-O/CTS-A-O --use-compress-program unzstd
+2026-10-24T14:54:14.2204568Z Cache restored successfully
+2026-10-24T14:54:14.2257931Z Cache restored from key: node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df
+2026-10-24T14:54:14.2429469Z ##[group]Run npm ci
+2026-10-24T14:54:14.2429721Z [36;1mnpm ci[0m
+2026-10-24T14:54:14.2624140Z shell: /usr/bin/bash -e {0}
+2026-10-24T14:54:14.2624396Z ##[endgroup]
+2026-10-24T14:54:18.7189786Z npm warn deprecated recharts@2.15.4: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
+2026-10-24T14:54:18.9751354Z npm warn deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+2026-10-24T14:54:20.6366021Z 
+2026-10-24T14:54:20.6367204Z added 423 packages, and audited 424 packages in 6s
+2026-10-24T14:54:20.6367533Z 
+2026-10-24T14:54:20.6372846Z 94 packages are looking for funding
+2026-10-24T14:54:20.6373278Z   run `npm fund` for details
+2026-10-24T14:54:20.6515111Z 
+2026-10-24T14:54:20.6515675Z 2 high severity vulnerabilities
+2026-10-24T14:54:20.6515927Z 
+2026-10-24T14:54:20.6516175Z To address all issues, run:
+2026-10-24T14:54:20.6516487Z   npm audit fix
+2026-10-24T14:54:20.6516648Z 
+2026-10-24T14:54:20.6516944Z Run `npm audit` for details.
+2026-10-24T14:54:20.7409049Z ##[group]Run env -u DATABASE_URL npm run build
+2026-10-24T14:54:20.7409509Z [36;1menv -u DATABASE_URL npm run build[0m
+2026-10-24T14:54:20.7467000Z shell: /usr/bin/bash -e {0}
+2026-10-24T14:54:20.7467226Z ##[endgroup]
+2026-10-24T14:54:20.8265821Z 
+2026-10-24T14:54:20.8266394Z > build
+2026-10-24T14:54:20.8267114Z > node scripts/with-app-env.mjs vite build && npm run build:core-worker && npm run db:migrate
+2026-10-24T14:54:20.8267414Z 
+2026-10-24T14:54:21.4932350Z [info] [nitro:vercel] Using `nodejs24.x` runtime.
+2026-10-24T14:54:21.4933230Z [info] [nitro:vercel] Using `web` entry format.
+2026-10-24T14:54:21.5004280Z [33mBoth esbuild and oxc options were set. oxc options will be used and esbuild options will be ignored.[39m The following esbuild options were set: `{ legalComments: 'none' }`
+2026-10-24T14:54:21.6322263Z [36mvite v8.2.2 [32mbuilding client environment for production...[36m[39m
+2026-10-24T14:54:21.6430521Z transforming...
+2026-10-24T14:54:28.4560214Z ✓ 1955 modules transformed.
+2026-10-24T14:54:28.5155185Z rendering chunks...
+2026-10-24T14:54:28.5735171Z .vercel/output/static/assets/styles-EeajTTjQ.css              34.30 kB
+2026-10-24T14:54:28.5735728Z .vercel/output/static/assets/market-Dey82o26.js                0.07 kB
+2026-10-24T14:54:28.5736184Z .vercel/output/static/assets/trading-BlorcuKE.js               0.07 kB
+2026-10-24T14:54:28.5736608Z .vercel/output/static/assets/settings-BGxS4WrL.js              0.07 kB
+2026-10-24T14:54:28.5737180Z .vercel/output/static/assets/useRouter-VhwLfQSd.js             0.15 kB
+2026-10-24T14:54:28.5737588Z .vercel/output/static/assets/model-cost-BGXH0XjV.js            0.30 kB
+2026-10-24T14:54:28.5737994Z .vercel/output/static/assets/progression-DygnuQpx.js           0.85 kB
+2026-10-24T14:54:28.5738437Z .vercel/output/static/assets/progress-C-M_JKOX.js              0.93 kB
+2026-10-24T14:54:28.5738994Z .vercel/output/static/assets/bots-BxbyHAaK.js                  1.16 kB
+2026-10-24T14:54:28.5739470Z .vercel/output/static/assets/indication-ui-B3C4VKjb.js         1.41 kB
+2026-10-24T14:54:28.5739915Z .vercel/output/static/assets/minimal-coord-iDZCDKap.js         1.42 kB
+2026-10-24T14:54:28.5740416Z .vercel/output/static/assets/execution-summary-B-eCJabb.js     1.54 kB
+2026-10-24T14:54:28.5740907Z .vercel/output/static/assets/matrix-XYxV11P2.js                2.35 kB
+2026-10-24T14:54:28.5741391Z .vercel/output/static/assets/signal-units-D-sbB0bl.js          2.69 kB
+2026-10-24T14:54:28.5741827Z .vercel/output/static/assets/compare-D9Fb5LC-.js               3.84 kB
+2026-10-24T14:54:28.5742246Z .vercel/output/static/assets/promotion-evidence-CoTNMxno.js    4.42 kB
+2026-10-24T14:54:28.5742666Z .vercel/output/static/assets/results-92YFA6bA.js               4.77 kB
+2026-10-24T14:54:28.5743088Z .vercel/output/static/assets/config._id-y3W_8l1_.js            5.34 kB
+2026-10-24T14:54:28.5743487Z .vercel/output/static/assets/hourly-Bdzj7OSx.js                5.78 kB
+2026-10-24T14:54:28.5743893Z .vercel/output/static/assets/config-fGpoIvs3.js                8.43 kB
+2026-10-24T14:54:28.5744291Z .vercel/output/static/assets/v2-5zOazV0m.js                    9.44 kB
+2026-10-24T14:54:28.5744947Z .vercel/output/static/assets/prehistoric-Bl-Mh8v6.js           9.88 kB
+2026-10-24T14:54:28.5745359Z .vercel/output/static/assets/relate-CGfGgKZh.js                9.92 kB
+2026-10-24T14:54:28.5745757Z .vercel/output/static/assets/link-CkKc5ylV.js                 11.26 kB
+2026-10-24T14:54:28.5746161Z .vercel/output/static/assets/preset-settings-DcP5jcyz.js      11.73 kB
+2026-10-24T14:54:28.5746564Z .vercel/output/static/assets/engine-DVrwA4n-.js               11.90 kB
+2026-10-24T14:54:28.5747081Z .vercel/output/static/assets/v2-Bzznx7QA.js                   14.10 kB
+2026-10-24T14:54:28.5747483Z .vercel/output/static/assets/signal-config-BZhPvH24.js        14.91 kB
+2026-10-24T14:54:28.5747885Z .vercel/output/static/assets/charts-BiE6HSJc.js               17.09 kB
+2026-10-24T14:54:28.5748285Z .vercel/output/static/assets/trading-Bd9W3scC.js              18.26 kB
+2026-10-24T14:54:28.5748834Z .vercel/output/static/assets/ui-XsfU_ALq.js                   18.52 kB
+2026-10-24T14:54:28.5749246Z .vercel/output/static/assets/presets-QQjKnXW8.js              19.54 kB
+2026-10-24T14:54:28.5749659Z .vercel/output/static/assets/statistics-CqyGl0da.js           22.65 kB
+2026-10-24T14:54:28.5750061Z .vercel/output/static/assets/stages-QW6AKAsW.js               22.72 kB
+2026-10-24T14:54:28.5750849Z .vercel/output/static/assets/break-config-Cl5wJNxv.js         41.46 kB
+2026-10-24T14:54:28.5751592Z .vercel/output/static/assets/jsx-runtime-D6cXz5cu.js          41.58 kB
+2026-10-24T14:54:28.5752222Z .vercel/output/static/assets/registry-CerdjBJL.js             92.17 kB
+2026-10-24T14:54:28.5752851Z .vercel/output/static/assets/settings-C-8D6QfX.js            127.48 kB
+2026-10-24T14:54:28.5753463Z .vercel/output/static/assets/index-CH0nXHqb.js               351.51 kB
+2026-10-24T14:54:28.5753745Z 
+2026-10-24T14:54:28.5754483Z [32m✓ built in 6.94s[39m
+2026-10-24T14:54:28.5765842Z [33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 6.8s of this 6.9s build (97%).
+2026-10-24T14:54:28.5766657Z The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+2026-10-24T14:54:28.5767626Z   - @tailwindcss/vite:generate:build transform (92%, 6.4s, 1 call)
+2026-10-24T14:54:28.5768235Z Additional hook time came from the hooks below and from hooks under 1s.
+2026-10-24T14:54:28.5769031Z 2 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+2026-10-24T14:54:28.5769704Z   - tanstack-start-core:import-protection resolveId (5737 calls)
+2026-10-24T14:54:28.5770121Z   - tanstack-start-core::server-fn:client transform (15 calls)
+2026-10-24T14:54:28.5770612Z See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+2026-10-24T14:54:28.5771002Z [39m
+2026-10-24T14:54:28.5771382Z [36mvite v8.2.2 [32mbuilding ssr environment for production...[36m[39m
+2026-10-24T14:54:28.5834253Z transforming...
+2026-10-24T14:54:34.9667493Z ✓ 225 modules transformed.
+2026-10-24T14:54:35.0125733Z rendering chunks...
+2026-10-24T14:54:35.0502345Z node_modules/.nitro/vite/services/ssr/assets/styles-EeajTTjQ.css                      34.30 kB
+2026-10-24T14:54:35.0503151Z node_modules/.nitro/vite/services/ssr/assets/start-5Z2QO8AU.js                         0.14 kB
+2026-10-24T14:54:35.0503731Z node_modules/.nitro/vite/services/ssr/assets/market-DWxuyIC4.js                        0.19 kB
+2026-10-24T14:54:35.0504272Z node_modules/.nitro/vite/services/ssr/assets/trading-Mf8BI3QB.js                       0.20 kB
+2026-10-24T14:54:35.0504807Z node_modules/.nitro/vite/services/ssr/assets/settings-DWyqvfr9.js                      0.20 kB
+2026-10-24T14:54:35.0505363Z node_modules/.nitro/vite/services/ssr/assets/empty-plugin-adapters-D9UWiqvJ.js         0.22 kB
+2026-10-24T14:54:35.0505972Z node_modules/.nitro/vite/services/ssr/assets/rolldown-runtime-D7D4PA-g.js              0.36 kB
+2026-10-24T14:54:35.0506990Z node_modules/.nitro/vite/services/ssr/assets/signal-policy-CLNSQ6Os.js                 1.45 kB
+2026-10-24T14:54:35.0507897Z node_modules/.nitro/vite/services/ssr/assets/progression-BUW_uSrV.js                   1.77 kB
+2026-10-24T14:54:35.0508718Z node_modules/.nitro/vite/services/ssr/assets/execution-summary-Bwxc2CkM.js             2.53 kB
+2026-10-24T14:54:35.0509513Z node_modules/.nitro/vite/services/ssr/assets/signal-units-BvZY-Qjk.js                  3.14 kB
+2026-10-24T14:54:35.0510334Z node_modules/.nitro/vite/services/ssr/assets/indication-ui-DG5nFsJ4.js                 3.67 kB
+2026-10-24T14:54:35.0511176Z node_modules/.nitro/vite/services/ssr/assets/matrix-Cc-Hl-9y.js                        3.94 kB
+2026-10-24T14:54:35.0512030Z node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-CywMuqkB.js    4.31 kB
+2026-10-24T14:54:35.0513093Z node_modules/.nitro/vite/services/ssr/assets/progress-HPmQ_PqK.js                      5.27 kB
+2026-10-24T14:54:35.0513962Z node_modules/.nitro/vite/services/ssr/assets/promotion-evidence-BFDXfM0O.js            5.57 kB
+2026-10-24T14:54:35.0514856Z node_modules/.nitro/vite/services/ssr/assets/compare-WndvCmSS.js                       6.53 kB
+2026-10-24T14:54:35.0515754Z node_modules/.nitro/vite/services/ssr/assets/results-CZQcB128.js                       8.32 kB
+2026-10-24T14:54:35.0516661Z node_modules/.nitro/vite/services/ssr/assets/api-B_ap7thP.js                           8.83 kB
+2026-10-24T14:54:35.0517846Z node_modules/.nitro/vite/services/ssr/assets/config._id-D5_iWyAR.js                    9.15 kB
+2026-10-24T14:54:35.0518782Z node_modules/.nitro/vite/services/ssr/assets/v2-Czc2CYaQ.js                            9.75 kB
+2026-10-24T14:54:35.0519728Z node_modules/.nitro/vite/services/ssr/assets/hourly-Bw53nc1I.js                        9.92 kB
+2026-10-24T14:54:35.0520680Z node_modules/.nitro/vite/services/ssr/assets/live-record-DoZRS180.js                  11.17 kB
+2026-10-24T14:54:35.0521634Z node_modules/.nitro/vite/services/ssr/assets/live-validation-D9NSzn03.js              14.84 kB
+2026-10-24T14:54:35.0522591Z node_modules/.nitro/vite/services/ssr/assets/prehistoric-CeCP3PeT.js                  15.38 kB
+2026-10-24T14:54:35.0523506Z node_modules/.nitro/vite/services/ssr/assets/engine-DJbcHBUp.js                       19.66 kB
+2026-10-24T14:54:35.0524417Z node_modules/.nitro/vite/services/ssr/assets/preset-settings-DYRsJTIE.js              19.97 kB
+2026-10-24T14:54:35.0525482Z node_modules/.nitro/vite/services/ssr/assets/router-CR_mKjdb.js                       21.60 kB
+2026-10-24T14:54:35.0526385Z node_modules/.nitro/vite/services/ssr/assets/v2-C57Quj6K.js                           23.28 kB
+2026-10-24T14:54:35.0527192Z node_modules/.nitro/vite/services/ssr/assets/trading-CdYx5RwF.js                      27.46 kB
+2026-10-24T14:54:35.0528032Z node_modules/.nitro/vite/services/ssr/assets/ui-DKSDLesS.js                           27.78 kB
+2026-10-24T14:54:35.0528950Z node_modules/.nitro/vite/services/ssr/assets/charts-DnM24UBU.js                       28.77 kB
+2026-10-24T14:54:35.0529848Z node_modules/.nitro/vite/services/ssr/assets/statistics-B0EjuIXa.js                   29.95 kB
+2026-10-24T14:54:35.0530746Z node_modules/.nitro/vite/services/ssr/assets/presets-CCF5-qkr.js                      30.94 kB
+2026-10-24T14:54:35.0531844Z node_modules/.nitro/vite/services/ssr/assets/bingx.server-gjtjqnMi.js                 32.04 kB
+2026-10-24T14:54:35.0532749Z node_modules/.nitro/vite/services/ssr/assets/statistics-DzsqTaOn.js                   34.57 kB
+2026-10-24T14:54:35.0533643Z node_modules/.nitro/vite/services/ssr/assets/stages-Dw3hZT20.js                       35.27 kB
+2026-10-24T14:54:35.0534371Z node_modules/.nitro/vite/services/ssr/assets/presets-DfWOGON1.js                      37.87 kB
+2026-10-24T14:54:35.0534893Z node_modules/.nitro/vite/services/ssr/assets/live-BUGJyNFW.js                         48.33 kB
+2026-10-24T14:54:35.0535415Z node_modules/.nitro/vite/services/ssr/index.js                                        79.06 kB
+2026-10-24T14:54:35.0536100Z node_modules/.nitro/vite/services/ssr/assets/api-data-DwHxv_T4.js                     92.91 kB
+2026-10-24T14:54:35.0536624Z node_modules/.nitro/vite/services/ssr/assets/live.server-BpY5yAQ3.js                 192.82 kB
+2026-10-24T14:54:35.0537278Z node_modules/.nitro/vite/services/ssr/assets/settings-D5Tz36gS.js                    201.71 kB
+2026-10-24T14:54:35.0537801Z node_modules/.nitro/vite/services/ssr/assets/registry-C83yMO6G.js                    293.28 kB
+2026-10-24T14:54:35.0538634Z node_modules/.nitro/vite/services/ssr/assets/walkforward-CxnQYH0G.js                 417.32 kB
+2026-10-24T14:54:35.0539563Z node_modules/.nitro/vite/services/ssr/assets/runtime.server-BiJerpD1.js              550.62 kB
+2026-10-24T14:54:35.0540014Z 
+2026-10-24T14:54:35.0540771Z [33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 6.4s of this 6.5s build (99%).
+2026-10-24T14:54:35.0541781Z The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+2026-10-24T14:54:35.0542332Z   - @tailwindcss/vite:generate:build transform (96%, 6.2s, 1 call)
+2026-10-24T14:54:35.0542753Z Additional hook time came from the hooks below and from hooks under 1s.
+2026-10-24T14:54:35.0543532Z 2 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+2026-10-24T14:54:35.0544199Z   - tanstack-start-core:import-protection resolveId (717 calls)
+2026-10-24T14:54:35.0544592Z   - tanstack-start-core::server-fn:ssr transform (14 calls)
+2026-10-24T14:54:35.0545066Z See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+2026-10-24T14:54:35.0545439Z [39m
+2026-10-24T14:54:35.0545706Z [32m✓ built in 6.47s[39m
+2026-10-24T14:54:35.0546198Z [start] [nitro] Building [[35mNitro[39m] [2m(preset: `vercel`, compatibility: `2026-10-24`)[22m
+2026-10-24T14:54:35.0585440Z [success] [nitro] Generated public [36m.vercel/output/static[39m
+2026-10-24T14:54:35.0592506Z [36mvite v8.2.2 [32mbuilding nitro environment for production...[36m[39m
+2026-10-24T14:54:35.0668625Z transforming...
+2026-10-24T14:54:35.2993430Z ✓ 2028 modules transformed.
+2026-10-24T14:54:35.4369117Z rendering chunks...
+2026-10-24T14:54:35.5362126Z .vercel/output/functions/__server.func/_ssr/start-5Z2QO8AU.mjs                      0.14 kB
+2026-10-24T14:54:35.5363098Z .vercel/output/functions/__server.func/_ssr/market-DWxuyIC4.mjs                     0.21 kB
+2026-10-24T14:54:35.5363677Z .vercel/output/functions/__server.func/_ssr/trading-Mf8BI3QB.mjs                    0.22 kB
+2026-10-24T14:54:35.5364231Z .vercel/output/functions/__server.func/_ssr/settings-DWyqvfr9.mjs                   0.22 kB
+2026-10-24T14:54:35.5364784Z .vercel/output/functions/__server.func/_ssr/empty-plugin-adapters-D9UWiqvJ.mjs      0.23 kB
+2026-10-24T14:54:35.5365393Z .vercel/output/functions/__server.func/_ssr/rolldown-runtime-D7D4PA-g.mjs           0.41 kB
+2026-10-24T14:54:35.5366049Z .vercel/output/functions/__server.func/_chunks/ssr-renderer.mjs                     0.96 kB
+2026-10-24T14:54:35.5366593Z .vercel/output/functions/__server.func/_libs/hookable.mjs                           1.16 kB
+2026-10-24T14:54:35.5367533Z .vercel/output/functions/__server.func/_runtime.mjs                                 1.58 kB
+2026-10-24T14:54:35.5368228Z .vercel/output/functions/__server.func/_ssr/progression-BUW_uSrV.mjs                1.81 kB
+2026-10-24T14:54:35.5368762Z .vercel/output/functions/__server.func/_ssr/execution-summary-Bwxc2CkM.mjs          2.86 kB
+2026-10-24T14:54:35.5369285Z .vercel/output/functions/__server.func/_ssr/signal-units-BvZY-Qjk.mjs               3.13 kB
+2026-10-24T14:54:35.5369804Z .vercel/output/functions/__server.func/_ssr/indication-ui-DG5nFsJ4.mjs              3.71 kB
+2026-10-24T14:54:35.5370336Z .vercel/output/functions/__server.func/_tanstack-start-manifest_v-CywMuqkB.mjs      4.36 kB
+2026-10-24T14:54:35.5370862Z .vercel/output/functions/__server.func/_ssr/matrix-Cc-Hl-9y.mjs                     4.41 kB
+2026-10-24T14:54:35.5371607Z .vercel/output/functions/__server.func/_ssr/progress-HPmQ_PqK.mjs                   5.31 kB
+2026-10-24T14:54:35.5372128Z .vercel/output/functions/__server.func/_ssr/promotion-evidence-BFDXfM0O.mjs         6.57 kB
+2026-10-24T14:54:35.5372643Z .vercel/output/functions/__server.func/_ssr/compare-WndvCmSS.mjs                    7.69 kB
+2026-10-24T14:54:35.5373155Z .vercel/output/functions/__server.func/_ssr/api-B_ap7thP.mjs                        8.76 kB
+2026-10-24T14:54:35.5373667Z .vercel/output/functions/__server.func/_libs/h3-v2+rou3.mjs                         9.83 kB
+2026-10-24T14:54:35.5374175Z .vercel/output/functions/__server.func/_ssr/results-CZQcB128.mjs                    9.98 kB
+2026-10-24T14:54:35.5374692Z .vercel/output/functions/__server.func/_ssr/config._id-D5_iWyAR.mjs                10.91 kB
+2026-10-24T14:54:35.5375327Z .vercel/output/functions/__server.func/_ssr/live-record-DoZRS180.mjs               11.18 kB
+2026-10-24T14:54:35.5375924Z .vercel/output/functions/__server.func/_libs/lucide-react.mjs                      11.40 kB
+2026-10-24T14:54:35.5376535Z .vercel/output/functions/__server.func/_ssr/v2-Czc2CYaQ.mjs                        11.42 kB
+2026-10-24T14:54:35.5377142Z .vercel/output/functions/__server.func/_ssr/hourly-Bw53nc1I.mjs                    11.78 kB
+2026-10-24T14:54:35.5377747Z .vercel/output/functions/__server.func/_libs/tanstack__history.mjs                 12.50 kB
+2026-10-24T14:54:35.5378380Z .vercel/output/functions/__server.func/_ssr/live-validation-D9NSzn03.mjs           14.55 kB
+2026-10-24T14:54:35.5379031Z .vercel/output/functions/__server.func/_ssr/prehistoric-CeCP3PeT.mjs               17.62 kB
+2026-10-24T14:54:35.5379644Z .vercel/output/functions/__server.func/_ssr/router-CR_mKjdb.mjs                    21.17 kB
+2026-10-24T14:54:35.5380177Z .vercel/output/functions/__server.func/_libs/h3+rou3+srvx.mjs                      22.57 kB
+2026-10-24T14:54:35.5380838Z .vercel/output/functions/__server.func/_ssr/preset-settings-DYRsJTIE.mjs           22.92 kB
+2026-10-24T14:54:35.5381436Z .vercel/output/functions/__server.func/_ssr/engine-DJbcHBUp.mjs                    23.77 kB
+2026-10-24T14:54:35.5382011Z .vercel/output/functions/__server.func/_ssr/v2-C57Quj6K.mjs                        27.19 kB
+2026-10-24T14:54:35.5382521Z .vercel/output/functions/__server.func/_ssr/ui-DKSDLesS.mjs                        29.12 kB
+2026-10-24T14:54:35.5383027Z .vercel/output/functions/__server.func/_libs/@tanstack/router-core+[...].mjs       29.60 kB
+2026-10-24T14:54:35.5383532Z .vercel/output/functions/__server.func/_ssr/statistics-B0EjuIXa.mjs                29.92 kB
+2026-10-24T14:54:35.5384047Z .vercel/output/functions/__server.func/_ssr/charts-DnM24UBU.mjs                    31.92 kB
+2026-10-24T14:54:35.5384557Z .vercel/output/functions/__server.func/_ssr/bingx.server-gjtjqnMi.mjs              32.01 kB
+2026-10-24T14:54:35.5385076Z .vercel/output/functions/__server.func/index.mjs                                   33.11 kB
+2026-10-24T14:54:35.5385590Z .vercel/output/functions/__server.func/_ssr/trading-CdYx5RwF.mjs                   33.18 kB
+2026-10-24T14:54:35.5386105Z .vercel/output/functions/__server.func/_ssr/presets-CCF5-qkr.mjs                   34.99 kB
+2026-10-24T14:54:35.5386938Z .vercel/output/functions/__server.func/_ssr/presets-DfWOGON1.mjs                   37.77 kB
+2026-10-24T14:54:35.5387671Z .vercel/output/functions/__server.func/_ssr/statistics-DzsqTaOn.mjs                40.19 kB
+2026-10-24T14:54:35.5388210Z .vercel/output/functions/__server.func/_ssr/stages-Dw3hZT20.mjs                    40.98 kB
+2026-10-24T14:54:35.5388841Z .vercel/output/functions/__server.func/_ssr/live-BUGJyNFW.mjs                      48.33 kB
+2026-10-24T14:54:35.5389344Z .vercel/output/functions/__server.func/_ssr/ssr.mjs                                77.18 kB
+2026-10-24T14:54:35.5390127Z .vercel/output/functions/__server.func/_ssr/api-data-DwHxv_T4.mjs                  92.94 kB
+2026-10-24T14:54:35.5390897Z .vercel/output/functions/__server.func/_libs/zod.mjs                              159.58 kB
+2026-10-24T14:54:35.5391654Z .vercel/output/functions/__server.func/_ssr/live.server-BpY5yAQ3.mjs              192.72 kB
+2026-10-24T14:54:35.5392249Z .vercel/output/functions/__server.func/_ssr/settings-D5Tz36gS.mjs                 224.53 kB
+2026-10-24T14:54:35.5392813Z .vercel/output/functions/__server.func/_chunks/live.server.mjs                    239.70 kB
+2026-10-24T14:54:35.5393420Z .vercel/output/functions/__server.func/_ssr/runtime.server-BiJerpD1.mjs           549.20 kB
+2026-10-24T14:54:35.5394278Z .vercel/output/functions/__server.func/_ssr/walkforward-CxnQYH0G.mjs              715.56 kB
+2026-10-24T14:54:35.5394910Z .vercel/output/functions/__server.func/_libs/@tanstack/react-router+[...].mjs     776.81 kB
+2026-10-24T14:54:35.5395438Z .vercel/output/functions/__server.func/_chunks/boot.server.mjs                  1,354.75 kB
+2026-10-24T14:54:35.5395704Z 
+2026-10-24T14:54:35.5396207Z [32m✓ built in 477ms[39m
+2026-10-24T14:54:35.5396565Z [info] Generated [36m.vercel/output/nitro.json[39m
+2026-10-24T14:54:35.5397089Z [success] [nitro] You can preview this build using `npx vite preview`
+2026-10-24T14:54:35.5397531Z [success] [nitro] You can deploy this build using `npx nitro deploy --prebuilt`
+2026-10-24T14:54:35.6719810Z 
+2026-10-24T14:54:35.6720409Z > build:core-worker
+2026-10-24T14:54:35.6720792Z > node scripts/build-core-worker.mjs
+2026-10-24T14:54:35.6721025Z 
+2026-10-24T14:54:35.9234659Z [core-worker] packaged cts-core-worker.mjs in /home/runner/work/CTS-A-O/CTS-A-O/.vercel/output/functions/__server.func
+2026-10-24T14:54:36.0085512Z 
+2026-10-24T14:54:36.0085927Z > db:migrate
+2026-10-24T14:54:36.0086207Z > node scripts/migrate.mjs
+2026-10-24T14:54:36.0086365Z 
+2026-10-24T14:54:36.0491619Z [migrate] DATABASE_URL not set — skipping (the PGLite fallback migrates itself).
+2026-10-24T14:54:36.0688314Z ##[group]Run npm run test:core:slow
+2026-10-24T14:54:36.0688586Z [36;1mnpm run test:core:slow[0m
+2026-10-24T14:54:36.0745532Z shell: /usr/bin/bash -e {0}
+2026-10-24T14:54:36.0745800Z ##[endgroup]
+2026-10-24T14:54:36.1542294Z 
+2026-10-24T14:54:36.1542547Z > test:core:slow
+2026-10-24T14:54:36.1543030Z > node scripts/test-core.mjs --slow
+2026-10-24T14:54:36.1543288Z 
+2026-10-24T14:54:36.1820339Z [core-tests] offline Node transport guard; 1 files; concurrency 1; compute workers 1
+2026-10-24T14:56:30.9490352Z [core-v2] compute #1 done in 111651 ms · sim PF including 0 open marks: 0.00 n 2 · loop max 344 ms (worst slice of the last 60 s 296 ms in Tapes, 3 over 40 ms)
+2026-10-24T14:56:31.0774390Z ▶ runtime coordination
+2026-10-24T14:56:31.0843094Z   ✔ stress: a storm of mixed operations always ends in a clean compute with the last settings (114360.99037ms)
+2026-10-24T14:57:21.5764709Z   ✔ backtests a preset over the last days in the background and keeps the result (50579.196382ms)
+2026-10-24T14:57:21.5765482Z ✔ runtime coordination (164942.767815ms)
+2026-10-24T14:57:21.6325591Z ℹ tests 2
+2026-10-24T14:57:21.6325928Z ℹ suites 1
+2026-10-24T14:57:21.6326197Z ℹ pass 2
+2026-10-24T14:57:21.6326441Z ℹ fail 0
+2026-10-24T14:57:21.6326966Z ℹ cancelled 0
+2026-10-24T14:57:21.6327391Z ℹ skipped 0
+2026-10-24T14:57:21.6329169Z ℹ todo 0
+2026-10-24T14:57:21.6329909Z ℹ duration_ms 165367.730677
+2026-10-24T14:57:21.6558604Z Post job cleanup.
+2026-10-24T14:57:21.7504261Z (node:2378) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-24T14:57:21.7505287Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-24T14:57:21.7507359Z Cache hit occurred on the primary key node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df, not saving cache.
+2026-10-24T14:57:21.7632155Z Post job cleanup.
+2026-10-24T14:57:21.8283858Z [command]/usr/bin/git version
+2026-10-24T14:57:21.8318970Z git version 2.55.0
+2026-10-24T14:57:21.8350718Z Temporarily overriding HOME='/home/runner/work/_temp/41aed54d-a3b9-42f7-a580-7f2a427b4229' before making global git config changes
+2026-10-24T14:57:21.8352119Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-24T14:57:21.8353683Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-24T14:57:21.8386353Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-24T14:57:21.8421775Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-24T14:57:21.8633668Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-24T14:57:21.8667210Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-24T14:57:21.8880591Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-24T14:57:21.8912127Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-24T14:57:21.9240871Z Cleaning up orphan processes
+2026-10-24T14:57:21.9545864Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+

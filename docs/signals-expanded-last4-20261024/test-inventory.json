@@ -1,0 +1,1389 @@
+{
+  "node": "v24.22.1",
+  "files": [
+    {
+      "path": "src/core/adjust-evidence.test.ts",
+      "sha256": "3bbe21f1705ad686713f08ed102931db9f05139cd0d5ff74ca9cbfd887c59325"
+    },
+    {
+      "path": "src/core/adjust.test.ts",
+      "sha256": "33ebff2707b5d815416640501e19fb5e1c62fad93822cc98056c1d7d70216a32"
+    },
+    {
+      "path": "src/core/api-contract.test.ts",
+      "sha256": "84943830d828eb91a2c727b7b629e061126c4728e8872d67211f19954bb18356"
+    },
+    {
+      "path": "src/core/api-lane-summary.test.ts",
+      "sha256": "d41724a6695e7b8a7a8603d6555488a543a5d38d1b014606b7f4e379ba0650c5"
+    },
+    {
+      "path": "src/core/api-reporting.test.ts",
+      "sha256": "6f3c2908db58845098742937f6fea8277a75821ad06a985fa0ef107efb738654"
+    },
+    {
+      "path": "src/core/audit-negative.test.ts",
+      "sha256": "1ac389f73d90a70f15f3f99eee54285aafc56d893f9919dcdf0aae61f7c21a51"
+    },
+    {
+      "path": "src/core/axis-order-identity.test.ts",
+      "sha256": "f22de020daaef11b9f8d7a5838bdbf40d1f9c4c2cb3f95851cdc590200b3ac43"
+    },
+    {
+      "path": "src/core/base-config-counts.test.ts",
+      "sha256": "c273d93646b09e875d77a7082662a57dc22c75fa7d9f522b72d135c433ced8bc"
+    },
+    {
+      "path": "src/core/block-settings.test.ts",
+      "sha256": "c8d44660a3ea6fbc92c2bbfdfb312fe783d76c8e64b2951c8792cda905cc1b54"
+    },
+    {
+      "path": "src/core/book-coverage.test.ts",
+      "sha256": "599d87359728a9afa816eea63800228e170dac2049221daa6fbb6e79790fd006"
+    },
+    {
+      "path": "src/core/bot-stats.test.ts",
+      "sha256": "671966abe4276833514c9f648370fee854e912b8817d236b3193e781f51b4567"
+    },
+    {
+      "path": "src/core/completeness.test.ts",
+      "sha256": "c8068eebff294ae26565bd739b7ef4ec0e9c26f910e25463884b9b6c3f77be18"
+    },
+    {
+      "path": "src/core/engine-proof.test.ts",
+      "sha256": "6f30d4fb23514eb8fd269123b83e19b0433c9280a6d2242e6b12d63127db5aa1"
+    },
+    {
+      "path": "src/core/eval-family.test.ts",
+      "sha256": "ade1e6ea8f842e80b5a80349e69312767adaa6ef8fc90cc96ca62b0f3e446690"
+    },
+    {
+      "path": "src/core/evals/evaluator.test.ts",
+      "sha256": "934052f7771cfc62b2162859a4e7c8fa696c872d1a8d90d8c54c74640a76319a"
+    },
+    {
+      "path": "src/core/exchange/keys.test.ts",
+      "sha256": "712148ab5533de8d84f33721abfed6b30938fff83f7c0d1fa11c0193dfceac62"
+    },
+    {
+      "path": "src/core/exchange/min-exchange.test.ts",
+      "sha256": "430b314975d5d98f9c6e5e5061e351f59641bfffdce8f999aba3ccba8d2c993a"
+    },
+    {
+      "path": "src/core/exchange/ratelimit.test.ts",
+      "sha256": "f59f43f1075e1d5201f9617b15e6cf98f1085c27514d2c8a380478c48a3fc658"
+    },
+    {
+      "path": "src/core/exchange/request-budget.test.ts",
+      "sha256": "5b9aaaf834f99ff3eaa968f18aea61cf7d0fce570d97d73d85a15bdc228a3a63"
+    },
+    {
+      "path": "src/core/exchange/signed-retry.test.ts",
+      "sha256": "3faeb8851e4c4e8e39758396cb9b1cb57d02c2be26d26be667b609623bb76b63"
+    },
+    {
+      "path": "src/core/exchange/stuck-requests.test.ts",
+      "sha256": "8de60138d169de70cfb22b122d399a1ac847b1d55f2f98f4aac657a5afc6b278"
+    },
+    {
+      "path": "src/core/exit-excursions.test.ts",
+      "sha256": "52a9e9691ff9ee9409416a61fd961f441c069e9817fbc96223cc6c4e99fb701f"
+    },
+    {
+      "path": "src/core/exit-strategy.test.ts",
+      "sha256": "034a94308f359a88e2a3637820e44973fdad93c0a9da3982d09e6c248964890b"
+    },
+    {
+      "path": "src/core/indications-both-sides.test.ts",
+      "sha256": "5fb80ec925d3f822a281e3b11ac35da0058fa5e2d316515ca1a3e3ca93a9a5e9"
+    },
+    {
+      "path": "src/core/indications/break.test.ts",
+      "sha256": "e1f4761215186ab3b0220cb112928fad8d3579b3d1fb9988058dbbeb4237a24e"
+    },
+    {
+      "path": "src/core/indications/htf-completeness.test.ts",
+      "sha256": "f48017eca01f4fdc2cc047e8ec28fb1dfacf9a95bf1869607320c9418d8bbd95"
+    },
+    {
+      "path": "src/core/indications/inverse-stream.test.ts",
+      "sha256": "03b31af09bbd554bc4e0367770911327289f2f51a5b53ea5de92bf7341e16693"
+    },
+    {
+      "path": "src/core/indications/inverse.test.ts",
+      "sha256": "9350dc723264279e2fd5d4ec5fb752367d21b0658eebbdc484a75655aaff586c"
+    },
+    {
+      "path": "src/core/indications/market-stream.test.ts",
+      "sha256": "8c789deb3243dc6dd87d8c389aa93b4ba28320a4a294a535b021da91d9e27dd1"
+    },
+    {
+      "path": "src/core/indications/micro-context.test.ts",
+      "sha256": "3a0755dfa2a3f6d4706ed0572d15f34fa452ec48ac8426b5d9ea69b522b2421e"
+    },
+    {
+      "path": "src/core/indications/micro-exhaustion.test.ts",
+      "sha256": "a3d6bfaa061b2c459261e1908259b50ae68d67cf80e49a7a89ce6b80a4f7e1ca"
+    },
+    {
+      "path": "src/core/indications/micro-family.test.ts",
+      "sha256": "4179398f2c2b87982134b0d377fc821eb156690f76564a1da8613965943527fe"
+    },
+    {
+      "path": "src/core/indications/micro-rel.test.ts",
+      "sha256": "c591a3277759074755b1313e12ab56b628a3e854c3ef91a104303aa69d5d03d2"
+    },
+    {
+      "path": "src/core/indications/micro.test.ts",
+      "sha256": "214953856dbf1a2bc5dd388bb3ea6f39871347bede42b08db2ebbad21f108bbc"
+    },
+    {
+      "path": "src/core/indications/range-families.test.ts",
+      "sha256": "57c4470071b0f6e59beadd6de5264dadcbb6394fa6d311abb3a0cfa6e2f5b36f"
+    },
+    {
+      "path": "src/core/indications/relate.test.ts",
+      "sha256": "28d34d239cf3ebd5907c622b0f78f566f94749ca186f0e2bdd15a94259a0ca8e"
+    },
+    {
+      "path": "src/core/indications/research.test.ts",
+      "sha256": "16353defcbb6d6f8de926c14c847b92b997fab63100129ac794127d0c808270b"
+    },
+    {
+      "path": "src/core/indications/research2.test.ts",
+      "sha256": "91ef16714e411ce10dd3c56ac8e0ba5b35cbec4d3b3c29812d606fde115da760"
+    },
+    {
+      "path": "src/core/indications/research3.test.ts",
+      "sha256": "2cadf8b0c2763b26c5647f0255643fe3453cdcb479d47e017384a05b74e6c213"
+    },
+    {
+      "path": "src/core/indications/research4.test.ts",
+      "sha256": "1cf14b1e203b1c4f4360d65a0bcce6315f9c60f1f7d082dde7d3ae116c86499f"
+    },
+    {
+      "path": "src/core/indications/research5.test.ts",
+      "sha256": "fd6ecd3b90a9bc6831d5c7ae5781883565079830f048faee31f58e6df8ee5dd4"
+    },
+    {
+      "path": "src/core/indications/stable02.test.ts",
+      "sha256": "1adf44efe63c7ada4ad98b81fb369906c66c4002a0a0ffdc01caff6c1a6c5d9d"
+    },
+    {
+      "path": "src/core/indications/stream-math.test.ts",
+      "sha256": "56c773513ea0aed221464281b482e40746b5ca2d4f029e22440316dabddacd81"
+    },
+    {
+      "path": "src/core/indications/symmetry.test.ts",
+      "sha256": "00efaddbd3ee013f91145a319cc2069b84d81acf34bcd9ab22985e5eec8c96d8"
+    },
+    {
+      "path": "src/core/indications/tactic-keys.test.ts",
+      "sha256": "46c9aaac3fa28b0263b35bb527f7cd53f48168673def64639cd079ad666c3bc6"
+    },
+    {
+      "path": "src/core/indications/tactic.test.ts",
+      "sha256": "9d06826aab50cb5b6c3715a584837270af33f3529b6825c3d4787441f865ffe5"
+    },
+    {
+      "path": "src/core/indications/tactics.test.ts",
+      "sha256": "0bc2301238265818ca8ffc576aeb242bfecfc1d3dc76173c157a594823df00dd"
+    },
+    {
+      "path": "src/core/invariants.test.ts",
+      "sha256": "3030b32b2f9cbff3b4d0a561c4b559d2b1f8431d293a00ee525958e95b9fada2"
+    },
+    {
+      "path": "src/core/lanes.test.ts",
+      "sha256": "790aa8e34550216e4d7988cd69eba8a3735d14010dc649db549906c0990a449a"
+    },
+    {
+      "path": "src/core/live-diff.test.ts",
+      "sha256": "1521b144648be0581d2a20848b8ea720dca671ff14c3f55c5a01154f60a28abd"
+    },
+    {
+      "path": "src/core/live-promote.test.ts",
+      "sha256": "06cfd18ca529810e37601a1dc354a3857c553796ed14cd9b30b5c46f3d45ab92"
+    },
+    {
+      "path": "src/core/live-record.test.ts",
+      "sha256": "3200d465a121479a02d9f26b9f64e29c362ceb4d76df5664853b9ba9c7607f33"
+    },
+    {
+      "path": "src/core/live-validation.test.ts",
+      "sha256": "b9300672bc9cac7dc49b4a47a76f29936887222b34a33a4cae85b70ee8b6bb98"
+    },
+    {
+      "path": "src/core/loss-limit.test.ts",
+      "sha256": "aa5f2663c99d2a023d349d13625342c99e828fa4de9bd529f7eb00c07c92a241"
+    },
+    {
+      "path": "src/core/market/bingx.test.ts",
+      "sha256": "7c5f440bab161b18a35033a2855348be3fce3022198c922888e72f8ee1199854"
+    },
+    {
+      "path": "src/core/market/candle-series.test.ts",
+      "sha256": "ce6a2472918bbc43138d24b244522ab9011dc0a960622b1396b1b3e920922d2f"
+    },
+    {
+      "path": "src/core/market/force-symbols.test.ts",
+      "sha256": "06a66d0b90aee48853a5a94c857fc53bebf516e2227310861810658952064e4f"
+    },
+    {
+      "path": "src/core/market/klines-gap.test.ts",
+      "sha256": "f3de69b98e6b697478005fccc9c1738ec17ce7d7c7633325f8476e3beb70a4a2"
+    },
+    {
+      "path": "src/core/market/klines-pace.test.ts",
+      "sha256": "320489a8a3470953859a1fd5a031b16638e4103b1578adec534c25f328e1375a"
+    },
+    {
+      "path": "src/core/market/symbol-rank.test.ts",
+      "sha256": "9220ef395d4c27fa88cf46ea2a3b27a53bfdcc0d38778d8a3d951289179f17cc"
+    },
+    {
+      "path": "src/core/market/trade-bars.test.ts",
+      "sha256": "fa425834c6c54228eb198012e1f4378acd194e19050a5a02a33879e8495bacf5"
+    },
+    {
+      "path": "src/core/metrics/stats.test.ts",
+      "sha256": "9dd296068a2d9085aa41bfaf0f98bd7119711b22c6d7d2def67d41f8ee45d766"
+    },
+    {
+      "path": "src/core/metrics/unit-return.test.ts",
+      "sha256": "21cefac570b7fd6f11bef10fe0e903e5e8fa9dba2e2533313eccb5d2bed04fe0"
+    },
+    {
+      "path": "src/core/micro-order-identity.test.ts",
+      "sha256": "62e90859d4c0d27774e8b7b7ac3f678c34815c8b5451c5977d98452aab06e111"
+    },
+    {
+      "path": "src/core/micro-range.test.ts",
+      "sha256": "d4f0e3b48758d6aef0ea28b7c5f9333cb2e849a5bd5a86fbec58ad246c608d74"
+    },
+    {
+      "path": "src/core/minimal-plus.test.ts",
+      "sha256": "a7c547ce59037c7f7ac36889f026e8111de61bc802794556efea261f1c39d11d"
+    },
+    {
+      "path": "src/core/pipeline/base-cell-stats.test.ts",
+      "sha256": "5e6983fb5e5797a90110fe3b16d19b7ad93e68c7233f77b5596740ee0378e251"
+    },
+    {
+      "path": "src/core/pipeline/base-pair-rows.test.ts",
+      "sha256": "4effac170db013b7c374bf5fce04f1df072df93b8ce337feb912ec9937b1371f"
+    },
+    {
+      "path": "src/core/pipeline/base-windows.test.ts",
+      "sha256": "285b461d64c2ef89c7375432578e6d774a13cc84f34fcbe15d22e22f2606ee8f"
+    },
+    {
+      "path": "src/core/pipeline/core.test.ts",
+      "sha256": "bb263dbe004290e680df11740acda410c7147b21ad096677257ae364d4e0bbca"
+    },
+    {
+      "path": "src/core/pipeline/evaluation-signal-cache.test.ts",
+      "sha256": "10457255dbb149e69db7c3419ea176eee423e668098f379670d16536e78fe26e"
+    },
+    {
+      "path": "src/core/pipeline/pooled-pf.test.ts",
+      "sha256": "054fa44e0f9c274dbf2ef9a671e492228032822005c60aedc02c2d0d5808fd93"
+    },
+    {
+      "path": "src/core/pipeline/sets-pass.test.ts",
+      "sha256": "581f306674f9511b57ad540f4de015a91f34127cf71ec610eb59ac8349827023"
+    },
+    {
+      "path": "src/core/positions-cases.test.ts",
+      "sha256": "f599b2a66b54167fd2d4bb6f710adb6f64dc957aa7c20fa70ae05c209c487583"
+    },
+    {
+      "path": "src/core/positions.test.ts",
+      "sha256": "051817e3fb66ce0b3da3c4f3bcb904d928c33e87b00b1285eacb564724aae2b5"
+    },
+    {
+      "path": "src/core/positive-defaults.test.ts",
+      "sha256": "59007e03df453e7694fb24a44336e338d844afbb4645b0f3aa9fa748c821a14a"
+    },
+    {
+      "path": "src/core/prehist-cases.test.ts",
+      "sha256": "6275f6290c9e7d57e9dfb21b97e634ae62aaa47498d7b38942243a7695a8dc9f"
+    },
+    {
+      "path": "src/core/prehist.test.ts",
+      "sha256": "1943f2432c181b8646cc42dc6e5ad8c3e4744fe37ca4bc9b0e0000a809f760ac"
+    },
+    {
+      "path": "src/core/preset-reporting.test.ts",
+      "sha256": "08f256e6dda61675cad9893791feb332f7fa4b5a38618d8ce11b5d2fb6d91f95"
+    },
+    {
+      "path": "src/core/presets.live.test.ts",
+      "sha256": "d1aa8dafa7f6eb265d515051eef3ccd2254fca75959e113d9152746d0f5fcb6b"
+    },
+    {
+      "path": "src/core/processing.test.ts",
+      "sha256": "d0901aa2b03b1e4ea5d734ae856d90d56cd7c0089581d815147899770b011ec1"
+    },
+    {
+      "path": "src/core/range-hold-limit.test.ts",
+      "sha256": "504e71596f29828a61a5e040dee40c2fd88bfd03433a9c0485bd7fadc79bfdcf"
+    },
+    {
+      "path": "src/core/range-protection-parity.test.ts",
+      "sha256": "47251ff74acd8978a171674b8cabe1120b4b69e532514f97d47fb92a08e2b96a"
+    },
+    {
+      "path": "src/core/range-settings.test.ts",
+      "sha256": "48b11aaf3486b53eaddab9cad17c97a6673c04e8f61611ba62da3c1d9e6b9370"
+    },
+    {
+      "path": "src/core/ranges.test.ts",
+      "sha256": "765561e7833dd8e0a64433a755a0d03bd83a26baeb42c5cad37e5d4e33e15bd3"
+    },
+    {
+      "path": "src/core/regression.test.ts",
+      "sha256": "064d90e3cdafdaaf43dc7276478e3347e714d34e5f64427cea8c6b5c1c8f9071"
+    },
+    {
+      "path": "src/core/relation-ownership.test.ts",
+      "sha256": "37746e33947b74dc40198e2aa6266742296eb8447738392ccf1556acc46afa59"
+    },
+    {
+      "path": "src/core/relation.test.ts",
+      "sha256": "a69896d822e79fbe9b7e1f9d131196620c2e527ec980662c5d086bb8e54cddd0"
+    },
+    {
+      "path": "src/core/replay-evaluation-window.test.ts",
+      "sha256": "b645f4b47cc103284e1f9865232f4c91334309603bf60b5d74d963ce75ba7116"
+    },
+    {
+      "path": "src/core/report-page.test.ts",
+      "sha256": "398ed7884b367d797cc983d9d49826d1812a3447d0ad60c50b807f02568dbd2a"
+    },
+    {
+      "path": "src/core/reporting-stats.test.ts",
+      "sha256": "818956b957f7837ef7ac5dd1107ddf637431569d30426cf2a6bb7158cdcc76b0"
+    },
+    {
+      "path": "src/core/seats.test.ts",
+      "sha256": "c7d3bf6ad9e0b7338e1c2fad7a5b4d35c0e78d0bb29ab60b5d47151bdfdd1e18"
+    },
+    {
+      "path": "src/core/server/account-sizing.test.ts",
+      "sha256": "087b72e45a87c4fef6153ea5846784cd056bef50b3e5cd3811d4196081447022"
+    },
+    {
+      "path": "src/core/server/api-batching.test.ts",
+      "sha256": "1d05a0ec69ed3fa8ea1b8635bf88d725126c0062b8f54ad4ae3f787e94350756"
+    },
+    {
+      "path": "src/core/server/base-cohort.test.ts",
+      "sha256": "049f9ddf2d61d1f588bbd0fda81cb5f43cd5a9719959a8cc3946985ffed2494c"
+    },
+    {
+      "path": "src/core/server/base-config-job.test.ts",
+      "sha256": "d16ad7496bbcf5ed5952313e32e315658545a0b2d55e5c3ed71fd830bc8ea4a2"
+    },
+    {
+      "path": "src/core/server/base-config-planning.test.ts",
+      "sha256": "a962fa796393d10d66c3668e70d2348f80fe9d3c08f69c0557ec530f533a1a5d"
+    },
+    {
+      "path": "src/core/server/base-count.test.ts",
+      "sha256": "513ad4c497bf2daa7999c941b9a713be73f571436b1020cbde5ae62d0da83aa9"
+    },
+    {
+      "path": "src/core/server/base-paths.test.ts",
+      "sha256": "36b16fb7cdedaf459957f9af617d93e189d37417c061167d68670071b50c1c6d"
+    },
+    {
+      "path": "src/core/server/base-slice.test.ts",
+      "sha256": "efed491dba486188d48a7474a85cf61cb74df487c95ef3bafbda75bb40a9ae2b"
+    },
+    {
+      "path": "src/core/server/boot.test.ts",
+      "sha256": "ddd423ecfa3c3fcd15139038d1db5109a0ff381713672f64c31fa5547d65b7ec"
+    },
+    {
+      "path": "src/core/server/budget-admission.test.ts",
+      "sha256": "5cc34de61aa7794acaab576200e62e93d94c1dbdb6e3cf1c56f21e87c71290bf"
+    },
+    {
+      "path": "src/core/server/candle-append.test.ts",
+      "sha256": "d546d79295abdcf4e051163ba6e39e9a2f3128ccf486dc289b4ea1b21855b3ce"
+    },
+    {
+      "path": "src/core/server/caps-restore.test.ts",
+      "sha256": "1728ccaf821b85ee911f8b536dccb46727b2d2d5e893fe2b5b4ae83c4ca21755"
+    },
+    {
+      "path": "src/core/server/compare-memory.test.ts",
+      "sha256": "d9d08f8ea8f0670bedaf58be7f51144673016f0bbea8c553e0c611143d5f1f46"
+    },
+    {
+      "path": "src/core/server/compute-publication.test.ts",
+      "sha256": "3d90cdf90b1eee0387e9d1ed9b0b7b956478ab31f05af29210a1da2bfcba42e4"
+    },
+    {
+      "path": "src/core/server/compute-worker-retirement.test.ts",
+      "sha256": "86b9fef1dc33c458680f1c41ca7a11eacbc1b7cc86cc31a6d0969917bf1dddd5"
+    },
+    {
+      "path": "src/core/server/conns.test.ts",
+      "sha256": "49e2edffc9146419bfe7ce4a361e872ba32aef8ba2c10df8602b97aa1a26e4de"
+    },
+    {
+      "path": "src/core/server/control-audit.test.ts",
+      "sha256": "8e9ec0690c1cc3f2b0debcc88aee71f0507cfbf405a0c59d6229557e926e7895"
+    },
+    {
+      "path": "src/core/server/control-excess.test.ts",
+      "sha256": "b97d026c7bbd35bdc4d99ed38c9cb8c62adad6bd7283a3619c88b1ff4e4a81b7"
+    },
+    {
+      "path": "src/core/server/control-mirror.test.ts",
+      "sha256": "7597a38dbddec25bf4658869cb8b14c2cf2249cfe35d8aba5eeac6b95ca3e443"
+    },
+    {
+      "path": "src/core/server/control-orders.test.ts",
+      "sha256": "2feddefb0ecb38956f78e6965f6cb200a580d1de6d24c6a9865271e8b9e07cc4"
+    },
+    {
+      "path": "src/core/server/control-sizing.test.ts",
+      "sha256": "532b10f37729e4069d053bb17a4823b48264d2d630400a241a0de3c5aa9337a6"
+    },
+    {
+      "path": "src/core/server/control.test.ts",
+      "sha256": "e880eea721edb4057403907b0f25f93cb4268a197480333c7e121b059b135de1"
+    },
+    {
+      "path": "src/core/server/cost-default-runtime.test.ts",
+      "sha256": "d2fd6924e14b7c2acb60f9400e455b331f4d384443fc88f65713a73141847ff0"
+    },
+    {
+      "path": "src/core/server/cycle-incremental.test.ts",
+      "sha256": "7aa1fef7d209981163a8aed040f313334e85bb33274a4bd14cf9bd1797fd970d"
+    },
+    {
+      "path": "src/core/server/cycle-serial.test.ts",
+      "sha256": "504c9a6eae056a2e4ef6c582b2d8e5dfbccaf4031a1260d8c3c2be756588aeca"
+    },
+    {
+      "path": "src/core/server/dispose.test.ts",
+      "sha256": "ade602eb550a7999c27cc37995745125546edb22321b13aa011172d68c18a8eb"
+    },
+    {
+      "path": "src/core/server/entries-execution.test.ts",
+      "sha256": "c7303727fc27602253d269ce6e709d11cf131c5567e76de20414111b3d3f4920"
+    },
+    {
+      "path": "src/core/server/eval-family-runtime.test.ts",
+      "sha256": "a14a14f508c99709c01237c3199545f964ba4024e56b7e903fc4543fe76fbcf8"
+    },
+    {
+      "path": "src/core/server/exchange-minimum.test.ts",
+      "sha256": "b59429a785f38f7e28de9c5fca827ee6b9cbf8e4afdd9b37c55ad4f102a617d3"
+    },
+    {
+      "path": "src/core/server/execution-accounting.test.ts",
+      "sha256": "e2cae835727c862ed89463f5e55763137cf4d3a79475447fa258cee0f9bf3b85"
+    },
+    {
+      "path": "src/core/server/execution-budgets.test.ts",
+      "sha256": "0ffd70b064385edf0ab54da4c5f393c20c4ed4677ef10e6a7d43eddaf8b99d3e"
+    },
+    {
+      "path": "src/core/server/execution-progress.test.ts",
+      "sha256": "571e2f86d818e01c398024f673713b62ab17e4fb7ecd5c0ae5fa529b55870570"
+    },
+    {
+      "path": "src/core/server/exit-tick.test.ts",
+      "sha256": "b32b1557d27a1264015fbefe9d2d101769b88eb63aa4984eaee3fcfb51e76dd8"
+    },
+    {
+      "path": "src/core/server/exposure.test.ts",
+      "sha256": "b7d37d7f93187f318f8ca4057955072ee2e0a2d07118a658bd63b42e2f8b2336"
+    },
+    {
+      "path": "src/core/server/fast-entries.test.ts",
+      "sha256": "ef6e0cca5c4da1edf61ef07ffaeddc8b34e5bbabf2673c957e6135f58b724fc7"
+    },
+    {
+      "path": "src/core/server/fast.test.ts",
+      "sha256": "3525107ea9150c773697099b5e9f6172a9ea066f26eace3b839a31def9176e4c"
+    },
+    {
+      "path": "src/core/server/fee-provenance.test.ts",
+      "sha256": "eb02bec7b56a29b31421f1ec28411607daa54152aa1682203aa81841788f22d2"
+    },
+    {
+      "path": "src/core/server/fill-fees.test.ts",
+      "sha256": "9804e802aae6fb753819deb71d6eac554c0bae22924f3bc3dcb4206e6adf3f90"
+    },
+    {
+      "path": "src/core/server/gating-runtime.test.ts",
+      "sha256": "e0d32d7583f5392903c51311adee718dd122a7cbe513136cafa4ffc3a9eec00c"
+    },
+    {
+      "path": "src/core/server/heal.test.ts",
+      "sha256": "85613d6a53783e675a2c192fdef92c2b6675cec009c4a6cdff39f6116b0d4d6f"
+    },
+    {
+      "path": "src/core/server/held-base.test.ts",
+      "sha256": "696f85ca5eb0edada35cf8bef1b9cc38657fa0190e942b1ed9656b2cc9a50cfd"
+    },
+    {
+      "path": "src/core/server/inverse-defaults.test.ts",
+      "sha256": "85ab1fb8245afe6cba23f8510cdf6e643538714147d75ce703cc4c68bca1ccda"
+    },
+    {
+      "path": "src/core/server/inverse-execution.test.ts",
+      "sha256": "65197add31ed7958f7ded9e7dadf1b1e9b43db5425ec7ced15b84e93de23a600"
+    },
+    {
+      "path": "src/core/server/inverse-history.test.ts",
+      "sha256": "3b8d4c7ebd30ac80eff0ef328594b2ac10d5f81cc278e2b1674df9e21fe10fe1"
+    },
+    {
+      "path": "src/core/server/journal.test.ts",
+      "sha256": "01b812322e0629e35561fd9af0af785c6a76ff2cc134c49762009ab247bda69f"
+    },
+    {
+      "path": "src/core/server/key-funnel.test.ts",
+      "sha256": "5e48568854ade7ec2d138c47fc8b548703da4e71ce44052f5049a06ace688eb2"
+    },
+    {
+      "path": "src/core/server/lane-orders.test.ts",
+      "sha256": "f41f060ee5d6c13fb1e128196c84f8250b6a6854cb8580fe4b913899b6a381de"
+    },
+    {
+      "path": "src/core/server/lane-series.test.ts",
+      "sha256": "3b0d08a365de6987dc1a2792670b02f55b50274aa927dcab2489143adca342f0"
+    },
+    {
+      "path": "src/core/server/lanes-lifecycle.test.ts",
+      "sha256": "632e6dab772885261f4754d74cffc3f08124599e13e7491ca6c077075c0e5e10"
+    },
+    {
+      "path": "src/core/server/live-promotion.test.ts",
+      "sha256": "f4c35ed71c25c8701a9e545e71d9a9a65092b1d764182c4a47dcd70e2c0f1869"
+    },
+    {
+      "path": "src/core/server/live-stall.test.ts",
+      "sha256": "a7c56a9fc14c8645d59b8845c6631b42fa39308aaa1fea83aa818e8a56f9bcf5"
+    },
+    {
+      "path": "src/core/server/live.test.ts",
+      "sha256": "c3b728e574b27ad0fe0d4c34a47b382346087d45821af6300a282d5194754ae5"
+    },
+    {
+      "path": "src/core/server/loop-budget.test.ts",
+      "sha256": "19a1340ab8ff34048defe6faa6f5efeee71f2ee74b3a603e7657be83d9dcf5b7"
+    },
+    {
+      "path": "src/core/server/mem-lifetime.test.ts",
+      "sha256": "fc634ed2a763aea77011e67d6b6c5be7eef1cf124b3d8f731a3ee9a9397a2754"
+    },
+    {
+      "path": "src/core/server/memguard-cache.test.ts",
+      "sha256": "326b037897d8f8b9e38276326905170ed928d3dc1f9a1e7cf4910a4e4ada11f4"
+    },
+    {
+      "path": "src/core/server/memguard-carried.test.ts",
+      "sha256": "04ed451022318743e8557057f9e02b69a756f80be4c2e40f222f7401d0e56603"
+    },
+    {
+      "path": "src/core/server/memguard-runtime.test.ts",
+      "sha256": "088575386485302041f9cf20d6de89c39e1a04dbc044c0ba78da52d747c8edb8"
+    },
+    {
+      "path": "src/core/server/memguard.test.ts",
+      "sha256": "43aedb44d26f66c5d3edaf1d1af3d7aad554249ebd22c27b2f3785455b9be42a"
+    },
+    {
+      "path": "src/core/server/order-sides-paper.test.ts",
+      "sha256": "520c1373b4c8103f1dd085ef1a9fe7f29c3a8a8d37c6902d318ec1f3d7b41564"
+    },
+    {
+      "path": "src/core/server/order-sides-records.test.ts",
+      "sha256": "4b5b63b5dac321e6f69f65a4f0b4f83f67df09aacc731cb3bf3d0cefcf7a7beb"
+    },
+    {
+      "path": "src/core/server/order-sides.test.ts",
+      "sha256": "193334b5368a57679fa8a725a2726682606dc2d231ed7cae3b6432b5271a7365"
+    },
+    {
+      "path": "src/core/server/owned-worker.test.ts",
+      "sha256": "43439a6646e0fac802f58877b3c989524dac3af967cca375026d0f4ca10961b5"
+    },
+    {
+      "path": "src/core/server/paper-rows.test.ts",
+      "sha256": "a032a8bcc30b16b49eb04d8995d76bd36428ed84ed2315f4e7d8d0073db0f4b2"
+    },
+    {
+      "path": "src/core/server/paper-unit-runtime.test.ts",
+      "sha256": "b4ee1b57468d23abfdca01c64b2de39d80a23554d40758ec31be5c895a107e99"
+    },
+    {
+      "path": "src/core/server/paper-unit-schema.test.ts",
+      "sha256": "3876cc90547ae58504bf781598c1826cd736ff6a734fd1f366b64d5592fe2114"
+    },
+    {
+      "path": "src/core/server/partition.test.ts",
+      "sha256": "61dbdc9ee149824d45a72037d7e78605fcff0212622aa453da1514a9169a498c"
+    },
+    {
+      "path": "src/core/server/pool-cancel.test.ts",
+      "sha256": "72485dde2dc813abcede8719eb2597c01431981c9165e320bd1fa026be66c779"
+    },
+    {
+      "path": "src/core/server/pool-legacy-reload.test.ts",
+      "sha256": "58860108c87aebb5ce558d2715e4bc7963b1b3c65a7183fb6372789eff9dd572"
+    },
+    {
+      "path": "src/core/server/pool-memory.test.ts",
+      "sha256": "e6b70bb301990517416051b6b56c86187c36a3a29129323ef8e61ecc77f9d59c"
+    },
+    {
+      "path": "src/core/server/pool-module-copies.test.ts",
+      "sha256": "d0f2a5d1ca29b67fc2c8e8de02f841b5c1e6fa61641690fad0213f222789c97c"
+    },
+    {
+      "path": "src/core/server/pool-owner-retirement.test.ts",
+      "sha256": "5f825a92747d65174688e12085c3226eb4d2f6ac9e0d6ada551ba5931c4ff866"
+    },
+    {
+      "path": "src/core/server/pool-priority.test.ts",
+      "sha256": "90123e0fac4d24177caa6eedf8b66a6d1a3958561ff7c4c37827e554262d60c1"
+    },
+    {
+      "path": "src/core/server/pool-shared-memory.test.ts",
+      "sha256": "2de2c3efa44cc28bfecca51d571df5d998afa4c4d4df9fca9001dd2245fe0ab6"
+    },
+    {
+      "path": "src/core/server/pool-spawn-failure.test.ts",
+      "sha256": "d2de5c41e15a755262fb1a451a34ca7933d2ca82c55185062283944d008a4f97"
+    },
+    {
+      "path": "src/core/server/pool-worker-path.test.ts",
+      "sha256": "8bab8862ddfe8aac030563d1e3130d2b604dfa3265c41f243a09a94f907c1f0b"
+    },
+    {
+      "path": "src/core/server/pool.test.ts",
+      "sha256": "9dea23509a66e81297e9de75b62ebe36d87b0a4ba276bbd97f3833af31fe4fc7"
+    },
+    {
+      "path": "src/core/server/preset-backtest-queue.test.ts",
+      "sha256": "eb8ed5d8b05a5d43cf4597f7abdc3ec4289a907fba5b2cf33ecfa861b808a7d0"
+    },
+    {
+      "path": "src/core/server/preset-base.test.ts",
+      "sha256": "6fa7bc1ef2d9a8ba544f9061052e80affdbedb6f2c629040fab7b270442b0127"
+    },
+    {
+      "path": "src/core/server/preset-exit.test.ts",
+      "sha256": "62ad104e2e943782f17b0e19cb8bf8350e90cf5a16e62cb3cb96647e26472293"
+    },
+    {
+      "path": "src/core/server/preset-lifecycle.test.ts",
+      "sha256": "e094b8211144d6b83d5f4e33dbd23b001d7006388e8e7b478fec829710b2237c"
+    },
+    {
+      "path": "src/core/server/readiness.test.ts",
+      "sha256": "604a3a5ccaecac66961535b3731a5fe63a54dd70a1c70acd0d1178844e9a327a"
+    },
+    {
+      "path": "src/core/server/realtime-market.test.ts",
+      "sha256": "db03d46bdd621e5809bf889f1886588ccf404dfad8bd5753156b172cdfe1e536"
+    },
+    {
+      "path": "src/core/server/replay-backfill.test.ts",
+      "sha256": "c2001501955dc2cf1332041ad60d3e107aa13f7ec8a98c7ef79472858c61ddcb"
+    },
+    {
+      "path": "src/core/server/replay-startup.test.ts",
+      "sha256": "65f587932b78248550ae382b0b8a63d4108e8e8222cd6d3dd3cc03f5145cd20c"
+    },
+    {
+      "path": "src/core/server/replay-universe.test.ts",
+      "sha256": "a7461c8c45bcfca6ac9c7932ebdec1854339f91bffe592c29b5597dfe4b5ff2d"
+    },
+    {
+      "path": "src/core/server/research-real.worker.test.ts",
+      "sha256": "46038f2cc8b3b2eca81823ca28e0bd056bc44b440e812995e8fc35277fb1def5"
+    },
+    {
+      "path": "src/core/server/risk.test.ts",
+      "sha256": "7df00bcf8db1af8b2ae43baa3b3d73ad6aa8fa53dde056f646dd87e495b2fc34"
+    },
+    {
+      "path": "src/core/server/runtime.test.ts",
+      "sha256": "103a7e3cb179f1b83a2bca5ccc5a015463b6c6d56d1e8631f700885a7bb47ee2"
+    },
+    {
+      "path": "src/core/server/signal-expanded-defaults.test.ts",
+      "sha256": "c35d0fecdea276ba9c6cd3a0a6b6f63f0ca009ad209d9b6e67b1c3ce568ebe45"
+    },
+    {
+      "path": "src/core/server/signal-policy-migration.test.ts",
+      "sha256": "638b22f23e156a855738ef596f85422ad1ab988ca63843a75ba9226b24379a46"
+    },
+    {
+      "path": "src/core/server/signal-progress.test.ts",
+      "sha256": "6965e89f7e146ddb6424d8044881e4a8c84faa516b54a611b417f771add28597"
+    },
+    {
+      "path": "src/core/server/stage-lifecycle.test.ts",
+      "sha256": "3cebfe7ff82c8046cba7e19855599f572a3adfb00014a6ce672e96e28753161a"
+    },
+    {
+      "path": "src/core/server/stall-probe.test.ts",
+      "sha256": "d2366e3e083a987e8cf3eed56c16cdfc7f5586c84ba383b1100a0a412f19e43f"
+    },
+    {
+      "path": "src/core/server/state.test.ts",
+      "sha256": "37adb6b420e4dedf9a41259490139ebbba97f05201e9433c45139cf99203e20a"
+    },
+    {
+      "path": "src/core/server/trading-e2e.test.ts",
+      "sha256": "c0ca2ac5a16e224f0151a1b486bea19bd6d2c941823e66ac12f1b5909e46e3e2"
+    },
+    {
+      "path": "src/core/server/validated-listings.test.ts",
+      "sha256": "d3f44f5761feeac8ba2b1457fd7b0a59e951bafc4a46cc9c8f226d913888da95"
+    },
+    {
+      "path": "src/core/session-window.test.ts",
+      "sha256": "d0dbef3fb7974956441b24121593d6222e4f467160cff228279c9bdf02554aa6"
+    },
+    {
+      "path": "src/core/signal-accept-index.test.ts",
+      "sha256": "4616b897595302808e395d3fef23a8478529d5697b45dec2ec7dded6dad58a72"
+    },
+    {
+      "path": "src/core/signal-capacity.test.ts",
+      "sha256": "568925fed2f8cc7074362a6e60c85edadfa6d6d8b3fc06afc7352a2be56a7035"
+    },
+    {
+      "path": "src/core/signal-coordination-feature.test.ts",
+      "sha256": "a6ef5b25397edceb22021ad533d55b6b3ea55a2b3dca5de8e2b797ee70d687f7"
+    },
+    {
+      "path": "src/core/signal-coordination.test.ts",
+      "sha256": "37132bf40b1673fb30ca4cbacd2de75587f914dd88f5ef68a47a4dd6121f6844"
+    },
+    {
+      "path": "src/core/signal-discovery.test.ts",
+      "sha256": "a31aeadbb0ab56484969b3e25eb0a836065fb466772d715fecbb2b8bd569a88a"
+    },
+    {
+      "path": "src/core/signal-hist.test.ts",
+      "sha256": "2e41360329c84e55d84abdbb58c6f1ae25c71e8f5e5317d1e7e62c15947f7f25"
+    },
+    {
+      "path": "src/core/signal-mfe-parity.test.ts",
+      "sha256": "15a3200e926a1f9fac094fd4bcc7af48fd1fe2d53831517d58479208f54a26d3"
+    },
+    {
+      "path": "src/core/signal-pf15.test.ts",
+      "sha256": "31f034295893deb300f55fb780ed141d07e7d2e7c4d5b29105289304ed0594cb"
+    },
+    {
+      "path": "src/core/signal-proof-provenance.test.ts",
+      "sha256": "77e4a2ecd5e13ad99478eeab766bd6a5a0fe1bb5b8ce51274a4df7c3144d7707"
+    },
+    {
+      "path": "src/core/signal-research-sources.test.ts",
+      "sha256": "a4734834e45a6bf5df6c6a582d60b2db1008f24cb5a6e30e07252f27dcd8eed5"
+    },
+    {
+      "path": "src/core/signal-seat-index.test.ts",
+      "sha256": "bf9292939310c06e504333bcf177b56dd3717ccf4384195b7943c12204a09e94"
+    },
+    {
+      "path": "src/core/signal-trailing-only.test.ts",
+      "sha256": "d3824cd9a5236831fafacf43097d270a1f02161d84e14d066e5d04e77ec99cc7"
+    },
+    {
+      "path": "src/core/signals-activation-report.test.ts",
+      "sha256": "b7a1c99ccb033a4b8e496f50e30c16b5640776a397b0502c6e72a23e0982ee3c"
+    },
+    {
+      "path": "src/core/signals-append.test.ts",
+      "sha256": "7a8cb00cca07cf383b98f2f19a7d812d8c79481350271a1d11ec530a7a97cb86"
+    },
+    {
+      "path": "src/core/signals-e2e.test.ts",
+      "sha256": "3bcbf296df8aedf28380f75543263af8337a5621837ff57f3195be034ab4c4f6"
+    },
+    {
+      "path": "src/core/signals-history-matrix.test.ts",
+      "sha256": "3923595a3cbe27c8c7c2858ddca4fed7ad8cdd750cf0c065d64a2c305b0e760d"
+    },
+    {
+      "path": "src/core/signals-independence.test.ts",
+      "sha256": "e96b0ebffd6408725f659a1a2f4ab7a968080bba0eadd8618aeba821436e811b"
+    },
+    {
+      "path": "src/core/signals.test.ts",
+      "sha256": "6b2f095f54d7867afae6609c1d8e8f68f9694a9ca862f7673b7797f0a6313265"
+    },
+    {
+      "path": "src/core/sim/admission-cohort.test.ts",
+      "sha256": "b42bd34a417ab57ea2a1730e6083132af2cc8bce3df35ebe7055078f3ce60fcb"
+    },
+    {
+      "path": "src/core/sim/axis-floors.test.ts",
+      "sha256": "4fd33640a7e633ec395d791816e212e86f43bf9485577b3414cbe9acd2edd573"
+    },
+    {
+      "path": "src/core/sim/axis-variants.test.ts",
+      "sha256": "2e694d36ccb917a95befaee3e83951cc1771288368ce7d503c848d9bf7c04d7f"
+    },
+    {
+      "path": "src/core/sim/axis.test.ts",
+      "sha256": "3f9761b85fa058853fe4dbc425264a2e880a2e9ab97eb99f1ce7968915738ecc"
+    },
+    {
+      "path": "src/core/sim/backtest-resume.test.ts",
+      "sha256": "f0ec8af140723d6dc9254d74e292b821a81aaaa2c326d9862b54b11a219f1b00"
+    },
+    {
+      "path": "src/core/sim/backtest.test.ts",
+      "sha256": "7835772634d0b97d00bac3287269d79774c9fd13697570024eac2eb867211e1c"
+    },
+    {
+      "path": "src/core/sim/base-eval-parity.test.ts",
+      "sha256": "1adfa097b53b97ee3edd67a07820f728214950120578a26d66bf4ce33b864972"
+    },
+    {
+      "path": "src/core/sim/block-matrix.test.ts",
+      "sha256": "a5f4ed9efc4df1122a613d169bf6e8aaf088913b648e0815c7ba048006a69b8a"
+    },
+    {
+      "path": "src/core/sim/block-real-admission.test.ts",
+      "sha256": "b641dc90cf128a9a0a6afd95e7a9cbbcdddc32d623dabaa343ad57ce438fa719"
+    },
+    {
+      "path": "src/core/sim/block-replay.test.ts",
+      "sha256": "ecec878944d1fdd45f931f90f48960a43f3d178fa29986447fae9b574024488a"
+    },
+    {
+      "path": "src/core/sim/block.test.ts",
+      "sha256": "5604edae0a647bf96d28199a2466f1f2a3b793be67500434b71e14bbb9b5bf91"
+    },
+    {
+      "path": "src/core/sim/both-sides.test.ts",
+      "sha256": "8e8d475b98c6657759202a60fd7ffcd7da9963aa3d066a6fb17423c3233d0710"
+    },
+    {
+      "path": "src/core/sim/candidate-lifetime.test.ts",
+      "sha256": "536bf335650c6551adf0f28a0f5ca89f0cb5fe290f3ed0eb2f9b5e65632dd6a3"
+    },
+    {
+      "path": "src/core/sim/continuous-validation.test.ts",
+      "sha256": "022a9bf95d90fab87747022c52823e055e49e5a3a3d03875e0ea97f6ca6c1313"
+    },
+    {
+      "path": "src/core/sim/coord-volume.test.ts",
+      "sha256": "63bfd40956bca2e7adb243a736c98094e775f20df55d42d2ea69e055bcb97225"
+    },
+    {
+      "path": "src/core/sim/cursor.test.ts",
+      "sha256": "7ed5ff692d9f75b5bbb43fcce974c06aea94611f0d18dd1d95f5199389372f87"
+    },
+    {
+      "path": "src/core/sim/dca.test.ts",
+      "sha256": "c42e962f61d2f427a40de3792e49878340f2cacf7024c6ffd337ae56fb5372c8"
+    },
+    {
+      "path": "src/core/sim/derived-cache.test.ts",
+      "sha256": "0e73db08a8a542e7e0f2b9b3f4a65a3c1c5514d493368ee756d8f537a0401104"
+    },
+    {
+      "path": "src/core/sim/engine-side.test.ts",
+      "sha256": "87153da1834976972a4c7dc5c356b2f36a2025b5564c06ac643d0147d7f4811c"
+    },
+    {
+      "path": "src/core/sim/eval-prior.test.ts",
+      "sha256": "cbc621261a2e1715319842160793dbf8ade6e5922ecfab554a105013a7e9d744"
+    },
+    {
+      "path": "src/core/sim/evaluation-policy.test.ts",
+      "sha256": "f02bee651678cc8c247c96604040925674c82784dfa00f9baca6a255f2cc4ef7"
+    },
+    {
+      "path": "src/core/sim/execution-factors.test.ts",
+      "sha256": "46bc36e129a973d62acf86a7c0b6047258c66906074894dd849f8142adc41358"
+    },
+    {
+      "path": "src/core/sim/exit-protection.test.ts",
+      "sha256": "85f6033b4f92990286289c8e065fe3ead1400a9a21f35957e60f3e8edf48deee"
+    },
+    {
+      "path": "src/core/sim/exitheap.test.ts",
+      "sha256": "c39b7cc712854adc160a65ccbbd7ab37eb5cf06d4f3ce7769ee00acfd1ba0747"
+    },
+    {
+      "path": "src/core/sim/fixed-price-path.test.ts",
+      "sha256": "e5bc518306fc968fd018ed9ccf36d037555ab19bd254c22b75be42c07493877a"
+    },
+    {
+      "path": "src/core/sim/gap-fill.test.ts",
+      "sha256": "519b9081454a152aaa65ff3488d04f8d71f237454e4b8fc9b2321bccee2b33c4"
+    },
+    {
+      "path": "src/core/sim/gating.test.ts",
+      "sha256": "9227012aed76e4c00c6b480ad536b9a74a8f7c30bc819bc145b1ccb15439a8fa"
+    },
+    {
+      "path": "src/core/sim/incremental-boundary.test.ts",
+      "sha256": "c5b9047d61c2c786ca6a8fc12b2e77c4aa77b653fdc0f8e5ede1f1271bb9237b"
+    },
+    {
+      "path": "src/core/sim/independence.test.ts",
+      "sha256": "bbe497b4f1d4cc7c62db55ddf5085ed8c17ff625749d7252404c8fafbf5fdec5"
+    },
+    {
+      "path": "src/core/sim/invert-seats.test.ts",
+      "sha256": "b9fa1554588320a954d1a3bb46c283f8b182efa20602e686aa3402261a524c8e"
+    },
+    {
+      "path": "src/core/sim/lane-floor-skip.test.ts",
+      "sha256": "8d229f61164f2da9330d4c2289c88654def7af37685971dc2363b108c1a2ee1d"
+    },
+    {
+      "path": "src/core/sim/lastn-calc.test.ts",
+      "sha256": "274054bef39f7044e6e256fec416cd3b54ec7d44c090e49c5949246310496ac6"
+    },
+    {
+      "path": "src/core/sim/micro-cost-trailing-audit.test.ts",
+      "sha256": "e6a08cb334dbd916394a2aac28093b3aca0f8cca9c661ce7317f035957f014f8"
+    },
+    {
+      "path": "src/core/sim/order-sides-sim.test.ts",
+      "sha256": "9b3df4a94d79969ca0797722c905a1a2dad60424f0efa750d8e91752ed20c878"
+    },
+    {
+      "path": "src/core/sim/range-fit-causal.test.ts",
+      "sha256": "0cad9f9196e5e98d81081cd88bd1ea7d793ef73d578c4595163008c9aa9efe92"
+    },
+    {
+      "path": "src/core/sim/range-min-pf.test.ts",
+      "sha256": "eca32280e473ef75f0f37d0c511ba2bdefaf9b9988adcce6f9572e74d8f2ac63"
+    },
+    {
+      "path": "src/core/sim/range-opts.test.ts",
+      "sha256": "9b1ffc64b942a1c42c6bac8df702904e88c9457b2a1fc6d36ece8a93ba61d859"
+    },
+    {
+      "path": "src/core/sim/realtime.test.ts",
+      "sha256": "cc4d4095f50c45ff71471827b9fa21bd8cbcf923e0f82bfeebfe849fbc94855a"
+    },
+    {
+      "path": "src/core/sim/report-variants-cases.test.ts",
+      "sha256": "b44b378a7e4eb694515d8772a913c7a9c96d4ecff348dc3696b8fbc4fe27e2fe"
+    },
+    {
+      "path": "src/core/sim/report-variants.test.ts",
+      "sha256": "f4732f49196ed1b3355adfb042cc55d28c6c09a136c56a8755d0593b5477aa64"
+    },
+    {
+      "path": "src/core/sim/run-blocks.test.ts",
+      "sha256": "66b589f51a25bf57b87da7654065765c3deaae09cc61ac13527220db1c04eddc"
+    },
+    {
+      "path": "src/core/sim/s2coord-cases.test.ts",
+      "sha256": "77a6e02048ef0127df3ca7d2378016d1723c2e9cb9d0997d14c1be88ceaefdc7"
+    },
+    {
+      "path": "src/core/sim/s2coord.test.ts",
+      "sha256": "5e7c05da15dbd63f25a0e75fbbded1a0f1137f3a7bc3ad4088ea76089d4e1756"
+    },
+    {
+      "path": "src/core/sim/selection-index.test.ts",
+      "sha256": "0a5be5563c618255179d601848f75e11b09b90d15b9309fcab9e0eeaf542c9af"
+    },
+    {
+      "path": "src/core/sim/signal-fixes.test.ts",
+      "sha256": "f2214d6c309fee26760da29b0b398e0c38c37b6cbf0891bfab8d9394a72931c1"
+    },
+    {
+      "path": "src/core/sim/signal-gates.test.ts",
+      "sha256": "51acdc2e628bf520803494f310c325815116aa1112049d97cf64f11029741b98"
+    },
+    {
+      "path": "src/core/sim/signal-stop-policy.test.ts",
+      "sha256": "af661d8549ed1e8c07f25b087efbb163794d854871acca4370d4bce3205aa909"
+    },
+    {
+      "path": "src/core/sim/signal-window.test.ts",
+      "sha256": "0cc77f8bc26f3c0fba770c912fc28808f58d03c56cc15e8f5a9b90e151406ed0"
+    },
+    {
+      "path": "src/core/sim/simulation-parity.test.ts",
+      "sha256": "16fb1ffe71030cf5fe227da1283e10a1356cafbcf1f32a15a898ad5fba1c87b0"
+    },
+    {
+      "path": "src/core/sim/stable-blocks.test.ts",
+      "sha256": "d7f999f590149116b17bb8789ed17db0ac4a0def1a4c47346253d67be8e7268c"
+    },
+    {
+      "path": "src/core/sim/strategy-sets-independent.test.ts",
+      "sha256": "56c68d1ac1e29798ab2e51727ccc14b98ccbd8633805f81d6642b62fe7ecd35b"
+    },
+    {
+      "path": "src/core/sim/symbol-directions.test.ts",
+      "sha256": "15b7002337c267d7a3d457409c60cfde944df08f04b6952148f696aa18ed1a4e"
+    },
+    {
+      "path": "src/core/sim/tape-extend.test.ts",
+      "sha256": "28326ba8d61daddba2593bd45b782f6d5b1cbf8172e200db9f3d56fa6ae6793b"
+    },
+    {
+      "path": "src/core/sim/tape-prefix-causal.test.ts",
+      "sha256": "26067360d98f9bdbb92de0253b6f9fb500394461a85a48cc408408b66ae48677"
+    },
+    {
+      "path": "src/core/sim/trail-tick.test.ts",
+      "sha256": "4e8a4ae27b4f26b2ede832dde412b652f3f0f769ad51297307270af0121df73e"
+    },
+    {
+      "path": "src/core/sim/validated-sets.test.ts",
+      "sha256": "c18b0d8ee95ce94c69c1977964abaf02ea0cd8440456c68683458bc05e571e50"
+    },
+    {
+      "path": "src/core/sim/validation-memory.test.ts",
+      "sha256": "49400d5789472764d431ff97bb568d68d26ec8589f17bf029989c665e3902e91"
+    },
+    {
+      "path": "src/core/sim/walkforward.test.ts",
+      "sha256": "39da7ca3db1238b0edbbb2f9fecbe7e264e8f46fd6280050ab5ec326dd6f3bbb"
+    },
+    {
+      "path": "src/core/sizing.test.ts",
+      "sha256": "c4c47892263dc00863717d8b4b7ce3c322e47f553cf891a97c979ed6ccdc0f7d"
+    },
+    {
+      "path": "src/core/stage-consistency.test.ts",
+      "sha256": "508cb6a917a8a86c0857a5ca16d86ac01aef184b9cf06d63e6e81918cfb90137"
+    },
+    {
+      "path": "src/core/statistics.test.ts",
+      "sha256": "5b8320a9c7bb6e59bad57602b603e00a3f889a33e017ed88ad69b74ccc458676"
+    },
+    {
+      "path": "src/core/tactic-pf-floor.test.ts",
+      "sha256": "9080addd533f090d6aee865bd3ae95749817e2eb1d5987e7339b68e664ddeb02"
+    },
+    {
+      "path": "src/core/volume-factor.test.ts",
+      "sha256": "7a53c3af9f9b0027512945883720c6f83a9d048a403a97560aaf758d940eb7e8"
+    },
+    {
+      "path": "src/core/wide-cap.test.ts",
+      "sha256": "eea814016d54d1eb9346572f94a3862d7a6ffe254659648ced297de6f8227971"
+    }
+  ],
+  "shards": [
+    {
+      "index": 1,
+      "files": [
+        "src/core/adjust-evidence.test.ts",
+        "src/core/api-reporting.test.ts",
+        "src/core/block-settings.test.ts",
+        "src/core/engine-proof.test.ts",
+        "src/core/exchange/min-exchange.test.ts",
+        "src/core/exchange/stuck-requests.test.ts",
+        "src/core/indications/break.test.ts",
+        "src/core/indications/market-stream.test.ts",
+        "src/core/indications/micro-rel.test.ts",
+        "src/core/indications/research.test.ts",
+        "src/core/indications/research5.test.ts",
+        "src/core/indications/tactic-keys.test.ts",
+        "src/core/lanes.test.ts",
+        "src/core/live-validation.test.ts",
+        "src/core/market/force-symbols.test.ts",
+        "src/core/market/trade-bars.test.ts",
+        "src/core/micro-range.test.ts",
+        "src/core/pipeline/base-windows.test.ts",
+        "src/core/pipeline/sets-pass.test.ts",
+        "src/core/prehist-cases.test.ts",
+        "src/core/processing.test.ts",
+        "src/core/ranges.test.ts",
+        "src/core/replay-evaluation-window.test.ts",
+        "src/core/server/account-sizing.test.ts",
+        "src/core/server/base-config-planning.test.ts",
+        "src/core/server/boot.test.ts",
+        "src/core/server/compare-memory.test.ts",
+        "src/core/server/control-audit.test.ts",
+        "src/core/server/control-sizing.test.ts",
+        "src/core/server/cycle-serial.test.ts",
+        "src/core/server/exchange-minimum.test.ts",
+        "src/core/server/exit-tick.test.ts",
+        "src/core/server/fee-provenance.test.ts",
+        "src/core/server/held-base.test.ts",
+        "src/core/server/journal.test.ts",
+        "src/core/server/lanes-lifecycle.test.ts",
+        "src/core/server/loop-budget.test.ts",
+        "src/core/server/memguard-runtime.test.ts",
+        "src/core/server/order-sides.test.ts",
+        "src/core/server/paper-unit-schema.test.ts",
+        "src/core/server/pool-memory.test.ts",
+        "src/core/server/pool-shared-memory.test.ts",
+        "src/core/server/preset-backtest-queue.test.ts",
+        "src/core/server/readiness.test.ts",
+        "src/core/server/replay-universe.test.ts",
+        "src/core/server/signal-expanded-defaults.test.ts",
+        "src/core/server/stall-probe.test.ts",
+        "src/core/session-window.test.ts",
+        "src/core/signal-coordination.test.ts",
+        "src/core/signal-pf15.test.ts",
+        "src/core/signal-trailing-only.test.ts",
+        "src/core/signals-history-matrix.test.ts",
+        "src/core/sim/axis-floors.test.ts",
+        "src/core/sim/backtest.test.ts",
+        "src/core/sim/block-replay.test.ts",
+        "src/core/sim/continuous-validation.test.ts",
+        "src/core/sim/derived-cache.test.ts",
+        "src/core/sim/execution-factors.test.ts",
+        "src/core/sim/gap-fill.test.ts",
+        "src/core/sim/invert-seats.test.ts",
+        "src/core/sim/order-sides-sim.test.ts",
+        "src/core/sim/realtime.test.ts",
+        "src/core/sim/s2coord-cases.test.ts",
+        "src/core/sim/signal-gates.test.ts",
+        "src/core/sim/stable-blocks.test.ts",
+        "src/core/sim/tape-prefix-causal.test.ts",
+        "src/core/sim/walkforward.test.ts",
+        "src/core/tactic-pf-floor.test.ts"
+      ]
+    },
+    {
+      "index": 2,
+      "files": [
+        "src/core/adjust.test.ts",
+        "src/core/audit-negative.test.ts",
+        "src/core/book-coverage.test.ts",
+        "src/core/eval-family.test.ts",
+        "src/core/exchange/ratelimit.test.ts",
+        "src/core/exit-excursions.test.ts",
+        "src/core/indications/htf-completeness.test.ts",
+        "src/core/indications/micro-context.test.ts",
+        "src/core/indications/micro.test.ts",
+        "src/core/indications/research2.test.ts",
+        "src/core/indications/stable02.test.ts",
+        "src/core/indications/tactic.test.ts",
+        "src/core/live-diff.test.ts",
+        "src/core/loss-limit.test.ts",
+        "src/core/market/klines-gap.test.ts",
+        "src/core/metrics/stats.test.ts",
+        "src/core/minimal-plus.test.ts",
+        "src/core/pipeline/core.test.ts",
+        "src/core/positions-cases.test.ts",
+        "src/core/prehist.test.ts",
+        "src/core/range-hold-limit.test.ts",
+        "src/core/regression.test.ts",
+        "src/core/report-page.test.ts",
+        "src/core/server/api-batching.test.ts",
+        "src/core/server/base-count.test.ts",
+        "src/core/server/budget-admission.test.ts",
+        "src/core/server/compute-publication.test.ts",
+        "src/core/server/control-excess.test.ts",
+        "src/core/server/control.test.ts",
+        "src/core/server/dispose.test.ts",
+        "src/core/server/execution-accounting.test.ts",
+        "src/core/server/exposure.test.ts",
+        "src/core/server/fill-fees.test.ts",
+        "src/core/server/inverse-defaults.test.ts",
+        "src/core/server/key-funnel.test.ts",
+        "src/core/server/live-promotion.test.ts",
+        "src/core/server/mem-lifetime.test.ts",
+        "src/core/server/memguard.test.ts",
+        "src/core/server/owned-worker.test.ts",
+        "src/core/server/partition.test.ts",
+        "src/core/server/pool-module-copies.test.ts",
+        "src/core/server/pool-spawn-failure.test.ts",
+        "src/core/server/preset-base.test.ts",
+        "src/core/server/realtime-market.test.ts",
+        "src/core/server/research-real.worker.test.ts",
+        "src/core/server/signal-policy-migration.test.ts",
+        "src/core/server/state.test.ts",
+        "src/core/signal-accept-index.test.ts",
+        "src/core/signal-discovery.test.ts",
+        "src/core/signal-proof-provenance.test.ts",
+        "src/core/signals-activation-report.test.ts",
+        "src/core/signals-independence.test.ts",
+        "src/core/sim/axis-variants.test.ts",
+        "src/core/sim/base-eval-parity.test.ts",
+        "src/core/sim/block.test.ts",
+        "src/core/sim/coord-volume.test.ts",
+        "src/core/sim/engine-side.test.ts",
+        "src/core/sim/exit-protection.test.ts",
+        "src/core/sim/gating.test.ts",
+        "src/core/sim/lane-floor-skip.test.ts",
+        "src/core/sim/range-fit-causal.test.ts",
+        "src/core/sim/report-variants-cases.test.ts",
+        "src/core/sim/s2coord.test.ts",
+        "src/core/sim/signal-stop-policy.test.ts",
+        "src/core/sim/strategy-sets-independent.test.ts",
+        "src/core/sim/trail-tick.test.ts",
+        "src/core/sizing.test.ts",
+        "src/core/volume-factor.test.ts"
+      ]
+    },
+    {
+      "index": 3,
+      "files": [
+        "src/core/api-contract.test.ts",
+        "src/core/axis-order-identity.test.ts",
+        "src/core/bot-stats.test.ts",
+        "src/core/evals/evaluator.test.ts",
+        "src/core/exchange/request-budget.test.ts",
+        "src/core/exit-strategy.test.ts",
+        "src/core/indications/inverse-stream.test.ts",
+        "src/core/indications/micro-exhaustion.test.ts",
+        "src/core/indications/range-families.test.ts",
+        "src/core/indications/research3.test.ts",
+        "src/core/indications/stream-math.test.ts",
+        "src/core/indications/tactics.test.ts",
+        "src/core/live-promote.test.ts",
+        "src/core/market/bingx.test.ts",
+        "src/core/market/klines-pace.test.ts",
+        "src/core/metrics/unit-return.test.ts",
+        "src/core/pipeline/base-cell-stats.test.ts",
+        "src/core/pipeline/evaluation-signal-cache.test.ts",
+        "src/core/positions.test.ts",
+        "src/core/preset-reporting.test.ts",
+        "src/core/range-protection-parity.test.ts",
+        "src/core/relation-ownership.test.ts",
+        "src/core/reporting-stats.test.ts",
+        "src/core/server/base-cohort.test.ts",
+        "src/core/server/base-paths.test.ts",
+        "src/core/server/candle-append.test.ts",
+        "src/core/server/compute-worker-retirement.test.ts",
+        "src/core/server/control-mirror.test.ts",
+        "src/core/server/cost-default-runtime.test.ts",
+        "src/core/server/entries-execution.test.ts",
+        "src/core/server/execution-budgets.test.ts",
+        "src/core/server/fast-entries.test.ts",
+        "src/core/server/gating-runtime.test.ts",
+        "src/core/server/inverse-execution.test.ts",
+        "src/core/server/lane-orders.test.ts",
+        "src/core/server/live-stall.test.ts",
+        "src/core/server/memguard-cache.test.ts",
+        "src/core/server/order-sides-paper.test.ts",
+        "src/core/server/paper-rows.test.ts",
+        "src/core/server/pool-cancel.test.ts",
+        "src/core/server/pool-owner-retirement.test.ts",
+        "src/core/server/pool-worker-path.test.ts",
+        "src/core/server/preset-exit.test.ts",
+        "src/core/server/replay-backfill.test.ts",
+        "src/core/server/risk.test.ts",
+        "src/core/server/signal-progress.test.ts",
+        "src/core/server/trading-e2e.test.ts",
+        "src/core/signal-capacity.test.ts",
+        "src/core/signal-hist.test.ts",
+        "src/core/signal-research-sources.test.ts",
+        "src/core/signals-append.test.ts",
+        "src/core/signals.test.ts",
+        "src/core/sim/axis.test.ts",
+        "src/core/sim/block-matrix.test.ts",
+        "src/core/sim/both-sides.test.ts",
+        "src/core/sim/cursor.test.ts",
+        "src/core/sim/eval-prior.test.ts",
+        "src/core/sim/exitheap.test.ts",
+        "src/core/sim/incremental-boundary.test.ts",
+        "src/core/sim/lastn-calc.test.ts",
+        "src/core/sim/range-min-pf.test.ts",
+        "src/core/sim/report-variants.test.ts",
+        "src/core/sim/selection-index.test.ts",
+        "src/core/sim/signal-window.test.ts",
+        "src/core/sim/symbol-directions.test.ts",
+        "src/core/sim/validated-sets.test.ts",
+        "src/core/stage-consistency.test.ts",
+        "src/core/wide-cap.test.ts"
+      ]
+    },
+    {
+      "index": 4,
+      "files": [
+        "src/core/api-lane-summary.test.ts",
+        "src/core/base-config-counts.test.ts",
+        "src/core/completeness.test.ts",
+        "src/core/exchange/keys.test.ts",
+        "src/core/exchange/signed-retry.test.ts",
+        "src/core/indications-both-sides.test.ts",
+        "src/core/indications/inverse.test.ts",
+        "src/core/indications/micro-family.test.ts",
+        "src/core/indications/relate.test.ts",
+        "src/core/indications/research4.test.ts",
+        "src/core/indications/symmetry.test.ts",
+        "src/core/invariants.test.ts",
+        "src/core/live-record.test.ts",
+        "src/core/market/candle-series.test.ts",
+        "src/core/market/symbol-rank.test.ts",
+        "src/core/micro-order-identity.test.ts",
+        "src/core/pipeline/base-pair-rows.test.ts",
+        "src/core/pipeline/pooled-pf.test.ts",
+        "src/core/positive-defaults.test.ts",
+        "src/core/presets.live.test.ts",
+        "src/core/range-settings.test.ts",
+        "src/core/relation.test.ts",
+        "src/core/seats.test.ts",
+        "src/core/server/base-config-job.test.ts",
+        "src/core/server/base-slice.test.ts",
+        "src/core/server/caps-restore.test.ts",
+        "src/core/server/conns.test.ts",
+        "src/core/server/control-orders.test.ts",
+        "src/core/server/cycle-incremental.test.ts",
+        "src/core/server/eval-family-runtime.test.ts",
+        "src/core/server/execution-progress.test.ts",
+        "src/core/server/fast.test.ts",
+        "src/core/server/heal.test.ts",
+        "src/core/server/inverse-history.test.ts",
+        "src/core/server/lane-series.test.ts",
+        "src/core/server/live.test.ts",
+        "src/core/server/memguard-carried.test.ts",
+        "src/core/server/order-sides-records.test.ts",
+        "src/core/server/paper-unit-runtime.test.ts",
+        "src/core/server/pool-legacy-reload.test.ts",
+        "src/core/server/pool-priority.test.ts",
+        "src/core/server/pool.test.ts",
+        "src/core/server/preset-lifecycle.test.ts",
+        "src/core/server/replay-startup.test.ts",
+        "src/core/server/runtime.test.ts",
+        "src/core/server/stage-lifecycle.test.ts",
+        "src/core/server/validated-listings.test.ts",
+        "src/core/signal-coordination-feature.test.ts",
+        "src/core/signal-mfe-parity.test.ts",
+        "src/core/signal-seat-index.test.ts",
+        "src/core/signals-e2e.test.ts",
+        "src/core/sim/admission-cohort.test.ts",
+        "src/core/sim/backtest-resume.test.ts",
+        "src/core/sim/block-real-admission.test.ts",
+        "src/core/sim/candidate-lifetime.test.ts",
+        "src/core/sim/dca.test.ts",
+        "src/core/sim/evaluation-policy.test.ts",
+        "src/core/sim/fixed-price-path.test.ts",
+        "src/core/sim/independence.test.ts",
+        "src/core/sim/micro-cost-trailing-audit.test.ts",
+        "src/core/sim/range-opts.test.ts",
+        "src/core/sim/run-blocks.test.ts",
+        "src/core/sim/signal-fixes.test.ts",
+        "src/core/sim/simulation-parity.test.ts",
+        "src/core/sim/tape-extend.test.ts",
+        "src/core/sim/validation-memory.test.ts",
+        "src/core/statistics.test.ts"
+      ]
+    }
+  ],
+  "ordinaryExclusions": [
+    "runtime.test.ts: stress: a storm",
+    "runtime.test.ts: backtests a preset over"
+  ],
+  "slowJob": "npm run test:core:slow",
+  "runnerSha256": "8d7797e6a601fb04d6313849dee0bd15cb929eda6853a75feb765c80f0ffbc15",
+  "partitionRule": "Node test runner: index % shard.total === shard.index - 1; verified against local built-in runner and the seven-file actual-process disjointness regression."
+}

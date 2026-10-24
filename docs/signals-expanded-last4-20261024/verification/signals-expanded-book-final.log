@@ -1,0 +1,17 @@
+[core-tests] offline Node transport guard; 1 files; concurrency 1; compute workers 1
+[core-v2] compute #1 done in 255290 ms · sim PF including 9739 open marks: 0.91 n 53784 · loop max 844 ms (worst slice of the last 60 s 195 ms in Real, 3 over 40 ms)
+▶ every type and range reaches the Real stage and the paper book
+  ✔ the audit is clean and the stages are reported in order (2.739085ms)
+  ✔ every range with tapes is accounted for in the Real stage (57.161453ms)
+  ✔ every strategy type trades on both sides; Block raises some trades (30.14688ms)
+  ✔ the paper step accounts for every tape position it considered (0.400853ms)
+  ✔ the signal funnel counts every candidate of an inactive unit by side (21.812482ms)
+✔ every type and range reaches the Real stage and the paper book (261597.889313ms)
+ℹ tests 5
+ℹ suites 1
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 262189.777623

@@ -1,0 +1,116 @@
+{
+  "schema": "cts-source-result-parity-v1",
+  "before": "8927a61cff01ac2b91350d73dbb199284cb595b99c46daa2959da90a89795959",
+  "after": "6d18d75b8ae3e437ba069eeb86dacce98d1f76f0b9efde72d5559db8d5cf44ca",
+  "checks": [
+    {
+      "case": "last4",
+      "file": "coverage.json",
+      "equalAfterDeclaredLabelCorrection": true,
+      "sha256": "85dbeb8ceba483d5f2fa9535245c47c24be28f10d7caad26d1457444e5b928a0",
+      "excludedMetadata": [
+        "protocolSha256",
+        "sourceSha256",
+        "engine",
+        "audit",
+        "configFile"
+      ],
+      "verifiedLabelCorrections": [
+        {
+          "field": "account.positions",
+          "before": 12,
+          "after": 9,
+          "reason": "Primary position count now includes held siblings; former settled-only subset retained as account.settledSlicePositions."
+        }
+      ]
+    },
+    {
+      "case": "last4",
+      "file": "execution-contexts.json",
+      "equalAfterDeclaredLabelCorrection": true,
+      "sha256": "2eda28e6a0261a9760beeed6f4e836c4b1505e696f9a8d20c3fd8736962b0221",
+      "excludedMetadata": [
+        "protocolSha256",
+        "sourceSha256"
+      ],
+      "verifiedLabelCorrections": []
+    },
+    {
+      "case": "last4",
+      "file": "admission-trace.json",
+      "equalAfterDeclaredLabelCorrection": true,
+      "sha256": "c63a1ee652a3fe2e72b590c0020933c3ee13e014e3e42051dafc148e87f21812",
+      "excludedMetadata": [
+        "protocolSha256",
+        "sourceSha256"
+      ],
+      "verifiedLabelCorrections": []
+    },
+    {
+      "case": "last4",
+      "file": "derived-catalog.json",
+      "equalAfterDeclaredLabelCorrection": true,
+      "sha256": "1714df80dab6a6df8ef825ce686858cac6e4569652053ea29e7b5f8aea8fc043",
+      "excludedMetadata": [
+        "protocolSha256",
+        "sourceSha256"
+      ],
+      "verifiedLabelCorrections": []
+    },
+    {
+      "case": "last8",
+      "file": "coverage.json",
+      "equalAfterDeclaredLabelCorrection": true,
+      "sha256": "43bbb7ac4bc984175510dc5509a388a504d4f3f65b65af070fdf38d13ec6f27a",
+      "excludedMetadata": [
+        "protocolSha256",
+        "sourceSha256",
+        "engine",
+        "audit",
+        "configFile"
+      ],
+      "verifiedLabelCorrections": [
+        {
+          "field": "account.positions",
+          "before": 10,
+          "after": 8,
+          "reason": "Primary position count now includes held siblings; former settled-only subset retained as account.settledSlicePositions."
+        }
+      ]
+    },
+    {
+      "case": "last8",
+      "file": "execution-contexts.json",
+      "equalAfterDeclaredLabelCorrection": true,
+      "sha256": "61017d30c1b11eaf44996c43170036a6724ff5476966b8e9a2ce1796a134fdb2",
+      "excludedMetadata": [
+        "protocolSha256",
+        "sourceSha256"
+      ],
+      "verifiedLabelCorrections": []
+    },
+    {
+      "case": "last8",
+      "file": "admission-trace.json",
+      "equalAfterDeclaredLabelCorrection": true,
+      "sha256": "7442eb8fe6691e5b426859dbde8a2220cfc6a31ced7da7b9c1b67c538b906ec9",
+      "excludedMetadata": [
+        "protocolSha256",
+        "sourceSha256"
+      ],
+      "verifiedLabelCorrections": []
+    },
+    {
+      "case": "last8",
+      "file": "derived-catalog.json",
+      "equalAfterDeclaredLabelCorrection": true,
+      "sha256": "1714df80dab6a6df8ef825ce686858cac6e4569652053ea29e7b5f8aea8fc043",
+      "excludedMetadata": [
+        "protocolSha256",
+        "sourceSha256"
+      ],
+      "verifiedLabelCorrections": []
+    }
+  ],
+  "note": "Final code corrects Base detail provenance and primary position labels; catalog, executed returns, complete hourly ledger, per-context evidence and admission are unchanged. The declared primary-label correction is asserted against both old diagnostic values and the unchanged complete ledger."
+}

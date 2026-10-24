@@ -1,0 +1,13 @@
+✔ signal unit rows keep types, ranges, lanes, symbols and directions independent (0.83182ms)
+✔ legacy discovery rows are explicit and never labeled as a qualified Normal unit (0.144704ms)
+✔ Historic Exit labels preserve every family and direction without assigning a range or changing the kind (0.385319ms)
+✔ Signal UI counts match the engine and include no-TP sets independently of percent/ATR selection (2.878618ms)
+✔ No-TP labels require the explicit mode, and trailing gap is separate from its activation move (0.40583ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 224.33167

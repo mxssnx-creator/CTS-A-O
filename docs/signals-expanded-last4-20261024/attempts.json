@@ -1,0 +1,98 @@
+[
+  {
+    "scope": "Initial paired-native workflow",
+    "job": 120890640432,
+    "outcome": "failed",
+    "reason": "Worker-only build omitted the production app needed by the native session. Fixed build order before scoring."
+  },
+  {
+    "scope": "Local Last-4 two-worker replay",
+    "sourceSha256": "faf26e16 (superseded; see original frozen protocol)",
+    "outcome": "failed source seal",
+    "directory": "runs/signals-expanded-last4-local/last4",
+    "reason": "API source changed after protocol freeze. No completed score certified from this attempt."
+  },
+  {
+    "scope": "CI 40101608789 quality",
+    "job": 120895005149,
+    "outcome": "failed",
+    "reason": "Two scalar-grid fixtures inherited the new multi-ratio defaults; 713 pass, 2 fail, 8 intentional skips. Fixtures now state scalar inputs."
+  },
+  {
+    "scope": "CI 40101608789 core shard 1",
+    "job": 120895005306,
+    "outcome": "failed setup",
+    "reason": "Processing fixture inherited the expanded catalog and exceeded its 400s setup wait; 865 pass, 3 cancelled. Explicit bounded input restores the intended 128-toggle matrix."
+  },
+  {
+    "scope": "CI 40101608789 core shard 2",
+    "job": 120895005231,
+    "outcome": "cancelled by replacement code checkpoint",
+    "reason": "Full unbounded book reachability passed after 1005.518s compute. ATR default expectation still said pct; corrected to both. Disposal/catalog fixtures now explicitly scoped. No full-shard pass claimed."
+  },
+  {
+    "scope": "CI 40101608789 core shard 3",
+    "job": 120895005282,
+    "outcome": "success",
+    "tests": 792
+  },
+  {
+    "scope": "CI 40101608789 core shard 4",
+    "job": 120895005279,
+    "outcome": "failed",
+    "reason": "8 failures: 4 expanded bounds fixtures, 2 factory migration expectations, Signal Base detail used engine history, activation test applied Normal/Trailing ranking to independent Exit. 1169 pass; 2 slow tests intentionally excluded."
+  },
+  {
+    "scope": "CI 40101608789 slow-runtime",
+    "job": 120895005295,
+    "outcome": "success",
+    "tests": 2
+  },
+  {
+    "scope": "CI 40103220697",
+    "outcome": "superseded by test-only checkpoint",
+    "reason": "Remaining ATR expectation and generic book/disposal scope corrected after preceding shard logs became available. Runtime source unchanged."
+  },
+  {
+    "scope": "Pre-detail paired replay CI 40100970260",
+    "outcome": "success",
+    "sourceSha256": "8927a61cff01ac2b91350d73dbb199284cb595b99c46daa2959da90a89795959",
+    "reason": "Both full native replays and desktop/mobile report audit passed. Later fix aligns Base details with independent history and primary total/hour position labels. Raw evidence and all original outcomes retained."
+  },
+  {
+    "scope": "Final-source paired replay CI 40103220690",
+    "outcome": "success",
+    "sourceSha256": "6d18d75b8ae3e437ba069eeb86dacce98d1f76f0b9efde72d5559db8d5cf44ca",
+    "reason": "Both complete native replays, independent audits and desktop/mobile browser checks passed."
+  },
+  {
+    "scope": "Final code/tests CI 40103539214",
+    "outcome": "failed",
+    "head": "b5784a997376a3585623844ec7527b0e48c95c8a",
+    "reason": "Two explicit scalar/default test fixtures needed correction; production source unchanged. See individual entries below."
+  },
+  {
+    "scope": "CI 40103539214 quality",
+    "job": 120900637776,
+    "outcome": "failed app fixture",
+    "reason": "All 715 script tests pass, with 8 intentional skips; app 82/83 passed. The last UI fixture expected 9 scalar no-TP cells instead of Expanded 27. Corrected fixture passes, and all 83 app/component tests pass locally."
+  },
+  {
+    "scope": "CI 40103539214 core shard 2",
+    "job": 120900637708,
+    "outcome": "failed scalar fixture",
+    "reason": "648 passed, 1 failed. Fixed-percentage ratio fixture inherited newly enabled ATR configs (10 Normal cells instead of its explicit expected 1). Fixture now sets pct; all 16 stop-policy cases pass locally."
+  },
+  {
+    "scope": "Final code/tests CI 40104548738",
+    "outcome": "success",
+    "head": "080566d5dde7f66d37ca639f8315de910cd76f73",
+    "reason": "4,287 passing tests, zero failures or cancellations; eight intentional script template skips and two slow tests excluded from ordinary partition but both passed in slow-runtime."
+  },
+  {
+    "scope": "Final-source local four-worker replay",
+    "outcome": "success",
+    "sourceSha256": "6d18d75b8ae3e437ba069eeb86dacce98d1f76f0b9efde72d5559db8d5cf44ca",
+    "reason": "68/68 native checks, 75,812,256 scalar comparisons and exact parity with final hosted two-worker catalog/ledger/returns/context/admission. Compute 526.952s, native/report 581.216s, child peak 4,810.95 MiB."
+  }
+]

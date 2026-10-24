@@ -1,0 +1,73 @@
+{
+  "status": "merged; verified main checkout refreshed",
+  "pullRequest": "https://github.com/mxssnx-creator/CTS-A-O/pull/197",
+  "base": "8ee9073ad2c6201ba325905563e33bd730a8fd8e",
+  "backup": "backup/main-before-expanded-last4-20261024-8ee9073",
+  "head": "080566d5dde7f66d37ca639f8315de910cd76f73",
+  "tree": "68832c2a1e67da7630ad729b958c9eff1d7411d2",
+  "sourceSha256": "6d18d75b8ae3e437ba069eeb86dacce98d1f76f0b9efde72d5559db8d5cf44ca",
+  "nativeWorkflow": 40103220690,
+  "ciWorkflow": 40104548738,
+  "exactStudyWorkflow": 40104548816,
+  "reportPreviewWorkflow": 40104548817,
+  "financialScopes": {
+    "data": "frozen minute prices for 12 symbols",
+    "sourceCount": 103,
+    "coordinatorCount": 15,
+    "windowHours": 12,
+    "historyHours": 100,
+    "lastN": [
+      8,
+      4
+    ],
+    "mode": "offline funded model; no venue orders",
+    "otherFinancialTypes": "DCA/Block/Axis off in paired study; independent lifecycle tests remain enabled"
+  },
+  "policy": {
+    "fullHistoryMinTrades": 12,
+    "historicFittingMinN": 30,
+    "signalMinPf": 1.5,
+    "separateLivePromotionLastN": 25,
+    "dynamicSelections": "Minute price paths and causal per-entry checks; hourly report/selection checkpoints retain frozen policy"
+  },
+  "lifecycle": {
+    "independentOrders": 1728,
+    "positionEpisodes": 24,
+    "peakOrders": 1152,
+    "independentReopens": 576,
+    "nativePartialCases": 112,
+    "toggleCombinations": 128
+  },
+  "artifacts": "archives.json",
+  "attempts": "attempts.json",
+  "tests": {
+    "coreFiles": 271,
+    "ordinaryCorePassed": 3487,
+    "slowRuntimePassed": 2,
+    "scriptsPassed": 715,
+    "scriptTemplateSkips": 8,
+    "appComponentPassed": 83,
+    "totalPassed": 4287,
+    "failures": 0,
+    "cancelled": 0,
+    "slowExcludedOrdinaryButRunSeparately": 2,
+    "lintErrors": 0,
+    "lintPreexistingWarnings": 43,
+    "types": "pass",
+    "productionBuild": "pass",
+    "desktopMobileReport": "pass",
+    "nativeChecksPerArm": 68
+  },
+  "ciStatus": "success",
+  "nativeStatus": "success",
+  "exactStudyStatus": "success (offline checks/build; network acquisition/research jobs intentionally skipped for this event)",
+  "previewStatus": "success",
+  "workerParityFinal": "pass (2 vs 4 workers, exact catalog/ledger/returns/context/admission equality)",
+  "performance": "performance.json",
+  "sourceResultParity": "source-result-parity.json",
+  "mergeSha": "ff394919f99696e5a545d02ec1e0c2af8399dee9",
+  "mergedAt": "2026-10-24T15:07:51Z",
+  "mergeTree": "68832c2a1e67da7630ad729b958c9eff1d7411d2",
+  "checkoutBranch": "main",
+  "deployment": "No venue operations, account changes or running-instance reload. This release updates the Git repository and local main checkout."
+}

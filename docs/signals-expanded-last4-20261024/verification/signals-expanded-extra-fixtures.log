@@ -1,0 +1,55 @@
+[core-tests] offline Node transport guard; 2 files; concurrency 1; compute workers 1
+▶ Stable-02 ports: registry
+  ✔ every ported id is registered once, every s2 source has its short / medium signal ids (2.404166ms)
+  ✔ every port returns a state per bar and fires long and short on the test series (93.035572ms)
+  ✔ mirrored prices flip every port's direction (confluence's RSI bands overlap: excluded) (25.53727ms)
+✔ Stable-02 ports: registry (122.347625ms)
+▶ Stable-02 ports: same signals as the desk
+  ✔ entry ema-cross (short = the desk's parameters) (25.686531ms)
+  ✔ entry rsi-revert (short = the desk's parameters) (11.636651ms)
+  ✔ entry st-trail (short = the desk's parameters) (11.72374ms)
+  ✔ entry bb-bounce (short = the desk's parameters) (12.389164ms)
+  ✔ entry vwap-axis (short = the desk's parameters) (11.478076ms)
+  ✔ entry vol-break (short = the desk's parameters) (10.658995ms)
+  ✔ entry adx-gate (short = the desk's parameters) (9.493882ms)
+  ✔ entry stoch-swing (short = the desk's parameters) (9.31041ms)
+  ✔ entry confluence (short = the desk's parameters) (10.728989ms)
+  ✔ entry range-break (short = the desk's parameters) (13.315814ms)
+  ✔ entry atr-break (short = the desk's parameters) (7.607373ms)
+  ✔ entry active-hf (short = the desk's parameters) (9.622352ms)
+  ✔ entry range-shift (short = the desk's parameters) (8.116088ms)
+  ✔ entry block-stack (short = the desk's parameters) (8.364803ms)
+  ✔ entry block-scale (short = the desk's parameters) (8.244303ms)
+  ✔ every desk indication maps onto a registry state with the same direction (38.920255ms)
+  ✔ not ported (already equivalent): normal = EMA 9/21 cross onsets, macd-mom = MACD signal cross onsets (9.085167ms)
+✔ Stable-02 ports: same signals as the desk (217.681902ms)
+▶ Stable-02 ports: hand-built onsets
+  ✔ vol-break: a 2× volume bar closing up above SMA 20 is long, mirrored short (0.576303ms)
+  ✔ range-break: close above the 20-bar high on 1.2× volume with a bar over 1.1 × ATR (0.284932ms)
+  ✔ block-stack: 3 of the last 4 bars up on volume, close above EMA 9 (0.242899ms)
+  ✔ block-stack: a doji counts on neither side (the desk counted it up: a long bias the mirror keeps) (0.261917ms)
+  ✔ st-trail: a sustained rally flips the Supertrend up (onset), a sell-off flips it down (0.242599ms)
+  ✔ rsi-revert: RSI < 32 at the lower band is long, > 68 at the upper band short (0.315176ms)
+✔ Stable-02 ports: hand-built onsets (2.500649ms)
+▶ Stable-02 ATR exits
+  ✔ stop = k × ATR, target = ratio × stop, trail arms at 0.95 × stop with the desk's gap (0.520029ms)
+  ✔ ids carry the ATR cell; lanes keep it; live feedback floors the resolved distances (1.348565ms)
+  ✔ simulate: stop, target and time exits at the ATR distances of the signal bar (0.938658ms)
+  ✔ simulate: the ATR trail arms at 0.95 × stop and trails at the stop distance (0.351069ms)
+  ✔ a pending ATR entry carries its resolved distances (live / paper get a concrete stop) (0.273775ms)
+  ✔ settings: exit model and ATR grid validated and defaulted (2.365699ms)
+✔ Stable-02 ATR exits (6.041977ms)
+▶ runtime disposal
+  ✔ a constructed, never started runtime is collectable after dispose (18.896698ms)
+[core-v2] compute #1 done in 1911 ms · sim PF including 2 open marks: 0.93 n 61 · loop max 73 ms
+  ✔ a runtime that computed and stepped paper is collectable after stop → close the pool → dispose (2051.334911ms)
+  ✔ stop() alone keeps it reachable (what dispose is for) (47.428418ms)
+✔ runtime disposal (2119.306423ms)
+ℹ tests 35
+ℹ suites 5
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3216.562808

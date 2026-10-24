@@ -1,0 +1,34 @@
+[
+  {
+    "case": "last4",
+    "revision": "pre-detail",
+    "filename": "signals-last4-full-evidence.zip",
+    "bytes": 210117366,
+    "sha256": "2a54302a58242a7cf9a804d524d07ff6ed893fdea5a71b6b3d6689f07029b08b",
+    "libraryFileId": "libfile_39c457ef12008191b62e590358b15e73"
+  },
+  {
+    "case": "last8",
+    "revision": "pre-detail",
+    "filename": "signals-last8-full-evidence.zip",
+    "bytes": 209644825,
+    "sha256": "1229c88fea872948e1f309db4a51c16328274eecaee03fed7827cb58bd2acca5",
+    "libraryFileId": "libfile_e322aa6ea52481919058b982e2ebe150"
+  },
+  {
+    "case": "last8",
+    "revision": "final",
+    "filename": "signals-last8-final-full-evidence.zip",
+    "bytes": 209645266,
+    "sha256": "0dd7648d5775f9e3a56ee772e59a9d28f757a69a65846d92f0f9a66992c0d443",
+    "libraryFileId": "libfile_5546f41964248191812058f46e6e0ca9"
+  },
+  {
+    "case": "last4",
+    "revision": "final",
+    "filename": "signals-last4-final-full-evidence.zip",
+    "bytes": 210118228,
+    "sha256": "9b79ec2f06e2b1ca6b3329deccabc28658662337f3b00a33c6aaa91465294c8d",
+    "libraryFileId": "libfile_ec5ea9f45be48191923b89333116c2c5"
+  }
+]

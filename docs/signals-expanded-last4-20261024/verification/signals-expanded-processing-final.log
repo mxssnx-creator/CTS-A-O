@@ -1,0 +1,21 @@
+[core-tests] offline Node transport guard; 1 files; concurrency 1; compute workers 1
+▶ every indication works
+  ✔ returns a state per bar for every indication, without throwing, and fires on the test series (2964.095456ms)
+  ✔ regression: a double-smoothed indication (TSI) is not NaN for good; ema seeds after a NaN prefix (1.92675ms)
+  ✔ every indication uses its eligible Base lanes (Relate and Break use anchor lanes) (472.953265ms)
+✔ every indication works (3440.289524ms)
+[core-v2] compute #1 done in 109310 ms · sim PF including 71 open marks: 1.34 n 1235 · loop max 1245 ms (worst slice of the last 60 s 1216 ms in Tapes, 4 over 40 ms)
+▶ processing through the stages, every strategy type, every toggle combination
+  ✔ Base evaluates every combo of every lane; Main keeps lanes; tapes carry every strategy type and range (69.524847ms)
+  ✔ all 128 toggle combinations: audit clean, the rules hold, DCA / Axis independent of Normal / Trailing (40485.967491ms)
+  ℹ raw-candidate bootstrap presence uses explicit real-candidates Block history
+  ✔ trailing exits only on trailing configs, plain configs never trail; every trade pays the cost once (5.279346ms)
+✔ processing through the stages, every strategy type, every toggle combination (150273.916338ms)
+ℹ tests 6
+ℹ suites 2
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 154232.539315

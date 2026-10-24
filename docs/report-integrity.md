@@ -1,3 +1,9 @@
+# Complete position counts and published Base detail — 24 October 2026
+
+A position remains open while any funded sibling configuration order is held. Primary total/hour position counts must use the complete funded order ledger, including endpoint holdings; a grouping of settled orders alone is only a settled-subset diagnostic. Keep opened, settled and held order counts separate, conserve both ledgers at every right-closed hourly boundary, and never sum overlapping type-group position episodes. The native audit independently reconstructs these totals and asserts report aliases against the complete ledger.
+
+Base detail must reconstruct the exact published evaluation cohort. Publish its engine and independent Signal series, evaluation boundary, costs, tactics and grid atomically with Base rows; pending settings edits or the ordinary engine window cannot reprice or truncate an already published Signal result. Use request-local indicator caches. Full/incremental/worker/fallback detail tests and the native scalar audit guard this contract.
+
 # Same-symbol ranking comparison and tied Last-N order — 21 October 2026
 
 The final source-f704 comparison selects exactly the same twelve symbols with Volatility and Change, but in different priority order. Whole-run PF 1.0852160377/1.0834427433 is not evidence for a better selected market universe. All 160,071 shared funded closes have identical unit returns. Each whole case also has exact source-tape/execution parity after the modeled 0.15% roundtrip once.
