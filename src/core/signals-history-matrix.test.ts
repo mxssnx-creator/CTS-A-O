@@ -17,19 +17,19 @@ const H = 3_600_000;
 const T = Date.UTC(2026, 9, 20, 12);
 
 describe("Signal history, bounded trailing and exact-context progression", () => {
-  it("keeps 100h independent of engine 24h and persists the override through WF sanitization", () => {
+  it("keeps 150h independent of engine 24h and persists the override through WF sanitization", () => {
     const wf = defaultWalkForward(DEFAULT_SETTINGS);
     assert.equal(wf.longH, 24);
-    assert.equal(signalHistoryHours(wf), 100);
+    assert.equal(signalHistoryHours(wf), 150);
     assert.deepEqual(sanitizeWf({ signalLongH: 480 }), { signalLongH: 480 });
-    assert.equal(signalHistoryHours({ preH: 6 }), 100);
+    assert.equal(signalHistoryHours({ preH: 6 }), 150);
   });
 
   it("provides the full Signal history on every lane without expanding ordinary engine cohorts", () => {
     const s = normalizeLanes({ ...DEFAULT_SETTINGS, signals: signalSettings({ lanes: [1, 5, 15, 30] }) });
     const wf = { ...defaultWalkForward(s), simH: 6 };
     const hours = signalDataHours(s, wf);
-    assert.ok(hours >= 24 + 100 + 6);
+    assert.ok(hours >= 24 + 150 + 6);
     assert.ok(marketHistoryBars(s, wf) >= hours * 60);
     const candles = new Map([["A", CandleSeries.fromCandles(syntheticCandles("A", 1, Math.ceil(hours * 60), T))]]);
     const engine = laneSeriesFrom(candles, s);

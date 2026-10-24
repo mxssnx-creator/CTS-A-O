@@ -20,7 +20,7 @@ export function* signalDerivedCatalog({settings,wf,fastArgs}) {
   const floors=fastArgs?.sig?.floors??{minSl:sig.minSl,minTrail:sig.minTrail};
   const feedback=fastArgs?.adjust;
   const combos=signalCombos(sig,settings.tfs);
-  const coord=combos.some(c=>parseSignalCoordinationId(c.ind))?signalCoordinationProtects(settings.grid,settings.cost,sig.coordination.ranges):[];
+  const coord=combos.some(c=>parseSignalCoordinationId(c.ind))?signalCoordinationProtects(settings.grid,settings.cost,sig.coordination.ranges,sig):[];
   for(const {bot,ind} of combos){
     const refs=parseSignalCoordinationId(ind)?coord:wf.dcaProtects;
     assert.ok(Array.isArray(refs)&&refs.length,'Missing materialized DCA protection grid');

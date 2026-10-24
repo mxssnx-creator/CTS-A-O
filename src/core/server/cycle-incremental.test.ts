@@ -118,6 +118,16 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
     assert.ok(R.inc, "the heavy compute captured the validated set");
     const ids: Set<string> = R.inc.ids;
     assert.ok(ids.size > 50, `validated ${ids.size}`);
+    const selectedOrHeld = new Set<string>([
+      ...R.lastSelection.picks.map((p: { id: string }) => p.id),
+      ...rt.paper.selected,
+      ...rt.paper.positions.map((p) => p.cfg),
+    ]);
+    assert.deepEqual([...ids].sort(), [...selectedOrHeld].sort(), "incremental work contains only selected or held configs");
+    const rejectedSignals = rt.tapes.filter((tp) => tp.ind.startsWith("sig-") && !selectedOrHeld.has(tp.id));
+    assert.ok(rejectedSignals.length > 0, "fixture includes nonselected Signal configs");
+    assert.ok(rejectedSignals.every((tp) => !ids.has(tp.id)), "failed Signal candidates are not seeded into foreground work");
+
     const starts = new Map<string, number>(
       R.inc.state.universe.series.map((b: Bars) => [`${b.sym}@${b.tfMin}`, b.t[0]]),
     );

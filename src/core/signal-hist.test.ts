@@ -154,6 +154,13 @@ describe("signal historic trailing configs", () => {
     while (!disabledResult.done) disabledResult = disabledGen.next();
     assert.deepEqual(disabledResult.value[pair] ?? [], [], "disabled coordinator ranges never fall back to untagged configs");
     assert.equal(disabledDiagnostics.qualified, 0);
+    const signalOnly = signalHistProtectsGen(u, [pair], sig, null, u.nowT,
+      { cost: 0.002, minPf: 0, minTrades: 1, maxDdr: 1000, coordinationSignalRange: true });
+    let signalResult = signalOnly.next();
+    while (!signalResult.done) signalResult = signalOnly.next();
+    assert.ok((signalResult.value[pair] ?? []).length > 0, "Signal-range coordinators retain qualified historic configurations");
+    assert.ok(signalResult.value[pair].every((p) => !p.tag), "no ordinary range cloning");
+
   });
 
   it("the MFE of each entry: from the next bar's open over the hold, long on highs, short on lows (hand-computed)", () => {

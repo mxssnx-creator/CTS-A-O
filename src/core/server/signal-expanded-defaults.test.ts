@@ -35,6 +35,7 @@ it("fresh Expanded defaults match the verified source/grid catalog with own Last
   const recorded = JSON.parse(readFileSync(new URL("../../../docs/signals-coverage-20261023/receipts/final/all-sources/protocol.json", import.meta.url), "utf8"));
   const expected = recorded.actualSettings.signals;
   expected.guard.lastN = 4;
+  expected.hist.lookbackH = 150;
   const normalized = { ...rt.settings.signals, sourcesMode: "allow", sources: Object.fromEntries(SIGNAL_SOURCES.map(s => [s.name, true])) };
   assert.deepEqual(normalized, expected);
   assert.deepEqual(signalCombos(rt.settings.signals, rt.settings.tfs), signalCombos(expected, recorded.actualSettings.tfs));
@@ -42,7 +43,7 @@ it("fresh Expanded defaults match the verified source/grid catalog with own Last
   assert.equal(rt.wf.signalValidLastN, 4);
   assert.equal(rt.wf.exitMinTrades, 4);
   assert.equal(rt.settings.exitStrategy.minValidationTrades, 4);
-  assert.equal(rt.wf.signalLongH, 100);
+  assert.equal(rt.wf.signalLongH, 150);
   assert.equal(rt.settings.signals.hist.minN, 30);
   assert.equal(rt.settings.gates.minTrades, recorded.actualSettings.gates.minTrades);
   assert.doesNotThrow(() => checkSettings({ signals: rt.settings.signals }));

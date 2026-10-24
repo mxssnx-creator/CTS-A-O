@@ -1163,7 +1163,7 @@ export class CoreRuntime {
     if (opts.priceStream !== undefined) this.priceStream = opts.priceStream;
     this.db = db;
     // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
-    const savedWf = migrateSignalLast4Policy(db, migrateSignalEvaluationPolicy(db, migrateWfCaps(db)));
+    const savedWf = migrateSignalHistory150(db, migrateSignalLast4Policy(db, migrateSignalEvaluationPolicy(db, migrateWfCaps(db))));
     migrateExpandedSignalDefaults(db);
     migrateMicroBreakoutFocus(db);
     migrateMicroContextFocus(db);
@@ -2016,8 +2016,10 @@ export class CoreRuntime {
     const captureRevision = computeKey(this.settings, this.wf);
     const capturedArgs = this.fastArgs;
     const s = this.settings;
-    const { signal } = splitSignalTapes(this.tapes, this.wf);
-    const ids = new Set<string>([...sel.picks.map((p) => p.id), ...signal.map((tp) => tp.id), ...this.paper.positions.map((p) => p.cfg)]);
+    // Paper has already selected exact Signal configs using their own symbol/direction evidence.
+    // Fast Paper ticks only consider paper.selected, so seeding all discovered Signal tapes here
+    // wastes work without making them eligible. Heavy evaluation retains full discovery history.
+    const ids = new Set<string>([...sel.picks.map((p) => p.id), ...this.paper.selected, ...this.paper.positions.map((p) => p.cfg)]);
     const validated = this.tapes.filter((tp) => ids.has(tp.id));
     const state = new IncrementalState(wu, s.cost, s.tactics, s.tfMin);
     const others = new Set<string>();
@@ -4536,13 +4538,7 @@ export class CoreRuntime {
     wf.family = evalFams && !famNarrow ? evalFams.map((f) => f.label) : undefined;
     // Signals processing: the active signals and every signal pair still holding a position take the signal
     // configs, never the engine's protect grid
-    const heldCoordinationRanges = this.paper.positions.flatMap((p) =>
-      isSignalCoordinationInd(p.cfg.split("|")[1] ?? "") && rangeOfId(p.cfg)
-        ? [rangeOfId(p.cfg)!]
-        : [],
-    );
-    const coordRanges = signalCoordinationRanges(sig.coordination.ranges, heldCoordinationRanges);
-    const coordProtects = signalCoordinationProtects(s.grid, s.cost, coordRanges);
+    const coordProtects = signalCoordinationProtects(s.grid, s.cost, sig.coordination.ranges, sig);
     // The full-history ranking is status-only; the simulation ranks each type causally from its own tapes.
     let sigActive = sig.enabled
       ? activeSignals(
@@ -8323,7 +8319,7 @@ export class CoreRuntime {
       }
     }
     // Signals: scored on the window before the backtest, the best N trade their 15 Normal + 15 Trailing configs
-    const coordProtects = signalCoordinationProtects(s.grid, s.cost, sig.coordination.ranges);
+    const coordProtects = signalCoordinationProtects(s.grid, s.cost, sig.coordination.ranges, sig);
     const sigCombos = configuredSignalCombos.filter(
       (c) => !isSignalCoordinationInd(c.ind) || coordProtects.length > 0,
     );
@@ -10606,6 +10602,30 @@ function migrateSignalEvaluationPolicy(db: CoreDb, saved: Partial<WalkForwardOpt
   return out;
 }
 
+/** Upgrade the former 100h factory policy once; explicit custom horizons stay unchanged. */
+function migrateSignalHistory150(db: CoreDb, saved: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
+  if (db.kvGet("signalHistory150V1")) return saved;
+  const settings = db.kvGet<SettingsPatch>("settings");
+  const presets = db.kvGet<Preset[]>("presets");
+  const backup = structuredClone({ wf: saved, settings, presets });
+  const out = structuredClone(saved);
+  const upgrade = (s: SettingsPatch | undefined, wf: Partial<WalkForwardOptions> | undefined) => {
+    if (s?.signals?.hist?.lookbackH === 100) s.signals.hist.lookbackH = SIGNAL_HISTORY_H;
+    if (s?.exitStrategy?.lookbackH === 100) s.exitStrategy.lookbackH = SIGNAL_HISTORY_H;
+    if (wf?.signalLongH === 100) wf.signalLongH = SIGNAL_HISTORY_H;
+  };
+  upgrade(settings, out);
+  if (Array.isArray(presets)) for (const preset of presets) upgrade(preset.settings, preset.wf);
+  db.tx(() => {
+    db.kvSet("signalHistory150BackupV1", backup);
+    db.kvSet("wf", pickWf(out));
+    if (settings) db.kvSet("settings", settings);
+    if (presets) db.kvSet("presets", presets);
+    db.kvSet("signalHistory150V1", true);
+  });
+  return out;
+}
+
 /** Upgrade former factory fields once, retaining explicit custom selections and a transactional backup. */
 function migrateExpandedSignalDefaults(db: CoreDb): void {
   if (db.kvGet("signalExpandedDefaultsV1")) return;
@@ -11291,6 +11311,7 @@ function coordinatorHistValidationOf(
     if (protect.tag === "sh" || protect.tag === "gn" || protect.tag === "lg") tags.add(protect.tag);
   return {
     ...signalHistValidationOf(settings.cost, settings.gates, lastN),
+    coordinationSignalRange: tags.size === 0,
     rangeMinPf: Object.fromEntries([...tags].map((tag) => [tag, minPfOf(settings.gates, tag, "sig-coord")])),
   };
 }
@@ -11300,8 +11321,13 @@ export function signalCoordinationProtects(
   grid: CoreSettings["grid"],
   cost: number,
   ranges: SignalSettings["coordination"]["ranges"],
+  signals?: SignalSettings,
 ): Protect[] {
   const selected = signalCoordinationRanges(ranges);
+  // Runtime coordinators use the same independent Signal grid as other Signal sources.
+  // The legacy three-argument form remains available for reproducing sealed historical studies.
+  // Removed legacy range identities are retained separately by heldCoordinationProtects.
+  if (signals) return selected.short || selected.normal || selected.long ? signalProtects(signals) : [];
   const selectedGrid: CoreSettings["grid"] = {
     ...grid,
     tp: [],

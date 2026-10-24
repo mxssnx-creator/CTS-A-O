@@ -16,7 +16,7 @@ job = next(j for j in plan['jobs'] if j['scenario']['id'] == scenario)
 case = Path(job['dir'])
 protocol = json.loads((case / 'protocol.json').read_text())
 w = protocol['window']
-assert w['preH'] == 100 and w['runH'] == 12 and len(protocol['symbols']) == 12
+assert w['preH'] >= 100 and w['runH'] == 12 and len(protocol['symbols']) == 12
 
 def iso(t):
     return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(t / 1000))
@@ -24,9 +24,9 @@ def iso(t):
 node = ['node', '--expose-gc', '--experimental-strip-types', '--no-warnings']
 cmd = node + ['--max-old-space-size=4096', 'scripts/core-session.mjs',
     '--feed', protocol['feed']['path'], '--desk', str(case / 'desk.json'),
-    '--frozen-session', str(case / 'protocol.json'), '--symbols', '12', '--pre', '100',
+    '--frozen-session', str(case / 'protocol.json'), '--symbols', '12', '--pre', str(w['preH']),
     '--run', '12', '--end-at', iso(w['endT']), '--evaluation-from', iso(w['evaluationFromT']),
-    '--selection-hours', '100', '--live-since', iso(w['tradeStartT']), '--replay-preload-all',
+    '--selection-hours', str(protocol['actualWf']['longH']), '--live-since', iso(w['tradeStartT']), '--replay-preload-all',
     '--balance', '10', '--pct', '.001', '--leverage', '10', '--out', str(case / 'session'),
     '--html', str(case / 'report'), '--dump', str(case / 'raw.json'),
     '--tape-trades-all', '--chunk-allocations', '--quiet', 'true']

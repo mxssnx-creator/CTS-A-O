@@ -43,6 +43,8 @@ export interface SignalHistValidation {
   lastN?: number;
   /** Coordinator historic configs qualify independently against each enabled exit range's stage PF floor. */
   rangeMinPf?: Partial<Record<"sh" | "gn" | "lg", number>>;
+  /** Runtime coordinators qualify in Signals only; legacy studies retain explicit range gates. */
+  coordinationSignalRange?: boolean;
 }
 
 /** Range-tagged coordinator identities that clear their own PF floor; undefined keeps classic untagged history behavior. */
@@ -472,7 +474,7 @@ export function* signalHistProtectsGen(
             }
             const passingRanges = [...new Set(passing.flatMap(({ history, last }) => signalHistPassingRanges(
               Math.min(history.pf, last.pf), minPf,
-              isSignalCoordinationInd(ind) ? (validation.rangeMinPf ?? {}) : undefined,
+              isSignalCoordinationInd(ind) && !validation.coordinationSignalRange ? (validation.rangeMinPf ?? {}) : undefined,
             )))];
             if (!passingRanges.length) {
               if (diagnostics) diagnostics.pfRejected++;

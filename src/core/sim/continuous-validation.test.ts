@@ -615,9 +615,9 @@ describe("continuous post-Base qualification", () => {
   it("Signal history stays independent of the shortened engine window", () => {
     const defaults = defaultWalkForward(DEFAULT_SETTINGS);
     assert.equal(defaults.longH, 24);
-    assert.equal(signalHistoryHours(defaults), 100);
+    assert.equal(signalHistoryHours(defaults), 150);
     assert.equal(signalHistoryHours({ preH: 6, signalLongH: 480 }), 480);
-    assert.equal(signalHistoryHours({ preH: 6 }), 100);
+    assert.equal(signalHistoryHours({ preH: 6 }), 150);
   });
 
   it("Last-N retains lane history even when broad evaluation is 24h and Signals are disabled", () => {

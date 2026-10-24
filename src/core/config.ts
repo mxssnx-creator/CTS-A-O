@@ -12,7 +12,7 @@ import type {
   Tactics,
 } from "./domain/types.ts";
 import { DEFAULT_SIGNALS, type SignalSettings } from "./signal-config.ts";
-import { SIGNAL_VALID_LAST_N } from "./signal-policy.ts";
+import { SIGNAL_HISTORY_H, SIGNAL_VALID_LAST_N } from "./signal-policy.ts";
 import { DEFAULT_SIZING, type SizingSettings } from "./sizing.ts";
 import type { PromotedLaneProof } from "./live-promote.ts";
 import { BREAK_DEFAULT_MICRO_CONFIG_IDS, breakAnchorTf } from "./indications/break-config.ts";
@@ -707,7 +707,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     includeRelations: true,
     includeMicro: true,
     includeCombined: true,
-    lookbackH: 100,
+    lookbackH: SIGNAL_HISTORY_H,
     trainFraction: 0.6,
     minEntries: 30,
     minValidationTrades: SIGNAL_VALID_LAST_N,

@@ -20,7 +20,7 @@ it('matches every enabled ladder build identity/protection across source and coo
     const combos=signalCombos(sig,[tf]);
     for(const c of [combos[0],combos.find(x=>x.ind.includes('sig-coord-'))]){
       assert.ok(c);
-      const refs=c.ind.includes('sig-coord-')?signalCoordinationProtects(settings.grid,settings.cost,sig.coordination.ranges):wf.dcaProtects;
+      const refs=c.ind.includes('sig-coord-')?signalCoordinationProtects(settings.grid,settings.cost,sig.coordination.ranges,sig):wf.dcaProtects;
       const actual=buildTapes(u,[],settings.cost,{protects:refs,dca:wf.dca,axis:settings.axis},new Set([`${c.bot}|${c.ind}`]),null,null,{minSl:sig.minSl,minTrail:sig.minTrail,signalTrailMax:sig.trailMax});
       assert.deepEqual(new Map(expected.filter(r=>r.ind===c.ind).map(r=>[r.id,r.protect])),new Map(actual.map(r=>[r.id,r.protect])),c.ind);
       assert.deepEqual(new Set(actual.map(r=>r.kind)),new Set(['dca','dca-active','axis']));
