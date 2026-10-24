@@ -31,7 +31,7 @@ export function signalProgressInventory(rt) {
   const feedback = rt.fastArgs?.adjust;
   const standard = signalProtects(sig);
   const coordinated = combos.some((c) => parseSignalCoordinationId(c.ind))
-    ? signalCoordinationProtects(rt.settings.grid, rt.settings.cost, sig.coordination.ranges) : [];
+    ? signalCoordinationProtects(rt.settings.grid, rt.settings.cost, sig.coordination.ranges, sig) : [];
   for (const combo of combos) for (const ref of parseSignalCoordinationId(combo.ind) ? coordinated : standard) {
     const requested = laneProtect(ref, combo.ind), kind = protectKind(requested);
     const adjustment = feedback?.[`${combo.bot}|${combo.ind}|${kind}`];

@@ -9,6 +9,7 @@ import { sessionStudySourceFiles, studySha256, studyExactJson, studyCanonical } 
 process.env.CTS_CORE_STATE='off'; process.env.CTS_CORE_AUTOSTART='0'; process.env.CTS_CORE_LIVE='0';
 const root=resolve(process.argv[2] ?? 'runs/signals-expanded-last4');
 assert.ok(!existsSync(resolve(root,'plan.json')), 'Use a new directory; preserve completed and failed runs');
+const historyH=Number(process.argv[3] ?? 100); assert.ok(Number.isInteger(historyH) && historyH>=100 && historyH<=500);
 const old=JSON.parse(readFileSync('docs/signals-coverage-20261023/receipts/final/all-sources/protocol.json','utf8'));
 const files=sessionStudySourceFiles(), sha256=studySha256(studyExactJson(files));
 const checkpoint=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
@@ -25,16 +26,18 @@ function materialize(settings,wf){
 const jobs=[];
 for(const n of [8,4]){
  const settings=structuredClone(old.actualSettings),wf=structuredClone(old.actualWf);
+ settings.signals.hist.lookbackH=historyH;settings.exitStrategy.lookbackH=historyH;wf.signalLongH=historyH;
  settings.signals.guard.lastN=n;settings.exitStrategy.minValidationTrades=n;
  wf.signalValidLastN=n;wf.signalGuardN=n;wf.exitMinTrades=n;
  if(wf.rangeOpts?.sig){wf.rangeOpts.sig.validLastN=n;if(wf.rangeOpts.sig.lastN>0)wf.rangeOpts.sig.lastN=n;}
  const actual=materialize(settings,wf);
  assert.equal(studyExactJson(actual),studyExactJson(materialize(actual.settings,actual.wf)),'Settings normalize identically twice');
- assert.equal(actual.settings.signals.hist.lookbackH,100);assert.equal(actual.wf.signalLongH,100);
+ assert.equal(actual.settings.signals.hist.lookbackH,historyH);assert.equal(actual.wf.signalLongH,historyH);
  assert.equal(actual.wf.signalValidLastN,n);assert.equal(actual.settings.signals.guard.lastN,n);
  assert.equal(actual.wf.gates.minTrades,old.actualWf.gates.minTrades,'Full-history evidence requirement is unchanged');
  const scenario={id:`last${n}`,lastN:n,expanded:true},dir=resolve(root,scenario.id);mkdirSync(dir,{recursive:true});
  const protocol={...old,id:`signals-expanded-last${n}-20261024`,createdAt:new Date().toISOString(),source,
+  window:{...old.window,preH:historyH,evaluationFromT:old.window.tradeStartT-historyH*3600000},
   actualSettings:actual.settings,actualWf:actual.wf,
   policy:{scope:scenario,qualification:`Own config/symbol/side history, Last-${n}; unchanged full-history/PF/DD gates.`,
    evidence:'Retrospective offline funded model on the same frozen 12-symbol minute feed and 12-hour window; no venue orders.',

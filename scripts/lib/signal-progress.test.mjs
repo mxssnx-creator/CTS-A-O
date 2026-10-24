@@ -83,7 +83,7 @@ it("matches the actual builder's full capped source and coordination catalog on 
     const inventory = signalProgressInventory({ settings, wf: {} });
     const u = makeUniverse([barsFromCandles("TEST-USDT", tf, syntheticCandles("TEST-USDT", tf, 1600, 200 * H))]);
     for (const combo of [inventory.combos[0], inventory.combos.find(c => c.ind.includes("sig-coord-"))]) {
-      const protects = combo.ind.includes("sig-coord-") ? signalCoordinationProtects(settings.grid, settings.cost, sig.coordination.ranges) : signalProtects(sig);
+      const protects = combo.ind.includes("sig-coord-") ? signalCoordinationProtects(settings.grid, settings.cost, sig.coordination.ranges, sig) : signalProtects(sig);
       const tapes = buildTapes(u, protects, settings.cost, undefined, new Set([`${combo.bot}|${combo.ind}`]), null, null,
         { minSl: sig.minSl, minTrail: sig.minTrail, signalReferenceGrid: true, signalTrailMax: sig.trailMax });
       const actual = new Map(tapes.map(t => [t.id, t.protect]));

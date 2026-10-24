@@ -97,6 +97,16 @@ describe("signals: sources and combos", () => {
     assert.equal(signalCombos(off, [1, 5, 15, 30]).length, ENABLED - 1 + 5);
   });
 
+  it("runtime coordinators use only Signal cells, independent of ordinary strategy ranges", () => {
+    const signals = DEFAULT_SETTINGS.signals;
+    const ranges = signals.coordination.ranges;
+    const actual = signalCoordinationProtects(DEFAULT_SETTINGS.grid, DEFAULT_SETTINGS.cost, ranges, signals);
+    assert.deepEqual(actual, signalProtects(signals));
+    assert.ok(actual.every((p) => !p.tag));
+    assert.deepEqual(signalCoordinationProtects({ ...DEFAULT_SETTINGS.grid, short: false, general: false, long: false }, DEFAULT_SETTINGS.cost, ranges, signals), actual);
+    assert.deepEqual(signalCoordinationProtects(DEFAULT_SETTINGS.grid, DEFAULT_SETTINGS.cost, { short: false, normal: false, long: false }, signals), []);
+  });
+
   it("coordinator exit ranges only build their selected grid tags", () => {
     const normalOnly = signalCoordinationProtects(DEFAULT_SETTINGS.grid, DEFAULT_SETTINGS.cost, {
       short: false,
@@ -652,7 +662,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     const coordTapes = sigTapes.filter((t) => t.ind.startsWith("sig-coord-"));
     assert.equal(st.coordinationBuiltConfigs, coordTapes.length);
     assert.ok(coordTapes.length > 0, "coordinator tapes are built");
-    assert.ok(coordTapes.every((t) => t.protect.tag === "gn" || t.protect.tag === "lg"), "grid-off Short exits are excluded");
+    assert.ok(coordTapes.every((t) => !t.protect.tag), "coordinators use only Signal protections, never ordinary strategy range grids");
     const coordTrades = rt.sim!.trades.filter((t) => isSignalCoordinationInd(t.cfg.split("|")[1] ?? ""));
     const coordStats = modeledUnitStatsOf(coordTrades);
     assert.equal(st.coordinationOrders, coordTrades.length);
@@ -667,7 +677,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     // 42 Normal + 35 capped Trailing + nine Trailing-only configs per percent-mode signal pair; ATR adds 18 in ATR /
     // both mode. Coordinators use their own enabled range grid and historic additions qualify independently.
     const sourcePairs = st.pairs - (st.coordinationPairs ?? 0);
-    const pct = sourcePairs * signalProtects(rt.settings.signals).length + (st.coordinationPairs ?? 0) * signalCoordinationProtects(rt.settings.grid, rt.settings.cost, rt.settings.signals.coordination.ranges).length;
+    const pct = sourcePairs * signalProtects(rt.settings.signals).length + (st.coordinationPairs ?? 0) * signalCoordinationProtects(rt.settings.grid, rt.settings.cost, rt.settings.signals.coordination.ranges, rt.settings.signals).length;
     const full = st.configs;
     assert.ok(st.historic, "history calculations report their eligibility diagnostics");
     assert.ok(st.historic.qualified <= st.historic.candidates);

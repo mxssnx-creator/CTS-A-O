@@ -90,7 +90,7 @@ for (let i = 0; i < pairs.length; i++) {
   const retained = [];
   for (const max of protocol.ceilings) {
     const own = signalSettings({ ...sig, trailMax: max });
-    const normal = isSignalCoordinationInd(ind) ? signalCoordinationProtects(settings.grid, settings.cost, own.coordination.ranges) : signalProtects(own);
+    const normal = isSignalCoordinationInd(ind) ? signalCoordinationProtects(settings.grid, settings.cost, own.coordination.ranges, own) : signalProtects(own);
     const fitted = signalHistProtects(u, [pair], own, settings.tactics, startT, signalHistValidationOf(settings.cost, settings.gates));
     const historical = fitted[pair] ?? [];
     // buildTapes is the same local/worker tape constructor used by runtime and preset jobs.
