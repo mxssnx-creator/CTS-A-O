@@ -1101,7 +1101,7 @@ describe("Stable-02 ATR exits", () => {
 
   it("settings: exit model and ATR grid validated and defaulted", () => {
     const s = signalSettings({});
-    assert.equal(s.exits, "pct");
+    assert.equal(s.exits, "both");
     assert.deepEqual(s.atr, {
       sl: [0.7, 1.15, 1.5],
       tpRatio: [1, 1.6, 2.2],
@@ -1109,12 +1109,12 @@ describe("Stable-02 ATR exits", () => {
       holdBars: 3,
     });
     assert.deepEqual(signalSettings({ atr: { ...s.atr, trail: [] } }).atr.trail, []);
-    assert.equal(signalSettings({ exits: "x" as never }).exits, "pct");
+    assert.equal(signalSettings({ exits: "x" as never }).exits, "both");
     checkSettings({ signals: { ...s, exits: "atr" } });
     assert.throws(() => checkSettings({ signals: { ...s, exits: "x" as never } }));
     assert.throws(() => checkSettings({ signals: { ...s, atr: { ...s.atr, sl: [3] } } }));
     assert.throws(() => checkSettings({ signals: { ...s, atr: { ...s.atr, trail: [3] } } }));
-    // the grid ceiling is a ceiling, not a working limit (no processing caps): 4 x 5 x (1 + 3) = 80 configs pass
+    // The expanded three-ratio product is 4 x 5 x (1 + 3 x 3) = 200 independent cells.
     checkSettings({
       signals: {
         ...s,
@@ -1128,11 +1128,12 @@ describe("Stable-02 ATR exits", () => {
       tpRatio: Array.from({ length: 15 }, (_, i) => +(.2 + i * .2).toFixed(2)),
       trail: [0.8, 1.4, 2],
     };
-    assert.doesNotThrow(() => checkSettings({ signals: { ...s, atr: ceiling } }));
+    assert.doesNotThrow(() => checkSettings({ signals: { ...s, trailRatios: [1], atr: ceiling } }));
     assert.throws(() =>
       checkSettings({
         signals: {
           ...s,
+          trailRatios: [1],
           atr: {
             ...ceiling,
             sl: [...ceiling.sl, 1.8],

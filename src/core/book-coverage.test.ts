@@ -80,6 +80,9 @@ describe(
             // on a random synthetic market they refuse a whole direction at random (13 Oct: shorts only, or no signal)
             signals: {
               ...DEFAULT_SETTINGS.signals,
+              // Freeze the scalar Signal lane used by this whole-engine reachability fixture. The Expanded
+              // multi-lane/multi-ratio catalog is verified by the separate complete native Signal study.
+              lanes: [15], exits: "pct", trailRatios: [1],
               validate: false,
               accept: { ...DEFAULT_SETTINGS.signals.accept, enabled: false },
               sideAccept: { ...DEFAULT_SETTINGS.signals.sideAccept, enabled: false },
