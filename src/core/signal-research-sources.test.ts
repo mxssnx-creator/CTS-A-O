@@ -14,16 +14,18 @@ const NAMES = ["r-laguerre", "r-chand", "r-klinger", "r-rvi"];
 const at = Date.UTC(2026, 9, 1);
 
 describe("four frozen research Signal catalog candidates", () => {
-  it("keeps all original 96 catalog identities and 63 enabled sources; every new source starts disabled", () => {
+  it("keeps all original identities and includes all 103 sources in the expanded evaluation catalog", () => {
     assert.equal(SIGNAL_SOURCES.length, 103, "96 original, four frozen candidates and three later independent sources");
     for (const name of ["r-apz-reclaim", "r-frama-pullback", "r-st-pullback"])
-      assert.equal(DEFAULT_SIGNALS.sources[name], false, `${name} requires separate opt-in`);
+      assert.notEqual(DEFAULT_SIGNALS.sources[name], false, `${name} included for independent evaluation`);
     assert.equal(
       SIGNAL_SOURCES.filter((s) => DEFAULT_SIGNALS.sources[s.name] !== false).length,
-      63,
+      103,
     );
     const enabled = signalCombos(signalSettings({}), [1, 5, 15, 30]);
-    assert.ok(enabled.every((c) => !NAMES.includes(signalSourceOf(c.ind))));
+    for (const name of NAMES) assert.ok(enabled.some(c => signalSourceOf(c.ind) === name));
+    const disabled = signalCombos(signalSettings({ sources: Object.fromEntries(NAMES.map(n => [n, false])) }), [1,5,15,30]);
+    assert.ok(disabled.every(c => !NAMES.includes(signalSourceOf(c.ind))), "explicit off selections survive expansion");
     const protocol = JSON.parse(
       readFileSync(
         new URL("../../docs/signal-research-protocol-20261015.json", import.meta.url),
@@ -36,7 +38,7 @@ describe("four frozen research Signal catalog candidates", () => {
     );
     const b = barsFromCandles("R-USDT", 15, syntheticCandles("research-alias", 15, 1000, at, 4));
     for (const name of NAMES) {
-      assert.equal(DEFAULT_SIGNALS.sources[name], false);
+      assert.notEqual(DEFAULT_SIGNALS.sources[name], false);
       const source = SIGNAL_SOURCES.find((s) => s.name === name)!;
       for (const range of ["short", "medium"] as const) {
         const base = INDICATION_BY_ID.get(source[range])!;

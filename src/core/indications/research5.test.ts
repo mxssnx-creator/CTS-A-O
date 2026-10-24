@@ -12,7 +12,8 @@ describe("additional causal Signal research sources", () => {
   it("registers every short/medium source on independent lanes, without automatic live activation", () => {
     const sources = ["r-apz-reclaim", "r-frama-pullback", "r-st-pullback"];
     const d = signalSettings();
-    assert.ok(sources.every((s) => d.sources[s] === false));
+    assert.ok(sources.every((s) => d.sources[s] !== false));
+    assert.ok(sources.every((s) => signalSettings({ sources: { [s]: false } }).sources[s] === false));
     const sig = signalSettings({ sourcesMode: "allow", sources: Object.fromEntries(sources.map((s) => [s, true])),
       lanes: [1, 5, 15, 30], coordination: { ...d.coordination, enabled: false } });
     const pairs = signalCombos(sig, [1, 5, 15, 30]);

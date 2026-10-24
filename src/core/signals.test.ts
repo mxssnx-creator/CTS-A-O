@@ -666,7 +666,6 @@ describe("signals: engine", { timeout: 400_000 }, () => {
       if (signalSeatSymbols(t, rt.wf.signalActive!).size) assert.ok(sel.has(t.id), t.id);
     // 42 Normal + 35 capped Trailing + nine Trailing-only configs per percent-mode signal pair; ATR adds 18 in ATR /
     // both mode. Coordinators use their own enabled range grid and historic additions qualify independently.
-    const coordProtections = signalCoordinationProtects(rt.settings.grid, rt.settings.cost, rt.settings.signals.coordination.ranges);
     const sourcePairs = st.pairs - (st.coordinationPairs ?? 0);
     const pct = sourcePairs * signalProtects(rt.settings.signals).length + (st.coordinationPairs ?? 0) * signalCoordinationProtects(rt.settings.grid, rt.settings.cost, rt.settings.signals.coordination.ranges).length;
     const full = st.configs;

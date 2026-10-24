@@ -1,8 +1,7 @@
 name: Expanded Signals Last-4 paired verification
 on:
-  pull_request:
-    branches: [main]
-    paths: [src/core/**, scripts/core-session.mjs, scripts/lib/**, scripts/prepare-signals-last4.mjs, scripts/run-signals-native-case.py, scripts/audit-signal-coverage.mjs, .github/workflows/signals-last4-verification.yml]
+  # A frozen retrospective comparison, not a moving profitability gate. Dispatch after sealing new economic
+  # source; report/test-only follow-ups retain the completed source seal without rescoring the same market.
   workflow_dispatch:
 permissions:
   contents: read
