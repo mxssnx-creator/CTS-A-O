@@ -1,0 +1,494 @@
+{
+  "schema": "cts-signal-admission-trace-v1",
+  "ok": true,
+  "sourceSha256": "619ba50f37a7c1e9c8a10ee5167a37baf44306b48b32df7a198f0b10c3cf781e",
+  "protocolSha256": "c9c03de5cba9c2fb2b8db42011d28a4e0010872e846a0b131a91e813c8487309",
+  "scope": "Independently valid settled candidates absent from the recorded selection; actual production activation rules, retained rank/recent/minimum-history gates. This is not permission to bypass shared risk gates.",
+  "total": 229,
+  "reasons": {
+    "recent": 79,
+    "block": 150
+  },
+  "examples": [
+    {
+      "cfg": "follow|sig-r-st-pullback-m@m15|tp1.12|sl0.7|tr0|h3|atr0.7x1.6|tm3",
+      "sym": "ETH-USDT",
+      "side": -1,
+      "entryT": 1792188000000,
+      "selectionT": 1792188000000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|normal|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp1.12%7Csl0.7%7Ctr0%7Ch3%7Catr0.7x1.6%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 2.358695353660665,
+        "dd": 0.7371896991106287,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      },
+      "atEntry": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|normal|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp1.12%7Csl0.7%7Ctr0%7Ch3%7Catr0.7x1.6%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 2.358695353660665,
+        "dd": 0.7371896991106287,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      }
+    },
+    {
+      "cfg": "follow|sig-r-st-pullback-m@m15|tp1.54|sl0.7|tr0|h3|atr0.7x2.2|tm3",
+      "sym": "ETH-USDT",
+      "side": -1,
+      "entryT": 1792188000000,
+      "selectionT": 1792188000000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|normal|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp1.54%7Csl0.7%7Ctr0%7Ch3%7Catr0.7x2.2%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 2.307389778469494,
+        "dd": 0.7371896991106287,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      },
+      "atEntry": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|normal|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp1.54%7Csl0.7%7Ctr0%7Ch3%7Catr0.7x2.2%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 2.307389778469494,
+        "dd": 0.7371896991106287,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      }
+    },
+    {
+      "cfg": "follow|sig-r-st-pullback-m@m15|tp1.84|sl1.15|tr0|h3|atr1.15x1.6|tm3",
+      "sym": "ETH-USDT",
+      "side": -1,
+      "entryT": 1792188000000,
+      "selectionT": 1792188000000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|normal|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp1.84%7Csl1.15%7Ctr0%7Ch3%7Catr1.15x1.6%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 2.2861971185182277,
+        "dd": 0.7371896991106287,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      },
+      "atEntry": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|normal|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp1.84%7Csl1.15%7Ctr0%7Ch3%7Catr1.15x1.6%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 2.2861971185182277,
+        "dd": 0.7371896991106287,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      }
+    },
+    {
+      "cfg": "follow|sig-r-st-pullback-m@m15|tp1.84|sl1.15|tr1.09|h3|atr1.15x1.6t0.8|ts0.5|tm3",
+      "sym": "ETH-USDT",
+      "side": -1,
+      "entryT": 1792188000000,
+      "selectionT": 1792188000000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|trailing|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp1.84%7Csl1.15%7Ctr1.09%7Ch3%7Catr1.15x1.6t0.8%7Cts0.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 1.82871211282289,
+        "dd": 0.9130856998851702,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      },
+      "atEntry": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|trailing|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp1.84%7Csl1.15%7Ctr1.09%7Ch3%7Catr1.15x1.6t0.8%7Cts0.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 1.82871211282289,
+        "dd": 0.9130856998851702,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      }
+    },
+    {
+      "cfg": "follow|sig-r-st-pullback-m@m15|tp1.84|sl1.15|tr1.09|h3|atr1.15x1.6t0.8|tm3",
+      "sym": "ETH-USDT",
+      "side": -1,
+      "entryT": 1792188000000,
+      "selectionT": 1792188000000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|trailing|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp1.84%7Csl1.15%7Ctr1.09%7Ch3%7Catr1.15x1.6t0.8%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 2.2861971185182277,
+        "dd": 0.7371896991106287,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      },
+      "atEntry": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|trailing|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp1.84%7Csl1.15%7Ctr1.09%7Ch3%7Catr1.15x1.6t0.8%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 2.2861971185182277,
+        "dd": 0.7371896991106287,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      }
+    },
+    {
+      "cfg": "follow|sig-r-st-pullback-m@m15|tp1.84|sl1.15|tr1.09|h3|atr1.15x1.6t0.8|ts1.5|tm3",
+      "sym": "ETH-USDT",
+      "side": -1,
+      "entryT": 1792188000000,
+      "selectionT": 1792188000000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|trailing|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp1.84%7Csl1.15%7Ctr1.09%7Ch3%7Catr1.15x1.6t0.8%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 2.2861971185182277,
+        "dd": 0.7371896991106287,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      },
+      "atEntry": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|trailing|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp1.84%7Csl1.15%7Ctr1.09%7Ch3%7Catr1.15x1.6t0.8%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 2.2861971185182277,
+        "dd": 0.7371896991106287,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      }
+    },
+    {
+      "cfg": "follow|sig-r-st-pullback-m@m15|tp2.53|sl1.15|tr0|h3|atr1.15x2.2|tm3",
+      "sym": "ETH-USDT",
+      "side": -1,
+      "entryT": 1792188000000,
+      "selectionT": 1792188000000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|normal|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp2.53%7Csl1.15%7Ctr0%7Ch3%7Catr1.15x2.2%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 2.307389778469494,
+        "dd": 0.7371896991106287,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      },
+      "atEntry": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|normal|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp2.53%7Csl1.15%7Ctr0%7Ch3%7Catr1.15x2.2%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 2.307389778469494,
+        "dd": 0.7371896991106287,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      }
+    },
+    {
+      "cfg": "follow|sig-r-st-pullback-m@m15|tp2.53|sl1.15|tr1.09|h3|atr1.15x2.2t0.8|ts0.5|tm3",
+      "sym": "ETH-USDT",
+      "side": -1,
+      "entryT": 1792188000000,
+      "selectionT": 1792188000000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|trailing|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp2.53%7Csl1.15%7Ctr1.09%7Ch3%7Catr1.15x2.2t0.8%7Cts0.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 2.123339840375325,
+        "dd": 0.9130856998851702,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      },
+      "atEntry": {
+        "key": "follow|sig-r-st-pullback-m@m15|ETH-USDT|-1|trailing|cfg=follow%7Csig-r-st-pullback-m%40m15%7Ctp2.53%7Csl1.15%7Ctr1.09%7Ch3%7Catr1.15x2.2t0.8%7Cts0.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 2.123339840375325,
+        "dd": 0.9130856998851702,
+        "okShare": 0.7777777777777778,
+        "recentN": 0,
+        "recentNet": 0
+      }
+    },
+    {
+      "cfg": "follow|sig-sar-s@m15|tp1|sl3|tr0.3|h192|ts1.5000000000000002|tm3",
+      "sym": "LTC-USDT",
+      "side": -1,
+      "entryT": 1792184400000,
+      "selectionT": 1792184400000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-sar-s@m15|LTC-USDT|-1|trailing|cfg=follow%7Csig-sar-s%40m15%7Ctp1%7Csl3%7Ctr0.3%7Ch192%7Cts1.5000000000000002%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 12,
+        "net": 2.610875031553825,
+        "dd": 0.5681309038798921,
+        "okShare": 0.5833333333333334,
+        "recentN": 1,
+        "recentNet": 0.06810774858662677
+      },
+      "atEntry": {
+        "key": "follow|sig-sar-s@m15|LTC-USDT|-1|trailing|cfg=follow%7Csig-sar-s%40m15%7Ctp1%7Csl3%7Ctr0.3%7Ch192%7Cts1.5000000000000002%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 12,
+        "net": 2.610875031553825,
+        "dd": 0.5681309038798921,
+        "okShare": 0.5833333333333334,
+        "recentN": 1,
+        "recentNet": 0.06810774858662677
+      }
+    },
+    {
+      "cfg": "follow|sig-sar-s@m15|tp1.5|sl3|tr0.3|h192|ts1.5000000000000002|tm3",
+      "sym": "LTC-USDT",
+      "side": -1,
+      "entryT": 1792184400000,
+      "selectionT": 1792184400000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-sar-s@m15|LTC-USDT|-1|trailing|cfg=follow%7Csig-sar-s%40m15%7Ctp1.5%7Csl3%7Ctr0.3%7Ch192%7Cts1.5000000000000002%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 12,
+        "net": 2.4806240139787796,
+        "dd": 0.5681309038798921,
+        "okShare": 0.5833333333333334,
+        "recentN": 1,
+        "recentNet": 0.06810774858662677
+      },
+      "atEntry": {
+        "key": "follow|sig-sar-s@m15|LTC-USDT|-1|trailing|cfg=follow%7Csig-sar-s%40m15%7Ctp1.5%7Csl3%7Ctr0.3%7Ch192%7Cts1.5000000000000002%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 12,
+        "net": 2.4806240139787796,
+        "dd": 0.5681309038798921,
+        "okShare": 0.5833333333333334,
+        "recentN": 1,
+        "recentNet": 0.06810774858662677
+      }
+    },
+    {
+      "cfg": "follow|sig-kama-s@m15|tp1|sl3|tr0.3|h192|ts1.5000000000000002|tm3",
+      "sym": "LTC-USDT",
+      "side": -1,
+      "entryT": 1792184400000,
+      "selectionT": 1792184400000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-kama-s@m15|LTC-USDT|-1|trailing|cfg=follow%7Csig-kama-s%40m15%7Ctp1%7Csl3%7Ctr0.3%7Ch192%7Cts1.5000000000000002%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 12,
+        "net": 2.7480990047070226,
+        "dd": 0.45421809956927717,
+        "okShare": 0.5833333333333334,
+        "recentN": 1,
+        "recentNet": 0.05151338766006871
+      },
+      "atEntry": {
+        "key": "follow|sig-kama-s@m15|LTC-USDT|-1|trailing|cfg=follow%7Csig-kama-s%40m15%7Ctp1%7Csl3%7Ctr0.3%7Ch192%7Cts1.5000000000000002%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 12,
+        "net": 2.7480990047070226,
+        "dd": 0.45421809956927717,
+        "okShare": 0.5833333333333334,
+        "recentN": 1,
+        "recentNet": 0.05151338766006871
+      }
+    },
+    {
+      "cfg": "follow|sig-kama-s@m15|tp1.5|sl3|tr0.3|h192|ts1.5000000000000002|tm3",
+      "sym": "LTC-USDT",
+      "side": -1,
+      "entryT": 1792184400000,
+      "selectionT": 1792184400000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-kama-s@m15|LTC-USDT|-1|trailing|cfg=follow%7Csig-kama-s%40m15%7Ctp1.5%7Csl3%7Ctr0.3%7Ch192%7Cts1.5000000000000002%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 12,
+        "net": 2.312251928580146,
+        "dd": 0.45421809956927706,
+        "okShare": 0.5833333333333334,
+        "recentN": 1,
+        "recentNet": 0.05151338766006871
+      },
+      "atEntry": {
+        "key": "follow|sig-kama-s@m15|LTC-USDT|-1|trailing|cfg=follow%7Csig-kama-s%40m15%7Ctp1.5%7Csl3%7Ctr0.3%7Ch192%7Cts1.5000000000000002%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 12,
+        "net": 2.312251928580146,
+        "dd": 0.45421809956927706,
+        "okShare": 0.5833333333333334,
+        "recentN": 1,
+        "recentNet": 0.05151338766006871
+      }
+    },
+    {
+      "cfg": "follow|sig-heikin-ashi-s@m15|tp1|sl3|tr0.2|h192|ts1.5|tm3",
+      "sym": "LTC-USDT",
+      "side": -1,
+      "entryT": 1792184400000,
+      "selectionT": 1792184400000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-heikin-ashi-s@m15|LTC-USDT|-1|trailing|cfg=follow%7Csig-heikin-ashi-s%40m15%7Ctp1%7Csl3%7Ctr0.2%7Ch192%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 18,
+        "net": 3.0785030249466234,
+        "dd": 0.751994498280524,
+        "okShare": 0.5384615384615384,
+        "recentN": 3,
+        "recentNet": 1.4460981281045548
+      },
+      "atEntry": {
+        "key": "follow|sig-heikin-ashi-s@m15|LTC-USDT|-1|trailing|cfg=follow%7Csig-heikin-ashi-s%40m15%7Ctp1%7Csl3%7Ctr0.2%7Ch192%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 18,
+        "net": 3.0785030249466234,
+        "dd": 0.751994498280524,
+        "okShare": 0.5384615384615384,
+        "recentN": 3,
+        "recentNet": 1.4460981281045548
+      }
+    },
+    {
+      "cfg": "follow|sig-heikin-ashi-s@m15|tp1|sl3|tr0.2|h192|ts1.5|tm3",
+      "sym": "DOGE-USDT",
+      "side": -1,
+      "entryT": 1792188000000,
+      "selectionT": 1792188000000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-heikin-ashi-s@m15|DOGE-USDT|-1|trailing|cfg=follow%7Csig-heikin-ashi-s%40m15%7Ctp1%7Csl3%7Ctr0.2%7Ch192%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 21,
+        "net": 3.0747495434490446,
+        "dd": 0.9424654347989943,
+        "okShare": 0.5294117647058824,
+        "recentN": 3,
+        "recentNet": 1.5374545226445926
+      },
+      "atEntry": {
+        "key": "follow|sig-heikin-ashi-s@m15|DOGE-USDT|-1|trailing|cfg=follow%7Csig-heikin-ashi-s%40m15%7Ctp1%7Csl3%7Ctr0.2%7Ch192%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 21,
+        "net": 3.0747495434490446,
+        "dd": 0.9424654347989943,
+        "okShare": 0.5294117647058824,
+        "recentN": 3,
+        "recentNet": 1.5374545226445926
+      }
+    },
+    {
+      "cfg": "follow|sig-macd-hist-m@m15|tp1.54|sl0.7|tr0.66|h3|atr0.7x2.2t0.8|tm3",
+      "sym": "LTC-USDT",
+      "side": -1,
+      "entryT": 1792185300000,
+      "selectionT": 1792184400000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-macd-hist-m@m15|LTC-USDT|-1|trailing|cfg=follow%7Csig-macd-hist-m%40m15%7Ctp1.54%7Csl0.7%7Ctr0.66%7Ch3%7Catr0.7x2.2t0.8%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 24,
+        "net": 2.3141358762020174,
+        "dd": 1.0180753131124813,
+        "okShare": 0.5,
+        "recentN": 2,
+        "recentNet": 0.10121118246079246
+      },
+      "atEntry": {
+        "key": "follow|sig-macd-hist-m@m15|LTC-USDT|-1|trailing|cfg=follow%7Csig-macd-hist-m%40m15%7Ctp1.54%7Csl0.7%7Ctr0.66%7Ch3%7Catr0.7x2.2t0.8%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 24,
+        "net": 2.3141358762020174,
+        "dd": 1.0180753131124813,
+        "okShare": 0.5,
+        "recentN": 2,
+        "recentNet": 0.10121118246079246
+      }
+    },
+    {
+      "cfg": "follow|sig-atr-break-s@m15|tp2.4|sl1.5|tr0|h3|atr1.5x1.6|tm3",
+      "sym": "LTC-USDT",
+      "side": -1,
+      "entryT": 1792184400000,
+      "selectionT": 1792184400000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-atr-break-s@m15|LTC-USDT|-1|normal|cfg=follow%7Csig-atr-break-s%40m15%7Ctp2.4%7Csl1.5%7Ctr0%7Ch3%7Catr1.5x1.6%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 21,
+        "net": 3.5342383349490287,
+        "dd": 0.892710764901006,
+        "okShare": 0.5882352941176471,
+        "recentN": 2,
+        "recentNet": 1.104081780016782
+      },
+      "atEntry": {
+        "key": "follow|sig-atr-break-s@m15|LTC-USDT|-1|normal|cfg=follow%7Csig-atr-break-s%40m15%7Ctp2.4%7Csl1.5%7Ctr0%7Ch3%7Catr1.5x1.6%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 21,
+        "net": 3.5342383349490287,
+        "dd": 0.892710764901006,
+        "okShare": 0.5882352941176471,
+        "recentN": 2,
+        "recentNet": 1.104081780016782
+      }
+    }
+  ]
+}

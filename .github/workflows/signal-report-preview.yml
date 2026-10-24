@@ -3,7 +3,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/signal-report-preview.yml
-      - docs/signals-coverage-20261023/report.html
+      - docs/signals-own-grid-150h-20261024/report.html
       - scripts/render-signal-coverage.mjs
   workflow_dispatch:
 permissions:
@@ -36,7 +36,7 @@ jobs:
       - name: Render the actual standalone report on desktop and mobile
         run: |
           sudo install -d -o "$(id -un)" -g "$(id -gn)" /workspace/signal-report-preview
-          python -m http.server 8765 --bind 127.0.0.1 --directory docs/signals-coverage-20261023 > /workspace/signal-report-preview/server.log 2>&1 &
+          python -m http.server 8765 --bind 127.0.0.1 --directory docs/signals-own-grid-150h-20261024 > /workspace/signal-report-preview/server.log 2>&1 &
           server=$!
           trap 'kill "$server"' EXIT
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8765/report.html > /dev/null && break; sleep 1; done

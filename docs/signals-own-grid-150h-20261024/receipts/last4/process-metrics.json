@@ -1,0 +1,12 @@
+{
+  "scenario": "last4",
+  "runner": "Linux-6.18.55-x86_64-with-glibc2.39",
+  "machine": "x86_64",
+  "cpuCount": 9,
+  "sourceSha256": "619ba50f37a7c1e9c8a10ee5167a37baf44306b48b32df7a198f0b10c3cf781e",
+  "exitCode": 0,
+  "wallSeconds": 638.3787588220002,
+  "childPeakRssMiB": 4092.83984375,
+  "userSeconds": 1202.874915,
+  "systemSeconds": 17.120518
+}
