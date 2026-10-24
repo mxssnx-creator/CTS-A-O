@@ -239,9 +239,9 @@ describe("signal historic trailing configs", () => {
       assert.equal(+(p.tp / 0.0025).toFixed(6) % 1, 0, `${p.tp} on the grid`);
       assert.equal(p.hold, Math.round((sig.holdH * 60) / 15));
     }
-    // up to quantiles × trails × stops per signal
+    // Every trailing peak-gap ratio remains independent; pure TP/SL has no ratio dimension.
     assert.ok(
-      ps.length <= sig.hist.quantiles.length * (1 + sig.hist.trailOfTp.length) * sig.hist.slOfTp.length,
+      ps.length <= sig.hist.quantiles.length * (1 + sig.hist.trailOfTp.length * sig.trailRatios!.length) * sig.hist.slOfTp.length,
     );
     // too few historic entries: none; switched off: none
     assert.deepEqual(
@@ -368,9 +368,13 @@ describe("signal historic trailing configs", () => {
     assert.deepEqual(heldHistProtects([histId], new Set(), signalProtects(sig)), {});
   });
 
-  it("on by default beside the 77 percent configs and nine Trailing only sets", () => {
+  it("historic fitting stays on beside the complete expanded standard percent/ATR and multi-trailing grid", () => {
     assert.equal(DEFAULT_SIGNALS.hist.enabled, true);
-    assert.equal(signalProtects(signalSettings({ enabled: true })).length, 86);
+    const protects = signalProtects(signalSettings({ enabled: true }));
+    assert.equal(protects.length, 207);
+    assert.ok(protects.some(p => p.atr));
+    assert.ok(protects.some(p => p.trailOnly));
+    assert.deepEqual(new Set(protects.filter(p => p.trail).map(p => p.trailStep ?? 1)), new Set([0.5, 1, 1.5]));
   });
 });
 

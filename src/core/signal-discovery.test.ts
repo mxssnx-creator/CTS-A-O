@@ -40,7 +40,7 @@ const fixture = () =>
   );
 // Preserve this discovery fixture's original effective-grid counts. The configurable
 // 1/2/3% policy is exercised separately by the history/protection matrix.
-const sig = signalSettings({ trailMax: 0.02, filter: { trendH: 0, volFloor: 0 } });
+const sig = signalSettings({ trailMax: 0.02, exits: "pct", trailRatios: [1], filter: { trendH: 0, volFloor: 0 } });
 const gates = { ...DEFAULT_SETTINGS.gates, minPf: 1.1, minTrades: 3 };
 
 describe("Signals: independent protection discovery", () => {
