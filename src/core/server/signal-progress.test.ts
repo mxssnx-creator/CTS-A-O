@@ -93,6 +93,17 @@ test("full worker/fallback and incremental rebuilds preserve independent Signal 
   assert.ok(expected.length > 0 && expected.some((t) => t.n > 0));
   assert.ok(expected.some((t) => t.entryT[0] < end - 48 * H), "Signal tapes contain history older than ordinary strategy data");
   equalTapes(actual, expected);
+  for (const rt of [worker.rt, local.rt]) {
+    const rows = rt.db.all<{ id: string; n: number }>("SELECT id, n FROM results WHERE stage = 1 AND ind LIKE 'sig-%' AND n > 0");
+    assert.ok(rows.length > 0, "stored Signal Base rows exist");
+    const before = rows.map(row => rt.comboTrades(row.id));
+    for (let i = 0; i < rows.length; i++) assert.equal(before[i]?.length, rows[i].n, rows[i].id);
+    const cost = rt.settings.cost;
+    rt.updateSettings({ cost: cost / 2 });
+    for (let i = 0; i < rows.length; i++) assert.deepEqual(rt.comboTrades(rows[i].id), before[i],
+      "a pending cost edit cannot reprice the published Base detail");
+    rt.updateSettings({ cost });
+  }
   assert.deepEqual(local.rt.sim?.signalSteps, worker.rt.sim?.signalSteps, "same exact activation keys");
   assert.deepEqual(local.rt.sim?.trades, worker.rt.sim?.trades, "same modeled execution");
   await rebuild(worker.rt, worker.inner, expected);

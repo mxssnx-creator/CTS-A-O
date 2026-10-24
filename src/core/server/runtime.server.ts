@@ -4408,7 +4408,10 @@ export class CoreRuntime {
     // the job reports it as the start of Tapes, so its bar and heartbeat move (the watchdog abandons a compute whose
     // heartbeat stands still for minutes)
     this.startStage("Tapes", "preparing: saving the Base / Main results");
-    await this.persistPipeline(pipeline, gen);
+    await this.persistPipeline(pipeline, gen, {
+      engine: uStage.series, signals: signalStageU.series, evaluationFromT: this.evaluationFromT,
+      cost: s.cost, tactics: s.tactics, grid: s.grid,
+    });
 
     // walk-forward tapes on the recent tail: warm-up + long window + simulated run
     // + the warm-up the active tactics need (e.g. the 2-week volatility rank) before their first valid signal
@@ -6123,7 +6126,7 @@ export class CoreRuntime {
     return Math.max(maxSlice, performance.now() - slice);
   }
 
-  private async persistPipeline(o: PipelineOutput, gen: number) {
+  private async persistPipeline(o: PipelineOutput, gen: number, detail: NonNullable<CoreRuntime["baseDetail"]>) {
     const t0 = performance.now();
     const now = Date.now();
     const db = this.db;
@@ -6265,6 +6268,9 @@ export class CoreRuntime {
     const maxSlice = await this.writeChunked(rows(), gen);
     const ts = performance.now();
     db.shadowSwap(TABLES);
+    // Detail reconstruction belongs to these published database rows, including their causal cutoff and the
+    // independent Signal history. Keep raw column references only; per-request indicator caches are released.
+    this.baseDetail = detail;
     // evals are a history table: written in one small transaction after the swap (a superseded compute
     // never leaves partial rows); a recompute of the same instant replaces its rows
     db.tx(() => {
@@ -8691,7 +8697,6 @@ export class CoreRuntime {
 
   // ── paper ─────────────────────────────────────────────────────────────
   /** Current-hour selection from the pre-historic window; open positions of the selected configs are the paper book. */
-  /** the universe of the last finished compute (detail pages recompute trades on exactly this) */
   /** Block / guard books for the live step: a cursor over the current run's feed (advanced, never replayed) */
   private liveBooks: {
     sim: WalkForwardResult | null;
@@ -8845,20 +8850,29 @@ export class CoreRuntime {
   flushLive?: () => void;
   /** stage sets of the last compute (self-audit) */
   stageSets: AuditInput["stages"] = undefined;
-  /** the universe of the last compute (comboTrades, research tools) */
+  /** The full universe of the last completed simulation, for research tools. */
   lastUniverse: ReturnType<typeof makeUniverse> | null = null;
+  private baseDetail: {
+    engine: ReturnType<typeof makeUniverse>["series"];
+    signals: ReturnType<typeof makeUniverse>["series"];
+    evaluationFromT?: number;
+    cost: number;
+    tactics: CoreSettings["tactics"];
+    grid: CoreSettings["grid"];
+  } | null = null;
   /**
-   * Closed trades of one config computed on demand from the current candles (Base configs keep only their
+   * Closed trades of one config computed on demand from its published Base snapshot (Base configs keep only their
    * stats; tapes exist for Main sets). Plain configs only (DCA / Axis come from tapes). Null if unknown.
    */
   comboTrades(id: string): Trade[] | null {
     const c = parseConfigId(id);
     if (!c || !isPlainKind(kindOfId(id))) return null;
-    // exactly the universe the stored statistics were computed on (the candles may have moved on since)
-    const u = this.lastUniverse;
-    if (!u) return null;
+    // Use the exact Base snapshot, not the wider engine history or subsequently edited settings.
+    const detail = this.baseDetail;
+    if (!detail) return null;
+    const u = makeUniverse(isSignalInd(c.ind) ? detail.signals : detail.engine, detail.evaluationFromT);
 
-    const g = this.settings.grid;
+    const g = detail.grid;
     const protect =
       c.protect.trail > 0 && !c.protect.trailOnly && !isSignalInd(c.ind)
         ? { ...c.protect, trailStep: g.trailStep ?? 1, trailFree: g.trailFree ?? false }
@@ -8868,9 +8882,9 @@ export class CoreRuntime {
       c.bot,
       c.ind,
       protect,
-      this.settings.cost,
+      detail.cost,
       1,
-      this.settings.tactics,
+      detail.tactics,
       true, // the id carries the lane's protect already
     );
     return r ? r.trades : null;

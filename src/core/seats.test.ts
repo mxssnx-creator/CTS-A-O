@@ -297,6 +297,7 @@ describe("bug-hunt regressions", () => {
   it("the migration only runs the steps a database has not seen (choices made later are kept)", () => {
     const db = new CoreDb(":memory:");
     db.kvSet("wfCapsV", 5);
+    db.kvSet("signalExpandedDefaultsV1", true); // This fixture represents choices made after that migration.
     db.kvSet("wf", { maxPerSymbol: 4, portfolio: 20 });
     db.kvSet("settings", { signals: { enabled: false, lanes: [15] }, live: { maxPositions: 0 } });
     const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
@@ -349,7 +350,7 @@ describe("bug-hunt regressions", () => {
     });
     const a = new CoreRuntime(old, undefined, { market: "synthetic" });
     assert.deepEqual(a.settings.signals.lanes, DEFAULT_SIGNALS.lanes);
-    assert.equal(a.settings.signals.exits, "pct");
+    assert.equal(a.settings.signals.exits, DEFAULT_SIGNALS.exits);
     assert.equal(a.settings.signals.holdH, 48);
     assert.deepEqual(a.settings.signals.normal.slOfTp, DEFAULT_SIGNALS.normal.slOfTp);
     assert.equal(a.settings.signals.perSymbol, DEFAULT_SIGNALS.perSymbol);

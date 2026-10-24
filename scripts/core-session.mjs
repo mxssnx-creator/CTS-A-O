@@ -2044,7 +2044,8 @@ for (let h = startT; h < endT; h += H) {
   hh.fundedCounts = fundedLedger[hours.length];
   hh.openCountBasis = "native-virtual-orders";
   // Physical episode and request counts retain the native virtual book's geometry.
-  hh.positions = closedPositions(closed);
+  hh.settledSlicePositions = closedPositions(closed);
+  hh.positions = hh.fundedCounts.closedPositions;
   hh.posOpened = episodes.filter((e) => hourIdxOf(e.start) === hours.length).length;
   hh.posClosed = episodes.filter(
     (e) => e.end !== Infinity && hourIdxOf(e.end) === hours.length,
@@ -3416,7 +3417,8 @@ const T = {
   zeroAllocatedOrders: tot.zeroAllocatedOrders,
   unknownAllocations: tot.unknownAllocations,
   virtual: tot.virtual,
-  positions: tot.positions,
+  positions: fundedCounts.closedPositions,
+  settledSlicePositions: tot.positions,
   pf: tot.pf,
   cashPf: tot.cashPf,
   cashPfDiagnostic: tot.cashPfDiagnostic,
@@ -4174,7 +4176,7 @@ const data = clean({
     ddNow:
       "equity drawdown time at the end of the hour: hours since the minute equity last stood at its peak",
     positions:
-      "native virtual-book symbol × direction episodes (preserved separately from funded settled-slice counts): overlapping orders on one symbol and side form one position (per group: episodes of that group's orders)",
+      "Total/hour: fully closed funded symbol × direction episodes, retaining endpoint-open siblings. Group tables explicitly show settled-order episodes of that group's closed-order subset, which cannot establish whole-book closure.",
     fundedCounts: "Positive funded allocations only: positions are symbol × direction episodes; orders retain exact config identities. Hourly fundedCounts reconcile (hour, hour-end] events and inclusive minute snapshots, including run-start entries in the first hour.",
     greenHours: "hours whose closed orders netted > 0 (of the hours with closes)",
     hourBucket:
@@ -5352,7 +5354,7 @@ ${sec(
   const groupCols = (label) => [
     { k: "key", l: label, t: "s" },
     numCol("n", "orders"),
-    numCol("positions", "positions"),
+    numCol("positions", "settled-order episodes"),
     pfCol(),
     cashPfCol(),
     sizedDollarPfCol(),
@@ -5401,7 +5403,7 @@ ${sec(
     ];
   };
   const totFoot = (rows, label) =>
-    sumRow(rows, label, { positions: "(" + T.positions + ")", wr: pct(T.wr, 1) });
+    sumRow(rows, label, { positions: "(" + T.settledSlicePositions + ")", wr: pct(T.wr, 1) });
 
   // hourly
   table(

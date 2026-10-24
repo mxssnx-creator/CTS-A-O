@@ -206,9 +206,13 @@ export async function auditSignalCoverage(dir, out = resolve(dir, "coverage")) {
   assert.equal(counts.openedOrders, counts.settledOrders + counts.openOrders);
   assert.equal(counts.openedPositions, counts.closedPositions + counts.openPositions);
   assert.deepEqual(counts, Object.fromEntries(Object.keys(counts).map(k => [k, book.total.fundedCounts[k]])), "Report/funded ledger counts");
+  assert.equal(book.total.positions, counts.closedPositions, "Primary total counts fully closed funded positions");
   const ledger = { counts, hourly: positionOrderLedger(funded.trades, fundedOpen, times[0], times.at(-1), H),
     orphanedOrders: 0, duplicateParents: 0, scope: "Funded modeled parent orders; actual venue partial fills are verified separately in native control fixtures." };
-  for (let i = 0; i < ledger.hourly.length; i++) assert.deepEqual(ledger.hourly[i], session.hours[i].fundedCounts, "Hourly report/funded ledger");
+  for (let i = 0; i < ledger.hourly.length; i++) {
+    assert.deepEqual(ledger.hourly[i], session.hours[i].fundedCounts, "Hourly report/funded ledger");
+    assert.equal(session.hours[i].positions, ledger.hourly[i].closedPositions, "Primary hour counts actual funded position closures");
+  }
   const belongs = (x, g) => {
     if (g.dimension === "symbol") return x.sym === g.label;
     const c = parseConfigId(x.cfg), info = signalConfigDetails(x.cfg, c.protect, kindOfId(x.cfg));

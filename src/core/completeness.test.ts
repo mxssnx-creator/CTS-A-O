@@ -308,13 +308,20 @@ const CASES: Record<string, Case> = {
   "signals.trailing.tp": list(0.002, 0.2, { max: 64 }),
   "signals.trailing.trailOfTp": list(0.05, 1, { max: 64 }),
   "signals.trailing.slOfTp": num(0.2, 5),
+  "signals.trailRatios": {
+    ...list(0.1, 2, { max: 64 }),
+    bad: [...list(0.1, 2, { max: 64 }).bad, [1, 1]],
+    with: [["signals.trailingOnly.sl", [0.002]], ["signals.trailingOnly.trail", [0.002]]],
+  },
   "signals.trailingOnly.enabled": oneOf([false, true], ["false", 0, 1, null]),
   "signals.trailingOnly.sl": {
+    with: [["signals.trailRatios", [1]]],
     ...list(0.002, 0.2, { max: 64 }),
     ok: [...list(0.002, 0.2).ok, Array.from({ length: 64 }, () => 0.002)],
     bad: [...list(0.002, 0.2, { max: 64 }).bad, null, "0.01", ["0.01"], [Number.NaN]],
   },
   "signals.trailingOnly.trail": {
+    with: [["signals.trailRatios", [1]]],
     ...list(0.002, 0.1, { max: 64 }),
     ok: [...list(0.002, 0.1).ok, Array.from({ length: 64 }, () => 0.002)],
     bad: [...list(0.002, 0.1, { max: 64 }).bad, null, "0.01", ["0.01"], [Number.NaN]],
@@ -441,6 +448,7 @@ describe("settings completeness: every leaf of DEFAULT_SETTINGS is range-checked
     assert.doesNotThrow(() =>
       checkSettings(
         withLeaves([
+          ["signals.trailRatios", [1]],
           ["signals.trailingOnly.sl", sl],
           ["signals.trailingOnly.trail", trail],
         ]),
@@ -449,6 +457,7 @@ describe("settings completeness: every leaf of DEFAULT_SETTINGS is range-checked
     assert.equal(
       rejects(
         withLeaves([
+          ["signals.trailRatios", [1]],
           ["signals.trailingOnly.sl", [...sl, 0.02]],
           ["signals.trailingOnly.trail", trail],
         ]),
@@ -458,6 +467,7 @@ describe("settings completeness: every leaf of DEFAULT_SETTINGS is range-checked
     assert.equal(
       rejects(
         withLeaves([
+          ["signals.trailRatios", [1]],
           ["signals.trailingOnly.sl", sl],
           ["signals.trailingOnly.trail", [...trail, 0.02]],
         ]),
