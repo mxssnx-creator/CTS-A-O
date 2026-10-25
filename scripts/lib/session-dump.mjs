@@ -9,7 +9,8 @@ const BUFFER_BYTES = 64 * 1024;
 const TAPE_SCHEMA = 'cts-session-tape-trades-v1';
 const VALIDATION_SCHEMA = 'cts-session-validation-v2';
 const ARRAY_SCHEMA = 'cts-session-array-v1';
-const RESERVED_ARRAY_FIELDS = new Set(['tapeTrades', 'validation', 'arraySidecars', 'tapeTradesSidecar', 'validationSidecar', '__proto__', 'constructor', 'prototype']);
+const SIGNAL_STEPS_SCHEMA = 'cts-session-signal-steps-v1';
+const RESERVED_ARRAY_FIELDS = new Set(['tapeTrades', 'validation', 'arraySidecars', 'tapeTradesSidecar', 'validationSidecar', 'signalStepsSidecar', 'engine.signalSteps', '__proto__', 'constructor', 'prototype']);
 const own = (x, k) => Object.prototype.hasOwnProperty.call(x, k);
 const count = (x) => Number.isSafeInteger(x) && x >= 0;
 const digest = (x) => createHash('sha256').update(x).digest('hex');
@@ -158,7 +159,7 @@ export const writeValidationSidecar = (file, steps, options = {}) => writeSideca
 export async function writeSessionDump(file, raw, options = {}) {
   chunkLimit(options.maxChunkBytes);
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new TypeError('Session dump must be an object');
-  if (raw.tapeTradesSidecar || raw.validationSidecar || raw.arraySidecars) throw new Error('Hydrate existing sidecars before rewriting a dump');
+  if (raw.tapeTradesSidecar || raw.validationSidecar || raw.signalStepsSidecar || raw.arraySidecars) throw new Error('Hydrate existing sidecars before rewriting a dump');
   const fields = options.arrayFields ?? [];
   if (!Array.isArray(fields) || new Set(fields).size !== fields.length || fields.some((field) => typeof field !== 'string' ||
       RESERVED_ARRAY_FIELDS.has(field)))
@@ -166,6 +167,16 @@ export async function writeSessionDump(file, raw, options = {}) {
   const header = { ...raw };
   const made = [];
   try {
+    // Minute qualification keys can exceed the entire tape metadata header.
+    // Split even one very large clock across chunks, preserving every key and
+    // empty clock without mutating the caller's engine snapshot.
+    if (Array.isArray(raw.engine?.signalSteps) && raw.engine.signalSteps.length) {
+      header.signalStepsSidecar = await writeSidecar(file, raw.engine.signalSteps, {
+        ...options, rowsKey: 'keys', schema: SIGNAL_STEPS_SCHEMA, itemName: 'signalSteps', tag: 'g',
+      });
+      made.push(header.signalStepsSidecar);
+      header.engine = { ...raw.engine, signalSteps: [] };
+    }
     if (own(raw, 'tapeTrades') || options.tapeTrades !== undefined) {
       header.tapeTradesSidecar = await writeTapeTradesSidecar(file, options.tapeTrades ?? raw.tapeTrades, options);
       made.push(header.tapeTradesSidecar); header.tapeTrades = [];
@@ -263,9 +274,12 @@ async function* readSidecar(file, manifest, spec) {
 const tapeSpec = { schema: TAPE_SCHEMA, itemName: 'tapes', rowsKey: 'trades', tag: 't' };
 const validationSpec = { schema: VALIDATION_SCHEMA, schemas: [VALIDATION_SCHEMA, 'cts-session-validation-v1'], itemName: 'steps', rowsKey: 'checks', tag: 'v' };
 const arraySpec = { schema: ARRAY_SCHEMA, itemName: 'items', rowsKey: null };
+const signalStepsSpec = { schema: SIGNAL_STEPS_SCHEMA, itemName: 'signalSteps', rowsKey: 'keys', tag: 'g' };
 async function headerOf(file) {
   const raw = JSON.parse(await readFile(file, 'utf8'));
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid session dump object');
+  if (raw.signalStepsSidecar && (!raw.engine || typeof raw.engine !== 'object' || Array.isArray(raw.engine) || !Array.isArray(raw.engine.signalSteps)))
+    throw new Error('Missing Signal selection header');
   if (raw.arraySidecars !== undefined && (!raw.arraySidecars || typeof raw.arraySidecars !== 'object' || Array.isArray(raw.arraySidecars) ||
       Object.keys(raw.arraySidecars).some((field) => RESERVED_ARRAY_FIELDS.has(field))))
     throw new Error('Invalid or reserved flat array sidecar field');
@@ -275,9 +289,9 @@ async function headerOf(file) {
 /** Iteration preserves duplicate config IDs, empty items and exact global order. */
 export async function* iterateSessionArray(file, field) {
   const raw = await headerOf(file);
-  const manifest = field === 'tapeTrades' ? raw.tapeTradesSidecar : field === 'validation' ? raw.validationSidecar : raw.arraySidecars?.[field];
-  if (!manifest) { for (const x of raw[field] ?? []) yield x; return; }
-  const spec = field === 'tapeTrades' ? tapeSpec : field === 'validation' ? validationSpec : arraySpec;
+  const manifest = field === 'engine.signalSteps' ? raw.signalStepsSidecar : field === 'tapeTrades' ? raw.tapeTradesSidecar : field === 'validation' ? raw.validationSidecar : raw.arraySidecars?.[field];
+  if (!manifest) { for (const x of (field === 'engine.signalSteps' ? raw.engine?.signalSteps : raw[field]) ?? []) yield x; return; }
+  const spec = field === 'engine.signalSteps' ? signalStepsSpec : field === 'tapeTrades' ? tapeSpec : field === 'validation' ? validationSpec : arraySpec;
   yield* readSidecar(file, manifest, spec);
 }
 export const iterateSessionTapeTrades = (file) => iterateSessionArray(file, 'tapeTrades');
@@ -287,6 +301,7 @@ export const iterateSessionValidation = (file) => iterateSessionArray(file, 'val
 export async function verifySessionDumpSidecars(file, options = {}) {
   const raw = await headerOf(file), verified = {};
   const manifests = [
+    ['engine.signalSteps', raw.signalStepsSidecar, signalStepsSpec],
     ['tapeTrades', raw.tapeTradesSidecar, tapeSpec],
     ['validation', raw.validationSidecar, validationSpec],
     ...Object.entries(raw.arraySidecars ?? {}).map(([field, manifest]) => [field, manifest, arraySpec]),
@@ -303,6 +318,7 @@ export async function verifySessionDumpSidecars(file, options = {}) {
 export async function removeSessionDump(file) {
   const raw = await headerOf(file), paths = new Set();
   for (const [manifest, spec] of [
+    [raw.signalStepsSidecar, signalStepsSpec],
     [raw.tapeTradesSidecar, tapeSpec], [raw.validationSidecar, validationSpec],
     ...Object.values(raw.arraySidecars ?? {}).map((m) => [m, arraySpec]),
   ]) {
@@ -324,6 +340,15 @@ export async function readSessionDump(file, options = {}) {
   const want = (field) => options.loadSidecars !== false && (!options.fields || options.fields.includes(field)) &&
     !(field === 'tapeTrades' && options.loadTapeTrades === false) && !(field === 'validation' && options.loadValidation === false);
   const verifyUnloaded = (field) => options.verifyUnloaded === true || (Array.isArray(options.verifyUnloaded) && options.verifyUnloaded.includes(field));
+  if (raw.signalStepsSidecar) {
+    if (want('engine.signalSteps')) {
+      const values = [];
+      for await (const item of readSidecar(file, raw.signalStepsSidecar, signalStepsSpec)) values.push(item);
+      raw.engine.signalSteps = values; delete raw.signalStepsSidecar;
+    } else if (verifyUnloaded('engine.signalSteps')) {
+      for await (const _ of readSidecar(file, raw.signalStepsSidecar, signalStepsSpec)) { /* verify only */ }
+    }
+  }
   for (const [field, key, spec] of [['tapeTrades', 'tapeTradesSidecar', tapeSpec], ['validation', 'validationSidecar', validationSpec]]) {
     if (!raw[key]) continue;
     if (!want(field)) {

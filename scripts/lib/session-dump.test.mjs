@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { iterateSessionTapeTrades, readSessionDump, verifySessionDumpSidecars, writeJsonFile, writeSessionDump, writeTapeTradesSidecar } from "./session-dump.mjs";
+import { iterateSessionArray, removeSessionDump, iterateSessionTapeTrades, readSessionDump, verifySessionDumpSidecars, writeJsonFile, writeSessionDump, writeTapeTradesSidecar } from "./session-dump.mjs";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 // Hash the ordered legacy unit-return rows, independently of sidecar record/chunk framing.
@@ -425,4 +425,50 @@ test("legacy v1 validation metadata still reads unchanged", async (t) => {
   writeFileSync(file, JSON.stringify({validation: [], validationSidecar: {schema: "cts-session-validation-v1", ...counts,
     sha256: hash(payload), chunks: [{path:"legacy.jsonl", bytes: Buffer.byteLength(payload), sha256: hash(payload), ...counts}]}}));
   assert.deepEqual((await readSessionDump(file)).validation, [{t:1,real:["a","a"],checks:[["a",true]]}]);
+});
+
+test("minute selection evidence splits one large clock losslessly and allows small projected reads", async t => {
+  const { file, dir } = workspace(t);
+  const steps = [{ t: 1, keys: [] }, { t: 2, note: "exact α", keys: Array.from({ length: 400 }, (_, i) => `config|α|${i}`) }, { t: 3, keys: [] }];
+  const raw = { engine: { n: 7, signalSteps: steps }, trades: [] };
+  await writeSessionDump(file, raw, { maxChunkBytes: 256 });
+  const physical = JSON.parse(readFileSync(file, "utf8"));
+  assert.deepEqual(raw.engine.signalSteps, steps);
+  assert.deepEqual(physical.engine.signalSteps, []);
+  assert.ok(physical.signalStepsSidecar.chunks.length > 3);
+  for (const chunk of physical.signalStepsSidecar.chunks) assert.ok(chunk.bytes <= 256);
+  assert.deepEqual(await readSessionDump(file), raw);
+  const streamed = [];
+  for await (const step of iterateSessionArray(file, "engine.signalSteps")) streamed.push(step);
+  assert.deepEqual(streamed, steps);
+  const projection = await readSessionDump(file, { fields: [] });
+  assert.deepEqual(projection.engine, { n: 7, signalSteps: [] });
+  assert.ok(projection.signalStepsSidecar);
+  assert.deepEqual((await readSessionDump(file, { fields: ["engine.signalSteps"] })).engine, raw.engine);
+  await assert.rejects(writeSessionDump(join(dir, "bad.json"), projection), /Hydrate/);
+  await verifySessionDumpSidecars(file);
+  await removeSessionDump(file);
+  assert.deepEqual(readdirSync(dir), []);
+});
+test("selection sidecar corruption, truncation and missing clock structure fail closed", async t => {
+  const { file } = workspace(t);
+  await writeSessionDump(file, { engine: { signalSteps: [{ t: 1, keys: ["a", "b"] }] } }, { maxChunkBytes: 128 });
+  const header = JSON.parse(readFileSync(file, "utf8"));
+  const chunk = join(dirname(file), header.signalStepsSidecar.chunks[0].path), bytes = readFileSync(chunk);
+  writeFileSync(chunk, bytes.subarray(0, bytes.length - 1));
+  await assert.rejects(readSessionDump(file));
+  await assert.rejects(readSessionDump(file, { fields: [], verifyUnloaded: ["engine.signalSteps"] }));
+  await assert.rejects(verifySessionDumpSidecars(file));
+  writeFileSync(chunk, bytes);
+  delete header.engine.signalSteps; writeFileSync(file, JSON.stringify(header));
+  await assert.rejects(readSessionDump(file), /signal|Signal/);
+});
+test("legacy and empty minute selection arrays preserve their exact shapes", async t => {
+  const { file } = workspace(t);
+  for (const raw of [{ engine: {} }, { engine: { signalSteps: [] } }, { engine: { signalSteps: [{ t: 3, keys: ["x", "x"] }] } }]) {
+    writeFileSync(file, JSON.stringify(raw));
+    assert.deepEqual(await readSessionDump(file), raw);
+    const steps = []; for await (const step of iterateSessionArray(file, "engine.signalSteps")) steps.push(step);
+    assert.deepEqual(steps, raw.engine.signalSteps ?? []);
+  }
 });

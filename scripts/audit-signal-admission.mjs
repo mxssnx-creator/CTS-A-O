@@ -12,7 +12,7 @@ assert.ok(coverage.ok);const selectedIds=new Set();
 for await(const line of createInterface({input:createReadStream(resolve(dir,'coverage.configs.jsonl')),crlfDelay:Infinity})){
  if(!line.trim())continue;const row=JSON.parse(line);if(row.entrySelection?.unselectedOwnValid)selectedIds.add(row.id);
 }
-const raw=await readSessionDump(resolve(dir,'raw.json'),{fields:[]});
+const raw=await readSessionDump(resolve(dir,'raw.json'),{fields:['engine.signalSteps']});
 const steps=raw.engine.signalSteps.map(s=>({...s,keys:new Set(s.keys)}));
 const wf=protocol.actualWf,sig=protocol.actualSettings.signals;
 const reasons={},entryActivationReasons={},examples=[],readyExamples=[];let total=0;

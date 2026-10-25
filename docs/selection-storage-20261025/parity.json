@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "file": "session.json",
+      "fields": 29,
+      "identical": true
+    },
+    {
+      "file": "report/data.json",
+      "fields": 44,
+      "identical": true
+    },
+    {
+      "file": "report/index.html",
+      "summaryIdentical": true,
+      "selectionEvidence": {
+        "file": "data.json",
+        "steps": 160,
+        "keys": 1428676
+      }
+    }
+  ]
+}

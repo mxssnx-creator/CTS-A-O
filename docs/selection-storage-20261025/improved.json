@@ -1,0 +1,23 @@
+{
+  "exitCode": 0,
+  "elapsedSeconds": 15.070968333995552,
+  "peakRssMiB": 1698.84765625,
+  "source": "/workspace/scratch/1bcaeeb063ee/CTS-A-O-reporting/runs/working-set-history-20261025/control-12/raw.json",
+  "command": [
+    "node",
+    "--expose-gc",
+    "--experimental-strip-types",
+    "--no-warnings",
+    "--max-old-space-size=6144",
+    "scripts/core-session.mjs",
+    "--replay",
+    "/workspace/scratch/1bcaeeb063ee/CTS-A-O-reporting/runs/working-set-history-20261025/control-12/raw.json",
+    "--out",
+    "/workspace/scratch/1bcaeeb063ee/CTS-A-O-export/runs/selection-storage-benchmark/session",
+    "--html",
+    "/workspace/scratch/1bcaeeb063ee/CTS-A-O-export/runs/selection-storage-benchmark/report",
+    "--chunk-allocations",
+    "--quiet",
+    "true"
+  ]
+}
