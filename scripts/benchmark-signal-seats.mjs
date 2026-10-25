@@ -4,8 +4,9 @@ import {createReadStream,readFileSync,writeFileSync} from 'node:fs';
 import {createInterface} from 'node:readline';
 import {resolve} from 'node:path';
 import {signalSeatSymbols,signalSeatTapesGen} from '../src/core/signals.ts';
+import {readSessionDump} from './lib/session-dump.mjs';
 const dir=resolve(process.argv[2]),out=resolve(process.argv[3]);
-const coverage=JSON.parse(readFileSync(resolve(dir,'coverage.json'))),raw=JSON.parse(readFileSync(resolve(dir,'raw.json')));
+const coverage=JSON.parse(readFileSync(resolve(dir,'coverage.json'))),raw=await readSessionDump(resolve(dir,'raw.json'),{fields:['engine.signalSteps']});
 assert.ok(coverage.ok);
 const tapes=[];
 for await(const line of createInterface({input:createReadStream(resolve(dir,'coverage.configs.jsonl')),crlfDelay:Infinity})){

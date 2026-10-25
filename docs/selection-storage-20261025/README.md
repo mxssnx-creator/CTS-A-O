@@ -1,0 +1,9 @@
+# Lossless minute-selection export
+
+Keep each exact selected-config key, ordering, duplicate, empty clock and clock metadata in bounded checksummed sidecars. The full hydrated raw/report schema remains unchanged; readers requesting only funding or account totals can avoid the large selection array. Selection audits explicitly request it, and the generic verifier checks it. Corruption, truncation, unsafe manifests and unloaded rewrite attempts fail closed. The HTML summary points to complete data.json evidence instead of embedding the selection journal again.
+
+Paired local render of the same frozen f09e2e Signal raw dump (12 symbols, 12h later window, 150h history, Last4): baseline 19.929 s / 2006.12 MiB peak; new 15.071 s / 1698.85 MiB. This measures report replay/export, not simulation compute or exchange latency. The same modeled result remains PF0.065995, orders863/280/583 and positions4/2/2 (opened/settled-or-closed/held).
+
+Session header 198,080,975 → 2,201,263 bytes, report data header 198,283,061 → 2,403,349 bytes; full sidecar bytes remain on disk. HTML198,378,229 → 2,492,700 bytes. All29 session fields and44 data fields have identical hydrated hashes; HTML summaries match after the explicit evidence projection. Preserved160 selection clocks /1,428,676 selected keys. No candidates, losses, orders, history, samples or gates were removed.
+
+Validation: 46 storage regressions; 38 actual CLI report tests (including legacy/chunk replay, re-render, exact selection evidence and HTML parity); four additional admission/coverage audit tests passed in the combined earlier42-test run. Production build/typecheck and final CI pending at this checkpoint. This change does not alter trading math and is not financial/live approval. Do not certify missing legacy evidence or use the empty projected placeholder as an empty evaluated selection.

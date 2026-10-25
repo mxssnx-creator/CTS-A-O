@@ -97,7 +97,7 @@ function riskAdd(r, p, tf) {
 
 export async function auditSignalCoverage(dir, out = resolve(dir, "coverage")) {
   const started = performance.now(), { protocol, protocolSha256 } = readSessionStudy(resolve(dir, "protocol.json"));
-  const rawPath = resolve(dir, "raw.json"), raw = await readSessionDump(rawPath, { fields: ["trades", "openEnd"] });
+  const rawPath = resolve(dir, "raw.json"), raw = await readSessionDump(rawPath, { fields: ["trades", "openEnd", "engine.signalSteps"] });
   validateFrozenSessionResult(raw, resolve(dir, "protocol.json"));
   assert.equal(raw.tapeTradesScope, "all-built-configs");
   const { symbols, actualWf: wf, actualSettings: settings } = protocol;

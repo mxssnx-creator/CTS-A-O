@@ -2546,7 +2546,7 @@ const bookCapped = equityPass(unit, sized.units);
 const bookUncapped = equityPass(unitU, sizedU.units);
 
 /**
- * Live sizing replay: the baseline's positions (every closed order and every order open at the end) as the live
+ * Live sizing replay: the baseline's orders (every closed order and every order open at the end) as the live
  * control's lanes, every 5 minutes of the run, with the report's balance curve as the equity; one lane unit = the
  * exchange minimum (--replay-unit, default $2: minimum-quantity sizing) or a fixed notional. Each sizing variant runs
  * the live control's own functions (top configs → targets with the position cap and the exchange minimum → exposure
@@ -2610,7 +2610,7 @@ function buildSizingReplay() {
   }
   out[0].effect = "reference";
   process.stderr.write(
-    `sizing replay: ${out.length} variants · ${pos.length} positions · ${samples.length} samples · ${Date.now() - t0} ms\n`,
+    `sizing replay: ${out.length} variants · ${pos.length} orders · ${samples.length} samples · ${Date.now() - t0} ms\n`,
   );
   return {
     unitUsd: ref.unitUsd,
@@ -4170,13 +4170,15 @@ const out = arg("out");
 if (out) {
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(`${out}.md`, md + "\n");
-  await writeJsonFile(`${out}.json`, report);
+  if (flag("chunk-allocations")) await writeSessionDump(`${out}.json`, report);
+  else await writeJsonFile(`${out}.json`, report);
 }
 
 // ── 7. the session report: data.json + standalone index.html ─────────────────────────────────────────────────
 const round = (v, d = 6) => (typeof v === "number" && Number.isFinite(v) ? +v.toFixed(d) : v);
 const clean = (o) =>
   JSON.parse(JSON.stringify(o, (_, v) => (typeof v === "number" ? round(v) : v)));
+const minuteSelection = raw.engine?.signalSteps;
 const data = clean({
   evidence: report.evidence,
   study: report.study,
@@ -4186,7 +4188,7 @@ const data = clean({
   symbols: raw.symbols,
   window: { startT, endT, preStartT: startT - preH * H, preH, runH },
   settings: report.settings,
-  engine: raw.engine,
+  engine: minuteSelection ? { ...raw.engine, signalSteps: [] } : raw.engine,
   evalStats: raw.tapeAgg?.evalStats ?? null,
   marketDataLabel: sessionMarketDataLabel(
     raw.settings.marketDataSource,
@@ -4322,6 +4324,8 @@ const data = clean({
   sides,
   episodes: episodes.length,
 });
+// Round only small per-clock metadata; exact ordered selection keys are immutable strings.
+if (minuteSelection) data.engine.signalSteps = minuteSelection.map(({ keys, ...metadata }) => ({ ...clean(metadata), keys }));
 const htmlDir = arg("html");
 if (raw.frozenBlockComparison)
   data.frozenBlockRiskExact = {
@@ -4619,8 +4623,12 @@ function renderHtml(d) {
   // The browser uses summary tables/curves only. Exact per-order allocation rows
   // remain complete in data.json instead of being duplicated into a giant HTML string.
   const { sizedOrders, sizedOpenOrders, ...summary } = d;
+  const { signalSteps, ...engineSummary } = d.engine ?? {};
+  if (signalSteps) summary.engine = engineSummary;
   const normalized = {
     ...summary,
+    ...(signalSteps ? { selectionEvidence: { file: "data.json", steps: signalSteps.length,
+      keys: signalSteps.reduce((n, step) => n + (step.keys?.length ?? 0), 0) } } : {}),
     evidence: {
       ...d.evidence,
       qualification: sessionQualificationEvidence(d.evidence?.qualification),

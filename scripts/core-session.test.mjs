@@ -191,6 +191,7 @@ describe("session CLI sidecar replay preserves complete evidence", () => {
     const dir = mkdtempSync(join(tmpdir(), "cts-sidecar-replay-"));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     const raw = sidecarReplayRaw();
+    raw.engine.signalSteps = [{ t: H, keys: [raw.trades[0].cfg, raw.trades[1].cfg] }, { t: H + M, keys: [] }];
     const legacy = join(dir, "legacy.json"), chunked = join(dir, "chunked.json");
     writeFileSync(legacy, JSON.stringify(raw));
     await writeSessionDump(chunked, raw, { maxChunkBytes: 256 });
@@ -222,6 +223,9 @@ describe("session CLI sidecar replay preserves complete evidence", () => {
     assert.deepEqual(browserData.allocationEvidence, { file: "data.json", settledRows: 2, openRows: 0 });
     assert.deepEqual(browserData.hours, exactData.hours, "hourly results are unchanged by allocation projection");
     assert.deepEqual(browserData.total, exactData.total);
+    assert.equal(Object.hasOwn(browserData.engine, "signalSteps"), false);
+    assert.deepEqual(browserData.selectionEvidence, { file: "data.json", steps: 2, keys: 2 });
+    assert.deepEqual(exactData.engine.signalSteps, raw.engine.signalSteps);
     assert.equal(summaryOf(split.html()), summaryOf(plain.html()));
     assert.equal(split.data().checksOk, true);
     assert.ok(split.data().checks.find((x) => x.name === "stages consistent: every executed order is its config's tape trade")?.ok);
@@ -235,6 +239,9 @@ describe("session CLI sidecar replay preserves complete evidence", () => {
     const allocationRun = sidecarReplayCli(chunked, allocationDir, undefined, { chunkAllocations: true });
     assert.equal(allocationRun.result.status, 0, allocationRun.result.stderr || allocationRun.result.stdout);
     const allocationFile = join(allocationDir, "html/data.json"), allocationHeader = allocationRun.data();
+    assert.deepEqual(allocationHeader.engine.signalSteps, []);
+    assert.ok(allocationHeader.signalStepsSidecar);
+    assert.deepEqual(await readSessionDump(join(allocationDir, "report.json")), plain.report());
     assert.deepEqual(allocationHeader.sizedOrders, []);
     assert.deepEqual(allocationHeader.sizedOpenOrders, []);
     assert.equal(allocationHeader.arraySidecars.sizedOrders.items, 2);
