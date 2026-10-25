@@ -30,6 +30,10 @@ const arg = (name, fallback) => {
 const mode = process.argv[2],
   out = resolve(arg("out", "runs/micro-20x12h")),
   H = 3_600_000;
+const symbolCount = Number(arg("symbols", "20"));
+if (!Number.isInteger(symbolCount) || symbolCount < 1 || symbolCount > 100) throw new Error("Invalid symbol count");
+const range = arg("range", "original");
+if (!["original", "micro", "minimal", "short", "general", "long", "wide", "minimalPlus"].includes(range)) throw new Error("Unknown range");
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
 if (mode === "prepare") {
@@ -40,8 +44,8 @@ if (mode === "prepare") {
   const symbols = source.tickers
     .map((x) => x.sym)
     .sort()
-    .slice(0, 20);
-  if (symbols.length !== 20) throw new Error("Study needs twenty real cached symbols");
+    .slice(0, symbolCount);
+  if (symbols.length !== symbolCount) throw new Error("Study needs the requested number of real cached symbols");
   const lastT = Math.min(...symbols.map((sym) => source.candles[`${sym}|1`].at(-1).t + 60_000));
   const endT = Number(arg("end", Math.floor(lastT / H) * H)),
     runH = 12,
@@ -69,7 +73,7 @@ if (mode === "prepare") {
   writeFileSync(feedPath, JSON.stringify(feed));
   const seed = structuredClone(DEFAULT_SETTINGS);
   Object.assign(seed, {
-    symbols: 20,
+    symbols: symbolCount,
     forceSymbols: symbols,
     symbolRank: "market",
     historyDays: 2,
@@ -108,6 +112,12 @@ if (mode === "prepare") {
     minimal: { ...seed.grid.minimal, minTf: 0, maxHoldMin: 120 },
     short: { ...seed.grid.short, minTf: 0, maxHoldMin: 180 },
   };
+  if (range !== "original") {
+    const selected = range === "wide" ? null : structuredClone(DEFAULT_SETTINGS.grid[range]);
+    for (const key of ["micro", "minimal", "short", "general", "long", "minimalPlus"]) seed.grid[key] = false;
+    seed.grid.tp = range === "wide" ? [0.03, 0.05, 0.08] : [];
+    if (selected) seed.grid[range] = { ...selected, minTf: 0, ...(range === "minimalPlus" ? { enabled: true } : {}) };
+  }
   seed.exitStrategy = {
     ...seed.exitStrategy,
     enabled: true,
@@ -120,7 +130,7 @@ if (mode === "prepare") {
   const make = (settings, wf = {}) => {
     const rt = new CoreRuntime(
       new CoreDb(":memory:"),
-      { symbols: 20, signals: { enabled: false } },
+      { symbols: symbolCount, signals: { enabled: false } },
       {
         market: "bingx",
         replay: true,
@@ -131,7 +141,7 @@ if (mode === "prepare") {
       },
     );
     rt.updateSettings(settings);
-    rt.updateSettings({ symbols: 20 });
+    rt.updateSettings({ symbols: symbolCount });
     rt.updateSettings({}, { preH, simH: runH, ...wf, causalBase: true, recordValidation: true });
     rt.wf = { ...rt.wf, longH: 12 };
     return rt;
@@ -150,14 +160,15 @@ if (mode === "prepare") {
   const files = sessionStudySourceFiles(root);
   const protocol = {
     schema: "cts-session-study-v1",
-    id: "micro-20-symbols-12h-pre-12h-run",
+    id: `micro-${symbolCount}-symbols-${range}-12h-pre-12h-run`,
+    range,
     symbols,
     window: { indicatorStartT, evaluationFromT, tradeStartT, endT, preH, runH },
     feed: {
       path: feedPath,
       sha256: studySha256(readFileSync(feedPath)),
       parentSha256: studySha256(input),
-      provider: "Cached Binance USD-M native 1m candles; historical regression, not fresh holdout",
+      provider: arg("provider", "Cached Binance USD-M native 1m candles; historical regression, not fresh holdout"),
     },
     source: {
       checkpoint: execFileSync("git", ["rev-parse", "HEAD"], {
@@ -171,7 +182,7 @@ if (mode === "prepare") {
     actualWf: wf,
     account: { balance: 10, leverage: 10, sizing: settings.sizing },
     policy:
-      "All configured Micro and mirrored Inverse identities; complete configured Micro/Minimal/Short/General TP x SL x trailing grid, plus independently fitted Exit. No PF/sample/Last-N gates weakened. Older 24h warm indicators only. No exchange executions.",
+      "All configured Micro and mirrored Inverse identities; complete configured Micro/Minimal/Short/General TP x SL x trailing grid, plus independently fitted Exit. The protocol range field identifies an explicitly isolated range when requested. No PF/sample/Last-N gates weakened. Older 24h warm indicators only. No exchange executions.",
     harnessSha256: studySha256(readFileSync(new URL(import.meta.url))),
   };
   writeFileSync(`${out}/desk.json`, JSON.stringify({ settings, wf }, null, 2));
@@ -202,7 +213,7 @@ if (mode === "prepare") {
     "--desk",
     `${out}/desk.json`,
     "--symbols",
-    "20",
+    String(p.symbols.length),
     "--pre",
     "12",
     "--run",

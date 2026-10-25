@@ -1,7 +1,7 @@
 name: Independent Micro verification
 on:
   push:
-    branches: [codex/micro-indication-20261020, codex/incremental-cycle-20261020, codex/micro-release-ranking-20261021]
+    branches: [codex/micro-indication-20261020, codex/incremental-cycle-20261020, codex/micro-release-ranking-20261021, fix/live-ready-progress-20261025]
     paths:
       - src/**
       - scripts/**

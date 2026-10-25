@@ -1922,6 +1922,7 @@ export class CoreRuntime {
       }
       if (gen !== this.gen || epoch !== this.fastEpoch) return;
       this.fastBarDone = bar;
+      this.releaseExecutionBook(gen);
       const ms = performance.now() - t0;
       const previous = this.status.fast;
       this.status.fast = {
@@ -2159,6 +2160,8 @@ export class CoreRuntime {
   private controlSeen: { positions: unknown; live: unknown; bar: number; at: number } | null = null;
   /** a stop crossed / a trailing stop moved since the last live control step (kept while a step is in flight) */
   private controlUrgent = false;
+  /** Coalesced completed-book notification; never queue one exchange task per config. */
+  private liveReadyQueued = false;
   private controlTrail = false;
   /** Whether the live control step runs on this tick (CONTROL_IDLE_MS); a step that starts takes the flags. */
   private controlDue(): boolean {
@@ -2193,6 +2196,18 @@ export class CoreRuntime {
     return this.executionPending || this.settingsStale || this.resetUniverse;
   }
 
+  /** Release only a fully persisted, current book; diagnostics/cache preparation do not gate execution. */
+  private releaseExecutionBook(gen: number): boolean {
+    if (gen !== this.gen || this.stopped || this.paperRunning || this.dirty ||
+        this.resetUniverse || this.settingsStale) return false;
+    this.paperStepped = true;
+    this.executionPending = false;
+    this.controlUrgent = true;
+    this.liveReadyQueued = true;
+    this.progressLive();
+    return true;
+  }
+
   /** Independent of the paper tick, bar pulls and strategy compute. Exchange calls remain serialized. */
   private progressLive() {
     if (
@@ -2206,6 +2221,7 @@ export class CoreRuntime {
       // the live step runs detached: the tick (marking to market) never waits on the exchange; a step never
       // overlaps the previous one (no duplicate orders), and one in flight too long is reported
       this.liveBusy = true;
+      this.liveReadyQueued = false;
       this.liveStartedAt = Date.now();
       const epoch = this.liveEpoch;
       const gen = this.gen;
@@ -2242,6 +2258,7 @@ export class CoreRuntime {
           // the stall watch names the live phase in flight: none once the step is done (a stall between steps
           // was booked on the last step's last phase — "Base · live lane orders" while nothing ran)
           this.livePhase = "";
+          if (this.liveReadyQueued) this.progressLive();
         });
     } else if (this.liveBusy && Date.now() - this.liveStartedAt > LIVE_STEP_LIMIT_MS) {
       // watchdog: a step that never returns (an await without its own limit) would freeze Live for good — no
@@ -3116,6 +3133,8 @@ export class CoreRuntime {
         // (Adjust and the self-audit read the whole published state: they run with the heavy compute, not in a light cycle)
         if (!light) {
           this.phase("Adjust", () => this.runAdjust());
+          // Adjust may invalidate costs/qualification; release only after its revision check.
+          this.releaseExecutionBook(gen);
           await yieldNow();
           this.busyPhase = "Audit";
           const auditLabel = `self-audit · ${this.paper.selected.length} seats`;
@@ -3128,8 +3147,7 @@ export class CoreRuntime {
           if (!incremental && this.settings.runtime?.cycle === "incremental") await this.incCapture(gen);
         }
         this.paperStepped = true;
-        if (gen === this.gen && !this.dirty && !this.resetUniverse && !this.settingsStale)
-          this.executionPending = false;
+        if (light) this.releaseExecutionBook(gen);
         // the public signal that this compute's book is ready: the seats (paper.selected) are the new tapes'
         this.status.paperSteps = (this.status.paperSteps ?? 0) + 1;
         this.status.paperCompute = this.status.computes;
