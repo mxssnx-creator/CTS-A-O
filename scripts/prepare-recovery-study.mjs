@@ -41,7 +41,7 @@ for(const profile of profiles)for(const offset of [0,12]){
  const protocol={...ref,id,createdAt:new Date().toISOString(),source,window,liveSinceT:window.tradeStartT,
   actualSettings:actual.settings,actualWf:actual.wf,policy:{scope:'Signals plus independent Exit; every existing expanded Signal source and 1/5/15m lane',
    profile,offsetHours:offset,roundTripCost:.0015,calculation:'Minute prices, 150h prehistory, 12h trading; Last4 and every own PF/sample/DD gate retained',
-   dca:'Ordinary spacing 1%/2%; capped Signal spacing fits inside its resting stop (default 0.8%/1.6%, stop 2%). Active remains an alternative execution mode',
+   dca:'Ordinary and current 3%-cap Signal defaults use 1%/2% additions; an explicit 2% Signal cap fits 0.8%/1.6% inside the resting stop. Active remains an alternative execution mode',
    block:'Independent source ratios; recovery uses accepted modeled extra-leg unit net, not venue funding',
    acceptance:'Report ALL arms, losses, empty samples, held orders, positions, equity drawdown and exact coverage. No optimal/default claim from these reused windows.'}};
  for(const [name,value]of [['desk.json',actual],['protocol.json',protocol]])writeFileSync(resolve(dir,name),JSON.stringify(value,null,2)+'\n');

@@ -1,6 +1,6 @@
 # Post-Base admission, DCA/Block and actual exchange accounting — 25 October 2026
 
-Status: implementation and focused correctness checks pass; full final-source CI and financial comparisons are pending. **Not certified production-ready; no X02 VST orders or live settings changes in this work.** PF 1 is neutral. All losses and insufficient/empty outcomes remain visible.
+Status: all four core CI partitions and the slow-runtime partition pass on 06ced23. Quality CI found one real CLI/UI fee-provenance mismatch, now corrected locally; exact follow-up CI remains required. Five of ten frozen Signal arms are audited; eight ordinary arms remain in progress or queued. **Not certified production-ready; no X02 VST orders or live settings changes in this work.** PF 1 is neutral. All losses and insufficient/empty outcomes remain visible.
 
 ## Admission and measured costs
 
@@ -14,7 +14,7 @@ Read-only BingX income history uses the selected account/key/network fingerprint
 
 ## DCA and independent Block recovery
 
-Requested DCA default: two additions, each 2.5 original base-notional units (total 6), at up to 2% adverse distance. Ordinary default spacing is 1%/2%; capped Signals fit both additions before the existing 2% stop, normally 0.8%/1.6%. Target-based spacing respects the cap. DCA Active remains the alternative delayed-entry mode. Exact former factory settings receive a once-only backed-up migration; custom legacy spacing remains explicit and unchanged. No claim these weights are optimal.
+Requested DCA default: two additions, each 2.5 original base-notional units (total 6), at up to 2% adverse distance. Default spacing is 1%/2%. Signals preserve their configured cap: current default 3% retains that spacing; a 2% cap shortens additions to 0.8%/1.6%. Target-based spacing respects the cap. DCA Active remains the alternative delayed-entry mode. Exact former factory settings receive a once-only backed-up migration; custom legacy spacing remains explicit and unchanged. No claim these weights are optimal.
 
 Combined DCA entry now equals total cost divided by acquired quantity (a harmonic price average for equal notional weights). The old arithmetic price average changed open equity when the same price reached the ticker. Tests reconcile per-leg cash, combined marks, costs and settled returns in both directions. New ladder cap identities prevent old settings from qualifying changed configurations.
 
@@ -23,7 +23,7 @@ Block offers independent source multipliers and opt-in recovery until each recor
 ## Validation and planned financial comparison
 
 - Original local full core attempt: 3,528 passed, three failed, two explicit slow exclusions, no cancellations; all three failures are retained in the log. Two were expected economic-fixture changes (DCA harmonic entry and an explicitly uncapped legacy stop example); the lifecycle hash fixture needed its archived DCA options frozen. Its original hash is preserved after repair.
-- Corrected focused suite: **248/248 passed**, including exact simulation parity, negative audits, stage consistency, live promotion, DCA/Block replay and history restart. A final small unknown-recovery addition is checked separately. Types and production build passed; lint has zero errors and 43 existing warnings. Final-source complete CI remains required.
+- Corrected focused suite: **248/248 passed**, including exact simulation parity, negative audits, stage consistency, live promotion, DCA/Block replay and history restart. A final small unknown-recovery addition is checked separately. Types and production build passed; lint has zero errors and 43 existing warnings. All four final-source core CI partitions and the two slow-runtime checks pass. Quality/browser checks found a CLI primary-PF mismatch for estimated fees: the CLI used estimates as measured returns, unlike the UI. The follow-up keeps those closes unknown, preserves their cash diagnostics and marks the whole mixed cohort unavailable. Corrected local suites:29 focused,718 scripts (8 template skips, browser separate),86 app/component; zero failures. Follow-up exact-head CI remains required.
 - New frozen study: ten Signal+Exit arms (control, unit DCA, weighted DCA, Active DCA, DCA+Block, each original/later window); eight complete ordinary arms (Micro minimum SL/TP ratios1/1.5/2 at both windows, plus recovery and recovery-Active). Every case uses 12 symbols, 12h trading, minute prices, production PF/sample gates and 0.15% costs. Ordinary inventory:38,402 combinations across19 families plus no-indication;1/5/15/30m; optional Wide/Minimal Plus included. Signal fitting150h, Last4,1/5/15m.
 - Wider Micro ratios are research candidates, not an asserted profitable default. Full settings, source fingerprints, raw trades, funded allocations and failed runs are retained by the workflow. Reused windows are retrospective comparison, not untouched forward evidence.
 
@@ -35,3 +35,15 @@ Block offers independent source multipliers and opt-in recovery until each recor
 | Later | 0.067947 | 860 / 278 / 582 | 4 / 2 / 2 |
 
 These controls are source `fc0797430294d8f287a6f021c81994fc2e4e5a5c7d2228cf8923bac2062c1c0b`, not a result of the new DCA/Block changes. Each passed68 native checks; combined78,791,856 scalar comparisons and full historical byte parity passed. The later losing cohort means the requested stable positive behavior remains unproven. Full ordinary old-source processing workflow40200402203 was still running at this checkpoint.
+
+## Protocol wording correction
+
+The first frozen study policy description says “default 0.8%/1.6%, stop2%”. Its actualSettings and actualWf correctly retain the existing **3% Signal cap**; default additions are1%/2%. The2% examples are regression fixtures for tighter explicit configurations, not the current default. Protocols are preserved unchanged; no prices, returns, gates or settings were altered to correct this wording.
+
+## Current financial and admission receipts
+
+See [RESULTS.md](RESULTS.md) and [financial-results.json.gz](financial-results.json.gz) for all completed arms, hourly results and type/range/readiness detail. Both current controls exactly reproduce the earlier financial counts/PF. Unit DCA has original/later PF2.7134/0.0643, with410/960 orders opened and14/4 positions opened. The local later arm also matches the remote later arm, including every group/gate count and exact settled return. This does not meet the requested stable positive criterion.
+
+The later unit-DCA admission follow-up distinguishes115 own-PF-valid but unselected candidates: at their actual entries,82 fail recent activation,28 fail four-hour consistency and5 pass own activation. The55 whose own evaluation changed since the selection snapshot were not55 fully activation-ready entries. The5 remaining snapshot delays are disclosed as unresolved; activation still does not establish risk/funding/native-proof eligibility. Do not remove gates or claim these represent missing funded orders.
+
+The existing18-arm frozen workflow continues on economic source9a088c40. Further workflow launches are explicit to avoid restarting all expensive arms on documentation-only PR updates. The follow-up changes no economic engine source or running account settings.

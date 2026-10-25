@@ -3914,7 +3914,7 @@ export function SettingsPage() {
                 onChange={(v) => set(["dca", "addRatio"], v)} />
             </Field>
             <Field label="Maximum addition distance (%)"
-              hint="Caps the deepest level from original entry. Ordinary defaults: 1% and 2%; Signals fit both levels inside their stop (normally 0.8% and 1.6%). Zero preserves legacy uncapped spacing; this is not the stop distance.">
+              hint="Caps the deepest level from original entry. Defaults: 1% and 2%. Signals shorten spacing if needed to fit their configured stop (0.8% and 1.6% with a 2% cap). Zero preserves legacy uncapped spacing; this is not the stop distance.">
               <Num pct min={0} max={0.1} value={s.dca.maxDistance ?? 0}
                 onChange={(v) => set(["dca", "maxDistance"], v)} />
             </Field>

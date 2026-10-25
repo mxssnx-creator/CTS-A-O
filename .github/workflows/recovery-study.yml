@@ -1,7 +1,7 @@
 name: DCA and independent Block recovery study
 on:
-  pull_request:
-    paths: [scripts/prepare-recovery-study.mjs, scripts/prepare-normal-progress.mjs, .github/workflows/recovery-study.yml]
+  # The frozen 18-arm run remains valid across report-only fixes. Explicitly dispatch a new economic study;
+  # pull-request path filters compare the whole PR and otherwise repeat every expensive arm on every push.
   workflow_dispatch:
 permissions:
   contents: read

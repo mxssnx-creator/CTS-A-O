@@ -197,7 +197,7 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
     const r = p.notional > 0 ? net / p.notional : null;
     positions.push({ ...p, kind, net, r, open: isOpen, avgEntry, hand });
     const a = (byKind[kind] ??= {
-      positions: 0, closedPositions: 0, openPositions: 0, returnCloses: 0, unpricedPositions: 0,
+      positions: 0, closedPositions: 0, openPositions: 0, returnCloses: 0, unknownReturns: 0, unpricedPositions: 0,
       wins: 0, gp: 0, gl: 0, cashGp: 0, cashGl: 0, net: 0, fee: 0, profit: 0, notional: 0,
       episodeGp: 0, episodeGl: 0, episodeCashGp: 0, episodeCashGl: 0, hand: 0, handNet: 0,
     });
@@ -239,42 +239,45 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
     // Every priced close came from one of the episodes above. Unknown opening letters are grouped as Wide by the
     // shared ledger helper, so their actual return is retained even if the older report could not name the range.
     const a = (byKind[x.kind] ??= {
-      positions: 0, closedPositions: 0, openPositions: 0, returnCloses: 0, unpricedPositions: 0,
+      positions: 0, closedPositions: 0, openPositions: 0, returnCloses: 0, unknownReturns: 0, unpricedPositions: 0,
       wins: 0, gp: 0, gl: 0, cashGp: 0, cashGl: 0, net: 0, fee: 0, profit: 0, notional: 0,
       episodeGp: 0, episodeGl: 0, episodeCashGp: 0, episodeCashGl: 0,
     });
     a.returnCloses++;
-    if (x.r > 0) a.gp += x.r;
-    else a.gl -= x.r;
+    if (!Number.isFinite(x.unitR)) a.unknownReturns++;
+    else if (x.unitR > 0) a.gp += x.unitR;
+    else a.gl -= x.unitR;
     if (x.pnl > 0) a.cashGp += x.pnl;
     else a.cashGl -= x.pnl;
   }
   for (const a of Object.values(byKind)) {
-    a.pf = profitFactor(a.gp, a.gl);
-    a.noLoss = a.gp > 0 && a.gl <= 0;
-    a.pfConvention = a.noLoss ? "no-loss-sentinel" : "gross-return-ratio";
+    a.pf = a.unknownReturns ? null : profitFactor(a.gp, a.gl);
+    a.noLoss = a.unknownReturns ? null : a.gp > 0 && a.gl <= 0;
+    a.pfConvention = a.unknownReturns ? "unavailable" : a.noLoss ? "no-loss-sentinel" : "gross-return-ratio";
+    a.pfBasis = a.unknownReturns ? "unavailable" : "settled-owned-close-net-return";
     a.cashPf = a.cashGl > 1e-12 ? a.cashGp / a.cashGl : a.cashGp > 0 ? Infinity : 0;
     a.episodePf = a.episodeGl > 1e-12 ? a.episodeGp / a.episodeGl : a.episodeGp > 0 ? Infinity : 0;
     // realized cost of the round trips as a share of the opened notional (fees only; slippage is in the profit)
     a.feePct = a.notional > 0 ? (-a.fee / a.notional) * 100 : 0;
   }
   const totals = Object.values(byKind).reduce(
-    (a, x) => ({ gp: a.gp + x.gp, gl: a.gl + x.gl, cashGp: a.cashGp + x.cashGp, cashGl: a.cashGl + x.cashGl,
+    (a, x) => ({ gp: a.gp + x.gp, gl: a.gl + x.gl, unknownReturns: a.unknownReturns + x.unknownReturns,
+      cashGp: a.cashGp + x.cashGp, cashGl: a.cashGl + x.cashGl,
       episodeGp: a.episodeGp + x.episodeGp, episodeGl: a.episodeGl + x.episodeGl }),
-    { gp: 0, gl: 0, cashGp: 0, cashGl: 0, episodeGp: 0, episodeGl: 0 },
+    { gp: 0, gl: 0, unknownReturns: 0, cashGp: 0, cashGl: 0, episodeGp: 0, episodeGl: 0 },
   );
   return {
     tag: T,
     conn,
     from,
     to,
-    pf: profitFactor(totals.gp, totals.gl),
-    noLoss: totals.gp > 0 && totals.gl <= 0,
-    pfConvention: totals.gp > 0 && totals.gl <= 0 ? "no-loss-sentinel" : "gross-return-ratio",
+    pf: totals.unknownReturns ? null : profitFactor(totals.gp, totals.gl),
+    noLoss: totals.unknownReturns ? null : totals.gp > 0 && totals.gl <= 0,
+    pfConvention: totals.unknownReturns ? "unavailable" : totals.gp > 0 && totals.gl <= 0 ? "no-loss-sentinel" : "gross-return-ratio",
     cashPf: totals.cashGl > 1e-12 ? totals.cashGp / totals.cashGl : totals.cashGp > 0 ? Infinity : 0,
     ...totals,
-    pfBasis: "settled-owned-close-net-return",
-    cashPfBasis: "settled-owned-close-net-usdt",
+    pfBasis: totals.unknownReturns ? "unavailable" : "settled-owned-close-net-return",
+    cashPfBasis: totals.unknownReturns ? "settled-owned-close-estimated-net-usdt" : "settled-owned-close-net-usdt",
     n: closes.length,
     closesNet: closes.reduce((sum, x) => sum + x.pnl, 0),
     closes,
@@ -451,7 +454,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   console.log(`${r.tag} on ${r.conn}: ${r.orders} own orders, ${r.positions.length} positions`);
   for (const [k, a] of Object.entries(r.byKind))
     console.log(
-      `  ${k.padEnd(14)} ${String(a.positions).padStart(4)} pos · ${a.returnCloses} settled closes · return PF ${a.pf.toFixed(2)}${a.noLoss ? " (shared no-loss sentinel)" : ""} · net ${a.net.toFixed(2)} USDT · fees ${(-a.fee).toFixed(2)} (${a.feePct.toFixed(3)} % of notional)`,
+      `  ${k.padEnd(14)} ${String(a.positions).padStart(4)} pos · ${a.returnCloses} settled closes · return PF ${a.pf === null ? `unavailable (${a.unknownReturns} unverified returns)` : a.pf.toFixed(2)}${a.noLoss ? " (shared no-loss sentinel)" : ""} · net ${a.net.toFixed(2)} USDT · fees ${(-a.fee).toFixed(2)} (${a.feePct.toFixed(3)} % of notional)`,
     );
   // funding is not in the order results: the account's total over the same window (all systems on the account)
   try {

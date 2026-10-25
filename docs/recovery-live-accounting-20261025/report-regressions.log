@@ -1,0 +1,53 @@
+✔ snapshot report uses verified paper unit returns while venue returns remain unchanged (313.297457ms)
+✔ legacy snapshots and mixed unknown paper samples keep their identities but have no primary ratio (602.526393ms)
+✔ a current snapshot without an owned-fill ledger keeps the relation diagnostic and invents no venue positions (638.242981ms)
+✔ Tactic uses its full-indication minimum and warmup is not reported as PF-qualified (511.668273ms)
+✔ provided stricter range minima apply and known unit returns are independent of stored sized r (290.855502ms)
+✔ unknown legacy returns are retained as unknown, block the causal window and never become positive proof (636.496254ms)
+✔ only finite complete nonnegative-delay forward records enter a window (297.082044ms)
+✔ a close simultaneous with entry is not visible to that decision and invalid windows fail clearly (504.661644ms)
+▶ tag-scoped close
+  ✔ an own net overstated by untagged closes never reaches the other systems' part (0.777634ms)
+  ✔ a tag alone on a position closes its whole net; a net below the position closes only the net (2.312532ms)
+  ✔ another system's closed-out history counts as zero, not negative (0.180277ms)
+✔ tag-scoped close (4.258821ms)
+▶ order history paging
+  ✔ a busy range (more than one 500-order page) is read in full, whichever 500 the exchange returns (6.509902ms)
+  ✔ retains distinct client ids when venue ids round to the same number or are missing (1.330195ms)
+  ✔ counts the latest cumulative fill of a client order once in a supplied history (2.079246ms)
+✔ order history paging (12.421286ms)
+▶ exchange report PF
+  ✔ uses return PF as primary, reports cash PF separately, retains open realized money and recognizes every range (1.103798ms)
+  ✔ per-range return PF uses position returns and cannot turn a dollar-only orphan exit into a return (0.548744ms)
+✔ exchange report PF (1.907611ms)
+▶ exchange and UI ledger compare identical settled owned close samples
+  ✔ allocates signed entry fees and variable partial quantities identically after an increase (5.138687ms)
+  ✔ matches the UI's exclusive start/inclusive end, using earlier supplied fills only as inventory (1.156767ms)
+  ✔ discloses model fees and uses the same configured cost as the UI for missing commissions (0.78862ms)
+  ✔ does not drop an unverified close from a mixed cohort or qualify unknown fees under a zero-cost model (1.029719ms)
+  ✔ labels an omitted-cost estimate without inventing historical cost or changing measured commissions (0.783132ms)
+  ✔ preserves finite explicit zero commissions while missing or legacy zero evidence retains the configured estimate (0.499081ms)
+  ✔ shares the numeric no-loss sentinel and explicitly marks its convention on the same sample (0.454034ms)
+✔ exchange and UI ledger compare identical settled owned close samples (10.233018ms)
+▶ dense order history
+  ✔ reads a burst above 500 orders within one minute without silently dropping fills (3.035436ms)
+  ✔ refuses an incomplete instant instead of issuing an apparently complete PF report (1.213211ms)
+✔ dense order history (4.439278ms)
+▶ saved exchange report formatting
+  ✔ shows shared return PF, labels no-loss sentinel, and refuses legacy cash or episode sums (1456.682014ms)
+✔ saved exchange report formatting (1457.004172ms)
+▶ R-e: the loss check counts own quantity only (own-first)
+  ✔ a manual close on a merged side reduces our quantity first, carries its share of the money and ends our episode as hand (0.768341ms)
+  ✔ someone else's fill into the position never adds to ours; open P&L is our quantity against our own entry (0.57936ms)
+✔ R-e: the loss check counts own quantity only (own-first) (1.556681ms)
+▶ flatten sends market orders
+  ✔ refuses to run without CTS_CORE_LIVE=1, before any request (0.623866ms)
+✔ flatten sends market orders (0.726418ms)
+ℹ tests 29
+ℹ suites 8
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2343.210738

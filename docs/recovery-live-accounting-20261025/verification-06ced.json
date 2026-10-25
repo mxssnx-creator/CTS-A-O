@@ -1,0 +1,40 @@
+{
+  "commit": "06ced233286e6ab95527ded51d8c326d3cd82e87",
+  "economicSourceSha256": "9a088c40224a49e9f98cf1ba0f36f302e0dcf2abcc45b2ed179f3701c59644f3",
+  "workflowRun": 40209962685,
+  "jobs": {
+    "core1": "passed",
+    "core2": "passed",
+    "core3": "passed",
+    "core4": "passed",
+    "slowRuntime": "passed",
+    "quality": "failed",
+    "verify": "failed"
+  },
+  "qualityFailure": {
+    "test": "exchange and UI ledger compare identical settled owned close samples / discloses model fees and uses the same configured cost as the UI for missing commissions",
+    "cause": "CLI primary PF pooled estimated net returns while the UI correctly withheld unmeasured fee evidence",
+    "browser": "desktop, phone, every page and settings save passed before script-suite assertion failed"
+  },
+  "localCorrection": {
+    "focused": {
+      "pass": 29,
+      "fail": 0
+    },
+    "scriptsWithoutBrowser": {
+      "pass": 718,
+      "fail": 0,
+      "skip": 8
+    },
+    "appComponents": {
+      "pass": 86,
+      "fail": 0
+    },
+    "types": "passed",
+    "lint": {
+      "errors": 0,
+      "existingWarnings": 43
+    }
+  },
+  "release": "Follow-up exact-head CI required; X02 stability condition unmet; no venue write or running reload"
+}
