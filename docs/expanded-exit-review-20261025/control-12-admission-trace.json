@@ -1,0 +1,655 @@
+{
+  "schema": "cts-signal-admission-trace-v1",
+  "ok": true,
+  "sourceSha256": "39c138751c6e36ce08993078d2bded69597ce713abee6e369ecabb596ed9c0f8",
+  "protocolSha256": "619efa437c40463cbbca72c79b100cf1dd34aa7295f885caab11bca3cc6b678b",
+  "scope": "Independently valid settled candidates absent from the recorded selection; actual production activation rules, retained rank/recent/minimum-history gates. This is not permission to bypass shared risk gates.",
+  "total": 99,
+  "reasons": {
+    "recent": 32,
+    "block": 28,
+    "own-validation-at-selection-clock": 39
+  },
+  "examples": [
+    {
+      "cfg": "follow|sig-aroon-s@m5|tp0.98|sl2.65|tr0.3|h576|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792252200000,
+      "selectionT": 1792249200000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-aroon-s@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-aroon-s%40m5%7Ctp0.98%7Csl2.65%7Ctr0.3%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 20,
+        "net": 2.0966704093730693,
+        "dd": 0.2802540036812743,
+        "okShare": 0.6666666666666666,
+        "recentN": 2,
+        "recentNet": -0.18228451542282684
+      },
+      "atEntry": {
+        "key": "follow|sig-aroon-s@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-aroon-s%40m5%7Ctp0.98%7Csl2.65%7Ctr0.3%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 20,
+        "net": 2.0966704093730693,
+        "dd": 0.2802540036812743,
+        "okShare": 0.6666666666666666,
+        "recentN": 2,
+        "recentNet": -0.18228451542282684
+      }
+    },
+    {
+      "cfg": "follow|sig-cmf-s@m5|tp0.98|sl2.65|tr0.24|h576|ts1.5|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792252800000,
+      "selectionT": 1792252800000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-cmf-s@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-cmf-s%40m5%7Ctp0.98%7Csl2.65%7Ctr0.24%7Ch576%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 17,
+        "net": 2.755945325915617,
+        "dd": 0.7545037378885601,
+        "okShare": 0.5384615384615384,
+        "recentN": 1,
+        "recentNet": -0.3302613789995545
+      },
+      "atEntry": {
+        "key": "follow|sig-cmf-s@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-cmf-s%40m5%7Ctp0.98%7Csl2.65%7Ctr0.24%7Ch576%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 17,
+        "net": 2.755945325915617,
+        "dd": 0.7545037378885601,
+        "okShare": 0.5384615384615384,
+        "recentN": 1,
+        "recentNet": -0.3302613789995545
+      }
+    },
+    {
+      "cfg": "follow|sig-cmf-s@m5|tp2.35|sl3|tr0.49|h576|ts1.5|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792252800000,
+      "selectionT": 1792252800000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-cmf-s@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-cmf-s%40m5%7Ctp2.35%7Csl3%7Ctr0.49%7Ch576%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 8.09154427567135,
+        "dd": 0.7078386922623181,
+        "okShare": 0.6923076923076923,
+        "recentN": 1,
+        "recentNet": -0.022465074357828886
+      },
+      "atEntry": {
+        "key": "follow|sig-cmf-s@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-cmf-s%40m5%7Ctp2.35%7Csl3%7Ctr0.49%7Ch576%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 16,
+        "net": 8.09154427567135,
+        "dd": 0.7078386922623181,
+        "okShare": 0.6923076923076923,
+        "recentN": 1,
+        "recentNet": -0.022465074357828886
+      }
+    },
+    {
+      "cfg": "follow|sig-cmf-m@m5|tp0.98|sl2.65|tr0.24|h576|ts1.5|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792252200000,
+      "selectionT": 1792249200000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-cmf-m@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-cmf-m%40m5%7Ctp0.98%7Csl2.65%7Ctr0.24%7Ch576%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 18,
+        "net": 1.7093402768685024,
+        "dd": 0.6959674850033085,
+        "okShare": 0.5384615384615384,
+        "recentN": 2,
+        "recentNet": 0.6375949367088565
+      },
+      "atEntry": {
+        "key": "follow|sig-cmf-m@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-cmf-m%40m5%7Ctp0.98%7Csl2.65%7Ctr0.24%7Ch576%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 18,
+        "net": 1.7093402768685024,
+        "dd": 0.6959674850033085,
+        "okShare": 0.5384615384615384,
+        "recentN": 2,
+        "recentNet": 0.6375949367088565
+      }
+    },
+    {
+      "cfg": "follow|sig-cmf-m@m5|tp0.98|sl2.65|tr0.31|h576|ts1.5|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792252200000,
+      "selectionT": 1792249200000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-cmf-m@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-cmf-m%40m5%7Ctp0.98%7Csl2.65%7Ctr0.31%7Ch576%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 17,
+        "net": 2.5139913669295884,
+        "dd": 0.5878376540074111,
+        "okShare": 0.5384615384615384,
+        "recentN": 2,
+        "recentNet": 0.7600180831826429
+      },
+      "atEntry": {
+        "key": "follow|sig-cmf-m@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-cmf-m%40m5%7Ctp0.98%7Csl2.65%7Ctr0.31%7Ch576%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 17,
+        "net": 2.5139913669295884,
+        "dd": 0.5878376540074111,
+        "okShare": 0.5384615384615384,
+        "recentN": 2,
+        "recentNet": 0.7600180831826429
+      }
+    },
+    {
+      "cfg": "follow|sig-cmf-m@m5|tp0|sl3|tr0.33|h576|to|ts1.4999999999999998|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792252200000,
+      "selectionT": 1792249200000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-cmf-m@m5|ADA-USDT|-1|trailing-only|cfg=follow%7Csig-cmf-m%40m5%7Ctp0%7Csl3%7Ctr0.33%7Ch576%7Cto%7Cts1.4999999999999998%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 16,
+        "net": 2.171005809705363,
+        "dd": 0.6240553411970697,
+        "okShare": 0.5384615384615384,
+        "recentN": 2,
+        "recentNet": 0.5803896230351961
+      },
+      "atEntry": {
+        "key": "follow|sig-cmf-m@m5|ADA-USDT|-1|trailing-only|cfg=follow%7Csig-cmf-m%40m5%7Ctp0%7Csl3%7Ctr0.33%7Ch576%7Cto%7Cts1.4999999999999998%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 16,
+        "net": 2.171005809705363,
+        "dd": 0.6240553411970697,
+        "okShare": 0.5384615384615384,
+        "recentN": 2,
+        "recentNet": 0.5803896230351961
+      }
+    },
+    {
+      "cfg": "follow|sig-heikin-ashi-m@m5|tp0|sl1|tr1.25|h576|to|ts0.5|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792256700000,
+      "selectionT": 1792256400000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-heikin-ashi-m@m5|ADA-USDT|-1|trailing-only|cfg=follow%7Csig-heikin-ashi-m%40m5%7Ctp0%7Csl1%7Ctr1.25%7Ch576%7Cto%7Cts0.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 24,
+        "net": 10.971277381247276,
+        "dd": 2.3000000000000007,
+        "okShare": 0.625,
+        "recentN": 2,
+        "recentNet": -0.26806853582554635
+      },
+      "atEntry": {
+        "key": "follow|sig-heikin-ashi-m@m5|ADA-USDT|-1|trailing-only|cfg=follow%7Csig-heikin-ashi-m%40m5%7Ctp0%7Csl1%7Ctr1.25%7Ch576%7Cto%7Cts0.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 24,
+        "net": 10.971277381247276,
+        "dd": 2.3000000000000007,
+        "okShare": 0.625,
+        "recentN": 2,
+        "recentNet": -0.26806853582554635
+      }
+    },
+    {
+      "cfg": "follow|sig-impulse-s@m5|tp0.98|sl0.66|tr0|h576|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792252500000,
+      "selectionT": 1792249200000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-impulse-s@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-impulse-s%40m5%7Ctp0.98%7Csl0.66%7Ctr0%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 27,
+        "net": 6.010000000000103,
+        "dd": 3.2399999999999776,
+        "okShare": 0.5882352941176471,
+        "recentN": 3,
+        "recentNet": 0.8500000000000069
+      },
+      "atEntry": {
+        "key": "follow|sig-impulse-s@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-impulse-s%40m5%7Ctp0.98%7Csl0.66%7Ctr0%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 27,
+        "net": 6.010000000000103,
+        "dd": 3.2399999999999776,
+        "okShare": 0.5882352941176471,
+        "recentN": 3,
+        "recentNet": 0.8500000000000069
+      }
+    },
+    {
+      "cfg": "follow|sig-impulse-m@m5|tp0.98|sl0.66|tr0|h576|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792256700000,
+      "selectionT": 1792256400000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-impulse-m@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-impulse-m%40m5%7Ctp0.98%7Csl0.66%7Ctr0%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 15,
+        "net": 4.250000000000071,
+        "dd": 1.619999999999994,
+        "okShare": 0.7,
+        "recentN": 1,
+        "recentNet": -0.8099999999999978
+      },
+      "atEntry": {
+        "key": "follow|sig-impulse-m@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-impulse-m%40m5%7Ctp0.98%7Csl0.66%7Ctr0%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 15,
+        "net": 4.250000000000071,
+        "dd": 1.619999999999994,
+        "okShare": 0.7,
+        "recentN": 1,
+        "recentNet": -0.8099999999999978
+      }
+    },
+    {
+      "cfg": "follow|sig-impulse-m@m5|tp1.51|sl0.88|tr0|h576|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792256700000,
+      "selectionT": 1792256400000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-impulse-m@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-impulse-m%40m5%7Ctp1.51%7Csl0.88%7Ctr0%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 13,
+        "net": 5.7300000000000395,
+        "dd": 2.0599999999999916,
+        "okShare": 0.7,
+        "recentN": 1,
+        "recentNet": -1.029999999999989
+      },
+      "atEntry": {
+        "key": "follow|sig-impulse-m@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-impulse-m%40m5%7Ctp1.51%7Csl0.88%7Ctr0%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 13,
+        "net": 5.7300000000000395,
+        "dd": 2.0599999999999916,
+        "okShare": 0.7,
+        "recentN": 1,
+        "recentNet": -1.029999999999989
+      }
+    },
+    {
+      "cfg": "follow|sig-impulse-m@m5|tp1.51|sl1.2|tr0|h576|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792256700000,
+      "selectionT": 1792256400000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-impulse-m@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-impulse-m%40m5%7Ctp1.51%7Csl1.2%7Ctr0%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 13,
+        "net": 6.839999999999991,
+        "dd": 2.700000000000003,
+        "okShare": 0.6363636363636364,
+        "recentN": 1,
+        "recentNet": -1.3500000000000052
+      },
+      "atEntry": {
+        "key": "follow|sig-impulse-m@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-impulse-m%40m5%7Ctp1.51%7Csl1.2%7Ctr0%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 13,
+        "net": 6.839999999999991,
+        "dd": 2.700000000000003,
+        "okShare": 0.6363636363636364,
+        "recentN": 1,
+        "recentNet": -1.3500000000000052
+      }
+    },
+    {
+      "cfg": "follow|sig-swing-m@m5|tp0.98|sl1|tr0|h576|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792252200000,
+      "selectionT": 1792249200000,
+      "reason": "own-validation-at-selection-clock",
+      "atSelection": null,
+      "atEntry": {
+        "key": "follow|sig-swing-m@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-swing-m%40m5%7Ctp0.98%7Csl1%7Ctr0%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "active",
+        "n": 16,
+        "net": 5.360000000000069,
+        "dd": 2.3000000000000016,
+        "okShare": 0.6363636363636364,
+        "recentN": 3,
+        "recentNet": 0.5100000000000144
+      }
+    },
+    {
+      "cfg": "follow|sig-swing-m@m5|tp0.98|sl2.65|tr0.39|h576|ts1.4999999999999998|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792252200000,
+      "selectionT": 1792249200000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-swing-m@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-swing-m%40m5%7Ctp0.98%7Csl2.65%7Ctr0.39%7Ch576%7Cts1.4999999999999998%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 23,
+        "net": 3.667180184920235,
+        "dd": 1.6923825100211478,
+        "okShare": 0.5,
+        "recentN": 3,
+        "recentNet": 1.8760513282305316
+      },
+      "atEntry": {
+        "key": "follow|sig-swing-m@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-swing-m%40m5%7Ctp0.98%7Csl2.65%7Ctr0.39%7Ch576%7Cts1.4999999999999998%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 23,
+        "net": 3.667180184920235,
+        "dd": 1.6923825100211478,
+        "okShare": 0.5,
+        "recentN": 3,
+        "recentNet": 1.8760513282305316
+      }
+    },
+    {
+      "cfg": "follow|sig-swing-m@m5|tp1.79|sl3|tr0.39|h576|ts1.4999999999999998|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792252200000,
+      "selectionT": 1792249200000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-swing-m@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-swing-m%40m5%7Ctp1.79%7Csl3%7Ctr0.39%7Ch576%7Cts1.4999999999999998%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 23,
+        "net": 3.7634201906194504,
+        "dd": 1.6923825100211478,
+        "okShare": 0.5,
+        "recentN": 3,
+        "recentNet": 1.9434216769628514
+      },
+      "atEntry": {
+        "key": "follow|sig-swing-m@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-swing-m%40m5%7Ctp1.79%7Csl3%7Ctr0.39%7Ch576%7Cts1.4999999999999998%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 23,
+        "net": 3.7634201906194504,
+        "dd": 1.6923825100211478,
+        "okShare": 0.5,
+        "recentN": 3,
+        "recentNet": 1.9434216769628514
+      }
+    },
+    {
+      "cfg": "follow|sig-rsi-mid-m@m5|tp1.51|sl0.88|tr0|h576|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792252200000,
+      "selectionT": 1792249200000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-rsi-mid-m@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-rsi-mid-m%40m5%7Ctp1.51%7Csl0.88%7Ctr0%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 14,
+        "net": 4.700000000000072,
+        "dd": 3.0899999999999737,
+        "okShare": 0.5,
+        "recentN": 4,
+        "recentNet": 3.050000000000015
+      },
+      "atEntry": {
+        "key": "follow|sig-rsi-mid-m@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-rsi-mid-m%40m5%7Ctp1.51%7Csl0.88%7Ctr0%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 14,
+        "net": 4.700000000000072,
+        "dd": 3.0899999999999737,
+        "okShare": 0.5,
+        "recentN": 4,
+        "recentNet": 3.050000000000015
+      }
+    },
+    {
+      "cfg": "follow|sig-bb-walk-m@m5|tp0.73|sl0.66|tr0|h576|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792252800000,
+      "selectionT": 1792252800000,
+      "reason": "recent",
+      "atSelection": {
+        "key": "follow|sig-bb-walk-m@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-bb-walk-m%40m5%7Ctp0.73%7Csl0.66%7Ctr0%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 15,
+        "net": 4.529999999999972,
+        "dd": 0.8099999999999974,
+        "okShare": 0.75,
+        "recentN": 1,
+        "recentNet": -0.8099999999999883
+      },
+      "atEntry": {
+        "key": "follow|sig-bb-walk-m@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-bb-walk-m%40m5%7Ctp0.73%7Csl0.66%7Ctr0%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 15,
+        "net": 4.529999999999972,
+        "dd": 0.8099999999999974,
+        "okShare": 0.75,
+        "recentN": 1,
+        "recentNet": -0.8099999999999883
+      }
+    },
+    {
+      "cfg": "follow|sig-ema-pullback-s@m5|tp1.15|sl0.83|tr0|h9|atr1.15x1.6|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792258200000,
+      "selectionT": 1792256400000,
+      "reason": "own-validation-at-selection-clock",
+      "atSelection": null,
+      "atEntry": {
+        "key": "follow|sig-ema-pullback-s@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-ema-pullback-s%40m5%7Ctp1.15%7Csl0.83%7Ctr0%7Ch9%7Catr1.15x1.6%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 22,
+        "net": 6.055509864437469,
+        "dd": 1.848999999999998,
+        "okShare": 0.8181818181818182,
+        "recentN": 3,
+        "recentNet": -0.14234833871285768
+      }
+    },
+    {
+      "cfg": "follow|sig-ema-pullback-s@m5|tp1.15|sl0.83|tr0.68|h9|atr1.15x1.6t0.8|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792258200000,
+      "selectionT": 1792256400000,
+      "reason": "own-validation-at-selection-clock",
+      "atSelection": null,
+      "atEntry": {
+        "key": "follow|sig-ema-pullback-s@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-ema-pullback-s%40m5%7Ctp1.15%7Csl0.83%7Ctr0.68%7Ch9%7Catr1.15x1.6t0.8%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 22,
+        "net": 4.732298144797851,
+        "dd": 1.848999999999998,
+        "okShare": 0.8181818181818182,
+        "recentN": 3,
+        "recentNet": -0.14234833871285768
+      }
+    },
+    {
+      "cfg": "follow|sig-ema-pullback-s@m5|tp1.15|sl0.83|tr0.65|h9|atr1.15x1.6t0.8|ts1.5|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792258200000,
+      "selectionT": 1792256400000,
+      "reason": "own-validation-at-selection-clock",
+      "atSelection": null,
+      "atEntry": {
+        "key": "follow|sig-ema-pullback-s@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-ema-pullback-s%40m5%7Ctp1.15%7Csl0.83%7Ctr0.65%7Ch9%7Catr1.15x1.6t0.8%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 22,
+        "net": 5.733687647311766,
+        "dd": 1.848999999999998,
+        "okShare": 0.8181818181818182,
+        "recentN": 3,
+        "recentNet": -0.14234833871285768
+      }
+    },
+    {
+      "cfg": "follow|sig-ema-pullback-s@m5|tp1.53|sl0.83|tr0|h9|atr1.15x2.2|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792258200000,
+      "selectionT": 1792256400000,
+      "reason": "own-validation-at-selection-clock",
+      "atSelection": null,
+      "atEntry": {
+        "key": "follow|sig-ema-pullback-s@m5|ADA-USDT|-1|normal|cfg=follow%7Csig-ema-pullback-s%40m5%7Ctp1.53%7Csl0.83%7Ctr0%7Ch9%7Catr1.15x2.2%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 22,
+        "net": 7.472008559332559,
+        "dd": 1.848999999999998,
+        "okShare": 0.8181818181818182,
+        "recentN": 3,
+        "recentNet": -0.14234833871285768
+      }
+    },
+    {
+      "cfg": "follow|sig-ema-pullback-s@m5|tp1.53|sl0.83|tr0.8|h9|atr1.15x2.2t0.8|ts0.5|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792258200000,
+      "selectionT": 1792256400000,
+      "reason": "own-validation-at-selection-clock",
+      "atSelection": null,
+      "atEntry": {
+        "key": "follow|sig-ema-pullback-s@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-ema-pullback-s%40m5%7Ctp1.53%7Csl0.83%7Ctr0.8%7Ch9%7Catr1.15x2.2t0.8%7Cts0.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 22,
+        "net": 3.9793647430409385,
+        "dd": 1.848999999999998,
+        "okShare": 0.6363636363636364,
+        "recentN": 3,
+        "recentNet": -0.5419930989259946
+      }
+    },
+    {
+      "cfg": "follow|sig-ema-pullback-s@m5|tp1.53|sl0.83|tr0.68|h9|atr1.15x2.2t0.8|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792258200000,
+      "selectionT": 1792256400000,
+      "reason": "own-validation-at-selection-clock",
+      "atSelection": null,
+      "atEntry": {
+        "key": "follow|sig-ema-pullback-s@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-ema-pullback-s%40m5%7Ctp1.53%7Csl0.83%7Ctr0.68%7Ch9%7Catr1.15x2.2t0.8%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 22,
+        "net": 5.184741911452501,
+        "dd": 1.848999999999998,
+        "okShare": 0.8181818181818182,
+        "recentN": 3,
+        "recentNet": -0.14234833871285768
+      }
+    },
+    {
+      "cfg": "follow|sig-ema-pullback-s@m5|tp1.53|sl0.83|tr0.65|h9|atr1.15x2.2t0.8|ts1.5|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792258200000,
+      "selectionT": 1792256400000,
+      "reason": "own-validation-at-selection-clock",
+      "atSelection": null,
+      "atEntry": {
+        "key": "follow|sig-ema-pullback-s@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-ema-pullback-s%40m5%7Ctp1.53%7Csl0.83%7Ctr0.65%7Ch9%7Catr1.15x2.2t0.8%7Cts1.5%7Ctm3",
+        "side": -1,
+        "reason": "recent",
+        "n": 22,
+        "net": 7.150186342206857,
+        "dd": 1.848999999999998,
+        "okShare": 0.8181818181818182,
+        "recentN": 3,
+        "recentNet": -0.14234833871285768
+      }
+    },
+    {
+      "cfg": "follow|sig-act-hf-m@m5|tp0.98|sl2.65|tr0.3|h576|tm3",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792252200000,
+      "selectionT": 1792249200000,
+      "reason": "block",
+      "atSelection": {
+        "key": "follow|sig-act-hf-m@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-act-hf-m%40m5%7Ctp0.98%7Csl2.65%7Ctr0.3%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 29,
+        "net": 3.7981189843494434,
+        "dd": 0.9399194903023007,
+        "okShare": 0.5882352941176471,
+        "recentN": 3,
+        "recentNet": 1.056088921996045
+      },
+      "atEntry": {
+        "key": "follow|sig-act-hf-m@m5|ADA-USDT|-1|trailing|cfg=follow%7Csig-act-hf-m%40m5%7Ctp0.98%7Csl2.65%7Ctr0.3%7Ch576%7Ctm3",
+        "side": -1,
+        "reason": "block",
+        "n": 29,
+        "net": 3.7981189843494434,
+        "dd": 0.9399194903023007,
+        "okShare": 0.5882352941176471,
+        "recentN": 3,
+        "recentNet": 1.056088921996045
+      }
+    }
+  ]
+}

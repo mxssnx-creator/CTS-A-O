@@ -19,6 +19,7 @@ for name in names:
     detail = json.loads((p / 'details.json').read_text())
     coverage = json.loads((p / 'coverage.json').read_text())
     metrics = json.loads((p / 'process-metrics.json').read_text())
+    engine = json.loads((p / 'raw.json').read_text())['engine']
     assert coverage['ok'] and detail['checksOk'] and metrics['exitCode'] == 0
     assert detail['sourceSha256'] == metrics['sourceSha256'] == coverage['sourceSha256']
     assert coverage['catalog']['missingConfiguredCells'] == 0
@@ -26,6 +27,7 @@ for name in names:
     exit_row = next((r for r in detail['ranges'] if r['range'] == 'Exit'), dict(range='Exit', openedOrders=0, settledOrders=0, openOrders=0, openedPositions=0, closedPositions=0, openPositions=0, gp=0, gl=0, pf=None, pfState='empty', types=[], hours=[dict(t=h['t'], settledOrders=0) for h in detail['hours']]))
     results.append(dict(scenario=name, window=detail['window'], sourceSha256=detail['sourceSha256'],
         total=detail['total'], exit=exit_row, ranges=detail['ranges'], hours=detail['hours'],
+        base=detail['base'], independentExit=engine['independentExit'],
         ledger=coverage['ledger'], catalog=coverage['catalog'], metrics=metrics,
         coverage=[g for g in coverage['groups'] if g['dimension'] in ['type', 'strategyRange', 'lane', 'symbol']], initialCoverage=coverage['hourly'][0]))
     (out / f'{name}-details.json').write_text(json.dumps(detail, indent=2)+'\n')
@@ -56,7 +58,17 @@ lines += ['', '![Performance and allocation counts](comparison.svg)', '', '![Hou
     'Hourly results below use settled-close reporting bins; calculations still use minute prices. Cohort-boundary holdings are included by the independent position/order ledger. The coverage archive counts both directions for every config, including the ineligible opposite side of side-specific Exit IDs; those all-orientation percentages must not be presented as eligible-side percentages.', '']
 sets = ['static-sl','adaptive-sl','trailing','breakeven','trailing-only']
 for r in results:
+    initial, catalog, hist = r['initialCoverage'], r['catalog'], r['independentExit']['history']
     lines += [f"## {r['scenario']}", '',
+        f"Independent Exit Base: {hist['basePassed']} / {hist['baseEvaluated']} source-lane pairs passed. Its holdout evaluated {hist['evaluated']} candidate configs and retained {hist['qualified']}; {catalog['builtExit']} Exit configs were built. These are distinct stages, not order counts.", '',
+        f"All Signal/Exit configs built: {catalog['builtConfigs']} across {catalog['sources']} sources and {catalog['sourceLanes']} source lanes; missing configured cells: {catalog['missingConfiguredCells']}. At run start, {initial['configsPassed']} configs had a passing exact symbol/direction context; {initial['passed']} / {initial['contexts']} all-orientation contexts passed all gates. Signals use independent exact-config qualification, not the representative Base-pair result.", '',
+        '| Executed range/type | Orders | Positions | PF (neutral 1) | Gross unit gain | Gross unit loss |',
+        '|---|---|---|---:|---:|---:|']
+    for group in r['ranges']:
+        for row in [group, *group['types']]:
+            label = group['range'] + (' / ' + row['type'] if 'type' in row else ' / all')
+            lines.append(f"| {label} | {counts(row)} | {positions(row)} | {pf(row)} | {row['gp']:.6f} | {row['gl']:.6f} |")
+    lines += ['',
         '| Exit tactic | Orders | Positions | PF | Gross unit gain | Gross unit loss |',
         '|---|---|---|---:|---:|---:|']
     for name in sets:

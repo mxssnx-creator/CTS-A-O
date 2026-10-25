@@ -1,0 +1,62 @@
+name: Bounded history processing validation
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/bounded-history-validation.yml'
+      - 'scripts/benchmark-tape-cache.mjs'
+permissions:
+  contents: read
+jobs:
+  signals:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [control-0, control-12]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: env -u DATABASE_URL npm run build
+      - run: node --experimental-strip-types --no-warnings scripts/prepare-exit-policy-study.mjs runs/bounded-signals
+      - run: python3 scripts/run-signals-native-case.py runs/bounded-signals ${{ matrix.scenario }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bounded-signals-${{ matrix.scenario }}-${{ github.run_id }}
+          path: |
+            runs/bounded-signals/plan.json
+            runs/bounded-signals/${{ matrix.scenario }}/
+          retention-days: 90
+          compression-level: 3
+  ordinary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 210
+    strategy:
+      fail-fast: false
+      matrix:
+        hold: [0, 15]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: env -u DATABASE_URL npm run build
+      - run: node --experimental-strip-types --no-warnings scripts/prepare-normal-progress.mjs runs/bounded-ordinary all ${{ matrix.hold }} 12
+      - run: python3 scripts/run-normal-progress.py runs/bounded-ordinary
+        env:
+          STUDY_HEAP_MB: 8192
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bounded-ordinary-hold${{ matrix.hold }}-offset12-${{ github.run_id }}
+          path: runs/bounded-ordinary/
+          retention-days: 90
+          compression-level: 3

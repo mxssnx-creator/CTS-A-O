@@ -1,8 +1,5 @@
 name: Expanded Exit causal direction study
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/expanded-exit-trend-study.yml'
   workflow_dispatch:
 permissions:
   contents: read

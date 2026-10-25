@@ -172,7 +172,7 @@ import {
 } from "../pipeline/pipeline.ts";
 import { IncrementalState } from "./incremental.ts";
 import {
-  buildTapesGen,
+  buildTapesBoundedGen as buildTapesGen,
   baseAllowsTape,
   configEval,
   engineContextValid,

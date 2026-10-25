@@ -1934,6 +1934,18 @@ export function filterEntries(sig: Int8Array, b: Bars, k: SeriesCache, f: EntryF
   return out;
 }
 
+/** Local fallback retains the same tapes but bounds disposable indicator caches like worker messages. */
+export function* buildTapesBoundedGen(
+  ...args: Parameters<typeof buildTapesGen>
+): ReturnType<typeof buildTapesGen> {
+  try {
+    return yield* buildTapesGen(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], 16);
+  } finally {
+    // Completion, cancellation and errors all release derived series. Owned tapes and continuation state stay intact.
+    for (const cache of args[0].caches) cache.clear();
+  }
+}
+
 /** Base: causal tapes for every combo × protect × sub-strategy. Generator so callers can time-slice. */
 export function* buildTapesGen(
   u: Universe,
@@ -1948,6 +1960,8 @@ export function* buildTapesGen(
   adjust?: AdjustState | null,
   /** hard floors of every config's stop and trailing distance, after lane scaling (fractions of price) */
   floors?: EntryFloors | null,
+  /** Internal local-fallback cache lifetime; does not shorten history or limit output. */
+  cacheBatchPairs = 0,
 ): Generator<{ done: number; total: number }, ConfigTape[]> {
   // a range cell keeps its own minimum stop / trail (set when the grid was built), not the wide-grid floor
   // a range cell keeps its own stop / trail floors: the live-feedback adjuster's absolute floors are the wide grid's
@@ -2079,7 +2093,12 @@ export function* buildTapesGen(
   if (floors?.pairProtects)
     for (const c of combos) total += floors.pairProtects[`${c.bot}|${c.ind}`]?.length ?? 0;
   let done = 0;
+  let cachePairs = 0;
   for (const c of combos) {
+    if (cacheBatchPairs > 0 && cachePairs++ >= cacheBatchPairs) {
+      for (const cache of u.caches) cache.clear(["bot:", "break:shared:"]);
+      cachePairs = 1;
+    }
     // a lane indication runs only on its timeframe's series
     const series = seriesOf(u, c.ind);
     let fromT = Infinity;

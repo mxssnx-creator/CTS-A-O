@@ -1,0 +1,220 @@
+{
+  "checkedAt": "2026-10-25T13:55:43.917Z",
+  "priorCode": {
+    "commit": "ccc952e8e25d6a92f0d985d1a5a284611bfe8502",
+    "economicSource": "39c138751c6e36ce08993078d2bded69597ce713abee6e369ecabb596ed9c0f8",
+    "ciRun": 40197322551,
+    "jobs": [
+      {
+        "id": 121180949048,
+        "name": "quality",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121180949218,
+        "name": "core-tests (3)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121180949237,
+        "name": "slow-runtime",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121180949248,
+        "name": "core-tests (4)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121180949379,
+        "name": "core-tests (1)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121180949418,
+        "name": "core-tests (2)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121184329975,
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ],
+    "exactWorkflow": 40197322763,
+    "exactJobs": [
+      {
+        "id": 121180875349,
+        "name": "Offline checks and production build",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121180876476,
+        "name": "Acquire and verify frozen public candles",
+        "status": "completed",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121180876743,
+        "name": "Research ${{ matrix.case }}",
+        "status": "completed",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121181141734,
+        "name": "Untouched 22-symbol final window",
+        "status": "completed",
+        "conclusion": "skipped"
+      }
+    ]
+  },
+  "studies": [
+    {
+      "name": "intermediate-cost",
+      "run": 40195897281,
+      "artifacts": [
+        {
+          "id": 12600716459,
+          "name": "expanded-exit-cost-slices--12-40195897281",
+          "size_in_bytes": 149247836,
+          "digest": "sha256:595e3b0ea28971b0955d2758b9d54952d809a59d7956782b3eb9b483707cc673",
+          "commit": "bb7c7ccae16246bf5898188167b7a0e97a134ecf"
+        },
+        {
+          "id": 12600571798,
+          "name": "expanded-exit-cost-cost-0-40195897281",
+          "size_in_bytes": 152180616,
+          "digest": "sha256:2fefdfd8284cd3cdb5440bf57f5e5363231dae0ca7e5fb92e914d54d41b35978",
+          "commit": "bb7c7ccae16246bf5898188167b7a0e97a134ecf"
+        },
+        {
+          "id": 12599987375,
+          "name": "expanded-exit-cost-slices-12-40195897281",
+          "size_in_bytes": 153626160,
+          "digest": "sha256:c3bde29e25cb51d444339d2a3359192c6b029632f73c236285b6da07ac994154",
+          "commit": "bb7c7ccae16246bf5898188167b7a0e97a134ecf"
+        },
+        {
+          "id": 12599857318,
+          "name": "expanded-exit-cost-cost-12-40195897281",
+          "size_in_bytes": 154931444,
+          "digest": "sha256:65c21ff076c54b371b9366ca91068799110a328e63e5d24a721ba5039f348b75",
+          "commit": "bb7c7ccae16246bf5898188167b7a0e97a134ecf"
+        },
+        {
+          "id": 12599787597,
+          "name": "expanded-exit-cost-slices-0-40195897281",
+          "size_in_bytes": 150224756,
+          "digest": "sha256:3764587b7a6eee81f55fd266459f237ee39620273753d3bdeb936d5038ff439d",
+          "commit": "bb7c7ccae16246bf5898188167b7a0e97a134ecf"
+        }
+      ]
+    },
+    {
+      "name": "net-breakeven",
+      "run": 40196687465,
+      "artifacts": [
+        {
+          "id": 12600557611,
+          "name": "expanded-exit-net-slices-12-40196687465",
+          "size_in_bytes": 153625862,
+          "digest": "sha256:d7ab16e34be5f0e1eaa574975636bb66f0ccdb979e9ecd067dc38b85368e9678",
+          "commit": "65f58ca03e8e9dc69ef6d196842773109371bad0"
+        },
+        {
+          "id": 12600553132,
+          "name": "expanded-exit-net-cost-0-40196687465",
+          "size_in_bytes": 152098042,
+          "digest": "sha256:745b9250a950cdadfaaf4cc39736155c5782a907813ba84a2459ca4c8e94b567",
+          "commit": "65f58ca03e8e9dc69ef6d196842773109371bad0"
+        },
+        {
+          "id": 12600453503,
+          "name": "expanded-exit-net-cost-12-40196687465",
+          "size_in_bytes": 154898198,
+          "digest": "sha256:3534181c148134073780ade553eb0bf9f5adc5c2ff00d6768bd841cb01a07b26",
+          "commit": "65f58ca03e8e9dc69ef6d196842773109371bad0"
+        },
+        {
+          "id": 12600053270,
+          "name": "expanded-exit-net-slices-0-40196687465",
+          "size_in_bytes": 150237372,
+          "digest": "sha256:b2f441ddfc1a1a0e78ba4f7c1964a32c64191f8b9d522e87f21375fa1d55da27",
+          "commit": "65f58ca03e8e9dc69ef6d196842773109371bad0"
+        },
+        {
+          "id": 12599818731,
+          "name": "expanded-exit-net-slices--12-40196687465",
+          "size_in_bytes": 149228149,
+          "digest": "sha256:d3e7141b254c1299f4c2de080aac1fe6954c4015379a88bdb7ff784ff486ff52",
+          "commit": "65f58ca03e8e9dc69ef6d196842773109371bad0"
+        }
+      ]
+    },
+    {
+      "name": "direction-filter",
+      "run": 40197322560,
+      "artifacts": [
+        {
+          "id": 12600855144,
+          "name": "expanded-exit-trend-trend1--12-40197322560",
+          "size_in_bytes": 104656634,
+          "digest": "sha256:51169f427f4158284c6e60a3e4d40028ec50850d5b031b42c123cac3a9287c2a",
+          "commit": "ccc952e8e25d6a92f0d985d1a5a284611bfe8502"
+        },
+        {
+          "id": 12600603198,
+          "name": "expanded-exit-trend-trend1-12-40197322560",
+          "size_in_bytes": 108108561,
+          "digest": "sha256:db7dacba7a84fda5a4af443d28c2aec11e089a6a7cd85d6cb921aa73849afa9b",
+          "commit": "ccc952e8e25d6a92f0d985d1a5a284611bfe8502"
+        },
+        {
+          "id": 12600388872,
+          "name": "expanded-exit-trend-trend3-0-40197322560",
+          "size_in_bytes": 98355834,
+          "digest": "sha256:fbd7b7e31f719eb5cd18c97fab24e180ea2489bcfbe60b609888362b6b10f19d",
+          "commit": "ccc952e8e25d6a92f0d985d1a5a284611bfe8502"
+        },
+        {
+          "id": 12600184838,
+          "name": "expanded-exit-trend-trend1-0-40197322560",
+          "size_in_bytes": 106260161,
+          "digest": "sha256:aee2ca73cdfd21052802db7183131b4f9d782300e87e8c346eddaee5d045791a",
+          "commit": "ccc952e8e25d6a92f0d985d1a5a284611bfe8502"
+        },
+        {
+          "id": 12599669534,
+          "name": "expanded-exit-trend-trend3--12-40197322560",
+          "size_in_bytes": 96359347,
+          "digest": "sha256:c7827ce0a5fff994d4331ca6a03e0d9c868b385a88f38002a14abbc9e4e0bcf2",
+          "commit": "ccc952e8e25d6a92f0d985d1a5a284611bfe8502"
+        },
+        {
+          "id": 12599644932,
+          "name": "expanded-exit-trend-trend3-12-40197322560",
+          "size_in_bytes": 99890673,
+          "digest": "sha256:52a257c905628eae94e3e2d559faf1c49aa39e9f84c2a7952f5684eb94e39082",
+          "commit": "ccc952e8e25d6a92f0d985d1a5a284611bfe8502"
+        }
+      ]
+    }
+  ],
+  "currentChanges": {
+    "sourceSha256": "cb4415d4bf602c10ef1946178352c37d7bc6622f0bee19f68728b0daf4648d5b",
+    "focusedTests": 95,
+    "typecheck": "passed",
+    "lint": "zero errors, six existing warnings",
+    "workerBuild": "passed",
+    "fullCI": "pending",
+    "nativeReplays": "pending"
+  }
+}
