@@ -1,0 +1,22 @@
+{
+  "head": "84e5755dad7c69a83a519b4e0d171330586e0526",
+  "merge": "abe5e49ebc330d2717c6ed45aaa448121f5e2f2f",
+  "pr": 202,
+  "ciRun": 40230641697,
+  "exactSignalRun": 40230641774,
+  "allJobs": "success",
+  "coreFiles": 285,
+  "passes": 4371,
+  "templateSkips": 8,
+  "slowExclusionsPassedSeparately": 2,
+  "jobs": [
+    121281414291,
+    121281414479,
+    121281414440,
+    121281414534,
+    121281414512,
+    121281414686,
+    121284982959
+  ],
+  "venueActions": false
+}

@@ -1,3 +1,4 @@
+import { publishMinimalPlus } from "./minimal-plus-publication.ts";
 // Core v2 continuous runtime. One per server process (globalThis singleton).
 //
 // Loop (every cycleMs):
@@ -30,7 +31,6 @@ import { BoundedHistory, HistoryStorageError, historyOf, withHistoryMetadata, HI
 import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "../model-cost.ts";
 import { evaluationHistorySettings } from "../market/history-requirements.ts";
 import {
-  gateMinimalPlus,
   microIndRule,
   minPfOf,
   RANGE_LABEL,
@@ -5574,15 +5574,13 @@ export class CoreRuntime {
       },
     };
     // a demo probe measures the plus cells live: their static last-N gate does not apply there
-    const tapes =
-      wf.probe?.perRange || wf.probe?.perCell
-        ? [...strategyTapes, ...sigTapes]
-        : gateMinimalPlus(
-            [...strategyTapes, ...sigTapes],
-            s.grid.minimalPlus,
-            // as of the run start (the walk-forward's own start): never on closes from inside the run
-            wf.startT ?? Math.floor((wu.nowT - wf.simH * H) / H) * H,
-          );
+    const rangePublication = publishMinimalPlus(
+      [...strategyTapes, ...sigTapes], newBuildStats, s.grid.minimalPlus,
+      // Strictly before the run, never fitted on its future closes.
+      wf.startT ?? Math.floor((wu.nowT - wf.simH * H) / H) * H,
+      heldIds, !!(wf.probe?.perRange || wf.probe?.perCell),
+    );
+    const tapes = rangePublication.tapes;
     wf.signalRank = sig.enabled ? sig : undefined;
     wf.signalActive = sig.enabled ? sigActive : undefined;
     wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
@@ -5654,7 +5652,7 @@ export class CoreRuntime {
       signalMaxPositions: wf.signalMaxPositions,
     });
     Object.assign(this.status, nextStatus);
-    this.buildStats = newBuildStats;
+    this.buildStats = rangePublication.buildStats;
     this.fastArgs = nextFastArgs;
     this.basePairTags = pairTags;
     this.pipeline = pipeline;

@@ -19,6 +19,7 @@ import {
   sessionBaseTags,
   sessionOwnRangePassed,
   sessionQualificationEvidence,
+  sessionBasePairRows,
   sessionReturnEvidence,
 } from "./lib/session-qualification.mjs";
 
@@ -307,7 +308,7 @@ describe("session CLI background comparison policy", () => {
     }
   });
 });
-function replay({ exitOrders = false, endpointOccupancy = false, caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData } = {}) {
+function replay({ postGateRejected, exitOrders = false, endpointOccupancy = false, caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -442,6 +443,9 @@ function replay({ exitOrders = false, endpointOccupancy = false, caps = false, w
         tapes: signalCoverage ? { "normal|wide": { configs: 2, activeConfigs: 2, closes: 0 } } : {},
         ...(signalCoverage ? { engineTapes: { "normal|wide": engineTape }, signalTapes: { "normal|wide": signalTape }, signalCombos: 1 } : {}),
       };
+      if (postGateRejected !== undefined) {
+        raw.engine.coverage.sets[0] = { ...raw.engine.coverage.sets[0], grid: 3, built: 3, kept: 3, postGateRejected };
+      }
       raw.engine.baseEvaluated = 1;
       raw.engine.basePassed = 0;
       raw.engine.baseBuilt = 0;
@@ -468,7 +472,7 @@ function replay({ exitOrders = false, endpointOccupancy = false, caps = false, w
       "--html", join(dir, "html"), "--writeup", join(dir, "writeup.md"), "--quiet", "true"], {
       encoding: "utf8", timeout: 15_000, env: { ...process.env, CTS_CORE_VARIANTS: "0" },
     });
-    assert.equal(result.status, invalidReturn || exitOrders === "missing" ? 1 : 0, result.stderr || result.stdout);
+    assert.equal(result.status, invalidReturn || exitOrders === "missing" || postGateRejected === 1 ? 1 : 0, result.stderr || result.stdout);
     return {
       data: JSON.parse(readFileSync(join(dir, "html/data.json"), "utf8")),
       report: JSON.parse(readFileSync(join(dir, "report.json"), "utf8")),
@@ -615,6 +619,15 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.coverage.tapes["normal|wide"].activeConfigs, 2, "combined rows still report both populations");
     assert.equal(data.coverage.engineTapes["normal|wide"].activeConfigs, 1);
     assert.equal(data.coverage.signalTapes["normal|wide"].activeConfigs, 1);
+  });
+
+  it("accounts for pre-run rejections without hiding missing active sets", () => {
+    const passed = replay({ noBase: true, signalCoverage: true, postGateRejected: 2 });
+    const check = name => name === "coverage: strategy type normal active tapes match kept sets";
+    assert.equal(passed.data.checks.find(x => check(x.name))?.ok, true);
+    const failed = replay({ noBase: true, signalCoverage: true, postGateRejected: 1 });
+    assert.equal(failed.data.checks.find(x => check(x.name))?.ok, false);
+    assert.match(passed.md, /gate rejected/);
   });
 
   it("counts the separately recorded Signal Exit Base pass in legacy replay coverage", () => {
@@ -994,4 +1007,16 @@ it("margin usage alone never changes loss equity or drawdown for identical funde
       assert.equal(results[0][key], results[1][key], key);
     assert.ok(Math.abs(results[0].marginMax - results[1].marginMax * 100) < 1e-4);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it("records independent Exit Base proof without borrowing ordinary ranges or a profitable headline", () => {
+  const rows = ["ordinary", "qualified", "rejected"].map((ind, i) => ({ bot: i ? "exit" : "follow", ind, full: { n: 100, pf: 4, net: 1 } }));
+  const tags = { "follow|ordinary": ["mn"], "exit|rejected": ["mn"] };
+  const got = sessionBasePairRows(rows, tags, true, new Set(["exit|qualified"]));
+  assert.deepEqual(got.map(x => [x.pair, x.passed, x.tags]), [["follow|ordinary", true, ["mn"]], ["exit|qualified", true, ["exit"]], ["exit|rejected", false, []]]);
+  assert.equal(got[1].qualificationRecorded, true);
+  const missing = sessionBasePairRows(rows, tags, true, undefined);
+  assert.equal(missing[1].passed, false);
+  assert.equal(missing[2].passed, false);
+  assert.equal(missing[1].qualificationRecorded, false);
 });

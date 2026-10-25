@@ -72,6 +72,7 @@ import {
   recordSessionMinimum,
   sessionOwnRangePassed,
   sessionQualificationEvidence,
+  sessionBasePairRows,
   sessionReturnEvidence,
   sessionStoredSummary,
   sessionStoredVariants,
@@ -330,6 +331,7 @@ async function coverageOf(rt, s) {
       grid: 0,
       built: 0,
       kept: 0,
+      postGateRejected: 0,
       few: 0,
       skip: {},
       tps: new Set(),
@@ -340,6 +342,7 @@ async function coverageOf(rt, s) {
     a.grid += x.grid;
     a.built += x.built;
     a.kept += x.kept;
+    a.postGateRejected += x.postGateRejected ?? 0;
     a.few += x.few;
     for (const [w, n] of Object.entries(x.skip)) a.skip[w] = (a.skip[w] ?? 0) + n;
     for (const v of x.tps) a.tps.add(v);
@@ -384,6 +387,8 @@ async function coverageOf(rt, s) {
       sh: !!s.grid.short,
       gn: !!s.grid.general,
       lg: !!s.grid.long,
+      mp: !!s.grid.minimalPlus && s.grid.minimalPlus.enabled === true,
+      wide: (s.grid.tp?.length ?? 0) > 0,
     },
   };
 }
@@ -1251,11 +1256,11 @@ async function runEngine() {
   // (the stored Base runs are slim — no trades — so Base is reported as counts, not per hour)
   // (with gates.baseWindows.report set, each passing pair also carries `rules`: per report rule, its ranges and targets
   // that pass the rule too — a dump-only field the eval readers use, scripts/eval-base-rules.mjs)
-  const { basePairRows } = await import("../src/core/pipeline/pipeline.ts");
-  const basePairs = basePairRows(
+  const basePairs = sessionBasePairRows(
     rt.pipeline?.s1 ?? [],
     rt.wf.basePassedRanges ?? rt.basePairTags ?? {},
     rt.settings.grid?.baseTargets !== false,
+    rt.wf.exitBasePassed,
   ).map((row) => ({ ...row, builtTags: [...(rt.basePairTags?.[row.pair] ?? [])] }));
   {
     funnel.counts = {
@@ -2541,7 +2546,7 @@ const bookCapped = equityPass(unit, sized.units);
 const bookUncapped = equityPass(unitU, sizedU.units);
 
 /**
- * Live sizing replay: the baseline's positions (every closed order and every order open at the end) as the live
+ * Live sizing replay: the baseline's orders (every closed order and every order open at the end) as the live
  * control's lanes, every 5 minutes of the run, with the report's balance curve as the equity; one lane unit = the
  * exchange minimum (--replay-unit, default $2: minimum-quantity sizing) or a fixed notional. Each sizing variant runs
  * the live control's own functions (top configs → targets with the position cap and the exchange minimum → exposure
@@ -2605,7 +2610,7 @@ function buildSizingReplay() {
   }
   out[0].effect = "reference";
   process.stderr.write(
-    `sizing replay: ${out.length} variants · ${pos.length} positions · ${samples.length} samples · ${Date.now() - t0} ms\n`,
+    `sizing replay: ${out.length} variants · ${pos.length} orders · ${samples.length} samples · ${Date.now() - t0} ms\n`,
   );
   return {
     unitUsd: ref.unitUsd,
@@ -3162,6 +3167,7 @@ function setsMd() {
       grid: 0,
       built: 0,
       kept: 0,
+      postGateRejected: 0,
       few: 0,
       skip: {},
     };
@@ -3170,6 +3176,7 @@ function setsMd() {
     a.grid += x.grid;
     a.built += x.built;
     a.kept += x.kept;
+    a.postGateRejected += x.postGateRejected ?? 0;
     a.few += x.few;
     for (const [w, n] of Object.entries(x.skip)) a.skip[w] = (a.skip[w] ?? 0) + n;
     by.set(k, a);
@@ -3183,17 +3190,17 @@ function setsMd() {
     ``,
     `## Config sets: completeness (${C.allSets ? "grid.allSets: every evaluated pair, every cell" : "the Base gate decides which pairs and targets build"})`,
     ``,
-    `Every indication × range × strategy type: the grid's cells (target × stop × trail × hold), built (simulated), kept (can take a seat), dropped for too few closes (the range gate's last N can never be met), and not built by reason (baseRange: the pair did not pass Base in that range; baseTarget: the target did not pass Base; duplicate: two grid cells map onto one config on a slow lane).`,
+    `Every indication × range × strategy type: the grid's cells (target × stop × trail × hold), built (simulated), kept before the pre-run range gate, rejected by that gate, eligible after it, dropped for too few closes (the range gate's last N can never be met), and not built by reason (baseRange: the pair did not pass Base in that range; baseTarget: the target did not pass Base; duplicate: two grid cells map onto one config on a slow lane).`,
     ``,
-    `| range | type | indications (with sets) | grid cells | built | kept | too few closes | not built |`,
-    `|---|---|---:|---:|---:|---:|---:|---|`,
+    `| range | type | indications (with sets) | grid cells | built | kept before gate | gate rejected | eligible | too few closes | not built |`,
+    `|---|---|---:|---:|---:|---:|---:|---:|---:|---|`,
     ...rows.map(([k, a]) => {
       const [rg, kind] = k.split("|");
       const nb =
         Object.entries(a.skip)
           .map(([w, n]) => `${w} ${n}`)
           .join(" · ") || "–";
-      return `| ${rg} | ${kind} | ${a.inds.size} (${a.indsBuilt.size}) | ${a.grid} | ${a.built} | ${a.kept} | ${a.few} | ${nb} |`;
+      return `| ${rg} | ${kind} | ${a.inds.size} (${a.indsBuilt.size}) | ${a.grid} | ${a.built} | ${a.kept} | ${a.postGateRejected} | ${a.kept - a.postGateRejected} | ${a.few} | ${nb} |`;
     }),
     ``,
     `Engine indications Base evaluated that built no set: ${C.noSets.length}${C.noSets.length ? ` (${C.noSets.slice(0, 40).join(", ")}${C.noSets.length > 40 ? ", …" : ""})` : ""}.`,
@@ -3295,10 +3302,11 @@ if (cov) {
   const hasSignalsInBase = (cov.signalCombos ?? 0) > 0 || (cov.byKind?.signal?.evaluated ?? 0) > 0;
   const tapeRows = Object.values(engineTapes);
   const hasSeatableTapeCounts = tapeRows.every((v) => Number.isFinite(v.activeConfigs));
-  for (const [t] of typesOn) {
+  const coverageTypes = new Set([...typesOn.map(([t]) => t), ...(cov.sets ?? []).map(x => x.kind)]);
+  for (const t of coverageTypes) {
     if (!hasSeatableTapeCounts || !Array.isArray(cov.sets) || (!splitTapeStats && hasSignalsInBase))
       continue;
-    const expected = cov.sets.filter((x) => x.kind === t).reduce((a, x) => a + x.kept, 0);
+    const expected = cov.sets.filter((x) => x.kind === t).reduce((a, x) => a + x.kept - (x.postGateRejected ?? 0), 0);
     const actual = Object.entries(engineTapes)
       .filter(([k]) => k.startsWith(`${t}|`))
       .reduce((a, [, v]) => a + v.activeConfigs, 0);
@@ -3316,7 +3324,7 @@ if (cov) {
       const active = Object.entries(engineTapes)
         .filter(([k]) => k.endsWith(`|${tag}`))
         .reduce((a, [, v]) => a + v.activeConfigs, 0);
-      const kept = cov.sets.filter((x) => x.tag === tag).reduce((a, x) => a + x.kept, 0);
+      const kept = cov.sets.filter((x) => x.tag === tag).reduce((a, x) => a + x.kept - (x.postGateRejected ?? 0), 0);
       check(`coverage: range ${tag} active tapes match kept sets`, kept, active);
     }
   }
@@ -3356,7 +3364,7 @@ if (cov) {
     for (const [tag, v] of Object.entries(step.byRange ?? {}))
       takenByRange[tag] = (takenByRange[tag] ?? 0) + (v.taken ?? 0);
   if (cov.tapes)
-    for (const [t] of typesOn) {
+    for (const t of coverageTypes) {
       const n =
         trades.filter((x) => (x.kind ?? "normal") === t).length +
         openEnd.filter((x) => (x.kind ?? "normal") === t).length;
@@ -4926,6 +4934,7 @@ function clientMain(D) {
         grid: 0,
         built: 0,
         kept: 0,
+        postGateRejected: 0,
         few: 0,
         skip: {},
       };
@@ -4934,6 +4943,7 @@ function clientMain(D) {
       a.grid += x.grid;
       a.built += x.built;
       a.kept += x.kept;
+      a.postGateRejected += x.postGateRejected ?? 0;
       a.few += x.few;
       for (const [w, n] of Object.entries(x.skip)) a.skip[w] = (a.skip[w] ?? 0) + n;
       by.set(col(x), a);
@@ -4942,11 +4952,11 @@ function clientMain(D) {
       Object.entries(o)
         .map(([w, n]) => `${w} ${n.toLocaleString("en-US")}`)
         .join(" · ") || "–";
-    const sum = `<div class="tw"><table><thead><tr><th>Range</th><th>Type</th><th>Indications</th><th>With sets</th><th>Grid cells</th><th>Built</th><th>Kept</th><th>Too few closes</th><th>Not built (why)</th></tr></thead><tbody>${cols
+    const sum = `<div class="tw"><table><thead><tr><th>Range</th><th>Type</th><th>Indications</th><th>With sets</th><th>Grid cells</th><th>Built</th><th>Kept before gate</th><th>Gate rejected</th><th>Eligible</th><th>Too few closes</th><th>Not built (why)</th></tr></thead><tbody>${cols
       .map((k) => {
         const a = by.get(k);
         const [rg, kind] = k.split("|");
-        return `<tr><td>${esc(rg)}</td><td>${esc(kind)}</td><td class="num">${a.inds}</td><td class="num">${a.withSets}</td><td class="num">${a.grid.toLocaleString("en-US")}</td><td class="num">${a.built.toLocaleString("en-US")}</td><td class="num">${a.kept.toLocaleString("en-US")}</td><td class="num">${a.few.toLocaleString("en-US")}</td><td>${esc(skipTxt(a.skip))}</td></tr>`;
+        return `<tr><td>${esc(rg)}</td><td>${esc(kind)}</td><td class="num">${a.inds}</td><td class="num">${a.withSets}</td><td class="num">${a.grid.toLocaleString("en-US")}</td><td class="num">${a.built.toLocaleString("en-US")}</td><td class="num">${a.kept.toLocaleString("en-US")}</td><td class="num">${a.postGateRejected.toLocaleString("en-US")}</td><td class="num">${(a.kept - a.postGateRejected).toLocaleString("en-US")}</td><td class="num">${a.few.toLocaleString("en-US")}</td><td>${esc(skipTxt(a.skip))}</td></tr>`;
       })
       .join("")}</tbody></table></div>`;
     const cell = new Map(C.sets.map((x) => [`${x.ind}|${col(x)}`, x]));

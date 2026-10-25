@@ -1,4 +1,26 @@
-## 2026-10-25 — bounded-history continuation in progress
+## 2026-10-25 — final local Axis/Minimal Plus/Exit evidence; CI pending
+
+Head8221a2bf corrected independent Exit Base proof in report dumps. Frozen source cb4a1ca7591a76b20cdc5a479719094cbe66399342ec1af3a7ae419a26b3e517 completed the 12-symbol/12h EMA ordinary run with80/80 checks,4882 exact funded close matches and the independent frozen-study audit all passing. 131.278s including export/audits,1489.11MiB peak; compute100.857s. Orders7076/4882/2194; positions15/4/11; PF1.336606. Drawdown22.5921%,196 over-margin minutes, thus unsuitable for unrestricted live promotion. No cap omissions: zero capped/scaled allocations. All201 additional order/capacity/identity/activation/partial-fill checks pass after fixing fixture shutdown to flush buffered state before SQLite close. Full CI is pending for this final test/evidence checkpoint.
+
+PR204 contains independent lossless minute-selection export optimization, source9e8dd15c: same saved Signal run reports19.929→15.071s /2006→1699MiB with all73 hydrated top-level field hashes identical,160clocks/1428676keys preserved; no economics change. Build/types/tests pass, remote CI pending. Its branch predates PR203; integrate and verify combined report before merge. Full-family ordinary study40226266532 remains pending. No venue action this continuation, no X02 running claim, and no guarantee of stable positive PF.
+
+## 2026-10-25 — Axis and held Minimal Plus correction under final verification
+
+PR203 follow-up preserves Minimal Plus held tapes when their pre-run gate rejects new entry, with independent rejection accounting. Coverage now includes every built kind and optional MP/Wide. First EMA native attempt failed coverage; preserve its original results. Three broad CI failures were stale arithmetic-average Axis expectations and now use funded notional/quantity. Local 106 focused tests pass; report/build/type checks and fresh frozen native run in progress. Source 236adbf24aa337e9c886016d58b3aeace2eb0d77a6ef14c96e3c852d74e4bbd4; `runs/axis-publication-20261025`, 12 symbols/12h ordinary EMA, all enabled protections, minute pricing. No venue action or new-position increase claimed. Full-family CI study still running. Signals later-window PF remains below one; live stability has not passed.
+
+## 2026-10-25 — performance release merged; Axis correction under verification
+
+PR #202 merged as `abe5e49ebc330d2717c6ed45aaa448121f5e2f2f`, main fetched/reloaded; remote backup `backup/main-before-history-storage-20261025` retains `69bf5ffa945b2cecacc8bb34de77f58a215c5a4f`. Tested head `84e5755dad7c69a83a519b4e0d171330586e0526` passed all seven CI jobs in 40230641697 (all 285 core files; 4,371 passes across core/slow/script/browser/component checks, eight template skips; two slow exclusions passed separately) and exact-Signal study 40230641774.
+
+Full source `f09e2ed2aec72b0eb6c5770fc47df903b4d268f0bf56998b4fad2f575401cfaa` 12-symbol/12h later-window replay completed in 776.848 s / 3,106.13 MiB peak, versus local resident control 1,198.019 s / 4,314.48 MiB. Compute 718.817 s. All 68 checks and 39,402,168 scalar comparisons pass. Complete 126,289-config / 10,999,508-close journals are byte-identical. All 29 legacy comparison sections, every funded order/held allocation and hourly account field agree; 158 added PF metadata fields independently checked. Orders 863/280/583, positions 4/2/2, settled PF 0.065995. Losing financial results remain unchanged. Reports and exact comparisons are in docs/history-storage-20261025.
+
+All ten minute-control/DCA/Block arms completed. First window control PF4.888011; later DCA PF0.062541. The full ordinary study 40226266532 remains active: first two all-range arms running, later two queued at this checkpoint. Do not invent progress, claim completion or discard timeout/OOM failures. It runs the earlier bounded-history source 393fdfb, not the Axis correction.
+
+Isolated follow-up `fix/axis-unit-entry-20261025` corrects Axis harmonic average-entry accounting in both Revert and Desk. Eight independent per-leg regressions fail old code; 183 focused tests, typecheck, build and scoped lint pass after correction. See docs/axis-entry-20261025.md. Multi-leg managed exits can change; broader CI and native coverage still required. Full native source must remain frozen during any further replay/audit.
+
+No venue requests, orders, production settings or live reload were performed. X02 authentication/CTS-A-O endpoint is absent in this workspace, and financial stability remains unmet. Earlier personal-context host belonged to CTS-K-N and must not be used. Fractional Exit and causal per-leg minute equity remain incomplete. Continue authorized work; this is not completion, positive-PF certification or a claim that X02 is running.
+
+## 2026-10-25 — bounded-history continuation in progress (superseded checkpoint)
 
 PR #201 merged as `69bf5ffa945b2cecacc8bb34de77f58a215c5a4f`; main reloaded. Both Signal control windows completed: earlier PF 4.888011, orders 476/371/105 and positions 15/6/9; later PF 0.065995, orders 863/280/583 and positions 4/2/2 (opened/settled-or-closed/held). Later audit: 39,402,168 comparisons, zero missing configured cells, zero remaining entry-ready hourly-clock omissions; all 278 prior closes keep their exact returns. Financial stability is still not met.
 
