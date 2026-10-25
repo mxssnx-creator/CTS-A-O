@@ -1,0 +1,35 @@
+{
+  "failedCi": {
+    "commit": "ef38a5e6afa2c654f5ca461122b12982d71b850d",
+    "run": 40202736648,
+    "job": 121197142205,
+    "test": "signals end to end: signal skips and paper skips carry the sig: prefix; the audit is clean",
+    "invariant": "paper: equity = closed + open mark-to-market"
+  },
+  "reproductions": [
+    {
+      "name": "Sliced local ticker publishes partial marks and nested Exit state before equity",
+      "before": "fails deterministic 200-position test at first yield",
+      "after": "passes with private working state and atomic publication"
+    },
+    {
+      "name": "Missing quote excludes held loss from ticker equity",
+      "before": {
+        "publishedEquity": 0.8500000000000001,
+        "expectedEquity": -1.15
+      },
+      "after": "retains the previous mark, including first frame"
+    }
+  ],
+  "preservedChecks": "No audit tolerance or financial qualification gate relaxed. Source histories and model return formulas unchanged.",
+  "fixedSourceSha256": "fc0797430294d8f287a6f021c81994fc2e4e5a5c7d2228cf8923bac2062c1c0b",
+  "nativeValidation": "pending",
+  "verification": {
+    "targetedTests": 65,
+    "workerOutageParityTests": 3,
+    "typecheck": "passed",
+    "productionBuild": "passed",
+    "lint": "zero errors, five existing warnings",
+    "sourceSha256": "fc0797430294d8f287a6f021c81994fc2e4e5a5c7d2228cf8923bac2062c1c0b"
+  }
+}

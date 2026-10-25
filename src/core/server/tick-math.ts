@@ -54,7 +54,8 @@ export class TickMathBook {
       sym,
       indices,
       px: NaN,
-      sum: 0,
+      // A missing quote leaves the held mark in equity, including before this book receives its first price.
+      sum: indices.reduce((sum, i) => sum + positions[i].mtm * (positions[i].vol ?? 1) * units[i], 0),
       nextBarT: Infinity,
     }));
   }
@@ -68,7 +69,10 @@ export class TickMathBook {
     let visited = 0;
     for (const g of this.groups) {
       const px = prices[g.sym];
-      if (!(Number.isFinite(px) && px > 0)) continue;
+      if (!(Number.isFinite(px) && px > 0)) {
+        result.open += g.sum;
+        continue;
+      }
       const changed = px !== g.px;
       if (changed || now >= g.nextBarT) {
         let sum = 0;
@@ -117,7 +121,8 @@ export class TickMathBook {
                   trailOnly: p.trailOnly,
                   trailFree: p.trailFree,
                   trailMax: p.trailMax,
-                  exitProtection: p.exitProtection,
+                  // The local recovery book survives across frames; published nested state must not alias it.
+                  exitProtection: p.exitProtection ? { ...p.exitProtection } : undefined,
                   mtm: p.mtm,
                   tkBar: p.tkBar,
                   tkHi: p.tkHi,

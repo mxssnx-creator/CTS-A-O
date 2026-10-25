@@ -38,6 +38,8 @@ The later Signals sample contains 1,097 independent config orders inside one ADA
 
 The original Exit control holds configurations for up to 1,350 minutes (22.5 hours), longer than the 12-hour scored run. It closes seven winning orders while 17 remain held. Its settled sample has no losses; including held marks separately gives PF 1.3136. Expanded Exit remains below neutral even after including endpoint marks: 0.0981 / 0.2248. The endpoint-diagnostic.json file preserves both return sums and every eligible symbol/direction; no open loss was removed from equity.
 
+The Exit-only expansion preserves **all 126,182 / 126,279 Signal configuration histories** and their **10,760,734 / 10,998,889 historical closes** in the original/later windows. Their own type/range start/end qualification proofs also match exactly. The settings differences are confined to the Exit grid. Executed Signal counts nevertheless differ: the explicitly enabled direction-acceptance and loss-cluster controls share Signal-source candidate outcomes, including their independent Exit configurations. This shared coordination is separate from each configuration's own PF gates; unchanged history does not imply an unchanged executed portfolio. See exit-signal-history-parity.json and its reproducible comparison script.
+
 ## Controls and declared comparisons
 
 The original Exit grid on the corrected source reproduces whole-account PF **4.9612 / 0.0679**. Original-window orders: **449/366/83**, positions **14/6/8**. Later-window orders: **860/278/582**, positions **4/2/2**. Exit alone has seven winning closes and no losses in each control window; those small samples have no finite PF. All 68 native checks per control and 78,791,856 independent scalar comparisons pass.
@@ -47,6 +49,12 @@ The original Exit grid on the corrected source reproduces whole-account PF **4.9
 - [Intermediate cost comparison](../expanded-exit-cost-20261025/RESULTS.md): retained prior-source results; these predate the exact-zero correction.
 
 No experimental Exit profile or validation default is promoted. Existing Expanded Signal defaults are retained. The comparisons are retrospective; repeated tuning on these windows is not fresh out-of-sample evidence.
+
+## Foreground equity reconciliation repair
+
+The display follow-up's CI found an intermittent paper-equity audit failure. A deterministic 200-position test reproduced a partially published local tick: position marks and nested Exit protection changed before the matching equity. The local path now computes on private state and publishes its complete patch with equity atomically. Superseded work is discarded, including when a new paper book reuses the same position array.
+
+A second test found that missing prices removed held marks from ticker equity, even when the last known mark was a loss. The old result was +0.85 instead of −1.15 in the fixed test. The ticker now retains prior marks for unquoted symbols, including its first frame. Quote absence does not authorize a new fill or update protection. No audit threshold was relaxed. The new foreground source is `fc0797430294d8f287a6f021c81994fc2e4e5a5c7d2228cf8923bac2062c1c0b`; final CI and native revalidation are pending. Earlier financial studies remain identified by their own sources.
 
 ## Correctness and processing changes
 
@@ -58,13 +66,13 @@ The controlled four-symbol synthetic benchmark preserves all **1,080 tapes, 212,
 
 Both 12-symbol/12-hour Signal controls now pass on the processing change. Complete historical journal bytes, frozen settings, hourly qualification, catalog, funded settled/held allocations and account results match the previous source exactly. They retain **21,764,389 historical closes across 252,538 configuration tapes** in the two separate runs, with zero missing configured cells. Each passes all 68 native checks; the independent audits make 78,791,856 scalar comparisons without discrepancies. These are the original Exit-grid controls, not new financial evidence for the experimental Expanded Exit grid.
 
-| Processing rerun | PF (neutral 1) | Orders opened / settled / held | Positions opened / closed / held | Wall time | Child peak RSS |
+| Processing rerun | PF (neutral 1) | Orders opened / settled / held | Positions opened / closed / held | Native + report time | Child peak RSS |
 |---|---:|---|---|---:|---:|
 | Original window | 4.9612 | 449 / 366 / 83 | 14 / 6 / 8 | 406.30 s | 3,581.34 MiB |
 | Later window | 0.0679 | 860 / 278 / 582 | 4 / 2 / 2 | 368.15 s | 3,531.20 MiB |
 
-The previous controls ran on a different host. Their longer wall times are not a controlled speed comparison; native peak RSS did not decrease. Reproduce the exact comparisons with `scripts/compare-history-processing.mjs` and `scripts/compare-history-bytes.py`; the corresponding JSON receipts retain both source hashes and measurements.
+Native/report time excludes the independent coverage audit (53.82 / 49.37 seconds) and execution/admission audits. The previous controls ran on a different host. Their longer wall times are not a controlled speed comparison; native peak RSS did not decrease. Reproduce the exact comparisons with `scripts/compare-history-processing.mjs` and `scripts/compare-history-bytes.py`; the corresponding JSON receipts retain both source hashes and measurements.
 
-Full CI **40200849871** on **d02ab91c6c2beae9cec0086d0fdfca8feb2b5191** passes every quality/core/slow/verification job. The earlier test-fixture type failure remains recorded in verification.json. The current economic source SHA-256 is `cb4415d4bf602c10ef1946178352c37d7bc6622f0bee19f68728b0daf4648d5b`. The two complete ordinary-range processing reruns in workflow **40200402203** are still running; they are not claimed successful.
+Full CI **40200849871** on **d02ab91c6c2beae9cec0086d0fdfca8feb2b5191** passes every quality/core/slow/verification job. The earlier test-fixture type failure remains recorded in verification.json. That processing-study source SHA-256 is `cb4415d4bf602c10ef1946178352c37d7bc6622f0bee19f68728b0daf4648d5b`; the later foreground repair above requires its own checks. The two complete ordinary-range processing reruns in workflow **40200402203** are still running; they are not claimed successful.
 
 The earlier complete ordinary matrices include preserved memory-aborted runs at roughly 14 GB RSS. They are failures and cannot support financial conclusions or hold-time defaults. Fractional scale-outs inside a single Exit configuration remain unimplemented; independently owned config orders and their terminal closes are covered. No live connection was changed or reloaded.

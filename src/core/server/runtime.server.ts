@@ -2354,7 +2354,8 @@ export class CoreRuntime {
       // Revisit a symbol only when its price moved or a protected lane completed a bar. Flat completed bars still
       // update Exit's volatility/TP state and trailing peaks; cache the next boundary instead of scanning every tick.
       const book = this.tickBook();
-      const positions = this.paper.positions;
+      const paper = this.paper;
+      const positions = paper.positions;
       const nowMs = Date.now(),
         gen = this.gen;
       const prices = Object.fromEntries(
@@ -2384,14 +2385,12 @@ export class CoreRuntime {
             },
             init ? 3_000 : 750,
           );
-          if (gen !== this.gen || positions !== this.paper.positions || this.stopped) return;
-          for (const patch of reply.result.patches)
-            Object.assign(positions[patch.index], patch.values);
+          if (gen !== this.gen || paper !== this.paper || this.stopped) return;
           marked = reply.result;
           this.tickSentBook = book;
           book.math = null;
         } catch (error) {
-          if (gen !== this.gen || this.stopped) return;
+          if (gen !== this.gen || paper !== this.paper || this.stopped) return;
           this.tickWorker.dispose(new Error("tick worker failed; sliced control recovery"));
           this.tickSentBook = null;
           this.tickRetryAt = Date.now() + 5_000;
@@ -2403,23 +2402,34 @@ export class CoreRuntime {
       }
       if (!marked) {
         book.math ??= new TickMathBook(
-          positions,
+          // The sliced fallback needs the same private ownership as the worker. Otherwise readers can observe
+          // 127 new marks alongside the previous equity while the generator yields to the audit/control loop.
+          positions.map(p => ({ ...p, ...(p.exitProtection ? { exitProtection: { ...p.exitProtection } } : {}) })),
           book.units,
           book.cost,
           book.baseTfMin,
           book.trailFree,
         );
-        const steps = book.math.advanceGen(prices, nowMs, false);
-        for (;;) {
-          const next = steps.next();
-          if (next.done) {
-            marked = next.value;
-            break;
+        const steps = book.math.advanceGen(prices, nowMs);
+        let completed = false;
+        try {
+          for (;;) {
+            const next = steps.next();
+            if (next.done) {
+              marked = next.value;
+              completed = true;
+              break;
+            }
+            await yieldNow();
+            if (gen !== this.gen || paper !== this.paper || this.stopped) return;
           }
-          await yieldNow();
-          if (gen !== this.gen || positions !== this.paper.positions || this.stopped) return;
+        } finally {
+          // A canceled/failed partial advance cannot seed the next frame's cached sums or protection state.
+          if (!completed) book.math = null;
         }
       }
+      // No await between publishing owned marks/protection and their matching equity below.
+      for (const patch of marked.patches) Object.assign(positions[patch.index], patch.values);
       const { open, hits: newHits, trailMoved } = marked;
       if (newHits) this.controlUrgent = true;
       if (trailMoved) this.controlTrail = true;

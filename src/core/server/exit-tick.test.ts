@@ -10,6 +10,8 @@ import { createExitProtection } from "../sim/exit-protection.ts";
 import { RT_COST } from "../model-cost.ts";
 import { CoreDb } from "./db.server.ts";
 import { CoreRuntime, type PaperBook } from "./runtime.server.ts";
+import { TickMathBook } from "./tick-math.ts";
+import { orderKey } from "../sizing.ts";
 
 const M = 60_000;
 const T0 = Date.UTC(2026, 9, 17);
@@ -62,6 +64,96 @@ afterEach(async () => {
 });
 
 describe("completed protection bars through the actual runtime tick", () => {
+  it("publishes sliced ticker marks, Exit state and equity together", async () => {
+    mock.timers.enable({ apis: ["Date"], now: T0 });
+    const rt = runtime();
+    rt.settings.sizing = { mode: "fixed", pct: 0.002 };
+    const protect: Protect = { tp: 0.2, sl: 0.2, trail: 0.02, hold: 100,
+      exitType: "historic", exitSet: "trailing" };
+    // Below the worker threshold, but above the local generator's 128-position yield.
+    const positions = Array.from({ length: 200 }, (_, i) => ({
+      ...position(protect, i % 2 ? -1 : 1), cfg: `${position(protect, 1).cfg}|owned${i}`,
+    }));
+    rt.paper.positions = positions;
+    rt.paper.units = new Map(positions.map(p => [orderKey(p), rt.settings.paperNotional]));
+    setPrice(rt, "X-USDT", 100);
+    await rt.tick();
+    for (const px of [102, 103]) {
+      const before = structuredClone(positions);
+      const equity = rt.paper.equity;
+      mock.timers.tick(M);
+      setPrice(rt, "X-USDT", px);
+      const pending = rt.tick();
+      try {
+        assert.deepEqual(positions, before, "a partial local tick must not expose mixed marks or nested Exit state");
+        assert.equal(rt.paper.equity, equity);
+        assert.deepEqual(rt.runAudit().checks.filter(c => !c.ok), []);
+      } finally {
+        await pending;
+      }
+      const reference = new TickMathBook(before,
+        new Float64Array(positions.length).fill(rt.settings.paperNotional), COST, 1, false);
+      const expected = reference.advance({ "X-USDT": px }, Date.now());
+      assert.deepEqual(positions, before, "the complete tick retains exact scalar protection and return math");
+      close(rt.paper.equity, expected.open);
+      assert.deepEqual(rt.runAudit().checks.filter(c => !c.ok), []);
+    }
+  });
+
+  it("discards an interrupted local tick even when a new paper book reuses the position array", async () => {
+    mock.timers.enable({ apis: ["Date"], now: T0 });
+    const rt = runtime();
+    rt.settings.sizing = { mode: "fixed", pct: 0.002 };
+    const protect: Protect = { tp: 0.2, sl: 0.2, trail: 0.02, hold: 100,
+      exitType: "historic", exitSet: "trailing" };
+    const positions = Array.from({ length: 200 }, (_, i) => ({
+      ...position(protect, 1), cfg: `${position(protect, 1).cfg}|owned${i}`,
+    }));
+    rt.paper.positions = positions;
+    rt.paper.units = new Map(positions.map(p => [orderKey(p), rt.settings.paperNotional]));
+    setPrice(rt, "X-USDT", 100);
+    await rt.tick();
+    const before = structuredClone(positions), equity = rt.paper.equity;
+    mock.timers.tick(M);
+    setPrice(rt, "X-USDT", 102);
+    const pending = rt.tick();
+    const partial = (rt as unknown as { tickMemo: { math: unknown } }).tickMemo;
+    rt.paper = { ...rt.paper };
+    await pending;
+    assert.deepEqual(positions, before, "superseded work cannot publish protection or marks");
+    assert.equal(rt.paper.equity, equity);
+    assert.equal(partial.math, null, "partial cached sums must be discarded");
+    await rt.tick();
+    assert.equal(positions[0].exitProtection?.samples, 1, "recovery advances the completed bar exactly once");
+    assert.equal(positions.at(-1)!.exitProtection?.samples, 1);
+    assert.deepEqual(rt.runAudit().checks.filter(c => !c.ok), []);
+  });
+
+  it("retains held marks when a symbol has no current quote, including the first frame", async () => {
+    mock.timers.enable({ apis: ["Date"], now: T0 });
+    const rt = runtime();
+    rt.settings.sizing = { mode: "fixed", pct: 0.002 };
+    const protect: Protect = { tp: 0.2, sl: 0.2, trail: 0, hold: 100 };
+    const held = position(protect, 1, "UNQUOTED-USDT"), quoted = position(protect, -1, "QUOTED-USDT");
+    held.mtm = -0.02;
+    rt.paper.positions = [held, quoted];
+    rt.paper.units = new Map([held, quoted].map(p => [orderKey(p), rt.settings.paperNotional]));
+    setPrice(rt, quoted.sym, 99);
+    await rt.tick();
+    assert.equal(held.mtm, -0.02, "a missing quote cannot erase the prior loss mark");
+    close(rt.paper.equity, (held.mtm + quoted.mtm) * rt.settings.paperNotional);
+    assert.deepEqual(rt.runAudit().checks.filter(c => !c.ok), []);
+    setPrice(rt, held.sym, 98);
+    await rt.tick();
+    const mark = held.mtm;
+    rt.candles.delete(held.sym);
+    setPrice(rt, quoted.sym, 101);
+    await rt.tick();
+    assert.equal(held.mtm, mark);
+    close(rt.paper.equity, (held.mtm + quoted.mtm) * rt.settings.paperNotional);
+    assert.deepEqual(rt.runAudit().checks.filter(c => !c.ok), []);
+  });
+
   it("preserves trailing changes made after each paper yield through atomic book publication on both sides", () => {
     mock.timers.enable({ apis: ["Date"], now: T0 });
     for (const side of [1, -1] as const) {
