@@ -175,7 +175,7 @@ export const GRID_VARIANTS_MAX = 100_000;
 export const DEFAULT_DCA: DcaConfig = { levels: 1, addRatio: 2.5, step: 0.02, stopGap: 0.5, slOfTp: 1 };
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
 export const DEFAULT_AXIS: AxisConfig = {
-  volumeFactor: 0.1,
+  volumeFactor: 1,
   levels: 3,
   spacing: 0.7,
   ratio: 1,
@@ -327,6 +327,8 @@ export interface CoreSettings {
 }
 
 export interface ExitStrategySettings {
+  /** Independent Exit range sizing, 0.1–5 in 0.1 increments; does not inherit Wide or Signal range sizing. */
+  volumeFactor?: number;
   /** Additional Signal-only fits; the original high/low fit remains present. Identical economic cells deduplicate. */
   signalRanges?: Array<{ holdH: number; distance: number; basis: "extrema" | "close" }>;
   enabled: boolean;
@@ -703,6 +705,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   fees: { ...DEFAULT_MODEL_FEES },
   adjust: DEFAULT_ADJUST,
   exitStrategy: {
+    volumeFactor: 1,
     enabled: true,
     timeframes: [1, 5, 15],
     includeTactics: true,

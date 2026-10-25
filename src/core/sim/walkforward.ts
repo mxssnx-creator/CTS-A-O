@@ -141,6 +141,7 @@ import type {
 } from "../signal-config.ts";
 import { signalVolumeFactorsOf } from "../signal-config.ts";
 import { volumeFactorForStrategy } from "../volume-factor.ts";
+import { volumeRatio } from "../volume-ratio.ts";
 
 const H = 3_600_000;
 
@@ -265,7 +266,7 @@ const numOr = (v: unknown, d: number, lo: number, hi: number) =>
   v === null || v === undefined || v === "" || !Number.isFinite(Number(v))
     ? d
     : Math.min(hi, Math.max(lo, Number(v)));
-const volumeFactor = (v: unknown) => Number((Math.round(numOr(v, 1, 0.2, 5) * 5) / 5).toFixed(1));
+const volumeFactor = volumeRatio;
 
 export function coordSettings(c?: Partial<CoordSettings> | null): CoordSettings {
   const hl = Number(c?.hourLock);
@@ -369,6 +370,8 @@ export interface RangeOpts {
 export interface WalkForwardOptions {
   /** Per Axis set, relative to the corresponding base volume. Captured once at entry. */
   axisVolumeFactor?: number;
+  /** Historic Exit owns its range ratio; never inherits Wide or a Signal parameter range. */
+  exitVolumeFactor?: number;
   /** execution sizing multiplier relative to the normal factor, per strategy target range */
   rangeVolumeFactors?: RangeVolumeFactors;
   /** execution sizing multiplier relative to the normal factor, per independent Signal range */
@@ -842,7 +845,8 @@ export const ENGINE_SIDE_ACCEPT: SignalAccept = {
 
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
   return {
-    axisVolumeFactor: s.axis.volumeFactor ?? 0.1,
+    axisVolumeFactor: volumeRatio(s.axis.volumeFactor),
+    exitVolumeFactor: volumeRatio(s.exitStrategy.volumeFactor),
     indicationVolumeFactors: signalVolumeFactorsOf(s.signals),
     // Keep the general replay warm-up short; config qualification uses its explicit Last-N close window below.
     preH: 6,
@@ -5208,15 +5212,16 @@ export type ExecDecision =
 
 /** Range sizing sits outside the Block / coordination stack and does not change unit-return qualification. */
 export function rangeVolumeFactorFor(
-  tp: Pick<ConfigTape, "ind" | "protect">,
-  o: Pick<WalkForwardOptions, "rangeVolumeFactors" | "signalRangeVolumeFactors">,
+  tp: Pick<ConfigTape, "ind"> & {protect: Partial<Protect>},
+  o: Pick<WalkForwardOptions, "rangeVolumeFactors" | "signalRangeVolumeFactors" | "exitVolumeFactor">,
 ): number {
+  if (tp.protect.exitType === "historic") return volumeRatio(o.exitVolumeFactor);
   if (isSignalInd(tp.ind)) {
     const range = signalRangeOf(tp.ind);
-    return range ? (o.signalRangeVolumeFactors?.[range] ?? 1) : 1;
+    return range ? volumeRatio(o.signalRangeVolumeFactors?.[range]) : 1;
   }
   const key = tp.protect.tag ?? "wide";
-  return o.rangeVolumeFactors?.[key] ?? RANGE_VOLUME_FACTOR_DEFAULTS[key];
+  return volumeRatio(o.rangeVolumeFactors?.[key] ?? RANGE_VOLUME_FACTOR_DEFAULTS[key]);
 }
 
 /** The crowding group of a config: its range tag, "wide" without one, "sig" for a signal. */

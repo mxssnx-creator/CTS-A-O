@@ -74,17 +74,17 @@ describe("range settings are complete and the same for every range", () => {
     }
   });
 
-  it("range volume factors use the 0.2 ladder and default every range to neutral", () => {
+  it("range volume factors use the 0.1 ladder and default every range to neutral", () => {
     for (const name of ALL) {
-      for (const volumeFactor of [0.2, 1, 2.5, 5])
+      for (const volumeFactor of [0.1,0.2,0.3,1,1.3,2.5,5])
         checkSettings(withRange(name, { ...cell(TP[name]), volumeFactor }));
       assert.throws(
-        () => checkSettings(withRange(name, { ...cell(TP[name]), volumeFactor: 0.3 })),
-        /0\.2 steps/,
+        () => checkSettings(withRange(name, { ...cell(TP[name]), volumeFactor: 0.35 })),
+        /0\.1 steps/,
       );
       assert.throws(
         () => checkSettings(withRange(name, { ...cell(TP[name]), volumeFactor: 5.2 })),
-        /volume factor out of range/,
+        /volume factor/,
       );
     }
     const defaults = rangeVolumeFactorsOf(DEFAULT_SETTINGS.grid);
@@ -99,8 +99,8 @@ describe("range settings are complete and the same for every range", () => {
       grid: { ...DEFAULT_SETTINGS.grid, volumeFactor: 2.5, minimalPlus: { ...MINIMAL_PLUS_RANGE, volumeFactor: 2.5 } },
     });
     assert.throws(
-      () => checkSettings({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, volumeFactor: 0.3 } }),
-      /0\.2 steps/,
+      () => checkSettings({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, volumeFactor: 0.35 } }),
+      /0\.1 steps/,
     );
   });
 

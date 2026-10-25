@@ -61,6 +61,7 @@ export interface ExitStrategyDiagnostics {
   candidates: number;
   capped: number;
   evaluated: number;
+  trailTooShort: number;
   insufficientTrades: number;
   pfRejected: number;
   greenHourRejected: number;
@@ -78,6 +79,7 @@ export const emptyExitStrategyDiagnostics = (): ExitStrategyDiagnostics => ({
   candidates: 0,
   capped: 0,
   evaluated: 0,
+  trailTooShort: 0,
   insufficientTrades: 0,
   pfRejected: 0,
   greenHourRejected: 0,
@@ -539,6 +541,14 @@ export function* exitStrategyProtectsGen(
         ? capSignalProtect({ ...p, trailMax: validation.signalTrailMax ?? p.trailMax })
         : p;
       const lane = laneProtect(qualifiedProtect, ind);
+      // Match historical Signal tape eligibility before scoring. The gap (activation ×
+      // trailStep), not just activation, must meet the floor. Otherwise a qualified fit
+      // disappears when the executable catalog rejects it.
+      if (isSignalInd(ind) && lane.trail > 0 &&
+          lane.trail * (lane.trailStep ?? 1) + 1e-12 < validation.minTrail) {
+        diagnostics.trailTooShort++;
+        continue;
+      }
       const adjusted = lane.tag ? lane : adjustProtect(lane, validation);
       const actual = entryFilter
         ? capSignalProtect({ ...adjusted, trailMax: validation.signalTrailMax ?? qualifiedProtect.trailMax })

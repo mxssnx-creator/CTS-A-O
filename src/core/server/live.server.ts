@@ -13,10 +13,9 @@ import { createHash } from "node:crypto";
 import { isSignalInd } from "../indications/registry.ts";
 import { signalActiveHas } from "../signals.ts";
 import { rangeOfId, rangeVolumeFactorsOf } from "../minimal-coord.ts";
-import { signalRangeOf } from "../signal-config.ts";
 import { kindOfId, parseConfigId } from "../pipeline/pipeline.ts";
 import { signalStopAt, isSignalConfig, signalTrailMax, isBoundedTrailingPosition, positionTrailMax } from "../sim/trailing.ts";
-import { positionMult, runSubset, type WalkForwardResult } from "../sim/walkforward.ts";
+import { positionMult, runSubset, rangeVolumeFactorFor, type WalkForwardResult } from "../sim/walkforward.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
 import { reconcileVenueFees } from "./fill-fees.ts";
@@ -1777,10 +1776,10 @@ async function runStepNow(
     for (const e of plan.entries) {
       if (!alive()) break;
       const ind = e.cfg.split("|")[1] ?? "";
-      const signalRange = isSignalInd(ind) ? signalRangeOf(ind) : null;
-      const rangeFactor = signalRange
-        ? rt.settings.signals.rangeVolumeFactors[signalRange] ?? 1
-        : rangeVolumeFactors[rangeOfId(e.cfg) || "wide"] ?? 1;
+      const rangeFactor = rangeVolumeFactorFor({ind,protect:{tag:rangeOfId(e.cfg)||undefined,
+        exitType:kindOfId(e.cfg)==="exit"?"historic":undefined}},{rangeVolumeFactors,
+        signalRangeVolumeFactors:rt.settings.signals.rangeVolumeFactors,
+        exitVolumeFactor:rt.settings.exitStrategy.volumeFactor});
       // Apply the per-range multiplier before the same per-position, account, and aggregate-risk checks as normal size.
       const coordFactor = e.coordVol ?? 1;
       const hedgeFactor = e.hedge ? (e.hedgeVol ?? 1) : 1;

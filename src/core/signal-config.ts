@@ -2,6 +2,7 @@
 // The engine side (combos, configs, active ranking, guard) is in signals.ts.
 import { INDICATION_KINDS, type IndicationKind } from "./domain/types.ts";
 import { SIGNAL_HISTORY_H, SIGNAL_VALID_LAST_N } from "./signal-policy.ts";
+import { volumeRatio } from "./volume-ratio.ts";
 
 /**
  * Proven classic signals, each in a short and a medium parameter range (registry ids of the computations they
@@ -513,7 +514,7 @@ export interface SignalCoordinationSettings {
   minSources: number;
   /** Active pair × type × symbol × direction cap, applied separately from classic signals. */
   count: number;
-  /** Extra multiplier relative to a normal order (8 = 800%); applied after Block and relation volume. */
+  /** External sizing ratio, 0.1–5 in 0.1 steps; neutral default 1. Applied once after Block and relation volume. */
   volumeFactor: number;
   /** Exit ranges: Normal here maps to the existing General range in the grid. */
   ranges: { short: boolean; normal: boolean; long: boolean };
@@ -603,7 +604,7 @@ export interface SignalSettings {
   /** loss-cluster guard: pause signal executions while many signals just lost together (see SignalGuard) */
   cluster: SignalClusterSettings;
   coordination: SignalCoordinationSettings;
-  /** Per-indication multiplier for combined higher-timeframe lanes (`@m…c`); defaults stay neutral at 1×. */
+  /** Per-indication multiplier on standalone and combined lanes. Legacy storage key; neutral default 1×. */
   combinedVolumeFactors: Record<IndicationKind, number>;
   /** Base minimum per signal to be ranked: closed trades on that symbol */
   minTrades: number;
@@ -662,7 +663,7 @@ export interface SignalSettings {
 export interface SignalVolumeFactors {
   /** Signals Coordination multiplier relative to a normal order. */
   coordination: number;
-  /** Per-kind multipliers used only on combined `@m…c` timeframe lanes. */
+  /** Per-kind multipliers on standalone and combined lanes; applied once. */
   combined: Readonly<Partial<Record<IndicationKind, number>>>;
 }
 
@@ -772,7 +773,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     enabled: true,
     minSources: 3,
     count: 0,
-    volumeFactor: 8,
+    volumeFactor: 1,
     ranges: { short: true, normal: true, long: true },
   },
   combinedVolumeFactors: Object.fromEntries(INDICATION_KINDS.map((kind) => [kind, 1])) as Record<
@@ -925,19 +926,9 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   out.coordination.ranges.short = out.coordination.ranges.short !== false;
   out.coordination.ranges.normal = out.coordination.ranges.normal !== false;
   out.coordination.ranges.long = out.coordination.ranges.long !== false;
-  const factor = (value: unknown, fallback: number) => {
-    const n = Number(value);
-    return Number.isFinite(n) ? Math.min(22, Math.max(1, Math.round(n))) : fallback;
-  };
-  out.coordination.volumeFactor = factor(
-    out.coordination.volumeFactor,
-    DEFAULT_SIGNALS.coordination.volumeFactor,
-  );
+  out.coordination.volumeFactor = volumeRatio(out.coordination.volumeFactor);
   for (const kind of INDICATION_KINDS)
-    out.combinedVolumeFactors[kind] = factor(
-      out.combinedVolumeFactors[kind],
-      DEFAULT_SIGNALS.combinedVolumeFactors[kind],
-    );
+    out.combinedVolumeFactors[kind] = volumeRatio(out.combinedVolumeFactors[kind]);
   out.ownBase = out.ownBase !== false;
   if (!["pct", "atr", "both"].includes(out.exits)) out.exits = DEFAULT_SIGNALS.exits;
   const a = out.atr;
@@ -980,14 +971,8 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     Number.isFinite(Number(v)) ? Math.min(0.1, Math.max(0, Number(v))) : d;
   out.minSl = fl(out.minSl, DEFAULT_SIGNALS.minSl);
   out.minTrail = fl(out.minTrail, DEFAULT_SIGNALS.minTrail);
-  const volumeFactor = (v: unknown) => {
-    const n = Number(v);
-    if (!Number.isFinite(n)) return 1;
-    const bounded = Math.min(5, Math.max(0.2, n));
-    return bounded === 2.5 ? 2.5 : Math.round(bounded * 5) / 5;
-  };
-  out.rangeVolumeFactors.short = volumeFactor(out.rangeVolumeFactors.short);
-  out.rangeVolumeFactors.medium = volumeFactor(out.rangeVolumeFactors.medium);
+  out.rangeVolumeFactors.short = volumeRatio(out.rangeVolumeFactors.short);
+  out.rangeVolumeFactors.medium = volumeRatio(out.rangeVolumeFactors.medium);
   const vh = Number(out.validateH);
   out.validateH = Number.isFinite(vh) ? Math.min(72, Math.max(2, Math.round(vh))) : 24;
   out.guard.lastN = Math.min(

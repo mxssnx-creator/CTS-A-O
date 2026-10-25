@@ -918,6 +918,14 @@ describe("independent historic exit strategy", () => {
     assert.equal(limited[pair]?.length ?? 0,Math.min(6,local[pair]?.length ?? 0));
     const qualifiedIds=new Set((local[pair]??[]).map(p=>configId(EXIT_BOT,pair.split('|')[1],p)));
     assert.ok((limited[pair]??[]).every(p=>qualifiedIds.has(configId(EXIT_BOT,pair.split('|')[1],p))));
+    const gapDiagnostics = emptyExitStrategyDiagnostics();
+    const gapValidation = {...validation,minTrail:0.004};
+    const gapFits = finish(exitStrategyProtectsGen(u,[pair],{...settings,trailShares:[0.1,0.5]},null,u.nowT,gapValidation,gapDiagnostics,entryFilters));
+    assert.ok(gapDiagnostics.trailTooShort > 0,"sub-floor trailing gaps are rejected before qualification");
+    assert.ok(gapDiagnostics.evaluated>0,"feasible candidates still receive their independent financial evaluation");
+    const gapTapes = buildTapes(u,[],validation.cost,undefined,new Set([pair]),null,undefined,
+      {...gapValidation,entry:entryFilter,pairProtects:gapFits});
+    assert.equal(gapTapes.length,gapFits[pair]?.length??0,"every qualified Signal Exit has an executable tape");
     const ordinary = `${EXIT_BOT}|ema-9-21@m15`;
     const ordinaryFit = (expanded: boolean) => finish(exitStrategyProtectsGen(u, [ordinary],
       { ...settings, signalRanges: expanded ? settings.signalRanges : [] }, null, u.nowT, validation));
@@ -1021,6 +1029,13 @@ describe("independent historic exit strategy", () => {
       "trailing",
       "trailing-only",
     ]);
+    const lowCapDiagnostics = emptyExitStrategyDiagnostics();
+    const lowCap = finish(exitStrategyProtectsGen(u,[pair],{...settings,maxConfigsPerPair:6},
+      null,u.nowT,{cost:0.002,minPf:1.05,minTrades:4,minSl:0.005,minTrail:0.005},lowCapDiagnostics))[pair]??[];
+    assert.ok(protects.length>6,"fixture has more passing configs than the smaller budget");
+    assert.equal(lowCap.length,6,"only passing configs consume retention slots");
+    assert.equal(lowCapDiagnostics.evaluated,diagnostics.evaluated,"retention budget never truncates qualification");
+    assert.ok(lowCapDiagnostics.capped>0,"discarded passing configs are counted explicitly");
     assert.ok(
       new Set(protects.map((protect) => protect.tp)).size > 1,
       "the selected TP remains adjustable",

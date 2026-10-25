@@ -1097,15 +1097,14 @@ export function SignalsSettings(props: {
             </div>
           </Field>
           <Field
-            label="Volume factor (× normal)"
-            hint="8 = 800% of a normal order. Applied after Block and relation volume; live account and per-position risk caps still apply."
+            label="Signals Coordination volume ratio"
+            hint="0.1–5.0 in 0.1 steps; default 1.0. Applied once with the strategy range ratio before account and position risk caps."
           >
             <Num
-              int
               value={coordination.volumeFactor}
-              min={1}
-              max={22}
-              step={1}
+              min={0.1}
+              max={5}
+              step={0.1}
               onChange={(v) => set(["coordination", "volumeFactor"], v)}
             />
           </Field>
@@ -1150,22 +1149,21 @@ export function SignalsSettings(props: {
         </div>
       </div>
       <div style={{ borderTop: "1px solid var(--v-border)", paddingTop: 10 }}>
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>Combined indication volume factors</div>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>Indication type volume ratios</div>
         <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginBottom: 8 }}>
-          These per-kind factors apply only to combined higher-timeframe lanes (`@m…c`). Every
-          indication starts at neutral 1×; Signals Coordination has its own 8× default above. PF
-          validation stays normalized per normal order, while simulated P&L and live sizing include
-          the configured factor.
+          Applies once to each ordinary indication type on standalone and combined lanes, including
+          independent Exit. Base order volume × indication ratio × strategy range ratio determines
+          requested size before account limits. Every ratio defaults to 1.0; allowed values are
+          0.1–5.0 in 0.1 steps. PF gates use unit returns and are unchanged by these sizing ratios.
         </div>
         <div className="v2-grid v2-cols-4" style={{ gap: 8 }}>
           {INDICATION_KINDS.map((kind) => (
-            <Field key={kind} label={`${kind[0].toUpperCase()}${kind.slice(1)} × normal`}>
+            <Field key={kind} label={`${kind[0].toUpperCase()}${kind.slice(1)} indication volume ratio`}>
               <Num
-                int
                 value={combinedVolumeFactors[kind]}
-                min={1}
-                max={22}
-                step={1}
+                min={0.1}
+                max={5}
+                step={0.1}
                 onChange={(v) => set(["combinedVolumeFactors", kind], v)}
               />
             </Field>
@@ -1427,10 +1425,8 @@ function stepValues(from: number, to: number, step: number, digits: number, max:
 }
 
 /** The 0.2 ladder, plus the explicitly supported 2.5× value. */
-const RANGE_VOLUME_FACTOR_CHOICES = [...new Set([...stepValues(0.2, 5, 0.2, 1, 25), 2.5])].sort(
-  (a, b) => a - b,
-);
-const COORD_VOLUME_FACTOR_CHOICES = stepValues(0.2, 5, 0.2, 1, 25);
+const RANGE_VOLUME_FACTOR_CHOICES = stepValues(0.1, 5, 0.1, 1, 50);
+const COORD_VOLUME_FACTOR_CHOICES = RANGE_VOLUME_FACTOR_CHOICES;
 
 function VolumeFactorInput(props: { value: number; onChange: (v: number) => void }) {
   return (
@@ -1577,8 +1573,8 @@ export function RangeEditor(props: {
       {on && (
         <div className="v2-grid v2-cols-3">
           <Field
-            label="Volume factor × normal"
-            hint="Multiplies the base order unit (default 0.2% of account balance); 1 = neutral. Optional balance-relative budgets apply only when enabled."
+            label={`${props.title} volume ratio`}
+            hint="Base order volume × indication ratio × this range ratio, each applied once. 0.1–5.0 in 0.1 steps; default 1.0. Account and risk limits still apply."
           >
             <VolumeFactorInput
               value={s.volumeFactor ?? props.defaults.volumeFactor ?? 1}
@@ -1944,7 +1940,7 @@ export function MinimalPlusRange(props: {
             onChange={(v) => put({ slOfTp: v })}
           />
           <Field
-            label="Volume factor × normal"
+            label="Minimal Plus volume ratio"
             hint="Multiplies the base order unit (default 0.2% of account balance); 1 = neutral. Optional balance-relative budgets apply only when enabled."
           >
             <VolumeFactorInput
@@ -2982,6 +2978,10 @@ export function SettingsPage() {
                     onChange={(v) => set(["exitStrategy", "maxConfigsPerPair"], Math.round(v))}
                   />
                 </Field>
+                <Field label="Exit range volume ratio" hint="Independent of Wide and Signal parameter ranges. Base order volume × indication ratio × Exit ratio; default 1.0.">
+                  <VolumeFactorInput value={exits.volumeFactor ?? 1}
+                    onChange={v => set(["exitStrategy","volumeFactor"],v)} />
+                </Field>
                 <Field
                   label="Fitted TP range (%)"
                   hint="target-distance floor and cap fitted from prehistory"
@@ -3734,7 +3734,7 @@ export function SettingsPage() {
               />
             </Field>
             <Field label="Axis volume per set" hint="relative to its base set · 0.1 =10% · captured at entry">
-              <Num step={0.01} min={0.01} max={5} value={s.axis?.volumeFactor ?? 0.1}
+              <Num step={0.1} min={0.1} max={5} value={s.axis?.volumeFactor ?? 1}
                 onChange={(v) => set(["axis", "volumeFactor"], v)} />
             </Field>
             <Field label="Rung size (× Axis base)" hint="0.1 – 5">
@@ -4643,7 +4643,7 @@ export function SettingsPage() {
                 </Field>
                 <Field
                   label="Hedge volume factor"
-                  hint="scales only hedge-selected Signal entries · 0.2–5× in 0.2 steps · 1× is neutral; position and account caps still apply"
+                  hint="scales only hedge-selected Signal entries · 0.1–5× in 0.1 steps · 1× is neutral; position and account caps still apply"
                 >
                   <CoordVolumeFactorInput
                     value={c.hedgeVolumeFactor ?? 1}

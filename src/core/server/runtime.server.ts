@@ -233,6 +233,7 @@ import {
   selectionScoreAt,
   positionMult,
   positionVolume,
+  rangeVolumeFactorFor,
   freshEntry,
   seatedForEntry,
   stepSeats,
@@ -284,6 +285,7 @@ import {
   signalCoordinationRanges,
 } from "../signal-coordination.ts";
 import { volumeFactorForStrategy } from "../volume-factor.ts";
+import { volumeRatio } from "../volume-ratio.ts";
 
 import os from "node:os";
 import { isDeepStrictEqual } from "node:util";
@@ -330,7 +332,6 @@ import {
 import {
   DEFAULT_SIGNALS,
   PRE_EXPANDED_SIGNAL_SOURCES,
-  signalRangeOf,
   type SignalAccept,
   type SignalSettings,
 } from "../signal-config.ts";
@@ -1165,6 +1166,7 @@ export class CoreRuntime {
     // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
     const savedWf = migrateSignalHistory150(db, migrateSignalLast4Policy(db, migrateSignalEvaluationPolicy(db, migrateWfCaps(db))));
     migrateExpandedSignalDefaults(db);
+    migrateNeutralVolumeRatios(db);
     migrateMicroBreakoutFocus(db);
     migrateMicroContextFocus(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
@@ -9593,12 +9595,9 @@ export class CoreRuntime {
       const recordedHedgeVol = held ? (prev?.hedgeVol ?? 1) : appliedHedgeVol;
       const coordVol = held ? (prev?.coordVol ?? 1) : cv;
       // The configured range factor is captured only on entry; a settings edit cannot resize a held position.
-      const signalRange = sigCfg(op.cfg) ? signalRangeOf(op.cfg.split("|")[1] ?? "") : null;
       const rangeVol = held
         ? 1
-        : signalRange
-          ? (this.wf.signalRangeVolumeFactors?.[signalRange] ?? 1)
-          : (this.wf.rangeVolumeFactors?.[rangeOfId(op.cfg) || "wide"] ?? 1);
+        : rangeVolumeFactorFor(tp, this.wf);
       const recordedRangeVol = held ? (prev?.rangeVol ?? 1) : rangeVol;
       openKeys.add(openDupKey(op));
       // the price at adoption, set once (a position held from before keeps its own, or none)
@@ -10621,6 +10620,28 @@ function migrateSignalEvaluationPolicy(db: CoreDb, saved: Partial<WalkForwardOpt
 }
 
 /** Upgrade the former 100h factory policy once; explicit custom horizons stay unchanged. */
+function migrateNeutralVolumeRatios(db: CoreDb): void {
+  if (db.kvGet("neutralVolumeRatiosV1")) return;
+  const settings=db.kvGet<SettingsPatch>("settings"), presets=db.kvGet<Preset[]>("presets");
+  const backup=structuredClone({settings,presets});
+  const upgrade=(s:SettingsPatch|undefined) => {
+    if(!s) return;
+    if(s.signals?.coordination?.volumeFactor!==undefined)
+      s.signals.coordination.volumeFactor=s.signals.coordination.volumeFactor===8?1:volumeRatio(s.signals.coordination.volumeFactor);
+    if(s.axis?.volumeFactor!==undefined)
+      s.axis.volumeFactor=s.axis.volumeFactor===0.1?1:volumeRatio(s.axis.volumeFactor);
+    if(s.signals?.combinedVolumeFactors) for(const kind of Object.keys(s.signals.combinedVolumeFactors) as Array<keyof typeof s.signals.combinedVolumeFactors>)
+      s.signals.combinedVolumeFactors[kind]=volumeRatio(s.signals.combinedVolumeFactors[kind]);
+  };
+  upgrade(settings); if(Array.isArray(presets)) for(const p of presets) upgrade(p.settings);
+  db.tx(()=>{
+    db.kvSet("neutralVolumeRatiosBackupV1",backup);
+    if(settings) db.kvSet("settings",settings);
+    if(presets) db.kvSet("presets",presets);
+    db.kvSet("neutralVolumeRatiosV1",true);
+  });
+}
+
 function migrateSignalHistory150(db: CoreDb, saved: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
   if (db.kvGet("signalHistory150V1")) return saved;
   const settings = db.kvGet<SettingsPatch>("settings");

@@ -474,6 +474,8 @@ describe(
           assert.equal(await structure.inputValue(), "extrema", "additional Exit range survives settings save/reload");
           await page.getByRole("button", { name: "Remove range 2", exact: true }).click();
           await saveNow();
+          await page.getByRole("switch", { name: "Minimal range", exact: true }).click();
+          await page.getByRole("switch", { name: "Short range", exact: true }).click();
           const minimalHold = page.getByRole("spinbutton", { name: /^Minimal range maximum hold \(minutes\)/ });
           const shortHold = page.getByRole("spinbutton", { name: /^Short range maximum hold \(minutes\)/ });
           const previousHolds = [await minimalHold.inputValue(), await shortHold.inputValue()];
@@ -486,6 +488,21 @@ describe(
           assert.equal(await shortHold.inputValue(), "30");
           await minimalHold.fill(previousHolds[0]);
           await shortHold.fill(previousHolds[1]);
+          await saveNow();
+          const indicationRatio = page.getByRole("spinbutton", { name: "Trend indication volume ratio", exact: true });
+          const rangeRatio = page.getByRole("combobox", { name: /^Minimal range volume ratio/ });
+          const exitRatio = page.getByRole("combobox", { name: /^Exit range volume ratio/ });
+          const previousRatios = [await indicationRatio.inputValue(),await rangeRatio.inputValue(),await exitRatio.inputValue()];
+          await indicationRatio.fill("1.3"); await rangeRatio.selectOption("0.1"); await exitRatio.selectOption("5");
+          await saveNow();
+          await page.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });
+          await indicationRatio.waitFor({ state: "visible", timeout: 60_000 });
+          assert.equal(await indicationRatio.inputValue(),"1.3");
+          assert.equal(await rangeRatio.inputValue(),"0.1");
+          assert.equal(await exitRatio.inputValue(),"5");
+          await indicationRatio.fill(previousRatios[0]); await rangeRatio.selectOption(previousRatios[1]); await exitRatio.selectOption(previousRatios[2]);
+          await page.getByRole("switch", { name: "Minimal range", exact: true }).click();
+          await page.getByRole("switch", { name: "Short range", exact: true }).click();
           await saveNow();
           await settleRequests();
         },

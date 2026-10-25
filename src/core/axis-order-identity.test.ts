@@ -54,7 +54,7 @@ it("Axis sets use 10% of the matching base sizing while their admission and intr
   const small=walkForward(u,tapes,{...o,axisVolumeFactor:0.1});
   const base=walkForward(u,tapes,{...o,axisVolumeFactor:1});
   assert.equal(small.trades.length,90);assert.equal(base.trades.length,90);
-  assert.equal(DEFAULT_SETTINGS.axis.volumeFactor,0.1);
+  assert.equal(DEFAULT_SETTINGS.axis.volumeFactor,1);
   for(let i=0;i<90;i++) {
     assert.equal(small.trades[i].cfg,base.trades[i].cfg);
     assert.equal(small.trades[i].entryT,base.trades[i].entryT);
