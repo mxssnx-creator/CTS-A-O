@@ -384,9 +384,8 @@ export function BlockSources(props: {
 }
 
 /**
- * Signals processing: proven sources in a short and a medium range, the best N active (by Base, per symbol),
- * each with its own 42 Normal + 35 Trailing configs run independently per symbol and direction, and the last-N
- * guard that disables a config while its recent results average below zero.
+ * Signals owns its protection grid and history. Each source/range/lane/type/config/symbol/side
+ * qualifies independently; ordinary strategy grids cannot supply another Signal's passing evidence.
  */
 export function SignalsSettings(props: {
   signals: Any;
@@ -426,6 +425,13 @@ export function SignalsSettings(props: {
   const processingCounts = signalProgressCounts(st);
   return (
     <div className="v2-lines" style={{ gap: 10 }}>
+      <div className="v2-muted">
+        Strategy routing: classic and coordinated Signals use the Signals range and independently
+        qualified Exit configs. The protection settings below define the Signals candidate grid;
+        historical ranking selects eligible configs using their own source, parameter range, lane,
+        type, symbol and direction. Ordinary Short / General / Long and Micro grids are not expanded
+        into Signals. Short / Medium below are Signal source parameter ranges.
+      </div>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <Switch
           label="Signals processing"
@@ -2599,7 +2605,7 @@ export function SettingsPage() {
 
       <Panel
         title="Signals"
-        sub="signal sources · full pair × strategy type × symbol × direction ranked independently · each type uses its own configs and returns"
+        sub="Signals range + independent Exit · own candidate grid, historical ranking and entry gates"
       >
         <SignalsSettings signals={s.signals} set={set} status={status?.signals} grid={s.grid} />
       </Panel>
@@ -2607,7 +2613,7 @@ export function SettingsPage() {
       <div className="v2-grid v2-cols-2">
         <Panel
           title="Gates"
-          sub="PF neutral = 1.00 · default min 1.10"
+          sub="Return PF neutral = 1.00 · default min 1.10 · displayed PF edge = PF − 1, neutral 0"
           right={
             <select
               className="v2-select"
@@ -2797,7 +2803,7 @@ export function SettingsPage() {
               <div className="v2-grid v2-cols-3">
                 <Field
                   label="Historic Exit"
-                  hint="runs through Normal Base and post-Base gates; it does not inherit Bot execution triggers"
+                  hint="builds independently qualified Exit configs for ordinary sources and Signals, each with its own history and gates; does not inherit Bot execution triggers"
                 >
                   <Switch
                     label="Build independent Exit"
@@ -3005,7 +3011,7 @@ export function SettingsPage() {
         </Panel>
         <Panel
           title="Strategies"
-          sub="execution toggles — Base always computes every sub-strategy"
+          sub="Ordinary processing uses enabled strategy ranges + Exit, excluding Signals. Signals has its own grid above. Base computes every configured sub-strategy."
           right={
             <select
               className="v2-select"

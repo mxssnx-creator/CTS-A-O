@@ -28,7 +28,22 @@ type ComparisonPf = {
   noLoss?: unknown;
   pfConvention?: unknown;
   pfBasis?: unknown;
+  unknownReturns?: unknown;
 };
+
+/** Signed presentation only. Qualification still uses conventional PF (breakeven = 1). */
+export function returnPfEdge(row?: ComparisonPf | null): number | null {
+  if (!hasUnitReturnBasis(row)) return null;
+  const pf = measuredComparisonPf(row);
+  return pf === null ? null : pf - 1;
+}
+
+export function returnPfEdgeText(row?: ComparisonPf | null): string {
+  const edge = returnPfEdge(row);
+  if (edge !== null) return `${edge > 0 ? "+" : ""}${edge.toFixed(2)}`;
+  if (hasUnitReturnBasis(row) && comparisonPfText(row) === "No losses") return "No losses";
+  return "–";
+}
 
 /** A valid empty unit sample is different from an archive whose execution weighting cannot be recovered. */
 export function hasUnitReturnBasis(
