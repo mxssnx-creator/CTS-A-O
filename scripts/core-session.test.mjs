@@ -961,3 +961,22 @@ it("opening counts include endpoint-held and endpoint-entered orders while separ
  assert.match(md,/2 funded positions \/ 3 orders opened \(0 positions \/ 0 orders settled; 2 positions \/ 3 orders still open\)/);
  assert.match(summaryOf(html),/Positions \/ orders opened/);
 });
+
+it("margin usage alone never changes loss equity or drawdown for identical funded notionals", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cts-margin-not-loss-"));
+  try {
+    const results = [];
+    for (const leverage of [1, 100]) {
+      const raw = sidecarReplayRaw();
+      raw.settings.book.leverage = leverage;
+      const file = join(dir, `raw-${leverage}.json`);
+      writeFileSync(file, JSON.stringify(raw));
+      const run = sidecarReplayCli(file, join(dir, `report-${leverage}`));
+      assert.equal(run.result.status, 0, run.result.stderr || run.result.stdout);
+      results.push(run.data().total);
+    }
+    for (const key of ["pf", "eqMin", "equityEnd", "equityMaxDd", "equityMaxDdPct", "net"])
+      assert.equal(results[0][key], results[1][key], key);
+    assert.ok(Math.abs(results[0].marginMax - results[1].marginMax * 100) < 1e-4);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

@@ -127,6 +127,19 @@ if (mode === "prepare") {
     lookbackH: 12,
     holdH: 3,
   };
+  // Experimental stop grid; full gates, costs, sizing, TP and trailing choices stay frozen.
+  // This is a configured ratio ceiling; hard minimum stops remain authoritative.
+  const slRatioCap = Number(arg("sl-ratio-cap", "0"));
+  if (!Number.isFinite(slRatioCap) || slRatioCap < 0 || (slRatioCap > 0 && slRatioCap < 0.25) || slRatioCap > 5)
+    throw new Error("--sl-ratio-cap must be 0 (baseline), or 0.25..5");
+  if (slRatioCap) {
+    const capRange = r => ({ ...r,
+      slOfTp: [...new Set(r.slOfTp.map(x => Math.min(x, slRatioCap)))],
+      ...(r.trailSlOfTp == null ? {} : { trailSlOfTp: Math.min(r.trailSlOfTp, slRatioCap) }) });
+    seed.grid = capRange(seed.grid);
+    for (const key of ["micro", "minimal", "short", "general", "long", "minimalPlus"])
+      if (seed.grid[key]) seed.grid[key] = capRange(seed.grid[key]);
+  }
   const make = (settings, wf = {}) => {
     const rt = new CoreRuntime(
       new CoreDb(":memory:"),
@@ -162,6 +175,7 @@ if (mode === "prepare") {
     schema: "cts-session-study-v1",
     id: `micro-${symbolCount}-symbols-${range}-12h-pre-12h-run`,
     range,
+    stopExperiment: { configuredSlRatioCap: slRatioCap || null, exitUnchanged: true, minimumStopsUnchanged: true },
     symbols,
     window: { indicatorStartT, evaluationFromT, tradeStartT, endT, preH, runH },
     feed: {

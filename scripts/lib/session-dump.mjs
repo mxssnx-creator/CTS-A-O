@@ -7,7 +7,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 export const MAX_SESSION_CHUNK_BYTES = 8 * 1024 * 1024;
 const BUFFER_BYTES = 64 * 1024;
 const TAPE_SCHEMA = 'cts-session-tape-trades-v1';
-const VALIDATION_SCHEMA = 'cts-session-validation-v1';
+const VALIDATION_SCHEMA = 'cts-session-validation-v2';
 const ARRAY_SCHEMA = 'cts-session-array-v1';
 const RESERVED_ARRAY_FIELDS = new Set(['tapeTrades', 'validation', 'arraySidecars', 'tapeTradesSidecar', 'validationSidecar', '__proto__', 'constructor', 'prototype']);
 const own = (x, k) => Object.prototype.hasOwnProperty.call(x, k);
@@ -128,7 +128,12 @@ async function writeSidecar(file, items, { maxChunkBytes, rowsKey, schema, itemN
         if (!item || typeof item !== 'object' || Array.isArray(item) || !iterable(item[rowsKey]))
           throw new TypeError(`Sidecar item requires iterable ${rowsKey}`);
         const meta = Object.fromEntries(Object.entries(item).filter(([k]) => k !== rowsKey));
+        // Selected config IDs can exceed a whole chunk (large independent grids).
+        // Stream them individually, retaining exact membership/order and all checks.
+        const selected = schema === VALIDATION_SCHEMA && Array.isArray(meta.real) ? meta.real : null;
+        if (selected) meta.real = [];
         await line([tag, i, meta], 1, 0);
+        if (selected) for (let j = 0; j < selected.length; j++) await line(['s', i, j, selected[j]], 0, 0);
         let row = 0;
         for await (const x of item[rowsKey]) await line(['r', i, row++, x], 0, 1);
       } else await line(['i', i, item], 1, 1);
@@ -191,7 +196,7 @@ export async function writeSessionDump(file, raw, options = {}) {
 }
 
 function descriptor(manifest, spec) {
-  if (!manifest || manifest.schema !== spec.schema || !Array.isArray(manifest.chunks) ||
+  if (!manifest || !(spec.schemas ?? [spec.schema]).includes(manifest.schema) || !Array.isArray(manifest.chunks) ||
       !count(manifest[spec.itemName]) || !count(manifest.rows) || !count(manifest.records) || !/^[a-f0-9]{64}$/.test(manifest.sha256 ?? ''))
     throw new Error('Invalid session sidecar manifest');
   for (const x of manifest.chunks) if (!x || !count(x.bytes) || x.bytes < 1 || x.bytes > MAX_SESSION_CHUNK_BYTES ||
@@ -234,6 +239,11 @@ async function* readSidecar(file, manifest, spec) {
         currentIndex = rec[1]; rowOffset = 0;
         current = { ...rec[2], [spec.rowsKey]: [] };
         actual[spec.itemName]++; total[spec.itemName]++;
+      } else if (spec === validationSpec && manifest.schema === VALIDATION_SCHEMA && rec[0] === 's') {
+        if (rec.length !== 4 || !current || !Array.isArray(current.real) || rec[1] !== currentIndex ||
+            rec[2] !== current.real.length || rowOffset !== 0 || typeof rec[3] !== 'string')
+          throw new Error('Invalid selected config ordinal');
+        current.real.push(rec[3]);
       } else if (spec.rowsKey && rec[0] === 'r') {
         if (rec.length !== 4 || !current || rec[1] !== currentIndex || rec[2] !== rowOffset++) throw new Error('Invalid sidecar row ordinal');
         current[spec.rowsKey].push(rec[3]); actual.rows++; total.rows++;
@@ -251,7 +261,7 @@ async function* readSidecar(file, manifest, spec) {
 }
 
 const tapeSpec = { schema: TAPE_SCHEMA, itemName: 'tapes', rowsKey: 'trades', tag: 't' };
-const validationSpec = { schema: VALIDATION_SCHEMA, itemName: 'steps', rowsKey: 'checks', tag: 'v' };
+const validationSpec = { schema: VALIDATION_SCHEMA, schemas: [VALIDATION_SCHEMA, 'cts-session-validation-v1'], itemName: 'steps', rowsKey: 'checks', tag: 'v' };
 const arraySpec = { schema: ARRAY_SCHEMA, itemName: 'items', rowsKey: null };
 async function headerOf(file) {
   const raw = JSON.parse(await readFile(file, 'utf8'));

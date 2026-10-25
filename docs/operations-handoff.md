@@ -1,3 +1,13 @@
+## 25 October — loss drawdown and post-Base stop comparison
+
+User explicitly means loss/open-P&L equity drawdown, not margin usage, and wants preserved high post-Base PF. Reconfirmed equity arithmetic excludes margin; new full native replay regression varies leverage 1→100 with identical funded notionals and proves unchanged P&L/PF/minimum equity/drawdown while margin changes 100×.
+
+Work based on PR199 head 921612d. Fixed actual high-cell evidence-export failure: completed Micro/Minimal runs produced 17,455,990 /13,541,750-byte selected-config metadata exceeding 8MiB. Validation sidecar v2 streams selected config IDs losslessly; reader still accepts v1. 44 sidecar/consumer tests pass, 41 report/funded tests plus margin-specific regression, 13 trailing/readiness tests, types/build pass. No economic production default changed.
+
+Stop experiments use scripts/micro-study.mjs --sl-ratio-cap (configured ladder ceiling; mandatory floors may yield higher actual ratios, disclosed). Same frozen 12 symbols/window, full 1m pricing and original PF/gates/sizing/cost/Exit. Wide baseline whole-arm PF .592, peak DD15.04%; cap1 PF.280 DD1.49%; cap0.5 PF.132 DD.649%. Short baseline PF2.016, peakDD231.95%, loss below initial272.94%; cap1 PF.663, peakDD8.22%, loss below initial7.95%. These tight candidates FAIL the PF objective and are not promoted. Short1.5/2 continue; report/docs/postbase-stop-study-20261025 retained protocols, own-entry and exact-return audits. First2,526 settled entries: zero own-direction gate failures, zero missing/mismatched source closes.
+
+Local runs/stop-study-* contain complete raw sidecars. scripts/summarize-stop-study.py rebuilds compact report. Workflow stop-loss-range-study.yml runs Micro1, Minimal1, General.75, Long.75 with full native reports and independent entry/hour audits. Pending studies are not successes. Main is not merged/reloaded; X02 remains clean from preceding technical test, no venue actions this turn. Stable positive execution across ranges remains UNMET. Do not weaken gates, discard losing evidence or attribute lower DD exclusively to stops when admission/exposure counts also change.
+
 ## 25 October 2026 — ready-book execution and seven-range evidence (PR199)
 
 Branch `fix/live-ready-progress-20261025`, simulation capacity source `b8d4247b79fb98cfecc740f4f36bce3e3af08d99`. Main has not been merged/reloaded for this change. Backup `backup/main-before-ready-20261025` exists. Report: `docs/live-ready-ranges-20261025/report.md`.

@@ -1,0 +1,20 @@
+  [1053 s] computing Tapes 99% (job 72%) strategy tapes on 2 cores · 612 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 4504 MB
+  [1083 s] computing Real 0% (job 80%) 12h sim · step 0/12 · symbols 12/12 · computes 0 · paper on #0 · rss 5903 MB
+  [1113 s] computing Real 33% (job 85%) 12h sim · step 4/12 · engine 12h pre / Last-15 · entry Last-0 · symbols 12/12 · computes 0 · paper on #0 · rss 6259 MB
+  [1143 s] computing Real 50% (job 88%) 12h sim · step 6/12 · engine 12h pre / Last-15 · entry Last-0 · symbols 12/12 · computes 0 · paper on #0 · rss 6500 MB
+  [1174 s] computing Real 75% (job 91%) 12h sim · step 9/12 · engine 12h pre / Last-15 · entry Last-0 · symbols 12/12 · computes 0 · paper on #0 · rss 6600 MB
+[core-v2] compute #1 done in 1189331 ms · sim PF including 165006 open marks: 0.54 n 281567 · loop max 1905 ms (worst slice of the last 60 s 1855 ms in Real, 79 over 40 ms)
+  [1205 s] waiting for the paper step · computing Paper 97% (job 100%) self-audit · 2551 seats · symbols 12/12 · computes 1 · paper on #0 · rss 6606 MB
+  paper step on compute #1: 2551 paper/current selected configs (18 s after the compute)
+  compute #1 over 12 symbols (12 loaded of 12, 12 asked) after 1208 s
+file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/lib/session-dump.mjs:119
+    if (n > limit) throw new Error(`Sidecar record is ${n} bytes, exceeding maxChunkBytes ${limit}`);
+                         ^
+
+Error: Sidecar record is 13541750 bytes, exceeding maxChunkBytes 8388608
+    at line (file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/lib/session-dump.mjs:119:26)
+    at writeSidecar (file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/lib/session-dump.mjs:131:15)
+    at async writeSessionDump (file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/lib/session-dump.mjs:169:34)
+    at async file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/core-session.mjs:1675:18
+
+Node.js v24.21.0
