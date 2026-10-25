@@ -1,0 +1,3423 @@
+{
+  "schema": "cts-signal-coverage-v1",
+  "ok": true,
+  "sourceSha256": "3d99231e34678de8c3213faaa19a81204d3dd415376b369201cddfe910d11d40",
+  "protocolSha256": "4db59b4c26907cd3a6f0595ba7750e0bf5526e579ad625b7c251a89a417b9961",
+  "window": {
+    "evaluationFromT": 1791644400000,
+    "tradeStartT": 1792184400000,
+    "endT": 1792227600000,
+    "preH": 150,
+    "runH": 12
+  },
+  "symbols": [
+    "BTC-USDT",
+    "ETH-USDT",
+    "BNB-USDT",
+    "SOL-USDT",
+    "XRP-USDT",
+    "DOGE-USDT",
+    "ADA-USDT",
+    "LINK-USDT",
+    "AVAX-USDT",
+    "LTC-USDT",
+    "DOT-USDT",
+    "BCH-USDT"
+  ],
+  "catalog": {
+    "sources": 118,
+    "sourceLanes": 884,
+    "requestedCells": 182988,
+    "expectedEffectiveConfiguredCells": 159783,
+    "builtConfigs": 160115,
+    "fittedOrRetainedConfigs": 332,
+    "missingConfiguredCells": 0,
+    "missingExamples": [],
+    "expectedExit": 122,
+    "builtExit": 122,
+    "closes": 12609576
+  },
+  "hourly": [
+    {
+      "t": 1792184400000,
+      "contexts": 3842760,
+      "empty": 1098484,
+      "lastNReady": 1172185,
+      "warmupSampleReady": 1172185,
+      "minimumSampleReady": 204916,
+      "passed": 9971,
+      "configs": 160115,
+      "configsLastNReady": 124147,
+      "configsPassed": 7390,
+      "historyCloses": 12330098,
+      "passedCloses": 152539,
+      "passedGp": 793.9254001130971,
+      "passedGl": 171.4521803979144,
+      "maxPassedDdtH": 72.91666666666667,
+      "failures": {
+        "closes": 3637844,
+        "pf": 30688,
+        "lastN": 13265,
+        "lcb": 4328,
+        "net": 144538,
+        "ddt": 1386,
+        "pre": 559,
+        "green": 174,
+        "ddr": 7
+      },
+      "lastNReadyPct": 30.503726488253236,
+      "minimumSampleReadyPct": 5.332521416898271,
+      "passedPct": 0.2594749607053264,
+      "qualifiedHistory": {
+        "n": 152539,
+        "gp": 793.9254001130971,
+        "gl": 171.4521803979144,
+        "pf": 4.630593779971285,
+        "pfState": "ratio"
+      }
+    },
+    {
+      "t": 1792188000000,
+      "contexts": 3842760,
+      "empty": 1098276,
+      "lastNReady": 1174092,
+      "warmupSampleReady": 1174092,
+      "minimumSampleReady": 206617,
+      "passed": 9885,
+      "configs": 160115,
+      "configsLastNReady": 124155,
+      "configsPassed": 7327,
+      "historyCloses": 12361440,
+      "passedCloses": 151203,
+      "passedGp": 785.8728962510424,
+      "passedGl": 168.5013409664132,
+      "maxPassedDdtH": 72.91666666666667,
+      "failures": {
+        "closes": 3636143,
+        "pf": 30855,
+        "lastN": 13392,
+        "lcb": 4280,
+        "net": 146095,
+        "ddt": 1362,
+        "pre": 561,
+        "green": 181,
+        "ddr": 6
+      },
+      "lastNReadyPct": 30.553352278050152,
+      "minimumSampleReadyPct": 5.376786476386764,
+      "passedPct": 0.2572369859163726,
+      "qualifiedHistory": {
+        "n": 151203,
+        "gp": 785.8728962510424,
+        "gl": 168.5013409664132,
+        "pf": 4.66389698588623,
+        "pfState": "ratio"
+      }
+    },
+    {
+      "t": 1792191600000,
+      "contexts": 3842760,
+      "empty": 1097771,
+      "lastNReady": 1175918,
+      "warmupSampleReady": 1175918,
+      "minimumSampleReady": 207571,
+      "passed": 9769,
+      "configs": 160115,
+      "configsLastNReady": 124207,
+      "configsPassed": 7191,
+      "historyCloses": 12386301,
+      "passedCloses": 149039,
+      "passedGp": 775.9205297659037,
+      "passedGl": 164.4068504997284,
+      "maxPassedDdtH": 72.91666666666667,
+      "failures": {
+        "closes": 3635189,
+        "pf": 30960,
+        "lastN": 13515,
+        "lcb": 4235,
+        "net": 147013,
+        "ddt": 1332,
+        "pre": 556,
+        "green": 183,
+        "ddr": 8
+      },
+      "lastNReadyPct": 30.600870207871427,
+      "minimumSampleReadyPct": 5.401612382766554,
+      "passedPct": 0.25421832224755125,
+      "qualifiedHistory": {
+        "n": 149039,
+        "gp": 775.9205297659037,
+        "gl": 164.4068504997284,
+        "pf": 4.719514590830177,
+        "pfState": "ratio"
+      }
+    },
+    {
+      "t": 1792195200000,
+      "contexts": 3842760,
+      "empty": 1097378,
+      "lastNReady": 1177946,
+      "warmupSampleReady": 1177946,
+      "minimumSampleReady": 208737,
+      "passed": 9716,
+      "configs": 160115,
+      "configsLastNReady": 124347,
+      "configsPassed": 7149,
+      "historyCloses": 12414762,
+      "passedCloses": 148285,
+      "passedGp": 772.9704541267108,
+      "passedGl": 163.8666464647629,
+      "maxPassedDdtH": 72.91666666666667,
+      "failures": {
+        "closes": 3634023,
+        "pf": 30994,
+        "lastN": 13485,
+        "lcb": 4215,
+        "net": 148277,
+        "ddt": 1326,
+        "pre": 534,
+        "green": 182,
+        "ddr": 8
+      },
+      "lastNReadyPct": 30.653644776150475,
+      "minimumSampleReadyPct": 5.431955157230741,
+      "passedPct": 0.2528391052264518,
+      "qualifiedHistory": {
+        "n": 148285,
+        "gp": 772.9704541267108,
+        "gl": 163.8666464647629,
+        "pf": 4.717070073762245,
+        "pfState": "ratio"
+      }
+    },
+    {
+      "t": 1792198800000,
+      "contexts": 3842760,
+      "empty": 1096954,
+      "lastNReady": 1180188,
+      "warmupSampleReady": 1180188,
+      "minimumSampleReady": 209433,
+      "passed": 9680,
+      "configs": 160115,
+      "configsLastNReady": 124499,
+      "configsPassed": 7118,
+      "historyCloses": 12435644,
+      "passedCloses": 147801,
+      "passedGp": 771.1473351449665,
+      "passedGl": 163.10538532438693,
+      "maxPassedDdtH": 72.91666666666667,
+      "failures": {
+        "closes": 3633327,
+        "pf": 31154,
+        "lastN": 13616,
+        "lcb": 4205,
+        "net": 148735,
+        "ddt": 1324,
+        "pre": 530,
+        "green": 181,
+        "ddr": 8
+      },
+      "lastNReadyPct": 30.71198825843925,
+      "minimumSampleReadyPct": 5.450067139243669,
+      "passedPct": 0.2519022785706107,
+      "qualifiedHistory": {
+        "n": 147801,
+        "gp": 771.1473351449665,
+        "gl": 163.10538532438693,
+        "pf": 4.727908484513217,
+        "pfState": "ratio"
+      }
+    },
+    {
+      "t": 1792202400000,
+      "contexts": 3842760,
+      "empty": 1096787,
+      "lastNReady": 1181579,
+      "warmupSampleReady": 1181579,
+      "minimumSampleReady": 209982,
+      "passed": 9715,
+      "configs": 160115,
+      "configsLastNReady": 124560,
+      "configsPassed": 7134,
+      "historyCloses": 12450629,
+      "passedCloses": 148450,
+      "passedGp": 775.4044934363599,
+      "passedGl": 164.56924664543277,
+      "maxPassedDdtH": 72.91666666666667,
+      "failures": {
+        "closes": 3632778,
+        "pf": 31216,
+        "lastN": 13638,
+        "net": 149102,
+        "lcb": 4197,
+        "ddt": 1335,
+        "pre": 593,
+        "green": 179,
+        "ddr": 7
+      },
+      "lastNReadyPct": 30.74818619950244,
+      "minimumSampleReadyPct": 5.464353745745246,
+      "passedPct": 0.25281308226378957,
+      "qualifiedHistory": {
+        "n": 148450,
+        "gp": 775.4044934363599,
+        "gl": 164.56924664543277,
+        "pf": 4.711721717405573,
+        "pfState": "ratio"
+      }
+    },
+    {
+      "t": 1792206000000,
+      "contexts": 3842760,
+      "empty": 1091577,
+      "lastNReady": 1183617,
+      "warmupSampleReady": 1183617,
+      "minimumSampleReady": 210741,
+      "passed": 9717,
+      "configs": 160115,
+      "configsLastNReady": 124644,
+      "configsPassed": 7133,
+      "historyCloses": 12486247,
+      "passedCloses": 148516,
+      "passedGp": 777.2055925287877,
+      "passedGl": 165.12687427754383,
+      "maxPassedDdtH": 72.91666666666667,
+      "failures": {
+        "closes": 3632019,
+        "pf": 31203,
+        "lastN": 13660,
+        "net": 149865,
+        "lcb": 4156,
+        "ddt": 1331,
+        "pre": 620,
+        "green": 182,
+        "ddr": 7
+      },
+      "lastNReadyPct": 30.801220997408112,
+      "minimumSampleReadyPct": 5.4841051744058955,
+      "passedPct": 0.25286512818911405,
+      "qualifiedHistory": {
+        "n": 148516,
+        "gp": 777.2055925287877,
+        "gl": 165.12687427754383,
+        "pf": 4.706717764320223,
+        "pfState": "ratio"
+      }
+    },
+    {
+      "t": 1792209600000,
+      "contexts": 3842760,
+      "empty": 1084169,
+      "lastNReady": 1186767,
+      "warmupSampleReady": 1186767,
+      "minimumSampleReady": 211558,
+      "passed": 9649,
+      "configs": 160115,
+      "configsLastNReady": 124963,
+      "configsPassed": 7113,
+      "historyCloses": 12525682,
+      "passedCloses": 147504,
+      "passedGp": 772.3871710357143,
+      "passedGl": 163.61652843847077,
+      "maxPassedDdtH": 72.91666666666667,
+      "failures": {
+        "closes": 3631202,
+        "pf": 31328,
+        "lastN": 13576,
+        "net": 150849,
+        "lcb": 4056,
+        "ddt": 1316,
+        "pre": 601,
+        "green": 176,
+        "ddr": 7
+      },
+      "lastNReadyPct": 30.88319332979421,
+      "minimumSampleReadyPct": 5.505365934900957,
+      "passedPct": 0.25109556672808087,
+      "qualifiedHistory": {
+        "n": 147504,
+        "gp": 772.3871710357143,
+        "gl": 163.61652843847077,
+        "pf": 4.720716045055169,
+        "pfState": "ratio"
+      }
+    },
+    {
+      "t": 1792213200000,
+      "contexts": 3842760,
+      "empty": 1083215,
+      "lastNReady": 1189435,
+      "warmupSampleReady": 1189435,
+      "minimumSampleReady": 211939,
+      "passed": 9656,
+      "configs": 160115,
+      "configsLastNReady": 125144,
+      "configsPassed": 7114,
+      "historyCloses": 12554624,
+      "passedCloses": 147777,
+      "passedGp": 774.1041331955147,
+      "passedGl": 164.37660382813667,
+      "maxPassedDdtH": 72.91666666666667,
+      "failures": {
+        "closes": 3630821,
+        "pf": 31445,
+        "lastN": 13664,
+        "net": 151063,
+        "lcb": 4021,
+        "ddt": 1318,
+        "pre": 588,
+        "green": 177,
+        "ddr": 7
+      },
+      "lastNReadyPct": 30.9526225941771,
+      "minimumSampleReadyPct": 5.515280683675275,
+      "passedPct": 0.2512777274667166,
+      "qualifiedHistory": {
+        "n": 147777,
+        "gp": 774.1041331955147,
+        "gl": 164.37660382813667,
+        "pf": 4.709332807513631,
+        "pfState": "ratio"
+      }
+    },
+    {
+      "t": 1792216800000,
+      "contexts": 3842760,
+      "empty": 1081878,
+      "lastNReady": 1190748,
+      "warmupSampleReady": 1190748,
+      "minimumSampleReady": 212661,
+      "passed": 9710,
+      "configs": 160115,
+      "configsLastNReady": 125335,
+      "configsPassed": 7157,
+      "historyCloses": 12576158,
+      "passedCloses": 148727,
+      "passedGp": 779.6787970564807,
+      "passedGl": 166.31455550958935,
+      "maxPassedDdtH": 72.91666666666667,
+      "failures": {
+        "closes": 3630099,
+        "pf": 31617,
+        "lastN": 13668,
+        "net": 151548,
+        "lcb": 4046,
+        "ddt": 1330,
+        "pre": 554,
+        "green": 181,
+        "ddr": 7
+      },
+      "lastNReadyPct": 30.98679074415264,
+      "minimumSampleReadyPct": 5.534069262717422,
+      "passedPct": 0.2526829674504783,
+      "qualifiedHistory": {
+        "n": 148727,
+        "gp": 779.6787970564807,
+        "gl": 166.31455550958935,
+        "pf": 4.687976916196766,
+        "pfState": "ratio"
+      }
+    },
+    {
+      "t": 1792220400000,
+      "contexts": 3842760,
+      "empty": 1081018,
+      "lastNReady": 1191823,
+      "warmupSampleReady": 1191823,
+      "minimumSampleReady": 212880,
+      "passed": 9750,
+      "configs": 160115,
+      "configsLastNReady": 125454,
+      "configsPassed": 7186,
+      "historyCloses": 12587383,
+      "passedCloses": 149443,
+      "passedGp": 784.3944449053129,
+      "passedGl": 167.82077222440157,
+      "maxPassedDdtH": 72.91666666666667,
+      "failures": {
+        "closes": 3629880,
+        "pf": 31693,
+        "lastN": 13691,
+        "net": 151596,
+        "lcb": 4064,
+        "ddt": 1350,
+        "pre": 550,
+        "green": 181,
+        "ddr": 5
+      },
+      "lastNReadyPct": 31.014765429014563,
+      "minimumSampleReadyPct": 5.539768291540455,
+      "passedPct": 0.25372388595696843,
+      "qualifiedHistory": {
+        "n": 149443,
+        "gp": 784.3944449053129,
+        "gl": 167.82077222440157,
+        "pf": 4.674000926753332,
+        "pfState": "ratio"
+      }
+    },
+    {
+      "t": 1792224000000,
+      "contexts": 3842760,
+      "empty": 1080440,
+      "lastNReady": 1193240,
+      "warmupSampleReady": 1193240,
+      "minimumSampleReady": 213269,
+      "passed": 9828,
+      "configs": 160115,
+      "configsLastNReady": 125648,
+      "configsPassed": 7226,
+      "historyCloses": 12601699,
+      "passedCloses": 150784,
+      "passedGp": 796.1000373391446,
+      "passedGl": 172.71418150961648,
+      "maxPassedDdtH": 72.91666666666667,
+      "failures": {
+        "closes": 3629491,
+        "pf": 31815,
+        "lastN": 13779,
+        "net": 151664,
+        "lcb": 4124,
+        "ddt": 1358,
+        "pre": 514,
+        "green": 180,
+        "ddr": 7
+      },
+      "lastNReadyPct": 31.051639967106976,
+      "minimumSampleReadyPct": 5.549891224016072,
+      "passedPct": 0.25575367704462415,
+      "qualifiedHistory": {
+        "n": 150784,
+        "gp": 796.1000373391446,
+        "gl": 172.71418150961648,
+        "pf": 4.609349564585806,
+        "pfState": "ratio"
+      }
+    },
+    {
+      "t": 1792227600000,
+      "contexts": 3842760,
+      "empty": 1079966,
+      "lastNReady": 1193674,
+      "warmupSampleReady": 1193674,
+      "minimumSampleReady": 213296,
+      "passed": 9822,
+      "configs": 160115,
+      "configsLastNReady": 125652,
+      "configsPassed": 7221,
+      "historyCloses": 12608253,
+      "passedCloses": 150732,
+      "passedGp": 795.5105942019156,
+      "passedGl": 172.6115367908078,
+      "maxPassedDdtH": 72.91666666666667,
+      "failures": {
+        "closes": 3629464,
+        "pf": 31810,
+        "lastN": 13782,
+        "net": 151701,
+        "lcb": 4124,
+        "ddt": 1357,
+        "pre": 513,
+        "green": 180,
+        "ddr": 7
+      },
+      "lastNReadyPct": 31.062933932902393,
+      "minimumSampleReadyPct": 5.5505938440079525,
+      "passedPct": 0.25559753926865064,
+      "qualifiedHistory": {
+        "n": 150732,
+        "gp": 795.5105942019156,
+        "gl": 172.6115367908078,
+        "pf": 4.608675694522172,
+        "pfState": "ratio"
+      }
+    }
+  ],
+  "funding": {
+    "basis": "Exact per-close native report allocation",
+    "virtualCloses": 339,
+    "fundedCloses": 339,
+    "zeroAllocatedCloses": 0,
+    "unknownAllocations": 0
+  },
+  "settled": {
+    "basis": "modeled-settled-unit-net-returns",
+    "closedWindow": "(startT,endT]",
+    "summary": {
+      "n": 339,
+      "gp": 82.74590284359859,
+      "gl": 28.463313348794493,
+      "net": 54.28258949480409,
+      "pf": 2.9071071884574926,
+      "pfConvention": "ratio"
+    },
+    "hourly": [
+      {
+        "t": 1792184400000,
+        "n": 26,
+        "gp": 3.4045416033195552,
+        "gl": 2.036652278327118,
+        "net": 1.3678893249924373,
+        "pf": 1.6716361646751037,
+        "pfConvention": "ratio"
+      },
+      {
+        "t": 1792188000000,
+        "n": 90,
+        "gp": 3.441024223091399,
+        "gl": 13.306585320108649,
+        "net": -9.86556109701725,
+        "pf": 0.2585955855926006,
+        "pfConvention": "ratio"
+      },
+      {
+        "t": 1792191600000,
+        "n": 14,
+        "gp": 1.5663293929071347,
+        "gl": 1.6800000000000113,
+        "net": -0.11367060709287675,
+        "pf": 0.9323389243494786,
+        "pfConvention": "ratio"
+      },
+      {
+        "t": 1792195200000,
+        "n": 16,
+        "gp": 2.3593922651933013,
+        "gl": 0.39310310108739127,
+        "net": 1.9662891641059097,
+        "pf": 6.001968080808352,
+        "pfConvention": "ratio"
+      },
+      {
+        "t": 1792198800000,
+        "n": 22,
+        "gp": 0.004107933950888744,
+        "gl": 3.0456717869694168,
+        "net": -3.041563853018528,
+        "pf": 0.0013487776222192104,
+        "pfConvention": "ratio"
+      },
+      {
+        "t": 1792202400000,
+        "n": 4,
+        "gp": 0.2349054306356128,
+        "gl": 0.6906992549335491,
+        "net": -0.45579382429793636,
+        "pf": 0.34009799338528696,
+        "pfConvention": "ratio"
+      },
+      {
+        "t": 1792206000000,
+        "n": 8,
+        "gp": 0.18808049535604873,
+        "gl": 1.9554059849099414,
+        "net": -1.7673254895538928,
+        "pf": 0.09618488273406353,
+        "pfConvention": "ratio"
+      },
+      {
+        "t": 1792209600000,
+        "n": 119,
+        "gp": 41.83471126470952,
+        "gl": 2.9751956224584277,
+        "net": 38.85951564225109,
+        "pf": 14.061163221980397,
+        "pfConvention": "ratio"
+      },
+      {
+        "t": 1792213200000,
+        "n": 32,
+        "gp": 27.35001153070673,
+        "gl": 2.3800000000000034,
+        "net": 24.970011530706728,
+        "pf": 11.491601483490205,
+        "pfConvention": "ratio"
+      },
+      {
+        "t": 1792216800000,
+        "n": 5,
+        "gp": 1.7831696753982211,
+        "gl": 0,
+        "net": 1.7831696753982211,
+        "pf": 4,
+        "pfConvention": "no-loss-score"
+      },
+      {
+        "t": 1792220400000,
+        "n": 3,
+        "gp": 0.5796290283302185,
+        "gl": 0,
+        "net": 0.5796290283302185,
+        "pf": 4,
+        "pfConvention": "no-loss-score"
+      },
+      {
+        "t": 1792224000000,
+        "n": 0,
+        "gp": 0,
+        "gl": 0,
+        "net": 0,
+        "pf": null,
+        "pfConvention": "unavailable"
+      }
+    ],
+    "cumulative": [
+      {
+        "throughT": 1792188000000,
+        "n": 26,
+        "gp": 3.4045416033195552,
+        "gl": 2.036652278327118,
+        "net": 1.3678893249924373,
+        "pf": 1.6716361646751037,
+        "pfConvention": "ratio"
+      },
+      {
+        "throughT": 1792191600000,
+        "n": 116,
+        "gp": 6.845565826410953,
+        "gl": 15.34323759843576,
+        "net": -8.497671772024807,
+        "pf": 0.44616175578932943,
+        "pfConvention": "ratio"
+      },
+      {
+        "throughT": 1792195200000,
+        "n": 130,
+        "gp": 8.411895219318092,
+        "gl": 17.023237598435774,
+        "net": -8.611342379117682,
+        "pf": 0.49414191458451134,
+        "pfConvention": "ratio"
+      },
+      {
+        "throughT": 1792198800000,
+        "n": 146,
+        "gp": 10.77128748451139,
+        "gl": 17.416340699523165,
+        "net": -6.645053215011773,
+        "pf": 0.6184587032571254,
+        "pfConvention": "ratio"
+      },
+      {
+        "throughT": 1792202400000,
+        "n": 168,
+        "gp": 10.775395418462278,
+        "gl": 20.46201248649257,
+        "net": -9.686617068030293,
+        "pf": 0.5266048696615426,
+        "pfConvention": "ratio"
+      },
+      {
+        "throughT": 1792206000000,
+        "n": 172,
+        "gp": 11.01030084909789,
+        "gl": 21.15271174142612,
+        "net": -10.142410892328229,
+        "pf": 0.5205148627603609,
+        "pfConvention": "ratio"
+      },
+      {
+        "throughT": 1792209600000,
+        "n": 180,
+        "gp": 11.198381344453939,
+        "gl": 23.108117726336065,
+        "net": -11.909736381882125,
+        "pf": 0.4846081137838098,
+        "pfConvention": "ratio"
+      },
+      {
+        "throughT": 1792213200000,
+        "n": 299,
+        "gp": 53.033092609163454,
+        "gl": 26.08331334879449,
+        "net": 26.949779260368967,
+        "pf": 2.033219165831726,
+        "pfConvention": "ratio"
+      },
+      {
+        "throughT": 1792216800000,
+        "n": 331,
+        "gp": 80.38310413987014,
+        "gl": 28.463313348794493,
+        "net": 51.91979079107565,
+        "pf": 2.8240951134128807,
+        "pfConvention": "ratio"
+      },
+      {
+        "throughT": 1792220400000,
+        "n": 336,
+        "gp": 82.16627381526837,
+        "gl": 28.463313348794493,
+        "net": 53.70296046647387,
+        "pf": 2.8867431141409385,
+        "pfConvention": "ratio"
+      },
+      {
+        "throughT": 1792224000000,
+        "n": 339,
+        "gp": 82.74590284359859,
+        "gl": 28.463313348794493,
+        "net": 54.28258949480409,
+        "pf": 2.9071071884574926,
+        "pfConvention": "ratio"
+      },
+      {
+        "throughT": 1792227600000,
+        "n": 339,
+        "gp": 82.74590284359859,
+        "gl": 28.463313348794493,
+        "net": 54.28258949480409,
+        "pf": 2.9071071884574926,
+        "pfConvention": "ratio"
+      }
+    ],
+    "positiveHours": 6,
+    "flatHours": 0,
+    "negativeHours": 5,
+    "emptyHours": 1,
+    "allActiveHoursPfAbove1": false,
+    "pfAbove1AtEveryActiveHourEnd": false
+  },
+  "ledger": {
+    "counts": {
+      "openedPositions": 14,
+      "closedPositions": 6,
+      "openPositions": 8,
+      "openedOrders": 436,
+      "settledOrders": 339,
+      "openOrders": 97
+    },
+    "hourly": [
+      {
+        "t": 1792184400000,
+        "endT": 1792188000000,
+        "positionsAtStart": 0,
+        "ordersAtStart": 0,
+        "openedPositions": 9,
+        "closedPositions": 1,
+        "openedOrders": 223,
+        "settledOrders": 26,
+        "openPositions": 8,
+        "openOrders": 197
+      },
+      {
+        "t": 1792188000000,
+        "endT": 1792191600000,
+        "positionsAtStart": 8,
+        "ordersAtStart": 197,
+        "openedPositions": 0,
+        "closedPositions": 0,
+        "openedOrders": 14,
+        "settledOrders": 90,
+        "openPositions": 8,
+        "openOrders": 121
+      },
+      {
+        "t": 1792191600000,
+        "endT": 1792195200000,
+        "positionsAtStart": 8,
+        "ordersAtStart": 121,
+        "openedPositions": 0,
+        "closedPositions": 1,
+        "openedOrders": 18,
+        "settledOrders": 14,
+        "openPositions": 7,
+        "openOrders": 125
+      },
+      {
+        "t": 1792195200000,
+        "endT": 1792198800000,
+        "positionsAtStart": 7,
+        "ordersAtStart": 125,
+        "openedPositions": 1,
+        "closedPositions": 0,
+        "openedOrders": 18,
+        "settledOrders": 16,
+        "openPositions": 8,
+        "openOrders": 127
+      },
+      {
+        "t": 1792198800000,
+        "endT": 1792202400000,
+        "positionsAtStart": 8,
+        "ordersAtStart": 127,
+        "openedPositions": 0,
+        "closedPositions": 0,
+        "openedOrders": 4,
+        "settledOrders": 22,
+        "openPositions": 8,
+        "openOrders": 109
+      },
+      {
+        "t": 1792202400000,
+        "endT": 1792206000000,
+        "positionsAtStart": 8,
+        "ordersAtStart": 109,
+        "openedPositions": 0,
+        "closedPositions": 0,
+        "openedOrders": 4,
+        "settledOrders": 4,
+        "openPositions": 8,
+        "openOrders": 109
+      },
+      {
+        "t": 1792206000000,
+        "endT": 1792209600000,
+        "positionsAtStart": 8,
+        "ordersAtStart": 109,
+        "openedPositions": 4,
+        "closedPositions": 0,
+        "openedOrders": 43,
+        "settledOrders": 8,
+        "openPositions": 12,
+        "openOrders": 144
+      },
+      {
+        "t": 1792209600000,
+        "endT": 1792213200000,
+        "positionsAtStart": 12,
+        "ordersAtStart": 144,
+        "openedPositions": 0,
+        "closedPositions": 2,
+        "openedOrders": 112,
+        "settledOrders": 119,
+        "openPositions": 10,
+        "openOrders": 137
+      },
+      {
+        "t": 1792213200000,
+        "endT": 1792216800000,
+        "positionsAtStart": 10,
+        "ordersAtStart": 137,
+        "openedPositions": 0,
+        "closedPositions": 1,
+        "openedOrders": 0,
+        "settledOrders": 32,
+        "openPositions": 9,
+        "openOrders": 105
+      },
+      {
+        "t": 1792216800000,
+        "endT": 1792220400000,
+        "positionsAtStart": 9,
+        "ordersAtStart": 105,
+        "openedPositions": 0,
+        "closedPositions": 1,
+        "openedOrders": 0,
+        "settledOrders": 5,
+        "openPositions": 8,
+        "openOrders": 100
+      },
+      {
+        "t": 1792220400000,
+        "endT": 1792224000000,
+        "positionsAtStart": 8,
+        "ordersAtStart": 100,
+        "openedPositions": 0,
+        "closedPositions": 0,
+        "openedOrders": 0,
+        "settledOrders": 3,
+        "openPositions": 8,
+        "openOrders": 97
+      },
+      {
+        "t": 1792224000000,
+        "endT": 1792227600000,
+        "positionsAtStart": 8,
+        "ordersAtStart": 97,
+        "openedPositions": 0,
+        "closedPositions": 0,
+        "openedOrders": 0,
+        "settledOrders": 0,
+        "openPositions": 8,
+        "openOrders": 97
+      }
+    ],
+    "orphanedOrders": 0,
+    "duplicateParents": 0,
+    "scope": "Funded modeled parent orders; actual venue partial fills are verified separately in native control fixtures."
+  },
+  "account": {
+    "orders": 339,
+    "fundedOrders": 339,
+    "zeroAllocatedOrders": 0,
+    "unknownAllocations": 0,
+    "virtual": {
+      "n": 339,
+      "gpR": 0.827459,
+      "glR": 0.284633,
+      "pf": 2.907107,
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "pfBasis": "unit-net-returns",
+      "noLoss": false,
+      "basis": "all-virtual-modeled-closes"
+    },
+    "positions": 6,
+    "settledSlicePositions": 10,
+    "pf": 2.907107,
+    "cashPf": 2.907107,
+    "cashPfDiagnostic": 2.703943,
+    "pfR": 2.907107,
+    "noLoss": false,
+    "pfBasis": "unit-net-returns",
+    "unknownReturns": 0,
+    "unknownReturnTotals": 0,
+    "cashBasis": "funded-modeled-allocations",
+    "gpR": 0.827459,
+    "glR": 0.284633,
+    "netU": 0.542826,
+    "mddU": 0.177462,
+    "fixedUnit": 0.01,
+    "eqMin": 9.98001,
+    "ruinT": null,
+    "gp": 0.025049,
+    "gl": 0.009264,
+    "net": 0.015785,
+    "netPct": 0.001579,
+    "wins": 223,
+    "losses": 116,
+    "wr": 0.657817,
+    "ddtH": 6.416667,
+    "ddr": 0.427218,
+    "closedMdd": 0.006744,
+    "balanceEnd": 10.015785,
+    "equityMaxDd": 0.029323,
+    "equityMaxDdPct": 0.00293,
+    "equityDdr": 1.857658,
+    "equityDdtMaxH": 6.933333,
+    "avgOpenOrders": 118.083333,
+    "maxOpenOrders": 250,
+    "avgOpenPositions": 8.131944,
+    "maxOpenPositions": 12,
+    "occupancyBasis": "native-virtual-orders",
+    "openedOrders": 436,
+    "fundedCounts": {
+      "openedPositions": 14,
+      "closedPositions": 6,
+      "openPositions": 8,
+      "openedOrders": 436,
+      "settledOrders": 339,
+      "openOrders": 97,
+      "basis": "funded-modeled-allocations"
+    },
+    "virtualOpenedOrders": 436,
+    "fundedOccupancy": {
+      "avgPositions": 8.131944,
+      "maxPositions": 12,
+      "avgOrders": 118.083333,
+      "maxOrders": 250,
+      "basis": "funded-modeled-allocations"
+    },
+    "marginMax": 0.539988,
+    "greenHours": 8,
+    "redHours": 3,
+    "flatHours": 1,
+    "fullHours": 12,
+    "partialHour": null,
+    "equityEnd": 10.010962,
+    "openEnd": {
+      "recorded": true,
+      "orders": 97,
+      "fundedOrders": 97,
+      "fundedPositions": 8,
+      "zeroAllocatedOrders": 0,
+      "unknownAllocations": 0,
+      "countBasis": "native-virtual-orders",
+      "positions": 8,
+      "mtm": -0.004823,
+      "rule": "exact: the orders the engine executed in the run and still open at its end (every gate, cap and Block volume applied), marked to market at the last close"
+    },
+    "caps": {
+      "on": true,
+      "maxPositionX": 0,
+      "maxExposureX": 0,
+      "source": "balance-volume defaults (no balance caps in the settings)",
+      "capped": 0,
+      "scaled": 0,
+      "cappedOpen": 0,
+      "scaledOpen": 0,
+      "byPosition": 0,
+      "byExposure": 0
+    },
+    "uncapped": {
+      "n": 339,
+      "fundedOrders": 339,
+      "zeroAllocatedOrders": 0,
+      "unknownAllocations": 0,
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "pfBasis": "unit-net-returns",
+      "virtual": {
+        "n": 339,
+        "gpR": 0.827459,
+        "glR": 0.284633,
+        "pf": 2.907107,
+        "unknownReturns": 0,
+        "unknownReturnTotals": 0,
+        "pfBasis": "unit-net-returns",
+        "noLoss": false,
+        "basis": "all-virtual-modeled-closes"
+      },
+      "net": 0.015785,
+      "gp": 0.025049,
+      "gl": 0.009264,
+      "gpR": 0.827459,
+      "glR": 0.284633,
+      "pf": 2.907107,
+      "cashPf": 2.907107,
+      "cashPfDiagnostic": 2.703943,
+      "cashBasis": "funded-modeled-allocations",
+      "balanceEnd": 10.015785,
+      "equityEnd": 10.010962,
+      "equityMaxDd": 0.029323,
+      "equityMaxDdPct": 0.00293,
+      "marginMax": 0.539988,
+      "eqMin": 9.98001,
+      "marginOverMinutes": 0
+    },
+    "feasible": true,
+    "marginOver": {
+      "minutes": 0,
+      "firstT": null,
+      "maxRatio": 0.054097
+    }
+  },
+  "exactTape": {
+    "ok": true,
+    "matched": 339,
+    "missing": 0,
+    "mismatched": 0
+  },
+  "reportChecks": [
+    {
+      "name": "funded ownership is known for every nonzero primary slice",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "primary return PF has complete unit evidence",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 hourly virtual orders = total virtual orders",
+      "expected": 339,
+      "actual": 339,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 hourly net = total net",
+      "expected": 0.015785,
+      "actual": 0.015785,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 hourly owned orders closed = total owned orders",
+      "expected": 339,
+      "actual": 339,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 hourly virtual orders opened = settled plus still-open orders",
+      "expected": 436,
+      "actual": 436,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 hourly funded orders opened = funded settled plus still-open orders",
+      "expected": 436,
+      "actual": 436,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 type-hour openings = every virtual opening",
+      "expected": 436,
+      "actual": 436,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 per-type funded openings = every funded opening",
+      "expected": 436,
+      "actual": 436,
+      "ok": true
+    },
+    {
+      "name": "all opening allocations are known",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 hourly positions closed = positions closed",
+      "expected": 6,
+      "actual": 6,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 hourly positions opened = positions (closed + open at the end)",
+      "expected": 14,
+      "actual": 14,
+      "ok": true
+    },
+    {
+      "name": "positions open(h) = open(h\u22121) + opened(h) \u2212 closed(h), every hour",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 hourly wins = total wins",
+      "expected": 223,
+      "actual": 223,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 type-hour owned orders closed = total owned orders",
+      "expected": 339,
+      "actual": 339,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 type-hour net = total net",
+      "expected": 0.015785,
+      "actual": 0.015785,
+      "ok": true
+    },
+    {
+      "name": "every type that traded has hourly cells",
+      "expected": 4,
+      "actual": 4,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 per-type net = total net",
+      "expected": 0.015785,
+      "actual": 0.015785,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 per-type owned orders = total owned orders",
+      "expected": 339,
+      "actual": 339,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 per-kind net = total net",
+      "expected": 0.015785,
+      "actual": 0.015785,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 engine + signals net = total net",
+      "expected": 0.015785,
+      "actual": 0.015785,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 sub-type net = total net",
+      "expected": 0.015785,
+      "actual": 0.015785,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 per-symbol net = total net",
+      "expected": 0.015785,
+      "actual": 0.015785,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 per-indication-kind net = total net",
+      "expected": 0.015785,
+      "actual": 0.015785,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 per-lane net = total net",
+      "expected": 0.015785,
+      "actual": 0.015785,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 per-range net = total net (Signals a range of their own)",
+      "expected": 0.015785,
+      "actual": 0.015785,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 per-range owned orders = total owned orders",
+      "expected": 339,
+      "actual": 339,
+      "ok": true
+    },
+    {
+      "name": "uncapped book = the engine's sizer (sizeBook)",
+      "expected": 10.015785,
+      "actual": 10.015785,
+      "ok": true
+    },
+    {
+      "name": "minute book = its second pass (max equity drawdown)",
+      "expected": 0.029323,
+      "actual": 0.029323,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 hour \u00d7 type net = total net",
+      "expected": 0.015785,
+      "actual": 0.015785,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 hour \u00d7 source net = signal net",
+      "expected": 0.015785,
+      "actual": 0.015785,
+      "ok": true
+    },
+    {
+      "name": "\u03a3 per-source net = signal net",
+      "expected": 0.015785,
+      "actual": 0.015785,
+      "ok": true
+    },
+    {
+      "name": "end balance = start + net",
+      "expected": 10.015785,
+      "actual": 10.015785,
+      "ok": true
+    },
+    {
+      "name": "end balance = sizing book (capped)",
+      "expected": 10.015785,
+      "actual": 10.015785,
+      "ok": true
+    },
+    {
+      "name": "last cumulative net = total net",
+      "expected": 0.015785,
+      "actual": 0.015785,
+      "ok": true
+    },
+    {
+      "name": "last cumulative PF = total PF (unavailable when empty)",
+      "expected": 1,
+      "actual": 1,
+      "ok": true
+    },
+    {
+      "name": "balance(h) = balance(h\u22121) + net(h), every hour",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "equity = balance at every hour end with no open order",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "orders inside the window (entry \u2265 start, exit \u2264 end)",
+      "expected": 339,
+      "actual": 339,
+      "ok": true
+    },
+    {
+      "name": "minute marks without a price",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "order keys unique (cfg \u00b7 symbol \u00b7 entry \u2192 one unit each)",
+      "expected": 339,
+      "actual": 339,
+      "ok": true
+    },
+    {
+      "name": "stages consistent: every executed order is its config's tape trade",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "every step processes every range with tapes (validated \u2264 tapes, taken \u2264 candidates)",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "heatmap: the executed engine orders of every cell add up to the engine's orders with a cell",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "heatmap: every executed cell is a computed cell",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "coverage: every combo evaluated at Base (engine + signal + independent Exit)",
+      "expected": 1768,
+      "actual": 1768,
+      "ok": true
+    },
+    {
+      "name": "coverage: every indication kind evaluated",
+      "expected": 1,
+      "actual": 1,
+      "ok": true
+    },
+    {
+      "name": "coverage: strategy type normal active tapes match kept sets",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "coverage: strategy type trailing active tapes match kept sets",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "coverage: range mc active tapes match kept sets",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "coverage: range mn active tapes match kept sets",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "coverage: range sh active tapes match kept sets",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "coverage: range gn active tapes match kept sets",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "coverage: range lg active tapes match kept sets",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "coverage: signal combos evaluated",
+      "expected": 1,
+      "actual": 1,
+      "ok": true
+    },
+    {
+      "name": "config sets: every grid cell accounted (built + not built = grid)",
+      "expected": 122,
+      "actual": 122,
+      "ok": true
+    },
+    {
+      "name": "config sets: every built config kept or dropped for too few closes",
+      "expected": 122,
+      "actual": 122,
+      "ok": true
+    },
+    {
+      "name": "execution: strategy type normal output has config tapes",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "execution: strategy type trailing output has config tapes",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "execution: range mc output matches accepted entries",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "execution: range mn output matches accepted entries",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "execution: range sh output matches accepted entries",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "execution: range gn output matches accepted entries",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "execution: range lg output matches accepted entries",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "execution: signal output matches accepted entries",
+      "expected": 1,
+      "actual": 1,
+      "ok": true
+    },
+    {
+      "name": "memory: the reported compute ran at the full level (no memory fallback)",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "hour \u00d7 type: funded type columns add up to funded orders closed, every hour",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    },
+    {
+      "name": "hour \u00d7 type: type columns add up to virtual closes, every hour",
+      "expected": 0,
+      "actual": 0,
+      "ok": true
+    }
+  ],
+  "audit": {
+    "comparisons": 49955880,
+    "elapsedMs": 93112.633157,
+    "peakRssMb": 674.619392
+  },
+  "groups": [
+    {
+      "dimension": "type",
+      "label": "exit",
+      "configs": 122,
+      "symbols": 12,
+      "sources": 14,
+      "start": {
+        "t": 1792184400000,
+        "contexts": 2928,
+        "empty": 1464,
+        "lastNReady": 1062,
+        "warmupSampleReady": 1062,
+        "minimumSampleReady": 1062,
+        "passed": 145,
+        "configs": 122,
+        "configsLastNReady": 116,
+        "configsPassed": 76,
+        "historyCloses": 7611,
+        "passedCloses": 897,
+        "passedGp": 13.207134495581347,
+        "passedGl": 1.5082800570134511,
+        "maxPassedDdtH": 65.5,
+        "failures": {
+          "closes": 1866,
+          "pf": 160,
+          "lastN": 543,
+          "lcb": 75,
+          "net": 138,
+          "ddt": 1
+        },
+        "lastNReadyPct": 36.27049180327869,
+        "minimumSampleReadyPct": 36.27049180327869,
+        "passedPct": 4.952185792349726,
+        "qualifiedHistory": {
+          "n": 897,
+          "gp": 13.207134495581347,
+          "gl": 1.5082800570134511,
+          "pf": 8.756420556095414,
+          "pfState": "ratio"
+        }
+      },
+      "end": {
+        "t": 1792227600000,
+        "contexts": 2928,
+        "empty": 1464,
+        "lastNReady": 1135,
+        "warmupSampleReady": 1135,
+        "minimumSampleReady": 1135,
+        "passed": 161,
+        "configs": 122,
+        "configsLastNReady": 120,
+        "configsPassed": 80,
+        "historyCloses": 7959,
+        "passedCloses": 952,
+        "passedGp": 14.696808616092493,
+        "passedGl": 1.3639583221692648,
+        "maxPassedDdtH": 65.5,
+        "failures": {
+          "closes": 1793,
+          "pf": 159,
+          "lastN": 589,
+          "net": 153,
+          "lcb": 71,
+          "ddt": 2
+        },
+        "lastNReadyPct": 38.763661202185794,
+        "minimumSampleReadyPct": 38.763661202185794,
+        "passedPct": 5.498633879781421,
+        "qualifiedHistory": {
+          "n": 952,
+          "gp": 14.696808616092493,
+          "gl": 1.3639583221692648,
+          "pf": 10.775115615496532,
+          "pfState": "ratio"
+        }
+      },
+      "protection": {
+        "holdHours": {
+          "min": 22.5,
+          "max": 22.5
+        },
+        "slFraction": {
+          "min": 0.0111,
+          "max": 0.03
+        },
+        "tpFraction": {
+          "min": 0.0298,
+          "max": 0.104
+        },
+        "slToTp": {
+          "min": 0.1450980392156863,
+          "max": 1.006711409395973
+        },
+        "signalCeilingFraction": {
+          "min": 0.03,
+          "max": 0.03
+        },
+        "trailActivationFraction": {
+          "min": 0.0123,
+          "max": 0.03
+        },
+        "trailGapFraction": {
+          "min": 0.0123,
+          "max": 0.03
+        },
+        "trailGapToActivation": {
+          "min": 0.41030000000000005,
+          "max": 1
+        }
+      },
+      "execution": {
+        "n": 7,
+        "gp": 0.008173460418656594,
+        "gl": 0.016800000000000113,
+        "configs": 7,
+        "open": 28,
+        "pf": 0.4865155011105083,
+        "pfState": "ratio",
+        "counts": {
+          "openedPositions": 7,
+          "closedPositions": 1,
+          "openPositions": 6,
+          "openedOrders": 35,
+          "settledOrders": 7,
+          "openOrders": 28
+        }
+      }
+    },
+    {
+      "dimension": "parameterRange",
+      "label": "short",
+      "configs": 78256,
+      "symbols": 12,
+      "sources": 108,
+      "start": {
+        "t": 1792184400000,
+        "contexts": 1878144,
+        "empty": 471853,
+        "lastNReady": 644078,
+        "warmupSampleReady": 644078,
+        "minimumSampleReady": 122047,
+        "passed": 5934,
+        "configs": 78256,
+        "configsLastNReady": 63518,
+        "configsPassed": 4424,
+        "historyCloses": 6757383,
+        "passedCloses": 90204,
+        "passedGp": 474.33267046902364,
+        "passedGl": 100.66601802640304,
+        "maxPassedDdtH": 72.91666666666667,
+        "failures": {
+          "closes": 1756097,
+          "pf": 17416,
+          "lastN": 7519,
+          "lcb": 2400,
+          "net": 87544,
+          "pre": 385,
+          "ddt": 742,
+          "green": 106,
+          "ddr": 1
+        },
+        "lastNReadyPct": 34.29332362161794,
+        "minimumSampleReadyPct": 6.498277022422136,
+        "passedPct": 0.31595021468002454,
+        "qualifiedHistory": {
+          "n": 90204,
+          "gp": 474.33267046902364,
+          "gl": 100.66601802640304,
+          "pf": 4.711944306216761,
+          "pfState": "ratio"
+        }
+      },
+      "end": {
+        "t": 1792227600000,
+        "contexts": 1878144,
+        "empty": 461953,
+        "lastNReady": 655098,
+        "warmupSampleReady": 655098,
+        "minimumSampleReady": 127018,
+        "passed": 5877,
+        "configs": 78256,
+        "configsLastNReady": 64163,
+        "configsPassed": 4340,
+        "historyCloses": 6912173,
+        "passedCloses": 89720,
+        "passedGp": 478.2517825039786,
+        "passedGl": 102.44956415473773,
+        "maxPassedDdtH": 72.91666666666667,
+        "failures": {
+          "closes": 1751126,
+          "pf": 18194,
+          "lastN": 7888,
+          "net": 91601,
+          "lcb": 2285,
+          "ddt": 729,
+          "pre": 324,
+          "green": 118,
+          "ddr": 2
+        },
+        "lastNReadyPct": 34.88007309343693,
+        "minimumSampleReadyPct": 6.76295321338513,
+        "passedPct": 0.31291530361889186,
+        "qualifiedHistory": {
+          "n": 89720,
+          "gp": 478.2517825039786,
+          "gl": 102.44956415473773,
+          "pf": 4.668168053713112,
+          "pfState": "ratio"
+        }
+      },
+      "protection": {
+        "holdHours": {
+          "min": 0.75,
+          "max": 48
+        },
+        "slFraction": {
+          "min": 0.005,
+          "max": 0.03
+        },
+        "tpFraction": {
+          "min": 0.0052,
+          "max": 0.1131
+        },
+        "slToTp": {
+          "min": 0.17037037037037037,
+          "max": 3
+        },
+        "signalCeilingFraction": {
+          "min": 0.03,
+          "max": 0.03
+        },
+        "trailActivationFraction": {
+          "min": 0.0017,
+          "max": 0.03
+        },
+        "trailGapFraction": {
+          "min": 0.002,
+          "max": 0.030000000000000002
+        },
+        "trailGapToActivation": {
+          "min": 0.41030000000000005,
+          "max": 1.5000000000000002
+        },
+        "atrConfigs": 15552,
+        "atrSlMultiple": {
+          "min": 0.7,
+          "max": 1.5
+        },
+        "atrTpToSl": {
+          "min": 1,
+          "max": 2.2
+        },
+        "atrSlFloor": {
+          "min": 0.005,
+          "max": 0.005
+        },
+        "atrTrailMultiple": {
+          "min": 0.8,
+          "max": 0.8
+        },
+        "atrTrailFloor": {
+          "min": 0.002,
+          "max": 0.002
+        }
+      },
+      "execution": {
+        "n": 204,
+        "gp": 0.5030963164487154,
+        "gl": 0.15604318003065973,
+        "configs": 196,
+        "open": 47,
+        "pf": 3.22408397694706,
+        "pfState": "ratio",
+        "counts": {
+          "openedPositions": 12,
+          "closedPositions": 4,
+          "openPositions": 8,
+          "openedOrders": 251,
+          "settledOrders": 204,
+          "openOrders": 47
+        }
+      }
+    },
+    {
+      "dimension": "strategyRange",
+      "label": "Exit",
+      "configs": 122,
+      "symbols": 12,
+      "sources": 14,
+      "start": {
+        "t": 1792184400000,
+        "contexts": 2928,
+        "empty": 1464,
+        "lastNReady": 1062,
+        "warmupSampleReady": 1062,
+        "minimumSampleReady": 1062,
+        "passed": 145,
+        "configs": 122,
+        "configsLastNReady": 116,
+        "configsPassed": 76,
+        "historyCloses": 7611,
+        "passedCloses": 897,
+        "passedGp": 13.207134495581347,
+        "passedGl": 1.5082800570134511,
+        "maxPassedDdtH": 65.5,
+        "failures": {
+          "closes": 1866,
+          "pf": 160,
+          "lastN": 543,
+          "lcb": 75,
+          "net": 138,
+          "ddt": 1
+        },
+        "lastNReadyPct": 36.27049180327869,
+        "minimumSampleReadyPct": 36.27049180327869,
+        "passedPct": 4.952185792349726,
+        "qualifiedHistory": {
+          "n": 897,
+          "gp": 13.207134495581347,
+          "gl": 1.5082800570134511,
+          "pf": 8.756420556095414,
+          "pfState": "ratio"
+        }
+      },
+      "end": {
+        "t": 1792227600000,
+        "contexts": 2928,
+        "empty": 1464,
+        "lastNReady": 1135,
+        "warmupSampleReady": 1135,
+        "minimumSampleReady": 1135,
+        "passed": 161,
+        "configs": 122,
+        "configsLastNReady": 120,
+        "configsPassed": 80,
+        "historyCloses": 7959,
+        "passedCloses": 952,
+        "passedGp": 14.696808616092493,
+        "passedGl": 1.3639583221692648,
+        "maxPassedDdtH": 65.5,
+        "failures": {
+          "closes": 1793,
+          "pf": 159,
+          "lastN": 589,
+          "net": 153,
+          "lcb": 71,
+          "ddt": 2
+        },
+        "lastNReadyPct": 38.763661202185794,
+        "minimumSampleReadyPct": 38.763661202185794,
+        "passedPct": 5.498633879781421,
+        "qualifiedHistory": {
+          "n": 952,
+          "gp": 14.696808616092493,
+          "gl": 1.3639583221692648,
+          "pf": 10.775115615496532,
+          "pfState": "ratio"
+        }
+      },
+      "protection": {
+        "holdHours": {
+          "min": 22.5,
+          "max": 22.5
+        },
+        "slFraction": {
+          "min": 0.0111,
+          "max": 0.03
+        },
+        "tpFraction": {
+          "min": 0.0298,
+          "max": 0.104
+        },
+        "slToTp": {
+          "min": 0.1450980392156863,
+          "max": 1.006711409395973
+        },
+        "signalCeilingFraction": {
+          "min": 0.03,
+          "max": 0.03
+        },
+        "trailActivationFraction": {
+          "min": 0.0123,
+          "max": 0.03
+        },
+        "trailGapFraction": {
+          "min": 0.0123,
+          "max": 0.03
+        },
+        "trailGapToActivation": {
+          "min": 0.41030000000000005,
+          "max": 1
+        }
+      },
+      "execution": {
+        "n": 7,
+        "gp": 0.008173460418656594,
+        "gl": 0.016800000000000113,
+        "configs": 7,
+        "open": 28,
+        "pf": 0.4865155011105083,
+        "pfState": "ratio",
+        "counts": {
+          "openedPositions": 7,
+          "closedPositions": 1,
+          "openPositions": 6,
+          "openedOrders": 35,
+          "settledOrders": 7,
+          "openOrders": 28
+        }
+      }
+    },
+    {
+      "dimension": "lane",
+      "label": "15",
+      "configs": 36761,
+      "symbols": 12,
+      "sources": 118,
+      "start": {
+        "t": 1792184400000,
+        "contexts": 882264,
+        "empty": 144896,
+        "lastNReady": 350449,
+        "warmupSampleReady": 350449,
+        "minimumSampleReady": 39878,
+        "passed": 1667,
+        "configs": 36761,
+        "configsLastNReady": 28697,
+        "configsPassed": 1184,
+        "historyCloses": 3248885,
+        "passedCloses": 23874,
+        "passedGp": 109.69248212886666,
+        "passedGl": 21.25108766084876,
+        "maxPassedDdtH": 71.5,
+        "failures": {
+          "closes": 842386,
+          "pf": 6214,
+          "lastN": 3708,
+          "lcb": 658,
+          "net": 27450,
+          "ddt": 119,
+          "pre": 40,
+          "green": 21,
+          "ddr": 1
+        },
+        "lastNReadyPct": 39.72155726630578,
+        "minimumSampleReadyPct": 4.5199622788643765,
+        "passedPct": 0.18894571239447602,
+        "qualifiedHistory": {
+          "n": 23874,
+          "gp": 109.69248212886666,
+          "gl": 21.25108766084876,
+          "pf": 5.161734960557101,
+          "pfState": "ratio"
+        }
+      },
+      "end": {
+        "t": 1792227600000,
+        "contexts": 882264,
+        "empty": 140160,
+        "lastNReady": 354572,
+        "warmupSampleReady": 354572,
+        "minimumSampleReady": 42800,
+        "passed": 1601,
+        "configs": 36761,
+        "configsLastNReady": 29014,
+        "configsPassed": 1121,
+        "historyCloses": 3326789,
+        "passedCloses": 23165,
+        "passedGp": 112.79566205635342,
+        "passedGl": 22.356037987614634,
+        "maxPassedDdtH": 72,
+        "failures": {
+          "closes": 839464,
+          "pf": 6692,
+          "lastN": 4085,
+          "net": 29657,
+          "lcb": 554,
+          "ddt": 147,
+          "green": 24,
+          "pre": 39,
+          "ddr": 1
+        },
+        "lastNReadyPct": 40.18887770553938,
+        "minimumSampleReadyPct": 4.851155663157513,
+        "passedPct": 0.18146495833446677,
+        "qualifiedHistory": {
+          "n": 23165,
+          "gp": 112.79566205635342,
+          "gl": 22.356037987614634,
+          "pf": 5.0454227228833135,
+          "pfState": "ratio"
+        }
+      },
+      "protection": {
+        "holdHours": {
+          "min": 0.75,
+          "max": 48
+        },
+        "slFraction": {
+          "min": 0.005,
+          "max": 0.03
+        },
+        "tpFraction": {
+          "min": 0.01,
+          "max": 0.104
+        },
+        "slToTp": {
+          "min": 0.15845070422535212,
+          "max": 3
+        },
+        "signalCeilingFraction": {
+          "min": 0.03,
+          "max": 0.03
+        },
+        "trailActivationFraction": {
+          "min": 0.002,
+          "max": 0.03
+        },
+        "trailGapFraction": {
+          "min": 0.002,
+          "max": 0.03
+        },
+        "trailGapToActivation": {
+          "min": 0.5,
+          "max": 1.5000000000000002
+        },
+        "atrConfigs": 7956,
+        "atrSlMultiple": {
+          "min": 0.7,
+          "max": 1.5
+        },
+        "atrTpToSl": {
+          "min": 1,
+          "max": 2.2
+        },
+        "atrSlFloor": {
+          "min": 0.005,
+          "max": 0.005
+        },
+        "atrTrailMultiple": {
+          "min": 0.8,
+          "max": 0.8
+        },
+        "atrTrailFloor": {
+          "min": 0.002,
+          "max": 0.002
+        }
+      },
+      "execution": {
+        "n": 156,
+        "gp": 0.0880608984482098,
+        "gl": 0.20816119522919796,
+        "configs": 132,
+        "open": 74,
+        "pf": 0.42304185634238634,
+        "pfState": "ratio",
+        "counts": {
+          "openedPositions": 9,
+          "closedPositions": 3,
+          "openPositions": 6,
+          "openedOrders": 230,
+          "settledOrders": 156,
+          "openOrders": 74
+        }
+      }
+    },
+    {
+      "dimension": "parameterRange",
+      "label": "medium",
+      "configs": 78220,
+      "symbols": 12,
+      "sources": 108,
+      "start": {
+        "t": 1792184400000,
+        "contexts": 1877280,
+        "empty": 617301,
+        "lastNReady": 486451,
+        "warmupSampleReady": 486451,
+        "minimumSampleReady": 74921,
+        "passed": 3411,
+        "configs": 78220,
+        "configsLastNReady": 57043,
+        "configsPassed": 2538,
+        "historyCloses": 5155186,
+        "passedCloses": 52405,
+        "passedGp": 268.2415736212775,
+        "passedGl": 57.747423345323995,
+        "maxPassedDdtH": 72.91666666666667,
+        "failures": {
+          "closes": 1802359,
+          "pf": 11683,
+          "net": 52164,
+          "lastN": 5202,
+          "lcb": 1667,
+          "ddt": 569,
+          "green": 62,
+          "pre": 158,
+          "ddr": 5
+        },
+        "lastNReadyPct": 25.91254368021819,
+        "minimumSampleReadyPct": 3.990933691298048,
+        "passedPct": 0.18169905395039632,
+        "qualifiedHistory": {
+          "n": 52405,
+          "gp": 268.2415736212775,
+          "gl": 57.747423345323995,
+          "pf": 4.645082985213364,
+          "pfState": "ratio"
+        }
+      },
+      "end": {
+        "t": 1792227600000,
+        "contexts": 1877280,
+        "empty": 609050,
+        "lastNReady": 496166,
+        "warmupSampleReady": 496166,
+        "minimumSampleReady": 77915,
+        "passed": 3341,
+        "configs": 78220,
+        "configsLastNReady": 57862,
+        "configsPassed": 2460,
+        "historyCloses": 5267538,
+        "passedCloses": 51388,
+        "passedGp": 267.3114723387603,
+        "passedGl": 57.54625506157767,
+        "maxPassedDdtH": 72.91666666666667,
+        "failures": {
+          "closes": 1799365,
+          "pf": 11989,
+          "net": 54901,
+          "lastN": 5325,
+          "lcb": 1576,
+          "ddt": 549,
+          "pre": 174,
+          "green": 56,
+          "ddr": 4
+        },
+        "lastNReadyPct": 26.430047728628654,
+        "minimumSampleReadyPct": 4.150419756243075,
+        "passedPct": 0.17797025483678514,
+        "qualifiedHistory": {
+          "n": 51388,
+          "gp": 267.3114723387603,
+          "gl": 57.54625506157767,
+          "pf": 4.645158439115148,
+          "pfState": "ratio"
+        }
+      },
+      "protection": {
+        "holdHours": {
+          "min": 0.75,
+          "max": 48
+        },
+        "slFraction": {
+          "min": 0.005,
+          "max": 0.03
+        },
+        "tpFraction": {
+          "min": 0.0052,
+          "max": 0.1131
+        },
+        "slToTp": {
+          "min": 0.1450980392156863,
+          "max": 3
+        },
+        "signalCeilingFraction": {
+          "min": 0.03,
+          "max": 0.03
+        },
+        "trailActivationFraction": {
+          "min": 0.0017,
+          "max": 0.03
+        },
+        "trailGapFraction": {
+          "min": 0.002,
+          "max": 0.030000000000000002
+        },
+        "trailGapToActivation": {
+          "min": 0.44550000000000006,
+          "max": 1.5000000000000002
+        },
+        "atrConfigs": 15552,
+        "atrSlMultiple": {
+          "min": 0.7,
+          "max": 1.5
+        },
+        "atrTpToSl": {
+          "min": 1,
+          "max": 2.2
+        },
+        "atrSlFloor": {
+          "min": 0.005,
+          "max": 0.005
+        },
+        "atrTrailMultiple": {
+          "min": 0.8,
+          "max": 0.8
+        },
+        "atrTrailFloor": {
+          "min": 0.002,
+          "max": 0.002
+        }
+      },
+      "execution": {
+        "n": 97,
+        "gp": 0.2176545843917841,
+        "gl": 0.12202274618971684,
+        "configs": 82,
+        "open": 50,
+        "pf": 1.7837214059531334,
+        "pfState": "ratio",
+        "counts": {
+          "openedPositions": 9,
+          "closedPositions": 4,
+          "openPositions": 5,
+          "openedOrders": 147,
+          "settledOrders": 97,
+          "openOrders": 50
+        }
+      }
+    },
+    {
+      "dimension": "lane",
+      "label": "30",
+      "configs": 33890,
+      "symbols": 12,
+      "sources": 118,
+      "start": {
+        "t": 1792184400000,
+        "contexts": 813360,
+        "empty": 198300,
+        "lastNReady": 159993,
+        "warmupSampleReady": 159993,
+        "minimumSampleReady": 5445,
+        "passed": 203,
+        "configs": 33890,
+        "configsLastNReady": 20500,
+        "configsPassed": 149,
+        "historyCloses": 1746476,
+        "passedCloses": 2296,
+        "passedGp": 16.03886617585519,
+        "passedGl": 3.2054875120472883,
+        "maxPassedDdtH": 65.5,
+        "failures": {
+          "closes": 807915,
+          "pf": 601,
+          "net": 3849,
+          "lastN": 620,
+          "lcb": 108,
+          "ddt": 60,
+          "pre": 4
+        },
+        "lastNReadyPct": 19.67062555326055,
+        "minimumSampleReadyPct": 0.669445264089702,
+        "passedPct": 0.02495819809186584,
+        "qualifiedHistory": {
+          "n": 2296,
+          "gp": 16.03886617585519,
+          "gl": 3.2054875120472883,
+          "pf": 5.003565328386336,
+          "pfState": "ratio"
+        }
+      },
+      "end": {
+        "t": 1792227600000,
+        "contexts": 813360,
+        "empty": 193852,
+        "lastNReady": 172363,
+        "warmupSampleReady": 172363,
+        "minimumSampleReady": 6573,
+        "passed": 237,
+        "configs": 33890,
+        "configsLastNReady": 21537,
+        "configsPassed": 176,
+        "historyCloses": 1845649,
+        "passedCloses": 2816,
+        "passedGp": 19.808813586965623,
+        "passedGl": 4.295452954312216,
+        "maxPassedDdtH": 72.5,
+        "failures": {
+          "closes": 806787,
+          "pf": 754,
+          "net": 4688,
+          "lastN": 670,
+          "lcb": 147,
+          "ddt": 72,
+          "pre": 5
+        },
+        "lastNReadyPct": 21.191477328612176,
+        "minimumSampleReadyPct": 0.8081292416642077,
+        "passedPct": 0.029138388905281795,
+        "qualifiedHistory": {
+          "n": 2816,
+          "gp": 19.808813586965623,
+          "gl": 4.295452954312216,
+          "pf": 4.6115773581176125,
+          "pfState": "ratio"
+        }
+      },
+      "protection": {
+        "holdHours": {
+          "min": 1,
+          "max": 48
+        },
+        "slFraction": {
+          "min": 0.0071,
+          "max": 0.03
+        },
+        "tpFraction": {
+          "min": 0.0141,
+          "max": 0.1131
+        },
+        "slToTp": {
+          "min": 0.1450980392156863,
+          "max": 2.127659574468085
+        },
+        "signalCeilingFraction": {
+          "min": 0.03,
+          "max": 0.03
+        },
+        "trailActivationFraction": {
+          "min": 0.0028,
+          "max": 0.03
+        },
+        "trailGapFraction": {
+          "min": 0.0028,
+          "max": 0.03
+        },
+        "trailGapToActivation": {
+          "min": 0.41030000000000005,
+          "max": 1.5
+        },
+        "atrConfigs": 7956,
+        "atrSlMultiple": {
+          "min": 0.7,
+          "max": 1.5
+        },
+        "atrTpToSl": {
+          "min": 1,
+          "max": 2.2
+        },
+        "atrSlFloor": {
+          "min": 0.005,
+          "max": 0.005
+        },
+        "atrTrailMultiple": {
+          "min": 0.8,
+          "max": 0.8
+        },
+        "atrTrailFloor": {
+          "min": 0.002,
+          "max": 0.002
+        }
+      },
+      "execution": {
+        "n": 30,
+        "gp": 0.053738021534564785,
+        "gl": 0.01797487604649273,
+        "configs": 17,
+        "open": 23,
+        "pf": 2.9896184761201834,
+        "pfState": "ratio",
+        "counts": {
+          "openedPositions": 10,
+          "closedPositions": 4,
+          "openPositions": 6,
+          "openedOrders": 53,
+          "settledOrders": 30,
+          "openOrders": 23
+        }
+      }
+    },
+    {
+      "dimension": "type",
+      "label": "normal",
+      "configs": 33813,
+      "symbols": 12,
+      "sources": 118,
+      "start": {
+        "t": 1792184400000,
+        "contexts": 811512,
+        "empty": 241710,
+        "lastNReady": 249500,
+        "warmupSampleReady": 249500,
+        "minimumSampleReady": 47206,
+        "passed": 979,
+        "configs": 33813,
+        "configsLastNReady": 26482,
+        "configsPassed": 895,
+        "historyCloses": 2655047,
+        "passedCloses": 15142,
+        "passedGp": 100.38526413495605,
+        "passedGl": 36.61335913239943,
+        "maxPassedDdtH": 72.75,
+        "failures": {
+          "closes": 764306,
+          "net": 35406,
+          "pf": 7577,
+          "lastN": 2521,
+          "ddt": 207,
+          "pre": 70,
+          "lcb": 438,
+          "ddr": 3,
+          "green": 5
+        },
+        "lastNReadyPct": 30.745078322932994,
+        "minimumSampleReadyPct": 5.817042754759018,
+        "passedPct": 0.1206390047220497,
+        "qualifiedHistory": {
+          "n": 15142,
+          "gp": 100.38526413495605,
+          "gl": 36.61335913239943,
+          "pf": 2.741766025126178,
+          "pfState": "ratio"
+        }
+      },
+      "end": {
+        "t": 1792227600000,
+        "contexts": 811512,
+        "empty": 238440,
+        "lastNReady": 253699,
+        "warmupSampleReady": 253699,
+        "minimumSampleReady": 49174,
+        "passed": 896,
+        "configs": 33813,
+        "configsLastNReady": 26736,
+        "configsPassed": 824,
+        "historyCloses": 2712922,
+        "passedCloses": 13952,
+        "passedGp": 94.2341090683323,
+        "passedGl": 34.73526192349379,
+        "maxPassedDdtH": 72.75,
+        "failures": {
+          "closes": 762338,
+          "net": 37046,
+          "pf": 7982,
+          "lastN": 2601,
+          "ddt": 192,
+          "pre": 74,
+          "lcb": 376,
+          "ddr": 2,
+          "green": 5
+        },
+        "lastNReadyPct": 31.262507516832777,
+        "minimumSampleReadyPct": 6.059553031871371,
+        "passedPct": 0.11041118307554294,
+        "qualifiedHistory": {
+          "n": 13952,
+          "gp": 94.2341090683323,
+          "gl": 34.73526192349379,
+          "pf": 2.7129235206542504,
+          "pfState": "ratio"
+        }
+      },
+      "protection": {
+        "holdHours": {
+          "min": 0.75,
+          "max": 48
+        },
+        "slFraction": {
+          "min": 0.005,
+          "max": 0.03
+        },
+        "tpFraction": {
+          "min": 0.0052,
+          "max": 0.0849
+        },
+        "slToTp": {
+          "min": 0.3533568904593639,
+          "max": 3
+        },
+        "signalCeilingFraction": {
+          "min": 0.03,
+          "max": 0.03
+        },
+        "atrConfigs": 7956,
+        "atrSlMultiple": {
+          "min": 0.7,
+          "max": 1.5
+        },
+        "atrTpToSl": {
+          "min": 1,
+          "max": 2.2
+        },
+        "atrSlFloor": {
+          "min": 0.005,
+          "max": 0.005
+        }
+      },
+      "execution": {
+        "n": 39,
+        "gp": 0.18966323197426935,
+        "gl": 0.05531573528695488,
+        "configs": 35,
+        "open": 3,
+        "pf": 3.428739236500715,
+        "pfState": "ratio",
+        "counts": {
+          "openedPositions": 8,
+          "closedPositions": 5,
+          "openPositions": 3,
+          "openedOrders": 42,
+          "settledOrders": 39,
+          "openOrders": 3
+        }
+      }
+    },
+    {
+      "dimension": "strategyRange",
+      "label": "Signals",
+      "configs": 159993,
+      "symbols": 12,
+      "sources": 118,
+      "start": {
+        "t": 1792184400000,
+        "contexts": 3839832,
+        "empty": 1097020,
+        "lastNReady": 1171123,
+        "warmupSampleReady": 1171123,
+        "minimumSampleReady": 203854,
+        "passed": 9826,
+        "configs": 159993,
+        "configsLastNReady": 124031,
+        "configsPassed": 7314,
+        "historyCloses": 12322487,
+        "passedCloses": 151642,
+        "passedGp": 780.7182656175158,
+        "passedGl": 169.94390034090094,
+        "maxPassedDdtH": 72.91666666666667,
+        "failures": {
+          "closes": 3635978,
+          "net": 144400,
+          "pf": 30528,
+          "pre": 559,
+          "lastN": 12722,
+          "ddt": 1385,
+          "lcb": 4253,
+          "green": 174,
+          "ddr": 7
+        },
+        "lastNReadyPct": 30.499329137316423,
+        "minimumSampleReadyPct": 5.308930182362145,
+        "passedPct": 0.25589661214344794,
+        "qualifiedHistory": {
+          "n": 151642,
+          "gp": 780.7182656175158,
+          "gl": 169.94390034090094,
+          "pf": 4.593976388981452,
+          "pfState": "ratio"
+        }
+      },
+      "end": {
+        "t": 1792227600000,
+        "contexts": 3839832,
+        "empty": 1078502,
+        "lastNReady": 1192539,
+        "warmupSampleReady": 1192539,
+        "minimumSampleReady": 212161,
+        "passed": 9661,
+        "configs": 159993,
+        "configsLastNReady": 125532,
+        "configsPassed": 7141,
+        "historyCloses": 12600294,
+        "passedCloses": 149780,
+        "passedGp": 780.8137855858228,
+        "passedGl": 171.2475784686386,
+        "maxPassedDdtH": 72.91666666666667,
+        "failures": {
+          "closes": 3627671,
+          "net": 151548,
+          "pf": 31651,
+          "pre": 513,
+          "lastN": 13193,
+          "ddt": 1355,
+          "lcb": 4053,
+          "green": 180,
+          "ddr": 7
+        },
+        "lastNReadyPct": 31.057061871456877,
+        "minimumSampleReadyPct": 5.525267772131698,
+        "passedPct": 0.2515995491469418,
+        "qualifiedHistory": {
+          "n": 149780,
+          "gp": 780.8137855858228,
+          "gl": 171.2475784686386,
+          "pf": 4.559561031859011,
+          "pfState": "ratio"
+        }
+      },
+      "protection": {
+        "holdHours": {
+          "min": 0.75,
+          "max": 48
+        },
+        "slFraction": {
+          "min": 0.005,
+          "max": 0.03
+        },
+        "tpFraction": {
+          "min": 0.0052,
+          "max": 0.1131
+        },
+        "slToTp": {
+          "min": 0.2652519893899204,
+          "max": 3
+        },
+        "signalCeilingFraction": {
+          "min": 0.03,
+          "max": 0.03
+        },
+        "trailActivationFraction": {
+          "min": 0.0017,
+          "max": 0.03
+        },
+        "trailGapFraction": {
+          "min": 0.002,
+          "max": 0.030000000000000002
+        },
+        "trailGapToActivation": {
+          "min": 0.5,
+          "max": 1.5000000000000002
+        },
+        "atrConfigs": 31824,
+        "atrSlMultiple": {
+          "min": 0.7,
+          "max": 1.5
+        },
+        "atrTpToSl": {
+          "min": 1,
+          "max": 2.2
+        },
+        "atrSlFloor": {
+          "min": 0.005,
+          "max": 0.005
+        },
+        "atrTrailMultiple": {
+          "min": 0.8,
+          "max": 0.8
+        },
+        "atrTrailFloor": {
+          "min": 0.002,
+          "max": 0.002
+        }
+      },
+      "execution": {
+        "n": 332,
+        "gp": 0.819285568017329,
+        "gl": 0.2678331334879451,
+        "configs": 295,
+        "open": 69,
+        "pf": 3.0589403086463323,
+        "pfState": "ratio",
+        "counts": {
+          "openedPositions": 12,
+          "closedPositions": 6,
+          "openPositions": 6,
+          "openedOrders": 401,
+          "settledOrders": 332,
+          "openOrders": 69
+        }
+      }
+    },
+    {
+      "dimension": "lane",
+      "label": "1",
+      "configs": 45527,
+      "symbols": 12,
+      "sources": 118,
+      "start": {
+        "t": 1792184400000,
+        "contexts": 1092648,
+        "empty": 538813,
+        "lastNReady": 148671,
+        "warmupSampleReady": 148671,
+        "minimumSampleReady": 27819,
+        "passed": 392,
+        "configs": 45527,
+        "configsLastNReady": 36816,
+        "configsPassed": 385,
+        "historyCloses": 1835603,
+        "passedCloses": 5180,
+        "passedGp": 22.39006697377489,
+        "passedGl": 4.396057262048228,
+        "maxPassedDdtH": 71.5,
+        "failures": {
+          "closes": 1064829,
+          "net": 23969,
+          "pf": 2383,
+          "pre": 81,
+          "green": 3,
+          "lastN": 729,
+          "lcb": 229,
+          "ddt": 32,
+          "ddr": 1
+        },
+        "lastNReadyPct": 13.606486260900125,
+        "minimumSampleReadyPct": 2.5460166494607597,
+        "passedPct": 0.035876146755405215,
+        "qualifiedHistory": {
+          "n": 5180,
+          "gp": 22.39006697377489,
+          "gl": 4.396057262048228,
+          "pf": 5.0932154972300845,
+          "pfState": "ratio"
+        }
+      },
+      "end": {
+        "t": 1792227600000,
+        "contexts": 1092648,
+        "empty": 538490,
+        "lastNReady": 149036,
+        "warmupSampleReady": 149036,
+        "minimumSampleReady": 28332,
+        "passed": 354,
+        "configs": 45527,
+        "configsLastNReady": 36953,
+        "configsPassed": 347,
+        "historyCloses": 1841663,
+        "passedCloses": 4705,
+        "passedGp": 20.425415287535603,
+        "passedGl": 4.533304522683958,
+        "maxPassedDdtH": 71.55,
+        "failures": {
+          "closes": 1064316,
+          "net": 24522,
+          "pf": 2367,
+          "pre": 49,
+          "lcb": 241,
+          "lastN": 768,
+          "ddt": 28,
+          "green": 2,
+          "ddr": 1
+        },
+        "lastNReadyPct": 13.63989134652697,
+        "minimumSampleReadyPct": 2.59296681090342,
+        "passedPct": 0.032398357018911854,
+        "qualifiedHistory": {
+          "n": 4705,
+          "gp": 20.425415287535603,
+          "gl": 4.533304522683958,
+          "pf": 4.505634948045068,
+          "pfState": "ratio"
+        }
+      },
+      "protection": {
+        "holdHours": {
+          "min": 0.75,
+          "max": 48
+        },
+        "slFraction": {
+          "min": 0.0052,
+          "max": 0.03
+        },
+        "tpFraction": {
+          "min": 0.0052,
+          "max": 0.0249
+        },
+        "slToTp": {
+          "min": 0.5714285714285714,
+          "max": 2.6785714285714284
+        },
+        "signalCeilingFraction": {
+          "min": 0.03,
+          "max": 0.03
+        },
+        "trailActivationFraction": {
+          "min": 0.0017,
+          "max": 0.0172
+        },
+        "trailGapFraction": {
+          "min": 0.0025,
+          "max": 0.0249
+        },
+        "trailGapToActivation": {
+          "min": 0.5,
+          "max": 1.5000000000000002
+        },
+        "atrConfigs": 7956,
+        "atrSlMultiple": {
+          "min": 0.7,
+          "max": 1.5
+        },
+        "atrTpToSl": {
+          "min": 1,
+          "max": 2.2
+        },
+        "atrSlFloor": {
+          "min": 0.005,
+          "max": 0.005
+        },
+        "atrTrailMultiple": {
+          "min": 0.8,
+          "max": 0.8
+        },
+        "atrTrailFloor": {
+          "min": 0.002,
+          "max": 0.002
+        }
+      },
+      "execution": {
+        "n": 0,
+        "gp": 0,
+        "gl": 0,
+        "configs": 0,
+        "open": 0,
+        "pf": null,
+        "pfState": "empty",
+        "counts": {
+          "openedPositions": 0,
+          "closedPositions": 0,
+          "openPositions": 0,
+          "openedOrders": 0,
+          "settledOrders": 0,
+          "openOrders": 0
+        }
+      }
+    },
+    {
+      "dimension": "type",
+      "label": "trailing",
+      "configs": 106290,
+      "symbols": 12,
+      "sources": 118,
+      "start": {
+        "t": 1792184400000,
+        "contexts": 2550960,
+        "empty": 718294,
+        "lastNReady": 776350,
+        "warmupSampleReady": 776350,
+        "minimumSampleReady": 130451,
+        "passed": 7355,
+        "configs": 106290,
+        "configsLastNReady": 82054,
+        "configsPassed": 5386,
+        "historyCloses": 8129429,
+        "passedCloses": 113098,
+        "passedGp": 564.1423703153579,
+        "passedGl": 107.83262480617238,
+        "maxPassedDdtH": 72.91666666666667,
+        "failures": {
+          "closes": 2420509,
+          "net": 91531,
+          "pre": 410,
+          "pf": 18542,
+          "lastN": 8551,
+          "lcb": 2984,
+          "ddt": 925,
+          "green": 150,
+          "ddr": 3
+        },
+        "lastNReadyPct": 30.433640668611034,
+        "minimumSampleReadyPct": 5.11380029479098,
+        "passedPct": 0.28832282748455484,
+        "qualifiedHistory": {
+          "n": 113098,
+          "gp": 564.1423703153579,
+          "gl": 107.83262480617238,
+          "pf": 5.231648319137143,
+          "pfState": "ratio"
+        }
+      },
+      "end": {
+        "t": 1792227600000,
+        "contexts": 2550960,
+        "empty": 704277,
+        "lastNReady": 791046,
+        "warmupSampleReady": 791046,
+        "minimumSampleReady": 135468,
+        "passed": 7323,
+        "configs": 106290,
+        "configsLastNReady": 83136,
+        "configsPassed": 5329,
+        "historyCloses": 8316627,
+        "passedCloses": 113168,
+        "passedGp": 573.1683111049806,
+        "passedGl": 111.91648806724943,
+        "maxPassedDdtH": 72.91666666666667,
+        "failures": {
+          "closes": 2415492,
+          "net": 95860,
+          "pre": 379,
+          "pf": 19095,
+          "lastN": 8848,
+          "lcb": 2874,
+          "ddt": 934,
+          "green": 150,
+          "ddr": 5
+        },
+        "lastNReadyPct": 31.00973751058425,
+        "minimumSampleReadyPct": 5.310471351961614,
+        "passedPct": 0.2870683977796594,
+        "qualifiedHistory": {
+          "n": 113168,
+          "gp": 573.1683111049806,
+          "gl": 111.91648806724943,
+          "pf": 5.1213929332786945,
+          "pfState": "ratio"
+        }
+      },
+      "protection": {
+        "holdHours": {
+          "min": 0.75,
+          "max": 48
+        },
+        "slFraction": {
+          "min": 0.0092,
+          "max": 0.03
+        },
+        "tpFraction": {
+          "min": 0.0052,
+          "max": 0.1131
+        },
+        "slToTp": {
+          "min": 0.2652519893899204,
+          "max": 3
+        },
+        "trailActivationFraction": {
+          "min": 0.0017,
+          "max": 0.03
+        },
+        "trailGapFraction": {
+          "min": 0.002,
+          "max": 0.030000000000000002
+        },
+        "trailGapToActivation": {
+          "min": 0.5,
+          "max": 1.5000000000000002
+        },
+        "signalCeilingFraction": {
+          "min": 0.03,
+          "max": 0.03
+        },
+        "atrConfigs": 23868,
+        "atrSlMultiple": {
+          "min": 0.7,
+          "max": 1.5
+        },
+        "atrTpToSl": {
+          "min": 1,
+          "max": 2.2
+        },
+        "atrTrailMultiple": {
+          "min": 0.8,
+          "max": 0.8
+        },
+        "atrSlFloor": {
+          "min": 0.005,
+          "max": 0.005
+        },
+        "atrTrailFloor": {
+          "min": 0.002,
+          "max": 0.002
+        }
+      },
+      "execution": {
+        "n": 239,
+        "gp": 0.48964731463368966,
+        "gl": 0.19207273075598147,
+        "configs": 208,
+        "open": 60,
+        "pf": 2.5492807474881034,
+        "pfState": "ratio",
+        "counts": {
+          "openedPositions": 10,
+          "closedPositions": 4,
+          "openPositions": 6,
+          "openedOrders": 299,
+          "settledOrders": 239,
+          "openOrders": 60
+        }
+      }
+    },
+    {
+      "dimension": "type",
+      "label": "trailing-only",
+      "configs": 19890,
+      "symbols": 12,
+      "sources": 118,
+      "start": {
+        "t": 1792184400000,
+        "contexts": 477360,
+        "empty": 137016,
+        "lastNReady": 145273,
+        "warmupSampleReady": 145273,
+        "minimumSampleReady": 26197,
+        "passed": 1492,
+        "configs": 19890,
+        "configsLastNReady": 15495,
+        "configsPassed": 1033,
+        "historyCloses": 1538011,
+        "passedCloses": 23402,
+        "passedGp": 116.1906311672023,
+        "passedGl": 25.497916402331114,
+        "maxPassedDdtH": 72.91666666666667,
+        "failures": {
+          "closes": 451163,
+          "net": 17463,
+          "pf": 4409,
+          "lastN": 1650,
+          "lcb": 831,
+          "ddt": 253,
+          "pre": 79,
+          "green": 19,
+          "ddr": 1
+        },
+        "lastNReadyPct": 30.432587564940505,
+        "minimumSampleReadyPct": 5.487891737891738,
+        "passedPct": 0.3125523713759008,
+        "qualifiedHistory": {
+          "n": 23402,
+          "gp": 116.1906311672023,
+          "gl": 25.497916402331114,
+          "pf": 4.556867680238363,
+          "pfState": "ratio"
+        }
+      },
+      "end": {
+        "t": 1792227600000,
+        "contexts": 477360,
+        "empty": 135785,
+        "lastNReady": 147794,
+        "warmupSampleReady": 147794,
+        "minimumSampleReady": 27519,
+        "passed": 1442,
+        "configs": 19890,
+        "configsLastNReady": 15660,
+        "configsPassed": 988,
+        "historyCloses": 1570745,
+        "passedCloses": 22660,
+        "passedGp": 113.41136541251112,
+        "passedGl": 24.595828477897566,
+        "maxPassedDdtH": 72.91666666666667,
+        "failures": {
+          "closes": 449841,
+          "net": 18642,
+          "pf": 4574,
+          "lastN": 1744,
+          "lcb": 803,
+          "ddt": 229,
+          "pre": 60,
+          "green": 25
+        },
+        "lastNReadyPct": 30.96070051952405,
+        "minimumSampleReadyPct": 5.764831573655103,
+        "passedPct": 0.3020780961957433,
+        "qualifiedHistory": {
+          "n": 22660,
+          "gp": 113.41136541251112,
+          "gl": 24.595828477897566,
+          "pf": 4.6110000122348165,
+          "pfState": "ratio"
+        }
+      },
+      "protection": {
+        "holdHours": {
+          "min": 48,
+          "max": 48
+        },
+        "slFraction": {
+          "min": 0.0063,
+          "max": 0.03
+        },
+        "trailActivationFraction": {
+          "min": 0.0021,
+          "max": 0.0283
+        },
+        "trailGapFraction": {
+          "min": 0.0025,
+          "max": 0.03
+        },
+        "trailGapToActivation": {
+          "min": 0.5,
+          "max": 1.5000000000000002
+        },
+        "signalCeilingFraction": {
+          "min": 0.03,
+          "max": 0.03
+        }
+      },
+      "execution": {
+        "n": 54,
+        "gp": 0.13997502140937115,
+        "gl": 0.020444667445008603,
+        "configs": 52,
+        "open": 6,
+        "pf": 6.846529628612028,
+        "pfState": "ratio",
+        "counts": {
+          "openedPositions": 7,
+          "closedPositions": 4,
+          "openPositions": 3,
+          "openedOrders": 60,
+          "settledOrders": 54,
+          "openOrders": 6
+        }
+      }
+    },
+    {
+      "dimension": "lane",
+      "label": "5",
+      "configs": 43937,
+      "symbols": 12,
+      "sources": 118,
+      "start": {
+        "t": 1792184400000,
+        "contexts": 1054488,
+        "empty": 216475,
+        "lastNReady": 513072,
+        "warmupSampleReady": 513072,
+        "minimumSampleReady": 131774,
+        "passed": 7709,
+        "configs": 43937,
+        "configsLastNReady": 38134,
+        "configsPassed": 5672,
+        "historyCloses": 5499134,
+        "passedCloses": 121189,
+        "passedGp": 645.8039848346021,
+        "passedGl": 142.59954796297083,
+        "maxPassedDdtH": 72.91666666666667,
+        "failures": {
+          "closes": 922714,
+          "pf": 21490,
+          "net": 89270,
+          "lastN": 8208,
+          "ddt": 1175,
+          "pre": 434,
+          "lcb": 3333,
+          "green": 150,
+          "ddr": 5
+        },
+        "lastNReadyPct": 48.65603022509502,
+        "minimumSampleReadyPct": 12.496491188140595,
+        "passedPct": 0.7310656925446283,
+        "qualifiedHistory": {
+          "n": 121189,
+          "gp": 645.8039848346021,
+          "gl": 142.59954796297083,
+          "pf": 4.528794053416632,
+          "pfState": "ratio"
+        }
+      },
+      "end": {
+        "t": 1792227600000,
+        "contexts": 1054488,
+        "empty": 207464,
+        "lastNReady": 517703,
+        "warmupSampleReady": 517703,
+        "minimumSampleReady": 135591,
+        "passed": 7630,
+        "configs": 43937,
+        "configsLastNReady": 38148,
+        "configsPassed": 5577,
+        "historyCloses": 5594152,
+        "passedCloses": 120046,
+        "passedGp": 642.4807032710627,
+        "passedGl": 141.42674132619828,
+        "maxPassedDdtH": 72.91666666666667,
+        "failures": {
+          "closes": 918897,
+          "pf": 21997,
+          "net": 92834,
+          "lastN": 8259,
+          "ddt": 1110,
+          "pre": 420,
+          "lcb": 3182,
+          "green": 154,
+          "ddr": 5
+        },
+        "lastNReadyPct": 49.095200704038355,
+        "minimumSampleReadyPct": 12.858467806177027,
+        "passedPct": 0.7235739050610344,
+        "qualifiedHistory": {
+          "n": 120046,
+          "gp": 642.4807032710627,
+          "gl": 141.42674132619828,
+          "pf": 4.542851636446832,
+          "pfState": "ratio"
+        }
+      },
+      "protection": {
+        "holdHours": {
+          "min": 0.75,
+          "max": 48
+        },
+        "slFraction": {
+          "min": 0.0058,
+          "max": 0.03
+        },
+        "tpFraction": {
+          "min": 0.0073,
+          "max": 0.0594
+        },
+        "slToTp": {
+          "min": 0.505050505050505,
+          "max": 2.7040816326530615
+        },
+        "signalCeilingFraction": {
+          "min": 0.03,
+          "max": 0.03
+        },
+        "trailActivationFraction": {
+          "min": 0.0021,
+          "max": 0.03
+        },
+        "trailGapFraction": {
+          "min": 0.00275,
+          "max": 0.030000000000000002
+        },
+        "trailGapToActivation": {
+          "min": 0.5,
+          "max": 1.5000000000000002
+        },
+        "atrConfigs": 7956,
+        "atrSlMultiple": {
+          "min": 0.7,
+          "max": 1.5
+        },
+        "atrTpToSl": {
+          "min": 1,
+          "max": 2.2
+        },
+        "atrSlFloor": {
+          "min": 0.005,
+          "max": 0.005
+        },
+        "atrTrailMultiple": {
+          "min": 0.8,
+          "max": 0.8
+        },
+        "atrTrailFloor": {
+          "min": 0.002,
+          "max": 0.002
+        }
+      },
+      "execution": {
+        "n": 153,
+        "gp": 0.6856601084532112,
+        "gl": 0.05849706221225432,
+        "configs": 153,
+        "open": 0,
+        "pf": 11.721274240496388,
+        "pfState": "ratio",
+        "counts": {
+          "openedPositions": 4,
+          "closedPositions": 4,
+          "openPositions": 0,
+          "openedOrders": 153,
+          "settledOrders": 153,
+          "openOrders": 0
+        }
+      }
+    },
+    {
+      "dimension": "parameterRange",
+      "label": "short+medium",
+      "configs": 3639,
+      "symbols": 12,
+      "sources": 5,
+      "start": {
+        "t": 1792184400000,
+        "contexts": 87336,
+        "empty": 9330,
+        "lastNReady": 41656,
+        "warmupSampleReady": 41656,
+        "minimumSampleReady": 7948,
+        "passed": 626,
+        "configs": 3639,
+        "configsLastNReady": 3586,
+        "configsPassed": 428,
+        "historyCloses": 417529,
+        "passedCloses": 9930,
+        "passedGp": 51.35115602280004,
+        "passedGl": 13.038739026189313,
+        "maxPassedDdtH": 70.25,
+        "failures": {
+          "closes": 79388,
+          "net": 4830,
+          "pf": 1589,
+          "lcb": 261,
+          "lastN": 544,
+          "ddt": 75,
+          "pre": 16,
+          "green": 6,
+          "ddr": 1
+        },
+        "lastNReadyPct": 47.69625354950994,
+        "minimumSampleReadyPct": 9.100485481359348,
+        "passedPct": 0.7167720069616195,
+        "qualifiedHistory": {
+          "n": 9930,
+          "gp": 51.35115602280004,
+          "gl": 13.038739026189313,
+          "pf": 3.9383529281211382,
+          "pfState": "ratio"
+        }
+      },
+      "end": {
+        "t": 1792227600000,
+        "contexts": 87336,
+        "empty": 8963,
+        "lastNReady": 42410,
+        "warmupSampleReady": 42410,
+        "minimumSampleReady": 8363,
+        "passed": 604,
+        "configs": 3639,
+        "configsLastNReady": 3627,
+        "configsPassed": 421,
+        "historyCloses": 428542,
+        "passedCloses": 9624,
+        "passedGp": 49.94733935918028,
+        "passedGl": 12.61571757449485,
+        "maxPassedDdtH": 72.5,
+        "failures": {
+          "closes": 78973,
+          "net": 5199,
+          "pf": 1627,
+          "lcb": 263,
+          "lastN": 569,
+          "ddt": 79,
+          "green": 6,
+          "pre": 15,
+          "ddr": 1
+        },
+        "lastNReadyPct": 48.55958596684071,
+        "minimumSampleReadyPct": 9.575661811853074,
+        "passedPct": 0.691581936429422,
+        "qualifiedHistory": {
+          "n": 9624,
+          "gp": 49.94733935918028,
+          "gl": 12.61571757449485,
+          "pf": 3.9591358211885335,
+          "pfState": "ratio"
+        }
+      },
+      "protection": {
+        "holdHours": {
+          "min": 0.75,
+          "max": 48
+        },
+        "slFraction": {
+          "min": 0.005,
+          "max": 0.03
+        },
+        "tpFraction": {
+          "min": 0.0052,
+          "max": 0.1131
+        },
+        "slToTp": {
+          "min": 0.2652519893899204,
+          "max": 3
+        },
+        "signalCeilingFraction": {
+          "min": 0.03,
+          "max": 0.03
+        },
+        "trailActivationFraction": {
+          "min": 0.0017,
+          "max": 0.03
+        },
+        "trailGapFraction": {
+          "min": 0.002,
+          "max": 0.030000000000000002
+        },
+        "trailGapToActivation": {
+          "min": 0.5,
+          "max": 1.5000000000000002
+        },
+        "atrConfigs": 720,
+        "atrSlMultiple": {
+          "min": 0.7,
+          "max": 1.5
+        },
+        "atrTpToSl": {
+          "min": 1,
+          "max": 2.2
+        },
+        "atrSlFloor": {
+          "min": 0.005,
+          "max": 0.005
+        },
+        "atrTrailMultiple": {
+          "min": 0.8,
+          "max": 0.8
+        },
+        "atrTrailFloor": {
+          "min": 0.002,
+          "max": 0.002
+        }
+      },
+      "execution": {
+        "n": 38,
+        "gp": 0.10670812759548738,
+        "gl": 0.006567207267568437,
+        "configs": 24,
+        "open": 0,
+        "pf": 16.24863100064709,
+        "pfState": "ratio",
+        "counts": {
+          "openedPositions": 4,
+          "closedPositions": 4,
+          "openPositions": 0,
+          "openedOrders": 38,
+          "settledOrders": 38,
+          "openOrders": 0
+        }
+      }
+    }
+  ],
+  "baselineSourceSha256": "619ba50f37a7c1e9c8a10ee5167a37baf44306b48b32df7a198f0b10c3cf781e",
+  "files": {
+    "protocol.json": "4db59b4c26907cd3a6f0595ba7750e0bf5526e579ad625b7c251a89a417b9961",
+    "coverage.json": "05c1d75f749e6a617dbe3e9490f0ca4612b24ebea40d0e440df25871e10fa165",
+    "execution-contexts.json": "a698fae8b206f6267a79cc1469144bf71c1d0b5c1629044931e83b9b46c6e559",
+    "admission-trace.json": "012fac8a384a685dba0505d93d790641dfc41e3c856b8f901453e5b2c4974643"
+  }
+}

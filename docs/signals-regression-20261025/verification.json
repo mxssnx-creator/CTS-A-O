@@ -1,0 +1,54 @@
+{
+  "codeHead": "df96f8cbbf93d5d1c678e0d9bc594d8e0193c161",
+  "fullCI": {
+    "runId": 40186846240,
+    "conclusion": "success",
+    "coreShardsPassed": [
+      868,
+      650,
+      793,
+      1180
+    ],
+    "ordinarySlowExclusions": 2,
+    "slowRuntimePassed": 2,
+    "scriptsAndBrowserPassed": 721,
+    "appComponentPassed": 84,
+    "templateSkips": 8,
+    "totalPassed": 4298,
+    "failures": 0,
+    "cancelled": 0
+  },
+  "otherWorkflows": [
+    {
+      "runId": 40186846173,
+      "name": "Exact Signal study",
+      "conclusion": "success"
+    },
+    {
+      "runId": 40186846209,
+      "name": "Endpoint report checks",
+      "conclusion": "success"
+    }
+  ],
+  "local": {
+    "focusedCorePassed": 268,
+    "accountingComparisonPassed": 15,
+    "typecheck": "pass",
+    "build": "pass",
+    "scopedLint": "pass",
+    "browser": "missing executable and blocked downloads; CI desktop/phone/settings-save pass"
+  },
+  "financialReplay": {
+    "nativeChecksPassed": 68,
+    "scalarComparisonsPassed": 49955880,
+    "comparisonSectionsPassed": 29,
+    "settledOrdersExactlyEqual": 339,
+    "heldOrdersExactlyEqual": 97
+  },
+  "release": {
+    "pr": 199,
+    "mergeCommit": "ecf384a25f6ccaf967cd69817d27b962c29c42a3",
+    "backup": "backup/main-before-ready-20261025",
+    "liveReload": false
+  }
+}

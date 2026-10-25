@@ -1,0 +1,41 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "name": "funded closes",
+      "ok": true,
+      "rows": 339,
+      "beforeSha256": "1d0b3582e845e05a9b6ee1e07f2b5b633effc4bbfedf696eb1d073ce6c3eb855",
+      "afterSha256": "1d0b3582e845e05a9b6ee1e07f2b5b633effc4bbfedf696eb1d073ce6c3eb855"
+    },
+    {
+      "name": "funding evidence",
+      "ok": true,
+      "rows": null,
+      "beforeSha256": "43706193850b86de46880722b1f1463c38a2bbad13c77a36c95b96d7854f5671",
+      "afterSha256": "43706193850b86de46880722b1f1463c38a2bbad13c77a36c95b96d7854f5671"
+    },
+    {
+      "name": "close allocations",
+      "ok": true,
+      "rows": 339,
+      "beforeSha256": "f0e13ed4574c76d18315bf8c87efb54dbc60f0457a36dd5feb216ae943e4e756",
+      "afterSha256": "f0e13ed4574c76d18315bf8c87efb54dbc60f0457a36dd5feb216ae943e4e756"
+    },
+    {
+      "name": "held orders",
+      "ok": true,
+      "rows": 97,
+      "beforeSha256": "723040efbde2555b1b3517c9174c056ec823d625cfa39c98e9b307ae6c00b89f",
+      "afterSha256": "723040efbde2555b1b3517c9174c056ec823d625cfa39c98e9b307ae6c00b89f"
+    },
+    {
+      "name": "held allocations",
+      "ok": true,
+      "rows": 97,
+      "beforeSha256": "3bd936228d85ae009dc03df93545128e8b235be4620e51440637db2448ab5793",
+      "afterSha256": "3bd936228d85ae009dc03df93545128e8b235be4620e51440637db2448ab5793"
+    }
+  ],
+  "scope": "Every stored field and original ordering; exact identities, times, prices, returns, stops, ownership and allocated notional. Both funded cohorts independently validated before comparison."
+}
