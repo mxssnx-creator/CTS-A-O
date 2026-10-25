@@ -3302,15 +3302,28 @@ if (cov) {
   const hasSignalsInBase = (cov.signalCombos ?? 0) > 0 || (cov.byKind?.signal?.evaluated ?? 0) > 0;
   const tapeRows = Object.values(engineTapes);
   const hasSeatableTapeCounts = tapeRows.every((v) => Number.isFinite(v.activeConfigs));
-  const coverageTypes = new Set([...typesOn.map(([t]) => t), ...(cov.sets ?? []).map(x => x.kind)]);
+  const engineSets = (cov.sets ?? []).filter(x => !isSignalInd(x.ind ?? ""));
+  const signalSets = (cov.sets ?? []).filter(x => isSignalInd(x.ind ?? ""));
+  const coverageTypes = new Set([...typesOn.map(([t]) => t), ...engineSets.map(x => x.kind)]);
   for (const t of coverageTypes) {
     if (!hasSeatableTapeCounts || !Array.isArray(cov.sets) || (!splitTapeStats && hasSignalsInBase))
       continue;
-    const expected = cov.sets.filter((x) => x.kind === t).reduce((a, x) => a + x.kept - (x.postGateRejected ?? 0), 0);
+    const expected = engineSets.filter((x) => x.kind === t).reduce((a, x) => a + x.kept - (x.postGateRejected ?? 0), 0);
     const actual = Object.entries(engineTapes)
       .filter(([k]) => k.startsWith(`${t}|`))
       .reduce((a, [, v]) => a + v.activeConfigs, 0);
     check(`coverage: strategy type ${t} active tapes match kept sets`, expected, actual);
+  }
+  // Signal Exit has its own builder records; it cannot inflate ordinary engine completeness.
+  if (splitTapeStats && Array.isArray(cov.sets)) {
+    for (const kind of new Set(signalSets.map(x => x.kind))) {
+      const rows = Object.entries(signalTapes).filter(([key]) => key.startsWith(`${kind}|`));
+      if (!rows.every(([, row]) => Number.isFinite(row.activeConfigs))) continue;
+      const expected = signalSets.filter(x => x.kind === kind)
+        .reduce((n, x) => n + x.kept - (x.postGateRejected ?? 0), 0);
+      check(`coverage: signal strategy type ${kind} active tapes match kept sets`, expected,
+        rows.reduce((n, [, row]) => n + row.activeConfigs, 0));
+    }
   }
   if (raw.settings.signals?.enabled !== false && raw.settings.signals?.trailingOnly?.enabled) {
     const n = Object.entries(signalTapes)
@@ -3324,7 +3337,7 @@ if (cov) {
       const active = Object.entries(engineTapes)
         .filter(([k]) => k.endsWith(`|${tag}`))
         .reduce((a, [, v]) => a + v.activeConfigs, 0);
-      const kept = cov.sets.filter((x) => x.tag === tag).reduce((a, x) => a + x.kept - (x.postGateRejected ?? 0), 0);
+      const kept = engineSets.filter((x) => x.tag === tag).reduce((a, x) => a + x.kept - (x.postGateRejected ?? 0), 0);
       check(`coverage: range ${tag} active tapes match kept sets`, kept, active);
     }
   }
