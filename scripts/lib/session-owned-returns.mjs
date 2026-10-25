@@ -1,6 +1,12 @@
 import { modeledUnitReturn, modeledUnitStatsOf } from "../../src/core/metrics/stats.ts";
 import { BOOK_NOTIONAL_EPS_USD } from "./book-notional.mjs";
 
+// Keep the historical finite gate score compatible, but never mistake its no-loss sentinel for an exact ratio.
+function exactPfEvidence(n, gp, gl, available) {
+  const pfState = !n ? "empty" : !available ? "unavailable" : gl === 0 ? gp > 0 ? "no-loss" : "flat" : "ratio";
+  return { exactPf: pfState === "ratio" ? gp / gl : null, pfState };
+}
+
 // Allocation membership is evidence. A missing allocation cannot become a funded
 // fill through a default notional, and a known zero cannot contribute a return.
 export function sessionAllocation(row, allocations, keyOf) {
@@ -64,6 +70,7 @@ export function sessionOwnedReturns(rows, allocations, keyOf) {
     netU: available ? stats.net / 100 : NaN, mddU: available ? stats.mdd / 100 : NaN,
     noLoss: available && gpR > 0 && glR === 0,
     pfConvention: !available ? "unavailable" : gpR > 0 && glR === 0 ? "no-loss-sentinel" : "gross-return-ratio",
+    ...exactPfEvidence(ownedRows.length, gpR, glR, available),
   };
 }
 
@@ -74,5 +81,6 @@ export function sessionVirtualReturns(rows) {
   return { n: rows.length, gpR, glR, pf: available ? stats.pf : NaN,
     unknownReturns: stats.unknownReturns, unknownReturnTotals: stats.unknownReturnTotals ?? 0,
     pfBasis: available ? "unit-net-returns" : "unavailable",
-    noLoss: available && gpR > 0 && glR === 0, basis: "all-virtual-modeled-closes" };
+    noLoss: available && gpR > 0 && glR === 0, basis: "all-virtual-modeled-closes",
+    ...exactPfEvidence(rows.length, gpR, glR, available) };
 }

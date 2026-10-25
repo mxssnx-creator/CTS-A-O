@@ -2064,6 +2064,11 @@ for (let h = startT; h < endT; h += H) {
     "cashPf",
     "cashPfDiagnostic",
     "pf",
+    "exactPf",
+    "pfState",
+    "noLoss",
+    "pfBasis",
+    "pfConvention",
     "wins",
     "losses",
     "wr",
@@ -2084,6 +2089,11 @@ for (let h = startT; h < endT; h += H) {
   hh.cumGp = cs.gp;
   hh.cumGl = cs.gl;
   hh.cumPf = cs.pf;
+  hh.cumExactPf = cs.exactPf;
+  hh.cumPfState = cs.pfState;
+  hh.cumNoLoss = cs.noLoss;
+  hh.cumPfBasis = cs.pfBasis;
+  hh.cumPfConvention = cs.pfConvention;
   hh.cumCashPf = cs.cashPf;
   hh.cumCashPfDiagnostic = cs.cashPfDiagnostic;
   hh.cumGpR = cs.gpR;
@@ -2412,6 +2422,9 @@ function curveStats(xs0, nowT = endT) {
     gp,
     gl,
     pf: owned.pf,
+    exactPf: owned.exactPf,
+    pfState: owned.pfState,
+    pfConvention: owned.pfConvention,
     pfBasis: owned.pfBasis,
     unknownReturns: owned.unknownReturns,
     unknownReturnTotals: owned.unknownReturnTotals,
@@ -3425,6 +3438,9 @@ const T = {
   positions: fundedCounts.closedPositions,
   settledSlicePositions: tot.positions,
   pf: tot.pf,
+  exactPf: tot.exactPf,
+  pfState: tot.pfState,
+  pfConvention: tot.pfConvention,
   cashPf: tot.cashPf,
   cashPfDiagnostic: tot.cashPfDiagnostic,
   pfR: tot.pf,
@@ -3528,6 +3544,9 @@ const groupLegacy = (pred) => {
     gp: c.gp,
     gl: c.gl,
     pf: c.pf,
+    exactPf: c.exactPf,
+    pfState: c.pfState,
+    pfConvention: c.pfConvention,
     cashPf: c.cashPf,
     cashPfDiagnostic: c.cashPfDiagnostic,
     gpR: c.gpR,
@@ -4168,7 +4187,7 @@ const data = clean({
   definitions: {
     orders:
       "primary settled-slice count: positive native book allocations plus retained unknown ownership; known zero allocations counted separately in zeroAllocatedOrders and all virtual closes retained under virtual",
-    pf: "primary: positive net order returns ÷ absolute negative net order returns on the same funded settled-order sample, after modeled costs; recorded Block/coordination execution multiples removed, ladder/tape leg semantics retained; see evidence.returns for source completeness",
+    pf: "primary: positive net order returns ÷ absolute negative net order returns on the same funded settled-order sample, after modeled costs; neutral is 1. Legacy numeric pf retains the finite no-loss gate score 4; use exactPf and pfState to distinguish an actual ratio, no losses, flat, empty and unavailable evidence. Recorded Block/coordination multiples are removed, ladder/tape leg semantics retained; see evidence.returns for source completeness",
     cashPf:
       "normalized base-$1 PF: every funded settled order gets the same $1 notional and its canonical unit return (stored r with Block/coordination multiple removed); therefore this must match Return PF apart from rounding",
     cashPfDiagnostic:
@@ -4233,6 +4252,11 @@ const data = clean({
     gp: h.gp,
     gl: h.gl,
     pf: h.pf,
+    exactPf: h.exactPf,
+    pfState: h.pfState,
+    noLoss: h.noLoss,
+    pfBasis: h.pfBasis,
+    pfConvention: h.pfConvention,
     cashPf: h.cashPf,
     cashPfDiagnostic: h.cashPfDiagnostic,
     gpR: h.gpR,
@@ -4246,6 +4270,11 @@ const data = clean({
     cumGp: h.cumGp,
     cumGl: h.cumGl,
     cumPf: h.cumPf,
+    cumExactPf: h.cumExactPf,
+    cumPfState: h.cumPfState,
+    cumNoLoss: h.cumNoLoss,
+    cumPfBasis: h.cumPfBasis,
+    cumPfConvention: h.cumPfConvention,
     cumCashPf: h.cumCashPf,
     cumCashPfDiagnostic: h.cumCashPfDiagnostic,
     cumDdr: h.cumDdr,

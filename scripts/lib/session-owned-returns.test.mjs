@@ -8,6 +8,20 @@ const rows = [
   { id: "fundedLoss", r: -0.02, mult: 1, vol: 1, entryT: 2, exitT: 3 },
   { id: "zeroWin", r: 0.5, mult: 1, vol: 1, entryT: 3, exitT: 4 },
 ];
+it("exact PF distinguishes neutral 1, no-loss scoring, empty, flat and unknown evidence", () => {
+  const outcome = (r, i) => ({id: String(i), r, mult: 1, entryT: i + 1, exitT: i + 2});
+  const read = (rs) => { const xs = rs.map(outcome); return sessionOwnedReturns(xs, new Map(xs.map(x => [x.id, 1])), key); };
+  assert.equal(read([.02, -.02]).exactPf, 1);
+  assert.equal(read([.02, -.02]).pfState, "ratio");
+  assert.equal(read([.04, -.01]).exactPf, 4);
+  assert.equal(read([.04]).pf, 4, "legacy qualification score remains compatible");
+  assert.equal(read([.04]).exactPf, null);
+  assert.equal(read([.04]).pfState, "no-loss");
+  assert.equal(read([]).pfState, "empty");
+  assert.equal(read([0]).pfState, "flat");
+  assert.equal(read([NaN]).pfState, "unavailable");
+  assert.equal(read([NaN]).exactPf, null);
+});
 it("funded PF and virtual PF use explicitly different samples without changing cash or return weighting", () => {
   const allocations = new Map([["fundedWin", 3], ["fundedLoss", 7], ["zeroWin", 0]]);
   const owned = sessionOwnedReturns(rows, allocations, key);

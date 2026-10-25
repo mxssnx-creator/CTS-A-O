@@ -1,0 +1,35 @@
+[
+  {
+    "minute": 0,
+    "ms": 6667.991176000001,
+    "calls": 122777,
+    "hits": 0,
+    "cacheItems": 26166,
+    "cacheBytes": 134216745,
+    "ranked": 122777,
+    "active": 8658,
+    "rss": 1829470208
+  },
+  {
+    "minute": 1,
+    "ms": 3738.8462579999978,
+    "calls": 122777,
+    "hits": 0,
+    "cacheItems": 26166,
+    "cacheBytes": 134216745,
+    "ranked": 122777,
+    "active": 8658,
+    "rss": 1898881024
+  },
+  {
+    "minute": 2,
+    "ms": 3334.739053999998,
+    "calls": 122777,
+    "hits": 0,
+    "cacheItems": 26166,
+    "cacheBytes": 134216745,
+    "ranked": 122777,
+    "active": 8658,
+    "rss": 1912320000
+  }
+]

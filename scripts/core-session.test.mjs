@@ -699,6 +699,14 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.total.virtual.n, 3);
     assert.equal(data.total.virtual.pf, 4);
     assert.equal(data.total.virtual.noLoss, true, "the numeric4 is explicitly the no-loss sentinel");
+    assert.equal(data.total.virtual.exactPf, null);
+    assert.equal(data.total.virtual.pfState, "no-loss");
+    assert.equal(data.hours[0].noLoss, data.total.noLoss, "hour exports retain their own no-loss metadata");
+    assert.equal(data.hours[0].pfState, data.total.pfState);
+    assert.equal(data.hours[0].exactPf, data.total.exactPf);
+    assert.equal(data.hours[0].cumPfState, data.total.pfState);
+    assert.equal(data.hours[0].cumExactPf, data.total.exactPf);
+    assert.equal(data.hours[0].cumNoLoss, data.total.noLoss);
     assert.equal(report.strategies.total.n, 2);
     assert.equal(data.hours[0].orders, 2); assert.equal(data.hours[0].virtual.n, 3);
     assert.equal(data.hours[0].pf, 0); assert.equal(data.typeHours[0].closes, 2);

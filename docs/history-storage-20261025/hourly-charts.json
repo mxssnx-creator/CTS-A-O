@@ -1,0 +1,113 @@
+{
+  "basis": "Completed independent 12h controls; minute prices; both start flat at $10; UTC windows 2026-10-16 21:00 to 2026-10-17 09:00 and 2026-10-17 09:00 to 21:00",
+  "rows": [
+    {
+      "hour": "1",
+      "orders0": 196,
+      "orders12": 0,
+      "positions0": 7,
+      "positions12": 0,
+      "dd0": 0.043,
+      "dd12": 0
+    },
+    {
+      "hour": "2",
+      "orders0": 105,
+      "orders12": 0,
+      "positions0": 6,
+      "positions12": 0,
+      "dd0": 0.0958,
+      "dd12": 0
+    },
+    {
+      "hour": "3",
+      "orders0": 105,
+      "orders12": 0,
+      "positions0": 6,
+      "positions12": 0,
+      "dd0": 0.101,
+      "dd12": 0
+    },
+    {
+      "hour": "4",
+      "orders0": 116,
+      "orders12": 5,
+      "positions0": 8,
+      "positions12": 2,
+      "dd0": 0.077,
+      "dd12": 0.0009
+    },
+    {
+      "hour": "5",
+      "orders0": 97,
+      "orders12": 5,
+      "positions0": 8,
+      "positions12": 2,
+      "dd0": 0.0627,
+      "dd12": 0.0017
+    },
+    {
+      "hour": "6",
+      "orders0": 95,
+      "orders12": 5,
+      "positions0": 8,
+      "positions12": 2,
+      "dd0": 0.0979,
+      "dd12": 0.0033
+    },
+    {
+      "hour": "7",
+      "orders0": 129,
+      "orders12": 660,
+      "positions0": 12,
+      "positions12": 4,
+      "dd0": 0.1206,
+      "dd12": 0.1117
+    },
+    {
+      "hour": "8",
+      "orders0": 124,
+      "orders12": 639,
+      "positions0": 10,
+      "positions12": 4,
+      "dd0": 0.1316,
+      "dd12": 0.235
+    },
+    {
+      "hour": "9",
+      "orders0": 125,
+      "orders12": 631,
+      "positions0": 10,
+      "positions12": 4,
+      "dd0": 0.0436,
+      "dd12": 0.506
+    },
+    {
+      "hour": "10",
+      "orders0": 108,
+      "orders12": 602,
+      "positions0": 10,
+      "positions12": 2,
+      "dd0": 0.0213,
+      "dd12": 1.0134
+    },
+    {
+      "hour": "11",
+      "orders0": 105,
+      "orders12": 583,
+      "positions0": 9,
+      "positions12": 2,
+      "dd0": 0.0328,
+      "dd12": 1.1482
+    },
+    {
+      "hour": "12",
+      "orders0": 105,
+      "orders12": 583,
+      "positions0": 9,
+      "positions12": 2,
+      "dd0": 0.0313,
+      "dd12": 1.1745
+    }
+  ]
+}

@@ -3905,6 +3905,21 @@ function signalEvaluationKeyOfPolicy(tp: ConfigTape, policy: string): string {
   return `${policy}|${tp.heldOnly === true ? 1 : 0}|${tp.fromT ?? ""}`;
 }
 type PreparedSignalContext = { tape: ConfigTape; indices: Uint32Array; key?: string; result?: ConfigEval };
+function signalInitialVerdict(tp: ConfigTape, source: ConfigTape, indices: Uint32Array | null | undefined, t: number, o: WalkForwardOptions) {
+  const from = t - signalHistoryHours(o) * H;
+  const first = indices ? lowerBound(indices, lowerBound(source.exitT, from)) : 0;
+  const before = indices ? lowerBound(indices, lowerBound(source.exitT, t)) : 0;
+  let n = 0, gp = 0, gl = 0;
+  if (indices) for (let j = first; j < before; j++) {
+    const r = source.r[indices[j]];
+    n++; if (r > 0) gp += r; else gl -= r;
+  }
+  const summary = { n, pf: profitFactor(gp, gl), net: (gp - gl) * 100, gp: gp * 100, gl: gl * 100 };
+  const fail: EvalGate | undefined = tp.heldOnly || n < minTradesForTape(tp, o, o.gates.minTrades ?? 0) ? "closes"
+    : !(Number.isFinite(summary.net) && summary.net > 0) ? "net"
+    : !Number.isFinite(summary.pf) || summary.pf < minPfForTape(tp, o) ? "pf" : undefined;
+  return { summary, first, before, fail };
+}
 function signalConfigEvalWithKey(
   tp: ConfigTape,
   t: number,
@@ -3926,22 +3941,12 @@ function signalConfigEvalWithKey(
   };
   const source = prepared?.tape ?? tp;
   const indices = prepared?.indices ?? signalContextOf(source, sym, side);
-  const from = t - signalHistoryHours(o) * H;
-  const first = indices ? lowerBound(indices, lowerBound(source.exitT, from)) : 0;
-  const before = indices ? lowerBound(indices, lowerBound(source.exitT, t)) : 0;
-  let n = 0, gp = 0, gl = 0;
-  if (indices) for (let j = first; j < before; j++) {
-    const i = indices[j];
-    n++; const r = source.r[i]; if (r > 0) gp += r; else gl -= r;
-  }
-  const summary = { n, pf: profitFactor(gp, gl), net: (gp - gl) * 100, gp: gp * 100, gl: gl * 100 };
+  const { summary, fail } = signalInitialVerdict(tp, source, indices, t, o);
   const reject = (fail: EvalGate): ConfigEval => {
     return save({ ok: false, fail, ...summary });
   };
-  if (tp.heldOnly || n < minTradesForTape(tp, o, o.gates.minTrades ?? 0)) return reject("closes");
-  if (!(Number.isFinite(summary.net) && summary.net > 0)) return reject("net");
+  if (fail) return reject(fail);
   const floor = minPfForTape(tp, o);
-  if (!Number.isFinite(summary.pf) || summary.pf < floor) return reject("pf");
   if (!signalLastNOk(source, sym, side, t - 1, validLastNOf(tp, o), floor, o.gates.maxDdtH, maxDdrForTape(tp, o) ?? 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false, lossPriorOf(tp, o.gates), prepared?.indices)) return reject("lastN");
   // Preserve the original tied order and all past Last-N evidence without
   // allocating/sorting Trade objects or copying the unobserved replay future.
@@ -5963,36 +5968,44 @@ function* activeSignalsAtGen(
  */
 export class SignalActivationBook {
   private hour = NaN;
-  private ranked: Array<{ key: string; tp: ConfigTape; sym: string; side: number; coordination: boolean }> = [];
+  private ranked: Array<{ key: string; tp: ConfigTape; sym: string; side: number; coordination: boolean;
+    rejected?: { from: number; until: number; policy: number; heldOnly: boolean; fromT?: number } }> = [];
   private index: readonly SignalIndexRow[];
   private sig: SignalSettings;
   private windowH: number;
   private options: WalkForwardOptions;
-  private own = new Map<string, PreparedSignalContext & { bytes: number }>();
+  private own = new Map<string, PreparedSignalContext & { bytes: number; pass: number }>();
   private ownBytes = 0;
   private ownLimit = 128 * 1024 * 1024;
+  private pass = 0;
+  private rejectionPolicy = "";
+  private rejectionGeneration = 0;
 
-  private context(row: (typeof this.ranked)[number]): PreparedSignalContext {
+  private context(row: (typeof this.ranked)[number], pass: number, prefetched?: Uint32Array): PreparedSignalContext {
     let own = this.own.get(row.key);
     if (own) this.own.delete(row.key);
     else {
-      const indices = signalContextOf(row.tp, row.sym, row.side) ?? new Uint32Array(0);
+      const indices = prefetched ?? signalContextOf(row.tp, row.sym, row.side) ?? new Uint32Array(0);
       const tape = indexedEvaluationTape(row.tp, indices, 0, indices.length);
       const order = new Uint32Array(tape.n);
       for (let i = 0; i < order.length; i++) order[i] = i;
       // Columns alone underestimate many short histories: each context also owns typed-array views,
       // tape/result objects and cache keys. Reserve conservative overhead as well as exact binary bytes.
       const bytes = tapeBytes(tape.n) + order.byteLength + 4096 + 2 * row.key.length;
-      own = { tape, indices: order, bytes };
+      own = { tape, indices: order, bytes, pass };
       while (this.ownBytes + bytes > this.ownLimit && this.own.size) {
         const first = this.own.keys().next().value!;
         const expired = this.own.get(first)!;
+        // A sequential scan larger than the cache must not evict every context it just used.
+        // Keep this pass's useful working set; calculate the overflow without retaining it.
+        if (expired.pass === pass) return own;
         this.ownBytes -= expired.bytes;
         this.own.delete(first);
       }
       if (bytes > this.ownLimit) return own;
       this.ownBytes += bytes;
     }
+    own.pass = pass;
     this.own.set(row.key, own);
     own.tape.heldOnly = row.tp.heldOnly; own.tape.carried = row.tp.carried; own.tape.fromT = row.tp.fromT;
     return own;
@@ -6026,17 +6039,38 @@ export class SignalActivationBook {
       this.hour = hour;
     }
     const out = new Set<string>(), evaluationKeys = new Map<ConfigTape, string>();
+    const pass = ++this.pass, rejectionPolicy = signalEvaluationPolicyKey(0, this.options);
+    if (rejectionPolicy !== this.rejectionPolicy) { this.rejectionPolicy = rejectionPolicy; this.rejectionGeneration++; }
     const policy = signalEvaluationPolicyKey(t, this.options);
     let classic = 0, coordinated = 0, count = 0;
     for (const row of this.ranked) {
       if (++count % 32 === 0) yield -15;
       const cap = row.coordination ? this.sig.coordination.count : this.sig.count;
       if (cap > 0 && (row.coordination ? coordinated : classic) >= cap) continue;
+      const rejected = row.rejected;
+      if (rejected && rejected.policy === this.rejectionGeneration && rejected.from <= t && t < rejected.until &&
+          rejected.heldOnly === !!row.tp.heldOnly && rejected.fromT === row.tp.fromT) continue;
+      let indices: Uint32Array | undefined;
+      if (!this.own.has(row.key)) {
+        indices = signalContextOf(row.tp, row.sym, row.side) ?? new Uint32Array(0);
+        const initial = signalInitialVerdict(row.tp, row.tp, indices, t, this.options);
+        if (initial.fail) {
+          // These three early gates depend only on strict [t-history, t) completed closes. A rejection
+          // cannot recover before a close enters/leaves that interval (or the immutable policy changes).
+          // Retain only its clock, not a copied history for a context which cannot currently qualify.
+          const nextClose = initial.before < indices.length ? row.tp.exitT[indices[initial.before]] + 1 : Infinity;
+          const expiry = initial.first < initial.before ? row.tp.exitT[indices[initial.first]] + signalHistoryHours(this.options) * H + 1 : Infinity;
+          row.rejected = { from: t, until: row.tp.heldOnly ? Infinity : Math.min(nextClose, expiry),
+            policy: this.rejectionGeneration, heldOnly: !!row.tp.heldOnly, fromT: row.tp.fromT };
+          continue;
+        }
+      }
+      row.rejected = undefined;
       let key = evaluationKeys.get(row.tp);
       if (key === undefined) evaluationKeys.set(row.tp, (key = signalEvaluationKeyOfPolicy(row.tp, policy)));
       // Cache immutable own columns only; every time-dependent verdict is recalculated at this minute.
       // Future rows remain behind the evaluator's existing strict t / t−1 boundaries.
-      if (!signalConfigEvalWithKey(row.tp, t, this.options, row.sym, row.side, key, this.context(row)).ok) continue;
+      if (!signalConfigEvalWithKey(row.tp, t, this.options, row.sym, row.side, key, this.context(row, pass, indices)).ok) continue;
       out.add(row.key);
       if (row.coordination) coordinated++; else classic++;
     }

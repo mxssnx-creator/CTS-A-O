@@ -1,0 +1,21 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> test:core
+> node scripts/test-core.mjs src/core/sim/signal-activation-clock.test.ts
+
+[core-tests] offline Node transport guard; 1 files; concurrency 1; compute workers 1
+✔ a Signal validated between report hours executes on its next minute onset (24.153631ms)
+✔ minute activation equals fresh full ranking, including family caps, Exit keys and backward clocks (63.166091ms)
+✔ cancelling an activation build cannot publish a partial ranking or retain stale minute verdicts (8.407435ms)
+✔ prepared own histories remain causal under adversarial future returns and bounded cache eviction (8.937532ms)
+✔ activation cache budgets metadata as well as columns and preserves gates across LRU eviction (8.004558ms)
+✔ early rejected Signals recover at strict close boundaries, on policy changes and on backward clocks (6.316463ms)
+✔ a cached PF rejection expires when an old loss leaves the rolling history, without a new close (5.022332ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 455.953949
