@@ -19,6 +19,7 @@ import {
   sessionBaseTags,
   sessionOwnRangePassed,
   sessionQualificationEvidence,
+  sessionBasePairRows,
   sessionReturnEvidence,
 } from "./lib/session-qualification.mjs";
 
@@ -999,4 +1000,16 @@ it("margin usage alone never changes loss equity or drawdown for identical funde
       assert.equal(results[0][key], results[1][key], key);
     assert.ok(Math.abs(results[0].marginMax - results[1].marginMax * 100) < 1e-4);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it("records independent Exit Base proof without borrowing ordinary ranges or a profitable headline", () => {
+  const rows = ["ordinary", "qualified", "rejected"].map((ind, i) => ({ bot: i ? "exit" : "follow", ind, full: { n: 100, pf: 4, net: 1 } }));
+  const tags = { "follow|ordinary": ["mn"], "exit|rejected": ["mn"] };
+  const got = sessionBasePairRows(rows, tags, true, new Set(["exit|qualified"]));
+  assert.deepEqual(got.map(x => [x.pair, x.passed, x.tags]), [["follow|ordinary", true, ["mn"]], ["exit|qualified", true, ["exit"]], ["exit|rejected", false, []]]);
+  assert.equal(got[1].qualificationRecorded, true);
+  const missing = sessionBasePairRows(rows, tags, true, undefined);
+  assert.equal(missing[1].passed, false);
+  assert.equal(missing[2].passed, false);
+  assert.equal(missing[1].qualificationRecorded, false);
 });

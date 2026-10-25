@@ -72,6 +72,7 @@ import {
   recordSessionMinimum,
   sessionOwnRangePassed,
   sessionQualificationEvidence,
+  sessionBasePairRows,
   sessionReturnEvidence,
   sessionStoredSummary,
   sessionStoredVariants,
@@ -1255,11 +1256,11 @@ async function runEngine() {
   // (the stored Base runs are slim — no trades — so Base is reported as counts, not per hour)
   // (with gates.baseWindows.report set, each passing pair also carries `rules`: per report rule, its ranges and targets
   // that pass the rule too — a dump-only field the eval readers use, scripts/eval-base-rules.mjs)
-  const { basePairRows } = await import("../src/core/pipeline/pipeline.ts");
-  const basePairs = basePairRows(
+  const basePairs = sessionBasePairRows(
     rt.pipeline?.s1 ?? [],
     rt.wf.basePassedRanges ?? rt.basePairTags ?? {},
     rt.settings.grid?.baseTargets !== false,
+    rt.wf.exitBasePassed,
   ).map((row) => ({ ...row, builtTags: [...(rt.basePairTags?.[row.pair] ?? [])] }));
   {
     funnel.counts = {
