@@ -15,7 +15,7 @@ for await(const line of createInterface({input:createReadStream(resolve(dir,'cov
 const raw=await readSessionDump(resolve(dir,'raw.json'),{fields:[]});
 const steps=raw.engine.signalSteps.map(s=>({...s,keys:new Set(s.keys)}));
 const wf=protocol.actualWf,sig=protocol.actualSettings.signals;
-const reasons={},examples=[];let total=0;
+const reasons={},entryActivationReasons={},examples=[],readyExamples=[];let total=0;
 for await(const row of iterateSessionTapeTrades(resolve(dir,'raw.json'))){
  if(!selectedIds.has(row.id))continue;
  const tp=coverageTape(row,protocol.symbols);
@@ -29,11 +29,15 @@ for await(const row of iterateSessionTapeTrades(resolve(dir,'raw.json'))){
   const selected=atStep.find(r=>r.key===key),current=atEntry.find(r=>r.key===key);
   const reason=selected?.reason==='active'?'global-ranking-cap-or-pair-eligibility':selected?.reason??'own-validation-at-selection-clock';
   reasons[reason]=(reasons[reason]??0)+1;total++;
+  const entryReason=current?.reason??'no-activation-row';
+  entryActivationReasons[entryReason]=(entryActivationReasons[entryReason]??0)+1;
+  if(entryReason==='active'&&readyExamples.length<8)readyExamples.push({cfg:tp.id,sym,side,entryT,selectionT:step.t,atSelection:selected??null,atEntry:current});
   if(examples.filter(x=>x.reason===reason).length<8)examples.push({cfg:tp.id,sym,side,entryT,selectionT:step.t,reason,atSelection:selected??null,atEntry:current??null});
  }
 }
 assert.equal(total,coverage.entrySelection.unselectedOwnValid);
 const result={schema:'cts-signal-admission-trace-v1',ok:true,sourceSha256:coverage.sourceSha256,protocolSha256:coverage.protocolSha256,
  scope:'Independently valid settled candidates absent from the recorded selection; actual production activation rules, retained rank/recent/minimum-history gates. This is not permission to bypass shared risk gates.',
- total,reasons,examples};
-writeFileSync(resolve(dir,'admission-trace.json'),JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify({total,reasons}));
+ total,reasons,examples,entryActivationReasons,readyExamples,
+ entryActivationScope:'Own activation rules at the exact candidate entry, separate from the earlier selection clock. Active here still needs global rank/cap, risk, funding and native execution proof; it is not an assertion of a missing funded order.'};
+writeFileSync(resolve(dir,process.argv[3]??'admission-trace.json'),JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify({total,reasons,entryActivationReasons}));

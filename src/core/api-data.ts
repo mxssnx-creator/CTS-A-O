@@ -1110,7 +1110,7 @@ async function liveLedgerTrades(r: Awaited<ReturnType<typeof rt>>) {
   const trades = led.closed.map((x) => ({ ...x, pnl: x.r * x.notional }));
   // every fill reported no commission (or none was measured): the fees in these results are the model's
   const fills = r.db.get<{ n: number; measured: number }>(
-    "SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN fee > 0 THEN 1 ELSE 0 END), 0) AS measured FROM live_fills",
+    "SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN fee != 0 OR fee_known=1 THEN 1 ELSE 0 END), 0) AS measured FROM live_fills",
   );
   return {
     trades,
@@ -1118,7 +1118,9 @@ async function liveLedgerTrades(r: Awaited<ReturnType<typeof rt>>) {
     unpriced: led.unpriced,
     tag,
     // (no fill at all: nothing is modelled yet)
-    feesModelled: (fills?.n ?? 0) > 0 && !((fills?.measured ?? 0) > 0),
+    feesModelled: trades.some((x) => !x.feesMeasured) || (fills?.n ?? 0) > (fills?.measured ?? 0),
+    unknownNetReturns: trades.filter((x) => x.unitR === null).length,
+    returnBasis: "owned-fill-return-after-trading-fees; funding-reported-separately" as const,
     fills: fills?.n ?? 0,
   };
 }
@@ -1155,7 +1157,8 @@ async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
     r.db,
     "liveStatus",
   );
-  const { trades, feesModelled } = await liveLedgerTrades(r);
+  const { trades, feesModelled, unknownNetReturns, returnBasis } = await liveLedgerTrades(r);
+  const { liveVenueHistory } = await import("./server/live.server.ts");
   let realized = 0;
   let n = 0;
   const hand = { n: 0, usd: 0 };
@@ -1189,6 +1192,9 @@ async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
     net: realized + (own?.upnl ?? 0),
     accountAt: st?.account?.readAt ?? null,
     feesModelled,
+    unknownNetReturns,
+    returnBasis,
+    venueHistory: liveVenueHistory(r, since ?? Date.now() - 150 * 3_600_000, Date.now()),
   };
 }
 
@@ -1417,6 +1423,9 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     // live: flat markers no price could be found for (counted, never booked), whether the fees are the model's
     unpriced: liveExtra?.unpriced ?? null,
     feesModelled: liveExtra?.feesModelled ?? null,
+    venueHistory: data.source === "live"
+      ? (await import("./server/live.server.ts")).liveVenueHistory(r, startT, endT) : null,
+    returnBasis: data.source === "live" ? "Owned fill returns after measured trading fees; funding is shown separately as whole-account cash history" : null,
     // where the trades come from, as the page labels it
     sourceLabel:
       data.source === "live"

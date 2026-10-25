@@ -1,0 +1,70 @@
+name: DCA and independent Block recovery study
+on:
+  # The frozen 18-arm run remains valid across report-only fixes. Explicitly dispatch a new economic study;
+  # pull-request path filters compare the whole PR and otherwise repeat every expensive arm on every push.
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  signals:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        scenario: [control-0, control-12, dca-unit-0, dca-unit-12, dca-weighted-0, dca-weighted-12, dca-active-0, dca-active-12, dca-block-0, dca-block-12]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: env -u DATABASE_URL npm run build
+      - run: node --experimental-strip-types --no-warnings scripts/prepare-recovery-study.mjs runs/recovery-study
+      - run: python3 scripts/run-signals-native-case.py runs/recovery-study ${{ matrix.scenario }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recovery-${{ matrix.scenario }}-${{ github.run_id }}
+          path: |
+            runs/recovery-study/plan.json
+            runs/recovery-study/${{ matrix.scenario }}/
+          retention-days: 90
+          compression-level: 3
+  ordinary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 210
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - {minimum: 1, offset: 0, mode: independent}
+          - {minimum: 1, offset: 12, mode: independent}
+          - {minimum: 1.5, offset: 0, mode: independent}
+          - {minimum: 1.5, offset: 12, mode: independent}
+          - {minimum: 2, offset: 0, mode: independent}
+          - {minimum: 2, offset: 12, mode: independent}
+          - {minimum: 1.5, offset: 12, mode: recovery}
+          - {minimum: 1.5, offset: 12, mode: recovery-active}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: env -u DATABASE_URL npm run build
+      - run: node --experimental-strip-types --no-warnings scripts/prepare-normal-progress.mjs runs/ordinary all 15 ${{ matrix.offset }} ${{ matrix.minimum }} ${{ matrix.mode }}
+      - run: python3 scripts/run-normal-progress.py runs/ordinary
+        env:
+          STUDY_HEAP_MB: 8192
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ordinary-micro${{ matrix.minimum }}-offset${{ matrix.offset }}-${{ matrix.mode }}-${{ github.run_id }}
+          path: runs/ordinary/
+          retention-days: 90
+          compression-level: 3

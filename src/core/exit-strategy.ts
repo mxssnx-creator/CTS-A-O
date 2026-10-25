@@ -1,7 +1,7 @@
 // Independently qualified, prehistory-derived exit configs for initialized engine indications.
 // Candidate MFE is fitted on the older segment only; every protect is then judged on the later completed-bar holdout.
 import { createHash } from "node:crypto";
-import type { Bars, BotType, ExitConfigSet, Protect, Stats, Tactics } from "./domain/types.ts";
+import type { Bars, BotType, ExitConfigSet, Protect, Stats, Tactics, Trade } from "./domain/types.ts";
 import type { ComboRun } from "./pipeline/pipeline.ts";
 import type { ExitStrategySettings } from "./config.ts";
 import { entrySignal } from "./bots/bots.ts";
@@ -61,10 +61,12 @@ export interface ExitStrategyDiagnostics {
   candidates: number;
   capped: number;
   evaluated: number;
+  trailTooShort: number;
   insufficientTrades: number;
   pfRejected: number;
   greenHourRejected: number;
   ddrRejected: number;
+  stabilityRejected: number;
   qualified: number;
 }
 
@@ -78,10 +80,12 @@ export const emptyExitStrategyDiagnostics = (): ExitStrategyDiagnostics => ({
   candidates: 0,
   capped: 0,
   evaluated: 0,
+  trailTooShort: 0,
   insufficientTrades: 0,
   pfRejected: 0,
   greenHourRejected: 0,
   ddrRejected: 0,
+  stabilityRejected: 0,
   qualified: 0,
 });
 
@@ -91,6 +95,25 @@ export function passesExitHourlyConsistency(
   minShare: number,
 ): boolean {
   return minShare <= 0 || stats.hours < 6 || stats.greenHours / stats.hours >= minShare;
+}
+
+/** Every disjoint completed-close slice must pass; one old winning cluster cannot mask a losing recent slice. */
+export function passesExitValidationSlices(
+  trades: readonly Trade[], fromT: number, toT: number, parts: number,
+  minTrades: number, minPf: number, maxDdr?: number,
+): boolean {
+  if (parts === 1) return true;
+  if (!Number.isInteger(parts) || parts < 1 || parts > 4 || !(toT > fromT)) return false;
+  const slices: Trade[][] = Array.from({ length: parts }, () => []);
+  for (const trade of trades) {
+    if (trade.exitT <= fromT || trade.exitT > toT) return false;
+    const index = Math.max(0, Math.min(parts - 1, Math.ceil((trade.exitT - fromT) * parts / (toT - fromT)) - 1));
+    slices[index].push(trade);
+  }
+  return slices.every(rows => {
+    const stats = statsOf(rows);
+    return stats.n >= minTrades && stats.net > 0 && stats.pf >= minPf && !ddrFails(stats.mdd, stats.net, maxDdr);
+  });
 }
 
 const rounded = (x: number) => +x.toFixed(4);
@@ -450,11 +473,18 @@ export function* exitStrategyProtectsGen(
     const fitCutT = fromT + availableH * settings.trainFraction * H;
     const laneTf = laneOf(ind).tf ?? REF_TF;
     const fitH = (fitCutT - fromT) / H;
-    const holdH = Math.max((2 * laneTf) / 60, Math.min(settings.holdH, fitH / 4));
-    const holdRef = Math.max(2, Math.round((holdH * 60) / REF_TF));
+    const profiles = [
+      { holdH: settings.holdH, distance: 1, basis: "extrema" as const },
+      ...(isSignalInd(ind) ? settings.signalRanges ?? [] : []),
+    ];
+    const fits = profiles.map((profile) => ({
+      ...profile,
+      holdRef: Math.max(2, Math.round((Math.max((2 * laneTf) / 60,
+        Math.min(profile.holdH, fitH / 4)) * 60) / REF_TF)),
+      mfe: { 1: [], [-1]: [] } as Record<1 | -1, number[]>,
+      mae: { 1: [], [-1]: [] } as Record<1 | -1, number[]>,
+    }));
     const entryFilter = entryFilters?.[pair];
-    const mfeBySide: Record<1 | -1, number[]> = { 1: [], [-1]: [] };
-    const maeBySide: Record<1 | -1, number[]> = { 1: [], [-1]: [] };
     const validationSignals: Array<{
       s: number;
       bars: Bars;
@@ -470,8 +500,14 @@ export function* exitStrategyProtectsGen(
       if (isSignalInd(ind) && entryFilter && (entryFilter.trendH > 0 || entryFilter.volFloor > 0))
         sig = filterEntries(sig, b, u.caches[s], entryFilter);
       sig = evaluationSignal(u, b, sig);
-      const holdBars = laneProtect({ tp: 0, sl: 0, trail: 0, hold: holdRef }, ind).hold;
-      entryExcursions(b, sig, holdBars, fitCutT, fromT, mfeBySide, maeBySide);
+      for (const fit of fits) {
+        const holdBars = laneProtect({ tp: 0, sl: 0, trail: 0, hold: fit.holdRef }, ind).hold;
+        // Close-change structure uses real entry opens and completed closes only. Validation below
+        // always uses the real OHLC bars, including adverse wicks and gaps.
+        const fitBars = fit.basis === "close" ? { ...b, h: b.c, l: b.c } : b;
+        entryExcursions(fitBars, sig, holdBars, fitCutT, fromT, fit.mfe, fit.mae);
+        yield;
+      }
       const validationBars = barsViewThroughCut(b, cutT);
       const long = new Int8Array(validationBars.n);
       const short = new Int8Array(validationBars.n);
@@ -486,39 +522,39 @@ export function* exitStrategyProtectsGen(
       }
       validationSignals.push({ s, bars: validationBars, long, short });
     }
-    if (mfeBySide[1].length < settings.minEntries && mfeBySide[-1].length < settings.minEntries) {
+    if (fits.every((fit) => fit.mfe[1].length < settings.minEntries && fit.mfe[-1].length < settings.minEntries)) {
       diagnostics.insufficientEntries++;
       continue;
     }
     const groups: Protect[][] = [];
-    const candidatesBySide: Partial<Record<1 | -1, Record<ExitConfigSet, Protect[]>>> = {};
-    for (const side of [1, -1] as const) {
-      const mfe = mfeBySide[side].sort((a, b) => a - b);
-      const mae = maeBySide[side].sort((a, b) => a - b);
-      if (mfe.length >= settings.minEntries && mae.length >= settings.minEntries)
-        candidatesBySide[side] = exitProtectCandidates(
-          mfe,
-          mae,
-          side,
-          holdRef,
-          settings,
-          validation,
-        );
-    }
-    for (const exitSet of [
-      "static-sl",
-      "adaptive-sl",
-      "trailing",
-      "breakeven",
-      "trailing-only",
-    ] as const)
+    const fitted = fits.map((fit) => {
+      const bySide: Partial<Record<1 | -1, Record<ExitConfigSet, Protect[]>>> = {};
       for (const side of [1, -1] as const) {
-        const candidates = candidatesBySide[side]?.[exitSet];
-        if (candidates?.length) groups.push(candidates);
+        const mfe = fit.mfe[side].map((v) => v * fit.distance).sort((a, b) => a - b);
+        const mae = fit.mae[side].map((v) => v * fit.distance).sort((a, b) => a - b);
+        if (mfe.length >= settings.minEntries && mae.length >= settings.minEntries)
+          bySide[side] = exitProtectCandidates(mfe, mae, side, fit.holdRef, settings, validation);
       }
-    const candidates = capExitCandidates(groups, settings.maxConfigsPerPair);
+      return bySide;
+    });
+    for (const exitSet of ["static-sl", "adaptive-sl", "trailing", "breakeven", "trailing-only"] as const)
+      for (const side of [1, -1] as const) {
+        // Round-robin profiles inside every tactic/side so a bounded cap cannot spend all slots
+        // on the original horizon. Economically identical fits consume one slot only.
+        const variants = fitted.map((fit) => fit[side]?.[exitSet] ?? []);
+        const merged = capExitCandidates(variants, variants.reduce((n, xs) => n + xs.length, 0));
+        const seen = new Set<string>();
+        groups.push(merged.filter((p) => {
+          const id = configId(bot, ind, p);
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        }));
+      }
+    // Failed fits must not consume the executable-config budget. Qualify every bounded
+    // generated cell first, then share the retained budget across tactic/direction groups.
+    const candidates = capExitCandidates(groups, groups.reduce((n, xs) => n + xs.length, 0));
     diagnostics.candidates += candidates.length;
-    diagnostics.capped += groups.reduce((n, xs) => n + xs.length, 0) - candidates.length;
     const kept: Protect[] = [];
     const ids = new Set<string>();
     for (const p of candidates) {
@@ -526,6 +562,14 @@ export function* exitStrategyProtectsGen(
         ? capSignalProtect({ ...p, trailMax: validation.signalTrailMax ?? p.trailMax })
         : p;
       const lane = laneProtect(qualifiedProtect, ind);
+      // Match historical Signal tape eligibility before scoring. The gap (activation ×
+      // trailStep), not just activation, must meet the floor. Otherwise a qualified fit
+      // disappears when the executable catalog rejects it.
+      if (isSignalInd(ind) && lane.trail > 0 &&
+          lane.trail * (lane.trailStep ?? 1) + 1e-12 < validation.minTrail) {
+        diagnostics.trailTooShort++;
+        continue;
+      }
       const adjusted = lane.tag ? lane : adjustProtect(lane, validation);
       const actual = entryFilter
         ? capSignalProtect({ ...adjusted, trailMax: validation.signalTrailMax ?? qualifiedProtect.trailMax })
@@ -571,14 +615,25 @@ export function* exitStrategyProtectsGen(
         diagnostics.ddrRejected++;
         continue;
       }
+      if (!passesExitValidationSlices(trades, fitCutT, cutT, settings.validationSlices ?? 1,
+        Math.max(settings.minValidationTrades, validation.minTrades), Math.max(settings.minPf, validation.minPf), maxDdr)) {
+        diagnostics.stabilityRejected++;
+        continue;
+      }
       const id = configId(bot, ind, qualifiedProtect);
       if (!ids.has(id)) {
         ids.add(id);
         kept.push(qualifiedProtect);
-        diagnostics.qualified++;
       }
     }
-    if (kept.length) out[pair] = kept;
+    const retained = capExitCandidates(groups.map(group => {
+      const groupIds = new Set(group.map(p => configId(bot, ind, entryFilter
+        ? capSignalProtect({ ...p, trailMax: validation.signalTrailMax ?? p.trailMax }) : p)));
+      return kept.filter(p => groupIds.has(configId(bot, ind, p)));
+    }), settings.maxConfigsPerPair);
+    diagnostics.capped += kept.length - retained.length;
+    diagnostics.qualified += retained.length;
+    if (retained.length) out[pair] = retained;
   }
   return out;
 }

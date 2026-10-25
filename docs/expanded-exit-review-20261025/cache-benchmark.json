@@ -1,0 +1,59 @@
+{
+  "before": {
+    "source": "/workspace/scratch/1bcaeeb063ee/CTS-A-O/runs/memory-baseline-source",
+    "pairs": 360,
+    "tapes": 1080,
+    "trades": 212784,
+    "open": 1575,
+    "pending": 199,
+    "sha256": "491fde34d13c520da8c9959fffdd1c84057b006e729cea228bdf8f94c338df64",
+    "elapsedMs": 2179.308031,
+    "maxRssMiB": 365.0078125,
+    "memBeforeGc": {
+      "rss": 382476288,
+      "heapTotal": 116994048,
+      "heapUsed": 68084616,
+      "external": 184903073,
+      "arrayBuffers": 169537341
+    },
+    "memAfterGc": {
+      "rss": 381693952,
+      "heapTotal": 113848320,
+      "heapUsed": 34354784,
+      "external": 184903113,
+      "arrayBuffers": 169433821
+    },
+    "cachedSeries": 5360,
+    "fixture": "Synthetic four-symbol 162h minute data; all math, losses and identities retained. Not a trading result."
+  },
+  "after": {
+    "source": "/workspace/scratch/1bcaeeb063ee/CTS-A-O",
+    "pairs": 360,
+    "tapes": 1080,
+    "trades": 212784,
+    "open": 1575,
+    "pending": 199,
+    "sha256": "491fde34d13c520da8c9959fffdd1c84057b006e729cea228bdf8f94c338df64",
+    "elapsedMs": 3451.6993089999996,
+    "maxRssMiB": 276.140625,
+    "memBeforeGc": {
+      "rss": 289423360,
+      "heapTotal": 96698368,
+      "heapUsed": 38556304,
+      "external": 70140787,
+      "arrayBuffers": 54779149
+    },
+    "memAfterGc": {
+      "rss": 289554432,
+      "heapTotal": 95649792,
+      "heapUsed": 24496576,
+      "external": 70140827,
+      "arrayBuffers": 19169863
+    },
+    "cachedSeries": 0,
+    "fixture": "Synthetic four-symbol 162h minute data; all math, losses and identities retained. Not a trading result."
+  },
+  "exactSha256Equal": true,
+  "rssReductionPct": 24.346653539093765,
+  "timeChangePct": 58.38510480852717
+}

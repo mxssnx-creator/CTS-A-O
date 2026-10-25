@@ -1,0 +1,533 @@
+{
+  "checkpoint": "f2a52dd2f162926ababce6fa46a35b89be9d6c1d",
+  "economicSourceSha256": "9ac49d0c8c5daeca5942e90f5100169ff0382afdc57e5268729054878b7cfee1",
+  "runId": 40213941363,
+  "passed": 4350,
+  "failures": 0,
+  "templateSkips": 8,
+  "slowExclusionsCoveredSeparately": 2,
+  "jobs": [
+    {
+      "id": 121230906741,
+      "name": "core-tests (4)",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 40213941363,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run npm ci",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Run env -u DATABASE_URL npm run build",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Run the complete core inventory partition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Post Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        }
+      ]
+    },
+    {
+      "id": 121230906793,
+      "name": "core-tests (2)",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 40213941363,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run npm ci",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Run env -u DATABASE_URL npm run build",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Run the complete core inventory partition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Post Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        }
+      ]
+    },
+    {
+      "id": 121230906821,
+      "name": "core-tests (3)",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 40213941363,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run npm ci",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Run env -u DATABASE_URL npm run build",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Run the complete core inventory partition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Post Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        }
+      ]
+    },
+    {
+      "id": 121230906854,
+      "name": "slow-runtime",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 40213941363,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run npm ci",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Run env -u DATABASE_URL npm run build",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Run the two longer runtime checks",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Post Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        }
+      ]
+    },
+    {
+      "id": 121230906868,
+      "name": "quality",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 40213941363,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run npm ci",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Install the headless browser used by the functional test",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Run npm run typecheck -- --pretty false",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Run npm run lint",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Build the production app and worker",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Run script, browser, app and component tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9
+        },
+        {
+          "name": "Post Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19
+        }
+      ]
+    },
+    {
+      "id": 121230906897,
+      "name": "core-tests (1)",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 40213941363,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run npm ci",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Run env -u DATABASE_URL npm run build",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Run the complete core inventory partition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Post Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        }
+      ]
+    },
+    {
+      "id": 121232727664,
+      "name": "verify",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 40213941363,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Require every verification partition",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        }
+      ]
+    }
+  ],
+  "logSummaries": [
+    {
+      "id": 121230906741,
+      "name": "core-tests (4)",
+      "status": "completed",
+      "conclusion": "success",
+      "summary": [
+        "2026-10-25T17:01:49.7556220Z ℹ tests 939",
+        "2026-10-25T17:01:49.7556942Z ℹ pass 939",
+        "2026-10-25T17:01:49.7557194Z ℹ fail 0",
+        "2026-10-25T17:01:49.7557440Z ℹ cancelled 0",
+        "2026-10-25T17:01:49.7557697Z ℹ skipped 0",
+        "2026-10-25T17:01:49.7558233Z ℹ duration_ms 376702.289689"
+      ]
+    },
+    {
+      "id": 121230906793,
+      "name": "core-tests (2)",
+      "status": "completed",
+      "conclusion": "success",
+      "summary": [
+        "2026-10-25T17:00:20.7734605Z ℹ tests 1002",
+        "2026-10-25T17:00:20.7734950Z ℹ pass 1002",
+        "2026-10-25T17:00:20.7735071Z ℹ fail 0",
+        "2026-10-25T17:00:20.7735194Z ℹ cancelled 0",
+        "2026-10-25T17:00:20.7735328Z ℹ skipped 0",
+        "2026-10-25T17:00:20.7735599Z ℹ duration_ms 296417.047902"
+      ]
+    },
+    {
+      "id": 121230906821,
+      "name": "core-tests (3)",
+      "status": "completed",
+      "conclusion": "success",
+      "summary": [
+        "2026-10-25T17:02:31.1581826Z ℹ tests 772",
+        "2026-10-25T17:02:31.1582620Z ℹ pass 770",
+        "2026-10-25T17:02:31.1582972Z ℹ fail 0",
+        "2026-10-25T17:02:31.1583206Z ℹ cancelled 0",
+        "2026-10-25T17:02:31.1583445Z ℹ skipped 2",
+        "2026-10-25T17:02:31.1583898Z ℹ duration_ms 419839.897339"
+      ]
+    },
+    {
+      "id": 121230906854,
+      "name": "slow-runtime",
+      "status": "completed",
+      "conclusion": "success",
+      "summary": [
+        "2026-10-25T16:59:33.3693056Z ℹ tests 2",
+        "2026-10-25T16:59:33.3693886Z ℹ pass 2",
+        "2026-10-25T16:59:33.3694276Z ℹ fail 0",
+        "2026-10-25T16:59:33.3694703Z ℹ cancelled 0",
+        "2026-10-25T16:59:33.3695107Z ℹ skipped 0",
+        "2026-10-25T16:59:33.3695883Z ℹ duration_ms 245987.328691"
+      ]
+    },
+    {
+      "id": 121230906868,
+      "name": "quality",
+      "status": "completed",
+      "conclusion": "success",
+      "summary": [
+        "2026-10-25T16:59:01.1471423Z ℹ tests 730",
+        "2026-10-25T16:59:01.1471875Z ℹ pass 722",
+        "2026-10-25T16:59:01.1472103Z ℹ fail 0",
+        "2026-10-25T16:59:01.1472375Z ℹ cancelled 0",
+        "2026-10-25T16:59:01.1472613Z ℹ skipped 8",
+        "2026-10-25T16:59:01.1473084Z ℹ duration_ms 170045.393295",
+        "2026-10-25T16:59:02.3688178Z ℹ tests 86",
+        "2026-10-25T16:59:02.3688861Z ℹ pass 86",
+        "2026-10-25T16:59:02.3689174Z ℹ fail 0",
+        "2026-10-25T16:59:02.3689496Z ℹ cancelled 0",
+        "2026-10-25T16:59:02.3689851Z ℹ skipped 0",
+        "2026-10-25T16:59:02.3690586Z ℹ duration_ms 1144.874358"
+      ]
+    },
+    {
+      "id": 121230906897,
+      "name": "core-tests (1)",
+      "status": "completed",
+      "conclusion": "success",
+      "summary": [
+        "2026-10-25T16:58:57.8407325Z ℹ tests 829",
+        "2026-10-25T16:58:57.8407934Z ℹ pass 829",
+        "2026-10-25T16:58:57.8408133Z ℹ fail 0",
+        "2026-10-25T16:58:57.8408314Z ℹ cancelled 0",
+        "2026-10-25T16:58:57.8408510Z ℹ skipped 0",
+        "2026-10-25T16:58:57.8409088Z ℹ duration_ms 215293.213712"
+      ]
+    }
+  ]
+}

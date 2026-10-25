@@ -898,13 +898,18 @@ export function feeOf(
     : x.qty * px * (modelCost / 2);
 }
 
+export function measuredFee(x: { fee?: number | null; feeKnown?: number | boolean | null }): boolean {
+  return typeof x.fee === "number" && Number.isFinite(x.fee) &&
+    (x.fee !== 0 || x.feeKnown === 1 || x.feeKnown === true);
+}
+
 /** @param modelCost the round-trip cost charged to an unmeasured fill (the desk's settings.cost by default) */
-export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost = RT_COST): Array<StatTrade & { notional: number }> {
+export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost = RT_COST): LiveClose[] {
   return liveLedger(rows, tagLen, modelCost).closed;
 }
 
 /** A live close with its notional (USD) and the own row that closed it (the flat marker's id for an exchange exit). */
-export type LiveClose = StatTrade & { notional: number; coid?: string; pxFrom?: string };
+export type LiveClose = StatTrade & { notional: number; coid?: string; pxFrom?: string; feesMeasured?: boolean; pricesMeasured?: boolean };
 
 /**
  * The own ledger as closes, the positions still open, and the flat markers that could not be priced.
@@ -923,12 +928,12 @@ export function liveLedger(
   open: Array<{ sym: string; side: 1 | -1; qty: number; entry: number; entryT: number; cfg: string; notional: number }>;
   unpriced: Array<{ sym: string; side: 1 | -1; at: number; qty: number; notional: number }>;
 } {
-  const open = new Map<string, { qty: number; cost: number; fees: number; t: number; range: string; cfg: string }>();
+  const open = new Map<string, { qty: number; cost: number; fees: number; t: number; range: string; cfg: string; feesMeasured: boolean; pricesMeasured: boolean }>();
   const out: LiveClose[] = [];
   const unpriced: Array<{ sym: string; side: 1 | -1; at: number; qty: number; notional: number }> = [];
   // `q` of the position `p` realized at `px`, with its share of the opening fees and the exit's own fee
   const closeOf = (
-    p: { qty: number; cost: number; fees: number; t: number; range: string; cfg: string },
+    p: { qty: number; cost: number; fees: number; t: number; range: string; cfg: string; feesMeasured: boolean; pricesMeasured: boolean },
     x: LedgerRow,
     q: number,
     px: number,
@@ -939,6 +944,8 @@ export function liveLedger(
     const notional = q * entry;
     const side = x.side > 0 ? 1 : -1;
     const pnl = side * (px - entry) * q - p.fees * (q / p.qty) - fee;
+    const feesMeasured = p.feesMeasured && measuredFee(x);
+    const pricesMeasured = p.pricesMeasured && Number.isFinite(x.fillPx) && (x.fillPx ?? 0) > 0;
     return {
       // a signal position: "live|sig-SYM|…" (a signal indication: liveGroupOf → Signals); a range: "live|SYM|…|<tag>"
       cfg: p.cfg || (p.range === "@sig" ? `live|sig-${x.sym}|tp0|sl0|tr0|h0` : `live|${x.sym}|tp0|sl0|tr0|h0${p.range}`),
@@ -948,9 +955,10 @@ export function liveLedger(
       exitT: x.at,
       entry,
       r: notional > 0 ? pnl / notional : 0,
-      // This is already the confirmed venue-owned net return on the closed
-      // slice's actual notional, with no modeled execution multiple to undo.
-      unitR: notional > 0 ? pnl / notional : null,
+      // Estimated fees/marker prices remain a labeled cash diagnostic, never verified net-return PF evidence.
+      unitR: notional > 0 && feesMeasured && pricesMeasured ? pnl / notional : null,
+      feesMeasured,
+      pricesMeasured,
       reason,
       notional,
       coid: x.coid,
@@ -997,15 +1005,22 @@ export function liveLedger(
     if (x.kind === "O" || x.kind === "I" || x.kind === "E") {
       // an open means the key held nothing of ours: whatever is still counted there is dropped
       if (x.kind === "O") open.delete(k);
-      const p = open.get(k) ?? { qty: 0, cost: 0, fees: 0, t: x.at, range: "", cfg: "" };
+      const p = open.get(k) ?? { qty: 0, cost: 0, fees: 0, t: x.at, range: "", cfg: "", feesMeasured: true, pricesMeasured: true };
       if (!p.qty) {
         p.t = x.at;
         p.range = RANGE_OF_LETTER[x.coid.slice(tagLen, tagLen + 1).toUpperCase()] ?? "";
         p.cfg = x.cfg ?? "";
+      } else if (p.cfg !== (x.cfg ?? "")) {
+        // One merged position cannot assign every sibling's cash to its first config. Without allocated lots,
+        // retain the actual account return under an explicit mixed identity, never a false per-config result.
+        p.cfg = "live|venue-merged|tp0|sl0|tr0|h0";
+        p.range = "";
       }
       p.qty += x.qty;
       p.cost += x.qty * px;
       p.fees += fee;
+      p.feesMeasured &&= measuredFee(x);
+      p.pricesMeasured &&= Number.isFinite(x.fillPx) && (x.fillPx ?? 0) > 0;
       open.set(k, p);
     } else if (x.kind === "R" || x.kind === "X" || x.kind === "C" || x.kind === "H") {
       const p = open.get(k);

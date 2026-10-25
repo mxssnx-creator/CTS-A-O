@@ -206,12 +206,39 @@ describe("exchange and UI ledger compare identical settled owned close samples",
     const x = await ownResults({ tag: "TEST_", from: t, to: t + 4, all: exchangeRows(missing), modelCost: .004 });
     const ui = expected(missing, t, t + 4, .004);
     assert.equal(x.n, ui.report.total.n);
-    assert.ok(Math.abs(x.pf - ui.report.total.pf) < 1e-12);
+    assert.equal(x.pf, null);
+    assert.equal(x.pf, ui.report.total.pf);
+    assert.equal(x.unknownReturns, 3);
+    assert.equal(x.unknownReturns, ui.report.total.unknownReturns);
+    assert.equal(x.pfBasis, "unavailable");
+    assert.equal(x.pfConvention, "unavailable");
+    assert.equal(x.noLoss, null);
+    assert.equal(x.byKind.General.pf, null);
+    assert.equal(x.byKind.General.unknownReturns, 3);
+    assert.equal(x.cashPfBasis, "settled-owned-close-estimated-net-usdt");
     assert.ok(Math.abs(x.closesNet - ui.report.total.usd) < 1e-12);
     assert.equal(x.costs.modelRoundTrip, .004);
     assert.equal(x.costs.modelSource, "explicit-model");
     assert.equal(x.costs.estimatedFeeOrders, 5);
     assert.equal(x.byKind.General.net, -4, "raw venue profit/commission remains separate from modeled close money");
+  });
+
+  it("does not drop an unverified close from a mixed cohort or qualify unknown fees under a zero-cost model", async () => {
+    const mixed = rows.map((x, i) => ({ ...x, fee: i === 3 ? null : x.fee }));
+    for (const modelCost of [0, .0015]) {
+      const x = await ownResults({ tag: "TEST_", from: t, to: t + 4, all: exchangeRows(mixed), modelCost });
+      const ui = expected(mixed, t, t + 4, modelCost);
+      assert.equal(x.n, 3);
+      assert.equal(x.unknownReturns, 1);
+      assert.equal(x.pf, null);
+      assert.equal(x.pf, ui.report.total.pf);
+      assert.equal(x.pfBasis, "unavailable");
+      assert.equal(x.byKind.General.pf, null);
+      assert.equal(x.byKind.General.noLoss, null);
+      assert.ok(x.gp > 0, "verified sibling returns remain diagnostic, but cannot certify the incomplete cohort");
+      assert.equal(x.gl, 0, "the unknown losing close is not treated as a measured return");
+      assert.ok(Math.abs(x.closesNet - ui.report.total.usd) < 1e-12);
+    }
   });
 
   it("labels an omitted-cost estimate without inventing historical cost or changing measured commissions", async () => {

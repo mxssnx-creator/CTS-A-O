@@ -16,8 +16,10 @@ const P = { tp: 0.02, sl: 0.05, trail: 0, hold: 20 };
 const D = { levels: 2, step: 0.01 };
 
 describe("dca", () => {
-  it("defaults to one non-compounding addition of 2.5 original base units, with every Block relation active", () => {
-    assert.equal(DEFAULT_DCA.levels, 1);
+  it("defaults to two non-compounding additions within 2%, with every Block relation active", () => {
+    assert.equal(DEFAULT_DCA.levels, 2);
+    assert.equal(DEFAULT_DCA.step, .01);
+    assert.equal(DEFAULT_DCA.maxDistance, .02);
     assert.equal(DEFAULT_DCA.addRatio, 2.5);
     assert.equal(DEFAULT_BLOCK.mode, "overall");
     assert.ok(Object.values(DEFAULT_BLOCK.sources!).every(Boolean));
@@ -28,13 +30,13 @@ describe("dca", () => {
       const mirror = (x: number) => side === 1 ? x : 200 - x;
       const rows = [[100,100,100,100],[100,100.1,97.9,98.2],[98.2,98.5,97.8,98.3],[98.3,103,98.2,102.5]];
       const b = barsFromCandles("X",15,mk(rows.map(([o,h,l,c]) => [mirror(o),mirror(side===1?h:l),mirror(side===1?l:h),mirror(c)])));
-      const cfg={...DEFAULT_DCA,step:0.02};
+      const cfg={...DEFAULT_DCA,levels:1,step:0.02};
       const p={...P,hold:40};const cost=.002;
       const sig=new Int8Array([side,0,0,0]);
       const open=simulateDca("c",{...b,n:3},sig,p,cfg,false,cost).open!;
       assert.ok(open);
       assert.equal(open.w,3.5);
-      const level=mirror(98);const avg=(100+2.5*level)/3.5;
+      const level=mirror(98);const avg=3.5/(1/100+2.5/level);
       assert.ok(Math.abs(open.entry-avg)<1e-12);
       const px=b.c[2];const mtm=side*(px-100)/100-cost+2.5*(side*(px-level)/level-cost);
       assert.ok(Math.abs(open.mtm*open.w!-mtm)<1e-12);
@@ -42,6 +44,27 @@ describe("dca", () => {
       assert.equal(t.vol,3.5);assert.equal(t.level,1);assert.equal(t.reason,"tp");
       const expected=side*(t.exit-100)/100-cost+2.5*(side*(t.exit-level)/level-cost);
       assert.ok(Math.abs(t.r-expected)<1e-12);
+    }
+  });
+
+  it("caps two additions at 1% and 2% even when target-based spacing asks for more", () => {
+    for (const side of [1, -1] as const) {
+      const mirror = (x:number) => side === 1 ? x : 200-x;
+      const b = barsFromCandles("X",1, [
+        [100,100,100,100], [100,100,98.5,99], [99,99.2,97.9,98.2],
+      ].map(([o,h,l,c],i) => ({ t:i*60000,o:mirror(o),h:mirror(side===1?h:l),l:mirror(side===1?l:h),c:mirror(c),v:1 })));
+      const cfg={...DEFAULT_DCA,stepOfTp:5};
+      const open=simulateDca("c",b,new Int8Array([side,0,0]),{...P,hold:30},cfg,false,.002).open!;
+      assert.equal(open.w,6);
+      const prices=[100,mirror(99),mirror(98)],weights=[1,2.5,2.5];
+      const expected=prices.reduce((r,entry,i)=>r+weights[i]*(side*(b.c[2]-entry)/entry-.002),0);
+      assert.ok(Math.abs(open.mtm*open.w!-expected)<1e-12);
+      // A tick at the same price must preserve the exact ladder mark rather than change equity.
+      assert.ok(Math.abs((side*(b.c[2]-open.entry)/open.entry-.002)*open.w!-expected)<1e-12);
+      const p={...P,dca:dcaSnapshot(cfg)};
+      const id=configId("follow","ema-9-21@m1",p,"dca");
+      assert.deepEqual(parseConfigId(id)!.protect.dca,p.dca);
+      assert.notEqual(id,configId("follow","ema-9-21@m1",{...p,dca:{...p.dca,maxDistance:0}},"dca"));
     }
   });
 
@@ -106,8 +129,8 @@ describe("dca", () => {
       15,
       mk([
         [100, 100, 100, 100],
-        [100, 100.2, 98.8, 99], // leg 2 at 99 → avg 99.5, target 101.49 (no TP this bar)
-        [99, 101.6, 98.9, 101.5], // TP 101.49
+        [100, 100.2, 98.8, 99], // equal-notional leg at 99, target from acquired quantity (no TP this bar)
+        [99, 101.6, 98.9, 101.5],
       ]),
     );
     const r = simulateDca("c", b, new Int8Array([1, 0, 0]), P, D, false, 0.002);
@@ -115,7 +138,7 @@ describe("dca", () => {
     const tr = r.trades[0];
     assert.equal(tr.vol, 2);
     assert.equal(tr.reason, "tp");
-    assert.ok(Math.abs(tr.exit - 99.5 * 1.02) < 1e-9);
+    assert.ok(Math.abs(tr.exit - (2 / (1/100 + 1/99)) * 1.02) < 1e-9);
     const expect = (tr.exit - 100) / 100 + (tr.exit - 99) / 99 - 0.004;
     assert.ok(Math.abs(tr.r - expect) < 1e-12);
   });

@@ -350,7 +350,7 @@ describe("orders still open at the end of the run", () => {
     // the signal guard counts no open signal entry as a loss
     const guard = new SignalGuard();
     const ind = "sig-ema-cross-s@m15";
-    const sig = { sym: "AAA-USDT", side: 1, kind: "trend", r: -0.002, ind, type: "normal" };
+    const sig = { sym: "AAA-USDT", side: 1, kind: "trend", r: -0.002, ind, type: "normal", accepted: true };
     const at = { exitT: NOW, entryT: NOW - 60_000, cfg: `follow|${ind}|tp1|sl1|tr0|h32` };
     const cluster = { enabled: true, windowMin: 60, minLosses: 1, lossShare: 0.5 };
     feedBooks({ ...sig, ...at, open: true }, null, guard);

@@ -751,7 +751,7 @@ export function SignalsSettings(props: {
         </Field>
         <Field
           label="Direction acceptance"
-          hint="signals only (the engine has its own switch under Real). ON: a side (long / short) trades signals only while all its signal candidates, every source and symbol pooled, have PF ≥ the minimum over the window — a losing direction stops until it recovers; too few closes in the window are judged on twice the hours, and still too few count as valid. OFF: signals trade both directions on their own acceptance alone. Positions are never closed by it."
+          hint="Signals only (the engine has its own switch under Real). ON: each direction uses settled accepted post-Base Signal orders, pooled across sources and symbols, with return PF ≥ the minimum. Rejected candidates and open marks do not enter this shared record. Too few signal entries in the window are judged on twice the hours; still too few means this shared gate has no veto, while every own-config gate still applies. A failing direction resumes when the retained record passes or ages out. OFF: Signals use their own acceptance alone. Held positions remain managed."
         >
           <Switch
             label="Signal direction acceptance"
@@ -836,7 +836,7 @@ export function SignalsSettings(props: {
       <div className="v2-grid v2-cols-4">
         <Field
           label="Loss-cluster guard"
-          hint="pause signal executions while many signals just lost together (all keep being computed)"
+          hint="Pause new Signal orders in a direction when many accepted post-Base Signal entries have settled at a loss within the window. Count each signal entry once; rejected candidates and open marks cannot trigger this shared pause. Own history keeps calculating and held positions remain managed."
         >
           <Switch
             label="Signal loss-cluster guard"
@@ -1097,15 +1097,14 @@ export function SignalsSettings(props: {
             </div>
           </Field>
           <Field
-            label="Volume factor (× normal)"
-            hint="8 = 800% of a normal order. Applied after Block and relation volume; live account and per-position risk caps still apply."
+            label="Signals Coordination volume ratio"
+            hint="0.1–5.0 in 0.1 steps; default 1.0. Applied once with the strategy range ratio before account and position risk caps."
           >
             <Num
-              int
               value={coordination.volumeFactor}
-              min={1}
-              max={22}
-              step={1}
+              min={0.1}
+              max={5}
+              step={0.1}
               onChange={(v) => set(["coordination", "volumeFactor"], v)}
             />
           </Field>
@@ -1150,22 +1149,21 @@ export function SignalsSettings(props: {
         </div>
       </div>
       <div style={{ borderTop: "1px solid var(--v-border)", paddingTop: 10 }}>
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>Combined indication volume factors</div>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>Indication type volume ratios</div>
         <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginBottom: 8 }}>
-          These per-kind factors apply only to combined higher-timeframe lanes (`@m…c`). Every
-          indication starts at neutral 1×; Signals Coordination has its own 8× default above. PF
-          validation stays normalized per normal order, while simulated P&L and live sizing include
-          the configured factor.
+          Applies once to each ordinary indication type on standalone and combined lanes, including
+          independent Exit. Base order volume × indication ratio × strategy range ratio determines
+          requested size before account limits. Every ratio defaults to 1.0; allowed values are
+          0.1–5.0 in 0.1 steps. PF gates use unit returns and are unchanged by these sizing ratios.
         </div>
         <div className="v2-grid v2-cols-4" style={{ gap: 8 }}>
           {INDICATION_KINDS.map((kind) => (
-            <Field key={kind} label={`${kind[0].toUpperCase()}${kind.slice(1)} × normal`}>
+            <Field key={kind} label={`${kind[0].toUpperCase()}${kind.slice(1)} indication volume ratio`}>
               <Num
-                int
                 value={combinedVolumeFactors[kind]}
-                min={1}
-                max={22}
-                step={1}
+                min={0.1}
+                max={5}
+                step={0.1}
                 onChange={(v) => set(["combinedVolumeFactors", kind], v)}
               />
             </Field>
@@ -1427,10 +1425,8 @@ function stepValues(from: number, to: number, step: number, digits: number, max:
 }
 
 /** The 0.2 ladder, plus the explicitly supported 2.5× value. */
-const RANGE_VOLUME_FACTOR_CHOICES = [...new Set([...stepValues(0.2, 5, 0.2, 1, 25), 2.5])].sort(
-  (a, b) => a - b,
-);
-const COORD_VOLUME_FACTOR_CHOICES = stepValues(0.2, 5, 0.2, 1, 25);
+const RANGE_VOLUME_FACTOR_CHOICES = stepValues(0.1, 5, 0.1, 1, 50);
+const COORD_VOLUME_FACTOR_CHOICES = RANGE_VOLUME_FACTOR_CHOICES;
 
 function VolumeFactorInput(props: { value: number; onChange: (v: number) => void }) {
   return (
@@ -1577,8 +1573,8 @@ export function RangeEditor(props: {
       {on && (
         <div className="v2-grid v2-cols-3">
           <Field
-            label="Volume factor × normal"
-            hint="Multiplies the base order unit (default 0.2% of account balance); 1 = neutral. Optional balance-relative budgets apply only when enabled."
+            label={`${props.title} volume ratio`}
+            hint="Base order volume × indication ratio × this range ratio, each applied once. 0.1–5.0 in 0.1 steps; default 1.0. Account and risk limits still apply."
           >
             <VolumeFactorInput
               value={s.volumeFactor ?? props.defaults.volumeFactor ?? 1}
@@ -1603,8 +1599,8 @@ export function RangeEditor(props: {
             onChange={(v) => props.set(p("slOfTp"), v)}
           />
           <Field
-            label="Maximum hold time (minutes)"
-            hint="The longest a position of this range is held: it closes by time after at most this long (earlier at its target, stop or trail), in place of the grid's maximum hold (16 / 24 h). One maximum per cell, so the range builds tp × stop × trail cells. A lane cannot hold shorter than one of its bars. 0 = the grid's hold (operator, 20 Oct: Micro 15 min)"
+            label={`${props.title} maximum hold (minutes)`}
+            hint="Independent time limit for this range's Normal and Trailing cells. Earlier target, stop and trail exits still apply. 0 uses the grid's hold times. A limit shorter than a lane's bar excludes that lane; e.g. 15 minutes excludes 30-minute lanes. Historic Exit uses its own hold setting."
           >
             <Num
               step={1}
@@ -1944,7 +1940,7 @@ export function MinimalPlusRange(props: {
             onChange={(v) => put({ slOfTp: v })}
           />
           <Field
-            label="Volume factor × normal"
+            label="Minimal Plus volume ratio"
             hint="Multiplies the base order unit (default 0.2% of account balance); 1 = neutral. Optional balance-relative budgets apply only when enabled."
           >
             <VolumeFactorInput
@@ -2923,6 +2919,44 @@ export function SettingsPage() {
                     onChange={(v) => set(["exitStrategy", "quantiles"], v)}
                   />
                 </Field>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ fontWeight: 600 }}>Additional Signal Exit ranges</div>
+                  <p className="v2-muted">
+                    The original fit remains enabled. Each added horizon fits its own price moves;
+                    distance scales fitted favorable and adverse moves before existing protection caps.
+                    Close changes use completed closes for fitting and real OHLC for validation.
+                    All configs retain independent holdout and Last-N gates. The config cap below is
+                    shared across these ranges; identical economic configs are counted once.
+                  </p>
+                  {(exits.signalRanges ?? []).map((range: Any, i: number) => {
+                    const update = (patch: Any) => set(["exitStrategy", "signalRanges"],
+                      exits.signalRanges.map((r: Any, j: number) => j === i ? { ...r, ...patch } : r));
+                    return <div key={i} className="v2-grid v2-cols-4" style={{ marginBottom: 8 }}>
+                      <Field label={`Range ${i + 1} horizon (h)`}>
+                        <Num min={0.5} max={96} step={0.5} value={range.holdH} onChange={(holdH) => update({ holdH })} />
+                      </Field>
+                      <Field label="Distance multiplier">
+                        <Num min={1} max={3} step={0.25} value={range.distance} onChange={(distance) => update({ distance })} />
+                      </Field>
+                      <Field label="Price structure">
+                        <select className="v2-select" aria-label={`Signal Exit range ${i + 1} price structure`}
+                          value={range.basis} onChange={(e) => update({ basis: e.target.value })}>
+                          <option value="extrema">High / low excursions</option>
+                          <option value="close">Completed close changes</option>
+                        </select>
+                      </Field>
+                      <button type="button" className="v2-btn" onClick={() => set(["exitStrategy", "signalRanges"],
+                        exits.signalRanges.filter((_: Any, j: number) => j !== i))}>Remove range {i + 1}</button>
+                    </div>;
+                  })}
+                  <button type="button" className="v2-btn" disabled={(exits.signalRanges?.length ?? 0) >= 6}
+                    onClick={() => {
+                      const current = exits.signalRanges ?? [];
+                      const holdH = [3, 6, 12, 24, 48, 96].find((h) => !current.some((r: Any) =>
+                        r.holdH === h && r.distance === 1.5 && r.basis === "close"));
+                      if (holdH) set(["exitStrategy", "signalRanges"], [...current, { holdH, distance: 1.5, basis: "close" }]);
+                    }}>Add Signal Exit range</button>
+                </div>
                 <Field
                   label="MAE stop quantiles"
                   hint="adaptive stop distances from fitted adverse moves; 0.2–0.95"
@@ -2933,8 +2967,8 @@ export function SettingsPage() {
                   />
                 </Field>
                 <Field
-                  label="Max configs / source"
-                  hint="limit per source before held-out qualification; 6–512"
+                  label="Max qualified Exit configs / source"
+                  hint="Retain up to 6–512 independently qualified configurations per source across Exit tactics and directions. Every generated fit is tested on held-out history first; failed fits consume no slots. Entry-time gates still apply."
                 >
                   <Num
                     int
@@ -2943,6 +2977,10 @@ export function SettingsPage() {
                     value={exits.maxConfigsPerPair}
                     onChange={(v) => set(["exitStrategy", "maxConfigsPerPair"], Math.round(v))}
                   />
+                </Field>
+                <Field label="Exit range volume ratio" hint="Independent of Wide and Signal parameter ranges. Base order volume × indication ratio × Exit ratio; default 1.0.">
+                  <VolumeFactorInput value={exits.volumeFactor ?? 1}
+                    onChange={v => set(["exitStrategy","volumeFactor"],v)} />
                 </Field>
                 <Field
                   label="Fitted TP range (%)"
@@ -2992,6 +3030,13 @@ export function SettingsPage() {
                     value={exits.stopMultiples}
                     onChange={(v) => set(["exitStrategy", "stopMultiples"], v)}
                   />
+                </Field>
+                <Field
+                  label="Exit validation slices"
+                  hint="Split held-out history into 1–4 chronological parts. Every part must independently meet minimum closes, PF and drawdown gates. PF 1 is neutral; above 1 is profitable after modeled costs."
+                >
+                  <Num min={1} max={4} step={1} value={exits.validationSlices ?? 1}
+                    onChange={(v) => set(["exitStrategy", "validationSlices"], Math.round(v))} />
                 </Field>
                 <Field
                   label="Green active-hour share"
@@ -3570,6 +3615,21 @@ export function SettingsPage() {
             );
           })()}
           <BlockSources block={s.block} set={set} />
+          <div className="v2-grid v2-cols-2" style={{ marginTop: 10 }}>
+            {BLOCK_SOURCE_HELP.map(([source]) => (
+              <Field key={source} label={`${source === "type" ? "Strategy type" : source} ratio multiplier`}
+                hint={`Multiplies the standard ratio; effective addition per level ${blockRatioOf(s.block, source as Parameters<typeof blockRatioOf>[1]).toFixed(3)}× before steps and the shared cap.`}>
+                <Num step={0.1} min={0} max={10}
+                  value={s.block.sourceRatios?.[source as keyof NonNullable<typeof s.block.sourceRatios>] ?? 1}
+                  onChange={(v) => set(["block", "sourceRatios"], { ...s.block.sourceRatios, [source]: v })} />
+              </Field>
+            ))}
+          </div>
+          <Field label="Retain adjustment until net break-even"
+            hint="Retains each relation's raised level while its settled extra-leg unit balance is negative. Uses accepted modeled orders; no loss doubling, no change to stops or PF gates, and no borrowing from sibling relations. Off until explicitly enabled.">
+            <input type="checkbox" checked={!!s.block.holdUntilNet}
+              onChange={(e) => set(["block", "holdUntilNet"], e.target.checked)} />
+          </Field>
           {(() => {
             const r = { ...DEFAULT_BLOCK.ranges!, ...(s.block.ranges ?? {}) };
             const putR = (k: string, v: [number, number]) =>
@@ -3696,7 +3756,7 @@ export function SettingsPage() {
               />
             </Field>
             <Field label="Axis volume per set" hint="relative to its base set · 0.1 =10% · captured at entry">
-              <Num step={0.01} min={0.01} max={5} value={s.axis?.volumeFactor ?? 0.1}
+              <Num step={0.1} min={0.1} max={5} value={s.axis?.volumeFactor ?? 1}
                 onChange={(v) => set(["axis", "volumeFactor"], v)} />
             </Field>
             <Field label="Rung size (× Axis base)" hint="0.1 – 5">
@@ -3849,9 +3909,14 @@ export function SettingsPage() {
                 onChange={(v) => set(["dca", "levels"], v)}
               />
             </Field>
-            <Field label="Addition × original base" hint="each added leg uses this many original base units; never compounds · default: one addition of 2.5×, total 3.5×">
+            <Field label="Addition × original base" hint="each added leg uses this many original base notional units; never compounds · default: two additions of 2.5×, total 6×; compare drawdown before enabling">
               <Num step={0.1} min={0.1} max={2.5} value={s.dca.addRatio ?? 1}
                 onChange={(v) => set(["dca", "addRatio"], v)} />
+            </Field>
+            <Field label="Maximum addition distance (%)"
+              hint="Caps the deepest level from original entry. Defaults: 1% and 2%. Signals shorten spacing if needed to fit their configured stop (0.8% and 1.6% with a 2% cap). Zero preserves legacy uncapped spacing; this is not the stop distance.">
+              <Num pct min={0} max={0.1} value={s.dca.maxDistance ?? 0}
+                onChange={(v) => set(["dca", "maxDistance"], v)} />
             </Field>
             <Field
               label="Step (%)"
@@ -4605,7 +4670,7 @@ export function SettingsPage() {
                 </Field>
                 <Field
                   label="Hedge volume factor"
-                  hint="scales only hedge-selected Signal entries · 0.2–5× in 0.2 steps · 1× is neutral; position and account caps still apply"
+                  hint="scales only hedge-selected Signal entries · 0.1–5× in 0.1 steps · 1× is neutral; position and account caps still apply"
                 >
                   <CoordVolumeFactorInput
                     value={c.hedgeVolumeFactor ?? 1}

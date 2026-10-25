@@ -36,6 +36,7 @@ it("fresh Expanded defaults match the verified source/grid catalog with own Last
   const expected = recorded.actualSettings.signals;
   expected.guard.lastN = 4;
   expected.hist.lookbackH = 150;
+  expected.coordination.volumeFactor = 1; // Operator neutral-sizing default; archived receipt stays immutable.
   const normalized = { ...rt.settings.signals, sourcesMode: "allow", sources: Object.fromEntries(SIGNAL_SOURCES.map(s => [s.name, true])) };
   assert.deepEqual(normalized, expected);
   assert.deepEqual(signalCombos(rt.settings.signals, rt.settings.tfs), signalCombos(expected, recorded.actualSettings.tfs));

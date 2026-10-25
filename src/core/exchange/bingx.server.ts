@@ -295,7 +295,7 @@ export function blockingBanUntil(now = Date.now()): number {
   const s = sharedBans(now);
   let until = 0;
   for (const k of new Set([...banned.keys(), ...Object.keys(s)])) {
-    if (k === OPEN_ORDERS || k === CANCEL || k === HISTORY || isMarketData(k)) continue;
+    if (k === OPEN_ORDERS || k === CANCEL || k === HISTORY || k === "GET /openApi/swap/v2/user/income" || isMarketData(k)) continue;
     until = Math.max(until, banned.get(k) ?? 0, s[k] ? s[k] + BAN_JITTER_MS : 0);
   }
   return now < until ? until : 0;

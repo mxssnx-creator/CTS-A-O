@@ -107,7 +107,7 @@ const span = (lo: number, hi: number): Case => ({
 });
 const oneOf = (ok: unknown[], bad: unknown[] = ["bogus"]): Case => ({ ok, bad });
 const volumeFactor: Case = {
-  ...num(0.2, 5, { also: [1, 2.5], bad: [0.3] }),
+  ...num(0.1, 5, { also: [0.3,1,2.5], bad: [0.15] }),
 };
 const rangeKeys = (r: string): Record<string, Case> => ({
   [`grid.${r}.volumeFactor`]: volumeFactor,
@@ -212,13 +212,15 @@ const CASES: Record<string, Case> = {
   "block.ranges.pause": span(0, 12),
   "dca.levels": num(1, 4, { int: true }),
   "dca.addRatio": num(0.1, 2.5),
+  "dca.maxDistance": num(0, 0.1),
   "dca.step": num(0.001, 0.1),
   "dca.stopGap": num(0, 5),
   "dca.slOfTp": num(0.25, 5),
   "axis.levels": num(1, 8, { int: true }),
   "axis.spacing": num(0.1, 5),
   "axis.ratio": num(0.1, 5),
-  "axis.volumeFactor": num(0.01, 5),
+  "axis.volumeFactor": volumeFactor,
+  "exitStrategy.volumeFactor": volumeFactor,
   "axis.minDisp": { ...num(0, 10), with: [["axis.maxDisp", 20]] },
   "axis.maxDisp": { ...num(0.1, 20), with: [["axis.minDisp", 0]] },
   "axis.center": num(5, 400),
@@ -292,11 +294,11 @@ const CASES: Record<string, Case> = {
   },
   "signals.coordination.minSources": num(2, 100, { int: true }),
   "signals.coordination.count": num(10, 10_000, { int: true, also: [0, 100], bad: [15] }),
-  "signals.coordination.volumeFactor": num(1, 22, { int: true }),
+  "signals.coordination.volumeFactor": volumeFactor,
   ...Object.fromEntries(
     INDICATION_KINDS.map((kind) => [
       `signals.combinedVolumeFactors.${kind}`,
-      num(1, 22, { int: true }),
+      volumeFactor,
     ]),
   ),
   "signals.sourcesMode": oneOf(["deny", "allow"]),

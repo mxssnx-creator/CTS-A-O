@@ -3,6 +3,7 @@ import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, MAX_FOCUS_PAIRS, type CoreSe
 import { MAX_MODEL_RT_COST } from "./model-cost.ts";
 import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
+import { validVolumeRatio } from "./volume-ratio.ts";
 
 /** Range checks for a settings patch (Settings page and preset dialog alike). */
 export function checkSettings(s: Partial<CoreSettings>) {
@@ -12,16 +13,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error(`${name} out of range`);
   };
   const volumeFactor = (v: unknown, name: string) => {
-    num(v, 0.2, 5, name);
-    // Range increments are 0.2; retain 2.5 as a supported explicit setting for saved/custom configs.
-    if (
-      v !== undefined &&
-      typeof v === "number" &&
-      Math.abs(v - 2.5) > 1e-8 &&
-      Math.abs(v * 5 - Math.round(v * 5)) > 1e-8
-    )
-      throw new Error(`${name} must use 0.2 steps`);
+    if (v !== undefined && !validVolumeRatio(v))
+      throw new Error(`${name} must be 0.1–5 in 0.1 steps`);
   };
+  volumeFactor(s.exitStrategy?.volumeFactor, "Exit volume factor");
   num(s.symbols, 1, 120, "symbols");
   if (
     s.symbolRank !== undefined &&
@@ -269,6 +264,24 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (typeof v !== "boolean") throw new Error(`toggle ${k} must be boolean`);
   if (s.exitStrategy) {
     const e = s.exitStrategy;
+    if (e.validationSlices !== undefined && (!Number.isInteger(e.validationSlices) || e.validationSlices < 1 || e.validationSlices > 4))
+      throw new Error("Exit validation slices: integer from 1 to 4");
+    if (e.signalRanges !== undefined) {
+      if (!Array.isArray(e.signalRanges) || e.signalRanges.length > 6)
+        throw new Error("Signal Exit ranges: at most 6 additional fits");
+      const seen = new Set<string>();
+      for (const range of e.signalRanges) {
+        if (!range || typeof range !== "object" || !["extrema", "close"].includes(range.basis))
+          throw new Error("Signal Exit range basis: extrema or close");
+        if (!Number.isFinite(range.holdH) || !Number.isFinite(range.distance))
+          throw new Error("Signal Exit range requires finite horizon and distance");
+        num(range.holdH, 0.5, 96, "Signal Exit range hours");
+        num(range.distance, 1, 3, "Signal Exit distance multiplier");
+        const key = `${range.holdH}|${range.distance}|${range.basis}`;
+        if (seen.has(key)) throw new Error("Duplicate Signal Exit range");
+        seen.add(key);
+      }
+    }
     if (e.enabled !== undefined && typeof e.enabled !== "boolean")
       throw new Error("historic exit strategy: on / off");
     if (e.timeframes !== undefined) {
@@ -367,6 +380,17 @@ export function checkSettings(s: Partial<CoreSettings>) {
   if (s.block) {
     num(s.block.ratio, 0, 2, "block ratio");
     num(s.block.sharedRatio, 0, 2, "block Shared ratio");
+    if (s.block.sourceRatios !== undefined) {
+      if (!s.block.sourceRatios || typeof s.block.sourceRatios !== "object" || Array.isArray(s.block.sourceRatios))
+        throw new Error("block relation ratios must be an object");
+      for (const [key, value] of Object.entries(s.block.sourceRatios)) {
+        if (!["config", "overall", "symbol", "direction", "indication", "type"].includes(key))
+          throw new Error("unknown Block relation ratio");
+        num(value, 0, 10, `block ${key} ratio multiplier`);
+      }
+    }
+    if (s.block.holdUntilNet !== undefined && typeof s.block.holdUntilNet !== "boolean")
+      throw new Error("block retain until net: on / off");
     if (
       s.block.historySource !== undefined &&
       !["accepted-orders", "real-candidates"].includes(s.block.historySource)
@@ -480,7 +504,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("adjust closes per step must be a whole number");
   }
   if (s.axis) {
-    num(s.axis.volumeFactor, 0.01, 5, "axis set volume factor");
+    volumeFactor(s.axis.volumeFactor, "axis set volume factor");
     num(s.axis.levels, 1, 8, "axis levels");
     num(s.axis.spacing, 0.1, 5, "axis spacing (ATR)");
     num(s.axis.ratio, 0.1, 5, "axis rung ratio");
@@ -550,6 +574,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
   if (s.dca) {
     num(s.dca.levels, 1, 4, "dca levels (stack ≤ 5 stages: base + 4)");
     num(s.dca.step, 0.001, 0.1, "dca step");
+    num(s.dca.maxDistance, 0, 0.1, "dca maximum addition distance");
     if (s.dca.addRatio !== undefined) num(s.dca.addRatio, 0.1, 2.5, "dca addition (original base units)");
     if (s.dca.stepOfTp !== undefined) num(s.dca.stepOfTp, 0, 5, "dca step (× target)");
     if (s.dca.stopGap !== undefined) num(s.dca.stopGap, 0, 5, "dca stop gap (steps)");
@@ -894,8 +919,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       bool(c.enabled, "signals coordination");
       num(c.minSources, 2, 100, "signals coordination minimum sources");
       int(c.minSources, "signals coordination minimum sources");
-      num(c.volumeFactor, 1, 22, "signals coordination volume factor");
-      int(c.volumeFactor, "signals coordination volume factor");
+      volumeFactor(c.volumeFactor, "signals coordination volume factor");
       if (c.count !== undefined && c.count !== 0) {
         num(c.count, 10, 10_000, "active coordination units");
         if (c.count % 10 !== 0) throw new Error("active coordination units: steps of 10");
@@ -920,13 +944,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
         Array.isArray(g.combinedVolumeFactors)
       )
         throw new Error(
-          "combined indication volume factors: one 1–22 whole-number value per indication kind",
+          "indication volume factors: one 0.1–5 value in 0.1 steps per indication kind",
         );
       for (const [kind, value] of Object.entries(g.combinedVolumeFactors)) {
         if (!INDICATION_KINDS.includes(kind as (typeof INDICATION_KINDS)[number]))
           throw new Error(`unknown combined indication kind ${kind}`);
-        num(value, 1, 22, `combined ${kind} volume factor`);
-        int(value, `combined ${kind} volume factor`);
+        volumeFactor(value, `${kind} volume factor`);
       }
     }
     if (g.accept) {

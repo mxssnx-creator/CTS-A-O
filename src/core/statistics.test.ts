@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildStatistics, minuteCloseAtOrBefore, presetSeries, subTypeOf, timeline, typeOf, withWithout, type StatTrade } from "./statistics.ts";
+import { buildStatistics, liveTrades, minuteCloseAtOrBefore, presetSeries, subTypeOf, timeline, typeOf, withWithout, type StatTrade, type LedgerRow } from "./statistics.ts";
 import { statsOf, unitStatsOf } from "./metrics/stats.ts";
 
 const H = 3_600_000;
@@ -765,8 +765,8 @@ test("partial live closes retain measured free entry fees and estimate only an u
   );
   assert.deepEqual(
     measured.map((x) => x.unitR),
-    [-0.001, 0],
-    "only the first exit has an estimated fee",
+    [null, 0],
+    "the estimated first exit cannot certify actual net-return PF; measured zero stays valid",
   );
   const legacy = liveTrades(
     rows.map((x) => ({ ...x, feeKnown: null })),
@@ -775,8 +775,21 @@ test("partial live closes retain measured free entry fees and estimate only an u
   );
   assert.deepEqual(
     legacy.map((x) => x.unitR),
-    [-0.002, -0.002],
+    [null, null],
     "legacy zero placeholders cannot become measured free fills",
   );
   assert.deepEqual(rows, original, "reconstruction does not rewrite fee provenance");
+  assert.deepEqual(measured.map(x=>x.r),[-.001,0],"estimated cash remains separately reconcilable");
+  assert.deepEqual(measured.map(x=>x.feesMeasured),[false,true]);
+});
+
+test("merged owned fills keep actual account net without attributing sibling results to the first config",()=>{
+  const rows: LedgerRow[] = [
+    {coid:"O",cfg:"first|source|mc",sym:"AAA",side:1,kind:"O",qty:1,px:100,fillPx:100,fee:0,feeKnown:1,status:"ok",at:1},
+    {coid:"I",cfg:"second|source|sh",sym:"AAA",side:1,kind:"I",qty:1,px:100,fillPx:100,fee:0,feeKnown:1,status:"ok",at:2},
+    {coid:"X",sym:"AAA",side:1,kind:"X",qty:2,px:101,fillPx:101,fee:.2,feeKnown:1,status:"ok",at:3},
+  ];
+  const [closed]=liveTrades(rows,0,.0015);
+  assert.equal(closed.cfg,"live|venue-merged|tp0|sl0|tr0|h0");
+  assert.equal(closed.notional,200);assert.ok(Math.abs(closed.unitR!-.009)<1e-12);assert.ok(Math.abs(closed.r-.009)<1e-12);
 });

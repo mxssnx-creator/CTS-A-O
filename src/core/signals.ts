@@ -442,14 +442,14 @@ export interface AcceptTape {
  * The count a group is judged on is its signal ENTRIES (lane indication × entry time inside the group): the k configs
  * of one entry close k times, and counted per close one onset alone reached the minimum (6 / 20) of the acceptance.
  * The profit factor stays over every close. The direction groups (sideAcceptKey) are NOT in this record: they pool
- * the run's active candidates only, fed to the guard as they close.
+ * settled accepted post-Base orders only, fed to the guard as they close.
  */
-/** the pooled acceptance group of every signal candidate on one side (direction acceptance) */
+/** The pooled acceptance group of settled accepted Signal orders on one side. */
 export function sideAcceptKey(side: number, coordination = false): string {
   const prefix = coordination ? "coord-side" : "side";
   return side > 0 ? `${prefix}|1` : `${prefix}|-1`;
 }
-/** a direction acceptance group (judged on the fed closes of the run's active candidates, never the tape record) */
+/** A direction acceptance group judged on settled accepted orders, never the raw tape record. */
 export const isSideAcceptKey = (k: string) => /^(?:coord-)?side\|(?:1|-1)$/.test(k);
 
 /** True once ~8 ms of work passed since the last true (then it starts over): where a filling generator yields. */
@@ -1044,7 +1044,7 @@ export class SignalGuard {
     { t: number; byHours: Map<number, { n: number; pf: number }> }
   >();
   /**
-   * every closed signal candidate in exit order with its direction (loss-cluster guard: judged per side — a cluster
+   * settled accepted post-Base signal orders in exit order with their direction (loss-cluster guard: judged per side — a cluster
    * of losing shorts never pauses the longs)
    */
   private closed: Array<{
@@ -1078,7 +1078,8 @@ export class SignalGuard {
    * `side`: the close's direction (1 / −1; 0 = unknown, then it counts only for a side-less cluster check); `onset`:
    * the signal entry it belongs to (indication × symbol × direction × entry time) — the loss cluster judges each entry
    * once, on its first close (one entry's k configs losing together are one loss, not k); `population` isolates
-   * classic sources from coordination ratios.
+   * classic sources from coordination ratios. `clusterEvidence` is false for rejected/unproven candidate feedback:
+   * it still updates its own config guard, but cannot qualify or veto another config's shared post-Base gate.
    */
   add(
     key: string,
@@ -1087,8 +1088,9 @@ export class SignalGuard {
     side = 0,
     onset?: string,
     population: "signals" | "coordination" = "signals",
+    clusterEvidence = true,
   ) {
-    if (exitT !== undefined && this.firstOnset(`cluster:${population}`, onset, exitT)) {
+    if (clusterEvidence && exitT !== undefined && this.firstOnset(`cluster:${population}`, onset, exitT)) {
       this.closed.push({ t: exitT, r, side: side > 0 ? 1 : side < 0 ? -1 : 0, population });
       // trimmed by time, never by count: the cluster window (≤ 720 min) must always see every close inside it
       if (this.closed.length > 20_000) trimBefore(this.closed, exitT - CLUSTER_KEEP_MS);
@@ -1102,8 +1104,7 @@ export class SignalGuard {
   }
   /**
    * a closed candidate enters its acceptance group (`onset`: its signal entry — counted once in the group, every close
-   * still in the PF). With the tape record set, only the direction groups are fed: they pool the run's active
-   * candidates, never every tape.
+   * still in the PF). With the tape record set, only direction groups are fed by settled accepted post-Base orders.
    */
   addAccept(key: string, r: number, exitT: number, onset?: string) {
     if (this.acceptIndex && !isSideAcceptKey(key)) return;
@@ -1161,13 +1162,13 @@ export class SignalGuard {
     return s / n < 0;
   }
   /**
-   * Loss cluster: signal executions pause while the signal candidates closed in the last `windowMin` minutes before
+   * Loss cluster: signal executions pause while accepted Signal orders closed in the last `windowMin` minutes before
    * `t` lost together — at least `minLosses` losing closes, a loss share ≥ `lossShare` and a negative sum (each signal
    * entry once, on its first close: the k configs of one entry are one result, not k). The
    * pause ends by itself when those losses age out of the window. With `side` (1 / −1) only that direction's closes
    * are judged and only that direction pauses (long and short run independently); without it every close counts. Stateless in time (only closes before `t`
-   * count), so the simulation, the paper book, the live step and the audit replay decide alike. Candidates keep
-   * being computed and fed while paused (the internal calculations never stop).
+   * count), so the simulation, the paper book, the live step and the audit replay decide alike. Own candidate
+   * validation keeps being computed while paused; only settled accepted orders update this shared guard.
    */
   clustered(
     t: number,

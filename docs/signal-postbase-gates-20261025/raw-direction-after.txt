@@ -1,0 +1,13 @@
+✔ raw candidate direction history is fed in slices without seeding accepted Block history: advance(t, max) feeds at most max entries a call, the lookups after it only what closed since (102.389651ms)
+✔ candidate direction gating preserves rejected losses, recovery and downturn independently of accepted Block history (164.984656ms)
+✔ candidate direction tails preserve supported last-N, unknown counts and explicit empty evidence (4.02464ms)
+✔ closed signal candidates still teach the raw engine direction gate while open marks teach no history (8.261329ms)
+✔ pending-entry cached books use rejected candidate losses and recovery without waiving live qualification (11.891668ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 616.060186

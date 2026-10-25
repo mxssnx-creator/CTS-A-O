@@ -1,0 +1,38 @@
+{
+  "sourceSha256": "fc0797430294d8f287a6f021c81994fc2e4e5a5c7d2228cf8923bac2062c1c0b",
+  "scope": "Synthetic local recovery math and patch publication, warmed after one frame. Includes yielding and intermittent quote outages; excludes DB, network, worker startup and trade selection. Same host also running a native replay; no comparative speedup or live SLA claim.",
+  "cases": [
+    {
+      "positions": 200,
+      "frames": 50,
+      "symbols": 20,
+      "lanes": [
+        1,
+        5,
+        15
+      ],
+      "p50Ms": 0.2737160000000074,
+      "p95Ms": 1.2171649999999943,
+      "maxMs": 4.215102999999999,
+      "peakRssMiB": 91.56640625,
+      "yieldedSlices": 51,
+      "scalarParity": true
+    },
+    {
+      "positions": 20000,
+      "frames": 50,
+      "symbols": 20,
+      "lanes": [
+        1,
+        5,
+        15
+      ],
+      "p50Ms": 35.240099999999984,
+      "p95Ms": 56.05854599999998,
+      "maxMs": 60.167520999999965,
+      "peakRssMiB": 244.19921875,
+      "yieldedSlices": 6796,
+      "scalarParity": true
+    }
+  ]
+}

@@ -89,7 +89,7 @@ export interface Protect {
   /** Signal stop/activation/peak-gap ceiling as a fraction of entry; persisted in the exact config identity. */
   trailMax?: number;
   /** Immutable DCA ladder economics carried in its config identity; absent on legacy, equal-unit ladders. */
-  dca?: Pick<DcaConfig, "levels" | "step" | "stepOfTp" | "stopGap" | "addRatio">;
+  dca?: Pick<DcaConfig, "levels" | "step" | "stepOfTp" | "stopGap" | "addRatio" | "maxDistance">;
   /** max bars in trade (time exit at close) */
   hold: number;
   /** Explicit range time ceiling, preserved before lane conversion; a lane longer than this is ineligible. */
@@ -126,6 +126,8 @@ export interface ExitProtectionState {
   baseSl: number;
   baseTrail: number;
   baseTrailDist: number;
+  /** Modeled round-trip cost captured at entry; absent legacy states retain their original zero-cost lock. */
+  cost?: number;
   previousClose: number;
   rangeEma: number;
   moveEma: number;
@@ -344,11 +346,17 @@ export interface Tactics {
   cooldownBars: number;
 }
 
+export type BlockAttribution = Partial<Record<"config" | "overall" | "symbol" | "direction" | "indication" | "type", { level: number; extra: number }>>;
+
 export interface BlockConfig {
   /** extra volume per passing level (additive) */
   ratio: number;
   /** Shared-only ratio override. Unset preserves ratio; a higher value still shares the total maxMult cap. */
   sharedRatio?: number;
+  /** Per-relation multiple of ratio (or sharedRatio in Shared mode). Missing relations use 1. */
+  sourceRatios?: Partial<Record<"config" | "overall" | "symbol" | "direction" | "indication" | "type", number>>;
+  /** Retain each raised relation's qualified level until its realized extra-leg net recovers to zero. */
+  holdUntilNet?: boolean;
   /** Closed accepted Real orders, or the explicitly labeled legacy candidate-learning diagnostic. */
   historySource?: "accepted-orders" | "real-candidates";
   /** last-N windows 1..maxLevel are checked independently */
@@ -467,6 +475,8 @@ export interface DcaConfig {
   addRatio?: number;
   /** distance between levels as a fraction of the reference price */
   step: number;
+  /** Maximum adverse distance of the deepest addition from the original entry; 0/unset = legacy uncapped. */
+  maxDistance?: number;
   /** distance between levels as a multiple of the target (overrides step when set): step = TP × stepOfTp */
   stepOfTp?: number;
   /** stop beyond the deepest level, in level steps (default 0.5): stop = ref ∓ step × (levels + stopGap) */
@@ -479,6 +489,8 @@ export interface DcaConfig {
 }
 
 export interface Trade {
+  /** Immutable entry-time extra-leg ownership for independent Block recovery accounting. */
+  blockAttribution?: BlockAttribution;
   cfg: string;
   sym: string;
   side: Side;
@@ -522,6 +534,7 @@ export interface Trade {
 }
 
 export interface OpenPosition {
+  blockAttribution?: BlockAttribution;
   cfg: string;
   sym: string;
   side: Side;

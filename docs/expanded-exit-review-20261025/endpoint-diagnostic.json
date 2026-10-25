@@ -1,0 +1,213 @@
+{
+  "basis": "Separate diagnostic: settled unit net returns plus endpoint marks on actually funded held allocations. Endpoint marks are not settled closes and never qualify configs.",
+  "results": [
+    {
+      "name": "control-0",
+      "range": "Exit",
+      "closed": 7,
+      "held": 17,
+      "settledGp": 0.009002209496739036,
+      "settledGl": 0,
+      "settledPf": null,
+      "markGp": 0.02389205580109053,
+      "markGl": 0.025041692507958735,
+      "markedPf": 1.313579954205377,
+      "markedNet": 0.00785257278987083,
+      "symbolDirections": [
+        "DOT-USDT|-1",
+        "DOGE-USDT|-1",
+        "ADA-USDT|-1",
+        "LINK-USDT|-1",
+        "ETH-USDT|-1"
+      ],
+      "holdMinutes": [
+        1350
+      ]
+    },
+    {
+      "name": "control-0",
+      "range": "Signals",
+      "closed": 359,
+      "held": 66,
+      "settledGp": 1.3139292866029255,
+      "settledGl": 0.2666582574414522,
+      "settledPf": 4.9273902080133904,
+      "markGp": 0.0007767638911518205,
+      "markGl": 0.4427165808399498,
+      "markedPf": 1.8533305377439202,
+      "markedNet": 0.6053312122126753,
+      "symbolDirections": [
+        "LTC-USDT|-1",
+        "LINK-USDT|-1",
+        "AVAX-USDT|-1",
+        "DOGE-USDT|-1",
+        "DOT-USDT|-1",
+        "DOT-USDT|1",
+        "BCH-USDT|-1",
+        "BCH-USDT|1",
+        "XRP-USDT|-1",
+        "SOL-USDT|-1"
+      ],
+      "holdMinutes": [
+        45,
+        2250,
+        2880
+      ]
+    },
+    {
+      "name": "control-12",
+      "range": "Exit",
+      "closed": 7,
+      "held": 1,
+      "settledGp": 0.01549765897203745,
+      "settledGl": 0,
+      "settledPf": null,
+      "markGp": 0.00025430187413116737,
+      "markGl": 0,
+      "markedPf": null,
+      "markedNet": 0.015751960846168617,
+      "symbolDirections": [
+        "DOT-USDT|-1",
+        "SOL-USDT|-1",
+        "XRP-USDT|-1"
+      ],
+      "holdMinutes": [
+        1350
+      ]
+    },
+    {
+      "name": "control-12",
+      "range": "Signals",
+      "closed": 271,
+      "held": 581,
+      "settledGp": 0.03732621627582749,
+      "settledGl": 0.7774235883271523,
+      "settledPf": 0.04801271383615391,
+      "markGp": 0,
+      "markGl": 7.847632970380029,
+      "markedPf": 0.00432764887067852,
+      "markedNet": -8.587730342431353,
+      "symbolDirections": [
+        "ADA-USDT|-1"
+      ],
+      "holdMinutes": [
+        45,
+        2250,
+        2880
+      ]
+    },
+    {
+      "name": "expanded-0",
+      "range": "Exit",
+      "closed": 74,
+      "held": 55,
+      "settledGp": 0.02125954029881278,
+      "settledGl": 0.5404757704738155,
+      "settledPf": 0.03933486283793132,
+      "markGp": 0.04698994828146589,
+      "markGl": 0.15548547790779413,
+      "markedPf": 0.09806507005811925,
+      "markedNet": -0.6277117598013309,
+      "symbolDirections": [
+        "DOT-USDT|-1",
+        "DOGE-USDT|-1",
+        "BCH-USDT|1",
+        "LTC-USDT|1",
+        "XRP-USDT|-1",
+        "SOL-USDT|1",
+        "BNB-USDT|-1",
+        "ADA-USDT|-1",
+        "LINK-USDT|-1",
+        "ETH-USDT|-1"
+      ],
+      "holdMinutes": [
+        180,
+        360,
+        720,
+        1350
+      ]
+    },
+    {
+      "name": "expanded-0",
+      "range": "Signals",
+      "closed": 304,
+      "held": 66,
+      "settledGp": 0.7674283514363248,
+      "settledGl": 0.2666582574414522,
+      "settledPf": 2.8779470727803065,
+      "markGp": 0.0007767638911518205,
+      "markGl": 0.4427165808399498,
+      "markedPf": 1.0829325680462565,
+      "markedNet": 0.058830277046074575,
+      "symbolDirections": [
+        "LTC-USDT|-1",
+        "LINK-USDT|-1",
+        "AVAX-USDT|-1",
+        "DOGE-USDT|-1",
+        "DOT-USDT|-1",
+        "DOT-USDT|1",
+        "BCH-USDT|-1",
+        "BCH-USDT|1",
+        "XRP-USDT|-1",
+        "SOL-USDT|-1"
+      ],
+      "holdMinutes": [
+        45,
+        2250,
+        2880
+      ]
+    },
+    {
+      "name": "expanded-12",
+      "range": "Exit",
+      "closed": 52,
+      "held": 3,
+      "settledGp": 0.07738911003413357,
+      "settledGl": 0.34137672687076903,
+      "settledPf": 0.22669708841467057,
+      "markGp": 0.001998154554828509,
+      "markGl": 0.011806284764897024,
+      "markedPf": 0.22477656618109312,
+      "markedNet": -0.273795747046704,
+      "symbolDirections": [
+        "BCH-USDT|-1",
+        "AVAX-USDT|1",
+        "AVAX-USDT|-1",
+        "SOL-USDT|-1",
+        "LTC-USDT|-1",
+        "LINK-USDT|-1",
+        "DOGE-USDT|-1",
+        "DOT-USDT|-1",
+        "XRP-USDT|-1",
+        "SOL-USDT|1"
+      ],
+      "holdMinutes": [
+        180,
+        360,
+        720,
+        1350
+      ]
+    },
+    {
+      "name": "expanded-12",
+      "range": "Signals",
+      "closed": 284,
+      "held": 813,
+      "settledGp": 0.03732621627582749,
+      "settledGl": 0.9348455883271528,
+      "settledPf": 0.03992768082975114,
+      "markGp": 0,
+      "markGl": 11.16082871987015,
+      "markedPf": 0.0030859144620429563,
+      "markedNet": -12.058348091921475,
+      "symbolDirections": [
+        "ADA-USDT|-1"
+      ],
+      "holdMinutes": [
+        45,
+        2250,
+        2880
+      ]
+    }
+  ]
+}

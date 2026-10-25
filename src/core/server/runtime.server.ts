@@ -172,7 +172,7 @@ import {
 } from "../pipeline/pipeline.ts";
 import { IncrementalState } from "./incremental.ts";
 import {
-  buildTapesGen,
+  buildTapesBoundedGen as buildTapesGen,
   baseAllowsTape,
   configEval,
   engineContextValid,
@@ -233,6 +233,7 @@ import {
   selectionScoreAt,
   positionMult,
   positionVolume,
+  rangeVolumeFactorFor,
   freshEntry,
   seatedForEntry,
   stepSeats,
@@ -268,7 +269,6 @@ import {
   executionRecordKey,
   liveRecords,
   liveRecordsGen,
-  ownedPaperExecutionRecords,
   postBaseExecutionRecords,
   preferExchange,
   recordKeyOf,
@@ -276,6 +276,7 @@ import {
   type LiveRecord,
 } from "../live-record.ts";
 import { OWN_CLOSE_SQL } from "../relation.ts";
+import { ownedPromotionRecord } from "./promotion-record.server.ts";
 import { signalActiveHas, type ExchangeAccept, type SignalActivationEnd } from "../signals.ts";
 import {
   isSignalCoordinationInd,
@@ -284,6 +285,7 @@ import {
   signalCoordinationRanges,
 } from "../signal-coordination.ts";
 import { volumeFactorForStrategy } from "../volume-factor.ts";
+import { volumeRatio } from "../volume-ratio.ts";
 
 import os from "node:os";
 import { isDeepStrictEqual } from "node:util";
@@ -330,7 +332,6 @@ import {
 import {
   DEFAULT_SIGNALS,
   PRE_EXPANDED_SIGNAL_SOURCES,
-  signalRangeOf,
   type SignalAccept,
   type SignalSettings,
 } from "../signal-config.ts";
@@ -1165,6 +1166,8 @@ export class CoreRuntime {
     // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
     const savedWf = migrateSignalHistory150(db, migrateSignalLast4Policy(db, migrateSignalEvaluationPolicy(db, migrateWfCaps(db))));
     migrateExpandedSignalDefaults(db);
+    migrateNeutralVolumeRatios(db);
+    migrateDcaTwoSteps(db);
     migrateMicroBreakoutFocus(db);
     migrateMicroContextFocus(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
@@ -1283,7 +1286,7 @@ export class CoreRuntime {
     for (const p of this.paper.positions) {
       const own = parseConfigId(p.cfg)?.protect;
       if (!p.exitProtection && own) {
-        const protection = createExitProtection(own, p.entry);
+        const protection = createExitProtection(own, p.entry, this.settings.cost);
         if (protection) p.exitProtection = protection;
       }
       if (own?.trail && own.trail > 0) {
@@ -2352,7 +2355,8 @@ export class CoreRuntime {
       // Revisit a symbol only when its price moved or a protected lane completed a bar. Flat completed bars still
       // update Exit's volatility/TP state and trailing peaks; cache the next boundary instead of scanning every tick.
       const book = this.tickBook();
-      const positions = this.paper.positions;
+      const paper = this.paper;
+      const positions = paper.positions;
       const nowMs = Date.now(),
         gen = this.gen;
       const prices = Object.fromEntries(
@@ -2382,14 +2386,12 @@ export class CoreRuntime {
             },
             init ? 3_000 : 750,
           );
-          if (gen !== this.gen || positions !== this.paper.positions || this.stopped) return;
-          for (const patch of reply.result.patches)
-            Object.assign(positions[patch.index], patch.values);
+          if (gen !== this.gen || paper !== this.paper || this.stopped) return;
           marked = reply.result;
           this.tickSentBook = book;
           book.math = null;
         } catch (error) {
-          if (gen !== this.gen || this.stopped) return;
+          if (gen !== this.gen || paper !== this.paper || this.stopped) return;
           this.tickWorker.dispose(new Error("tick worker failed; sliced control recovery"));
           this.tickSentBook = null;
           this.tickRetryAt = Date.now() + 5_000;
@@ -2401,23 +2403,34 @@ export class CoreRuntime {
       }
       if (!marked) {
         book.math ??= new TickMathBook(
-          positions,
+          // The sliced fallback needs the same private ownership as the worker. Otherwise readers can observe
+          // 127 new marks alongside the previous equity while the generator yields to the audit/control loop.
+          positions.map(p => ({ ...p, ...(p.exitProtection ? { exitProtection: { ...p.exitProtection } } : {}) })),
           book.units,
           book.cost,
           book.baseTfMin,
           book.trailFree,
         );
-        const steps = book.math.advanceGen(prices, nowMs, false);
-        for (;;) {
-          const next = steps.next();
-          if (next.done) {
-            marked = next.value;
-            break;
+        const steps = book.math.advanceGen(prices, nowMs);
+        let completed = false;
+        try {
+          for (;;) {
+            const next = steps.next();
+            if (next.done) {
+              marked = next.value;
+              completed = true;
+              break;
+            }
+            await yieldNow();
+            if (gen !== this.gen || paper !== this.paper || this.stopped) return;
           }
-          await yieldNow();
-          if (gen !== this.gen || positions !== this.paper.positions || this.stopped) return;
+        } finally {
+          // A canceled/failed partial advance cannot seed the next frame's cached sums or protection state.
+          if (!completed) book.math = null;
         }
       }
+      // No await between publishing owned marks/protection and their matching equity below.
+      for (const patch of marked.patches) Object.assign(positions[patch.index], patch.values);
       const { open, hits: newHits, trailMoved } = marked;
       if (newHits) this.controlUrgent = true;
       if (trailMoved) this.controlTrail = true;
@@ -7143,7 +7156,6 @@ export class CoreRuntime {
     /** live.sideGates: the same record per config and side (modeledGateRecords), built on first use */
     byConfigSide?: Map<string, LiveRecord>;
   } | null = null;
-  private promotionOwnedMemo: { version: number; records: Map<string, LiveRecord> } | null = null;
   private promotionSelectedMemo: { selected: string[]; ids: Set<string> } | null = null;
   private promotionReferenceMemo: {
     lanes: NonNullable<CoreSettings["live"]["promotedLanes"]>;
@@ -7206,34 +7218,7 @@ export class CoreRuntime {
     );
     const sim = this.sim;
     const model = this.modeledExecutionRecords();
-    const version = this.db.version("paper_book_trades");
-    let owned = this.promotionOwnedMemo;
-    if (!owned || owned.version !== version) {
-      const rows = this.db.all<{
-        cfg: string;
-        sym: string;
-        side: number;
-        exit_t: number;
-        unit_r: number | null;
-        owned_notional_usd: number | null;
-      }>(
-        "SELECT cfg,sym,side,exit_t,unit_r,owned_notional_usd FROM paper_book_trades WHERE reason != 'dropped' AND exit_t IS NOT NULL",
-      );
-      owned = {
-        version,
-        records: ownedPaperExecutionRecords(
-          rows.map((r) => ({
-            cfg: r.cfg,
-            sym: r.sym,
-            side: r.side,
-            exitT: r.exit_t,
-            unitR: r.unit_r,
-            ownedNotionalUsd: r.owned_notional_usd,
-          })),
-        ),
-      };
-      this.promotionOwnedMemo = owned;
-    }
+    const owned = ownedPromotionRecord(this.db, lane, n, now);
     const key = executionRecordKey(lane.cfg, lane.sym, lane.side);
     const lanes = this.settings.live.promotedLanes;
     if (lanes && this.promotionReferenceMemo?.lanes !== lanes) {
@@ -7264,7 +7249,7 @@ export class CoreRuntime {
     const noLoss = referenceGp > 0 && referenceGl === 0;
     const gate = promotionGate(
       sim ? model?.records.get(key) : undefined,
-      owned.records.get(key),
+      owned,
       0,
       now,
       n,
@@ -8754,6 +8739,7 @@ export class CoreRuntime {
           ...blockEntryOf(trade, "candidate-unit"),
           exitT: trade.exitT,
           accepted: !!p,
+          ...(p?.blockAttribution ? { blockAttribution: p.blockAttribution } : {}),
           ...(sources?.length ? { bsrc: sources } : {}),
         });
         if (p) {
@@ -9535,6 +9521,7 @@ export class CoreRuntime {
             vol: prev ? positionMult(prev) : 1,
             level: prev?.level ?? 0,
             legs: prev?.legs,
+            blockAttribution: prev?.blockAttribution,
             blockLevels: prev?.blockLevels,
             blockEffectiveLevels: prev?.blockEffectiveLevels,
             blockSampleCounts: prev?.blockSampleCounts,
@@ -9593,12 +9580,9 @@ export class CoreRuntime {
       const recordedHedgeVol = held ? (prev?.hedgeVol ?? 1) : appliedHedgeVol;
       const coordVol = held ? (prev?.coordVol ?? 1) : cv;
       // The configured range factor is captured only on entry; a settings edit cannot resize a held position.
-      const signalRange = sigCfg(op.cfg) ? signalRangeOf(op.cfg.split("|")[1] ?? "") : null;
       const rangeVol = held
         ? 1
-        : signalRange
-          ? (this.wf.signalRangeVolumeFactors?.[signalRange] ?? 1)
-          : (this.wf.rangeVolumeFactors?.[rangeOfId(op.cfg) || "wide"] ?? 1);
+        : rangeVolumeFactorFor(tp, this.wf);
       const recordedRangeVol = held ? (prev?.rangeVol ?? 1) : rangeVol;
       openKeys.add(openDupKey(op));
       // the price at adoption, set once (a position held from before keeps its own, or none)
@@ -9617,6 +9601,7 @@ export class CoreRuntime {
         ...(recordedRangeVol !== 1 ? { rangeVol: recordedRangeVol } : {}),
         level: d.level,
         ...(d.legs ? { legs: d.legs } : {}),
+        ...(d.blockAttribution ? { blockAttribution: d.blockAttribution } : {}),
         ...(d.blockLevels
           ? {
               blockLevels: d.blockLevels,
@@ -10620,7 +10605,51 @@ function migrateSignalEvaluationPolicy(db: CoreDb, saved: Partial<WalkForwardOpt
   return out;
 }
 
-/** Upgrade the former 100h factory policy once; explicit custom horizons stay unchanged. */
+/** Upgrade only the former factory DCA ladder, retaining custom spacing and a complete backup. */
+function migrateDcaTwoSteps(db: CoreDb): void {
+  if (db.kvGet("dcaTwoStepsV1")) return;
+  const settings = db.kvGet<SettingsPatch>("settings"), presets = db.kvGet<Preset[]>("presets");
+  const backup = structuredClone({ settings, presets });
+  const upgrade = (s: SettingsPatch | undefined) => {
+    if (!s?.dca || s.dca.maxDistance !== undefined) return;
+    const d = s.dca;
+    if (d.levels === 1 && d.step === .02 && d.addRatio === 2.5 &&
+      (d.stepOfTp ?? 0) === 0 && (d.stopGap ?? .5) === .5 && (d.slOfTp ?? 1) === 1 && !d.tp)
+      Object.assign(d, { levels: 2, step: .01, maxDistance: .02 });
+    else d.maxDistance = 0; // custom legacy spacing must not acquire an implicit cap
+  };
+  upgrade(settings);
+  if (Array.isArray(presets)) for (const preset of presets) upgrade(preset.settings);
+  db.tx(() => {
+    db.kvSet("dcaTwoStepsBackupV1", backup);
+    if (settings) db.kvSet("settings", settings);
+    if (presets) db.kvSet("presets", presets);
+    db.kvSet("dcaTwoStepsV1", true);
+  });
+}
+
+function migrateNeutralVolumeRatios(db: CoreDb): void {
+  if (db.kvGet("neutralVolumeRatiosV1")) return;
+  const settings=db.kvGet<SettingsPatch>("settings"), presets=db.kvGet<Preset[]>("presets");
+  const backup=structuredClone({settings,presets});
+  const upgrade=(s:SettingsPatch|undefined) => {
+    if(!s) return;
+    if(s.signals?.coordination?.volumeFactor!==undefined)
+      s.signals.coordination.volumeFactor=s.signals.coordination.volumeFactor===8?1:volumeRatio(s.signals.coordination.volumeFactor);
+    if(s.axis?.volumeFactor!==undefined)
+      s.axis.volumeFactor=s.axis.volumeFactor===0.1?1:volumeRatio(s.axis.volumeFactor);
+    if(s.signals?.combinedVolumeFactors) for(const kind of Object.keys(s.signals.combinedVolumeFactors) as Array<keyof typeof s.signals.combinedVolumeFactors>)
+      s.signals.combinedVolumeFactors[kind]=volumeRatio(s.signals.combinedVolumeFactors[kind]);
+  };
+  upgrade(settings); if(Array.isArray(presets)) for(const p of presets) upgrade(p.settings);
+  db.tx(()=>{
+    db.kvSet("neutralVolumeRatiosBackupV1",backup);
+    if(settings) db.kvSet("settings",settings);
+    if(presets) db.kvSet("presets",presets);
+    db.kvSet("neutralVolumeRatiosV1",true);
+  });
+}
+
 function migrateSignalHistory150(db: CoreDb, saved: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
   if (db.kvGet("signalHistory150V1")) return saved;
   const settings = db.kvGet<SettingsPatch>("settings");

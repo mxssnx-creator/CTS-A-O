@@ -1,0 +1,39 @@
+actly once (14.901714ms)
+2026-10-25T16:52:38.7104355Z ℹ tests 772
+2026-10-25T16:52:38.7104641Z ℹ suites 113
+2026-10-25T16:52:38.7104887Z ℹ pass 769
+2026-10-25T16:52:38.7105097Z ℹ fail 1
+2026-10-25T16:52:38.7105316Z ℹ cancelled 0
+2026-10-25T16:52:38.7105535Z ℹ skipped 2
+2026-10-25T16:52:38.7105737Z ℹ todo 0
+2026-10-25T16:52:38.7105981Z ℹ duration_ms 421386.656272
+2026-10-25T16:52:38.7112173Z
+2026-10-25T16:52:38.7112487Z ✖ failing tests:
+2026-10-25T16:52:38.7112723Z
+2026-10-25T16:52:38.7113074Z test at src/core/regression.test.ts:1160:1
+2026-10-25T16:52:38.7113912Z ✖ closed signal candidates still teach the raw engine direction gate while open marks teach no history (5.223058ms)
+2026-10-25T16:52:38.7114644Z   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+2026-10-25T16:52:38.7115044Z
+2026-10-25T16:52:38.7115224Z   0 !== 1
+2026-10-25T16:52:38.7115418Z
+2026-10-25T16:52:38.7115946Z       at TestContext.<anonymous> (file:///home/runner/work/CTS-A-O/CTS-A-O/src/core/regression.test.ts:1171:54)
+2026-10-25T16:52:38.7116575Z       at async Test.run (node:internal/test_runner/test:1409:7)
+2026-10-25T16:52:38.7117108Z       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+2026-10-25T16:52:38.7117540Z     generatedMessage: true,
+2026-10-25T16:52:38.7117786Z     code: 'ERR_ASSERTION',
+2026-10-25T16:52:38.7118314Z     actual: 0,
+2026-10-25T16:52:38.7118519Z     expected: 1,
+2026-10-25T16:52:38.7118736Z     operator: 'strictEqual',
+2026-10-25T16:52:38.7118977Z     diff: 'simple'
+2026-10-25T16:52:38.7119174Z   }
+2026-10-25T16:52:38.7334902Z ##[error]Process completed with exit code 1.
+2026-10-25T16:52:38.7483486Z Post job cleanup.
+2026-10-25T16:52:38.8363626Z [command]/usr/bin/git version
+2026-10-25T16:52:38.8416685Z git version 2.55.0
+2026-10-25T16:52:38.8470595Z Temporarily overriding HOME='/home/runner/work/_temp/2d345519-1d29-4f19-a122-9951b23ec691' before making global git config changes
+2026-10-25T16:52:38.8472259Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-25T16:52:38.8477689Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-25T16:52:38.8556019Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-25T16:52:38.8592634Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-25T16:52:38.8915687Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-25T16:52:38.8962127Z [command]/usr/bi

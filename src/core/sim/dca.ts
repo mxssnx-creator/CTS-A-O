@@ -19,6 +19,9 @@ export function dcaSnapshot(dca: DcaConfig): NonNullable<Protect["dca"]> {
   const addRatio = dca.addRatio ?? 1;
   if (!(Number.isFinite(addRatio) && addRatio > 0 && addRatio <= 2.5))
     throw new RangeError("DCA addition must be positive and at most 2.5 original base units");
+  if (!Number.isFinite(dca.levels) || !Number.isFinite(dca.step) || dca.step <= 0 ||
+    (dca.maxDistance !== undefined && (!Number.isFinite(dca.maxDistance) || dca.maxDistance < 0)))
+    throw new RangeError("DCA levels, spacing and maximum distance must be finite and valid");
   return {
     levels: Math.min(DCA_MAX_LEVELS, Math.max(1, Math.floor(dca.levels))),
     // Same effective precision as the config ID. Inputs sharing an ID execute the same spacing.
@@ -26,6 +29,7 @@ export function dcaSnapshot(dca: DcaConfig): NonNullable<Protect["dca"]> {
     stepOfTp: dca.stepOfTp ?? 0,
     stopGap: dca.stopGap ?? 0.5,
     addRatio,
+    ...(dca.maxDistance ? { maxDistance: Math.round(dca.maxDistance * 1e6) / 1e6 } : {}),
   };
 }
 
@@ -58,13 +62,18 @@ export function simulateDca(
   const levels = ladder.levels;
   const addRatio = ladder.addRatio!;
   // level spacing: absolute, or a multiple of the target
-  const step = ladder.stepOfTp && ladder.stepOfTp > 0 ? p.tp * ladder.stepOfTp : ladder.step;
+  const requestedStep = ladder.stepOfTp && ladder.stepOfTp > 0 ? p.tp * ladder.stepOfTp : ladder.step;
   // stop must sit beyond the deepest level (stopGap steps past it)
   const signal = isSignalConfig(cfg);
   const signalMax = signal ? signalTrailMax({ cfg, trailMax: p.trailMax }) : Infinity;
+  const gap = Math.max(0, ladder.stopGap ?? 0.5);
+  // New capped ladders fit both additions inside an existing Signal stop. Legacy uncapped spacing stays literal:
+  // its resting stop still wins before any deeper rung. Never widen the Signal stop to fit an addition.
+  const step = ladder.maxDistance ? Math.min(requestedStep, ladder.maxDistance / levels,
+    signalMax / (levels + Math.max(gap, 0.5))) : requestedStep;
   const requestedSl = Math.max(
     p.sl,
-    step * ((active ? 1 : levels) + Math.max(0, ladder.stopGap ?? 0.5)),
+    step * ((active ? 1 : levels) + gap),
   );
   const slDist = signal ? Math.min(requestedSl, signalMax) : requestedSl;
 
@@ -117,7 +126,9 @@ export function simulateDca(
 
   const lvlPx = (k: number) => (side === 1 ? ref * (1 - step * k) : ref * (1 + step * k));
   const weight = () => weights.reduce((a, b) => a + b, 0);
-  const avg = () => legs.reduce((a, px, i) => a + px * weights[i], 0) / weight();
+  // Each weight funds ORIGINAL base notional, so acquired quantity is weight / fill price.
+  // The harmonic entry preserves Σ per-leg net returns when the ticker marks the combined holding.
+  const avg = () => legs.length === 1 ? legs[0] : weight() / legs.reduce((quantity, px, i) => quantity + weights[i] / px, 0);
   const retarget = () => {
     const a = avg();
     target = side === 1 ? a * (1 + p.tp) : a * (1 - p.tp);

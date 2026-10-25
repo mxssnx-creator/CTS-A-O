@@ -16,7 +16,40 @@ import {
   unitStatsPfText,
   presetMetricsPfText,
   liveBalanceUnavailable,
+  pfTone,
 } from "./accounting.ts";
+
+test("PF display is neutral at one and positive above one independently of qualification", () => {
+  assert.equal(pfTone(1), "");
+  assert.equal(pfTone(1.0001), "v2-up");
+  assert.equal(pfTone(0.9999), "v2-down");
+  assert.equal(pfTone(0), "v2-down");
+  assert.equal(pfTone(1, 1.5), "");
+  assert.equal(pfTone(1.2, 1.5), "v2-warn");
+  assert.equal(pfTone(1.5, 1.5), "v2-up");
+  for (const value of [null, undefined, NaN, Infinity, "1.5"]) assert.equal(pfTone(value), "");
+});
+
+test("settled zero-return samples are flat without a PF ratio, distinct from loss-only samples", () => {
+  const flat = { n: 4, pf: 0, gp: 0, gl: 0, pfBasis: "unit-net-returns", unknownReturns: 0,
+    pfConvention: "gross-return-ratio", noLoss: false };
+  assert.equal(returnPf(flat), null);
+  assert.equal(pfTone(returnPf(flat)), "");
+  assert.equal(returnPfText(flat), "Flat (no ratio)");
+  assert.equal(unitStatsPfText(flat), "Flat (no ratio)");
+  assert.equal(comparisonPfText(flat), "Flat (no ratio)");
+  assert.equal(returnPfEdgeText(flat), "–");
+  assert.equal(returnPfText({ ...flat, n: 0 }), "–");
+  assert.equal(returnPfText({ ...flat, gl: 1 }), "0.00");
+  assert.equal(unitStatsPfText({ ...flat, gl: 1 }), "0.00");
+  assert.equal(unitStatsPfText({ ...flat, unknownReturns: 1 }), "Basis unavailable");
+  const execution = { n: 4, pf: 0, returnGp: 0, returnGl: 0,
+    pfBasis: "unit-net-returns", unknownReturns: 0 };
+  assert.equal(returnPfText(execution), "Flat (no ratio)");
+  assert.equal(returnPfText({ ...execution, pf: 1, returnGp: 1, returnGl: 1, gp: 0, gl: 0 }), "1.00");
+  assert.equal(returnPfText({ ...execution, returnGp: null, returnGl: null,
+    gp: 0, gl: 0, pfBasis: "unavailable" }), "–");
+});
 
 test("PF edge is zero at breakeven and never relabels a losing or unknown sample positive", () => {
   const base = { n: 4, pfBasis: "unit-net-returns", unknownReturns: 0,

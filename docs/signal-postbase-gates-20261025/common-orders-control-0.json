@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "basis": "Exact funded settled config × symbol × direction × entry × exit, unit net returns; modeled 0.15% already retained once",
+  "before": 366,
+  "after": 371,
+  "matched": 366,
+  "added": 5,
+  "removed": 0,
+  "commonGp": 1.3229314960996645,
+  "commonGl": 0.2666582574414522,
+  "commonPf": 4.961149558213583,
+  "commonPfState": "ratio",
+  "addedIdentities": [
+    "[\"follow|sig-heikin-ashi-m@m15|tp1|sl3|tr0.2|h192|tm3\",\"DOT-USDT\",-1,1792216800000,1792218600000]",
+    "[\"follow|sig-heikin-ashi-m@m15|tp1|sl3|tr0.2|h192|ts1.5|tm3\",\"DOT-USDT\",-1,1792216800000,1792218600000]",
+    "[\"follow|sig-heikin-ashi-m@m15|tp1.15|sl1.15|tr0|h3|atr1.15x1|tm3\",\"DOT-USDT\",-1,1792216800000,1792219500000]",
+    "[\"follow|sig-heikin-ashi-m@m15|tp1.15|sl1.15|tr1.09|h3|atr1.15x1t0.8|ts1.5|tm3\",\"DOT-USDT\",-1,1792216800000,1792219500000]",
+    "[\"follow|sig-heikin-ashi-m@m15|tp1.15|sl1.15|tr1.09|h3|atr1.15x1t0.8|ts0.5|tm3\",\"DOT-USDT\",-1,1792216800000,1792219500000]"
+  ],
+  "removedIdentities": []
+}

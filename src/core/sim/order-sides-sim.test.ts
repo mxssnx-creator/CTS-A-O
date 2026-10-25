@@ -207,7 +207,7 @@ describe("order sides: DCA (simulateDca, base and one level)", () => {
     );
     assert.ok(up.open, "the ladder is still open");
     assert.equal(up.open.w, 2, "the base and the level");
-    near(up.open.entry, 100.5, "average of 100 and 101");
+    near(up.open.entry, 2/(1/100+1/101), "equal-notional cost divided by acquired quantity");
     const down = simulateDca(
       "c",
       bars([

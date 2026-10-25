@@ -1,0 +1,32 @@
+name: Exit qualification and neutral sizing study
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [control-0, control-12, expanded-0, expanded-12]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: env -u DATABASE_URL npm run build
+      - run: node --experimental-strip-types --no-warnings scripts/prepare-exit-policy-study.mjs runs/exit-policy
+      - run: python3 scripts/run-signals-native-case.py runs/exit-policy ${{ matrix.scenario }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: exit-policy-${{ matrix.scenario }}-${{ github.run_id }}
+          path: |
+            runs/exit-policy/plan.json
+            runs/exit-policy/${{ matrix.scenario }}/
+          retention-days: 90
+          compression-level: 3

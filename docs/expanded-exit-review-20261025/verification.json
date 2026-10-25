@@ -1,0 +1,329 @@
+{
+  "checkedAt": "2026-10-25T14:30:36.622Z",
+  "priorCode": {
+    "commit": "ccc952e8e25d6a92f0d985d1a5a284611bfe8502",
+    "economicSource": "39c138751c6e36ce08993078d2bded69597ce713abee6e369ecabb596ed9c0f8",
+    "ciRun": 40197322551,
+    "jobs": [
+      {
+        "id": 121180949048,
+        "name": "quality",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121180949218,
+        "name": "core-tests (3)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121180949237,
+        "name": "slow-runtime",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121180949248,
+        "name": "core-tests (4)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121180949379,
+        "name": "core-tests (1)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121180949418,
+        "name": "core-tests (2)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121184329975,
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ],
+    "exactWorkflow": 40197322763,
+    "exactJobs": [
+      {
+        "id": 121180875349,
+        "name": "Offline checks and production build",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121180876476,
+        "name": "Acquire and verify frozen public candles",
+        "status": "completed",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121180876743,
+        "name": "Research ${{ matrix.case }}",
+        "status": "completed",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121181141734,
+        "name": "Untouched 22-symbol final window",
+        "status": "completed",
+        "conclusion": "skipped"
+      }
+    ]
+  },
+  "studies": [
+    {
+      "name": "intermediate-cost",
+      "run": 40195897281,
+      "artifacts": [
+        {
+          "id": 12600716459,
+          "name": "expanded-exit-cost-slices--12-40195897281",
+          "size_in_bytes": 149247836,
+          "digest": "sha256:595e3b0ea28971b0955d2758b9d54952d809a59d7956782b3eb9b483707cc673",
+          "commit": "bb7c7ccae16246bf5898188167b7a0e97a134ecf"
+        },
+        {
+          "id": 12600571798,
+          "name": "expanded-exit-cost-cost-0-40195897281",
+          "size_in_bytes": 152180616,
+          "digest": "sha256:2fefdfd8284cd3cdb5440bf57f5e5363231dae0ca7e5fb92e914d54d41b35978",
+          "commit": "bb7c7ccae16246bf5898188167b7a0e97a134ecf"
+        },
+        {
+          "id": 12599987375,
+          "name": "expanded-exit-cost-slices-12-40195897281",
+          "size_in_bytes": 153626160,
+          "digest": "sha256:c3bde29e25cb51d444339d2a3359192c6b029632f73c236285b6da07ac994154",
+          "commit": "bb7c7ccae16246bf5898188167b7a0e97a134ecf"
+        },
+        {
+          "id": 12599857318,
+          "name": "expanded-exit-cost-cost-12-40195897281",
+          "size_in_bytes": 154931444,
+          "digest": "sha256:65c21ff076c54b371b9366ca91068799110a328e63e5d24a721ba5039f348b75",
+          "commit": "bb7c7ccae16246bf5898188167b7a0e97a134ecf"
+        },
+        {
+          "id": 12599787597,
+          "name": "expanded-exit-cost-slices-0-40195897281",
+          "size_in_bytes": 150224756,
+          "digest": "sha256:3764587b7a6eee81f55fd266459f237ee39620273753d3bdeb936d5038ff439d",
+          "commit": "bb7c7ccae16246bf5898188167b7a0e97a134ecf"
+        }
+      ]
+    },
+    {
+      "name": "net-breakeven",
+      "run": 40196687465,
+      "artifacts": [
+        {
+          "id": 12600557611,
+          "name": "expanded-exit-net-slices-12-40196687465",
+          "size_in_bytes": 153625862,
+          "digest": "sha256:d7ab16e34be5f0e1eaa574975636bb66f0ccdb979e9ecd067dc38b85368e9678",
+          "commit": "65f58ca03e8e9dc69ef6d196842773109371bad0"
+        },
+        {
+          "id": 12600553132,
+          "name": "expanded-exit-net-cost-0-40196687465",
+          "size_in_bytes": 152098042,
+          "digest": "sha256:745b9250a950cdadfaaf4cc39736155c5782a907813ba84a2459ca4c8e94b567",
+          "commit": "65f58ca03e8e9dc69ef6d196842773109371bad0"
+        },
+        {
+          "id": 12600453503,
+          "name": "expanded-exit-net-cost-12-40196687465",
+          "size_in_bytes": 154898198,
+          "digest": "sha256:3534181c148134073780ade553eb0bf9f5adc5c2ff00d6768bd841cb01a07b26",
+          "commit": "65f58ca03e8e9dc69ef6d196842773109371bad0"
+        },
+        {
+          "id": 12600053270,
+          "name": "expanded-exit-net-slices-0-40196687465",
+          "size_in_bytes": 150237372,
+          "digest": "sha256:b2f441ddfc1a1a0e78ba4f7c1964a32c64191f8b9d522e87f21375fa1d55da27",
+          "commit": "65f58ca03e8e9dc69ef6d196842773109371bad0"
+        },
+        {
+          "id": 12599818731,
+          "name": "expanded-exit-net-slices--12-40196687465",
+          "size_in_bytes": 149228149,
+          "digest": "sha256:d3e7141b254c1299f4c2de080aac1fe6954c4015379a88bdb7ff784ff486ff52",
+          "commit": "65f58ca03e8e9dc69ef6d196842773109371bad0"
+        }
+      ]
+    },
+    {
+      "name": "direction-filter",
+      "run": 40197322560,
+      "artifacts": [
+        {
+          "id": 12600855144,
+          "name": "expanded-exit-trend-trend1--12-40197322560",
+          "size_in_bytes": 104656634,
+          "digest": "sha256:51169f427f4158284c6e60a3e4d40028ec50850d5b031b42c123cac3a9287c2a",
+          "commit": "ccc952e8e25d6a92f0d985d1a5a284611bfe8502"
+        },
+        {
+          "id": 12600603198,
+          "name": "expanded-exit-trend-trend1-12-40197322560",
+          "size_in_bytes": 108108561,
+          "digest": "sha256:db7dacba7a84fda5a4af443d28c2aec11e089a6a7cd85d6cb921aa73849afa9b",
+          "commit": "ccc952e8e25d6a92f0d985d1a5a284611bfe8502"
+        },
+        {
+          "id": 12600388872,
+          "name": "expanded-exit-trend-trend3-0-40197322560",
+          "size_in_bytes": 98355834,
+          "digest": "sha256:fbd7b7e31f719eb5cd18c97fab24e180ea2489bcfbe60b609888362b6b10f19d",
+          "commit": "ccc952e8e25d6a92f0d985d1a5a284611bfe8502"
+        },
+        {
+          "id": 12600184838,
+          "name": "expanded-exit-trend-trend1-0-40197322560",
+          "size_in_bytes": 106260161,
+          "digest": "sha256:aee2ca73cdfd21052802db7183131b4f9d782300e87e8c346eddaee5d045791a",
+          "commit": "ccc952e8e25d6a92f0d985d1a5a284611bfe8502"
+        },
+        {
+          "id": 12599669534,
+          "name": "expanded-exit-trend-trend3--12-40197322560",
+          "size_in_bytes": 96359347,
+          "digest": "sha256:c7827ce0a5fff994d4331ca6a03e0d9c868b385a88f38002a14abbc9e4e0bcf2",
+          "commit": "ccc952e8e25d6a92f0d985d1a5a284611bfe8502"
+        },
+        {
+          "id": 12599644932,
+          "name": "expanded-exit-trend-trend3-12-40197322560",
+          "size_in_bytes": 99890673,
+          "digest": "sha256:52a257c905628eae94e3e2d559faf1c49aa39e9f84c2a7952f5684eb94e39082",
+          "commit": "ccc952e8e25d6a92f0d985d1a5a284611bfe8502"
+        }
+      ]
+    }
+  ],
+  "currentChanges": {
+    "sourceSha256": "cb4415d4bf602c10ef1946178352c37d7bc6622f0bee19f68728b0daf4648d5b",
+    "focusedTests": 95,
+    "typecheck": "passed after fixture correction; process exit code 0",
+    "lint": "zero errors, six existing warnings",
+    "workerBuild": "passed",
+    "fullCI": "passed all seven jobs; 4324 test passes; see current-ci.json",
+    "nativeReplays": "Both Signal controls passed with exact full-history/order parity; two full ordinary runs remain in progress",
+    "checkpoint": "d02ab91c6c2beae9cec0086d0fdfca8feb2b5191",
+    "nativeRun": 40200402203,
+    "fixtureRetest": 7,
+    "ciRun": 40200849871
+  },
+  "retainedFailures": [
+    {
+      "commit": "f36df85babd445bfb1b3eb2a0ef7db4dc64f7bde",
+      "run": 40200402091,
+      "job": 121190167275,
+      "stage": "typecheck",
+      "reason": "New test fixture used readonly axis.ranges where AxisConfig requires a mutable array. Runtime tests passed; fixture corrected in follow-up. Prior local typecheck was reported before its process completed."
+    },
+    {
+      "commit": "ef38a5e6afa2c654f5ca461122b12982d71b850d",
+      "run": 40202736648,
+      "job": 121197142205,
+      "test": "signals end to end: signal skips and paper skips carry the sig: prefix; the audit is clean",
+      "invariant": "paper: equity = closed + open mark-to-market"
+    }
+  ],
+  "processingNative": {
+    "run": 40200402203,
+    "checkpoint": "f36df85babd445bfb1b3eb2a0ef7db4dc64f7bde",
+    "economicSource": "cb4415d4bf602c10ef1946178352c37d7bc6622f0bee19f68728b0daf4648d5b",
+    "checkedAt": "2026-10-25T14:30:36.622Z",
+    "jobs": [
+      {
+        "id": 121190167510,
+        "name": "signals (control-0)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 121190167621,
+        "name": "ordinary (0)",
+        "status": "in_progress",
+        "conclusion": null
+      },
+      {
+        "id": 121190167652,
+        "name": "ordinary (15)",
+        "status": "in_progress",
+        "conclusion": null
+      },
+      {
+        "id": 121190167745,
+        "name": "signals (control-12)",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 12601218039,
+        "name": "bounded-signals-control-0-40200402203",
+        "size_in_bytes": 150357628,
+        "digest": "sha256:48984b71a795de6efb9a009dcf4a72bdb4a65672e2adfc4388f19eacaf5ec588",
+        "commit": "f36df85babd445bfb1b3eb2a0ef7db4dc64f7bde"
+      },
+      {
+        "id": 12601098246,
+        "name": "bounded-signals-control-12-40200402203",
+        "size_in_bytes": 153700485,
+        "digest": "sha256:4807f6ea6e64ca435ffb69308fd670cabcf87e2b161a54c8988efb9c7de905f3",
+        "commit": "f36df85babd445bfb1b3eb2a0ef7db4dc64f7bde"
+      }
+    ]
+  },
+  "displayFollowup": {
+    "scope": "Default PF color neutral at 1; positive above 1. Explicit qualification floors unchanged. Known zero-return samples display Flat (no ratio).",
+    "economicSourceUnchanged": true,
+    "focusedTests": 15,
+    "fullCI": "quality/browser/build passed; a core paper-equity audit failed, leading to the foreground repair"
+  },
+  "foregroundRepair": {
+    "failedCi": {
+      "commit": "ef38a5e6afa2c654f5ca461122b12982d71b850d",
+      "run": 40202736648,
+      "job": 121197142205,
+      "test": "signals end to end: signal skips and paper skips carry the sig: prefix; the audit is clean",
+      "invariant": "paper: equity = closed + open mark-to-market"
+    },
+    "reproductions": [
+      {
+        "name": "Sliced local ticker publishes partial marks and nested Exit state before equity",
+        "before": "fails deterministic 200-position test at first yield",
+        "after": "passes with private working state and atomic publication"
+      },
+      {
+        "name": "Missing quote excludes held loss from ticker equity",
+        "before": {
+          "publishedEquity": 0.8500000000000001,
+          "expectedEquity": -1.15
+        },
+        "after": "retains the previous mark, including first frame"
+      }
+    ],
+    "preservedChecks": "No audit tolerance or financial qualification gate relaxed. Source histories and model return formulas unchanged.",
+    "fixedSourceSha256": "fc0797430294d8f287a6f021c81994fc2e4e5a5c7d2228cf8923bac2062c1c0b",
+    "nativeValidation": "pending",
+    "verification": {
+      "targetedTests": 65,
+      "workerOutageParityTests": 3,
+      "typecheck": "passed",
+      "productionBuild": "passed",
+      "lint": "zero errors, five existing warnings",
+      "sourceSha256": "fc0797430294d8f287a6f021c81994fc2e4e5a5c7d2228cf8923bac2062c1c0b"
+    }
+  }
+}

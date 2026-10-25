@@ -69,6 +69,7 @@ import type {
   Bars,
   ProtectGridSpec,
   DcaConfig,
+  BlockAttribution,
   Gates,
   OpenPosition,
   Protect,
@@ -141,6 +142,7 @@ import type {
 } from "../signal-config.ts";
 import { signalVolumeFactorsOf } from "../signal-config.ts";
 import { volumeFactorForStrategy } from "../volume-factor.ts";
+import { volumeRatio } from "../volume-ratio.ts";
 
 const H = 3_600_000;
 
@@ -265,7 +267,7 @@ const numOr = (v: unknown, d: number, lo: number, hi: number) =>
   v === null || v === undefined || v === "" || !Number.isFinite(Number(v))
     ? d
     : Math.min(hi, Math.max(lo, Number(v)));
-const volumeFactor = (v: unknown) => Number((Math.round(numOr(v, 1, 0.2, 5) * 5) / 5).toFixed(1));
+const volumeFactor = volumeRatio;
 
 export function coordSettings(c?: Partial<CoordSettings> | null): CoordSettings {
   const hl = Number(c?.hourLock);
@@ -369,6 +371,8 @@ export interface RangeOpts {
 export interface WalkForwardOptions {
   /** Per Axis set, relative to the corresponding base volume. Captured once at entry. */
   axisVolumeFactor?: number;
+  /** Historic Exit owns its range ratio; never inherits Wide or a Signal parameter range. */
+  exitVolumeFactor?: number;
   /** execution sizing multiplier relative to the normal factor, per strategy target range */
   rangeVolumeFactors?: RangeVolumeFactors;
   /** execution sizing multiplier relative to the normal factor, per independent Signal range */
@@ -612,8 +616,8 @@ export interface WalkForwardOptions {
   /** only signal groups (source × symbol × direction × type) with a recent PF above the minimum trade */
   signalAccept?: SignalAccept;
   /**
-   * direction acceptance: a signal entry on a side opens only while every signal candidate of that side (all sources,
-   * symbols and configs pooled, executed or not, closed before the entry) had a PF of at least minPf over the last
+   * direction acceptance: a Signal entry on a side opens only while settled accepted post-Base orders of that side
+   * (all sources, symbols and configs pooled, closed before the entry) had a PF of at least minPf over the last
    * `hours` hours — fewer than minTrades closes: judged on twice the hours, still fewer = valid (`acceptOnWindow`;
    * unset / disabled = off)
    */
@@ -842,7 +846,8 @@ export const ENGINE_SIDE_ACCEPT: SignalAccept = {
 
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
   return {
-    axisVolumeFactor: s.axis.volumeFactor ?? 0.1,
+    axisVolumeFactor: volumeRatio(s.axis.volumeFactor),
+    exitVolumeFactor: volumeRatio(s.exitStrategy.volumeFactor),
     indicationVolumeFactors: signalVolumeFactorsOf(s.signals),
     // Keep the general replay warm-up short; config qualification uses its explicit Last-N close window below.
     preH: 6,
@@ -1930,6 +1935,18 @@ export function filterEntries(sig: Int8Array, b: Bars, k: SeriesCache, f: EntryF
   return out;
 }
 
+/** Local fallback retains the same tapes but bounds disposable indicator caches like worker messages. */
+export function* buildTapesBoundedGen(
+  ...args: Parameters<typeof buildTapesGen>
+): ReturnType<typeof buildTapesGen> {
+  try {
+    return yield* buildTapesGen(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], 16);
+  } finally {
+    // Completion, cancellation and errors all release derived series. Owned tapes and continuation state stay intact.
+    for (const cache of args[0].caches) cache.clear();
+  }
+}
+
 /** Base: causal tapes for every combo × protect × sub-strategy. Generator so callers can time-slice. */
 export function* buildTapesGen(
   u: Universe,
@@ -1944,6 +1961,8 @@ export function* buildTapesGen(
   adjust?: AdjustState | null,
   /** hard floors of every config's stop and trailing distance, after lane scaling (fractions of price) */
   floors?: EntryFloors | null,
+  /** Internal local-fallback cache lifetime; does not shorten history or limit output. */
+  cacheBatchPairs = 0,
 ): Generator<{ done: number; total: number }, ConfigTape[]> {
   // a range cell keeps its own minimum stop / trail (set when the grid was built), not the wide-grid floor
   // a range cell keeps its own stop / trail floors: the live-feedback adjuster's absolute floors are the wide grid's
@@ -2075,7 +2094,12 @@ export function* buildTapesGen(
   if (floors?.pairProtects)
     for (const c of combos) total += floors.pairProtects[`${c.bot}|${c.ind}`]?.length ?? 0;
   let done = 0;
+  let cachePairs = 0;
   for (const c of combos) {
+    if (cacheBatchPairs > 0 && cachePairs++ >= cacheBatchPairs) {
+      for (const cache of u.caches) cache.clear(["bot:", "break:shared:"]);
+      cachePairs = 1;
+    }
     // a lane indication runs only on its timeframe's series
     const series = seriesOf(u, c.ind);
     let fromT = Infinity;
@@ -2986,6 +3010,7 @@ export interface WalkForwardResult {
 }
 
 export interface BlockFeedEntry {
+  blockAttribution?: BlockAttribution;
   exitT: number;
   sym: string;
   side: number;
@@ -3127,7 +3152,7 @@ export function bookFor(o: {
   return o.toggles.block ? blockBookOf(o.block, !!o.toggles.blockActive) : null;
 }
 
-/** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
+/** Own candidate validation stays complete; shared post-Base gates consume settled accepted orders only. */
 export function feedBooks(
   e: BlockFeedEntry,
   book: BlockBook | null,
@@ -3151,6 +3176,7 @@ export function feedBooks(
       e.side,
       onset,
       population,
+      e.accepted === true,
     );
     guard.addAccept(
       acceptKey(e.ind, e.sym, e.side, e.type ?? "normal", e.cfg),
@@ -3158,7 +3184,7 @@ export function feedBooks(
       e.exitT,
       onset,
     );
-    guard.addAccept(sideAcceptKey(e.side, coordination), e.r, e.exitT, onset);
+    if (e.accepted === true) guard.addAccept(sideAcceptKey(e.side, coordination), e.r, e.exitT, onset);
   }
 }
 
@@ -5201,6 +5227,7 @@ export type ExecDecision =
       src?: BlockSource[];
       /** Explicit diagnostic capture from this entry's causal Block history. */
       blockLevels?: Partial<Record<BlockSource, number>>;
+      blockAttribution?: BlockAttribution;
       blockEffectiveLevels?: Partial<Record<BlockSource, number>>;
       blockSampleCounts?: Partial<Record<BlockSource, number>>;
     }
@@ -5208,15 +5235,16 @@ export type ExecDecision =
 
 /** Range sizing sits outside the Block / coordination stack and does not change unit-return qualification. */
 export function rangeVolumeFactorFor(
-  tp: Pick<ConfigTape, "ind" | "protect">,
-  o: Pick<WalkForwardOptions, "rangeVolumeFactors" | "signalRangeVolumeFactors">,
+  tp: Pick<ConfigTape, "ind"> & {protect: Partial<Protect>},
+  o: Pick<WalkForwardOptions, "rangeVolumeFactors" | "signalRangeVolumeFactors" | "exitVolumeFactor">,
 ): number {
+  if (tp.protect.exitType === "historic") return volumeRatio(o.exitVolumeFactor);
   if (isSignalInd(tp.ind)) {
     const range = signalRangeOf(tp.ind);
-    return range ? (o.signalRangeVolumeFactors?.[range] ?? 1) : 1;
+    return range ? volumeRatio(o.signalRangeVolumeFactors?.[range]) : 1;
   }
   const key = tp.protect.tag ?? "wide";
-  return o.rangeVolumeFactors?.[key] ?? RANGE_VOLUME_FACTOR_DEFAULTS[key];
+  return volumeRatio(o.rangeVolumeFactors?.[key] ?? RANGE_VOLUME_FACTOR_DEFAULTS[key]);
 }
 
 /** The crowding group of a config: its range tag, "wide" without one, "sig" for a signal. */
@@ -5340,7 +5368,7 @@ export function execDecision(
       )
     )
       return { ok: false, why: "signalPf" };
-    // direction acceptance: this side's signal candidates, pooled over every source and symbol, must clear the PF
+    // Direction acceptance: this side's settled accepted orders, pooled over source and symbol, must clear the PF.
     if (
       o.signalSideAccept?.enabled &&
       ctx.guard &&
@@ -5566,6 +5594,7 @@ export function execDecision(
     vol: d.vol,
     src: d.src,
     ...(d.legs ? { legs: d.legs } : {}),
+    ...(d.blockAttribution ? { blockAttribution: d.blockAttribution } : {}),
     ...trace,
   };
 }
@@ -6666,6 +6695,7 @@ export function* walkForwardGen(
         }
         // All account-independent Real entry gates passed. Do not stamp candidates held back by any earlier gate.
         fx.accepted = true;
+        if (dec.blockAttribution) fx.blockAttribution = dec.blockAttribution;
         // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
         if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
         // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
@@ -6687,6 +6717,7 @@ export function* walkForwardGen(
           ...(hedging ? { hedge: true } : {}),
           level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
           ...(dec.legs ? { legs: dec.legs } : {}),
+          ...(dec.blockAttribution ? { blockAttribution: dec.blockAttribution } : {}),
           ...(dec.blockLevels
             ? {
                 blockLevels: dec.blockLevels,

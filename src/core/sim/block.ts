@@ -27,7 +27,7 @@
 // about windowHours of that source whatever its rate. `levelMinWin`: a level also needs that share of winning closes.
 // Pause: after a raised position of a source closes positive, that source raises nothing for its next `pause`
 // closes (then its level is recalculated); 0 = no pause.
-import type { BlockConfig } from "../domain/types.ts";
+import type { BlockAttribution, BlockConfig } from "../domain/types.ts";
 
 export type BlockSource = "config" | "overall" | "symbol" | "direction" | "indication" | "type";
 export const BLOCK_SOURCES: readonly BlockSource[] = [
@@ -65,6 +65,7 @@ export function levelOfTail(rs: readonly number[], maxLevel: number, window = 1,
 
 /** Book options beyond pause and window (BlockConfig.windowHours, levelMinWin). */
 export interface BlockBookOpts {
+  holdUntilNet?: boolean;
   windowHours?: number;
   levelMinWin?: number;
   /** BlockConfig.poolSignals: false = signal closes never enter the pooled sources */
@@ -93,6 +94,7 @@ function firstAfter(ts: readonly number[], t: number): number {
 
 /** A closed candidate as the Block book sees it. `bsrc`: the sources that raised it when it was executed. */
 export interface BlockBookEntry {
+  blockAttribution?: BlockAttribution;
   sym: string;
   side: number;
   kind: string;
@@ -144,6 +146,8 @@ export function sourceKey(
 
 /** Closed positions by source key, in exit order (append-only), and the sources paused after a positive raise. */
 export class BlockBook {
+  private recovery = new Map<string, { net: number; level: number; closes: number }>();
+  readonly holdUntilNet: boolean;
   private lists = new Map<string, number[]>();
   /** windowHours: each list's exit times (same order as its results) */
   private times = new Map<string, number[]>();
@@ -169,6 +173,7 @@ export class BlockBook {
   constructor(pause = 0, window = 1, options: BlockBookOpts | boolean = {}) {
     const opts: BlockBookOpts = typeof options === "boolean" ? { acceptedOnly: options } : options;
     this.acceptedOnly = !!opts.acceptedOnly;
+    this.holdUntilNet = !!opts.holdUntilNet;
     this.poolSignals = opts.poolSignals !== false;
     this.poolDedupe = !!opts.poolDedupe;
     this.sideKeys = !!opts.sideKeys;
@@ -201,6 +206,21 @@ export class BlockBook {
   add(t: BlockBookEntry, signal = false, pooledIn?: boolean) {
     if (this.acceptedOnly && t.accepted !== true) return;
     const pooled = pooledIn ?? this.pooledClose(t, signal);
+    if (this.holdUntilNet && t.accepted === true && t.blockAttribution) {
+      for (const s of BLOCK_SOURCES) {
+        const leg = t.blockAttribution[s];
+        if (!leg || (s !== "config" && !pooled)) continue;
+        const key = sourceKey(s, t);
+        const prev = this.recovery.get(key);
+        if (!(Number.isFinite(leg.extra) && leg.extra > 0 && Number.isFinite(leg.level) && leg.level > 0)) continue;
+        const delta = typeof t.r === "number" && Number.isFinite(t.r) ? t.r * leg.extra : NaN;
+        const net = (prev?.net ?? 0) + delta;
+        // Unknown outcomes remain unresolved. They never count as recovered or authorize an extra raise.
+        if (!Number.isFinite(net)) this.recovery.set(key, { net: NaN, level: 0, closes: (prev?.closes ?? 0) + 1 });
+        else if (net >= 0) this.recovery.delete(key);
+        else this.recovery.set(key, { net, level: Math.max(prev?.level ?? 0, leg.level), closes: (prev?.closes ?? 0) + 1 });
+      }
+    }
     const keys = BLOCK_SOURCES.map((s) => sourceKey(s, t, this.sideKeys));
     const timed = this.windowHours > 0;
     for (const k of keys) {
@@ -246,13 +266,26 @@ export class BlockBook {
     return Math.max(this.window, Math.floor(n / Math.max(1, maxLevel)));
   }
   level(key: string, maxLevel: number): number {
+    if (this.recoveryUnknown(key)) return 0;
     // the exact config source always judges one close per level; pooled sources their (activity-scaled) window
-    return levelOfTail(
+    return Math.max(this.recoveryLevel(key, maxLevel), levelOfTail(
       this.lists.get(key) ?? [],
       maxLevel,
       key.startsWith("c:") ? 1 : this.windowOf(key, maxLevel),
       this.levelMinWin,
-    );
+    ));
+  }
+  /** Realized extra-leg unit balance, independent of PF scoring and every sibling relation. */
+  recoveryState(key: string): { net: number; level: number; closes: number } | null {
+    const state = this.recovery.get(key);
+    return state ? { ...state } : null;
+  }
+  recoveryLevel(key: string, maxLevel: number): number {
+    return Math.min(maxLevel, this.recovery.get(key)?.level ?? 0);
+  }
+  recoveryUnknown(key: string): boolean {
+    const state = this.recovery.get(key);
+    return !!state && !Number.isFinite(state.net);
   }
   /** Available rows in the exact judging tail, including unknown outcomes; config always uses window 1. */
   sampleCount(key: string, maxLevel: number): number {
@@ -260,7 +293,7 @@ export class BlockBook {
     return Math.min((this.lists.get(key) ?? []).length, n);
   }
   paused(key: string): boolean {
-    return (this.pauseLeft.get(key) ?? 0) > 0;
+    return this.recoveryLevel(key, 12) === 0 && (this.pauseLeft.get(key) ?? 0) > 0;
   }
   /** A candidate enters (the book holds the closes before it): the auto-window book stamps its windows' verdicts. */
   stampEntry(_t: BlockBookEntry): void {}
@@ -319,6 +352,7 @@ export function combineLevels(levels: BlockLevels, b: BlockConfig): number {
 }
 
 export interface BlockDecision {
+  blockAttribution?: BlockAttribution;
   /** Block-adjusted: raised (level at least 1, or with Block Active at least the minimum level) */
   adjusted: boolean;
   /** the level the decision used (shared: max, additive: sum, overall: the strongest raising source) */
@@ -340,9 +374,11 @@ export function blockStackCap(b: Pick<BlockConfig, "maxMult">): number {
 }
 
 /** Shared may choose its own per-level raise; unset keeps the historic common ratio. Invalid ratios never raise. */
-export function blockRatioOf(b: Pick<BlockConfig, "ratio" | "mode"> & { sharedRatio?: number }): number {
+export function blockRatioOf(b: Pick<BlockConfig, "ratio" | "mode" | "sourceRatios"> & { sharedRatio?: number }, source?: BlockSource): number {
   const ratio = (b.mode ?? "shared") === "shared" && b.sharedRatio !== undefined ? b.sharedRatio : b.ratio;
-  return Number.isFinite(ratio) && ratio >= 0 ? ratio : 0;
+  const multiplier = source ? b.sourceRatios?.[source] ?? 1 : 1;
+  return Number.isFinite(ratio) && ratio >= 0 && Number.isFinite(multiplier) && multiplier >= 0
+    ? ratio * multiplier : 0;
 }
 
 /**
@@ -366,7 +402,7 @@ export function stepRaise(extra: number, b: BlockConfig, capExtra: number): numb
  * The Block decision for one entry from its source levels: whether it is raised, by how much, and (overall) the
  * extra position of every source. Paused sources (after a positive raise) count as level 0.
  */
-export function blockDecide(
+function calculateBlock(
   levels: BlockLevels,
   b: BlockConfig,
   active: boolean,
@@ -388,8 +424,10 @@ export function blockDecide(
     for (const s of srcs) {
       const l = lv(s);
       if (l < min) continue;
+      const requested = blockRatioOf(b, s) * l;
+      if (!(requested > 0)) continue;
       reached = Math.max(reached, l);
-      const leg = stepRaise(ratio * l, b, cap - 1);
+      const leg = stepRaise(requested, b, cap - 1);
       if (!(leg > 0)) continue;
       legs[s] = Math.floor(leg * 1_000_000) / 1_000_000;
       src.push(s);
@@ -427,20 +465,43 @@ export function blockDecide(
     return { adjusted: true, level, vol: (scale + extra) / scale, legs, src: kept };
   }
   const xs = srcs.map((s) => lv(s));
-  const level = !xs.length ? 0 : mode === "additive" ? xs.reduce((a, x) => a + x, 0) : Math.max(...xs);
+  let level = !xs.length ? 0 : mode === "additive" ? xs.reduce((a, x) => a + x, 0) : Math.max(...xs);
   if (level < min) return { adjusted: false, level: 0, vol: 1, src: [] };
-  const src = srcs.filter((s) => (mode === "additive" ? lv(s) > 0 : lv(s) === level && level > 0));
-  const extra = stepRaise(ratio * level, b, cap - 1);
+  const additions = srcs.map((s) => ({ source: s, value: blockRatioOf(b, s) * lv(s) }));
+  const requested = mode === "additive"
+    ? additions.reduce((sum, x) => sum + x.value, 0)
+    : Math.max(0, ...additions.filter((x) => lv(x.source) >= min).map((x) => x.value));
+  const src = additions.filter((x) => x.value > 0 && (mode === "additive" || x.value === requested)).map((x) => x.source);
+  if (mode === "shared" && src.length) level = Math.max(...src.map(lv));
+  const extra = stepRaise(requested, b, cap - 1);
   const rounded = Math.min(extra, Math.floor(extra * 1_000_000) / 1_000_000);
   if (!(rounded > 0))
     // stepFloor off (opt-in): an entry at its level whose raise rounds to no step is still Block-adjusted, at its unit
-    return b.stepFloor === false && level > 0 && ratio > 0 && cap > 1
+    return b.stepFloor === false && level > 0 && requested > 0 && cap > 1
       ? { adjusted: true, level, vol: 1, src }
       : { adjusted: false, level: 0, vol: 1, src: [] };
   return { adjusted: true, level, vol: Math.min(cap, 1 + rounded), src };
 }
 
+export function blockDecide(
+  levels: BlockLevels, b: BlockConfig, active: boolean,
+  paused: (s: BlockSource) => boolean = () => false,
+): BlockDecision {
+  const decision = calculateBlock(levels, b, active, paused);
+  if (!b.holdUntilNet || decision.vol <= 1 || !decision.src.length) return decision;
+  const weights = decision.src.map((s) => decision.legs?.[s] ?? blockRatioOf(b, s) * levels[s]);
+  const sum = weights.reduce((total, weight) => total + weight, 0);
+  if (!(sum > 0)) return decision;
+  const attribution: BlockAttribution = {};
+  for (let i = 0; i < decision.src.length; i++) {
+    const source = decision.src[i];
+    attribution[source] = { level: levels[source], extra: decision.legs?.[source] ?? (decision.vol - 1) * weights[i] / sum };
+  }
+  return { ...decision, blockAttribution: attribution };
+}
+
 const bookOpts = (b: BlockConfig): BlockBookOpts => ({
+  holdUntilNet: b.holdUntilNet,
   windowHours: b.windowHours,
   levelMinWin: b.levelMinWin,
   poolSignals: b.poolSignals,
@@ -476,7 +537,7 @@ export class AutoBlockBook extends BlockBook {
       .filter((w) => Number.isFinite(w)))];
     if (!ws.includes(fallback)) ws.push(fallback);
     this.windows = ws;
-    this.books = ws.map((w) => new BlockBook(b.pause ?? 0, w, bookOpts(b)));
+    this.books = ws.map((w) => new BlockBook(b.pause ?? 0, w, { ...bookOpts(b), holdUntilNet: false }));
     this.recent = ws.map(() => []);
     this.cur = ws.indexOf(fallback);
     this.lookback = Math.max(30, Math.floor(b.windowLookback ?? 300));
@@ -514,6 +575,8 @@ export class AutoBlockBook extends BlockBook {
   override add(t: BlockBookEntry, signal = false, pooledIn?: boolean) {
     if (this.acceptedOnly && t.accepted !== true) return;
     const pooled = pooledIn ?? this.pooledClose(t, signal);
+    // Recovery is tied to actual entry attribution, not rewritten when an automatic window changes.
+    if (this.holdUntilNet) super.add(t, signal, pooled);
     for (let i = 0; i < this.books.length; i++) {
       // stamped at its entry (a run's feed); unstamped, judged on the closes before this one
       if (pooled && (t.autoRaise !== undefined ? (t.autoRaise >> i) & 1 : this.decide(i, t).adjusted)) {
@@ -556,10 +619,11 @@ export class AutoBlockBook extends BlockBook {
     return this.books[this.cur].windowOf(key, maxLevel);
   }
   override level(key: string, maxLevel: number): number {
-    return this.books[this.cur].level(key, maxLevel);
+    if (this.recoveryUnknown(key)) return 0;
+    return Math.max(this.recoveryLevel(key, maxLevel), this.books[this.cur].level(key, maxLevel));
   }
   override paused(key: string): boolean {
-    return this.books[this.cur].paused(key);
+    return this.recoveryLevel(key, 12) === 0 && this.books[this.cur].paused(key);
   }
   override sampleCount(key: string, maxLevel: number): number {
     return this.books[this.cur].sampleCount(key, maxLevel);

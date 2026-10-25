@@ -1,0 +1,34 @@
+{
+  "workflow": 40200402203,
+  "scope": "Prior economic revision, independent ordinary all-range attempt; both failed before a completed replay. No PF certified.",
+  "cases": [
+    {
+      "holdMinutes": 0,
+      "jobId": 121190167621,
+      "artifactId": 12607275429,
+      "result": "timeout",
+      "timeoutSeconds": 10800,
+      "lastPhase": "Base",
+      "lastPhasePercent": 76,
+      "lastRssMB": 2342
+    },
+    {
+      "holdMinutes": 15,
+      "jobId": 121190167652,
+      "artifactId": 12607255338,
+      "result": "memory abort",
+      "lastPhase": "Tapes",
+      "lastPhasePercent": 81,
+      "lastRssMB": 14143,
+      "availableMB": 1158,
+      "requiredHeadroomMB": 1200
+    }
+  ],
+  "newerOrdinaryStudy": {
+    "workflow": 40209962757,
+    "completed": 0,
+    "running": 2,
+    "queued": 6,
+    "scope": "Independent source 9a088; not completed evidence"
+  }
+}

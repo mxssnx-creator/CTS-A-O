@@ -9,6 +9,7 @@ import {
   emptyExitStrategyDiagnostics,
   exitHistoryFingerprint,
   passesExitHourlyConsistency,
+  passesExitValidationSlices,
   exitProtectCandidates,
   exitStrategyPairs,
   exitSignalStrategyPairs,
@@ -35,7 +36,7 @@ import { planLaneOrders } from "./server/lane-orders.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
 import { closePool, runOnWorkers, type ExitStrategyReply } from "./server/pool.server.ts";
-import type { Bars, Protect } from "./domain/types.ts";
+import type { Bars, Protect, Trade } from "./domain/types.ts";
 
 function finish<T>(g: Generator<void, T>): T {
   let x = g.next();
@@ -49,6 +50,19 @@ describe("independent historic exit strategy", () => {
     assert.equal(passesExitHourlyConsistency({ hours: 8, greenHours: 3 }, 0.5), false);
     assert.equal(passesExitHourlyConsistency({ hours: 5, greenHours: 0 }, 0.5), true);
     assert.equal(passesExitHourlyConsistency({ hours: 8, greenHours: 0 }, 0), true);
+  });
+
+  it("requires every chronological validation slice to pass without future closes or pooled rescue", () => {
+    const row = (exitT: number, r: number) => ({ cfg: "fixture", sym: "A", side: 1, entryT: exitT - 1, exitT, r } as Trade);
+    const pass = [row(1, .01), row(2, -.001), row(5, .01), row(6, .01), row(7, -.001), row(10, .01)];
+    assert.equal(passesExitValidationSlices(pass, 0, 10, 2, 3, 1.1), true);
+    const recentLoss = [row(1, .1), row(2, .1), row(5, .1), row(6, -.01), row(7, -.01), row(10, .001)];
+    assert.equal(passesExitValidationSlices(recentLoss, 0, 10, 2, 3, 1.1), false);
+    assert.equal(passesExitValidationSlices(pass.slice(0, 5), 0, 10, 2, 3, 1.1), false, "insufficient recent sample");
+    assert.equal(passesExitValidationSlices([...pass, row(11, 1)], 0, 10, 2, 3, 1.1), false, "future rows rejected");
+    assert.equal(passesExitValidationSlices(recentLoss, 0, 10, 1, 3, 1.1), true, "one slice preserves the separate pooled gate");
+    for (const n of [0, 1.5, 5, NaN]) assert.throws(() => checkSettings({ exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, validationSlices: n } }));
+    for (const n of [1, 2, 4]) assert.doesNotThrow(() => checkSettings({ exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, validationSlices: n } }));
   });
 
   it("caps config sets fairly across independent tactics and directions", () => {
@@ -858,6 +872,14 @@ describe("independent historic exit strategy", () => {
     assert.ok((a[pair] ?? []).every((p) => p.exitType === "historic" && p.tag === undefined));
   });
 
+  it("validates additional Signal Exit ranges without allowing invalid or duplicate fits", () => {
+    const good = [{ holdH: 6, distance: 1.5, basis: "close" as const }];
+    checkSettings({ exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, signalRanges: good } });
+    for (const signalRanges of [[{...good[0], distance: NaN}], [{...good[0], holdH: 0}],
+      [{...good[0], basis: "future"}], [...good, ...good], Array(7).fill(good[0])])
+      assert.throws(() => checkSettings({ exitStrategy: { signalRanges } } as never), /Signal Exit/);
+  });
+
   it("keeps Signal Exit filters and trail caps identical on local and worker history fits", async () => {
     const bars = barsFromCandles(
       "A-USDT",
@@ -875,7 +897,9 @@ describe("independent historic exit strategy", () => {
       minValidationTrades: 2,
       minPf: 1.05,
       holdH: 1,
-      maxConfigsPerPair: 6,
+      maxConfigsPerPair: 60,
+      signalRanges: [{ holdH: 3, distance: 1.5, basis: "close" as const },
+        { holdH: 6, distance: 2, basis: "extrema" as const }],
       quantiles: [0.5],
       stopQuantiles: [0.5],
       trailShares: [0.5],
@@ -891,9 +915,44 @@ describe("independent historic exit strategy", () => {
     };
     const entryFilter = { trendH: 6, volFloor: 0.0005 };
     const entryFilters = { [pair]: entryFilter };
+    const diagnostics = emptyExitStrategyDiagnostics();
     const local = finish(
-      exitStrategyProtectsGen(u, [pair], settings, null, u.nowT, validation, emptyExitStrategyDiagnostics(), entryFilters),
+      exitStrategyProtectsGen(u, [pair], settings, null, u.nowT, validation, diagnostics, entryFilters),
     );
+    assert.ok(diagnostics.candidates > 0 && diagnostics.evaluated > 0);
+    const baselineDiagnostics = emptyExitStrategyDiagnostics();
+    finish(exitStrategyProtectsGen(u, [pair], { ...settings, signalRanges: [] }, null, u.nowT,
+      validation, baselineDiagnostics, entryFilters));
+    assert.ok(diagnostics.candidates > baselineDiagnostics.candidates, "additional fits create genuinely distinct candidate cells");
+    assert.ok((local[pair]?.length ?? 0) <= settings.maxConfigsPerPair, "qualified fits share the bounded per-source cap");
+    const limitedDiagnostics = emptyExitStrategyDiagnostics();
+    const limited = finish(exitStrategyProtectsGen(u, [pair], {...settings,maxConfigsPerPair:6},
+      null,u.nowT,validation,limitedDiagnostics,entryFilters));
+    assert.equal(limitedDiagnostics.evaluated,diagnostics.evaluated,"a smaller retention limit cannot skip candidate qualification");
+    assert.equal(limited[pair]?.length ?? 0,Math.min(6,local[pair]?.length ?? 0));
+    const qualifiedIds=new Set((local[pair]??[]).map(p=>configId(EXIT_BOT,pair.split('|')[1],p)));
+    assert.ok((limited[pair]??[]).every(p=>qualifiedIds.has(configId(EXIT_BOT,pair.split('|')[1],p))));
+    const gapDiagnostics = emptyExitStrategyDiagnostics();
+    const gapValidation = {...validation,minTrail:0.004};
+    const gapFits = finish(exitStrategyProtectsGen(u,[pair],{...settings,trailShares:[0.1,0.5]},null,u.nowT,gapValidation,gapDiagnostics,entryFilters));
+    assert.ok(gapDiagnostics.trailTooShort > 0,"sub-floor trailing gaps are rejected before qualification");
+    assert.ok(gapDiagnostics.evaluated>0,"feasible candidates still receive their independent financial evaluation");
+    const gapTapes = buildTapes(u,[],validation.cost,undefined,new Set([pair]),null,undefined,
+      {...gapValidation,entry:entryFilter,pairProtects:gapFits});
+    assert.equal(gapTapes.length,gapFits[pair]?.length??0,"every qualified Signal Exit has an executable tape");
+    const ordinary = `${EXIT_BOT}|ema-9-21@m15`;
+    const ordinaryFit = (expanded: boolean) => finish(exitStrategyProtectsGen(u, [ordinary],
+      { ...settings, signalRanges: expanded ? settings.signalRanges : [] }, null, u.nowT, validation));
+    assert.deepEqual(ordinaryFit(true), ordinaryFit(false), "Signal ranges never change ordinary Exit fits");
+    const cut = u.nowT - 12 * 3_600_000;
+    const originalAtCut = finish(exitStrategyProtectsGen(u, [pair], settings, null, cut, validation,
+      emptyExitStrategyDiagnostics(), entryFilters));
+    const changed = structuredClone(bars);
+    for (let i = 0; i < changed.n; i++) if (changed.t[i] >= cut)
+      for (const col of [changed.o, changed.h, changed.l, changed.c]) col[i] *= 2;
+    const future = makeUniverse([changed]);
+    assert.deepEqual(finish(exitStrategyProtectsGen(future, [pair], settings, null, cut, validation,
+      emptyExitStrategyDiagnostics(), entryFilters)), originalAtCut, "future price structures cannot change historical qualification");
     try {
       const [worker] = await runOnWorkers<ExitStrategyReply>(
         [{
@@ -947,6 +1006,7 @@ describe("independent historic exit strategy", () => {
       trainFraction: 0.6,
       minEntries: 5,
       minValidationTrades: 4,
+      validationSlices: 2,
       minPf: 1.05,
       maxDdr: 0,
       holdH: 3,
@@ -984,6 +1044,13 @@ describe("independent historic exit strategy", () => {
       "trailing",
       "trailing-only",
     ]);
+    const lowCapDiagnostics = emptyExitStrategyDiagnostics();
+    const lowCap = finish(exitStrategyProtectsGen(u,[pair],{...settings,maxConfigsPerPair:6},
+      null,u.nowT,{cost:0.002,minPf:1.05,minTrades:4,minSl:0.005,minTrail:0.005},lowCapDiagnostics))[pair]??[];
+    assert.ok(protects.length>6,"fixture has more passing configs than the smaller budget");
+    assert.equal(lowCap.length,6,"only passing configs consume retention slots");
+    assert.equal(lowCapDiagnostics.evaluated,diagnostics.evaluated,"retention budget never truncates qualification");
+    assert.ok(lowCapDiagnostics.capped>0,"discarded passing configs are counted explicitly");
     assert.ok(
       new Set(protects.map((protect) => protect.tp)).size > 1,
       "the selected TP remains adjustable",

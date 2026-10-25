@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useConn } from "./conn";
 import { ageOf } from "@/core/live-labels";
 import { sameDataScope } from "./accounting";
+export { pfTone } from "./accounting";
 
 /**
  * Poll a server function; data is replaced in place (no reload, no scroll jump).
@@ -218,8 +219,6 @@ export const fmt = {
 
 export const tone = (x: unknown, neutral = 0) =>
   typeof x === "number" ? (x > neutral ? "v2-up" : x < neutral ? "v2-down" : "") : "";
-export const pfTone = (x: unknown, min = 1.1) =>
-  typeof x === "number" ? (x >= min ? "v2-up" : x >= 1 ? "v2-warn" : "v2-down") : "";
 
 /**
  * One representation of the Live stage everywhere: "on" when enabled in settings, plus the live step's reason

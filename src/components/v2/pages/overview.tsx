@@ -230,6 +230,20 @@ function AccountNets(props: { d: Any }) {
           sub={`uPnL ${fmt.usdSigned(a?.foreign?.upnl)} · ended by orders not ours: ${fmt.num(ss?.hand?.n ?? 0)} (${fmt.usdSigned(ss?.hand?.usd)}) · never in the own numbers`}
         />
       </div>
+      {ss?.venueHistory && (
+        <Panel title="Exchange cash history"
+          sub={`Selected account, all activity · covered through ${ss.venueHistory.coveredThrough ? fmt.time(ss.venueHistory.coveredThrough) : "pending"} UTC · ${ss.venueHistory.pendingWindows} windows pending${ss.venueHistory.error ? ` · ${ss.venueHistory.error}` : ""} · transfers are separate from trading results`}>
+          <div className="v2-table-wrap"><table className="v2-table">
+            <thead><tr><th>Asset</th><th>Realized</th><th>Trading fees</th><th>Funding</th><th>Other trading</th><th>Trading net</th><th>Transfers</th><th>Other cash</th><th>Records</th></tr></thead>
+            <tbody>{(ss.venueHistory.assets as Any[]).map((row) => <tr key={row.asset}>
+              <td>{row.asset}</td><td>{fmt.num(row.realized, 4)}</td><td>{fmt.num(row.tradingFees, 4)}</td>
+              <td>{fmt.num(row.funding, 4)}</td><td>{fmt.num(row.otherTrading, 4)}</td><td>{fmt.num(row.tradingNet, 4)}</td>
+              <td>{fmt.num(row.transfers, 4)}</td><td>{fmt.num(row.other, 4)}</td><td>{fmt.num(row.records)}</td>
+            </tr>)}</tbody>
+          </table></div>
+          <p className="v2-muted">Actual exchange income records. Includes other activity on this account; these totals do not assign funding or returns to individual strategy configurations.</p>
+        </Panel>
+      )}
       {rows.length > 0 && (
         <Panel title="Exchange positions" sub={`own ${own.length} · not ours ${foreign.length} · from the last account read`} flush>
           <div className="v2-table-wrap">

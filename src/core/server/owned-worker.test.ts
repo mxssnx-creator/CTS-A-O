@@ -55,7 +55,7 @@ describe("private serial realtime worker", () => {
           Array.from({ length: 20 }, (_, s) => [
             `S${s}`,
             100 + 1.4 * Math.sin(frame * 0.35 + s / 3),
-          ]),
+          ]).filter((_, s) => (frame + s) % 7 !== 0), // intermittent missing quotes, including the first frame
         );
         const reply = await worker.run<{ result: TickMathResult }>(
           {
@@ -70,6 +70,8 @@ describe("private serial realtime worker", () => {
         );
         const expected = reference.advance(prices, now);
         assert.deepEqual(reply.result, expected);
+        const scalarOpen = local.reduce((sum, p, i) => sum + p.mtm * (p.vol ?? 1) * units[i], 0);
+        assert.ok(Math.abs(reply.result.open - scalarOpen) < 1e-8, "unquoted held marks remain in equity");
         for (const patch of reply.result.patches) Object.assign(initial[patch.index], patch.values);
         const defined = (p: TickPosition) =>
           Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));

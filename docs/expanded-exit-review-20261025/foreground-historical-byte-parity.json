@@ -1,0 +1,40 @@
+[
+  {
+    "scenario": "control-0",
+    "ok": true,
+    "beforeSource": "39c138751c6e36ce08993078d2bded69597ce713abee6e369ecabb596ed9c0f8",
+    "afterSource": "fc0797430294d8f287a6f021c81994fc2e4e5a5c7d2228cf8923bac2062c1c0b",
+    "tapeConfigs": 126249,
+    "historicalCloses": 10764881,
+    "recordDefinition": "One metadata row per tape plus one row per historical close",
+    "before": {
+      "bytes": 914910166,
+      "records": 10891130,
+      "sha256": "4fee1246b3b76dec8ccd70f79feb48a0c8f531339323f922a059ec3f87cc3192"
+    },
+    "after": {
+      "bytes": 914910166,
+      "records": 10891130,
+      "sha256": "4fee1246b3b76dec8ccd70f79feb48a0c8f531339323f922a059ec3f87cc3192"
+    }
+  },
+  {
+    "scenario": "control-12",
+    "ok": true,
+    "beforeSource": "39c138751c6e36ce08993078d2bded69597ce713abee6e369ecabb596ed9c0f8",
+    "afterSource": "fc0797430294d8f287a6f021c81994fc2e4e5a5c7d2228cf8923bac2062c1c0b",
+    "tapeConfigs": 126289,
+    "historicalCloses": 10999508,
+    "recordDefinition": "One metadata row per tape plus one row per historical close",
+    "before": {
+      "bytes": 933916434,
+      "records": 11125797,
+      "sha256": "93918ea7fe50934848d1cd342ecee325d4f3e2dccbd141e7eadc62cc81a0bac9"
+    },
+    "after": {
+      "bytes": 933916434,
+      "records": 11125797,
+      "sha256": "93918ea7fe50934848d1cd342ecee325d4f3e2dccbd141e7eadc62cc81a0bac9"
+    }
+  }
+]

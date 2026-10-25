@@ -163,19 +163,16 @@ export const DEFAULT_BLOCK: BlockConfig = {
   },
 };
 /**
- * Operator default, 20 October: one additional leg at 2% distance, weighted 2.5 ORIGINAL base units (3.5 total).
- * The distance is a configurable candidate, not a claim of a universally optimal or profitable spacing.
- */
-/**
  * Ceiling on the protect-grid variants: a memory guard, not a working limit (operator, 5 Oct: caps removed or kept
  * very high so the engine processes freely). It was 1,200, which a free grid reaches quickly.
  */
 export const GRID_VARIANTS_MAX = 100_000;
 
-export const DEFAULT_DCA: DcaConfig = { levels: 1, addRatio: 2.5, step: 0.02, stopGap: 0.5, slOfTp: 1 };
+/** Two additions at 1% and 2% from original entry; a requested default, not a proven optimum. */
+export const DEFAULT_DCA: DcaConfig = { levels: 2, addRatio: 2.5, step: 0.01, maxDistance: 0.02, stopGap: 0.5, slOfTp: 1 };
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
 export const DEFAULT_AXIS: AxisConfig = {
-  volumeFactor: 0.1,
+  volumeFactor: 1,
   levels: 3,
   spacing: 0.7,
   ratio: 1,
@@ -327,6 +324,10 @@ export interface CoreSettings {
 }
 
 export interface ExitStrategySettings {
+  /** Independent Exit range sizing, 0.1–5 in 0.1 increments; does not inherit Wide or Signal range sizing. */
+  volumeFactor?: number;
+  /** Additional Signal-only fits; the original high/low fit remains present. Identical economic cells deduplicate. */
+  signalRanges?: Array<{ holdH: number; distance: number; basis: "extrema" | "close" }>;
   enabled: boolean;
   /** Standalone lanes evaluated by Historic Exit, independent of configured Bot types and Base focus lanes. */
   timeframes: number[];
@@ -346,6 +347,8 @@ export interface ExitStrategySettings {
   minEntries: number;
   /** completed, held-out closes required before a candidate can qualify, per direction */
   minValidationTrades: number;
+  /** Require every chronological held-out slice to pass sample/PF/DDR gates; omitted or 1 preserves pooled validation. */
+  validationSlices?: number;
   /** minimum held-out net return profit factor for this independent Exit candidate */
   minPf: number;
   /** minimum share of green active UTC exit hours in a sufficiently populated held-out sample; 0 disables */
@@ -354,7 +357,7 @@ export interface ExitStrategySettings {
   maxDdr: number;
   /** maximum hold horizon; shortened when the fit segment is small */
   holdH: number;
-  /** upper bound across independent Exit config families and both directions for each pair */
+  /** retained qualified configs across independent Exit families and both directions per pair; failed fits consume no slots */
   maxConfigsPerPair: number;
   /** MFE quantiles estimate each adjustable TP directly from the fit history */
   quantiles: number[];
@@ -701,6 +704,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   fees: { ...DEFAULT_MODEL_FEES },
   adjust: DEFAULT_ADJUST,
   exitStrategy: {
+    volumeFactor: 1,
     enabled: true,
     timeframes: [1, 5, 15],
     includeTactics: true,

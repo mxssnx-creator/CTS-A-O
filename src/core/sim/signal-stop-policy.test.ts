@@ -189,9 +189,21 @@ describe("Signal 2% stop policy and independent peak ratios", () => {
     for(const side of [1,-1] as const) {
       const b=bars([[100,100,100,100],[100,101,94,96]],side);
       const r=simulateDca(CFG+"|dca",b,new Int8Array([side,0]),{...P,tp:.1},
-        {...DEFAULT_SETTINGS.dca,levels:4,step:.05,stepOfTp:0},false,.0015);
+        {...DEFAULT_SETTINGS.dca,levels:4,step:.05,stepOfTp:0,maxDistance:0},false,.0015);
       assert.equal(r.trades.length,1); assert.equal(r.trades[0].vol,1);
       near(r.trades[0].exit,100*(1-side*.02)); near(r.trades[0].r,-.0215);
+    }
+  });
+
+  it("fits both capped DCA additions inside the Signal stop without loosening it",()=>{
+    for(const side of [1,-1] as const){
+      const b=bars([[100,100,100,100],[100,100.01,98.3,98.4],[98.4,98.41,97.9,98]],side);
+      const r=simulateDca(CFG+"|dca",b,new Int8Array([side,0,0]),{...P,tp:.1},DEFAULT_SETTINGS.dca,false,.0015);
+      assert.equal(r.trades.length,1);assert.equal(r.trades[0].vol,6,"base plus two independent 2.5-unit additions");
+      near(r.trades[0].exit,100*(1-side*.02));
+      const exits=100*(1-side*.02),rung1=100*(1-side*.008),rung2=100*(1-side*.016);
+      const unitNet=side*(exits/100-1)+2.5*side*(exits/rung1-1)+2.5*side*(exits/rung2-1)-6*.0015;
+      near(r.trades[0].r,unitNet);
     }
   });
 

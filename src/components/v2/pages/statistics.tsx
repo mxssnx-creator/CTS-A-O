@@ -545,7 +545,7 @@ export function StatisticsPage() {
       <ErrorNote error={error} />
       <Panel
         title="Statistics"
-        sub={`${d.conn ?? ""} · ${d.sourceLabel ?? r.source} · ${fmt.time(r.startT)} → ${fmt.time(r.endT)} UTC · USD after fees${d.feesModelled ? " (fees modelled: no fill reported a commission)" : ""} · PF and net % per unit of notional${r.source === "live" ? ` · account read ${fmt.ago(d.accountAt)}` : ""}${r.open?.positions ? ` · ${r.open.positions} own positions open (marked in the chart, not closes)` : ""}`}
+        sub={`${d.conn ?? ""} · ${d.sourceLabel ?? r.source} · ${fmt.time(r.startT)} → ${fmt.time(r.endT)} UTC · USD after fees${d.feesModelled ? " (includes estimated fees; unknown net returns cannot qualify PF)" : ""} · PF neutral 1; net % per unit of notional${r.source === "live" ? ` · measured trading-fee return basis; funding in account history · account read ${fmt.ago(d.accountAt)}` : ""}${r.open?.positions ? ` · ${r.open.positions} own positions open (marked in the chart, not closes)` : ""}`}
         right={controls}
       >
         <div className="v2-grid v2-cols-6">

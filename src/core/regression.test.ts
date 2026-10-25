@@ -1160,7 +1160,7 @@ it("candidate direction tails preserve supported last-N, unknown counts and expl
 it("closed signal candidates still teach the raw engine direction gate while open marks teach no history", async () => {
   const { DEFAULT_BLOCK, DEFAULT_TOGGLES } = await import("./config.ts");
   const { INDICATIONS } = await import("./indications/registry.ts");
-  const { SignalGuard, sideAcceptKey } = await import("./signals.ts");
+  const { acceptKey, SignalGuard, sideAcceptKey } = await import("./signals.ts");
   const { bookFor, candidateDirectionFor, defaultWalkForward, execDecision, feedBooks, makeTape } = await import("./sim/walkforward.ts");
   const o = { ...defaultWalkForward(DEFAULT_SETTINGS), lastN: 0, normalBaseMinPf: 0, sideGateN: 1,
     toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: false }, block: { ...DEFAULT_BLOCK } };
@@ -1168,15 +1168,25 @@ it("closed signal candidates still teach the raw engine direction gate while ope
   const row = { sym: "B", side: 1, r: -.02, ind: "sig-ema-trend-s@m15", kind: "signal", type: "normal", cfg: "follow|sig-ema-trend-s@m15|candidate", entryT: DIRECTION_GATE_AT + 1, exitT: DIRECTION_GATE_AT + 2 };
   feedBooks(row, book, guard, direction);
   assert.deepEqual(direction.tailSum(1, 1), { n: 1, sum: -.02 });
-  assert.equal(book.tailSum("all", 64).n, 0); assert.equal(guard.acceptStats(sideAcceptKey(1), DIRECTION_GATE_AT + 3, 24).n, 1);
+  assert.equal(book.tailSum("all", 64).n, 0);
+  assert.equal(guard.acceptStats(sideAcceptKey(1), DIRECTION_GATE_AT + 3, 24).n, 0,
+    "raw candidate direction evidence cannot enter the shared post-Base record");
+  const ownKey = acceptKey(row.ind, row.sym, row.side, row.type, row.cfg);
+  assert.equal(guard.acceptStats(ownKey, DIRECTION_GATE_AT + 3, 24).n, 1,
+    "the exact config's candidate learning remains independent");
   feedBooks({ ...row, entryT: DIRECTION_GATE_AT + 3, exitT: DIRECTION_GATE_AT + 4, r: .5, accepted: true, open: true }, book, guard, direction);
   assert.deepEqual(direction.tailSum(1, 64), { n: 1, sum: -.02 });
-  assert.equal(book.tailSum("all", 64).n, 0); assert.equal(guard.acceptStats(sideAcceptKey(1), DIRECTION_GATE_AT + 5, 24).n, 1);
+  assert.equal(book.tailSum("all", 64).n, 0);
+  assert.equal(guard.acceptStats(sideAcceptKey(1), DIRECTION_GATE_AT + 5, 24).n, 0);
+  assert.equal(guard.acceptStats(ownKey, DIRECTION_GATE_AT + 5, 24).n, 1);
   const engine = makeTape("x", "magnet", INDICATIONS[0].id, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], directionGateQualificationRows("x"), [], []);
   assert.deepEqual(execDecision(engine, DIRECTION_GATE_AT + 5, o, { book, direction, guard, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
   const signal = makeTape("s", "follow", row.ind, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
   const decision = execDecision(signal, DIRECTION_GATE_AT + 5, { ...o, signalOwnBase: true }, { book, direction, guard, sym: "A", side: 1 });
   assert.ok(decision.ok || !["sideGate", "sideGateUnavailable"].includes(decision.why), "the engine-only gate never vetoes signal entries; their own gates stay intact");
+  feedBooks({ ...row, entryT: DIRECTION_GATE_AT + 3, exitT: DIRECTION_GATE_AT + 6, r: .01, accepted: true }, book, guard, direction);
+  assert.equal(guard.acceptStats(sideAcceptKey(1), DIRECTION_GATE_AT + 7, 24).n, 1,
+    "only the settled accepted Signal reaches the shared post-Base record");
 });
 
 it("pending-entry cached books use rejected candidate losses and recovery without waiving live qualification", async () => {

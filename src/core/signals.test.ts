@@ -465,6 +465,7 @@ describe("signals: guards through the feed (as the simulation runs them)", () =>
     protect: { tp: 0.02, sl: 0.02, trail: 0, hold: 96 },
   } as unknown as ConfigTape;
   const entry = (i: number, r: number, cfg = tp.id) => ({
+    accepted: true,
     exitT: i * 60_000,
     sym: "A",
     side: 1,
@@ -560,8 +561,9 @@ describe("signals: settings", () => {
     const patched = mergeSignals(on, { rangeVolumeFactors: { short: 1.4 } } as never);
     assert.deepEqual(patched.rangeVolumeFactors, { short: 1.4, medium: 1 });
     assert.equal(signalSettings({ rangeVolumeFactors: { short: 2.5, medium: 1 } }).rangeVolumeFactors.short, 2.5);
-    assert.throws(() => checkSettings({ signals: { ...on, rangeVolumeFactors: { short: 0.3, medium: 1 } } }), /0\.2 steps/);
-    assert.throws(() => checkSettings({ signals: { ...on, rangeVolumeFactors: { short: 1, medium: 5.2 } } }), /out of range/);
+    assert.doesNotThrow(() => checkSettings({ signals: { ...on, rangeVolumeFactors: { short: 0.3, medium: 0.1 } } }));
+    assert.throws(() => checkSettings({ signals: { ...on, rangeVolumeFactors: { short: 0.35, medium: 1 } } }), /0\.1 steps/);
+    assert.throws(() => checkSettings({ signals: { ...on, rangeVolumeFactors: { short: 1, medium: 5.2 } } }), /volume factor/);
   });
 });
 
@@ -843,7 +845,8 @@ describe("coordination tactics", () => {
     assert.equal(coordSettings().hedgeVolumeFactor, 1);
     assert.equal(coordSettings({ hedgeVolumeFactor: 0.4 }).hedgeVolumeFactor, 0.4);
     assert.equal(coordSettings({ hedgeVolumeFactor: 5.4 }).hedgeVolumeFactor, 5);
-    assert.equal(coordSettings({ hedgeVolumeFactor: 2.31 }).hedgeVolumeFactor, 2.4);
+    assert.equal(coordSettings({ hedgeVolumeFactor: 2.31 }).hedgeVolumeFactor, 2.3);
+    assert.equal(coordSettings({ hedgeVolumeFactor: 0.1 }).hedgeVolumeFactor, 0.1);
   });
 
   it("signal confirmation: a signal needs an engine position on its symbol and direction", () => {

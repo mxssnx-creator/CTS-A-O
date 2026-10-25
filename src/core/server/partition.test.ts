@@ -1,7 +1,7 @@
 // The Base partition: every combo once, one indication's combos in one part, equal sizes.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { partitionByIndication } from "./partition.ts";
+import { BASE_WORKER_MAX_COMBOS, partitionByIndication } from "./partition.ts";
 
 describe("Base partition across workers", () => {
   const combos = ["b|x", "a|y", "c|x", "a|z", "b|y", "c|x", "a|y", "b|x"].map((ind, i) => ({ ind, i }));
@@ -25,5 +25,12 @@ describe("Base partition across workers", () => {
   it("no combos gives empty parts; one part is everything", () => {
     assert.deepEqual(partitionByIndication([], 4).map((p) => p.length), [0, 0, 0, 0]);
     assert.equal(partitionByIndication(combos, 1)[0].length, combos.length);
+  });
+  it("bounds a full 43,421-combo inventory without losing or duplicating work", () => {
+    const all = Array.from({ length: 43_421 }, (_, i) => ({ ind: `ind-${Math.floor(i / 11)}`, i }));
+    const parts = partitionByIndication(all, 4);
+    assert.ok(parts.length > 4, "large source inventories need bounded messages, not a longer timeout");
+    assert.ok(parts.every(part => part.length <= BASE_WORKER_MAX_COMBOS));
+    assert.deepEqual(parts.flat().map(x => x.i).sort((a, b) => a - b), all.map(x => x.i));
   });
 });

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Bars, ExitConfigSet, Protect } from "../domain/types.ts";
 import { simulate } from "./backtest.ts";
+import { capTrailingOnlyProtect } from "./trailing.ts";
 import {
   advanceExitProtection,
   createExitProtection,
@@ -19,8 +20,8 @@ const protect = (set: ExitConfigSet): Protect => ({
   exitSide: 1,
   exitSet: set,
 });
-const position = (set: ExitConfigSet, side = 1): ExitProtectionPosition => {
-  const p = protect(set);
+const position = (set: ExitConfigSet, side = 1, cost = 0): ExitProtectionPosition => {
+  const p = capTrailingOnlyProtect(protect(set));
   return {
     side,
     entry: 100,
@@ -29,15 +30,15 @@ const position = (set: ExitConfigSet, side = 1): ExitProtectionPosition => {
     peak: 100,
     trailOn: false,
     trail: p.trail,
-    trailDist: p.trail,
-    exitProtection: createExitProtection(p, 100),
+    trailDist: p.trail * (p.trailStep ?? 1),
+    exitProtection: createExitProtection(p, 100, cost),
   };
 };
-const bars = (rows: number[][]): Bars => ({
+const bars = (rows: number[][], tfMin = 1): Bars => ({
   sym: "FIXTURE",
-  tfMin: 1,
+  tfMin,
   n: rows.length,
-  t: Float64Array.from(rows, (_, i) => i * 60_000),
+  t: Float64Array.from(rows, (_, i) => i * tfMin * 60_000),
   o: Float64Array.from(rows, (r) => r[0]),
   h: Float64Array.from(rows, (r) => r[1]),
   l: Float64Array.from(rows, (r) => r[2]),
@@ -46,6 +47,55 @@ const bars = (rows: number[][]): Bars => ({
 });
 
 describe("causal per-position Exit protection", () => {
+  it("locks breakeven after captured costs in both directions and never places it ahead of earned profit", () => {
+    for (const side of [1, -1]) for (const set of ["breakeven", "adaptive-sl", "trailing", "trailing-only"] as const) {
+      const p = position(set, side, .002);
+      p.exitProtection!.baseTp = .006;
+      const mark = (profit: number) => ({ t: 60_000 + profit * 1e6,
+        high: Math.max(100, 100 * (1 + side * profit)), low: Math.min(100, 100 * (1 + side * profit)), close: 100 * (1 + side * profit) });
+      const initial = p.stop;
+      advanceExitProtection(p, mark(.002));
+      assert.equal(p.stop, initial, "no net-breakeven lock while mark only covers modeled cost");
+      const restored = JSON.parse(JSON.stringify(p));
+      advanceExitProtection(p, mark(.004));
+      advanceExitProtection(restored, mark(.004));
+      assert.deepEqual(p, restored, "captured cost survives restart");
+      const locked = side * (p.stop - p.entry) / p.entry;
+      assert.ok(locked >= .002 - 1e-12 && locked < .004, `${set} locks the cost behind the mark`);
+      assert.equal(p.exitProtection!.cost, .002);
+    }
+    assert.throws(() => createExitProtection(protect("breakeven"), 100, NaN));
+    assert.throws(() => createExitProtection(protect("breakeven"), 100, -.001));
+  });
+
+  it("preserves owned cost through newer recalculation while retaining the tighter stop", () => {
+    for (const previousCost of [0, .0015]) {
+      const previous = position("breakeven", 1, previousCost);
+      const rebuilt = position("breakeven", 1, .002);
+      previous.exitProtection!.lastBarT = 60_000;
+      rebuilt.exitProtection!.lastBarT = 120_000;
+      previous.stop = 100;
+      rebuilt.stop = 100.2;
+      const carried = { ...rebuilt, ...carryTrail(rebuilt, previous) };
+      assert.equal(carried.exitProtection!.cost, previousCost);
+      assert.equal(carried.exitProtection!.lastBarT, 120_000);
+      assert.equal(carried.stop, 100.2, "a settings edit never loosens an owned stop");
+    }
+  });
+
+  it("settles a cost-covered breakeven at exactly zero, not a floating-point win or loss", () => {
+    for (const side of [1, -1] as const) for (const tf of [1, 5, 15]) {
+      const price = (x: number) => 100 + side * (x - 100);
+      const rows = [[100,100,100,100],[100,100.4,100,100.4],[100.4,100.4,100,100.1]]
+        .map(([o,h,l,c]) => [price(o), Math.max(price(h), price(l)), Math.min(price(h), price(l)), price(c)]);
+      const result = simulate("breakeven-fixture", bars(rows, tf), Int8Array.of(side, 0, 0),
+        {tp:.006, sl:.02, trail:0, hold:100, exitType:"historic", exitSide:side, exitSet:"breakeven"}, {cost:.0015});
+      assert.equal(result.trades.length, 1);
+      assert.equal(result.trades[0].r, 0);
+      assert.ok(Math.abs(result.trades[0].exit - 100*(1+side*.0015)) < 1e-12);
+    }
+  });
+
   it("keeps legacy Exit ids fixed and gives every tactic its own bounded TP state", () => {
     assert.equal(
       createExitProtection({ tp: 0.1, sl: 0.1, trail: 0, hold: 10, exitType: "historic" }, 100),
@@ -155,43 +205,44 @@ describe("causal per-position Exit protection", () => {
     assert.equal(b.trades[0].cfg, "fixed-id", "adaptation never changes config identity");
   });
 
-  it("uses the same completed bar updates in simulation and tick, including restart/carry", () => {
-    for (const set of ["static-sl", "adaptive-sl", "trailing"] as const) {
-      const p = position(set);
-      const tick = JSON.parse(JSON.stringify(p)) as ExitProtectionPosition;
-      tickTrail(tick, 100, 60_000, 60_000);
-      tickTrail(tick, 103, 60_010, 60_000);
-      tickTrail(tick, 99, 60_020, 60_000);
-      tickTrail(tick, 102, 119_999, 60_000);
-      const restarted = JSON.parse(JSON.stringify(tick));
-      tickTrail(tick, 102, 120_000, 60_000);
-      tickTrail(restarted, 102, 120_000, 60_000);
-      assert.deepEqual(restarted, tick);
-      const simulated = simulate(
-        "fixed-id",
-        bars([
-          [100, 100, 100, 100],
-          [100, 103, 99, 102],
-        ]),
-        Int8Array.of(1, 0),
-        protect(set),
-        { cost: 0 },
-      ).open!;
-      assert.equal(tick.stop, simulated.stop);
-      assert.equal(tick.target, simulated.target);
-      assert.equal(tick.trailDist, simulated.trailDist ?? 0);
-      assert.deepEqual(tick.exitProtection, simulated.exitProtection);
-      const carried = { ...p, ...carryTrail(p, tick) };
-      assert.equal(carried.target, tick.target);
-      assert.equal(carried.stop, tick.stop);
-      assert.deepEqual(carried.exitProtection, tick.exitProtection);
-      const before = JSON.stringify(carried.exitProtection);
-      tickTrail(carried, 102, 120_001, 60_000);
-      assert.equal(
-        JSON.stringify(carried.exitProtection),
-        before,
-        "carried rollover never applies the closed bar twice",
-      );
+  it("matches simulation, tick and restart for all five tactics, both directions and 1/5/15m lanes", () => {
+    for (const set of ["static-sl", "adaptive-sl", "trailing", "breakeven", "trailing-only"] as const) {
+      for (const tf of [1, 5, 15]) for (const side of [1, -1] as const) for (const cost of [0, .0015, .002]) {
+        const dt = tf * 60_000;
+        const price = (x: number) => 100 + side * (x - 100);
+        const p = position(set, side, cost);
+        const tick = JSON.parse(JSON.stringify(p)) as ExitProtectionPosition;
+        tickTrail(tick, 100, dt, dt);
+        tickTrail(tick, price(103), dt + 10, dt);
+        tickTrail(tick, price(99), dt + 20, dt);
+        tickTrail(tick, price(102), 2 * dt - 1, dt);
+        const restarted = JSON.parse(JSON.stringify(tick));
+        tickTrail(tick, price(102), 2 * dt, dt);
+        tickTrail(restarted, price(102), 2 * dt, dt);
+        assert.deepEqual(restarted, tick);
+        const simulated = simulate(
+          "fixed-id",
+          bars([
+            [100, 100, 100, 100],
+            [100, Math.max(price(103), price(99)), Math.min(price(103), price(99)), price(102)],
+          ], tf),
+          Int8Array.of(side, 0),
+          { ...protect(set), exitSide: side },
+          { cost },
+        ).open!;
+        assert.ok(simulated, `${set} m${tf} side${side}: allocation remains open`);
+        assert.equal(tick.stop, simulated.stop, `${set} m${tf} side${side}`);
+        assert.equal(tick.target ?? 0, simulated.target ?? 0);
+        assert.equal(tick.trailDist, simulated.trailDist ?? 0);
+        assert.deepEqual(tick.exitProtection, simulated.exitProtection);
+        const carried = { ...p, ...carryTrail(p, tick) };
+        assert.equal(carried.target, tick.target);
+        assert.equal(carried.stop, tick.stop);
+        assert.deepEqual(carried.exitProtection, tick.exitProtection);
+        const before = JSON.stringify(carried.exitProtection);
+        tickTrail(carried, price(102), 2 * dt + 1, dt);
+        assert.equal(JSON.stringify(carried.exitProtection), before, "rollover applies each closed bar once");
+      }
     }
   });
 });

@@ -26,7 +26,7 @@ import {
   makeTape,
   walkForward,
 } from "./walkforward.ts";
-import { SignalAcceptIndex, SignalGuard } from "../signals.ts";
+import { acceptKey, SignalAcceptIndex, SignalGuard } from "../signals.ts";
 import { DEFAULT_BLOCK, DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
 import { INDICATIONS } from "../indications/registry.ts";
 import type { BlockConfig, Trade } from "../domain/types.ts";
@@ -797,8 +797,10 @@ describe("Block accepted Real order evidence", () => {
     assert.equal(book.level(sourceKey("config", e(.1)), 3), 0, "an accepted open endpoint has no settled result");
     const guard = new SignalGuard();
     feedBooks({ ...e(.01), ind: "sig-ema-cross-s@m15" }, book, guard);
-    assert.equal(book.level("all", 3), 0, "an unaccepted signal candidate is excluded only from Block history");
-    assert.equal(guard.acceptStats("side|1", 2 * H, 24).n, 1, "signal acceptance still learns the candidate close");
+    assert.equal(book.level("all", 3), 0, "an unaccepted signal candidate is excluded from Block history");
+    assert.equal(guard.acceptStats("side|1", 2 * H, 24).n, 0, "shared post-Base acceptance cannot borrow candidate history");
+    assert.equal(guard.acceptStats(acceptKey("sig-ema-cross-s@m15", "A", 1, "normal", cfg), 2 * H, 24).n, 1,
+      "the exact config's independent candidate learning remains available");
   });
 
   it("Normal may bootstrap accepted history, while empty Block Active cannot invent a level or bypass via base PF", () => {
@@ -1090,7 +1092,7 @@ describe("Direction gate (sideGateN)", () => {
 });
 
 describe("Signal direction acceptance (signalSideAccept)", () => {
-  // Own causal history is independent of the candidate-side guard being isolated below. An empty Signal no
+  // Own causal history is independent of the accepted-order side guard being isolated below. An empty Signal no
   // longer qualifies merely because this separate guard has too few observations.
   const own:Trade[]=["A","Z"].flatMap(sym=>[1,-1].flatMap(side=>Array.from({length:50},(_,i)=>({
     cfg:"s",sym,side:side as 1|-1,entryT:i*1000,exitT:i*1000+1,entry:100,exit:100,
@@ -1111,10 +1113,10 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
   const acc = { enabled: true, minPf: 1.05, hours: 24, minTrades: 10 };
   const feedSig = (guard: SignalGuard, side: number, rs: number[], t = H) => {
     for (const r of rs)
-      feedBooks({ sym: "B", side, kind: "zz", r, ind: "sig-ema-trend-s", cfg: "x", exitT: t }, null, guard);
+      feedBooks({ sym: "B", side, kind: "zz", r, ind: "sig-ema-trend-s", cfg: "x", exitT: t, accepted: true }, null, guard);
   };
 
-  it("a side whose pooled signal record is below the PF opens no signal; the other side still opens", () => {
+  it("a side whose settled accepted signal record is below the PF opens no signal; the other side still opens", () => {
     const guard = new SignalGuard();
     feedSig(guard, -1, [...Array(8).fill(-0.01), 0.01, 0.01]);
     feedSig(guard, 1, [...Array(8).fill(0.01), -0.01, -0.01]);
@@ -1140,7 +1142,7 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
     assert.equal(execDecision(sig, 50 * H, g, { guard, sym: "A", side: 1 }).ok, true, "all closes older than 48 h");
   });
 
-  it("the direction groups pool the run's fed candidates, never the tape record (acceptance index)", () => {
+  it("the direction groups pool settled accepted orders, never the tape record (acceptance index)", () => {
     const t0 = 10 * H;
     const tr = (side: 1 | -1, r: number, i: number) =>
       ({ cfg: "s", sym: "A", side, entryT: t0 + i * 60_000, exitT: t0 + i * 60_000 + 1, entry: 1, exit: 1 + r, r, reason: "tp", bars: 1, mfe: 0, mae: 0, kind: "normal" }) as Trade;
@@ -1154,10 +1156,10 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
     // the tape's losing shorts (every tape, active or not) are not the direction's record: nothing fed, nothing judged
     assert.equal(execDecision(sig, t0 + 2 * H, g, { guard, sym: "Z", side: -1 }).ok, true);
     assert.equal(guard.acceptStats("side|-1", t0 + 2 * H, 24).n, 0);
-    // the run's own candidates, fed as they close, are (with the tape record set as well)
+    // the run's settled accepted orders are (with the tape record set as well)
     for (let i = 0; i < 12; i++)
       feedBooks(
-        { sym: "B", side: -1, kind: "zz", r: -0.01, ind: "sig-ema-trend-s", cfg: "x", exitT: t0 + H + i, entryT: t0 + i },
+        { sym: "B", side: -1, kind: "zz", r: -0.01, ind: "sig-ema-trend-s", cfg: "x", exitT: t0 + H + i, entryT: t0 + i, accepted: true },
         null,
         guard,
       );
