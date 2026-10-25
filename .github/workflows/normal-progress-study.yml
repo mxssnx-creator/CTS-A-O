@@ -1,8 +1,6 @@
 name: Ordinary processing and hold comparison
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/normal-progress-study.yml'
+  # Frozen financial runs are independent of subsequent documentation/UI checkpoints.
   workflow_dispatch:
 permissions:
   contents: read
