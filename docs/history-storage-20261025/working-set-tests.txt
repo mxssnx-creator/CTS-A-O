@@ -1,0 +1,90 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> test:core
+> node scripts/test-core.mjs src/core/server/history-carry.test.ts src/core/server/history-store.test.ts src/core/server/signal-entry-storage.test.ts src/core/sim/signal-activation-clock.test.ts src/core/sim/independence.test.ts src/core/sim/signal-postbase-feedback.test.ts src/core/sim/signal-window.test.ts src/core/sim/signal-gates.test.ts
+
+[core-tests] offline Node transport guard; 8 files; concurrency 1; compute workers 1
+✔ carry-over keeps disk histories lazy, complete and independently eligible (6.235065ms)
+✔ mixed carry compaction preserves order and every byte without materializing stored histories (2.552309ms)
+✔ bounded histories preserve every binary column, metadata, prefix, open and pending position across eviction (75.705238ms)
+✔ stored and ordinary histories have identical full walk-forward selection, orders, returns, gates and counts (59.044517ms)
+✔ the memory budget accounts for the entire shared worker arena and the local builder retains incrementally (27.223191ms)
+✔ a streamed worker manifest preserves independent admitted orders and losses, and rejects truncation (745.288216ms)
+✔ incomplete/corrupt/noncanonical history fails explicitly instead of creating empty or profitable evidence (41.077913ms)
+✔ both available history codecs preserve the canonical binary layout (24.133742ms)
+✔ stored Signal scheduling keeps every due close/open and boundary with no idle-minute disk reads (14.426991ms)
+▶ independent configs (seatPer config)
+  ✔ fixed: every passing variant of one indication takes its own seat (7.24342ms)
+  ✔ fixed: a sibling never changes another config's seat (3.868761ms)
+  ✔ fixed: validation and entry last-N are isolated to each config (9.044262ms)
+  ✔ hourly: every passing variant of one indication takes its own seat (2.045085ms)
+  ✔ hourly: a sibling never changes another config's seat (2.137472ms)
+  ✔ hourly: validation and entry last-N are isolated to each config (2.076863ms)
+  ✔ DCA / Axis are judged on their own results, not against the pair's base (0.5795ms)
+  ✔ a config's trades are the same with and without its siblings (4.813764ms)
+  ✔ Block on the config's own results: the decision ignores every other position (2.04854ms)
+  ✔ signals on their own Block record (signalsOwn): the pooled book never raises or skips a signal (1.837827ms)
+  ✔ a type Block excludes (Axis) trades at its own volume, never raised or skipped by Block Active (0.427154ms)
+✔ independent configs (seatPer config) (38.238899ms)
+▶ held-only tapes (held by paper, no longer passing Base for their cell)
+  ✔ fixed: a held-only tape takes no new seat; the same tape unflagged does (0.479071ms)
+  ✔ hourly: a held-only tape takes no new seat; the same tape unflagged does (0.374155ms)
+✔ held-only tapes (held by paper, no longer passing Base for their cell) (1.011181ms)
+▶ Micro seats with independent configs
+  ✔ fixed: more than 200 passing Micro configs all take a seat (unlimited seats) (13.764097ms)
+  ✔ fixed: no Micro cap in pair mode either (the 200-seat cap is disabled) (7.94408ms)
+  ✔ fixed: a portfolio limit still caps Micro (7.103352ms)
+  ✔ hourly: more than 200 passing Micro configs all take a seat (unlimited seats) (10.622195ms)
+  ✔ hourly: no Micro cap in pair mode either (the 200-seat cap is disabled) (6.536431ms)
+  ✔ hourly: a portfolio limit still caps Micro (5.571148ms)
+✔ Micro seats with independent configs (52.012801ms)
+▶ orders still open at the end of the run
+  ✔ count in the run's PF at their mark (a losing open order is not left out), outside the closed trades (6.161084ms)
+  ✔ stay in the feed flagged open, never a close for the Block book, the signal guard or Stable-02 (16.199251ms)
+✔ orders still open at the end of the run (22.550066ms)
+▶ the same order from two indications
+  ✔ executes once: identical trades at the same protect never double the position; different holds both trade (2.767888ms)
+  ✔ Axis depths with identical onsets retain independent simulated and Paper orders (2.553951ms)
+✔ the same order from two indications (5.57894ms)
+▶ continuous stability (gates.stableBlocks)
+  ✔ a set that made its PF in one stretch and lost after it is not validated; a steady one is (1.34102ms)
+  ✔ entry crowding (entryCrowd): at most K configs of a range enter one symbol × side × bar, the best first (120.858574ms)
+✔ continuous stability (gates.stableBlocks) (122.444898ms)
+✔ a Signal validated between report hours executes on its next minute onset (34.628768ms)
+✔ minute activation equals fresh full ranking, including family caps, Exit keys and backward clocks (83.801493ms)
+✔ cancelling an activation build cannot publish a partial ranking or retain stale minute verdicts (8.04195ms)
+✔ prepared own histories remain causal under adversarial future returns and bounded cache eviction (23.624886ms)
+✔ activation cache budgets metadata as well as columns and preserves gates across LRU eviction (7.536215ms)
+✔ early rejected Signals recover at strict close boundaries, on policy changes and on backward clocks (10.190324ms)
+✔ a cached PF rejection expires when an old loss leaves the rolling history, without a new close (7.46509ms)
+▶ signals: the active ranking
+  ✔ a pair held only for its open positions never takes an active slot from a pair that may open (25.954137ms)
+  ✔ keeps Signal Exit active outside the Signals Normal/Trailing cap and bypasses Signal entry Base (0.837623ms)
+✔ signals: the active ranking (28.020034ms)
+▶ signals: Strategy Base validation window
+  ✔ preserves runtime tie order across the pooled Signals last-N boundary (2.066146ms)
+  ✔ uses signalValidLastN in both diagnostics and actual Base selection (2.074879ms)
+  ✔ uses only the Signals range's own validation and entry last-N values (3.742694ms)
+✔ signals: Strategy Base validation window (8.252077ms)
+▶ signals: acceptance on the source's record
+  ✔ counts the group's closes from before the run (regression: the first hours of every run accepted nothing) (5.830893ms)
+  ✔ keeps lanes and parameter ranges independent; closes after the entry never count (7.566409ms)
+  ✔ the record by group: count and PF of the closes in (t − hours, t] (0.55286ms)
+✔ signals: acceptance on the source's record (14.371909ms)
+▶ signal defaults (the validated settings, PR #65)
+  ✔ judge signals on their own exits, on all four lanes, with acceptance and their own Block level (9.43354ms)
+✔ signal defaults (the validated settings, PR #65) (9.644964ms)
+✔ rejected and legacy unproven Signal closes cannot qualify or veto shared post-Base direction and cluster gates (3.419825ms)
+✔ settled accepted losses still block and a rejected sibling cannot consume the accepted onset (1.090448ms)
+✔ walk-forward preserves qualified admissions against cap-rejected sibling losses and replays the exact accepted cohort (38.343214ms)
+▶ signal history window
+  ✔ is 150 h independently of the engine history and warmup (16.689989ms)
+✔ signal history window (17.962598ms)
+ℹ tests 54
+ℹ suites 11
+ℹ pass 54
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4814.682942

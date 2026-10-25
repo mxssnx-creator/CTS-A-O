@@ -26,6 +26,7 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
+import { BoundedHistory, HistoryStorageError, historyOf, withHistoryMetadata, HISTORY_CACHE_BYTES, transferHistoriesGen, type HistoryTransfer } from "./history-store.server.ts";
 import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "../model-cost.ts";
 import { evaluationHistorySettings } from "../market/history-requirements.ts";
 import {
@@ -879,7 +880,7 @@ export function onCoreEvent(fn: (e: CoreEvent) => void): () => void {
  * in a buffer of their own, the rest in one, in the input order (the same tapes, the same bytes). In one buffer, a
  * carried tape kept the whole slim set — every signal tape with it, 0.5 GB on x01 — until the next slim.
  */
-function* compactByCarryGen(tapes: readonly ConfigTape[]): Generator<number, ConfigTape[]> {
+export function* compactByCarryGen(tapes: readonly ConfigTape[]): Generator<number, ConfigTape[]> {
   const carry = fallbackCarriedTags(MEM_FALLBACK_MAX);
   const groups = new Map<string, number[]>();
   tapes.forEach((t, i) => {
@@ -891,10 +892,16 @@ function* compactByCarryGen(tapes: readonly ConfigTape[]): Generator<number, Con
   const out: ConfigTape[] = new Array(tapes.length);
   let done = 0;
   for (const idx of groups.values()) {
-    const g = compactTapesGen(idx.map((i) => tapes[i]));
+    const resident: number[] = [];
+    for (const i of idx) {
+      if (historyOf(tapes[i])) out[i] = tapes[i];
+      else resident.push(i);
+    }
+    // Stored columns have no shared resident arena to compact. Repacking them defeats the memory bound.
+    const g = compactTapesGen(resident.map((i) => tapes[i]));
     for (let r = g.next(); ; r = g.next()) {
       if (r.done) {
-        r.value.forEach((c, j) => (out[idx[j]] = c));
+        r.value.forEach((c, j) => (out[resident[j]] = c));
         break;
       }
       yield done + r.value;
@@ -1906,7 +1913,7 @@ export class CoreRuntime {
           : tp.open.filter((o) => this.paper.positions.some((held) => posId(held) === posId(o)));
         opens.set(tp.id, [
           ...eligible,
-          ...pendingAsOpen({ ...tp, pending }, barEnd, s.tfMin, priceOf, s.cost),
+          ...pendingAsOpen(withHistoryMetadata(tp, { pending }), barEnd, s.tfMin, priceOf, s.cost),
         ]);
       }
       const before = this.paper.positions.length;
@@ -3994,38 +4001,40 @@ export class CoreRuntime {
       const x = v as { stage?: string; label?: string } | null;
       return x && typeof x === "object" ? `${x.stage ?? ""} ${x.label ?? ""}`.trim() : "";
     };
-    for (;;) {
-      const r = gen.next();
-      const now = performance.now();
-      if (now - stepT > maxStep) {
-        maxStep = now - stepT;
-        slowest = r.done ? "finish" : label(r.value);
+    try {
+      for (;;) {
+        const r = gen.next();
+        const now = performance.now();
+        if (now - stepT > maxStep) {
+          maxStep = now - stepT;
+          slowest = r.done ? "finish" : label(r.value);
+        }
+        stepT = now;
+        if (r.done) {
+          maxSlice = Math.max(maxSlice, now - slice);
+          this.status.phases[name] = {
+            ms: now - t0,
+            maxSliceMs: maxSlice,
+            slowest: `${slowest} (${Math.round(maxStep)} ms)`,
+          };
+          return r.value;
+        }
+        onStep(r.value);
+        const el = performance.now() - slice;
+        if (el > SLICE_MS) {
+          maxSlice = Math.max(maxSlice, el);
+          await yieldNow();
+          if (runGen !== this.gen) throw new Error("superseded by a newer loop generation");
+          // A burst can cross V8's independent ceiling between one-second RAM samples. Recheck at bounded
+          // generator slice boundaries so a research abort can preserve the previous complete live cohort.
+          if (heapPressure() !== "ok") this.memGuardTick(true);
+          if (this.memPressured)
+            throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
+          slice = performance.now();
+          stepT = slice;
+        }
       }
-      stepT = now;
-      if (r.done) {
-        maxSlice = Math.max(maxSlice, now - slice);
-        this.status.phases[name] = {
-          ms: now - t0,
-          maxSliceMs: maxSlice,
-          slowest: `${slowest} (${Math.round(maxStep)} ms)`,
-        };
-        return r.value;
-      }
-      onStep(r.value);
-      const el = performance.now() - slice;
-      if (el > SLICE_MS) {
-        maxSlice = Math.max(maxSlice, el);
-        await yieldNow();
-        if (runGen !== this.gen) throw new Error("superseded by a newer loop generation");
-        // A burst can cross V8's independent ceiling between one-second RAM samples. Recheck at bounded
-        // generator slice boundaries so a research abort can preserve the previous complete live cohort.
-        if (heapPressure() !== "ok") this.memGuardTick(true);
-        if (this.memPressured)
-          throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
-        slice = performance.now();
-        stepT = slice;
-      }
-    }
+    } finally { gen.return?.(undefined as R); }
   }
 
   /**
@@ -4082,12 +4091,15 @@ export class CoreRuntime {
         progress(0);
       }
     };
+    let transfer: HistoryTransfer | undefined;
     try {
       check();
-      const packed = await this.drive("Pack Real tapes", packTapesGen(tapes), () => check(), gen);
+      const payload = tapes.some(t => historyOf(t))
+        ? { historyManifest: (transfer = await this.drive("Share Real histories", transferHistoriesGen(tapes), () => check(), gen)).path }
+        : { packed: await this.drive("Pack Real tapes", packTapesGen(tapes), () => check(), gen) };
       check();
       const [result] = await runOnWorkers<{ sim: WalkForwardResult }>(
-        [{ type: "research-real", nowT: u.nowT, baseTf: u.baseTf, packed, wf }],
+        [{ type: "research-real", nowT: u.nowT, baseTf: u.baseTf, ...payload, wf }],
         1,
         15 * 60_000,
         report,
@@ -4106,10 +4118,22 @@ export class CoreRuntime {
     } finally {
       if (this.researchAbort === controller) this.researchAbort = null;
       await retireOwnedIdleWorkers(owner);
+      transfer?.close();
     }
   }
 
   async compute(gen = this.gen) {
+    const history = new BoundedHistory();
+    const publication = { done: false };
+    try {
+      await this.computeWithHistory(gen, history, publication);
+    } finally {
+      // Published lazy tapes retain their owner. Superseded/failed work releases its private files immediately.
+      if (!publication.done) history.close();
+    }
+  }
+
+  private async computeWithHistory(gen: number, history: BoundedHistory, publication: { done: boolean }) {
     const t0 = performance.now();
     // Foreground workers are no longer needed once every tape is received. Release only this compute's idle
     // threads before the in-process Real allocation; another runtime can claim a worker at every message handoff.
@@ -5207,6 +5231,19 @@ export class CoreRuntime {
             false,
             undefined,
             computeWorkerOwner,
+            async (reply, _index, signal) => {
+              let slice = performance.now();
+              for (let i = 0; i < reply.tapes.length; i++) {
+                signal.throwIfAborted();
+                if (gen !== this.gen) throw new Error("history superseded by a newer generation");
+                reply.tapes[i] = history.retain(reply.tapes[i]);
+                if (performance.now() - slice > SLICE_MS) {
+                  await yieldNow();
+                  slice = performance.now();
+                }
+              }
+              return reply;
+            },
           );
           if (gen !== this.gen) return null;
           const rank = new Map(order.map((k, i) => [k, i]));
@@ -5254,6 +5291,8 @@ export class CoreRuntime {
           };
         } catch (err) {
           if (gen !== this.gen) return null;
+          // Storage failures cannot silently switch to an unbounded fallback or publish an incomplete cohort.
+          if (err instanceof HistoryStorageError) throw err;
           this.workersFailed(err, "Tape");
         }
       }
@@ -5262,7 +5301,9 @@ export class CoreRuntime {
       this.startStage(signalStage ? "Signals" : "Tapes", `${what} · ${pairs.size} pairs`);
       return await this.drive(
         "Tapes",
-        buildTapesGen(tapeUniverse, protects, s.cost, dcaFor, pairs, s.tactics, adjustNow, floors),
+        buildTapesGen(tapeUniverse, protects, s.cost, dcaFor, pairs, s.tactics, adjustNow, {
+          ...floors, tapeSink: history.retain,
+        }),
         (p) =>
           this.setStage(
             signalStage ? "Signals" : "Tapes",
@@ -5621,6 +5662,15 @@ export class CoreRuntime {
     this.inc = null;
     this.incTail = nextIncTail;
     this.tapes = tapes;
+    publication.done = true;
+    if (history.store) {
+      const h = history.store.stats;
+      this.status.phases["History storage"] = {
+        ms: h.writeMs,
+        maxSliceMs: h.maxWriteMs,
+        slowest: `${h.tapes} complete tapes · ${(h.rawBytes / 1048576).toFixed(0)} MiB raw / ${(h.storedBytes / 1048576).toFixed(0)} MiB stored · ${(h.peakCacheBytes / 1048576).toFixed(0)} MiB peak column cache`,
+      };
+    }
     this.sim = sim;
     // This exact settings revision is now published. Entry admission remains fenced by executionPending
     // until its matching paper step finishes; failed/superseded computes never reach this publication.
@@ -6002,18 +6052,16 @@ export class CoreRuntime {
     const presets: Record<string, unknown> = {};
     const tc = performance.now();
     let maxSlice = 0;
+    let transfer: HistoryTransfer | undefined;
     try {
       // on the worker cores when available: the presets are dealt round-robin, each worker walks its share
       let viaWorkers = false;
       if (workerPath) {
         // one shared buffer + one metadata string for every worker (cloning the tape objects per worker stalled
         // the event loop for seconds at 40+ symbols)
-        const packed = await this.drive(
-          "Pack tapes",
-          guarded(packTapesGen(tapes)),
-          () => undefined,
-          gen,
-        );
+        const payload = tapes.some(t => historyOf(t))
+          ? { historyManifest: (transfer = await this.drive("Share histories", guarded(transferHistoriesGen(tapes)), () => undefined, gen)).path }
+          : { packed: await this.drive("Pack tapes", guarded(packTapesGen(tapes)), () => undefined, gen) };
         if (gen !== this.gen) return;
         // each worker walks every tape once per preset: on a large book fewer workers at once keep the memory
         // inside the machine (the presets queue on the pool)
@@ -6034,7 +6082,7 @@ export class CoreRuntime {
                 type: "compare",
                 nowT: wu.nowT,
                 baseTf: wu.baseTf,
-                packed,
+                ...payload,
                 wf,
                 presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
               })),
@@ -6113,6 +6161,7 @@ export class CoreRuntime {
     } finally {
       clearInterval(monitor);
       if (this.compareAbort === controller) this.compareAbort = null;
+      transfer?.close();
     }
   }
 
@@ -11326,14 +11375,15 @@ export function compareWorkers(
 class CompareMemoryDeferred extends Error {}
 /** Packed columns plus conservative metadata/open-position space; computed without allocating a SAB. */
 export function compareTapeBytes(tapes: readonly ConfigTape[]): number {
-  let bytes = 8;
-  for (const t of tapes)
-    bytes =
-      Math.ceil(bytes / 8) * 8 +
-      tapeBytes(t.n) +
-      2048 +
-      ((t.open?.length ?? 0) + (t.pending?.length ?? 0)) * 512;
-  return bytes;
+  let bytes = 8, stored = false;
+  for (const t of tapes) {
+    const onDisk = !!historyOf(t);
+    stored ||= onDisk;
+    bytes = Math.ceil(bytes / 8) * 8 + (onDisk ? t.n * 32 : tapeBytes(t.n)) +
+      2048 + ((t.open?.length ?? 0) + (t.pending?.length ?? 0)) * 512;
+  }
+  // Stored raw columns are bounded, while per-close indices and walk-forward state still need headroom.
+  return bytes + (stored ? HISTORY_CACHE_BYTES : 0);
 }
 
 /**
@@ -11921,10 +11971,10 @@ export function withCarried(
   const ids = new Set(built.map((t) => t.id));
   const carried = prev
     .filter((t) => !isSignalInd(t.ind) && !!t.protect.tag && tags.has(t.protect.tag) && !ids.has(t.id))
-    .map((t) => (allow && !t.heldOnly && !allow(t) ? { ...t, heldOnly: true } : t));
+    .map((t) => (allow && !t.heldOnly && !allow(t) ? withHistoryMetadata(t, { heldOnly: true }) : t));
   // Mark shallow copies so reports can distinguish them from the current compute's built sets. The large typed-array
   // tape columns remain shared; only metadata is copied.
-  return carried.length ? [...built, ...carried.map((t) => ({ ...t, carried: true }))] : built;
+  return carried.length ? [...built, ...carried.map((t) => withHistoryMetadata(t, { carried: true }))] : built;
 }
 
 /**

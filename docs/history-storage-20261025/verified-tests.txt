@@ -1,0 +1,59 @@
+✔ Compare admission can return zero and accounts for its packed copy before allocating (2.033778ms)
+✔ low memory defers before any SAB pack or worker spawn and preserves previous results (39.611998ms)
+✔ a memory drop after packing defers without spawning or falling back in process (14.548648ms)
+✔ a cached pre-pack reading cannot increase the originally admitted worker count (20.566637ms)
+✔ pressure cancels only Compare's active worker call, preserves foreground state and retries (1061.471554ms)
+✔ normal headroom completes every Compare preset and publishes one replacement result (9.345277ms)
+✔ stopping a runtime cancels its Compare call without requeueing or replacing results (13.389517ms)
+✔ an ordinary cycle retries a deferred comparison after recovery without recomputing Base (16.004668ms)
+✔ watchdog generation replacement releases only its obsolete Compare job (12.443794ms)
+✔ watchdog does not let a cycle waiting for Compare adopt the replacement generation (24.338464ms)
+✔ stop/start does not let a cycle waiting for Compare adopt the replacement generation (13.139426ms)
+✔ runtime slice cancellation closes generator-owned resources before rejecting (27.892007ms)
+✔ bounded histories preserve every binary column, metadata, prefix, open and pending position across eviction (99.440824ms)
+✔ stored and ordinary histories have identical full walk-forward selection, orders, returns, gates and counts (68.552881ms)
+✔ the memory budget accounts for the entire shared worker arena and the local builder retains incrementally (24.76083ms)
+✔ a streamed worker manifest preserves independent admitted orders and losses, and rejects truncation (534.121494ms)
+✔ incomplete/corrupt/noncanonical history fails explicitly instead of creating empty or profitable evidence (22.127033ms)
+✔ both available history codecs preserve the canonical binary layout (12.793464ms)
+▶ memory guard in the runtime
+  ✔ retains production default thresholds independently of the synthetic runner baseline (1.559664ms)
+  ✔ soft pressure collects at most once per 30 s (not on every one-second tick) (2232.125662ms)
+  ✔ a memory abort stops the compute and never disables the workers; other failures retry them after 10 min (8.237463ms)
+  ✔ another runtime's memory abort aborts this compute too and never disables its workers (315.941116ms)
+  ✔ worker heap exhaustion aborts instead of retrying the same allocation in-process (7.545636ms)
+  ✔ a backtest's failed worker message moves only that phase in-process: the engine keeps its workers (5.944952ms)
+[core-v2] compute #1 done in 4946 ms · sim PF including 121 open marks: 0.89 n 4871 · loop max 52 ms (worst slice of the last 60 s 59 ms in Base, 1 over 40 ms)
+  ✔ one momentary hard reading raises the fallback one level, and the compute runs at that level (8253.178168ms)
+[core-v2] compute #1 done in 732 ms · sim PF including 0 open marks: unavailable n 0 · loop max 33 ms
+  ✔ hard pressure: no compute starts — lighter levels first, then it waits (no busy loop) and runs once memory has room (7606.79114ms)
+  ✔ an abandoned cycle never stops the next cycle's guard nor resets its pressure; each cycle stops its own (149.717865ms)
+[core-v2] compute #1 done in 4641 ms · sim PF including 121 open marks: 0.89 n 4871 · loop max 42 ms
+  ✔ a fresh process under the fallback carries no Micro tapes: Micro passes nothing, a pair keeps its other ranges (7285.372556ms)
+✔ memory guard in the runtime (25869.599379ms)
+▶ worker pool: a failed or aborted call stops
+  ✔ an abort at a successful reply's progress boundary rejects that reply and never starts the next part (771.064291ms)
+  ✔ a later call's ordinary worker exit does not inherit an earlier memory-abort reason (11.059665ms)
+  ✔ after one message fails, the call's queued messages never run (542.759651ms)
+  ✔ after one message fails, the call's running messages are terminated, not finished (237.586277ms)
+  ✔ an abort rejects a call still waiting for a worker (it got a fresh one and ran) (326.92155ms)
+✔ worker pool: a failed or aborted call stops (1891.473052ms)
+✔ consumes replies in lane order before starting more work and retains only the replacement (190.913838ms)
+✔ cancellation while consuming a reply drains consumption and never starts the next part (172.016331ms)
+✔ a storage failure is preserved and stops the remaining worker parts (185.85743ms)
+▶ background Real worker
+  ✔ matches every full-history result, loss, feed and validation field on 20 symbols and 1/5/15m (1322.918079ms)
+  ✔ runtime routes live research through the worker and preserves the exact result (209.976924ms)
+✔ background Real worker (1534.352567ms)
+✔ a Signal validated between report hours executes on its next minute onset (35.136691ms)
+✔ minute activation equals fresh full ranking, including family caps, Exit keys and backward clocks (124.404765ms)
+✔ cancelling an activation build cannot publish a partial ranking or retain stale minute verdicts (15.801266ms)
+✔ prepared own histories remain causal under adversarial future returns and bounded cache eviction (11.527745ms)
+ℹ tests 42
+ℹ suites 3
+ℹ pass 42
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26590.017948

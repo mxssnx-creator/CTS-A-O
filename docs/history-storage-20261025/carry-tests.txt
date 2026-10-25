@@ -1,0 +1,16 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> test:core
+> node scripts/test-core.mjs src/core/server/history-carry.test.ts
+
+[core-tests] offline Node transport guard; 1 files; concurrency 1; compute workers 1
+✔ carry-over keeps disk histories lazy, complete and independently eligible (4.529471ms)
+✔ mixed carry compaction preserves order and every byte without materializing stored histories (1.839149ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 409.126884

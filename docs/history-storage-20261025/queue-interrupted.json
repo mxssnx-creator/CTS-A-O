@@ -1,0 +1,9 @@
+{
+  "status": "interrupted-performance-regression",
+  "completed": false,
+  "sourceSha256": "767bc5d9d87f29ca463fb36612d6eaadaec7726a15bad66356ee3251f39f6c99",
+  "lastObservedWallSeconds": 1324,
+  "lastCompletedSimulationHours": 1,
+  "result": null,
+  "reason": "Metadata-aware LRU cached 26166 of 122777 ranked contexts; successive scans had zero cache hits. Cancelled via its own command session after reproduction; no PF or final counts inferred."
+}

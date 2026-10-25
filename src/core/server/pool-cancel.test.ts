@@ -87,3 +87,53 @@ describe("worker pool: a failed or aborted call stops", { timeout: 120_000 }, ()
     assert.ok(Date.now() - t0 < 300, "the waiting call rejects at once, it does not run");
   });
 });
+
+it("consumes replies in lane order before starting more work and retains only the replacement", async () => {
+  await closePool();
+  const completed: number[] = [];
+  const replies = await runOnWorkers<{ ok: boolean; retained?: number }>(
+    [{ type: "sleep", ms: 1 }, { type: "sleep", ms: 1 }], 1, 5000,
+    undefined, false, undefined, {},
+    async (reply, index, signal) => {
+      signal.throwIfAborted();
+      await new Promise<void>(r => setImmediate(r));
+      completed.push(index);
+      return { ok: reply.ok, retained: index };
+    },
+  );
+  assert.deepEqual(completed, [0, 1]);
+  assert.deepEqual(replies, [{ ok: true, retained: 0 }, { ok: true, retained: 1 }]);
+});
+
+it("cancellation while consuming a reply drains consumption and never starts the next part", async () => {
+  await closePool();
+  const controller = new AbortController();
+  let consumed = 0, drained = false, progress = 0;
+  await assert.rejects(runOnWorkers(
+    [{ type: "sleep", ms: 1 }, { type: "sleep", ms: 1 }], 1, 5000,
+    () => { progress++; }, false, controller.signal, {},
+    async (reply, _index, signal) => {
+      consumed++;
+      try {
+        controller.abort(new Error("cancel during storage"));
+        await new Promise<void>(r => setImmediate(r));
+        signal.throwIfAborted();
+        return reply;
+      } finally { drained = true; }
+    },
+  ), /cancel during storage/);
+  assert.equal(consumed, 1); assert.equal(progress, 1); assert.equal(drained, true);
+  assert.equal(workerActivity().inFlight, 0); assert.equal(poolWorkers(), 0);
+});
+
+it("a storage failure is preserved and stops the remaining worker parts", async () => {
+  await closePool();
+  const failure = new Error("storage full");
+  let consumed = 0;
+  await assert.rejects(runOnWorkers(
+    [{ type: "sleep", ms: 1 }, { type: "sleep", ms: 1 }], 1, 5000,
+    undefined, false, undefined, {},
+    () => { consumed++; throw failure; },
+  ), error => error === failure);
+  assert.equal(consumed, 1); assert.equal(workerActivity().inFlight, 0);
+});

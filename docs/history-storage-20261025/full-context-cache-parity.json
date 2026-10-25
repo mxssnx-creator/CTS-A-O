@@ -1,0 +1,41 @@
+[
+  {
+    "minute": 0,
+    "ms": 3823.6941590000006,
+    "calls": 17151,
+    "hits": 0,
+    "cacheItems": 17151,
+    "cacheBytes": 96768181,
+    "ranked": 122777,
+    "active": 8658,
+    "rss": 1699348480,
+    "keysSha256": "3293490893df179fb0193c69485e3fc86102f0cd577796843c718bfc1d97954c",
+    "exactOrderedKeys": true
+  },
+  {
+    "minute": 1,
+    "ms": 120.4748589999981,
+    "calls": 17151,
+    "hits": 17151,
+    "cacheItems": 17151,
+    "cacheBytes": 96768181,
+    "ranked": 122777,
+    "active": 8658,
+    "rss": 2358804480,
+    "keysSha256": "3293490893df179fb0193c69485e3fc86102f0cd577796843c718bfc1d97954c",
+    "exactOrderedKeys": true
+  },
+  {
+    "minute": 2,
+    "ms": 111.9905370000015,
+    "calls": 17151,
+    "hits": 17151,
+    "cacheItems": 17151,
+    "cacheBytes": 96768181,
+    "ranked": 122777,
+    "active": 8658,
+    "rss": 2506031104,
+    "keysSha256": "3293490893df179fb0193c69485e3fc86102f0cd577796843c718bfc1d97954c",
+    "exactOrderedKeys": true
+  }
+]

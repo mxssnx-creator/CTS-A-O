@@ -1,0 +1,13 @@
+✔ bounded histories preserve every binary column, metadata, prefix, open and pending position across eviction (60.483931ms)
+✔ stored and ordinary histories have identical full walk-forward selection, orders, returns, gates and counts (58.891766ms)
+✔ the memory budget accounts for the entire shared worker arena and the local builder retains incrementally (26.081858ms)
+✔ a streamed worker manifest preserves independent admitted orders and losses, and rejects truncation (519.351024ms)
+✔ incomplete/corrupt/noncanonical history fails explicitly instead of creating empty or profitable evidence (14.398531ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 966.117552

@@ -1,0 +1,12 @@
+✔ a Signal validated between report hours executes on its next minute onset (23.131094ms)
+✔ minute activation equals fresh full ranking, including family caps, Exit keys and backward clocks (51.032903ms)
+✔ cancelling an activation build cannot publish a partial ranking or retain stale minute verdicts (6.80683ms)
+✔ prepared own histories remain causal under adversarial future returns and bounded cache eviction (8.562417ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 378.427469

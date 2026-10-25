@@ -88,3 +88,68 @@ test("cancelling an activation build cannot publish a partial ranking or retain 
   for (const t of [start, start + 20 * M, start + H])
     assert.deepEqual([...drain(book.at(t))], [...activeSignalsAt([tp], t, sig, 150, wf)]);
 });
+
+test("prepared own histories remain causal under adversarial future returns and bounded cache eviction", () => {
+  const {tp,wf,sig}=fixture();
+  const cases=[-1e6,1e6].map(r=>makeTape(tp.id,tp.bot,tp.ind,tp.protect,tp.kind,tp.syms,
+    [...Array.from({length:tp.n},(_,i)=>tradeAt(tp,i)),{...tradeAt(tp,0),entryT:start+2*H,exitT:start+3*H,r}],[],[]));
+  const books=cases.map(t=>new SignalActivationBook(signalIndex([t]),sig,150,wf));
+  // Exercise the single-item-over-budget path as well as the normal cache.
+  (books[1] as unknown as {ownLimit:number}).ownLimit=1;
+  for(let minute=-2;minute<60;minute++){
+    const t=start+minute*M,expected=[...activeSignalsAt([tp],t,sig,150,wf)];
+    for(const book of books)assert.deepEqual([...drain(book.at(t))],expected,`causal minute ${minute}`);
+  }
+});
+
+test("activation cache budgets metadata as well as columns and preserves gates across LRU eviction", () => {
+  const {tp, wf, sig} = fixture();
+  const tapes = Array.from({length: 8}, (_, i) => {
+    const ind = `sig-ema-cross-${i}-s@m5`, id = tp.id.replace(tp.ind, ind);
+    return makeTape(id, tp.bot, ind, tp.protect, tp.kind, tp.syms,
+      Array.from({length: tp.n}, (_, j) => ({...tradeAt(tp, j), cfg: id})), [], []);
+  });
+  const book = new SignalActivationBook(signalIndex(tapes), sig, 150, wf);
+  const cache = book as unknown as {ownLimit: number; ownBytes: number; own: Map<string, {bytes: number}>};
+  cache.ownLimit = 20_000;
+  let previous: Array<[string, {bytes: number}]> = [];
+  for (const t of [start, start + 20 * M, start + 21 * M, start]) {
+    assert.deepEqual([...drain(book.at(t))], [...activeSignalsAt(tapes, t, sig, 150, wf)]);
+    assert.ok(cache.own.size > 0 && cache.own.size < tapes.length, "exercise nonempty repeated evictions");
+    assert.ok(cache.ownBytes <= cache.ownLimit);
+    assert.equal(cache.ownBytes, [...cache.own.values()].reduce((sum, row) => sum + row.bytes, 0));
+    assert.ok([...cache.own.values()].every(row => row.bytes >= 4096));
+    for (const [key, context] of previous) assert.equal(cache.own.get(key), context,
+      "a repeated scan larger than the cache must retain the useful prepared contexts");
+    previous = [...cache.own];
+  }
+});
+
+test("early rejected Signals recover at strict close boundaries, on policy changes and on backward clocks", () => {
+  const {tp, wf, sig} = fixture();
+  const options = {...wf, gates: {...wf.gates, minTrades: 24}};
+  const book = new SignalActivationBook(signalIndex([tp]), sig, 150, options);
+  for (const t of [start, start + 5 * M, start + 10 * M, start + 10 * M + 1, start + 20 * M, start + M])
+    assert.deepEqual([...drain(book.at(t))], [...activeSignalsAt([tp], t, sig, 150, options)], `strict clock ${t}`);
+  options.gates.minPf = 1000;
+  assert.equal(drain(book.at(start + 20 * M)).size, 0);
+  options.gates.minPf = 1.1;
+  assert.ok(drain(book.at(start + 21 * M)).size > 0, "changed policy cannot inherit a stale rejection");
+});
+
+test("a cached PF rejection expires when an old loss leaves the rolling history, without a new close", () => {
+  const {tp, wf, sig} = fixture(), example = tradeAt(tp, 0);
+  const history = [{...example, entryT: start - 150 * H + 9 * M, exitT: start - 150 * H + 10 * M, r: -.04},
+    ...Array.from({length: 4}, (_, i) => ({...example, entryT: start - (4 - i) * H - M,
+      exitT: start - (4 - i) * H, r: .02}))];
+  const tape = makeTape(tp.id, tp.bot, tp.ind, tp.protect, tp.kind, tp.syms, history, [], []);
+  const ranking = sig, options = {...wf, gates: {...wf.gates, minPf: 2.5}};
+  const book = new SignalActivationBook(signalIndex([tape]), ranking, 150, options);
+  for (const t of [start, start + 9 * M, start + 10 * M, start + 10 * M + 1, start])
+    assert.deepEqual([...drain(book.at(t))], [...activeSignalsAt([tape], t, ranking, 150, options)], `expiry ${t}`);
+  assert.equal(drain(book.at(start)).size, 0);
+  assert.ok(drain(book.at(start + 10 * M + 1)).size > 0, JSON.stringify({
+    own: signalConfigEval(tape, start + 10 * M + 1, options, "ADA-USDT", -1),
+    ranked: [...activeSignalsAt([tape], start, ranking, 150)],
+  }));
+});

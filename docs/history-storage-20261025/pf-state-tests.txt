@@ -1,0 +1,65 @@
+▶ session CLI settings precedence
+  ✔ applies --focus all after a frozen --settings focus (1.32024ms)
+✔ session CLI settings precedence (2.135751ms)
+▶ immutable minute book lookup cache
+  ✔ caches each order and each minute-symbol including zero and missing prices (1.752582ms)
+  ✔ keeps the production minute loop's order, volume, missing-price and unknown-allocation arithmetic (2.762381ms)
+  ✔ keeps secondary capped and uncapped minute passes independent with the legacy multiplication order (1.69099ms)
+✔ immutable minute book lookup cache (6.531257ms)
+▶ session CLI sidecar replay preserves complete evidence
+  ✔ matches legacy report data and unit-row SHA while retaining all physical validation history (1488.853489ms)
+  ✔ fails replay when a tape chunk is corrupted instead of skipping stage evidence (368.213873ms)
+  ✔ still fails the stage check when valid sidecar data disagrees with an executed unit return (398.476354ms)
+✔ session CLI sidecar replay preserves complete evidence (2256.177326ms)
+▶ session CLI background comparison policy
+  ✔ defaults off before runtime startup and preserves explicit diagnostic opt-in (1064.254512ms)
+✔ session CLI background comparison policy (1064.425216ms)
+▶ session reports: return PF primary, simulated provenance
+  ✔ prints CLI help without starting a simulated session (332.710608ms)
+  ✔ reports both ordinary and Signal Exit orders under the independent Exit range (380.328875ms)
+  ✔ still rejects an executed Exit cell with no computed heat evidence (377.658681ms)
+  ✔ keeps first simulated-step seats distinct from the later paper selection in every output (383.189652ms)
+  ✔ reports offline source metadata and never invents a provider for legacy dumps (790.837928ms)
+  ✔ reports the configured Signal horizon separately from available input and engine prehistory (363.400272ms)
+  ✔ rejects replay preload without a cached feed and both explicit replay boundaries before startup (948.671429ms)
+  ✔ reports an empty Base run as unavailable PF with passing consistency checks (367.654923ms)
+  ✔ checks engine config sets separately from active Signal tapes (367.041933ms)
+  ✔ counts the separately recorded Signal Exit Base pass in legacy replay coverage (370.637446ms)
+  ✔ reports measured no-loss PF separately from the finite Base gate score and labels later funnel stages (364.117631ms)
+  ✔ reports the paper Live last-N gate separately from walk-forward order results (341.922194ms)
+  ✔ keeps equal current range counts labeled as independent measurements (340.027735ms)
+  ✔ marks equal legacy counts as copied when range provenance is absent (342.293788ms)
+  ✔ a type with only zero-funded closes retains virtual hourly cells without inventing funded coverage (370.733236ms)
+  ✔ chunk-allocations preserves complete allocation evidence without enabling Signal research (381.86022ms)
+  ✔ zeros floating-point cap residue before cash/unit allocation and records the original ghost amount (403.953981ms)
+  ✔ keeps return PF primary across JSON, Markdown, write-up and the rendered HTML headline (366.612883ms)
+  ✔ the uncapped comparison uses return PF first on the same closed-order sample (380.677834ms)
+  ✔ removes the execution volume multiple from primary PF while retaining sized cash results (380.195388ms)
+  ✔ does not report a fabricated primary PF when an execution multiplier is invalid (388.942725ms)
+✔ session reports: return PF primary, simulated provenance (8745.37287ms)
+▶ session qualification matches the runtime's full indication rules
+  ✔ matches actual runtime admission, Tactic 1.1, range floors and absent own-cell fallback (2.698175ms)
+  ✔ uses runtime Base-set gates, sample/DD gates and the no-loss score rather than infinity (0.348347ms)
+  ✔ records every full indication's effective validation minimum without first-row bias (0.323ms)
+  ✔ renders mixed current thresholds and marks historical aggregates as unverified without requalifying them (771.072143ms)
+  ✔ discloses partial return normalization without changing or certifying missing multipliers (0.337481ms)
+  ✔ retains legacy variant/preset aggregates while withholding an unrecorded primary unit PF (407.342166ms)
+✔ session qualification matches the runtime's full indication rules (1182.480376ms)
+✔ full tape dumps stream never-qualified own history without changing qualified outcomes (27.747174ms)
+✔ opening counts include endpoint-held and endpoint-entered orders while separating zero funding (402.972608ms)
+✔ margin usage alone never changes loss equity or drawdown for identical funded notionals (761.079273ms)
+✔ exact PF distinguishes neutral 1, no-loss scoring, empty, flat and unknown evidence (1.761595ms)
+✔ funded PF and virtual PF use explicitly different samples without changing cash or return weighting (0.248879ms)
+✔ unknown allocation or unknown own return stays in the sample and invalidates PF (0.279004ms)
+✔ zero allocations never acquire return evidence, while funded loss/zero and no-loss sentinel remain explicit (0.216752ms)
+✔ empty, unknown-volume and overflowed samples cannot claim a finite primary PF (0.281659ms)
+✔ missing and malformed allocation evidence cannot invent funded cash while known zero stays zero (0.277542ms)
+✔ cash PF scales the base-one return by funded unit notional without multiplying execution volume twice (0.139997ms)
+ℹ tests 45
+ℹ suites 6
+ℹ pass 45
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14890.278726
