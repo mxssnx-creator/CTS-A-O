@@ -1,0 +1,17 @@
+✔ bounded histories preserve every binary column, metadata, prefix, open and pending position across eviction (66.427605ms)
+✔ stored and ordinary histories have identical full walk-forward selection, orders, returns, gates and counts (61.917689ms)
+✔ the memory budget accounts for the entire shared worker arena and the local builder retains incrementally (24.088998ms)
+✔ a streamed worker manifest preserves independent admitted orders and losses, and rejects truncation (473.844829ms)
+✔ incomplete/corrupt/noncanonical history fails explicitly instead of creating empty or profitable evidence (13.335817ms)
+✔ a Signal validated between report hours executes on its next minute onset (25.493177ms)
+✔ minute activation equals fresh full ranking, including family caps, Exit keys and backward clocks (73.036171ms)
+✔ cancelling an activation build cannot publish a partial ranking or retain stale minute verdicts (7.157079ms)
+✔ prepared own histories remain causal under adversarial future returns and bounded cache eviction (11.76684ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 975.23424

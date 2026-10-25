@@ -1,5 +1,6 @@
 // Worker thread for backtests: Base scoring and strategy tapes for a slice of the combos, on its own CPU core.
 // Pure engine code only (explicit .ts imports), so it runs under node --experimental-strip-types.
+import { readHistoryManifest } from "./history-store.server.ts";
 import { parentPort } from "node:worker_threads";
 import {
   isPlainKind,
@@ -61,7 +62,8 @@ type Msg = { evaluationFromT?: number } & (
       type: "research-real";
       nowT: number;
       baseTf: number;
-      packed: PackedTapes;
+      packed?: PackedTapes;
+      historyManifest?: string;
       wf: Record<string, unknown>;
     }
   | {
@@ -71,7 +73,8 @@ type Msg = { evaluationFromT?: number } & (
       nowT: number;
       baseTf: number;
       /** every tape in one shared buffer (packTapes) */
-      packed: PackedTapes;
+      packed?: PackedTapes;
+      historyManifest?: string;
       wf: Record<string, unknown>;
       presets: Array<{ name: string; toggles: unknown }>;
     }
@@ -204,7 +207,10 @@ parentPort!.on("message", (m: Msg) => {
         nowT: m.nowT,
         baseTf: m.baseTf,
       };
-      const g = walkForwardGen(u as never, unpackTapes(m.packed), m.wf as never);
+      const history = m.historyManifest ? readHistoryManifest(m.historyManifest) : null;
+      try {
+      if (!history && !m.packed) throw new Error("Missing complete research histories");
+      const g = walkForwardGen(u as never, history?.tapes ?? unpackTapes(m.packed!), m.wf as never);
       const total = Math.max(1, walkForwardSteps(u as never, m.wf as never));
       let done = 0,
         last = 0;
@@ -220,6 +226,7 @@ parentPort!.on("message", (m: Msg) => {
           parentPort!.postMessage({ id: m.id, progress: done, total });
         }
       }
+      } finally { history?.close(); }
     }
     if (m.type === "compare") {
       // simulated trading of each preset on the same tapes (one walk-forward per preset)
@@ -232,7 +239,10 @@ parentPort!.on("message", (m: Msg) => {
         nowT: m.nowT,
         baseTf: m.baseTf,
       };
-      const tapes = unpackTapes(m.packed);
+      const history = m.historyManifest ? readHistoryManifest(m.historyManifest) : null;
+      try {
+      if (!history && !m.packed) throw new Error("Missing complete comparison histories");
+      const tapes = history?.tapes ?? unpackTapes(m.packed!);
       const out = [];
       for (let i = 0; i < m.presets.length; i++) {
         const p = m.presets[i];
@@ -253,6 +263,7 @@ parentPort!.on("message", (m: Msg) => {
       }
       parentPort!.postMessage({ id: m.id, ok: true, results: out });
       return;
+      } finally { history?.close(); }
     }
     const u = makeUniverse(m.bars, m.evaluationFromT);
     if (m.type === "base-config-count") {

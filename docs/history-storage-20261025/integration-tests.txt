@@ -1,0 +1,41 @@
+✔ Compare admission can return zero and accounts for its packed copy before allocating (1.504027ms)
+✔ low memory defers before any SAB pack or worker spawn and preserves previous results (38.443554ms)
+✔ a memory drop after packing defers without spawning or falling back in process (9.957256ms)
+✔ a cached pre-pack reading cannot increase the originally admitted worker count (23.819377ms)
+✔ pressure cancels only Compare's active worker call, preserves foreground state and retries (1125.468933ms)
+✔ normal headroom completes every Compare preset and publishes one replacement result (18.145334ms)
+✔ stopping a runtime cancels its Compare call without requeueing or replacing results (15.3831ms)
+✔ an ordinary cycle retries a deferred comparison after recovery without recomputing Base (10.329447ms)
+✔ watchdog generation replacement releases only its obsolete Compare job (16.060571ms)
+✔ watchdog does not let a cycle waiting for Compare adopt the replacement generation (30.973033ms)
+✔ stop/start does not let a cycle waiting for Compare adopt the replacement generation (15.239191ms)
+✔ bounded histories preserve every binary column, metadata, prefix, open and pending position across eviction (119.542247ms)
+✔ stored and ordinary histories have identical full walk-forward selection, orders, returns, gates and counts (100.609301ms)
+✔ the memory budget accounts for the entire shared worker arena and the local builder retains incrementally (64.631141ms)
+✔ a streamed worker manifest preserves independent admitted orders and losses, and rejects truncation (698.908428ms)
+✔ incomplete/corrupt/noncanonical history fails explicitly instead of creating empty or profitable evidence (30.006824ms)
+▶ worker pool: a failed or aborted call stops
+  ✔ an abort at a successful reply's progress boundary rejects that reply and never starts the next part (836.763732ms)
+  ✔ a later call's ordinary worker exit does not inherit an earlier memory-abort reason (13.770133ms)
+  ✔ after one message fails, the call's queued messages never run (547.755824ms)
+  ✔ after one message fails, the call's running messages are terminated, not finished (272.522101ms)
+  ✔ an abort rejects a call still waiting for a worker (it got a fresh one and ran) (324.094841ms)
+✔ worker pool: a failed or aborted call stops (1997.347771ms)
+✔ consumes replies in lane order before starting more work and retains only the replacement (231.485761ms)
+✔ cancellation while consuming a reply drains consumption and never starts the next part (204.191084ms)
+✔ a storage failure is preserved and stops the remaining worker parts (194.951046ms)
+▶ background Real worker
+  ✔ matches every full-history result, loss, feed and validation field on 20 symbols and 1/5/15m (1424.753346ms)
+  ✔ runtime routes live research through the worker and preserves the exact result (275.550185ms)
+✔ background Real worker (1705.772066ms)
+✔ a Signal validated between report hours executes on its next minute onset (30.146877ms)
+✔ minute activation equals fresh full ranking, including family caps, Exit keys and backward clocks (106.407165ms)
+✔ cancelling an activation build cannot publish a partial ranking or retain stale minute verdicts (12.679816ms)
+ℹ tests 29
+ℹ suites 2
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2821.199772

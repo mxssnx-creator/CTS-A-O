@@ -1134,7 +1134,8 @@ export function* compactTapesGen(tapes: readonly ConfigTape[]): Generator<number
       pending: t.pending,
     };
     if (t.fromT !== undefined) c.fromT = t.fromT;
-    if (t.heldOnly) c.heldOnly = true;
+    if (t.heldOnly !== undefined) c.heldOnly = t.heldOnly;
+    if (t.carried !== undefined) c.carried = t.carried;
     out.push(c);
     off += bytes;
   }
@@ -1192,6 +1193,7 @@ export function* packTapesGen(tapes: readonly ConfigTape[]): Generator<number, P
       t.pending,
       t.fromT ?? null,
       t.heldOnly ? 1 : 0,
+      t.carried ? 1 : 0,
     ]);
     off += tapeBytes(t.n);
   }
@@ -1204,7 +1206,7 @@ export function* packTapesGen(tapes: readonly ConfigTape[]): Generator<number, P
 export function unpackTapes(p: PackedTapes): ConfigTape[] {
   const { syms, rows } = JSON.parse(p.meta) as { syms: string[][]; rows: unknown[][] };
   return rows.map((x) => {
-    const [id, bot, ind, protect, kind, n, si, off, open, pending, fromT, heldOnly] = x as [
+    const [id, bot, ind, protect, kind, n, si, off, open, pending, fromT, heldOnly, carried] = x as [
       string,
       BotType,
       string,
@@ -1216,6 +1218,7 @@ export function unpackTapes(p: PackedTapes): ConfigTape[] {
       OpenPosition[],
       ConfigTape["pending"],
       number | null,
+      number | undefined,
       number | undefined,
     ];
     const t: ConfigTape = {
@@ -1232,6 +1235,7 @@ export function unpackTapes(p: PackedTapes): ConfigTape[] {
     };
     if (fromT !== null) t.fromT = fromT;
     if (heldOnly) t.heldOnly = true;
+    if (carried) t.carried = true;
     return t;
   });
 }
@@ -1652,6 +1656,8 @@ export interface EntryFilter {
 export type EntryFloors = {
   minSl: number;
   minTrail: number;
+  /** In-process only: retain each finished immutable tape through the caller's bounded history owner. */
+  tapeSink?: (tape: ConfigTape) => ConfigTape;
   /** Standard Signal protections use 15m reference distances; apply the trail floor after lane scaling. */
   signalReferenceGrid?: boolean;
   signalTrailMax?: number;
@@ -2366,7 +2372,7 @@ export function* buildTapesGen(
       if (!floors?.countOnly && (enough || held)) {
         const tp = atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending));
         if (filtered || !enough || floors?.heldOnlyIds?.has(id)) tp.heldOnly = true;
-        out.push(tp);
+        out.push(floors?.tapeSink?.(tp) ?? tp);
       }
       done++;
       yield { done, total };
@@ -2391,7 +2397,7 @@ export function* buildTapesGen(
       }
       const tp = atFrom(makeTape(id,c.bot,c.ind,p,kind,syms,trades,open,pending));
       tp.heldOnly = true;
-      out.push(tp);built.add(id);total++;done++;
+      out.push(floors?.tapeSink?.(tp) ?? tp);built.add(id);total++;done++;
       yield { done, total };
     }
     // every validated indication builds every strategy set: a Micro indication trades the Micro cells of the base
@@ -2453,7 +2459,7 @@ export function* buildTapesGen(
           if (!floors?.countOnly) {
             const tp = atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending));
             if (!wideOk) tp.heldOnly = true;
-            out.push(tp);
+            out.push(floors?.tapeSink?.(tp) ?? tp);
           }
           done++;
           yield { done, total };
@@ -2575,7 +2581,7 @@ export function* buildTapesGen(
           if (!floors?.countOnly) {
             const tp = atFrom(makeTape(id, c.bot, c.ind, p, "axis", syms, trades, open, pending));
             if (!wideOk) tp.heldOnly = true;
-            out.push(tp);
+            out.push(floors?.tapeSink?.(tp) ?? tp);
           }
           done++;
           yield { done, total };
@@ -2662,7 +2668,7 @@ export function* buildTapesGen(
                 makeTape(id, c.bot, c.ind, p0l, "axis", syms, trades, open, pending),
               );
               if (filtered) tp.heldOnly = true;
-              out.push(tp);
+              out.push(floors?.tapeSink?.(tp) ?? tp);
             }
             yield { done, total };
           }
@@ -3874,7 +3880,7 @@ function configEvalRaw(tp: ConfigTape, t: number, o: WalkForwardOptions): Config
 // derived context while the immutable source catalog is alive; bound the working set instead.
 const signalEvaluationCache = new DerivedCache<ConfigTape, { key: string; contexts: Map<string, ConfigEval> }>(512);
 /** The same exact history + Last-N verdict for Strategy Base, causal ranking and native/model entry. */
-function signalEvaluationKey(tp: ConfigTape, t: number, o: WalkForwardOptions): string {
+function signalEvaluationPolicyKey(t: number, o: WalkForwardOptions): string {
   return JSON.stringify([
     t,
     signalHistoryHours(o),
@@ -3890,10 +3896,15 @@ function signalEvaluationKey(tp: ConfigTape, t: number, o: WalkForwardOptions): 
     o.exitMinPf,
     o.exitMinGreenHourShare,
     o.exitMaxDdr,
-    tp.heldOnly === true,
-    tp.fromT,
   ]);
 }
+function signalEvaluationKey(tp: ConfigTape, t: number, o: WalkForwardOptions): string {
+  return signalEvaluationKeyOfPolicy(tp, signalEvaluationPolicyKey(t, o));
+}
+function signalEvaluationKeyOfPolicy(tp: ConfigTape, policy: string): string {
+  return `${policy}|${tp.heldOnly === true ? 1 : 0}|${tp.fromT ?? ""}`;
+}
+type PreparedSignalContext = { tape: ConfigTape; indices: Uint32Array; key?: string; result?: ConfigEval };
 function signalConfigEvalWithKey(
   tp: ConfigTape,
   t: number,
@@ -3901,38 +3912,44 @@ function signalConfigEvalWithKey(
   sym: string,
   side: number,
   key: string,
+  prepared?: PreparedSignalContext,
 ): ConfigEval {
-  let cached = signalEvaluationCache.get(tp);
-  if (!cached || cached.key !== key) signalEvaluationCache.set(tp, (cached = { key, contexts: new Map() }));
   const slot = `${sym}|${side}`;
-  const hit = cached.contexts.get(slot);
+  let cached = prepared ? undefined : signalEvaluationCache.get(tp);
+  if (!prepared && (!cached || cached.key !== key)) signalEvaluationCache.set(tp, (cached = { key, contexts: new Map() }));
+  const hit = prepared ? (prepared.key === key ? prepared.result : undefined) : cached!.contexts.get(slot);
   if (hit) return hit;
-  const indices = signalContextOf(tp, sym, side);
+  const save = (ev: ConfigEval) => {
+    if (prepared) { prepared.key = key; prepared.result = ev; }
+    else cached!.contexts.set(slot, ev);
+    return ev;
+  };
+  const source = prepared?.tape ?? tp;
+  const indices = prepared?.indices ?? signalContextOf(source, sym, side);
   const from = t - signalHistoryHours(o) * H;
-  const first = indices ? lowerBound(indices, lowerBound(tp.exitT, from)) : 0;
-  const before = indices ? lowerBound(indices, lowerBound(tp.exitT, t)) : 0;
+  const first = indices ? lowerBound(indices, lowerBound(source.exitT, from)) : 0;
+  const before = indices ? lowerBound(indices, lowerBound(source.exitT, t)) : 0;
   let n = 0, gp = 0, gl = 0;
   if (indices) for (let j = first; j < before; j++) {
     const i = indices[j];
-    n++; const r = tp.r[i]; if (r > 0) gp += r; else gl -= r;
+    n++; const r = source.r[i]; if (r > 0) gp += r; else gl -= r;
   }
   const summary = { n, pf: profitFactor(gp, gl), net: (gp - gl) * 100, gp: gp * 100, gl: gl * 100 };
   const reject = (fail: EvalGate): ConfigEval => {
-    const ev: ConfigEval = { ok: false, fail, ...summary }; cached!.contexts.set(slot, ev); return ev;
+    return save({ ok: false, fail, ...summary });
   };
   if (tp.heldOnly || n < minTradesForTape(tp, o, o.gates.minTrades ?? 0)) return reject("closes");
   if (!(Number.isFinite(summary.net) && summary.net > 0)) return reject("net");
   const floor = minPfForTape(tp, o);
   if (!Number.isFinite(summary.pf) || summary.pf < floor) return reject("pf");
-  if (!signalLastNOk(tp, sym, side, t - 1, validLastNOf(tp, o), floor, o.gates.maxDdtH, maxDdrForTape(tp, o) ?? 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false, lossPriorOf(tp, o.gates))) return reject("lastN");
+  if (!signalLastNOk(source, sym, side, t - 1, validLastNOf(tp, o), floor, o.gates.maxDdtH, maxDdrForTape(tp, o) ?? 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false, lossPriorOf(tp, o.gates), prepared?.indices)) return reject("lastN");
   // Preserve the original tied order and all past Last-N evidence without
   // allocating/sorting Trade objects or copying the unobserved replay future.
-  const end = indices ? lowerBound(indices, lowerBound(tp.exitT, t + 1)) : 0;
-  const own = indexedEvaluationTape(tp, indices!, 0, end);
+  const end = indices ? lowerBound(indices, lowerBound(source.exitT, t + 1)) : 0;
+  const own = prepared?.tape ?? indexedEvaluationTape(tp, indices!, 0, end);
   const a = lowerBound(own.exitT, t - signalHistoryHours(o) * H), b = lowerBound(own.exitT, t);
   const result: ConfigEval = tp.heldOnly ? { ok: false, fail: "closes", pf: 0, n: 0, net: 0 } : configEvalAt(own, t, o, a, b, win(own, a, b), Math.max(o.gates.minDdtH ?? 0, o.gates.maxDdtH * signalHistoryHours(o) / 72));
-  cached.contexts.set(slot, result);
-  return result;
+  return save(result);
 }
 export function signalConfigEval(
   tp: ConfigTape,
@@ -4104,7 +4121,7 @@ function configEvalAt(
  * prior — computed once per tape list and options (selInfos), not once per tape on every hourly step.
  */
 interface SelInfo {
-  tp: ConfigTape;
+  tp: WeakRef<ConfigTape>;
   inScope: boolean;
   canSeat: boolean;
   /** seatSet "validated": the config is a member of V (always true under "pool") */
@@ -4218,7 +4235,7 @@ function selInfoOf(
   const seat = seatKey(tp, o);
   const fam = familyOf(tp.kind, tp.protect.exitSet, tp.protect.exitSide);
   return {
-    tp,
+    tp: new WeakRef(tp),
     inScope:
       !(tp.kind !== "exit" && botOk && !botOk.has(tp.bot)) && baseAllowsTape(tp, o) && cellAllowed(tp, o),
     inV: inValidated(tp.id, o),
@@ -4445,7 +4462,7 @@ export function* selectFixedGen(
       t0 = performance.now();
     }
     let info = infos[i];
-    if (!info || info.tp !== tp || info.canSeat !== (!tp.heldOnly && tapeExecutable(tp, o))) {
+    if (!info || info.tp.deref() !== tp || info.canSeat !== (!tp.heldOnly && tapeExecutable(tp, o))) {
       info = infos[i] = selInfoOf(tp, o, botOk);
       ca[i] = -1;
       cb[i] = -1;
@@ -4961,11 +4978,11 @@ export function engineValidationLastNOk(
 
 /** Independent config × direction proof. Symbols remain subject to their separate configured gate. */
 const directionViews = new WeakSet<ConfigTape>();
-const directionIndices = new WeakMap<ConfigTape, Map<number, Uint32Array>>();
-const directionTapes = new WeakMap<
+const directionIndices = new DerivedCache<ConfigTape, Map<number, Uint32Array>>(512);
+const directionTapes = new DerivedCache<
   ConfigTape,
   Map<number, { start: number; end: number; tape: ConfigTape }>
->();
+>(512);
 
 function directionIndexOf(tp: ConfigTape, side: number): Uint32Array {
   let bySide = directionIndices.get(tp);
@@ -5134,9 +5151,10 @@ function signalLastNOk(
   floor = 0,
   warmup = true,
   prior = 0,
+  preparedIndices?: Uint32Array,
 ): boolean {
   if (n <= 0) return true;
-  const own = signalContextOf(tp, sym, side);
+  const own = preparedIndices ?? signalContextOf(tp, sym, side);
   if (!own) return false;
   let lo = 0;
   let hi = own.length;
@@ -5950,6 +5968,33 @@ export class SignalActivationBook {
   private sig: SignalSettings;
   private windowH: number;
   private options: WalkForwardOptions;
+  private own = new Map<string, PreparedSignalContext>();
+  private ownBytes = 0;
+  private ownLimit = 128 * 1024 * 1024;
+
+  private context(row: (typeof this.ranked)[number]): PreparedSignalContext {
+    let own = this.own.get(row.key);
+    if (own) this.own.delete(row.key);
+    else {
+      const indices = signalContextOf(row.tp, row.sym, row.side) ?? new Uint32Array(0);
+      const tape = indexedEvaluationTape(row.tp, indices, 0, indices.length);
+      const order = new Uint32Array(tape.n);
+      for (let i = 0; i < order.length; i++) order[i] = i;
+      own = { tape, indices: order };
+      const bytes = tapeBytes(tape.n) + order.byteLength;
+      while (this.ownBytes + bytes > this.ownLimit && this.own.size) {
+        const first = this.own.keys().next().value!;
+        const expired = this.own.get(first)!;
+        this.ownBytes -= tapeBytes(expired.tape.n) + expired.indices.byteLength;
+        this.own.delete(first);
+      }
+      if (bytes > this.ownLimit) return own;
+      this.ownBytes += bytes;
+    }
+    this.own.set(row.key, own);
+    own.tape.heldOnly = row.tp.heldOnly; own.tape.carried = row.tp.carried; own.tape.fromT = row.tp.fromT;
+    return own;
+  }
 
   constructor(index: readonly SignalIndexRow[], sig: SignalSettings, windowH: number, options: WalkForwardOptions) {
     this.index = index;
@@ -5979,14 +6024,17 @@ export class SignalActivationBook {
       this.hour = hour;
     }
     const out = new Set<string>(), evaluationKeys = new Map<ConfigTape, string>();
+    const policy = signalEvaluationPolicyKey(t, this.options);
     let classic = 0, coordinated = 0, count = 0;
     for (const row of this.ranked) {
       if (++count % 32 === 0) yield -15;
       const cap = row.coordination ? this.sig.coordination.count : this.sig.count;
       if (cap > 0 && (row.coordination ? coordinated : classic) >= cap) continue;
       let key = evaluationKeys.get(row.tp);
-      if (key === undefined) evaluationKeys.set(row.tp, (key = signalEvaluationKey(row.tp, t, this.options)));
-      if (!signalConfigEvalWithKey(row.tp, t, this.options, row.sym, row.side, key).ok) continue;
+      if (key === undefined) evaluationKeys.set(row.tp, (key = signalEvaluationKeyOfPolicy(row.tp, policy)));
+      // Cache immutable own columns only; every time-dependent verdict is recalculated at this minute.
+      // Future rows remain behind the evaluator's existing strict t / t−1 boundaries.
+      if (!signalConfigEvalWithKey(row.tp, t, this.options, row.sym, row.side, key, this.context(row)).ok) continue;
       out.add(row.key);
       if (row.coordination) coordinated++; else classic++;
     }

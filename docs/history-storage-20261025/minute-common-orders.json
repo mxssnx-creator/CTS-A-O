@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "basis": "Exact funded settled config × symbol × direction × entry × exit, unit net returns; modeled 0.15% already retained once",
+  "before": 278,
+  "after": 280,
+  "matched": 278,
+  "added": 2,
+  "removed": 0,
+  "commonGp": 0.052823875247864936,
+  "commonGl": 0.7774235883271523,
+  "commonPf": 0.06794735333607578,
+  "commonPfState": "ratio",
+  "addedIdentities": [
+    "[\"follow|sig-swing-m@m5|tp0.98|sl1|tr0|h576|tm3\",\"ADA-USDT\",-1,1792252200000,1792261800000]",
+    "[\"follow|sig-coord-v2-r70-n3-i2-brb7f16q855gqwbnqzfnj@m5|tp0.98|sl1|tr0|h576|tm3\",\"ADA-USDT\",-1,1792258800000,1792261800000]"
+  ],
+  "removedIdentities": []
+}

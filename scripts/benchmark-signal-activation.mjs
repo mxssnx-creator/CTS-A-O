@@ -16,13 +16,18 @@ const index=signalIndex(tapes),times=Array.from({length:61},(_,i)=>p.window.trad
 const reference=[],full=[];let mark=performance.now();
 for(const t of times){const st=performance.now();reference.push([...activeSignalsAt(index,t,wf.signalRank,wf.signalLongH,wf)]);full.push(performance.now()-st);}
 const fullMs=performance.now()-mark,book=new SignalActivationBook(index,wf.signalRank,wf.signalLongH,wf),cached=[];
+let profiler;
+const post=(method)=>new Promise((resolve,reject)=>profiler.post(method,(error,result)=>error?reject(error):resolve(result)));
+if(process.env.CTS_ACTIVATION_PROFILE){const {Session}=await import('node:inspector');profiler=new Session();profiler.connect();await post('Profiler.enable');await post('Profiler.start');}
 mark=performance.now();
 for(let i=0;i<times.length;i++){
   const st=performance.now(),g=book.at(times[i]);let out;
   for(;;){const r=g.next();if(r.done){out=r.value;break;}}
   cached.push(performance.now()-st);assert.deepEqual([...out],reference[i],`minute ${i}`);
 }
-const totalMs=performance.now()-mark,median=xs=>[...xs].sort((a,b)=>a-b)[Math.floor(xs.length/2)];
+const totalMs=performance.now()-mark;
+if(profiler){const {profile}=await post('Profiler.stop');writeFileSync(process.env.CTS_ACTIVATION_PROFILE,JSON.stringify(profile));profiler.disconnect();}
+const median=xs=>[...xs].sort((a,b)=>a-b)[Math.floor(xs.length/2)];
 const result={ok:true,scope:'Sampled exact contexts; fresh full rank vs cached completed-hour rank with exact-minute own gates. Not a venue-latency benchmark.',
  tapes:tapes.length,closes:tapes.reduce((s,t)=>s+t.n,0),minutes:times.length,fullMs,cachedMs:totalMs,
  fullMedianMs:median(full),cachedMedianMs:median(cached),cachedMaxMs:Math.max(...cached),

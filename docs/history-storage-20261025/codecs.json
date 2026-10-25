@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "tapes": 16,
+  "closes": 88019,
+  "rawBytes": 6601937,
+  "rows": [
+    {
+      "codec": "deflate1",
+      "writeMs": 75.5550454000003,
+      "readMs": 16.603534399999898,
+      "packedBytes": 3429718
+    },
+    {
+      "codec": "zstd1",
+      "writeMs": 15.217240200000424,
+      "readMs": 7.57588580000006,
+      "packedBytes": 3542412
+    }
+  ]
+}

@@ -372,13 +372,15 @@ export async function runOnWorkers<R>(
   signal?: AbortSignal,
   /** Optional group identity for explicitly retiring this owner's idle workers after a heavy phase. */
   owner?: object,
+  /** Consume each completed reply before retaining it or requesting another part (bounded history storage). */
+  consume?: (reply: R, index: number, signal: AbortSignal) => R | Promise<R>,
 ): Promise<R[]> {
   signal?.throwIfAborted();
   if (owner !== undefined) validateOwner(owner);
   activity.inFlight++;
   activity.at = Date.now();
   try {
-    return await runOnWorkersNow<R>(messages, size, timeoutMs, onProgress, priority, signal, owner);
+    return await runOnWorkersNow<R>(messages, size, timeoutMs, onProgress, priority, signal, owner, consume);
   } finally {
     activity.inFlight--;
     activity.at = Date.now();
@@ -399,6 +401,7 @@ async function runOnWorkersNow<R>(
   priority = false,
   signal?: AbortSignal,
   owner: object = {},
+  consume?: (reply: R, index: number, signal: AbortSignal) => R | Promise<R>,
 ): Promise<R[]> {
   signal?.throwIfAborted();
   const p = pool();
@@ -412,6 +415,7 @@ async function runOnWorkersNow<R>(
   // the call stops as a whole at its first failure: its other lanes ran every remaining message on the cores for
   // results nobody read, queued the next compute behind them and moved the caller's progress
   let failed: Error | null = null;
+  const consumption = new AbortController();
   const running = new Set<Slot>();
   const queued = new Set<Waiter>();
   const cancellations = new Set<(err: Error) => void>();
@@ -421,6 +425,7 @@ async function runOnWorkersNow<R>(
     if (failed) return;
     const classified = workerFailure(err);
     failed = classified instanceof Error ? classified : new Error(String(classified));
+    consumption.abort(failed);
     unqueue(queued);
     for (const cancel of [...cancellations]) cancel(failed);
     // (a Base part holds its worker for minutes: terminated now, not finished)
@@ -442,7 +447,7 @@ async function runOnWorkersNow<R>(
         if (failed) return;
         const activeSlot = slot;
         const w = activeSlot.w;
-        out[i] = await new Promise<R>((resolve, reject) => {
+        const reply = await new Promise<R>((resolve, reject) => {
           const timer = setTimeout(() => {
             cleanup();
             stopOwned(activeSlot);
@@ -508,6 +513,10 @@ async function runOnWorkersNow<R>(
           w.once("exit", onExit);
           w.postMessage({ ...messages[i], id: i });
         });
+        if (failed) return;
+        const retained = consume ? await consume(reply, i, consumption.signal) : reply;
+        if (failed) return;
+        out[i] = retained;
       } catch (err) {
         if (slot) {
           running.delete(slot);

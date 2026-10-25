@@ -1,0 +1,50 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-history/src/core/server/history-store.server.ts:151
+  store: TapeHistoryStore | null = null;
+  constructor(readonly memoryBytes = historyMemoryBytes()) {}
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  retain = (tape: ConfigTape): ConfigTape => {
+
+SyntaxError [ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX]: TypeScript parameter property is not supported in strip-only mode
+    at parseTypeScript (node:internal/modules/typescript:68:40)
+    at processTypeScriptCode (node:internal/modules/typescript:146:42)
+    at stripTypeScriptModuleTypes (node:internal/modules/typescript:215:22)
+    at ModuleLoader.<anonymous> (node:internal/modules/esm/translators:680:29)
+    at #translate (node:internal/modules/esm/loader:438:20)
+    at afterLoad (node:internal/modules/esm/loader:506:29)
+    at ModuleLoader.loadAndTranslate (node:internal/modules/esm/loader:511:12)
+    at #getOrCreateModuleJobAfterResolve (node:internal/modules/esm/loader:564:36)
+    at afterResolve (node:internal/modules/esm/loader:611:52)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:617:12) {
+  code: 'ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX'
+}
+
+Node.js v24.22.1
+✖ src/core/server/history-store.test.ts (226.864897ms)
+▶ worker pool: a failed or aborted call stops
+  ✔ an abort at a successful reply's progress boundary rejects that reply and never starts the next part (454.003759ms)
+  ✔ a later call's ordinary worker exit does not inherit an earlier memory-abort reason (11.13125ms)
+  ✔ after one message fails, the call's queued messages never run (495.500478ms)
+  ✔ after one message fails, the call's running messages are terminated, not finished (213.627704ms)
+  ✔ an abort rejects a call still waiting for a worker (it got a fresh one and ran) (303.720203ms)
+✔ worker pool: a failed or aborted call stops (1482.280886ms)
+✔ consumes replies in lane order before starting more work and retains only the replacement (178.402308ms)
+✔ cancellation while consuming a reply drains consumption and never starts the next part (194.087316ms)
+✔ a storage failure is preserved and stops the remaining worker parts (209.223974ms)
+ℹ tests 9
+ℹ suites 1
+ℹ pass 8
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2197.992414
+
+✖ failing tests:
+
+test at src/core/server/history-store.test.ts:1:1
+✖ src/core/server/history-store.test.ts (226.864897ms)
+  'test failed'

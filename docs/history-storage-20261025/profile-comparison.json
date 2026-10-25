@@ -1,0 +1,48 @@
+{
+  "ok": true,
+  "memoryBudgetMiB": 32,
+  "cacheBudgetMiB": 64,
+  "productionMemoryBudgetMiB": 256,
+  "scope": "Three fixed full-grid single-source diagnostics; same sequential process shape. Not a full runtime or performance/profitability proof. RSS includes allocator state.",
+  "rows": [
+    {
+      "pair": "follow|ema-21-55@m1",
+      "tapes": 2231,
+      "closes": 945395,
+      "bitExactCatalog": true,
+      "residentMs": 22699.054418,
+      "boundedMs": 25579.017612,
+      "residentEndRssMiB": 385.015625,
+      "boundedEndRssMiB": 406.1171875,
+      "cachePeakBytes": 37422179,
+      "writeMs": 617.7569100000492,
+      "maxWriteMs": 2.1691589999991265
+    },
+    {
+      "pair": "follow|micro-1-drawdown-turn-fast@m1",
+      "tapes": 2231,
+      "closes": 6418669,
+      "bitExactCatalog": true,
+      "residentMs": 78795.44558500001,
+      "boundedMs": 89938.657183,
+      "residentEndRssMiB": 864.84765625,
+      "boundedEndRssMiB": 566.45703125,
+      "cachePeakBytes": 67108796,
+      "writeMs": 6124.5349150002585,
+      "maxWriteMs": 11.43505599999844
+    },
+    {
+      "pair": "follow|inverse-known-trend-ema@m1",
+      "tapes": 2231,
+      "closes": 2708812,
+      "bitExactCatalog": true,
+      "residentMs": 44942.86085199998,
+      "boundedMs": 53243.90803100001,
+      "residentEndRssMiB": 865.09765625,
+      "boundedEndRssMiB": 566.5234375,
+      "cachePeakBytes": 67108862,
+      "writeMs": 2541.730767000947,
+      "maxWriteMs": 4.6239020000066375
+    }
+  ]
+}

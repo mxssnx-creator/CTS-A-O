@@ -1,0 +1,95 @@
+[
+  {
+    "pair": "follow|ema-21-55@m1",
+    "tapes": 2231,
+    "closes": 945395,
+    "kinds": {
+      "normal": 341,
+      "trailing": 999,
+      "trailing-only": 875,
+      "dca": 4,
+      "dca-active": 4,
+      "axis": 8
+    },
+    "bytes": 70976017,
+    "uniqueTapeBytes": 57457755,
+    "rawColumnBytes": 70976017,
+    "uniqueColumnBytes": 53605326,
+    "ms": 25579.017612,
+    "rssMiB": 406.1171875,
+    "peakRssMiB": 385.19921875,
+    "catalogSha256": "c66e756a8597c03b198684dbb5085deab3465e748c7aa344d615e604ecc5a510",
+    "storage": {
+      "tapes": 1222,
+      "rawBytes": 37422179,
+      "storedBytes": 23652917,
+      "reads": 1222,
+      "hits": 19552,
+      "writeMs": 617.7569100000492,
+      "maxWriteMs": 2.1691589999991265,
+      "peakCacheBytes": 37422179
+    }
+  },
+  {
+    "pair": "follow|micro-1-drawdown-turn-fast@m1",
+    "tapes": 2231,
+    "closes": 6418669,
+    "kinds": {
+      "normal": 341,
+      "trailing": 999,
+      "trailing-only": 875,
+      "dca": 4,
+      "dca-active": 4,
+      "axis": 8
+    },
+    "bytes": 481471567,
+    "uniqueTapeBytes": 465411298,
+    "rawColumnBytes": 481471567,
+    "uniqueColumnBytes": 453040362,
+    "ms": 89938.657183,
+    "rssMiB": 566.45703125,
+    "peakRssMiB": 494.8125,
+    "catalogSha256": "9c7ba6dd55e10d2c05afab19312b0d640b5281589dbfb584e772039fb3dbb931",
+    "storage": {
+      "tapes": 2125,
+      "rawBytes": 447917300,
+      "storedBytes": 253740139,
+      "reads": 2125,
+      "hits": 34000,
+      "writeMs": 6124.5349150002585,
+      "maxWriteMs": 11.43505599999844,
+      "peakCacheBytes": 67108796
+    }
+  },
+  {
+    "pair": "follow|inverse-known-trend-ema@m1",
+    "tapes": 2231,
+    "closes": 2708812,
+    "kinds": {
+      "normal": 341,
+      "trailing": 999,
+      "trailing-only": 875,
+      "dca": 4,
+      "dca-active": 4,
+      "axis": 8
+    },
+    "bytes": 203232292,
+    "uniqueTapeBytes": 194118517,
+    "rawColumnBytes": 203232292,
+    "uniqueColumnBytes": 182810419,
+    "ms": 53243.90803100001,
+    "rssMiB": 566.5234375,
+    "peakRssMiB": 566.99609375,
+    "catalogSha256": "e44ed3b6eefb3b4d49466aedde57fdc15c7a041665e9d9fa8ed1544d5e419452",
+    "storage": {
+      "tapes": 1967,
+      "rawBytes": 169678144,
+      "storedBytes": 101101756,
+      "reads": 1967,
+      "hits": 31472,
+      "writeMs": 2541.730767000947,
+      "maxWriteMs": 4.6239020000066375,
+      "peakCacheBytes": 67108862
+    }
+  }
+]

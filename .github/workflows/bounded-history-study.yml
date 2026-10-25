@@ -1,0 +1,61 @@
+name: Bounded complete history study
+on:
+  push:
+    branches: [study/bounded-history-20261025]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ordinary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 210
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        offset: [0, 12]
+        minimum: [1, 1.5]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: env -u DATABASE_URL npm run build
+      - run: node --experimental-strip-types --no-warnings scripts/prepare-normal-progress.mjs runs/ordinary all 15 ${{ matrix.offset }} ${{ matrix.minimum }} independent
+      - run: python3 scripts/run-normal-progress.py runs/ordinary
+        env:
+          STUDY_HEAP_MB: 8192
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bounded-ordinary-micro${{ matrix.minimum }}-offset${{ matrix.offset }}-${{ github.run_id }}
+          path: runs/ordinary/
+          retention-days: 90
+          compression-level: 3
+  signals:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        scenario: [control-0, control-12]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: env -u DATABASE_URL npm run build
+      - run: node --experimental-strip-types --no-warnings scripts/prepare-recovery-study.mjs runs/signals
+      - run: python3 scripts/run-signals-native-case.py runs/signals ${{ matrix.scenario }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bounded-${{ matrix.scenario }}-${{ github.run_id }}
+          path: runs/signals/${{ matrix.scenario }}/
+          retention-days: 90
+          compression-level: 3
