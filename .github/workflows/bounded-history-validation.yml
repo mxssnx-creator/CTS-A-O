@@ -1,10 +1,6 @@
 name: Bounded history processing validation
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - '.github/workflows/bounded-history-validation.yml'
-      - 'scripts/benchmark-tape-cache.mjs'
 permissions:
   contents: read
 jobs:

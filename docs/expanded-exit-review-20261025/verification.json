@@ -211,10 +211,22 @@
   "currentChanges": {
     "sourceSha256": "cb4415d4bf602c10ef1946178352c37d7bc6622f0bee19f68728b0daf4648d5b",
     "focusedTests": 95,
-    "typecheck": "passed",
+    "typecheck": "passed after fixture correction; process exit code 0",
     "lint": "zero errors, six existing warnings",
     "workerBuild": "passed",
     "fullCI": "pending",
-    "nativeReplays": "pending"
-  }
+    "nativeReplays": "pending",
+    "checkpoint": "f36df85babd445bfb1b3eb2a0ef7db4dc64f7bde",
+    "nativeRun": 40200402203,
+    "fixtureRetest": 7
+  },
+  "retainedFailures": [
+    {
+      "commit": "f36df85babd445bfb1b3eb2a0ef7db4dc64f7bde",
+      "run": 40200402091,
+      "job": 121190167275,
+      "stage": "typecheck",
+      "reason": "New test fixture used readonly axis.ranges where AxisConfig requires a mutable array. Runtime tests passed; fixture corrected in follow-up. Prior local typecheck was reported before its process completed."
+    }
+  ]
 }

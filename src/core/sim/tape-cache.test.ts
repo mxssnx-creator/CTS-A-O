@@ -22,8 +22,8 @@ test("bounded local histories preserve every tape column, config identity, held 
     .map(c => `${c.bot}|${c.ind}`));
   const protects = [DEFAULT_PROTECT, { ...DEFAULT_PROTECT, trail: 0.004 }];
   const wf = defaultWalkForward(DEFAULT_SETTINGS);
-  const dca = { protects: wf.dcaProtects.slice(0, 1), dca: wf.dca,
-    axis: { ...DEFAULT_SETTINGS.axis, ranges: ["atr"] as const, levelsSet: [2], hybrids: [false] } };
+  const dca: NonNullable<Parameters<typeof buildTapes>[3]> = { protects: wf.dcaProtects.slice(0, 1), dca: wf.dca,
+    axis: { ...DEFAULT_SETTINGS.axis, ranges: ["atr"], levelsSet: [2], hybrids: [false] } };
   const expected = buildTapes(reference, protects, 0.002, dca, pairs, null);
   const gen = buildTapesBoundedGen(u, protects, 0.002, dca, pairs, null);
   for (;;) {
