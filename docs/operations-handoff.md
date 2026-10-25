@@ -1,4 +1,16 @@
-## 2026-10-25 — bounded-history continuation in progress
+## 2026-10-25 — performance release merged; Axis correction under verification
+
+PR #202 merged as `abe5e49ebc330d2717c6ed45aaa448121f5e2f2f`, main fetched/reloaded; remote backup `backup/main-before-history-storage-20261025` retains `69bf5ffa945b2cecacc8bb34de77f58a215c5a4f`. Tested head `84e5755dad7c69a83a519b4e0d171330586e0526` passed all seven CI jobs in 40230641697 (all 285 core files; 4,371 passes across core/slow/script/browser/component checks, eight template skips; two slow exclusions passed separately) and exact-Signal study 40230641774.
+
+Full source `f09e2ed2aec72b0eb6c5770fc47df903b4d268f0bf56998b4fad2f575401cfaa` 12-symbol/12h later-window replay completed in 776.848 s / 3,106.13 MiB peak, versus local resident control 1,198.019 s / 4,314.48 MiB. Compute 718.817 s. All 68 checks and 39,402,168 scalar comparisons pass. Complete 126,289-config / 10,999,508-close journals are byte-identical. All 29 legacy comparison sections, every funded order/held allocation and hourly account field agree; 158 added PF metadata fields independently checked. Orders 863/280/583, positions 4/2/2, settled PF 0.065995. Losing financial results remain unchanged. Reports and exact comparisons are in docs/history-storage-20261025.
+
+All ten minute-control/DCA/Block arms completed. First window control PF4.888011; later DCA PF0.062541. The full ordinary study 40226266532 remains active: first two all-range arms running, later two queued at this checkpoint. Do not invent progress, claim completion or discard timeout/OOM failures. It runs the earlier bounded-history source 393fdfb, not the Axis correction.
+
+Isolated follow-up `fix/axis-unit-entry-20261025` corrects Axis harmonic average-entry accounting in both Revert and Desk. Eight independent per-leg regressions fail old code; 183 focused tests, typecheck, build and scoped lint pass after correction. See docs/axis-entry-20261025.md. Multi-leg managed exits can change; broader CI and native coverage still required. Full native source must remain frozen during any further replay/audit.
+
+No venue requests, orders, production settings or live reload were performed. X02 authentication/CTS-A-O endpoint is absent in this workspace, and financial stability remains unmet. Earlier personal-context host belonged to CTS-K-N and must not be used. Fractional Exit and causal per-leg minute equity remain incomplete. Continue authorized work; this is not completion, positive-PF certification or a claim that X02 is running.
+
+## 2026-10-25 — bounded-history continuation in progress (superseded checkpoint)
 
 PR #201 merged as `69bf5ffa945b2cecacc8bb34de77f58a215c5a4f`; main reloaded. Both Signal control windows completed: earlier PF 4.888011, orders 476/371/105 and positions 15/6/9; later PF 0.065995, orders 863/280/583 and positions 4/2/2 (opened/settled-or-closed/held). Later audit: 39,402,168 comparisons, zero missing configured cells, zero remaining entry-ready hourly-clock omissions; all 278 prior closes keep their exact returns. Financial stability is still not met.
 

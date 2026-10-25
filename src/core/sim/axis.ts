@@ -172,7 +172,9 @@ export function simulateAxis(
   };
 
   const wsum = () => legs.reduce((a, x) => a + x.w, 0);
-  const avg = () => legs.reduce((a, x) => a + x.px * x.w, 0) / wsum();
+  // Rung weights fund original quote notional. Quantity is w / fill price,
+  // so the combined cost basis must reproduce the same sum of leg returns.
+  const avg = () => legs.length === 1 ? legs[0].px : wsum() / legs.reduce((q, x) => q + x.w / x.px, 0);
   // the same entry rules for a signal on bar i (used for the next-bar pending intent as well)
   const admissible = (i: number, s: Side, ref: number) => {
     const m = center[i];
@@ -501,7 +503,7 @@ export function simulateAxisDesk(
   });
   // the hybrid trail's gap, fixed when it arms (0 = not armed)
   const wsum = () => legs.reduce((a, x) => a + x.w, 0);
-  const avg = () => legs.reduce((a, x) => a + x.px * x.w, 0) / wsum();
+  const avg = () => legs.length === 1 ? legs[0].px : wsum() / legs.reduce((q, x) => q + x.w / x.px, 0);
   const ret = (exit: number) => {
     let r = 0;
     for (const x of legs) r += x.w * ((side * (exit - x.px)) / x.px - cost);
