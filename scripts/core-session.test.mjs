@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -1036,4 +1036,67 @@ it("independent Signal Exit built sets reconcile to Signal tapes without polluti
   assert.equal(data.checksOk, true);
   assert.ok(data.checks.find(x => x.name === "coverage: signal strategy type exit active tapes match kept sets")?.ok);
   assert.ok(data.checks.find(x => x.name === "coverage: range wide active tapes match kept sets")?.ok);
+});
+
+
+describe("session replay deadlines", () => {
+  it("rejects incomplete universes with zero or earlier partial computes", async () => {
+    const source = readFileSync(script, "utf8");
+    const start = source.indexOf("  while (!complete()) {");
+    const end = source.indexOf("  // the dump reads the paper step", start);
+    assert.ok(start >= 0 && end > start);
+    for (const computes of [0, 1]) {
+      const result = runInNewContext(`(async () => { ${source.slice(start, end)} })()`, {
+        complete: () => false, Date: { now: () => 60_001 }, t0: 0, maxWaitMin: 1,
+        rt: { status: { computes } }, progressLine: () => "incomplete",
+      });
+      await assert.rejects(result, /universe not complete.*refusing a partial report/);
+    }
+  });
+
+  it("rejects stale paper state and removes its event listener after timeout", async () => {
+    const source = readFileSync(script, "utf8");
+    const start = source.indexOf("  const paperT0 = Date.now();");
+    const end = source.indexOf("  clearInterval(rssT);", start);
+    let removed = 0, stopped = 0;
+    const result = runInNewContext(`(async () => { ${source.slice(start, end)} })()`, {
+      Date, setInterval, clearInterval, setTimeout, clearTimeout, paperWaitS: 0.001,
+      rt: { status: { computes: 2, paperCompute: 1 }, stop: () => { stopped++; } },
+      onCoreEvent: () => () => { removed++; },
+    });
+    await assert.rejects(result, /paper step on compute #2.*refusing a stale report/);
+    assert.equal(removed, 1);
+    assert.equal(stopped, 1);
+  });
+
+  it("fails offline startup at its deadline, cleans up, and writes no successful dump", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-session-deadline-"));
+    try {
+      const feed = join(dir, "feed.json"), dump = join(dir, "raw.json");
+      writeFileSync(feed, JSON.stringify({ tickers: [], candles: {} }));
+      const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script,
+        "--feed", feed, "--end-at", "2026-10-17T21:00:00Z", "--max-wait-min", "0.000001",
+        "--dump", dump, "--dump-only"], {
+        encoding: "utf8", timeout: 10_000,
+        env: { ...process.env, CTS_CORE_VARIANTS: "0", NODE_OPTIONS: `--require ${new URL("./lib/core-test-offline-guard.cjs", import.meta.url).pathname}` },
+      });
+      assert.equal(result.error, undefined, "child must terminate without the outer timeout killing it");
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /universe not complete.*refusing a partial report/);
+      assert.equal(existsSync(dump), false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("rejects invalid deadline values before starting the runtime", () => {
+    for (const [name, value] of [["max-wait-min", "NaN"], ["max-wait-min", "Infinity"], ["max-wait-min", "0"], ["paper-wait-s", "-1"]]) {
+      const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script, `--${name}`, value], {
+        encoding: "utf8", timeout: 5_000,
+        env: { ...process.env, NODE_OPTIONS: `--require ${new URL("./lib/core-test-offline-guard.cjs", import.meta.url).pathname}` },
+      });
+      assert.equal(result.error, undefined);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, new RegExp(`--${name} must be a finite positive number`));
+      assert.doesNotMatch(result.stderr, /session: \d+ symbols/);
+    }
+  });
 });

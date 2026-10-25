@@ -508,6 +508,12 @@ function runVariants(rt, sim) {
 }
 
 async function runEngine() {
+  const maxWaitMin = Number(arg("max-wait-min", 120));
+  const paperWaitS = Number(arg("paper-wait-s", 900));
+  for (const [name, value] of [["max-wait-min", maxWaitMin], ["paper-wait-s", paperWaitS]]) {
+    if (!Number.isFinite(value) || value <= 0)
+      throw new Error(`--${name} must be a finite positive number`);
+  }
   const symbols = Number(arg("symbols", 12));
   const preH = Number(arg("pre", 6));
   const runH = Number(arg("run", 6));
@@ -678,6 +684,8 @@ async function runEngine() {
         : {}),
     },
   );
+  let rssT;
+  try {
   // Historical replay otherwise inherits a wall-clock liveSince and cannot learn from simulated execution closes.
   // Restrict the override to a bounded offline window; ordinary runtime and live defaults are unchanged.
   if (liveSinceT !== null) rt.db.kvSet("liveSince", liveSinceT);
@@ -778,7 +786,7 @@ async function runEngine() {
   }
   const t0 = Date.now();
   let rssMax = 0;
-  const rssT = setInterval(() => (rssMax = Math.max(rssMax, process.memoryUsage().rss)), 500);
+  rssT = setInterval(() => (rssMax = Math.max(rssMax, process.memoryUsage().rss)), 500);
   rt.start();
   if (liveSinceT !== null)
     process.stderr.write(
@@ -829,11 +837,11 @@ async function runEngine() {
     return fullFrom !== null && rt.status.computes > fullFrom;
   };
   while (!complete()) {
-    if (Date.now() - t0 > Number(arg("max-wait-min", 120)) * 60_000) {
-      process.stderr.write(
-        `  universe not complete after ${arg("max-wait-min", 120)} min: reporting the last compute\n`,
+    if (Date.now() - t0 >= maxWaitMin * 60_000) {
+      throw new Error(
+        `universe not complete after ${maxWaitMin} min: refusing a partial report ` +
+        `(${rt.status.computes} completed computes; ${progressLine()})`,
       );
-      if (rt.status.computes >= 1) break;
     }
     if (rt.status.state === "error" && Date.now() - t0 > 600_000)
       throw new Error(rt.status.error ?? "engine error");
@@ -859,7 +867,6 @@ async function runEngine() {
   // cycle: dumping on computes alone reported Real seats 0 while the simulation traded 589 orders. Wait for the paper
   // step on the reported compute (status.paperCompute ≥ computes), then stop the loop at once, inside its "paper"
   // event (a later compute would otherwise replace rt.sim / rt.tapes under the dump).
-  const paperWaitS = Number(arg("paper-wait-s", 900));
   const paperT0 = Date.now();
   const paperDone = () => (rt.status.paperCompute ?? 0) >= rt.status.computes;
   const paperOk = await new Promise((resolve) => {
@@ -894,9 +901,8 @@ async function runEngine() {
       `  paper step on compute #${rt.status.paperCompute}: ${rt.paper.selected?.length ?? 0} paper/current selected configs (${Math.round((Date.now() - paperT0) / 1000)} s after the compute)\n`,
     );
   else
-    process.stderr.write(
-      `  WARNING: the paper step on compute #${rt.status.computes} did not finish within ${paperWaitS} s (--paper-wait-s) — ` +
-        `Paper/current selected configs are from the paper step on compute #${rt.status.paperCompute ?? 0} (${rt.paper.selected?.length ?? 0})\n`,
+    throw new Error(
+      `paper step on compute #${rt.status.computes} did not finish within ${paperWaitS} s: refusing a stale report`,
     );
   clearInterval(rssT);
   const sim = rt.sim;
@@ -1611,12 +1617,13 @@ async function runEngine() {
       coverageOf,
     );
   }
-  // the runtime's timers and its worker pool ended: its stall watch and healer kept it reachable through the dump and the
-  // report (0.9–1.5 GB of an eval child; 3–5 GB in an allSets report phase)
-  rt.dispose();
-  const { closePool } = await import("../src/core/server/pool.server.ts");
-  await closePool();
   return result;
+  } finally {
+    clearInterval(rssT);
+    rt.dispose();
+    const { closePool } = await import("../src/core/server/pool.server.ts");
+    await closePool();
+  }
 }
 
 // --replay raw.json / --render raw.json: rebuild every output from a dump, without running the engine again
