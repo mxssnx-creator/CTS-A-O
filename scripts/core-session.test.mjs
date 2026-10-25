@@ -308,7 +308,7 @@ describe("session CLI background comparison policy", () => {
     }
   });
 });
-function replay({ postGateRejected, exitOrders = false, endpointOccupancy = false, caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData } = {}) {
+function replay({ signalExitSets = false, postGateRejected, exitOrders = false, endpointOccupancy = false, caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -445,6 +445,12 @@ function replay({ postGateRejected, exitOrders = false, endpointOccupancy = fals
       };
       if (postGateRejected !== undefined) {
         raw.engine.coverage.sets[0] = { ...raw.engine.coverage.sets[0], grid: 3, built: 3, kept: 3, postGateRejected };
+      }
+      if (signalExitSets) {
+        raw.engine.coverage.sets.push({ ind: "sig-test@m1", tag: "wide", kind: "exit", lanes: 1, grid: 2, built: 2, kept: 2, few: 0, skip: {} });
+        raw.engine.coverage.signalTapes["exit|wide"] = { configs: 2, activeConfigs: 2, closes: 0 };
+        raw.engine.coverage.tapes["exit|wide"] = { configs: 2, activeConfigs: 2, closes: 0 };
+        raw.engine.coverage.ranges.wide = true;
       }
       raw.engine.baseEvaluated = 1;
       raw.engine.basePassed = 0;
@@ -1019,4 +1025,11 @@ it("records independent Exit Base proof without borrowing ordinary ranges or a p
   assert.equal(missing[1].passed, false);
   assert.equal(missing[2].passed, false);
   assert.equal(missing[1].qualificationRecorded, false);
+});
+
+it("independent Signal Exit built sets reconcile to Signal tapes without polluting engine coverage", () => {
+  const { data } = replay({ noBase: true, signalCoverage: true, signalExitSets: true });
+  assert.equal(data.checksOk, true);
+  assert.ok(data.checks.find(x => x.name === "coverage: signal strategy type exit active tapes match kept sets")?.ok);
+  assert.ok(data.checks.find(x => x.name === "coverage: range wide active tapes match kept sets")?.ok);
 });
