@@ -1,3 +1,7 @@
+## 2026-10-25 — Axis and held Minimal Plus correction under final verification
+
+PR203 follow-up preserves Minimal Plus held tapes when their pre-run gate rejects new entry, with independent rejection accounting. Coverage now includes every built kind and optional MP/Wide. First EMA native attempt failed coverage; preserve its original results. Three broad CI failures were stale arithmetic-average Axis expectations and now use funded notional/quantity. Local 106 focused tests pass; report/build/type checks and fresh frozen native run in progress. Source 236adbf24aa337e9c886016d58b3aeace2eb0d77a6ef14c96e3c852d74e4bbd4; `runs/axis-publication-20261025`, 12 symbols/12h ordinary EMA, all enabled protections, minute pricing. No venue action or new-position increase claimed. Full-family CI study still running. Signals later-window PF remains below one; live stability has not passed.
+
 ## 2026-10-25 — performance release merged; Axis correction under verification
 
 PR #202 merged as `abe5e49ebc330d2717c6ed45aaa448121f5e2f2f`, main fetched/reloaded; remote backup `backup/main-before-history-storage-20261025` retains `69bf5ffa945b2cecacc8bb34de77f58a215c5a4f`. Tested head `84e5755dad7c69a83a519b4e0d171330586e0526` passed all seven CI jobs in 40230641697 (all 285 core files; 4,371 passes across core/slow/script/browser/component checks, eight template skips; two slow exclusions passed separately) and exact-Signal study 40230641774.
