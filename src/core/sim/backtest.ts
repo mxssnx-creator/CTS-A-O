@@ -7,7 +7,7 @@
 import type { AtrProtect, Bars, OpenPosition, Protect, Side, Trade } from "../domain/types.ts";
 import { capSignalProtect, capTrailingOnlyProtect, isSignalConfig, ratchetTrail } from "./trailing.ts";
 import { atrEma } from "../math/indicators.ts";
-import { RT_COST } from "../model-cost.ts";
+import { RT_COST, modeledPriceReturn } from "../model-cost.ts";
 import type { SimulationCursor } from "./cursor.ts";
 import {
   advanceExitProtection,
@@ -354,7 +354,7 @@ function simCore(
       ? fixedPricePath(opt.fixedPathScope, bars)
       : null;
   const close = (i: number, exit: number, reason: Trade["reason"], exitT: number) => {
-    const r = (side * (exit - entry)) / entry - cost;
+    const r = modeledPriceReturn(side, entry, exit, cost);
     if (sink) {
       sink(r, t[entryI], exitT);
       inPos = false;
@@ -491,7 +491,7 @@ function simCore(
       target,
       peak,
       trailOn,
-      mtm: (side * (last - entry)) / entry - cost,
+      mtm: modeledPriceReturn(side, entry, last, cost),
       // the trail in force (an ATR protect resolved it at the entry): the live tick advances it bar by bar
       ...(exitProtection ? { exitProtection } : {}),
       ...(trail > 0

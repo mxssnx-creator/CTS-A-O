@@ -2,7 +2,9 @@
 import json
 import pathlib
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
+REPORT_ZONE = ZoneInfo("Europe/Vienna")
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -10,7 +12,7 @@ import matplotlib.pyplot as plt
 root = pathlib.Path(sys.argv[1])
 out = pathlib.Path(sys.argv[2])
 out.mkdir(parents=True, exist_ok=True)
-names = ['control-0', 'expanded-0', 'control-12', 'expanded-12']
+names = sys.argv[3:] or ['control-0', 'expanded-0', 'control-12', 'expanded-12']
 results = []
 for name in names:
     p = root / name / name
@@ -21,7 +23,7 @@ for name in names:
     assert detail['sourceSha256'] == metrics['sourceSha256'] == coverage['sourceSha256']
     assert coverage['catalog']['missingConfiguredCells'] == 0
     assert coverage['catalog']['expectedExit'] == coverage['catalog']['builtExit']
-    exit_row = next(r for r in detail['ranges'] if r['range'] == 'Exit')
+    exit_row = next((r for r in detail['ranges'] if r['range'] == 'Exit'), dict(range='Exit', openedOrders=0, settledOrders=0, openOrders=0, openedPositions=0, closedPositions=0, openPositions=0, gp=0, gl=0, pf=None, pfState='empty', types=[], hours=[dict(t=h['t'], settledOrders=0) for h in detail['hours']]))
     results.append(dict(scenario=name, window=detail['window'], sourceSha256=detail['sourceSha256'],
         total=detail['total'], exit=exit_row, ranges=detail['ranges'], hours=detail['hours'],
         ledger=coverage['ledger'], catalog=coverage['catalog'], metrics=metrics,
@@ -35,11 +37,11 @@ def counts(row):
 def positions(row):
     return f"{row['openedPositions']}/{row['closedPositions']}/{row['openPositions']}"
 def pf(row):
-    return f"{row['pf']:.4f}" if row['pf'] is not None else row['pfState']
+    return f"{row['pf']:.4f}" if row['pf'] is not None else '∞ (no losses)' if row['pfState'] == 'no-loss' else '— ('+row['pfState']+')'
 
-lines = ['# Exit comparison results — 25 October 2026 UTC', '',
-    'Four audited 12-hour replays, each with 12 symbols, 150h fitting history, 1/5/15m lanes and minute pricing. These are funded modeled executions, not venue fills. Original and expanded policies share neutral sizing and admission gates. Expanded fits remain optional: they lost in both windows. Original Exit settled 14 winning orders across the windows, but most tactics lack settled samples and the account lost in the later window. This does not establish stable profitability.', '',
-    'Order counts are opened / settled / held; position counts are opened / closed / held. Positions can overlap across ranges or tactics and must not be added across groups. Loss-free Exit samples have no finite PF; they are not the report display sentinel 4.', '',
+lines = ['# Exit comparison results — 25 October 2026 — Europe/Vienna', '',
+    f'{len(results)} audited 12-hour replays, each with 12 symbols, 150h fitting history, 1/5/15m lanes and minute pricing. These are funded modeled executions, not venue fills. Policies are frozen before each replay. PF is gross gains divided by gross losses after costs: 1.0 is neutral, above 1 profitable, below 1 losing. Samples without losses show ∞; empty samples show no measured PF. Independent losses remain included.', '',
+    'Order counts are opened / settled / held; position counts are opened / closed / held. Positions can overlap across ranges or tactics and must not be added across groups. ∞ describes a positive sample with zero losses; it is not a finite PF of 4, and the settled count still matters.', '',
     '| Scenario | Account PF | Equity DD | Account orders | Account positions | Exit PF | Exit orders | Exit positions | Wall seconds | Peak MiB |',
     '|---|---:|---:|---|---|---:|---|---|---:|---:|']
 for r in results:
@@ -61,18 +63,18 @@ for r in results:
         s = g['start']; risk = g['protection']
         ratio = risk.get('slToTp', {}).get('max'); gap = risk.get('trailGapFraction', {}).get('min')
         lines.append(f"| {g['dimension']}: {g['label']} | {g['configs']} | {g['sources']} | {g['symbols']} | {100*s['configsLastNReady']/s['configs']:.2f}% | {s['lastNReadyPct']:.2f}% | {ratio if ratio is not None else '—'} | {gap if gap is not None else '—'} |")
-    lines += ['', '| Hour UTC | Orders | Positions | Settled PF | Equity | Max DD so far | Exit settled |', '|---|---|---|---:|---:|---:|---:|']
+    lines += ['', '| Hour Vienna | Orders | Positions | Settled PF | Equity | Max DD so far | Exit settled |', '|---|---|---|---:|---:|---:|---:|']
     for ledger, hour, exit_hour in zip(r['ledger']['hourly'], r['hours'], r['exit']['hours']):
         assert ledger['t'] == hour['t'] == exit_hour['t']
-        label = datetime.fromtimestamp(hour['t']/1000, timezone.utc).strftime('%m-%d %H:%M')
+        label = datetime.fromtimestamp(hour['t']/1000, REPORT_ZONE).strftime('%m-%d %H:%M %Z')
         gain, loss = hour['gpR'], hour['glR']
-        hp = f'{gain/loss:.4f}' if loss else 'no-loss' if gain else 'empty'
+        hp = f'{gain/loss:.4f}' if loss else '∞' if gain else '— (flat/empty)'
         lines.append(f"| {label} | {counts(ledger)} | {positions(ledger)} | {hp} | {hour['equity']:.6f} | {100*hour['maxDdPctSoFar']:.4f}% | {exit_hour['settledOrders']} |")
     lines.append('')
 (out / 'RESULTS.md').write_text('\n'.join(lines).rstrip()+'\n')
 plt.rcParams.update({'font.size': 10, 'svg.fonttype': 'none'})
 fig, axes = plt.subplots(1, 3, figsize=(15, 4), layout='constrained')
-colors = ['#137c8b','#da743d','#137c8b','#da743d']
+colors = ['#137c8b' if r['scenario'].startswith(('control','cost')) else '#da743d' for r in results]
 axes[0].bar(names, [r['total']['pf'] for r in results], color=colors)
 axes[0].axhline(1, color='black', linewidth=1, linestyle='--');axes[0].set_title('Account unit-return PF')
 axes[1].bar(names, [r['exit']['gp']-r['exit']['gl'] for r in results], color=colors)
@@ -82,12 +84,15 @@ axes[2].bar(names,[r['exit']['openOrders'] for r in results],bottom=[r['exit']['
 axes[2].set_title('Exit orders');axes[2].legend()
 for ax in axes: ax.tick_params(axis='x',rotation=30);ax.grid(axis='y',alpha=.2)
 fig.savefig(out/'comparison.svg');plt.close(fig)
-fig, axes = plt.subplots(1, 2, figsize=(12,4), layout='constrained')
-for i, offset in enumerate([0,12]):
+windows = sorted(set(r['window']['tradeStartT'] for r in results))
+fig, axes = plt.subplots(1, len(windows), figsize=(6*len(windows),4), layout='constrained', squeeze=False)
+for i, start in enumerate(windows):
+    ax = axes[0, i]
     for r in results:
-        if not r['scenario'].endswith('-'+str(offset)):continue
-        axes[i].plot(range(1,13),[h['equity'] for h in r['hours']],marker='.',label=r['scenario'])
-    axes[i].set_title(f'Window {i+1}: hourly endpoint equity');axes[i].set_xlabel('Elapsed hours');axes[i].set_ylabel('Account equity');axes[i].legend();axes[i].grid(alpha=.2)
+        if r['window']['tradeStartT'] != start: continue
+        ax.plot(range(1,13), [h['equity'] for h in r['hours']], marker='.', label=r['scenario'])
+    label = datetime.fromtimestamp(start/1000, REPORT_ZONE).strftime('%m-%d %H:%M %Z')
+    ax.set_title('Hourly endpoint equity — '+label); ax.set_xlabel('Elapsed hours'); ax.set_ylabel('Account equity'); ax.legend(); ax.grid(alpha=.2)
 fig.savefig(out/'hourly-equity.svg');plt.close(fig)
 print(out/'RESULTS.md')
 

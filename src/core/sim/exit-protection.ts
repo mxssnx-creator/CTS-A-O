@@ -53,6 +53,7 @@ export function advanceExitProtection(
   const s = p.exitProtection;
   if (
     !s ||
+    (s.cost !== undefined && !(Number.isFinite(s.cost) && s.cost >= 0)) ||
     !(p.entry > 0) ||
     !Number.isFinite(bar.t) ||
     bar.t <= s.lastBarT ||

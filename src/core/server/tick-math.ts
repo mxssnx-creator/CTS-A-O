@@ -1,3 +1,4 @@
+import { modeledPriceReturn } from "../model-cost.ts";
 // Pure price/protection math shared by the realtime thread and its sliced recovery path.
 import type { OpenPosition } from "../domain/types.ts";
 import { trailBar } from "../sim/backtest.ts";
@@ -102,7 +103,7 @@ export class TickMathBook {
               }
             }
             const at = p.stopHit ? (p.hitPx ?? p.stop) : px;
-            p.mtm = (p.side * (at - p.entry)) / p.entry - this.cost;
+            p.mtm = modeledPriceReturn(p.side, p.entry, at, this.cost);
             if (patches)
               result.patches.push({
                 index,
@@ -268,6 +269,11 @@ export function carryTrail(
           trailDist: prev.trailDist,
           exitProtection: { ...prev.exitProtection },
         }
+      : {}),
+    ...(op.exitProtection && prev.exitProtection &&
+      prev.exitProtection.lastBarT <= op.exitProtection.lastBarT &&
+      op.exitProtection.cost !== prev.exitProtection.cost
+      ? { exitProtection: { ...op.exitProtection, cost: prev.exitProtection.cost ?? 0 } }
       : {}),
     ...(prev.tkBar !== undefined
       ? {

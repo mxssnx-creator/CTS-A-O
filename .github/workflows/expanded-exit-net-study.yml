@@ -1,0 +1,35 @@
+name: Expanded Exit net-breakeven verification
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/expanded-exit-net-study.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [cost-0, cost-12, slices-0, slices-12, slices--12]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: env -u DATABASE_URL npm run build
+      - run: node --experimental-strip-types --no-warnings scripts/prepare-expanded-exit-cost-study.mjs runs/expanded-exit-cost
+      - run: python3 scripts/run-signals-native-case.py runs/expanded-exit-cost ${{ matrix.scenario }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: expanded-exit-net-${{ matrix.scenario }}-${{ github.run_id }}
+          path: |
+            runs/expanded-exit-cost/plan.json
+            runs/expanded-exit-cost/${{ matrix.scenario }}/
+          retention-days: 90
+          compression-level: 3

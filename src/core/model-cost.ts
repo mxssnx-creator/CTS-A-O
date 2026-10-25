@@ -22,3 +22,11 @@ export function boundedModelCost(requested: number): number {
 export const POSITION_COST_RT = 0.002;
 /** PositionCost stress threshold used by PF screening: 0.4% round trip. */
 export const POSITION_COST_STRESS_RT = POSITION_COST_RT * 2;
+
+/** Remove only floating-point cancellation noise at modeled net breakeven; preserve all material losses. */
+export function modeledPriceReturn(side: number, entry: number, exit: number, cost: number): number {
+  const gross = side * (exit - entry) / entry;
+  const net = gross - cost;
+  const epsilon = 4 * Number.EPSILON * Math.max(1, Math.abs(exit / entry));
+  return cost > 0 && Number.isFinite(net) && Math.abs(net) <= epsilon ? 0 : net;
+}

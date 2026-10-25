@@ -1,8 +1,5 @@
 name: Expanded Exit cost and stability study
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/expanded-exit-cost-study.yml'
   workflow_dispatch:
 permissions:
   contents: read

@@ -68,6 +68,34 @@ describe("causal per-position Exit protection", () => {
     assert.throws(() => createExitProtection(protect("breakeven"), 100, -.001));
   });
 
+  it("preserves owned cost through newer recalculation while retaining the tighter stop", () => {
+    for (const previousCost of [0, .0015]) {
+      const previous = position("breakeven", 1, previousCost);
+      const rebuilt = position("breakeven", 1, .002);
+      previous.exitProtection!.lastBarT = 60_000;
+      rebuilt.exitProtection!.lastBarT = 120_000;
+      previous.stop = 100;
+      rebuilt.stop = 100.2;
+      const carried = { ...rebuilt, ...carryTrail(rebuilt, previous) };
+      assert.equal(carried.exitProtection!.cost, previousCost);
+      assert.equal(carried.exitProtection!.lastBarT, 120_000);
+      assert.equal(carried.stop, 100.2, "a settings edit never loosens an owned stop");
+    }
+  });
+
+  it("settles a cost-covered breakeven at exactly zero, not a floating-point win or loss", () => {
+    for (const side of [1, -1] as const) for (const tf of [1, 5, 15]) {
+      const price = (x: number) => 100 + side * (x - 100);
+      const rows = [[100,100,100,100],[100,100.4,100,100.4],[100.4,100.4,100,100.1]]
+        .map(([o,h,l,c]) => [price(o), Math.max(price(h), price(l)), Math.min(price(h), price(l)), price(c)]);
+      const result = simulate("breakeven-fixture", bars(rows, tf), Int8Array.of(side, 0, 0),
+        {tp:.006, sl:.02, trail:0, hold:100, exitType:"historic", exitSide:side, exitSet:"breakeven"}, {cost:.0015});
+      assert.equal(result.trades.length, 1);
+      assert.equal(result.trades[0].r, 0);
+      assert.ok(Math.abs(result.trades[0].exit - 100*(1+side*.0015)) < 1e-12);
+    }
+  });
+
   it("keeps legacy Exit ids fixed and gives every tactic its own bounded TP state", () => {
     assert.equal(
       createExitProtection({ tp: 0.1, sl: 0.1, trail: 0, hold: 10, exitType: "historic" }, 100),
