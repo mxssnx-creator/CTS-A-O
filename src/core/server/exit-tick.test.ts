@@ -46,7 +46,7 @@ function position(p: Protect, side: 1 | -1, sym = "X-USDT"): Position {
     trail: p.trail,
     trailDist: p.trail,
     mtm: -COST,
-    exitProtection: createExitProtection(p, 100),
+    exitProtection: createExitProtection(p, 100, COST),
   };
 }
 const setPrice = (rt: CoreRuntime, sym: string, px: number) =>

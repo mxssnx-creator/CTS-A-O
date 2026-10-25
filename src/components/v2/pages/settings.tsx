@@ -3032,6 +3032,13 @@ export function SettingsPage() {
                   />
                 </Field>
                 <Field
+                  label="Exit validation slices"
+                  hint="Split held-out history into 1–4 chronological parts. Every part must independently meet minimum closes, PF and drawdown gates. PF 1 is neutral; above 1 is profitable after modeled costs."
+                >
+                  <Num min={1} max={4} step={1} value={exits.validationSlices ?? 1}
+                    onChange={(v) => set(["exitStrategy", "validationSlices"], Math.round(v))} />
+                </Field>
+                <Field
                   label="Green active-hour share"
                   hint="0.5 = at least half of active UTC close-hours green when 6+ hours are present"
                 >

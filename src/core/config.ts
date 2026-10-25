@@ -350,6 +350,8 @@ export interface ExitStrategySettings {
   minEntries: number;
   /** completed, held-out closes required before a candidate can qualify, per direction */
   minValidationTrades: number;
+  /** Require every chronological held-out slice to pass sample/PF/DDR gates; omitted or 1 preserves pooled validation. */
+  validationSlices?: number;
   /** minimum held-out net return profit factor for this independent Exit candidate */
   minPf: number;
   /** minimum share of green active UTC exit hours in a sufficiently populated held-out sample; 0 disables */

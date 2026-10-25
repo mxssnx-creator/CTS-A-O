@@ -9,6 +9,7 @@ import {
   emptyExitStrategyDiagnostics,
   exitHistoryFingerprint,
   passesExitHourlyConsistency,
+  passesExitValidationSlices,
   exitProtectCandidates,
   exitStrategyPairs,
   exitSignalStrategyPairs,
@@ -35,7 +36,7 @@ import { planLaneOrders } from "./server/lane-orders.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
 import { closePool, runOnWorkers, type ExitStrategyReply } from "./server/pool.server.ts";
-import type { Bars, Protect } from "./domain/types.ts";
+import type { Bars, Protect, Trade } from "./domain/types.ts";
 
 function finish<T>(g: Generator<void, T>): T {
   let x = g.next();
@@ -49,6 +50,19 @@ describe("independent historic exit strategy", () => {
     assert.equal(passesExitHourlyConsistency({ hours: 8, greenHours: 3 }, 0.5), false);
     assert.equal(passesExitHourlyConsistency({ hours: 5, greenHours: 0 }, 0.5), true);
     assert.equal(passesExitHourlyConsistency({ hours: 8, greenHours: 0 }, 0), true);
+  });
+
+  it("requires every chronological validation slice to pass without future closes or pooled rescue", () => {
+    const row = (exitT: number, r: number) => ({ cfg: "fixture", sym: "A", side: 1, entryT: exitT - 1, exitT, r } as Trade);
+    const pass = [row(1, .01), row(2, -.001), row(5, .01), row(6, .01), row(7, -.001), row(10, .01)];
+    assert.equal(passesExitValidationSlices(pass, 0, 10, 2, 3, 1.1), true);
+    const recentLoss = [row(1, .1), row(2, .1), row(5, .1), row(6, -.01), row(7, -.01), row(10, .001)];
+    assert.equal(passesExitValidationSlices(recentLoss, 0, 10, 2, 3, 1.1), false);
+    assert.equal(passesExitValidationSlices(pass.slice(0, 5), 0, 10, 2, 3, 1.1), false, "insufficient recent sample");
+    assert.equal(passesExitValidationSlices([...pass, row(11, 1)], 0, 10, 2, 3, 1.1), false, "future rows rejected");
+    assert.equal(passesExitValidationSlices(recentLoss, 0, 10, 1, 3, 1.1), true, "one slice preserves the separate pooled gate");
+    for (const n of [0, 1.5, 5, NaN]) assert.throws(() => checkSettings({ exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, validationSlices: n } }));
+    for (const n of [1, 2, 4]) assert.doesNotThrow(() => checkSettings({ exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, validationSlices: n } }));
   });
 
   it("caps config sets fairly across independent tactics and directions", () => {
@@ -992,6 +1006,7 @@ describe("independent historic exit strategy", () => {
       trainFraction: 0.6,
       minEntries: 5,
       minValidationTrades: 4,
+      validationSlices: 2,
       minPf: 1.05,
       maxDdr: 0,
       holdH: 3,

@@ -126,6 +126,8 @@ export interface ExitProtectionState {
   baseSl: number;
   baseTrail: number;
   baseTrailDist: number;
+  /** Modeled round-trip cost captured at entry; absent legacy states retain their original zero-cost lock. */
+  cost?: number;
   previousClose: number;
   rangeEma: number;
   moveEma: number;

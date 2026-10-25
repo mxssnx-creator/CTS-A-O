@@ -17,15 +17,17 @@ export interface ExitProtectionPosition {
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 
 /** Legacy Historic Exit ids without a tactic retain their original fixed protection behavior. */
-export function createExitProtection(p: Protect, entry: number): ExitProtectionState | undefined {
+export function createExitProtection(p: Protect, entry: number, cost = 0): ExitProtectionState | undefined {
   if (
     p.exitType !== "historic" ||
     !p.exitSet ||
     !(entry > 0 && p.sl > 0 && (p.tp > 0 || (p.trailOnly && p.trail > 0)))
   )
     return;
+  if (!(Number.isFinite(cost) && cost >= 0)) throw new RangeError("Exit protection cost must be finite and nonnegative");
   return {
     set: p.exitSet,
+    ...(cost > 0 ? { cost } : {}),
     baseTp: p.tp > 0 ? p.tp : p.trail,
     baseSl: p.sl,
     baseTrail: p.trail,
@@ -87,15 +89,19 @@ export function advanceExitProtection(
   if (p.side > 0) p.peak = Math.max(p.peak, bar.high);
   else p.peak = Math.min(p.peak, bar.low);
   const profit = (p.side * (bar.close - p.entry)) / p.entry;
+  const cost = s.cost ?? 0;
+  // A profitable mark must earn the modeled cost plus room before a net-breakeven lock can be placed.
+  // Capture cost at entry: later settings edits cannot change an owned allocation's protection contract.
+  const lockActivation = Math.max(s.baseTp * 0.25, cost * 1.5);
   if (
     (s.set === "adaptive-sl" || s.set === "trailing" || s.set === "trailing-only") &&
-    profit >= s.baseTp * 0.25
+    profit >= lockActivation
   ) {
-    const lock = Math.min(s.baseTp * 0.5, profit * 0.35);
+    const lock = Math.max(cost, Math.min(s.baseTp * 0.5, profit * 0.35));
     const stop = p.entry * (1 + p.side * lock);
     p.stop = p.side > 0 ? Math.max(p.stop, stop) : Math.min(p.stop, stop);
-  } else if (s.set === "breakeven" && profit >= s.baseTp * 0.25) {
-    const stop = p.entry;
+  } else if (s.set === "breakeven" && profit >= lockActivation) {
+    const stop = p.entry * (1 + p.side * cost);
     p.stop = p.side > 0 ? Math.max(p.stop, stop) : Math.min(p.stop, stop);
   }
   if ((s.set === "trailing" || s.set === "trailing-only") && s.baseTrail > 0) {

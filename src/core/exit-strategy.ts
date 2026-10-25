@@ -1,7 +1,7 @@
 // Independently qualified, prehistory-derived exit configs for initialized engine indications.
 // Candidate MFE is fitted on the older segment only; every protect is then judged on the later completed-bar holdout.
 import { createHash } from "node:crypto";
-import type { Bars, BotType, ExitConfigSet, Protect, Stats, Tactics } from "./domain/types.ts";
+import type { Bars, BotType, ExitConfigSet, Protect, Stats, Tactics, Trade } from "./domain/types.ts";
 import type { ComboRun } from "./pipeline/pipeline.ts";
 import type { ExitStrategySettings } from "./config.ts";
 import { entrySignal } from "./bots/bots.ts";
@@ -66,6 +66,7 @@ export interface ExitStrategyDiagnostics {
   pfRejected: number;
   greenHourRejected: number;
   ddrRejected: number;
+  stabilityRejected: number;
   qualified: number;
 }
 
@@ -84,6 +85,7 @@ export const emptyExitStrategyDiagnostics = (): ExitStrategyDiagnostics => ({
   pfRejected: 0,
   greenHourRejected: 0,
   ddrRejected: 0,
+  stabilityRejected: 0,
   qualified: 0,
 });
 
@@ -93,6 +95,25 @@ export function passesExitHourlyConsistency(
   minShare: number,
 ): boolean {
   return minShare <= 0 || stats.hours < 6 || stats.greenHours / stats.hours >= minShare;
+}
+
+/** Every disjoint completed-close slice must pass; one old winning cluster cannot mask a losing recent slice. */
+export function passesExitValidationSlices(
+  trades: readonly Trade[], fromT: number, toT: number, parts: number,
+  minTrades: number, minPf: number, maxDdr?: number,
+): boolean {
+  if (parts === 1) return true;
+  if (!Number.isInteger(parts) || parts < 1 || parts > 4 || !(toT > fromT)) return false;
+  const slices: Trade[][] = Array.from({ length: parts }, () => []);
+  for (const trade of trades) {
+    if (trade.exitT <= fromT || trade.exitT > toT) return false;
+    const index = Math.max(0, Math.min(parts - 1, Math.ceil((trade.exitT - fromT) * parts / (toT - fromT)) - 1));
+    slices[index].push(trade);
+  }
+  return slices.every(rows => {
+    const stats = statsOf(rows);
+    return stats.n >= minTrades && stats.net > 0 && stats.pf >= minPf && !ddrFails(stats.mdd, stats.net, maxDdr);
+  });
 }
 
 const rounded = (x: number) => +x.toFixed(4);
@@ -592,6 +613,11 @@ export function* exitStrategyProtectsGen(
           : settings.maxDdr || undefined;
       if (ddrFails(stats.mdd, stats.net, maxDdr)) {
         diagnostics.ddrRejected++;
+        continue;
+      }
+      if (!passesExitValidationSlices(trades, fitCutT, cutT, settings.validationSlices ?? 1,
+        Math.max(settings.minValidationTrades, validation.minTrades), Math.max(settings.minPf, validation.minPf), maxDdr)) {
+        diagnostics.stabilityRejected++;
         continue;
       }
       const id = configId(bot, ind, qualifiedProtect);

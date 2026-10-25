@@ -20,7 +20,7 @@ const protect = (set: ExitConfigSet): Protect => ({
   exitSide: 1,
   exitSet: set,
 });
-const position = (set: ExitConfigSet, side = 1): ExitProtectionPosition => {
+const position = (set: ExitConfigSet, side = 1, cost = 0): ExitProtectionPosition => {
   const p = capTrailingOnlyProtect(protect(set));
   return {
     side,
@@ -31,7 +31,7 @@ const position = (set: ExitConfigSet, side = 1): ExitProtectionPosition => {
     trailOn: false,
     trail: p.trail,
     trailDist: p.trail * (p.trailStep ?? 1),
-    exitProtection: createExitProtection(p, 100),
+    exitProtection: createExitProtection(p, 100, cost),
   };
 };
 const bars = (rows: number[][], tfMin = 1): Bars => ({
@@ -47,6 +47,27 @@ const bars = (rows: number[][], tfMin = 1): Bars => ({
 });
 
 describe("causal per-position Exit protection", () => {
+  it("locks breakeven after captured costs in both directions and never places it ahead of earned profit", () => {
+    for (const side of [1, -1]) for (const set of ["breakeven", "adaptive-sl", "trailing", "trailing-only"] as const) {
+      const p = position(set, side, .002);
+      p.exitProtection!.baseTp = .006;
+      const mark = (profit: number) => ({ t: 60_000 + profit * 1e6,
+        high: Math.max(100, 100 * (1 + side * profit)), low: Math.min(100, 100 * (1 + side * profit)), close: 100 * (1 + side * profit) });
+      const initial = p.stop;
+      advanceExitProtection(p, mark(.002));
+      assert.equal(p.stop, initial, "no net-breakeven lock while mark only covers modeled cost");
+      const restored = JSON.parse(JSON.stringify(p));
+      advanceExitProtection(p, mark(.004));
+      advanceExitProtection(restored, mark(.004));
+      assert.deepEqual(p, restored, "captured cost survives restart");
+      const locked = side * (p.stop - p.entry) / p.entry;
+      assert.ok(locked >= .002 - 1e-12 && locked < .004, `${set} locks the cost behind the mark`);
+      assert.equal(p.exitProtection!.cost, .002);
+    }
+    assert.throws(() => createExitProtection(protect("breakeven"), 100, NaN));
+    assert.throws(() => createExitProtection(protect("breakeven"), 100, -.001));
+  });
+
   it("keeps legacy Exit ids fixed and gives every tactic its own bounded TP state", () => {
     assert.equal(
       createExitProtection({ tp: 0.1, sl: 0.1, trail: 0, hold: 10, exitType: "historic" }, 100),
@@ -158,10 +179,10 @@ describe("causal per-position Exit protection", () => {
 
   it("matches simulation, tick and restart for all five tactics, both directions and 1/5/15m lanes", () => {
     for (const set of ["static-sl", "adaptive-sl", "trailing", "breakeven", "trailing-only"] as const) {
-      for (const tf of [1, 5, 15]) for (const side of [1, -1] as const) {
+      for (const tf of [1, 5, 15]) for (const side of [1, -1] as const) for (const cost of [0, .0015, .002]) {
         const dt = tf * 60_000;
         const price = (x: number) => 100 + side * (x - 100);
-        const p = position(set, side);
+        const p = position(set, side, cost);
         const tick = JSON.parse(JSON.stringify(p)) as ExitProtectionPosition;
         tickTrail(tick, 100, dt, dt);
         tickTrail(tick, price(103), dt + 10, dt);
@@ -179,7 +200,7 @@ describe("causal per-position Exit protection", () => {
           ], tf),
           Int8Array.of(side, 0),
           { ...protect(set), exitSide: side },
-          { cost: 0 },
+          { cost },
         ).open!;
         assert.ok(simulated, `${set} m${tf} side${side}: allocation remains open`);
         assert.equal(tick.stop, simulated.stop, `${set} m${tf} side${side}`);

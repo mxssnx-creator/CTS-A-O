@@ -264,6 +264,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (typeof v !== "boolean") throw new Error(`toggle ${k} must be boolean`);
   if (s.exitStrategy) {
     const e = s.exitStrategy;
+    if (e.validationSlices !== undefined && (!Number.isInteger(e.validationSlices) || e.validationSlices < 1 || e.validationSlices > 4))
+      throw new Error("Exit validation slices: integer from 1 to 4");
     if (e.signalRanges !== undefined) {
       if (!Array.isArray(e.signalRanges) || e.signalRanges.length > 6)
         throw new Error("Signal Exit ranges: at most 6 additional fits");

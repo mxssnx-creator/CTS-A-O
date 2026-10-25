@@ -295,6 +295,7 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
           ex.triggerOrder(order.id);
           tick(20_000);
           await step();
+          // relation: all rows — this isolated fixture verifies exactly what the writer settled.
           const rows = rt.db.all<{ cfg: string; reason: string; exit: number }>(
             "SELECT cfg, reason, exit FROM live_lane_trades");
           assert.equal(rows.length, i + 1, "each filled allocation settles exactly once");

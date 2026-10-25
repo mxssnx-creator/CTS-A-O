@@ -464,6 +464,9 @@ describe(
           assert.equal(await ranking.inputValue(), "change1h5m", "the new exchange ranking persists through a real Settings save/reload");
           await ranking.selectOption(previousRank);
           await saveNow();
+          const exitSlices = page.getByRole("spinbutton", { name: /^Exit validation slices/ });
+          const previousSlices = await exitSlices.inputValue();
+          await exitSlices.fill("2");
           await page.getByRole("button", { name: "Add Signal Exit range", exact: true }).click();
           const structure = page.getByRole("combobox", { name: "Signal Exit range 2 price structure", exact: true });
           await structure.selectOption("extrema");
@@ -472,6 +475,8 @@ describe(
           await settleRequests();
           await structure.waitFor({ state: "visible", timeout: 60_000 });
           assert.equal(await structure.inputValue(), "extrema", "additional Exit range survives settings save/reload");
+          assert.equal(await exitSlices.inputValue(), "2", "independent validation slices survive save/reload");
+          await exitSlices.fill(previousSlices);
           await page.getByRole("button", { name: "Remove range 2", exact: true }).click();
           await saveNow();
           await page.getByRole("switch", { name: "Minimal range", exact: true }).click();

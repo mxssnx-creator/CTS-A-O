@@ -460,7 +460,7 @@ function simCore(
         stop = side === 1 ? entry * (1 - q.sl) : entry * (1 + q.sl);
         target = q.trailOnly ? 0 : side === 1 ? entry * (1 + q.tp) : entry * (1 - q.tp);
         trail = q.trail;
-        exitProtection = createExitProtection(q, entry);
+        exitProtection = createExitProtection(q, entry, cost);
         peak = entry;
         trailOn = false;
         exitPosition = exitProtection

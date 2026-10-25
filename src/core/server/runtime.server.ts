@@ -1285,7 +1285,7 @@ export class CoreRuntime {
     for (const p of this.paper.positions) {
       const own = parseConfigId(p.cfg)?.protect;
       if (!p.exitProtection && own) {
-        const protection = createExitProtection(own, p.entry);
+        const protection = createExitProtection(own, p.entry, this.settings.cost);
         if (protection) p.exitProtection = protection;
       }
       if (own?.trail && own.trail > 0) {
