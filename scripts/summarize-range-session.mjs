@@ -22,7 +22,7 @@ assert.deepEqual(counts(trades, open), Object.fromEntries(Object.entries(book.to
 const stat = rows => {
   let gp = 0, gl = 0;
   for (const x of rows) { const r = modeledUnitReturn(x); assert.ok(Number.isFinite(r)); gp += Math.max(0, r); gl += Math.max(0, -r); }
-  return { closes: rows.length, gp, gl, pf: gl ? gp / gl : null, pfState: !rows.length ? 'empty' : !gl ? 'no-loss' : 'measured' };
+  return { closes: rows.length, gp, gl, pf: gl ? gp / gl : null, pfState: !rows.length ? 'empty' : !gl ? gp > 0 ? 'no-loss' : 'flat' : 'measured' };
 };
 const protocol = JSON.parse(readFileSync(`${dir}/protocol.json`));
 const coverage = new Map(), configCoverage = new Map();
@@ -42,7 +42,7 @@ for await (const step of iterateSessionValidation(`${dir}/raw.json`)) {
 // Failed gate checks can short-circuit before reporting n. Count the archived scalar
 // historical closes instead of treating that absent sample as zero.
 const fromT = Math.max(protocol.window.evaluationFromT, initial - protocol.actualWf.longH * 3600000);
-for await (const { id: cfg, trades: rows } of iterateSessionTapeTrades(`${dir}/raw.json`)) {
+if (configCoverage.size) for await (const { id: cfg, trades: rows } of iterateSessionTapeTrades(`${dir}/raw.json`)) {
   const entry = configCoverage.get(cfg);
   if (!entry) continue;
   assert.equal(entry.seen, false, 'Duplicate scalar history');

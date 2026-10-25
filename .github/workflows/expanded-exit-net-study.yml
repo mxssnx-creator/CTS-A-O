@@ -1,8 +1,5 @@
 name: Expanded Exit net-breakeven verification
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/expanded-exit-net-study.yml'
   workflow_dispatch:
 permissions:
   contents: read

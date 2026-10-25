@@ -37,7 +37,12 @@ def counts(row):
 def positions(row):
     return f"{row['openedPositions']}/{row['closedPositions']}/{row['openPositions']}"
 def pf(row):
-    return f"{row['pf']:.4f}" if row['pf'] is not None else '∞ (no losses)' if row['pfState'] == 'no-loss' else '— ('+row['pfState']+')'
+    n = row.get('closes', row.get('orders', row.get('n')))
+    if n == 0 or row.get('pfState') == 'empty': return '— (empty)'
+    if row.get('noLoss') or row.get('pfState') == 'no-loss': return '∞ (no losses)'
+    if row.get('pfState') == 'flat': return '— (flat)'
+    return f"{row['pf']:.4f}" if row.get('pf') is not None else '— (unavailable)'
+
 
 lines = ['# Exit comparison results — 25 October 2026 — Europe/Vienna', '',
     f'{len(results)} audited 12-hour replays, each with 12 symbols, 150h fitting history, 1/5/15m lanes and minute pricing. These are funded modeled executions, not venue fills. Policies are frozen before each replay. PF is gross gains divided by gross losses after costs: 1.0 is neutral, above 1 profitable, below 1 losing. Samples without losses show ∞; empty samples show no measured PF. Independent losses remain included.', '',
@@ -46,7 +51,7 @@ lines = ['# Exit comparison results — 25 October 2026 — Europe/Vienna', '',
     '|---|---:|---:|---|---|---:|---|---|---:|---:|']
 for r in results:
     t, e, m = r['total'], r['exit'], r['metrics']
-    lines.append(f"| {r['scenario']} | {t['pf']:.4f} | {100*t['equityMaxDdPct']:.4f}% | {counts(t['fundedCounts'])} | {positions(t['fundedCounts'])} | {pf(e)} | {counts(e)} | {positions(e)} | {m['wallSeconds']:.1f} | {m['childPeakRssMiB']:.1f} |")
+    lines.append(f"| {r['scenario']} | {pf(t)} | {100*t['equityMaxDdPct']:.4f}% | {counts(t['fundedCounts'])} | {positions(t['fundedCounts'])} | {pf(e)} | {counts(e)} | {positions(e)} | {m['wallSeconds']:.1f} | {m['childPeakRssMiB']:.1f} |")
 lines += ['', '![Performance and allocation counts](comparison.svg)', '', '![Hourly account equity](hourly-equity.svg)', '',
     'Hourly results below use settled-close reporting bins; calculations still use minute prices. Cohort-boundary holdings are included by the independent position/order ledger. The coverage archive counts both directions for every config, including the ineligible opposite side of side-specific Exit IDs; those all-orientation percentages must not be presented as eligible-side percentages.', '']
 sets = ['static-sl','adaptive-sl','trailing','breakeven','trailing-only']
