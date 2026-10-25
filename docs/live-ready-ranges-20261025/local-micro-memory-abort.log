@@ -1,0 +1,36 @@
+memory: MALLOC_ARENA_MAX and MALLOC_MMAP_THRESHOLD_ not set — freed buffers stay in the allocator's arenas and RSS keeps growing (start with MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576)
+session: 12 symbols · 12h pre-historic · 12h simulated · tactics default · min PF 1.1 · focus 980 · toggles {"normal":true,"trailing":true,"exit":true,"block":false,"blockActive":false,"dca":false,"dcaActive":false,"axis":false}
+  [0 s] computing Base 0% (job 10%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 197 MB
+  [30 s] computing Base 4% (job 11%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 367 MB
+  [60 s] computing Base 15% (job 15%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 504 MB
+  [90 s] computing Base 24% (job 19%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 555 MB
+  [120 s] computing Base 36% (job 23%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 614 MB
+  [150 s] computing Base 40% (job 24%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 639 MB
+  [180 s] computing Base 42% (job 25%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 719 MB
+  [210 s] computing Base 54% (job 29%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 736 MB
+  [240 s] computing Base 62% (job 32%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 732 MB
+  [270 s] computing Base 66% (job 33%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 735 MB
+  [300 s] computing Base 82% (job 39%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 750 MB
+  [331 s] computing Base 89% (job 41%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 771 MB
+  [361 s] computing Tapes 2% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 968 MB
+  [391 s] computing Tapes 7% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 1376 MB
+  [421 s] computing Tapes 13% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 1777 MB
+  [451 s] computing Tapes 17% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 2044 MB
+  [481 s] computing Tapes 22% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 2495 MB
+  [511 s] computing Tapes 28% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 3021 MB
+  [541 s] computing Tapes 33% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 3340 MB
+  [571 s] computing Tapes 36% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 3625 MB
+  [601 s] computing Tapes 41% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 3966 MB
+  [631 s] computing Tapes 45% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 4232 MB
+  [661 s] computing Tapes 47% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 4556 MB
+  [691 s] computing Tapes 49% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 4823 MB
+  [721 s] computing Tapes 52% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 5074 MB
+  [752 s] computing Tapes 56% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 5360 MB
+  [782 s] computing Tapes 61% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 5800 MB
+  [812 s] computing Tapes 67% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 6155 MB
+  [842 s] computing Tapes 71% (job 72%) strategy tapes on 2 cores · 614 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 6472 MB
+  memory: memory pressure: 1178 MB available (hard 1200 MB), heap headroom 1371 MB, this process 6524 MB — compute aborted · fallback micro carried
+  [872 s] computing Base 0% (job 0%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 6865 MB
+  memory: memory pressure: 1155 MB available (hard 1200 MB), heap headroom 1326 MB, this process 6547 MB — compute aborted · fallback micro and minimal carried
+  [902 s] computing Base 2% (job 1%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 5316 MB
+  [932 s] computing Base 15% (job 6%) Base on 2 cores · 1960 combos · symbols 12/12 · computes 0 · paper on #0 · rss 5318 MB

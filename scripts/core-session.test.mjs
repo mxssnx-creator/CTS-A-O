@@ -322,7 +322,12 @@ function replay({ exitOrders = false, endpointOccupancy = false, caps = false, w
     if (exitOrders) {
       const protect = { tp: .01, sl: .02, trail: 0, hold: 60, exitType: "historic", exitSide: 1, exitSet: 0 };
       raw.trades = raw.trades.map((x, i) => ({ ...x, kind: "exit", cfg: configId("follow", i ? "sig-ema-cross-s@m1" : "ema-9-21@m1", protect) }));
+      raw.tapeAgg = { heat: [{ range: "Wide", kind: "exit", tp: 1, slx: 2, trx: 0,
+        all: { cfgs: 1, pos: 1, n: 1, w: 1, gp: .5, gl: 0 },
+        passed: { cfgs: 1, pos: 1, n: 1, w: 1, gp: .5, gl: 0 } }] };
+
     }
+    if (exitOrders === "missing") raw.tapeAgg.heat = [];
     if (weighted) {
       // The engine stores execution r already multiplied by Block/coordination volume.
       raw.trades[0] = { ...raw.trades[0], r: 1, mult: 2, vol: 2 };
@@ -456,7 +461,7 @@ function replay({ exitOrders = false, endpointOccupancy = false, caps = false, w
       "--html", join(dir, "html"), "--writeup", join(dir, "writeup.md"), "--quiet", "true"], {
       encoding: "utf8", timeout: 15_000, env: { ...process.env, CTS_CORE_VARIANTS: "0" },
     });
-    assert.equal(result.status, invalidReturn ? 1 : 0, result.stderr || result.stdout);
+    assert.equal(result.status, invalidReturn || exitOrders === "missing" ? 1 : 0, result.stderr || result.stdout);
     return {
       data: JSON.parse(readFileSync(join(dir, "html/data.json"), "utf8")),
       report: JSON.parse(readFileSync(join(dir, "report.json"), "utf8")),
@@ -498,6 +503,19 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.deepEqual(data.types.filter(x => x.n).map(x => [x.key, x.n]), [["Exit", 1], ["Signal · Exit", 1]]);
     assert.equal(data.total.orders, 2);
     assert.equal(data.total.pf, 2.5);
+    assert.equal(data.heat.exitRangeCorrections, 1);
+    assert.equal(data.heat.cells[0].range, "Exit");
+    assert.equal(data.heat.cells[0].all.gp, .5);
+    assert.equal(data.heat.exec["Exit|exit|1|2|0"].n, 1);
+
+  });
+
+  it("still rejects an executed Exit cell with no computed heat evidence", () => {
+    const { data } = replay({ exitOrders: "missing" });
+    assert.equal(data.checksOk, false);
+    const check = data.checks.find(x => x.name === "heatmap: every executed cell is a computed cell");
+    assert.equal(check.actual, 1);
+    assert.equal(check.ok, false);
   });
 
   it("keeps first simulated-step seats distinct from the later paper selection in every output", () => {

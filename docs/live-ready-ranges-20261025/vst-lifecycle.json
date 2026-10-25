@@ -1,0 +1,231 @@
+{
+  "schema": "cts-live-ready-vst-lifecycle-v1",
+  "sourceCommit": "e733b09fc852ccded5ee0c24638f0cbaab74b654",
+  "connection": "bingx-vst-02",
+  "syntheticQualification": true,
+  "profitabilityEvidence": false,
+  "symbol": "ETH-USDT",
+  "ranges": [
+    {
+      "range": "Micro",
+      "positionsOpened": 2,
+      "marketFills": 6,
+      "protectiveOrders": 6,
+      "logicalConfigLanes": 6,
+      "phases": [
+        {
+          "label": "Micro:open",
+          "readyToDispatchMs": 0.40562899999986257,
+          "wallMs": 6379.393585999999
+        },
+        {
+          "label": "Micro:update",
+          "readyToDispatchMs": 0.040790999999444466,
+          "wallMs": 3045.6019570000008
+        },
+        {
+          "label": "Micro:partial-siblings",
+          "readyToDispatchMs": 0.04779000000053202,
+          "wallMs": 18996.509731000002
+        },
+        {
+          "label": "Micro:close",
+          "readyToDispatchMs": 0.06557700000121258,
+          "wallMs": 4054.3454930000007
+        }
+      ]
+    },
+    {
+      "range": "Minimal",
+      "positionsOpened": 2,
+      "marketFills": 6,
+      "protectiveOrders": 6,
+      "logicalConfigLanes": 6,
+      "phases": [
+        {
+          "label": "Minimal:open",
+          "readyToDispatchMs": 0.039448000003176276,
+          "wallMs": 4198.936053000005
+        },
+        {
+          "label": "Minimal:update",
+          "readyToDispatchMs": 0.04557799999747658,
+          "wallMs": 3012.8114790000036
+        },
+        {
+          "label": "Minimal:partial-siblings",
+          "readyToDispatchMs": 0.051666999999724794,
+          "wallMs": 11236.997475999997
+        },
+        {
+          "label": "Minimal:close",
+          "readyToDispatchMs": 0.04651900000317255,
+          "wallMs": 3566.381573000006
+        }
+      ]
+    },
+    {
+      "range": "Short",
+      "positionsOpened": 2,
+      "marketFills": 6,
+      "protectiveOrders": 6,
+      "logicalConfigLanes": 6,
+      "phases": [
+        {
+          "label": "Short:open",
+          "readyToDispatchMs": 0.14654699999664444,
+          "wallMs": 3520.583572000003
+        },
+        {
+          "label": "Short:update",
+          "readyToDispatchMs": 0.06459500000346452,
+          "wallMs": 3314.764672000005
+        },
+        {
+          "label": "Short:partial-siblings",
+          "readyToDispatchMs": 0.03148599999258295,
+          "wallMs": 23425.135567999998
+        },
+        {
+          "label": "Short:close",
+          "readyToDispatchMs": 0.017655999996350147,
+          "wallMs": 4818.007578000004
+        }
+      ]
+    },
+    {
+      "range": "General",
+      "positionsOpened": 2,
+      "marketFills": 6,
+      "protectiveOrders": 6,
+      "logicalConfigLanes": 6,
+      "phases": [
+        {
+          "label": "General:open",
+          "readyToDispatchMs": 0.022603000004892237,
+          "wallMs": 3401.4195660000114
+        },
+        {
+          "label": "General:update",
+          "readyToDispatchMs": 0.01740500000596512,
+          "wallMs": 3530.5448739999993
+        },
+        {
+          "label": "General:partial-siblings",
+          "readyToDispatchMs": 0.021210999999311753,
+          "wallMs": 25690.400966999994
+        },
+        {
+          "label": "General:close",
+          "readyToDispatchMs": 0.017075999989174306,
+          "wallMs": 3938.5619949999964
+        }
+      ]
+    },
+    {
+      "range": "Long",
+      "positionsOpened": 2,
+      "marketFills": 6,
+      "protectiveOrders": 6,
+      "logicalConfigLanes": 6,
+      "phases": [
+        {
+          "label": "Long:open",
+          "readyToDispatchMs": 0.0421900000073947,
+          "wallMs": 4893.915937999991
+        },
+        {
+          "label": "Long:update",
+          "readyToDispatchMs": 0.021421999990707263,
+          "wallMs": 3383.7070079999976
+        },
+        {
+          "label": "Long:partial-siblings",
+          "readyToDispatchMs": 0.017355000018142164,
+          "wallMs": 24758.128957000008
+        },
+        {
+          "label": "Long:close",
+          "readyToDispatchMs": 0.018948000011732802,
+          "wallMs": 3120.070211000013
+        }
+      ]
+    },
+    {
+      "range": "Wide",
+      "positionsOpened": 2,
+      "marketFills": 6,
+      "protectiveOrders": 6,
+      "logicalConfigLanes": 6,
+      "phases": [
+        {
+          "label": "Wide:open",
+          "readyToDispatchMs": 0.023704999999608845,
+          "wallMs": 3648.468313999998
+        },
+        {
+          "label": "Wide:update",
+          "readyToDispatchMs": 0.02624800000921823,
+          "wallMs": 3410.5624789999856
+        },
+        {
+          "label": "Wide:partial-siblings",
+          "readyToDispatchMs": 0.01928900001803413,
+          "wallMs": 38462.522972000006
+        },
+        {
+          "label": "Wide:close",
+          "readyToDispatchMs": 0.033850999985588714,
+          "wallMs": 3716.5613619999785
+        }
+      ]
+    },
+    {
+      "range": "MinimalPlus",
+      "positionsOpened": 2,
+      "marketFills": 6,
+      "protectiveOrders": 6,
+      "logicalConfigLanes": 6,
+      "phases": [
+        {
+          "label": "MinimalPlus:open",
+          "readyToDispatchMs": 0.01800599999842234,
+          "wallMs": 3520.9247020000184
+        },
+        {
+          "label": "MinimalPlus:update",
+          "readyToDispatchMs": 0.017476000008173287,
+          "wallMs": 3827.522662000003
+        },
+        {
+          "label": "MinimalPlus:partial-siblings",
+          "readyToDispatchMs": 0.03152700001373887,
+          "wallMs": 37104.454810000025
+        },
+        {
+          "label": "MinimalPlus:close",
+          "readyToDispatchMs": 0.020641000010073185,
+          "wallMs": 4978.298078000022
+        }
+      ]
+    }
+  ],
+  "exchangePositionsOpened": 14,
+  "orderRequestsAccepted": 84,
+  "marketOrdersFilled": 42,
+  "protectiveOrdersCancelled": 42,
+  "fillFeesConfirmed": 42,
+  "commissionUsd": 0.394801,
+  "missingOrderIds": 0,
+  "unexpectedOrderIds": 0,
+  "finalPositions": 0,
+  "finalOrders": 0,
+  "originalSettingsRestored": true,
+  "cancelFalseReplies": 14,
+  "limitations": [
+    "Synthetic exact qualification exercises native lifecycle, not live strategy admission or profitability.",
+    "Fourteen cancellation calls returned false; subsequent independent venue history confirms all 42 protective orders cancelled and the fresh book is empty.",
+    "Two late commission receipts reconciled after the final phase using the production fee reconciler.",
+    "Native partial-close wall time remains 11\u201338 seconds; sub-millisecond dispatch does not imply sub-millisecond venue execution."
+  ]
+}
