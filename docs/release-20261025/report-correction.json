@@ -1,0 +1,6 @@
+{
+  "nativeCase": "/workspace/scratch/1bcaeeb063ee/CTS-A-O-export/runs/combined-signal-20261025/control-12",
+  "nativeSourceSha256": "9b8d3062c50e486f88228bfe6cb02ad63d3f48dd4a971156eb6e0d66784fda74",
+  "reportCommit": "d6da8b8159a233e21c32c4b854dd34606238bd21",
+  "scope": "Regenerated report only. Original native failure/report retained. Raw simulation, protocol, all history and allocation inputs unchanged. Signal Exit coverage compared to its own tape population."
+}

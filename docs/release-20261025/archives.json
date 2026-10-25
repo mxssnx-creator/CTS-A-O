@@ -1,0 +1,20 @@
+[
+  {
+    "name": "cts-axis-ordinary-12h-cb4a1c.zip",
+    "libraryFileId": "libfile_ad0c9c0332148191b1bf9565c03538a0",
+    "bytes": 149623764,
+    "sha256": "72c8532cea5c1f882493a2351ae9d95666b705ad1a84a6f5cd09974b602e0b52"
+  },
+  {
+    "name": "cts-signal-combined-12h-native-9b8d30.zip",
+    "libraryFileId": "libfile_5dbe661a8774819188a783de45c1bb61",
+    "bytes": 266439294,
+    "sha256": "7cc554c3b7923a952e8263227601700dec438d595afe5c159f91bac53d9e18b6"
+  },
+  {
+    "name": "cts-signal-combined-12h-audited-9b8d30.zip",
+    "libraryFileId": "libfile_01b095a94840819195363dd07b1ed044",
+    "bytes": 300687157,
+    "sha256": "089fcb8f24cee2fa25d6eeeba043b42e6014a6df54e6e82710417cf66ef66124"
+  }
+]

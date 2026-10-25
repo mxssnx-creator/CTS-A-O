@@ -1,0 +1,411 @@
+{
+  "schema": "cts-signal-coverage-v1",
+  "ok": true,
+  "sourceSha256": "9b8d3062c50e486f88228bfe6cb02ad63d3f48dd4a971156eb6e0d66784fda74",
+  "window": {
+    "evaluationFromT": 1791687600000,
+    "tradeStartT": 1792227600000,
+    "endT": 1792270800000,
+    "preH": 150,
+    "runH": 12
+  },
+  "policy": {
+    "historyH": 150,
+    "validLastN": 4,
+    "fullWindowMinTrades": 12,
+    "exitMinTrades": 4,
+    "lastNFloor": 5,
+    "toggles": {
+      "axis": false,
+      "block": false,
+      "blockActive": false,
+      "dca": false,
+      "dcaActive": false,
+      "exit": true,
+      "normal": true,
+      "trailing": true
+    },
+    "signalSettings": {
+      "accept": {
+        "enabled": true,
+        "hours": 48,
+        "minPf": 1.3,
+        "minTrades": 6
+      },
+      "atr": {
+        "holdBars": 3,
+        "sl": [
+          0.7,
+          1.15,
+          1.5
+        ],
+        "tpRatio": [
+          1,
+          1.6,
+          2.2
+        ],
+        "trail": [
+          0.8
+        ]
+      },
+      "baseGate": false,
+      "cluster": {
+        "enabled": true,
+        "lossShare": 0.6,
+        "minLosses": 8,
+        "windowMin": 60
+      },
+      "combinedVolumeFactors": {
+        "active": 1,
+        "bollinger": 1,
+        "break": 1,
+        "channel": 1,
+        "direction": 1,
+        "ema": 1,
+        "ichimoku": 1,
+        "inverse": 1,
+        "macd": 1,
+        "micro": 1,
+        "move": 1,
+        "osc": 1,
+        "relate": 1,
+        "rsi": 1,
+        "sar": 1,
+        "smooth": 1,
+        "tactic": 1,
+        "trend": 1,
+        "volume": 1
+      },
+      "coordination": {
+        "count": 0,
+        "enabled": true,
+        "minSources": 3,
+        "ranges": {
+          "long": true,
+          "normal": true,
+          "short": true
+        },
+        "volumeFactor": 1
+      },
+      "count": 0,
+      "enabled": true,
+      "exits": "both",
+      "filter": {
+        "trendH": 0,
+        "volFloor": 0.003
+      },
+      "guard": {
+        "enabled": true,
+        "lastN": 4
+      },
+      "hist": {
+        "enabled": true,
+        "lookbackH": 150,
+        "minN": 30,
+        "quantiles": [
+          0.5,
+          0.75
+        ],
+        "slOfTp": [
+          1,
+          2
+        ],
+        "trailOfTp": [
+          0.25,
+          0.5,
+          0.75
+        ]
+      },
+      "holdH": 48,
+      "lanes": [
+        1,
+        5,
+        15
+      ],
+      "maxOpen": 0,
+      "maxPositions": 250,
+      "minBlockShare": 0.6,
+      "minSl": 0.005,
+      "minTrades": 3,
+      "minTrail": 0.002,
+      "normal": {
+        "slOfTp": [
+          0.5,
+          0.75,
+          1,
+          1.5,
+          2,
+          3
+        ],
+        "tp": [
+          0.01,
+          0.015,
+          0.025,
+          0.03,
+          0.04,
+          0.05,
+          0.06
+        ]
+      },
+      "ownBase": true,
+      "perSymbol": 0,
+      "rangeVolumeFactors": {
+        "medium": 1,
+        "short": 1
+      },
+      "ranges": {
+        "medium": true,
+        "short": true
+      },
+      "rank": "lowdd",
+      "sideAccept": {
+        "enabled": true,
+        "hours": 24,
+        "minPf": 1.3,
+        "minTrades": 20
+      },
+      "sourceGate": {
+        "days": 2,
+        "enabled": false,
+        "minShare": 0.5,
+        "minTrades": 5
+      },
+      "sources": {
+        "act-burst": true,
+        "act-hf": true,
+        "adx": true,
+        "aroon": true,
+        "atr-break": true,
+        "bb-walk": true,
+        "bollinger": true,
+        "cci": true,
+        "cmf": true,
+        "donchian": true,
+        "ema-cross": true,
+        "ema-cross-fast": true,
+        "ema-pullback": true,
+        "ema-slope": true,
+        "ema-trend": true,
+        "heikin-ashi": true,
+        "hma": true,
+        "ichi-cloud": true,
+        "ichimoku": true,
+        "impulse": true,
+        "kama": true,
+        "keltner": true,
+        "macd-cross": true,
+        "macd-hist": true,
+        "macd-slow": true,
+        "mfi": true,
+        "obv": true,
+        "r-apz-reclaim": true,
+        "r-awesome": true,
+        "r-bb-adx": true,
+        "r-bbw-expand": true,
+        "r-bos": true,
+        "r-camarilla": true,
+        "r-capit": true,
+        "r-chand": true,
+        "r-choch": true,
+        "r-clv-thrust": true,
+        "r-connors": true,
+        "r-cvd-div": true,
+        "r-donch-vol": true,
+        "r-elder": true,
+        "r-engulf": true,
+        "r-fakeout": true,
+        "r-fisher": true,
+        "r-fractal": true,
+        "r-frama-pullback": true,
+        "r-fvg": true,
+        "r-inside": true,
+        "r-klinger": true,
+        "r-laguerre": true,
+        "r-linreg": true,
+        "r-nr-break": true,
+        "r-orb": true,
+        "r-pdhl": true,
+        "r-pin": true,
+        "r-roofing": true,
+        "r-rsi2": true,
+        "r-rvi": true,
+        "r-session-trend": true,
+        "r-spring": true,
+        "r-squeeze": true,
+        "r-st-pullback": true,
+        "r-star": true,
+        "r-stc": true,
+        "r-streak": true,
+        "r-sweep": true,
+        "r-tsi": true,
+        "r-valuearea": true,
+        "r-vol-regime": true,
+        "r-vortex": true,
+        "r-vwap-reclaim": true,
+        "r-zdist": true,
+        "reclaim": true,
+        "rsi-mid": true,
+        "rsi-momentum": true,
+        "rsi-reversal": true,
+        "s2-active-hf": true,
+        "s2-adx-gate": true,
+        "s2-atr-break": true,
+        "s2-bb-bounce": true,
+        "s2-block-scale": true,
+        "s2-block-stack": true,
+        "s2-confluence": true,
+        "s2-ema-cross": true,
+        "s2-range-break": true,
+        "s2-range-shift": true,
+        "s2-rsi-revert": true,
+        "s2-st-trail": true,
+        "s2-stoch-swing": true,
+        "s2-vol-break": true,
+        "s2-vwap-axis": true,
+        "sar": true,
+        "squeeze": true,
+        "st-slow": true,
+        "stoch-rsi": true,
+        "supertrend": true,
+        "swing": true,
+        "thrust": true,
+        "trix": true,
+        "volume-break": true,
+        "vwap": true,
+        "williams-r": true,
+        "zscore": true
+      },
+      "sourcesMode": "allow",
+      "strategies": {
+        "axis": false,
+        "dca": false
+      },
+      "trailMax": 0.03,
+      "trailRatios": [
+        0.5,
+        1,
+        1.5
+      ],
+      "trailing": {
+        "slOfTp": 3,
+        "tp": [
+          0.01,
+          0.015,
+          0.03,
+          0.04,
+          0.05,
+          0.06,
+          0.08
+        ],
+        "trailOfTp": [
+          0.2,
+          0.3,
+          0.4,
+          0.6,
+          0.8
+        ]
+      },
+      "trailingOnly": {
+        "enabled": true,
+        "sl": [
+          0.015,
+          0.03,
+          0.06
+        ],
+        "trail": [
+          0.005,
+          0.01,
+          0.02
+        ],
+        "trailStep": 1
+      },
+      "validate": true,
+      "validateH": 24
+    },
+    "gates": {
+      "baseSetsMinPf": 1,
+      "lastNFloor": 5,
+      "maxDdr": 1,
+      "maxDdtH": 35,
+      "minDdtH": 18,
+      "minPf": 1.1,
+      "minTrades": 12,
+      "quorum": 0.6,
+      "rangeMinPf": {
+        "general": 1.2,
+        "long": 1.3,
+        "micro": 1.05,
+        "minimal": 1.1,
+        "short": 1.1
+      },
+      "warmup": true
+    },
+    "exitSettings": {
+      "enabled": true,
+      "holdH": 24,
+      "includeCombined": true,
+      "includeMicro": true,
+      "includeRelations": true,
+      "includeTactics": true,
+      "lookbackH": 150,
+      "maxConfigsPerPair": 24,
+      "maxDdr": 1,
+      "maxSl": 0.25,
+      "maxTp": 0.2,
+      "minEntries": 30,
+      "minGreenHourShare": 0.5,
+      "minPf": 1.1,
+      "minTp": 0.006,
+      "minValidationTrades": 4,
+      "quantiles": [
+        0.6,
+        0.8
+      ],
+      "stopMultiples": [
+        1,
+        2
+      ],
+      "stopQuantiles": [
+        0.5,
+        0.75
+      ],
+      "timeframes": [
+        1,
+        5,
+        15
+      ],
+      "trailShares": [
+        0.33,
+        0.66
+      ],
+      "trainFraction": 0.6,
+      "volumeFactor": 1
+    }
+  },
+  "catalog": {
+    "sources": 118,
+    "sourceLanes": 663,
+    "requestedCells": 137241,
+    "expectedEffectiveConfiguredCells": 125970,
+    "builtConfigs": 126289,
+    "fittedOrRetainedConfigs": 319,
+    "missingConfiguredCells": 0,
+    "missingExamples": [],
+    "expectedExit": 10,
+    "builtExit": 10,
+    "closes": 10999508
+  },
+  "definitions": {
+    "context": "One exact config \u00d7 symbol \u00d7 direction; zero-trade contexts remain in the denominator.",
+    "lastNReady": "At least the full configured Last-N closes strictly before each clock. The separate full-window minTrades and all PF/DDT/DDR/stability gates still apply.",
+    "qualifiedHistory": "Only exact contexts passing all config gates at this clock. Overlapping configurations are not independent market observations; this PF is not later execution PF.",
+    "execution": "Funded settled modeled closes after all execution gates, verified against exact source tapes; endpoint marks excluded.",
+    "protection": "Effective percent protections after lane scaling/floors/caps. ATR multiples and floors are separate from resolved per-entry prices.",
+    "ddt": "Context history DDT uses unit-return running peaks; account equity DDT includes minute open-position marks and is separately reported."
+  },
+  "audit": {
+    "comparisons": 39402168,
+    "elapsedMs": 81314.649468,
+    "peakRssMb": 944.304128
+  }
+}

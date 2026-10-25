@@ -1,0 +1,21 @@
+{
+  "combinedCommit": "d6da8b8159a233e21c32c4b854dd34606238bd21",
+  "codeTree": "c21222fee56f8743fbb128a0872afb498d49032a",
+  "verificationRun": 40235988433,
+  "jobs": "all seven success",
+  "passes": 4390,
+  "failures": 0,
+  "templateSkips": 8,
+  "slowTestsExcludedInCoreButPassedSeparately": 2,
+  "counts": {
+    "scriptBrowser": 729,
+    "appComponent": 86,
+    "core1": 869,
+    "core2": 802,
+    "core3": 881,
+    "core4": 1021,
+    "slow": 2
+  },
+  "offlineBuildRun": 40235988489,
+  "endpointReportRun": 40235988432
+}
