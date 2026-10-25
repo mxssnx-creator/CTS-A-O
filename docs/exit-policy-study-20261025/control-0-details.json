@@ -94,24 +94,24 @@
       "ms": 153.1145600000018,
       "maxSliceMs": 0,
       "mainMs": 25.84501200001978,
-      "slowest": "2 workers · 2 bounded chunks of at most 16 pairs"
+      "slowest": "2 workers \u00b7 2 bounded chunks of at most 16 pairs"
     },
     "Signal history": {
       "ms": 75832.996834,
       "maxSliceMs": 0,
       "mainMs": 622.8828100000246,
-      "slowest": "2 cores · 332 replies"
+      "slowest": "2 cores \u00b7 332 replies"
     },
     "Signal tapes": {
       "ms": 74458.052108,
       "maxSliceMs": 0,
-      "slowest": "2 cores · 309 replies",
+      "slowest": "2 cores \u00b7 309 replies",
       "mainMs": 4031.6059569999925
     },
     "Signal coordination tapes": {
       "ms": 37069.76954499999,
       "maxSliceMs": 0,
-      "slowest": "2 cores · 23 replies",
+      "slowest": "2 cores \u00b7 23 replies",
       "mainMs": 688.0053849999385
     },
     "Simulation": {
@@ -140,7 +140,7 @@
     "Paper": {
       "ms": 357.310645999969,
       "maxSliceMs": 44.903934000001755,
-      "slowest": "select 272 · candidates 70 · entries 3 ms over 5 (wall, sliced) · 46770 older tape positions left to their tape"
+      "slowest": "select 272 \u00b7 candidates 70 \u00b7 entries 3 ms over 5 (wall, sliced) \u00b7 46770 older tape positions left to their tape"
     },
     "Adjust": {
       "ms": 0.5420799999847077,
@@ -465,7 +465,7 @@
           "openPositions": 6,
           "openOrders": 81,
           "closes": 21,
-          "gp": 0.00004107933950888744,
+          "gp": 4.107933950888744e-05,
           "gl": 0.02928184182320155,
           "pf": 0.0014028946593222188,
           "pfState": "measured"
@@ -935,7 +935,7 @@
           "noLoss": true,
           "basis": "all-virtual-modeled-closes"
         },
-        "gp": 0.00009,
+        "gp": 9e-05,
         "gl": 0,
         "pf": 4,
         "pfBasis": "unit-net-returns",
@@ -945,7 +945,7 @@
         "cashPf": 4,
         "cashPfDiagnostic": 4,
         "cashBasis": "funded-modeled-allocations",
-        "net": 0.00009,
+        "net": 9e-05,
         "gpR": 0.009002,
         "glR": 0,
         "pfU": 4,
@@ -967,7 +967,7 @@
     }
   ],
   "coverage": [],
-  "coverageScope": "Archived scalar closes in the initial 12h post-Base validation window; Pooled, any-context and exact config × symbol × direction Last-4 availability; exact denominator includes all configured symbols and eligible sides (side-specific Exit IDs exclude the opposite side). This is sample availability, not passing PF or a replacement for configured gates. Missing histories remain unknown.",
+  "coverageScope": "Archived scalar closes in the initial 12h post-Base validation window; Pooled, any-context and exact config \u00d7 symbol \u00d7 direction Last-4 availability; exact denominator includes all configured symbols and eligible sides (side-specific Exit IDs exclude the opposite side). This is sample availability, not passing PF or a replacement for configured gates. Missing histories remain unknown.",
   "base": {
     "evaluated": 663,
     "passed": 28,
@@ -1117,43 +1117,43 @@
       "ok": true
     },
     {
-      "name": "Σ hourly virtual orders = total virtual orders",
+      "name": "\u03a3 hourly virtual orders = total virtual orders",
       "expected": 366,
       "actual": 366,
       "ok": true
     },
     {
-      "name": "Σ hourly net = total net",
+      "name": "\u03a3 hourly net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ hourly owned orders closed = total owned orders",
+      "name": "\u03a3 hourly owned orders closed = total owned orders",
       "expected": 366,
       "actual": 366,
       "ok": true
     },
     {
-      "name": "Σ hourly virtual orders opened = settled plus still-open orders",
+      "name": "\u03a3 hourly virtual orders opened = settled plus still-open orders",
       "expected": 445,
       "actual": 445,
       "ok": true
     },
     {
-      "name": "Σ hourly funded orders opened = funded settled plus still-open orders",
+      "name": "\u03a3 hourly funded orders opened = funded settled plus still-open orders",
       "expected": 445,
       "actual": 445,
       "ok": true
     },
     {
-      "name": "Σ type-hour openings = every virtual opening",
+      "name": "\u03a3 type-hour openings = every virtual opening",
       "expected": 445,
       "actual": 445,
       "ok": true
     },
     {
-      "name": "Σ per-type funded openings = every funded opening",
+      "name": "\u03a3 per-type funded openings = every funded opening",
       "expected": 445,
       "actual": 445,
       "ok": true
@@ -1165,37 +1165,37 @@
       "ok": true
     },
     {
-      "name": "Σ hourly positions closed = positions closed",
+      "name": "\u03a3 hourly positions closed = positions closed",
       "expected": 6,
       "actual": 6,
       "ok": true
     },
     {
-      "name": "Σ hourly positions opened = positions (closed + open at the end)",
+      "name": "\u03a3 hourly positions opened = positions (closed + open at the end)",
       "expected": 14,
       "actual": 14,
       "ok": true
     },
     {
-      "name": "positions open(h) = open(h−1) + opened(h) − closed(h), every hour",
+      "name": "positions open(h) = open(h\u22121) + opened(h) \u2212 closed(h), every hour",
       "expected": 0,
       "actual": 0,
       "ok": true
     },
     {
-      "name": "Σ hourly wins = total wins",
+      "name": "\u03a3 hourly wins = total wins",
       "expected": 252,
       "actual": 252,
       "ok": true
     },
     {
-      "name": "Σ type-hour owned orders closed = total owned orders",
+      "name": "\u03a3 type-hour owned orders closed = total owned orders",
       "expected": 366,
       "actual": 366,
       "ok": true
     },
     {
-      "name": "Σ type-hour net = total net",
+      "name": "\u03a3 type-hour net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
@@ -1207,61 +1207,61 @@
       "ok": true
     },
     {
-      "name": "Σ per-type net = total net",
+      "name": "\u03a3 per-type net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ per-type owned orders = total owned orders",
+      "name": "\u03a3 per-type owned orders = total owned orders",
       "expected": 366,
       "actual": 366,
       "ok": true
     },
     {
-      "name": "Σ per-kind net = total net",
+      "name": "\u03a3 per-kind net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ engine + signals net = total net",
+      "name": "\u03a3 engine + signals net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ sub-type net = total net",
+      "name": "\u03a3 sub-type net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ per-symbol net = total net",
+      "name": "\u03a3 per-symbol net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ per-indication-kind net = total net",
+      "name": "\u03a3 per-indication-kind net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ per-lane net = total net",
+      "name": "\u03a3 per-lane net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ per-range net = total net (Signals a range of their own)",
+      "name": "\u03a3 per-range net = total net (Signals a range of their own)",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ per-range owned orders = total owned orders",
+      "name": "\u03a3 per-range owned orders = total owned orders",
       "expected": 366,
       "actual": 366,
       "ok": true
@@ -1279,19 +1279,19 @@
       "ok": true
     },
     {
-      "name": "Σ hour × type net = total net",
+      "name": "\u03a3 hour \u00d7 type net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ hour × source net = signal net",
+      "name": "\u03a3 hour \u00d7 source net = signal net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ per-source net = signal net",
+      "name": "\u03a3 per-source net = signal net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
@@ -1321,7 +1321,7 @@
       "ok": true
     },
     {
-      "name": "balance(h) = balance(h−1) + net(h), every hour",
+      "name": "balance(h) = balance(h\u22121) + net(h), every hour",
       "expected": 0,
       "actual": 0,
       "ok": true
@@ -1333,7 +1333,7 @@
       "ok": true
     },
     {
-      "name": "orders inside the window (entry ≥ start, exit ≤ end)",
+      "name": "orders inside the window (entry \u2265 start, exit \u2264 end)",
       "expected": 366,
       "actual": 366,
       "ok": true
@@ -1345,7 +1345,7 @@
       "ok": true
     },
     {
-      "name": "order keys unique (cfg · symbol · entry → one unit each)",
+      "name": "order keys unique (cfg \u00b7 symbol \u00b7 entry \u2192 one unit each)",
       "expected": 366,
       "actual": 366,
       "ok": true
@@ -1357,7 +1357,7 @@
       "ok": true
     },
     {
-      "name": "every step processes every range with tapes (validated ≤ tapes, taken ≤ candidates)",
+      "name": "every step processes every range with tapes (validated \u2264 tapes, taken \u2264 candidates)",
       "expected": 0,
       "actual": 0,
       "ok": true
@@ -1501,13 +1501,13 @@
       "ok": true
     },
     {
-      "name": "hour × type: funded type columns add up to funded orders closed, every hour",
+      "name": "hour \u00d7 type: funded type columns add up to funded orders closed, every hour",
       "expected": 0,
       "actual": 0,
       "ok": true
     },
     {
-      "name": "hour × type: type columns add up to virtual closes, every hour",
+      "name": "hour \u00d7 type: type columns add up to virtual closes, every hour",
       "expected": 0,
       "actual": 0,
       "ok": true
@@ -1528,43 +1528,43 @@
       "ok": true
     },
     {
-      "name": "Σ hourly virtual orders = total virtual orders",
+      "name": "\u03a3 hourly virtual orders = total virtual orders",
       "expected": 366,
       "actual": 366,
       "ok": true
     },
     {
-      "name": "Σ hourly net = total net",
+      "name": "\u03a3 hourly net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ hourly owned orders closed = total owned orders",
+      "name": "\u03a3 hourly owned orders closed = total owned orders",
       "expected": 366,
       "actual": 366,
       "ok": true
     },
     {
-      "name": "Σ hourly virtual orders opened = settled plus still-open orders",
+      "name": "\u03a3 hourly virtual orders opened = settled plus still-open orders",
       "expected": 445,
       "actual": 445,
       "ok": true
     },
     {
-      "name": "Σ hourly funded orders opened = funded settled plus still-open orders",
+      "name": "\u03a3 hourly funded orders opened = funded settled plus still-open orders",
       "expected": 445,
       "actual": 445,
       "ok": true
     },
     {
-      "name": "Σ type-hour openings = every virtual opening",
+      "name": "\u03a3 type-hour openings = every virtual opening",
       "expected": 445,
       "actual": 445,
       "ok": true
     },
     {
-      "name": "Σ per-type funded openings = every funded opening",
+      "name": "\u03a3 per-type funded openings = every funded opening",
       "expected": 445,
       "actual": 445,
       "ok": true
@@ -1576,37 +1576,37 @@
       "ok": true
     },
     {
-      "name": "Σ hourly positions closed = positions closed",
+      "name": "\u03a3 hourly positions closed = positions closed",
       "expected": 6,
       "actual": 6,
       "ok": true
     },
     {
-      "name": "Σ hourly positions opened = positions (closed + open at the end)",
+      "name": "\u03a3 hourly positions opened = positions (closed + open at the end)",
       "expected": 14,
       "actual": 14,
       "ok": true
     },
     {
-      "name": "positions open(h) = open(h−1) + opened(h) − closed(h), every hour",
+      "name": "positions open(h) = open(h\u22121) + opened(h) \u2212 closed(h), every hour",
       "expected": 0,
       "actual": 0,
       "ok": true
     },
     {
-      "name": "Σ hourly wins = total wins",
+      "name": "\u03a3 hourly wins = total wins",
       "expected": 252,
       "actual": 252,
       "ok": true
     },
     {
-      "name": "Σ type-hour owned orders closed = total owned orders",
+      "name": "\u03a3 type-hour owned orders closed = total owned orders",
       "expected": 366,
       "actual": 366,
       "ok": true
     },
     {
-      "name": "Σ type-hour net = total net",
+      "name": "\u03a3 type-hour net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
@@ -1618,61 +1618,61 @@
       "ok": true
     },
     {
-      "name": "Σ per-type net = total net",
+      "name": "\u03a3 per-type net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ per-type owned orders = total owned orders",
+      "name": "\u03a3 per-type owned orders = total owned orders",
       "expected": 366,
       "actual": 366,
       "ok": true
     },
     {
-      "name": "Σ per-kind net = total net",
+      "name": "\u03a3 per-kind net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ engine + signals net = total net",
+      "name": "\u03a3 engine + signals net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ sub-type net = total net",
+      "name": "\u03a3 sub-type net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ per-symbol net = total net",
+      "name": "\u03a3 per-symbol net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ per-indication-kind net = total net",
+      "name": "\u03a3 per-indication-kind net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ per-lane net = total net",
+      "name": "\u03a3 per-lane net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ per-range net = total net (Signals a range of their own)",
+      "name": "\u03a3 per-range net = total net (Signals a range of their own)",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ per-range owned orders = total owned orders",
+      "name": "\u03a3 per-range owned orders = total owned orders",
       "expected": 366,
       "actual": 366,
       "ok": true
@@ -1690,19 +1690,19 @@
       "ok": true
     },
     {
-      "name": "Σ hour × type net = total net",
+      "name": "\u03a3 hour \u00d7 type net = total net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ hour × source net = signal net",
+      "name": "\u03a3 hour \u00d7 source net = signal net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
     },
     {
-      "name": "Σ per-source net = signal net",
+      "name": "\u03a3 per-source net = signal net",
       "expected": 0.010564,
       "actual": 0.010564,
       "ok": true
@@ -1732,7 +1732,7 @@
       "ok": true
     },
     {
-      "name": "balance(h) = balance(h−1) + net(h), every hour",
+      "name": "balance(h) = balance(h\u22121) + net(h), every hour",
       "expected": 0,
       "actual": 0,
       "ok": true
@@ -1744,7 +1744,7 @@
       "ok": true
     },
     {
-      "name": "orders inside the window (entry ≥ start, exit ≤ end)",
+      "name": "orders inside the window (entry \u2265 start, exit \u2264 end)",
       "expected": 366,
       "actual": 366,
       "ok": true
@@ -1756,7 +1756,7 @@
       "ok": true
     },
     {
-      "name": "order keys unique (cfg · symbol · entry → one unit each)",
+      "name": "order keys unique (cfg \u00b7 symbol \u00b7 entry \u2192 one unit each)",
       "expected": 366,
       "actual": 366,
       "ok": true
@@ -1768,7 +1768,7 @@
       "ok": true
     },
     {
-      "name": "every step processes every range with tapes (validated ≤ tapes, taken ≤ candidates)",
+      "name": "every step processes every range with tapes (validated \u2264 tapes, taken \u2264 candidates)",
       "expected": 0,
       "actual": 0,
       "ok": true
@@ -1912,13 +1912,13 @@
       "ok": true
     },
     {
-      "name": "hour × type: funded type columns add up to funded orders closed, every hour",
+      "name": "hour \u00d7 type: funded type columns add up to funded orders closed, every hour",
       "expected": 0,
       "actual": 0,
       "ok": true
     },
     {
-      "name": "hour × type: type columns add up to virtual closes, every hour",
+      "name": "hour \u00d7 type: type columns add up to virtual closes, every hour",
       "expected": 0,
       "actual": 0,
       "ok": true
@@ -1934,7 +1934,7 @@
       "equity": 10.002178,
       "eqMin": 9.995991,
       "eqMax": 10.002353,
-      "ddEndPct": 0.000017,
+      "ddEndPct": 1.7e-05,
       "ddMaxHourPct": 0.00043,
       "maxDdPctSoFar": 0.00043,
       "marginMax": 0.196,
@@ -2152,7 +2152,7 @@
       "losses": 3,
       "wr": 0,
       "gp": 0,
-      "gl": 0.000039,
+      "gl": 3.9e-05,
       "pf": 0,
       "cashPf": 0,
       "cashPfDiagnostic": 0,
@@ -2160,7 +2160,7 @@
       "glR": 0.003931,
       "cumGpR": 0.069714,
       "cumGlR": 0.157363,
-      "net": -0.000039,
+      "net": -3.9e-05,
       "ddtNowH": 3.05,
       "ddrHour": null,
       "cumNet": -0.000876,
@@ -2192,7 +2192,7 @@
       "orders": 21,
       "virtual": {
         "n": 21,
-        "gpR": 0.000041,
+        "gpR": 4.1e-05,
         "glR": 0.029282,
         "pf": 0.001403,
         "unknownReturns": 0,
@@ -2218,7 +2218,7 @@
       "pf": 0.001403,
       "cashPf": 0.001403,
       "cashPfDiagnostic": 0.001403,
-      "gpR": 0.000041,
+      "gpR": 4.1e-05,
       "glR": 0.029282,
       "cumGpR": 0.069755,
       "cumGlR": 0.186645,
@@ -2275,8 +2275,8 @@
       "wins": 2,
       "losses": 2,
       "wr": 0.5,
-      "gp": 0.000023,
-      "gl": 0.000069,
+      "gp": 2.3e-05,
+      "gl": 6.9e-05,
       "pf": 0.340098,
       "cashPf": 0.340098,
       "cashPfDiagnostic": 0.340086,
@@ -2284,7 +2284,7 @@
       "glR": 0.006907,
       "cumGpR": 0.072104,
       "cumGlR": 0.193552,
-      "net": -0.000046,
+      "net": -4.6e-05,
       "ddtNowH": 5.05,
       "ddrHour": null,
       "cumNet": -0.001214,
@@ -2337,7 +2337,7 @@
       "wins": 1,
       "losses": 7,
       "wr": 0.125,
-      "gp": 0.000015,
+      "gp": 1.5e-05,
       "gl": 0.000196,
       "pf": 0.074206,
       "cashPf": 0.074206,
@@ -2430,7 +2430,7 @@
       "equity": 10.005544,
       "eqMin": 9.998111,
       "eqMax": 10.006016,
-      "ddEndPct": 0.000047,
+      "ddEndPct": 4.7e-05,
       "ddMaxHourPct": 0.000424,
       "maxDdPctSoFar": 0.001313,
       "marginMax": 0.145025,
