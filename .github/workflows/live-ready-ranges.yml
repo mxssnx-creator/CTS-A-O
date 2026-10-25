@@ -1,5 +1,8 @@
 name: Live ready seven-range minute replay
 on:
+  pull_request:
+    branches: [main]
+    paths: [src/core/server/runtime.server.ts, scripts/micro-study.mjs, .github/workflows/live-ready-ranges.yml]
   push:
     branches: [fix/live-ready-progress-20261025]
     paths: [src/**, scripts/micro-study.mjs, .github/workflows/live-ready-ranges.yml]
