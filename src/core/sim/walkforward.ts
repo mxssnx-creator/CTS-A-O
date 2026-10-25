@@ -5937,6 +5937,63 @@ function* activeSignalsAtGen(
   }
 }
 
+/**
+ * One immutable tape/settings generation. Ranking statistics use completed hours, so their ordered
+ * candidates can be reused within that hour. Own config gates still run at the exact decision minute:
+ * a newly completed Last-N sample must not wait for the next reporting/ordinary-selection step.
+ * Only statically qualifying keys are retained; no config × symbol × hour history expansion.
+ */
+export class SignalActivationBook {
+  private hour = NaN;
+  private ranked: Array<{ key: string; tp: ConfigTape; sym: string; side: number; coordination: boolean }> = [];
+  private index: readonly SignalIndexRow[];
+  private sig: SignalSettings;
+  private windowH: number;
+  private options: WalkForwardOptions;
+
+  constructor(index: readonly SignalIndexRow[], sig: SignalSettings, windowH: number, options: WalkForwardOptions) {
+    this.index = index;
+    this.sig = sig;
+    this.windowH = windowH;
+    this.options = options;
+  }
+
+  *at(t: number): Generator<number, Set<string>> {
+    const hour = Math.floor(t / H);
+    if (hour !== this.hour) {
+      // Apply family caps AFTER the current own-context verdicts, exactly as activeSignalsAt does.
+      const uncapped = { ...this.sig, count: 0, coordination: { ...this.sig.coordination, count: 0 } };
+      const keys = yield* activeSignalsGen(signalWindowRows(this.index, t, this.windowH, this.sig.validateH ?? 24), uncapped);
+      const byId = new Map(this.index.map(({ tp }) => [tp.id, tp]));
+      const ranked: typeof this.ranked = [];
+      let count = 0;
+      for (const key of keys) {
+        const [, , sym, side, , encoded] = key.split("|");
+        const tp = encoded?.startsWith("cfg=") ? byId.get(decodeURIComponent(encoded.slice(4))) : undefined;
+        if (!tp || (side !== "1" && side !== "-1")) throw new Error("Signal ranking lost its exact config context");
+        ranked.push({ key, tp, sym, side: Number(side), coordination: isSignalCoordinationInd(tp.ind) });
+        if (++count % 256 === 0) yield -15;
+      }
+      // A cancelled construction cannot expose a partial ranking.
+      this.ranked = ranked;
+      this.hour = hour;
+    }
+    const out = new Set<string>(), evaluationKeys = new Map<ConfigTape, string>();
+    let classic = 0, coordinated = 0, count = 0;
+    for (const row of this.ranked) {
+      if (++count % 32 === 0) yield -15;
+      const cap = row.coordination ? this.sig.coordination.count : this.sig.count;
+      if (cap > 0 && (row.coordination ? coordinated : classic) >= cap) continue;
+      let key = evaluationKeys.get(row.tp);
+      if (key === undefined) evaluationKeys.set(row.tp, (key = signalEvaluationKey(row.tp, t, this.options)));
+      if (!signalConfigEvalWithKey(row.tp, t, this.options, row.sym, row.side, key).ok) continue;
+      out.add(row.key);
+      if (row.coordination) coordinated++; else classic++;
+    }
+    return withSignalExitKeys(out, this.options.signalActive);
+  }
+}
+
 /** Signals retain their own source history even when the broad engine window is shortened. */
 
 
@@ -6453,6 +6510,18 @@ export function* walkForwardGen(
     if (passed) sigIdx = sigIdx.filter((g) => passed.has(g.pair));
   }
   let stepOpts: WalkForwardOptions = o;
+  const signalActivation = o.signalRank && sigIdx.length
+    ? new SignalActivationBook(sigIdx, o.signalRank, signalHistoryHours(o), o) : null;
+  const recordSignalStep = (t: number, keys: Set<string>) => {
+    const before = signalSteps.at(-1)?.keys;
+    // Identical ordered sets share their preceding snapshot; replay/audit reads the last change at or before t.
+    if (before?.length === keys.size) {
+      let i = 0, identical = true;
+      for (const key of keys) if (key !== before[i++]) { identical = false; break; }
+      if (identical) return;
+    }
+    signalSteps.push({ t, keys: [...keys] });
+  };
   // every step's record per group: ranges, signals, and the independent Historic Exit strategy.
   const stepRange = (cfg: string) =>
     sigCfg(cfg) ? "sig" : kindOfId(cfg) === "exit" ? "exit" : rangeOfId(cfg);
@@ -6468,7 +6537,8 @@ export function* walkForwardGen(
     // every order closed before the step counts for this step's decisions (hedge hours, coordination state)
     yield* settle(t);
     if (o.signalRank && sigTapes.length) {
-      const act = yield* activeSignalsAtGen(sigIdx, t, o.signalRank, signalHistoryHours(o), o);
+      const act = signalActivation ? yield* signalActivation.at(t)
+        : yield* activeSignalsAtGen(sigIdx, t, o.signalRank, signalHistoryHours(o), o);
       hedgeKeys = new Set();
       if (o.coord?.enabled && o.coord.hedge) {
         const neg = new Set<number>();
@@ -6481,7 +6551,7 @@ export function* walkForwardGen(
       }
       const all = hedgeKeys.size ? new Set([...act, ...hedgeKeys]) : act;
       stepOpts = { ...o, signalActive: all };
-      signalSteps.push({ t, keys: [...all] });
+      recordSignalStep(t, all);
       yield -5; // (a slice: the ranking and the step's executions are separate pieces of work)
     }
     // fixed mode in slices (the selection scores every tape); per-range modes: each mode on its own ranges' tapes
@@ -6528,12 +6598,18 @@ export function* walkForwardGen(
     for (const p of picks) rangeRow(stepRange(p.id)).validated++;
     if (o.signalRank && sigTapes.length)
       rangeRow("sig").validated = stepOpts.signalActive?.size ?? 0;
-    const prio = bestFirst(picks, stepOpts);
     const stepEnd = Math.min(stopT, t + stepH * H);
     // Reporting/selection cadence does not determine candle precision or candidate memory. Process one minute
     // at a time, with the same stable entry ordering, and release the completed batch before assembling the next.
     const batchMs = sigTapes.length ? 60_000 : stepH * H;
     for (let batchT = t; batchT < stepEnd; batchT += batchMs) {
+      if (batchT !== t && signalActivation) {
+        const act = yield* signalActivation.at(batchT);
+        const all = hedgeKeys.size ? new Set([...act, ...hedgeKeys]) : act;
+        stepOpts = { ...o, signalActive: all };
+        recordSignalStep(batchT, all);
+      }
+      const prio = bestFirst(picks, stepOpts);
       const batchEnd = Math.min(stepEnd, batchT + batchMs);
       const cands: Array<{ tr: Trade; tp: ConfigTape }> = [];
       let pi = 0;

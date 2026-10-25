@@ -1,0 +1,35 @@
+name: Minute activation full Signal study
+on:
+  push:
+    branches: [study/minute-activation-20261025]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  signals:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        scenario: [control-0, control-12, dca-unit-0, dca-unit-12, dca-weighted-0, dca-weighted-12, dca-active-0, dca-active-12, dca-block-0, dca-block-12]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: env -u DATABASE_URL npm run build
+      - run: node --experimental-strip-types --no-warnings scripts/prepare-recovery-study.mjs runs/minute-activation
+      - run: python3 scripts/run-signals-native-case.py runs/minute-activation ${{ matrix.scenario }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: minute-${{ matrix.scenario }}-${{ github.run_id }}
+          path: |
+            runs/minute-activation/plan.json
+            runs/minute-activation/${{ matrix.scenario }}/
+          retention-days: 90
+          compression-level: 3

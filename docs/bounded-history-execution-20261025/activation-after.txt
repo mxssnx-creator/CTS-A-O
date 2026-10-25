@@ -1,0 +1,13 @@
+[core-tests] offline Node transport guard; 2 files; concurrency 1; compute workers 1
+✔ a Signal validated between report hours executes on its next minute onset (26.613588ms)
+✔ rejected and legacy unproven Signal closes cannot qualify or veto shared post-Base direction and cluster gates (1.69197ms)
+✔ settled accepted losses still block and a rejected sibling cannot consume the accepted onset (0.217642ms)
+✔ walk-forward preserves qualified admissions against cap-rejected sibling losses and replays the exact accepted cohort (32.272274ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 710.67647

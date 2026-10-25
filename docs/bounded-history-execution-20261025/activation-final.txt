@@ -1,0 +1,12 @@
+[core-tests] offline Node transport guard; 1 files; concurrency 1; compute workers 1
+✔ a Signal validated between report hours executes on its next minute onset (21.931274ms)
+✔ minute activation equals fresh full ranking, including family caps, Exit keys and backward clocks (48.945765ms)
+✔ cancelling an activation build cannot publish a partial ranking or retain stale minute verdicts (6.260227ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 422.98131

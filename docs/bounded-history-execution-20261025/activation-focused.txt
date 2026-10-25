@@ -1,0 +1,48 @@
+[core-tests] offline Node transport guard; 4 files; concurrency 1; compute workers 1
+▶ independent signal qualification
+  ✔ empty or losing Trailing configs cannot dilute a winning Normal type (3.837145ms)
+  ✔ a winning Trailing type cannot qualify its losing Normal sibling, including hedge selection (0.619781ms)
+  ✔ Normal and Trailing remain distinct through simulation, live filtering and seated statistics (16.669524ms)
+  ✔ legacy Base/discovery keys never authorize any unmeasured strategy type (0.408718ms)
+  ✔ malformed directions never borrow an independently qualified long or short key (6.132327ms)
+  ✔ an untyped recovered key supplies no execution, live or seated evidence (6.257583ms)
+  ✔ same-type empty or losing protects cannot deactivate an independently winning config (0.458372ms)
+  ✔ same-type losing protects cannot satisfy or veto another config's acceptance PF (1.193284ms)
+  ✔ paper seats only the exact independently active protection config (26.942978ms)
+  ✔ Signal last-N cannot borrow another symbol or direction even with the engine entry gate off (6.359326ms)
+  ✔ retained exit-only configs never reactivate or seed another config's sample (5.258067ms)
+  ✔ cached Signal eligibility follows an in-place transition to held-only and back (3.705068ms)
+  ✔ a retained activation verdict cannot replace a config's own minimum PF (3.877305ms)
+  ✔ winning parameter ranges and lanes cannot supply another signal set's minimum PF (0.296261ms)
+✔ independent signal qualification (83.667393ms)
+✔ a Signal validated between report hours executes on its next minute onset (20.256166ms)
+✔ minute activation equals fresh full ranking, including family caps, Exit keys and backward clocks (42.44119ms)
+✔ cancelling an activation build cannot publish a partial ranking or retain stale minute verdicts (4.955127ms)
+▶ signals: the active ranking
+  ✔ a pair held only for its open positions never takes an active slot from a pair that may open (17.662199ms)
+  ✔ keeps Signal Exit active outside the Signals Normal/Trailing cap and bypasses Signal entry Base (0.572792ms)
+✔ signals: the active ranking (19.094078ms)
+▶ signals: Strategy Base validation window
+  ✔ preserves runtime tie order across the pooled Signals last-N boundary (1.494442ms)
+  ✔ uses signalValidLastN in both diagnostics and actual Base selection (2.759403ms)
+  ✔ uses only the Signals range's own validation and entry last-N values (2.078871ms)
+✔ signals: Strategy Base validation window (6.588576ms)
+▶ signals: acceptance on the source's record
+  ✔ counts the group's closes from before the run (regression: the first hours of every run accepted nothing) (3.522748ms)
+  ✔ keeps lanes and parameter ranges independent; closes after the entry never count (3.413154ms)
+  ✔ the record by group: count and PF of the closes in (t − hours, t] (0.381367ms)
+✔ signals: acceptance on the source's record (7.562783ms)
+▶ signal defaults (the validated settings, PR #65)
+  ✔ judge signals on their own exits, on all four lanes, with acceptance and their own Block level (5.654588ms)
+✔ signal defaults (the validated settings, PR #65) (5.7638ms)
+▶ signal history window
+  ✔ is 150 h independently of the engine history and warmup (12.460846ms)
+✔ signal history window (13.424278ms)
+ℹ tests 27
+ℹ suites 6
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1502.222434
