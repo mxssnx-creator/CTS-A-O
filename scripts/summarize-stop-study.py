@@ -43,5 +43,14 @@ text+=['','## Fix and current decision','',
 '', 'No candidate is promoted merely because drawdown falls. Require preserved post-Base execution PF above 1, sufficient own samples, acceptable loss drawdown, and later chronological validation. Completed 1×/0.5× Wide and 1× Short candidates fail the PF requirement. Production strategy defaults are unchanged.',
 '', 'Only arms with completed details and audits are certified above; remaining Short experiments and the separate Micro/Minimal/General/Long matrix are pending until independently audited. Minimal Plus still has no selected ordinary cells. Signals retain their own 150h policy and independent Exit; this ordinary-range experiment does not certify new Signal profitability.',
 '', 'Checks: 44 sidecar/consumer tests; 41 funded-cohort/native-report tests; margin-versus-loss replay regression; 13 trailing/readiness tests; build and TypeScript. This is not a claim of full-system stability or live profitability.']
+risk=root/'runs/stop-study-short-cap15/risk2-details.json'
+if risk.exists():
+ r=json.loads(risk.read_text());t=r['total'];c=t['fundedCounts']
+ text+=['','## Separate exposure-capped replay of Short 1.5×','',
+  f'Same native candidate orders, with maximum funded notional 0.5× realized balance per symbol/direction and 2× overall. This is an alternative funding profile, not a new market simulation or a stop-only gain. {c["openedPositions"]} positions opened / {c["openPositions"]} held; {c["openedOrders"]} orders opened / {c["settledOrders"]} settled / {c["openOrders"]} held.', '',
+  f'Return PF **{t["pf"]:.6f}**; peak equity DD **{100*t["equityMaxDdPct"]:.3f}%**; lowest equity **${t["eqMin"]:.6f}**; loss below initial **{100*max(0,10-t["eqMin"])/10:.3f}%**; ending equity **${t["equityEnd"]:.6f}**. Positive/negative/flat hours: {t["greenHours"]}/{t["redHours"]}/{t["flatHours"]}. Sized-dollar PF diagnostic **{t["cashPfDiagnostic"]:.6f}**. Different allocations and held losses mean return PF above 1 does not establish a dollar profit.', '',
+  'All funded closed orders are an exact-return subset of the independently entry-audited native cohort; all 58 report checks pass. Native minimum order sizes and liquidation mechanics are not certified by this replay. No production promotion or positive-stability claim.']
+ for f in ['risk2-details.json','risk2-cohort-audit.json']:
+  shutil.copy2(risk.parent/f,out/f)
 (out/'report.md').write_text('\n'.join(text)+'\n');(out/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
 print('Saved',len(rows),'completed rows')

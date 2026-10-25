@@ -11,7 +11,7 @@ import { modeledUnitReturn, settledHourT } from '../src/core/metrics/stats.ts';
 const dir = process.argv[2], report = process.argv[3] ?? `${dir}/corrected-report/data.json`;
 assert.ok(dir, 'SESSION_DIR [REPORT_JSON]');
 const { raw, book, trades, funding } = await readFundedSession(`${dir}/raw.json`, report);
-const allocations = await readSessionDump(`${dir}/report/data.json`, { fields: ['sizedOpenOrders'] });
+const allocations = await readSessionDump(report, { fields: ['sizedOpenOrders'] });
 assert.ok(Array.isArray(allocations.sizedOpenOrders) || book.total.fundedCounts.openOrders === 0, 'Missing open allocation evidence');
 const open = (allocations.sizedOpenOrders ?? []).filter(x => x.allocatedNotional > 1e-9);
 assert.equal(open.length, book.total.fundedCounts.openOrders);
@@ -95,5 +95,5 @@ const result = { schema: 'cts-range-detail-v1', sourceSha256: protocol.source.sh
   heatRangeCorrections: book.heat?.exitRangeCorrections ?? 0,
   hours: book.hours,
 };
-writeFileSync(`${dir}/details.json`, JSON.stringify(result, null, 2) + '\n');
+writeFileSync(process.argv[4] ?? `${dir}/details.json`, JSON.stringify(result, null, 2) + '\n');
 console.log(JSON.stringify({ range: result.requestedRange, checksOk: result.checksOk, counts: book.total.fundedCounts, pf: book.total.pf }));

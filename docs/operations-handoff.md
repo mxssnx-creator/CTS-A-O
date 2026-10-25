@@ -1,3 +1,9 @@
+### Stop comparison follow-up
+
+Short1.25 completes PF.983847, peakDD30.9789%, so fails PF objective. Short1.5 PF1.390668, peakDD68.9742%, min equity$3.378472: preserves PF>1 but remains high risk. Separate report-only funding replay (maxPositionX.5,maxExposureX2) yields PF1.162964, peakDD2.725%, min equity$9.741976, end$9.916556; 46 positions opened/15held,15194orders opened/3508settled/11686held,5green/6red/1flat hours. All3508 funded closes exactly subset original12378 with unchanged returns, all58 nativechecks pass. Cash-weighted PF.412972, so not a positive dollar outcome. Do not present risk caps as improved intrinsic returns or profitable live qualification.
+
+Fixed summary report override to load held allocations from the selected report, not the original uncapped report; supports explicit output path for retaining both. Short2 local run still active; remote stop matrix40184860919 runs Micro1/Minimal1/General.75/Long.75. Published checkpoint6df281d contains export fix, study settings and earlier evidence. No production defaults changed; goal of stable positive performance remains unmet.
+
 ## 25 October — loss drawdown and post-Base stop comparison
 
 User explicitly means loss/open-P&L equity drawdown, not margin usage, and wants preserved high post-Base PF. Reconfirmed equity arithmetic excludes margin; new full native replay regression varies leverage 1→100 with identical funded notionals and proves unchanged P&L/PF/minimum equity/drawdown while margin changes 100×.
