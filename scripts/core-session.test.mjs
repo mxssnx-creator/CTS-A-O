@@ -651,7 +651,7 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.total.orders, 1);
     assert.equal(data.total.pf, 4, "the JSON gate-score convention remains finite");
     assert.equal(data.settings.wf.longH, 1, "reports preserve the actual config-selection history");
-    assert.match(md, /\| Micro \| ∞ \(no loss\) \| 1 of 3 \| 1\.10 \| ∞ \(no loss\) \| 1 of 2 \| ∞ \(no loss\) \| 1 \|/);
+    assert.match(md, /\| Micro \| ∞ \(no loss\) \| 1 of 3 \(33\.33%\) \| 1\.10 \| ∞ \(no loss\) \| 1 of 2 \(50\.00%\) \| ∞ \(no loss\) \| 1 \|/);
     assert.match(md, /Micro min PF.*pooled PF ∞ \(no loss\), median gate score 4\.00/);
     assert.match(md, /candidate pool \(pre-validation\)/);
     assert.match(md, /post-Base config-pass instances \(hourly; may repeat\)/);
@@ -905,6 +905,10 @@ describe("session qualification matches the runtime's full indication rules", ()
     assert.deepEqual(current.report.evalAfterBase["Short|normal"], thresholds);
     assert.equal(current.data.evidence.qualification.state, "recorded");
     assert.match(current.md, /1\.05–1\.10 \(varies by indication\)/);
+    assert.match(current.md, /2 of 3 \(66\.67%\)/);
+    assert.match(current.md, /3 of 7 \(42\.86%\)/);
+    assert.match(current.md, /post-Base validation PF/);
+    assert.match(current.md, /settled execution PF/);
     assert.match(current.writeup, /Tactic minimum return PF 1\.1/);
     assert.match(summaryOf(current.html), /Tactic minimum return PF 1\.1/);
     const legacy = replay({ thresholds });

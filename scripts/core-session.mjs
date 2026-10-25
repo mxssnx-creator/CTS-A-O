@@ -2224,25 +2224,30 @@ const afterBaseMd = (e, tapeAgg, xs) => {
   const f = (x, d = 2) => (x == null || !Number.isFinite(x) ? "–" : x.toFixed(d));
   const pf = (gp, gl, n) => (!n ? "–" : gl > 1e-12 ? f(gp / gl) : gp > 1e-12 ? "∞ (no loss)" : "–");
   const basePf = (b) => pf(b.passedGp ?? 0, b.passedGl ?? 0, b.passed ?? 0);
+  const validated = (passed, evaluated) =>
+    Number.isFinite(passed) && Number.isFinite(evaluated) && evaluated > 0 && passed >= 0 && passed <= evaluated
+      ? `${passed} of ${evaluated} (${((passed / evaluated) * 100).toFixed(2)}%)`
+      : `${passed ?? "–"} of ${evaluated ?? "–"} (percentage unavailable)`;
   const units = tapeAgg?.evalStats?.signalUnitsRun ?? null;
   return [
     ``,
     `### After each evaluation: PF and sets validated`,
     ``,
     `Base: the Base-passed pairs pooled on their gross return basis; no-loss samples show ∞ (no loss), while the runtime's finite no-loss gate score is shown separately in the run summary. Validation: the sets validated at the run start and their gross-return PF pooled on the validation window (signals: units active in the run). Orders: the run's funded settled orders and their realized PF; known zero allocations are excluded.`,
+    `Validation percentages use the displayed Base-qualified config inventory, including disabled types; the separate evaluated count excludes those types. Zero or missing denominators are unavailable, not 0%. Signals require their exact-context audit; active units are not a validation percentage.`,
     `With Axis perRange off, Wide-labeled validation and orders also include independent untagged DCA/Axis configs from pairs that qualified in another range, following the recorded builder admission policy.`,
     ``,
-    `| range | Base pooled PF | pairs validated | effective validation min PF | validation PF | sets validated | orders PF | orders |`,
+    `| range | Base pooled PF | pairs validated (%) | effective validation min PF | post-Base validation PF | sets validated (%) | settled execution PF | orders |`,
     `|---|---:|---:|---|---:|---:|---:|---:|`,
     ...base.map((b) => {
       const st = sets[b.range];
       const o = ord[b.range];
       const sig = b.tag === "sig";
       return (
-        `| ${b.range} | ${basePf(b)} | ${b.passed ?? 0} of ${b.evaluated ?? 0} |` +
+        `| ${b.range} | ${basePf(b)} | ${validated(b.passed, b.evaluated)} |` +
         (sig
-          ? ` – | – | ${units ?? "–"} units active |`
-          : ` ${st && Number.isFinite(st.minPf) ? (st.minPfMax > st.minPf ? `${f(st.minPf)}–${f(st.minPfMax)} (varies by indication)` : f(st.minPf)) : "not recorded"} | ${st ? pf(st.gp, st.gl, st.passed) : "–"} | ${st ? `${st.passed} of ${st.configs}` : "–"} |`) +
+          ? ` – | unavailable (use exact-context audit) | ${units ?? "–"} units active; validation percentage unavailable |`
+          : ` ${st && Number.isFinite(st.minPf) ? (st.minPfMax > st.minPf ? `${f(st.minPf)}–${f(st.minPfMax)} (varies by indication)` : f(st.minPf)) : "not recorded"} | ${st ? pf(st.gp, st.gl, st.passed) : "–"} | ${st ? validated(st.passed, st.configs) : "–"} |`) +
         ` ${o ? pf(o.gp, o.gl, o.n) : "–"} | ${o ? o.n : 0} |`
       );
     }),
