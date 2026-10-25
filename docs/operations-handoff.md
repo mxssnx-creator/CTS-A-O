@@ -3975,3 +3975,10 @@ Strategy Exit processed all 380 Signal sources: 17 passed its Base stage, 24 pro
 Release CI now partitions the complete core inventory across four isolated runners with serial file execution, while script/browser/app checks and the two slow runtime cases run in separate jobs. The final `verify` requires every partition. The default local `npm test` still runs everything. A real seven-file/four-shard fixture verifies no omissions or duplication; all six runner tests and changed-script lint pass.
 
 The exact tested source is preserved remotely at `ea262bb7af0a4fe5e0d571df688e54090056051a` (tree-identical to local checkpoint `59f1b6d`). Final TypeScript validation passes after the log wording correction.
+
+
+### 25 October 2026 UTC — Exit timeframe/partial ownership verification
+
+See docs/exit-policy-study-20261025/README.md and compact control-0 receipts. Signal study run 40192523659 has first control-0 successful (overall PF 4.96115, 445/366/79 opened/settled/held orders; 14/6/8 positions); other three scenarios still running at this checkpoint. Normal 38,402-source-combination matrices 40190814481 (former Axis sizing) and 40192176159 (neutral) remain running separately. Do not conflate policies or promote unverified fits.
+
+Added 12 native Exit allocation lifecycle cases and all-five-set/both-side/1/5/15m simulation-tick-restart parity. Partial ownership is per-config allocation, not new intraconfig fractional exits. Two f526 CI fixture failures corrected without changing archived economic receipts or lifecycle hashes; focused six regressions pass. Exit study is now manual-only so future PR pushes do not repeat the expensive four-case study. Final follow-up CI still required. No merge or live reload at this checkpoint.

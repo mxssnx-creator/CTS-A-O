@@ -9,6 +9,7 @@ import { liveKv, resetLiveBackoff, stepLive, type ControlStatus } from "./live.s
 import { coveredLanes, goneOrderOf, planLaneOrders, swapCount, trimLaneOrders, type LaneOrder, type LaneWant } from "./lane-orders.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
+import { configId } from "../pipeline/pipeline.ts";
 import { pxTick } from "../exchange/bingx.server.ts";
 import { authorizeSyntheticLanes, SimExchange, syntheticExecutionRun, type SimOrder } from "../test-support.ts";
 import type { LiveGate } from "../live-validation.ts";
@@ -250,6 +251,70 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     assert.equal(c.protect?.laneStops, 4);
     assert.equal(c.protect?.laneTps, 3);
   });
+
+  // Technical ownership fixture: synthetic admission is explicit, not a profitability claim.
+  for (const tf of [1, 5, 15]) for (const source of ["rsi-mom-14-20", "sig-ema-cross-s"]) {
+    for (const side of [1, -1] as const) {
+      it(`Exit allocations survive updates and independent closes: ${source}@m${tf}, side ${side}`, async () => {
+        const tick = clock();
+        const ex = new Venue();
+        const { rt } = rtOf();
+        const key = `S1-USDT|${side === 1 ? "LONG" : "SHORT"}`;
+        const sets = ["static-sl", "adaptive-sl", "trailing", "breakeven", "trailing-only"] as const;
+        const lanes = sets.map((exitSet, i) => {
+          const sl = .006 + i * .003;
+          const tp = exitSet === "trailing-only" ? 0 : .05 + i * .01;
+          return {
+            ...lane(i + 1, "S1-USDT", side, 10, sl, tp || undefined),
+            cfg: configId("follow", `${source}@m${tf}`, {
+              tp, sl, trail: exitSet === "trailing" || exitSet === "trailing-only" ? .015 : 0,
+              hold: Math.max(1, Math.floor(180 / tf)), exitType: "historic", exitSide: side, exitSet,
+              ...(exitSet === "trailing-only" ? { trailOnly: true, trailStep: .5 } : {}),
+            }),
+          };
+        });
+        rt.paper.positions = lanes;
+        const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+        await step();
+        assert.ok(near(ex.positions.get(key)!, 5 * LANE));
+        assert.equal(ex.partial(key, "STOP_MARKET").length, 5);
+        assert.equal(ex.partial(key, "TAKE_PROFIT_MARKET").length, 4);
+        // Updating a trailing allocation must not replace another configuration's protection.
+        lanes[2].stop = 10 * (1 - side * .005);
+        tick(20_000);
+        await step();
+        assert.equal(ex.partial(key, "STOP_MARKET").length, 5);
+        assert.ok(ex.partial(key, "STOP_MARKET").some((o) => near(o.stopPrice!, lanes[2].stop)));
+        for (let i = 0; i < lanes.length; i++) {
+          const own = lanes[i];
+          const takeProfit = i % 2 === 1;
+          const px = takeProfit ? own.target! : own.stop;
+          const order = ex.partial(key, takeProfit ? "TAKE_PROFIT_MARKET" : "STOP_MARKET")
+            .find((o) => near(o.stopPrice!, px));
+          assert.ok(order, `allocation ${i} protection ${px}: ${JSON.stringify(ex.partial(key, "STOP_MARKET"))}`);
+          ex.triggerOrder(order.id);
+          tick(20_000);
+          await step();
+          const rows = rt.db.all<{ cfg: string; reason: string; exit: number }>(
+            "SELECT cfg, reason, exit FROM live_lane_trades");
+          assert.equal(rows.length, i + 1, "each filled allocation settles exactly once");
+          assert.equal(new Set(rows.map((r) => r.cfg)).size, i + 1);
+          const row = rows.find((r) => r.cfg === own.cfg)!;
+          assert.ok(row && near(row.exit, px), "actual own fill price is retained");
+          const remaining = lanes.length - i - 1;
+          assert.ok(near(ex.positions.get(key) ?? 0, remaining * LANE), "remaining quantity reconciles");
+          assert.equal(ex.partial(key, "STOP_MARKET").length, remaining);
+          assert.equal(ex.partial(key, "TAKE_PROFIT_MARKET").length, Math.max(0, 3 - i));
+          const opens = ex.opens("S1-USDT").length;
+          tick(20_000);
+          await step();
+          assert.equal(ex.opens("S1-USDT").length, opens, "settled allocations never reopen from stale paper");
+        }
+        assert.equal(ex.partial(key, "STOP_MARKET").length, 0);
+        assert.equal(ex.partial(key, "TAKE_PROFIT_MARKET").length, 0);
+      });
+    }
+  }
 
   it("a Block Overall position is ONE lane sized by its whole volume: one stop and one take-profit, none untracked", async () => {
     const ex = new Venue();

@@ -59,7 +59,7 @@ const fixture = () => {
     ].map((kind) => [kind, 1])) },
     // Freeze the archived Block ladder too; current factory defaults changed 6→7 independently of lifecycle.
     block: { ...DEFAULT_SETTINGS.block, ranges: { ...DEFAULT_SETTINGS.block.ranges, steps: [0, 6] } },
-    axisVolumeFactor: undefined,
+    axisVolumeFactor: undefined, exitVolumeFactor: undefined,
     longH: 336, preH: 20, signalLongH: 336,
     exitMinTrades: undefined, exitMinPf: undefined, exitMinGreenHourShare: undefined, exitMaxDdr: undefined,
     startT: start, simH: hours, stepH: 1, signalActive: active, signalOwnBase: true,

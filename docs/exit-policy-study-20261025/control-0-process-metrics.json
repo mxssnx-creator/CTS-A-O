@@ -1,0 +1,12 @@
+{
+  "scenario": "control-0",
+  "runner": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+  "machine": "x86_64",
+  "cpuCount": 4,
+  "sourceSha256": "63498c49e7beee138b7ebd74013141f72d9a1b0f6b4d1d0da98a1a8a5b059875",
+  "exitCode": 0,
+  "wallSeconds": 390.674963949,
+  "childPeakRssMiB": 3560.09765625,
+  "userSeconds": 798.364333,
+  "systemSeconds": 6.808908
+}

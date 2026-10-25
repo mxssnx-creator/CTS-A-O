@@ -1,8 +1,5 @@
 name: Exit qualification and neutral sizing study
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/exit-policy-study.yml'
   workflow_dispatch:
 permissions:
   contents: read
