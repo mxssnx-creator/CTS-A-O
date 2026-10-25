@@ -1,0 +1,42 @@
+name: Signal Exit range comparison
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/signal-exit-horizon-20261025]
+    paths:
+      - src/core/**
+      - scripts/prepare-signal-exit-ranges.mjs
+      - .github/workflows/signal-exit-ranges-study.yml
+permissions:
+  contents: read
+concurrency:
+  group: signal-exit-ranges-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [expanded-original, control-later, expanded-later]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: env -u DATABASE_URL npm run build
+      - run: node --experimental-strip-types --no-warnings scripts/prepare-signal-exit-ranges.mjs runs/signal-exit-ranges
+      - name: Full minute replay and independent audits
+        run: python3 scripts/run-signals-native-case.py runs/signal-exit-ranges ${{ matrix.scenario }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: signal-exit-${{ matrix.scenario }}-${{ github.run_id }}
+          path: |
+            runs/signal-exit-ranges/plan.json
+            runs/signal-exit-ranges/${{ matrix.scenario }}/
+          retention-days: 90
+          compression-level: 3

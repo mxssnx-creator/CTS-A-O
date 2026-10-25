@@ -2923,6 +2923,43 @@ export function SettingsPage() {
                     onChange={(v) => set(["exitStrategy", "quantiles"], v)}
                   />
                 </Field>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ fontWeight: 600 }}>Additional Signal Exit ranges</div>
+                  <p className="v2-muted">
+                    The original fit remains enabled. Each added horizon fits its own price moves;
+                    distance scales fitted favorable and adverse moves before existing protection caps.
+                    Close changes use completed closes for fitting and real OHLC for validation.
+                    All configs retain independent holdout and Last-N gates. The config cap below is
+                    shared across these ranges; identical economic configs are counted once.
+                  </p>
+                  {(exits.signalRanges ?? []).map((range: Any, i: number) => {
+                    const update = (patch: Any) => set(["exitStrategy", "signalRanges"],
+                      exits.signalRanges.map((r: Any, j: number) => j === i ? { ...r, ...patch } : r));
+                    return <div key={i} className="v2-grid v2-cols-4" style={{ marginBottom: 8 }}>
+                      <Field label={`Range ${i + 1} horizon (h)`}>
+                        <Num min={0.5} max={96} step={0.5} value={range.holdH} onChange={(holdH) => update({ holdH })} />
+                      </Field>
+                      <Field label="Distance multiplier">
+                        <Num min={1} max={3} step={0.25} value={range.distance} onChange={(distance) => update({ distance })} />
+                      </Field>
+                      <Field label="Price structure">
+                        <select className="v2-select" value={range.basis} onChange={(e) => update({ basis: e.target.value })}>
+                          <option value="extrema">High / low excursions</option>
+                          <option value="close">Completed close changes</option>
+                        </select>
+                      </Field>
+                      <button type="button" className="v2-btn" onClick={() => set(["exitStrategy", "signalRanges"],
+                        exits.signalRanges.filter((_: Any, j: number) => j !== i))}>Remove range {i + 1}</button>
+                    </div>;
+                  })}
+                  <button type="button" className="v2-btn" disabled={(exits.signalRanges?.length ?? 0) >= 6}
+                    onClick={() => {
+                      const current = exits.signalRanges ?? [];
+                      const holdH = [3, 6, 12, 24, 48, 96].find((h) => !current.some((r: Any) =>
+                        r.holdH === h && r.distance === 1.5 && r.basis === "close"));
+                      if (holdH) set(["exitStrategy", "signalRanges"], [...current, { holdH, distance: 1.5, basis: "close" }]);
+                    }}>Add Signal Exit range</button>
+                </div>
                 <Field
                   label="MAE stop quantiles"
                   hint="adaptive stop distances from fitted adverse moves; 0.2–0.95"

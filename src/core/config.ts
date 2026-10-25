@@ -327,6 +327,8 @@ export interface CoreSettings {
 }
 
 export interface ExitStrategySettings {
+  /** Additional Signal-only fits; the original high/low fit remains present. Identical economic cells deduplicate. */
+  signalRanges?: Array<{ holdH: number; distance: number; basis: "extrema" | "close" }>;
   enabled: boolean;
   /** Standalone lanes evaluated by Historic Exit, independent of configured Bot types and Base focus lanes. */
   timeframes: number[];

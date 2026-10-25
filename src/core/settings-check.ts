@@ -269,6 +269,22 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (typeof v !== "boolean") throw new Error(`toggle ${k} must be boolean`);
   if (s.exitStrategy) {
     const e = s.exitStrategy;
+    if (e.signalRanges !== undefined) {
+      if (!Array.isArray(e.signalRanges) || e.signalRanges.length > 6)
+        throw new Error("Signal Exit ranges: at most 6 additional fits");
+      const seen = new Set<string>();
+      for (const range of e.signalRanges) {
+        if (!range || typeof range !== "object" || !["extrema", "close"].includes(range.basis))
+          throw new Error("Signal Exit range basis: extrema or close");
+        if (!Number.isFinite(range.holdH) || !Number.isFinite(range.distance))
+          throw new Error("Signal Exit range requires finite horizon and distance");
+        num(range.holdH, 0.5, 96, "Signal Exit range hours");
+        num(range.distance, 1, 3, "Signal Exit distance multiplier");
+        const key = `${range.holdH}|${range.distance}|${range.basis}`;
+        if (seen.has(key)) throw new Error("Duplicate Signal Exit range");
+        seen.add(key);
+      }
+    }
     if (e.enabled !== undefined && typeof e.enabled !== "boolean")
       throw new Error("historic exit strategy: on / off");
     if (e.timeframes !== undefined) {

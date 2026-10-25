@@ -858,6 +858,14 @@ describe("independent historic exit strategy", () => {
     assert.ok((a[pair] ?? []).every((p) => p.exitType === "historic" && p.tag === undefined));
   });
 
+  it("validates additional Signal Exit ranges without allowing invalid or duplicate fits", () => {
+    const good = [{ holdH: 6, distance: 1.5, basis: "close" as const }];
+    checkSettings({ exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, signalRanges: good } });
+    for (const signalRanges of [[{...good[0], distance: NaN}], [{...good[0], holdH: 0}],
+      [{...good[0], basis: "future"}], [...good, ...good], Array(7).fill(good[0])])
+      assert.throws(() => checkSettings({ exitStrategy: { signalRanges } } as never), /Signal Exit/);
+  });
+
   it("keeps Signal Exit filters and trail caps identical on local and worker history fits", async () => {
     const bars = barsFromCandles(
       "A-USDT",
@@ -875,7 +883,9 @@ describe("independent historic exit strategy", () => {
       minValidationTrades: 2,
       minPf: 1.05,
       holdH: 1,
-      maxConfigsPerPair: 6,
+      maxConfigsPerPair: 60,
+      signalRanges: [{ holdH: 3, distance: 1.5, basis: "close" as const },
+        { holdH: 6, distance: 2, basis: "extrema" as const }],
       quantiles: [0.5],
       stopQuantiles: [0.5],
       trailShares: [0.5],
@@ -891,9 +901,29 @@ describe("independent historic exit strategy", () => {
     };
     const entryFilter = { trendH: 6, volFloor: 0.0005 };
     const entryFilters = { [pair]: entryFilter };
+    const diagnostics = emptyExitStrategyDiagnostics();
     const local = finish(
-      exitStrategyProtectsGen(u, [pair], settings, null, u.nowT, validation, emptyExitStrategyDiagnostics(), entryFilters),
+      exitStrategyProtectsGen(u, [pair], settings, null, u.nowT, validation, diagnostics, entryFilters),
     );
+    assert.ok(diagnostics.candidates > 0 && diagnostics.evaluated > 0);
+    const baselineDiagnostics = emptyExitStrategyDiagnostics();
+    finish(exitStrategyProtectsGen(u, [pair], { ...settings, signalRanges: [] }, null, u.nowT,
+      validation, baselineDiagnostics, entryFilters));
+    assert.ok(diagnostics.candidates > baselineDiagnostics.candidates, "additional fits create genuinely distinct candidate cells");
+    assert.ok(diagnostics.candidates <= settings.maxConfigsPerPair, "all fits share the bounded per-source cap");
+    const ordinary = `${EXIT_BOT}|ema-9-21@m15`;
+    const ordinaryFit = (expanded: boolean) => finish(exitStrategyProtectsGen(u, [ordinary],
+      { ...settings, signalRanges: expanded ? settings.signalRanges : [] }, null, u.nowT, validation));
+    assert.deepEqual(ordinaryFit(true), ordinaryFit(false), "Signal ranges never change ordinary Exit fits");
+    const cut = u.nowT - 12 * 3_600_000;
+    const originalAtCut = finish(exitStrategyProtectsGen(u, [pair], settings, null, cut, validation,
+      emptyExitStrategyDiagnostics(), entryFilters));
+    const changed = structuredClone(bars);
+    for (let i = 0; i < changed.n; i++) if (changed.t[i] >= cut)
+      for (const col of [changed.o, changed.h, changed.l, changed.c]) col[i] *= 2;
+    const future = makeUniverse([changed]);
+    assert.deepEqual(finish(exitStrategyProtectsGen(future, [pair], settings, null, cut, validation,
+      emptyExitStrategyDiagnostics(), entryFilters)), originalAtCut, "future price structures cannot change historical qualification");
     try {
       const [worker] = await runOnWorkers<ExitStrategyReply>(
         [{
