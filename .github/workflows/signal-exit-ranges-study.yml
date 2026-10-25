@@ -1,18 +1,8 @@
 name: Signal Exit range comparison
 on:
+  # The source-frozen comparison runs separately from routine PR verification.
+  # Keep completed/active receipts instead of resampling this market for UI/docs edits.
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-    paths:
-      - src/core/**
-      - scripts/prepare-signal-exit-ranges.mjs
-      - .github/workflows/signal-exit-ranges-study.yml
-  push:
-    branches: [fix/signal-exit-horizon-20261025]
-    paths:
-      - src/core/**
-      - scripts/prepare-signal-exit-ranges.mjs
-      - .github/workflows/signal-exit-ranges-study.yml
 permissions:
   contents: read
 concurrency:

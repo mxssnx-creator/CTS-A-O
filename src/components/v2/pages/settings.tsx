@@ -2943,7 +2943,8 @@ export function SettingsPage() {
                         <Num min={1} max={3} step={0.25} value={range.distance} onChange={(distance) => update({ distance })} />
                       </Field>
                       <Field label="Price structure">
-                        <select className="v2-select" value={range.basis} onChange={(e) => update({ basis: e.target.value })}>
+                        <select className="v2-select" aria-label={`Signal Exit range ${i + 1} price structure`}
+                          value={range.basis} onChange={(e) => update({ basis: e.target.value })}>
                           <option value="extrema">High / low excursions</option>
                           <option value="close">Completed close changes</option>
                         </select>

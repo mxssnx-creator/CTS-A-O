@@ -71,6 +71,7 @@ const FIXTURE_SETTINGS = {
   dca: { levels: 2, step: 0.02, stopGap: 0.5, slOfTp: 1 },
   axis: { levels: 2, ranges: ["atr"], levelsSet: [2] },
   exitStrategy: {
+    signalRanges: [{ holdH: 6, distance: 1.5, basis: "close" }],
     enabled: true,
     lookbackH: 72,
     trainFraction: 0.6,
@@ -462,6 +463,16 @@ describe(
           await ranking.waitFor({ state: "visible", timeout: 60_000 });
           assert.equal(await ranking.inputValue(), "change1h5m", "the new exchange ranking persists through a real Settings save/reload");
           await ranking.selectOption(previousRank);
+          await saveNow();
+          await page.getByRole("button", { name: "Add Signal Exit range", exact: true }).click();
+          const structure = page.getByRole("combobox", { name: "Signal Exit range 2 price structure", exact: true });
+          await structure.selectOption("extrema");
+          await saveNow();
+          await page.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });
+          await settleRequests();
+          await structure.waitFor({ state: "visible", timeout: 60_000 });
+          assert.equal(await structure.inputValue(), "extrema", "additional Exit range survives settings save/reload");
+          await page.getByRole("button", { name: "Remove range 2", exact: true }).click();
           await saveNow();
           await settleRequests();
         },
