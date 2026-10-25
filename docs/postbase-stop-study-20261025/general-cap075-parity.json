@@ -1,0 +1,259 @@
+{
+  "schema": "cts-exact-simulation-parity-v1",
+  "basis": "Identical funded settled simulation cohort: cfg × symbol × side × entry timestamp × exit timestamp; one modeled round trip; external execution factors removed once from execution only.",
+  "sourceDump": "/home/runner/work/CTS-A-O/CTS-A-O/runs/stops-general/raw.json",
+  "totalExecutions": 7028,
+  "funding": {
+    "basis": "Exact per-close native report allocation",
+    "virtualCloses": 7028,
+    "fundedCloses": 7028,
+    "zeroAllocatedCloses": 0,
+    "unknownAllocations": 0
+  },
+  "examinedConfigTapes": 3857,
+  "matched": 7028,
+  "missingCount": 0,
+  "mismatchCount": 0,
+  "missing": [],
+  "mismatched": [],
+  "tape": {
+    "closes": 7028,
+    "gp": 14.967155457347832,
+    "gl": 53.29856244431275,
+    "pf": 0.28081724479878367,
+    "pfState": "measured"
+  },
+  "execution": {
+    "closes": 7028,
+    "gp": 14.967155457347832,
+    "gl": 53.29856244431275,
+    "pf": 0.28081724479878367,
+    "pfState": "measured"
+  },
+  "hours": [
+    {
+      "t": 1792184400000,
+      "tape": {
+        "closes": 30,
+        "gp": 0.045114827821841286,
+        "gl": 0.0030768091694066977,
+        "pf": 14.662861860406116,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 30,
+        "gp": 0.045114827821841286,
+        "gl": 0.0030768091694066977,
+        "pf": 14.662861860406116,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792188000000,
+      "tape": {
+        "closes": 25,
+        "gp": 0.05263401559122721,
+        "gl": 0.003191695209782008,
+        "pf": 16.490927902486685,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 25,
+        "gp": 0.05263401559122721,
+        "gl": 0.003191695209782008,
+        "pf": 16.490927902486685,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792191600000,
+      "tape": {
+        "closes": 19,
+        "gp": 0.06724075093857447,
+        "gl": 0.003,
+        "pf": 22.41358364619149,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 19,
+        "gp": 0.06724075093857447,
+        "gl": 0.003,
+        "pf": 22.41358364619149,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792195200000,
+      "tape": {
+        "closes": 42,
+        "gp": 0.018429434079774473,
+        "gl": 0.15825526983026386,
+        "pf": 0.11645384131309433,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 42,
+        "gp": 0.018429434079774473,
+        "gl": 0.15825526983026386,
+        "pf": 0.11645384131309433,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792198800000,
+      "tape": {
+        "closes": 1425,
+        "gp": 3.313623130925815,
+        "gl": 0.28502462427828185,
+        "pf": 11.625743352232547,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 1425,
+        "gp": 3.313623130925815,
+        "gl": 0.28502462427828185,
+        "pf": 11.625743352232547,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792202400000,
+      "tape": {
+        "closes": 1745,
+        "gp": 0.25647327505357853,
+        "gl": 13.12053327852007,
+        "pf": 0.019547473384596104,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 1745,
+        "gp": 0.25647327505357853,
+        "gl": 13.12053327852007,
+        "pf": 0.019547473384596104,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792206000000,
+      "tape": {
+        "closes": 2713,
+        "gp": 1.5372001525330228,
+        "gl": 31.53862085165844,
+        "pf": 0.04874024643510022,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 2713,
+        "gp": 1.5372001525330228,
+        "gl": 31.53862085165844,
+        "pf": 0.04874024643510022,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792209600000,
+      "tape": {
+        "closes": 341,
+        "gp": 0.011011963523801812,
+        "gl": 3.9129999999999687,
+        "pf": 0.002814199724968541,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 341,
+        "gp": 0.011011963523801812,
+        "gl": 3.9129999999999687,
+        "pf": 0.002814199724968541,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792213200000,
+      "tape": {
+        "closes": 259,
+        "gp": 0.0072353120203183085,
+        "gl": 4.179999999999987,
+        "pf": 0.0017309358900283087,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 259,
+        "gp": 0.0072353120203183085,
+        "gl": 4.179999999999987,
+        "pf": 0.0017309358900283087,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792216800000,
+      "tape": {
+        "closes": 67,
+        "gp": 1.006999999999999,
+        "gl": 0.0938599156476835,
+        "pf": 10.72875458124122,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 67,
+        "gp": 1.006999999999999,
+        "gl": 0.0938599156476835,
+        "pf": 10.72875458124122,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792220400000,
+      "tape": {
+        "closes": 362,
+        "gp": 8.651192594859781,
+        "gl": 0,
+        "pf": null,
+        "pfState": "no-loss-gate-score-4"
+      },
+      "execution": {
+        "closes": 362,
+        "gp": 8.651192594859781,
+        "gl": 0,
+        "pf": null,
+        "pfState": "no-loss-gate-score-4"
+      }
+    }
+  ],
+  "ranges": [
+    {
+      "range": "gn",
+      "tape": {
+        "closes": 6707,
+        "gp": 14.746758091744601,
+        "gl": 52.59268776081502,
+        "pf": 0.2803955971752388,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 6707,
+        "gp": 14.746758091744601,
+        "gl": 52.59268776081502,
+        "pf": 0.2803955971752388,
+        "pfState": "measured"
+      }
+    },
+    {
+      "range": "wide",
+      "tape": {
+        "closes": 321,
+        "gp": 0.2203973656032092,
+        "gl": 0.7058746834976459,
+        "pf": 0.3122329936967405,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 321,
+        "gp": 0.2203973656032092,
+        "gl": 0.7058746834976459,
+        "pf": 0.3122329936967405,
+        "pfState": "measured"
+      }
+    }
+  ],
+  "ok": true
+}

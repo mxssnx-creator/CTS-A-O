@@ -1,0 +1,571 @@
+{
+  "schema": "cts-scalar-hourly-progress-v2",
+  "requireAll": true,
+  "sourceSha256": "3d99231e34678de8c3213faaa19a81204d3dd415376b369201cddfe910d11d40",
+  "window": {
+    "indicatorStartT": 1792054800000,
+    "evaluationFromT": 1792141200000,
+    "tradeStartT": 1792184400000,
+    "endT": 1792227600000,
+    "preH": 12,
+    "runH": 12
+  },
+  "tapes": 182054,
+  "decisions": 1719816,
+  "violations": [],
+  "complete": true,
+  "basis": "Independent scalar arithmetic directly from saved own net-return rows; does not call makeTape, configEval, production prefix sums, forward cursors or profitFactor. Long and short qualify separately; recorded selection summaries contain only passing directions, or zero if neither passes. Raw pooled and own-side windows independently conserve incoming minus expired closes regardless of changing qualifications. Missing histories remain explicitly unverified; EVERY passing config is required. Historical overlapping validation samples are not future execution profits.",
+  "steps": [
+    {
+      "t": 1792184400000,
+      "verified": 143318,
+      "passed": 60307,
+      "firstFailures": {
+        "net": 6252,
+        "closes": 73558,
+        "lcb": 1262,
+        "pf": 153,
+        "green": 291,
+        "lastN": 1495
+      },
+      "dropped": 0,
+      "gained": 0,
+      "unchangedPass": 0,
+      "directionChanges": 0,
+      "droppedDirectionFailures": {},
+      "transitionCauses": {},
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 0,
+        "gp": 0,
+        "gl": 0
+      },
+      "expired": {
+        "n": 0,
+        "gp": 0,
+        "gl": 0
+      },
+      "passedGp": 10164.241409319397,
+      "passedGl": 1150.2338827777078,
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 143318,
+      "recordedPassed": 60307,
+      "seated": 60307,
+      "passedPf": 8.83667362047595
+    },
+    {
+      "t": 1792188000000,
+      "verified": 143318,
+      "passed": 60746,
+      "firstFailures": {
+        "net": 6409,
+        "closes": 72886,
+        "lcb": 1255,
+        "pf": 157,
+        "green": 332,
+        "lastN": 1519,
+        "ddr": 14
+      },
+      "dropped": 126,
+      "gained": 565,
+      "unchangedPass": 60181,
+      "directionChanges": 719,
+      "droppedDirectionFailures": {
+        "green": 50,
+        "lastN": 54,
+        "lcb": 10,
+        "ddr": 12
+      },
+      "transitionCauses": {
+        "window-closes": 126
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 21194,
+        "gp": 67.70338888442129,
+        "gl": 14.227911538022568
+      },
+      "expired": {
+        "n": 78,
+        "gp": 0.19154995267555083,
+        "gl": 0.0842560080558549
+      },
+      "passedGp": 10237.266722933036,
+      "passedGl": 1157.8418480633609,
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 143318,
+      "recordedPassed": 60746,
+      "seated": 60746,
+      "passedPf": 8.841679664676294
+    },
+    {
+      "t": 1792191600000,
+      "verified": 143318,
+      "passed": 60524,
+      "firstFailures": {
+        "net": 6397,
+        "closes": 72742,
+        "lcb": 1344,
+        "lastN": 1655,
+        "pf": 184,
+        "green": 444,
+        "ddr": 28
+      },
+      "dropped": 583,
+      "gained": 361,
+      "unchangedPass": 60163,
+      "directionChanges": 1084,
+      "droppedDirectionFailures": {
+        "lcb": 86,
+        "closes": 168,
+        "lastN": 193,
+        "ddr": 14,
+        "green": 122
+      },
+      "transitionCauses": {
+        "window-closes": 583
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 18204,
+        "gp": 72.21120061996946,
+        "gl": 27.055847596249748
+      },
+      "expired": {
+        "n": 35531,
+        "gp": 96.18293264181851,
+        "gl": 13.042380762215764
+      },
+      "passedGp": 10227.841006175326,
+      "passedGl": 1154.4089943068486,
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 143318,
+      "recordedPassed": 60524,
+      "seated": 60524,
+      "passedPf": 8.859807101829203
+    },
+    {
+      "t": 1792195200000,
+      "verified": 143318,
+      "passed": 58861,
+      "firstFailures": {
+        "net": 6682,
+        "closes": 71126,
+        "lcb": 2029,
+        "lastN": 3740,
+        "pf": 240,
+        "green": 604,
+        "ddr": 36
+      },
+      "dropped": 3565,
+      "gained": 1902,
+      "unchangedPass": 56959,
+      "directionChanges": 5795,
+      "droppedDirectionFailures": {
+        "closes": 486,
+        "lastN": 2404,
+        "lcb": 439,
+        "net": 6,
+        "green": 212,
+        "ddr": 24,
+        "pf": 4
+      },
+      "transitionCauses": {
+        "window-closes": 3473,
+        "last-N-boundary-closes": 92
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 43793,
+        "gp": 286.3859068767674,
+        "gl": 456.56941806298516
+      },
+      "expired": {
+        "n": 73619,
+        "gp": 462.4112794723713,
+        "gl": 95.52027032429918
+      },
+      "passedGp": 10022.135227388802,
+      "passedGl": 1260.4318826288254,
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 143318,
+      "recordedPassed": 58861,
+      "seated": 58861,
+      "passedPf": 7.951350140783563
+    },
+    {
+      "t": 1792198800000,
+      "verified": 143318,
+      "passed": 53675,
+      "firstFailures": {
+        "net": 8591,
+        "closes": 73998,
+        "lcb": 1899,
+        "green": 566,
+        "pf": 272,
+        "lastN": 4281,
+        "ddr": 36
+      },
+      "dropped": 5823,
+      "gained": 637,
+      "unchangedPass": 53038,
+      "directionChanges": 6594,
+      "droppedDirectionFailures": {
+        "closes": 5102,
+        "lcb": 200,
+        "green": 50,
+        "lastN": 517,
+        "pf": 4,
+        "net": 2
+      },
+      "transitionCauses": {
+        "window-closes": 5823
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 51250,
+        "gp": 211.87936875802765,
+        "gl": 163.04343816555158
+      },
+      "expired": {
+        "n": 186929,
+        "gp": 717.7485548695623,
+        "gl": 300.04755013145495
+      },
+      "passedGp": 9503.563094735899,
+      "passedGl": 1124.0536372323656,
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 143318,
+      "recordedPassed": 53675,
+      "seated": 53675,
+      "passedPf": 8.454723849420107
+    },
+    {
+      "t": 1792202400000,
+      "verified": 143318,
+      "passed": 51195,
+      "firstFailures": {
+        "net": 9656,
+        "closes": 75324,
+        "green": 406,
+        "lcb": 1933,
+        "pf": 281,
+        "lastN": 4504,
+        "ddr": 19
+      },
+      "dropped": 3209,
+      "gained": 729,
+      "unchangedPass": 50466,
+      "directionChanges": 3982,
+      "droppedDirectionFailures": {
+        "closes": 2594,
+        "lcb": 112,
+        "lastN": 423,
+        "green": 80
+      },
+      "transitionCauses": {
+        "window-closes": 3209
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 41082,
+        "gp": 128.3234632971938,
+        "gl": 211.6204344640964
+      },
+      "expired": {
+        "n": 125536,
+        "gp": 522.2113390317002,
+        "gl": 65.81808813990169
+      },
+      "passedGp": 9088.67741961079,
+      "passedGl": 1093.1431817311156,
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 143318,
+      "recordedPassed": 51195,
+      "seated": 51195,
+      "passedPf": 8.31426072220278
+    },
+    {
+      "t": 1792206000000,
+      "verified": 143318,
+      "passed": 46032,
+      "firstFailures": {
+        "net": 11050,
+        "closes": 76744,
+        "pf": 172,
+        "lcb": 2061,
+        "lastN": 6722,
+        "green": 459,
+        "ddr": 60,
+        "rangeGate": 18
+      },
+      "dropped": 8863,
+      "gained": 3700,
+      "unchangedPass": 42332,
+      "directionChanges": 12751,
+      "droppedDirectionFailures": {
+        "closes": 5716,
+        "lastN": 2421,
+        "green": 184,
+        "lcb": 492,
+        "ddr": 56,
+        "net": 6,
+        "rangeGate": 2,
+        "pf": 2
+      },
+      "transitionCauses": {
+        "window-closes": 8863
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 143037,
+        "gp": 643.3826972410341,
+        "gl": 1305.0124218572323
+      },
+      "expired": {
+        "n": 270202,
+        "gp": 1363.0967546475983,
+        "gl": 1037.5895307341575
+      },
+      "passedGp": 8576.249247371215,
+      "passedGl": 645.1330691796348,
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 143318,
+      "recordedPassed": 46032,
+      "seated": 46032,
+      "passedPf": 13.293767839675246
+    },
+    {
+      "t": 1792209600000,
+      "verified": 143318,
+      "passed": 24429,
+      "firstFailures": {
+        "closes": 88822,
+        "net": 15700,
+        "green": 1148,
+        "pf": 712,
+        "lcb": 6794,
+        "lastN": 5612,
+        "ddr": 89,
+        "rangeGate": 12
+      },
+      "dropped": 23072,
+      "gained": 1469,
+      "unchangedPass": 22960,
+      "directionChanges": 24586,
+      "droppedDirectionFailures": {
+        "closes": 15021,
+        "lastN": 3062,
+        "lcb": 3643,
+        "green": 706,
+        "net": 331,
+        "pf": 224,
+        "ddr": 85
+      },
+      "transitionCauses": {
+        "window-closes": 23072
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 190662,
+        "gp": 1107.3319961948287,
+        "gl": 2084.2893115410648
+      },
+      "expired": {
+        "n": 586259,
+        "gp": 6263.68809709161,
+        "gl": 2684.5808184479242
+      },
+      "passedGp": 3660.3481507139413,
+      "passedGl": 553.0397640480818,
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 143318,
+      "recordedPassed": 24429,
+      "seated": 24429,
+      "passedPf": 6.618598496284089
+    },
+    {
+      "t": 1792213200000,
+      "verified": 143318,
+      "passed": 16537,
+      "firstFailures": {
+        "closes": 96454,
+        "net": 17415,
+        "pf": 757,
+        "green": 1598,
+        "lcb": 6345,
+        "lastN": 4117,
+        "ddr": 83,
+        "rangeGate": 12
+      },
+      "dropped": 8392,
+      "gained": 500,
+      "unchangedPass": 16037,
+      "directionChanges": 8895,
+      "droppedDirectionFailures": {
+        "closes": 6434,
+        "lcb": 1027,
+        "green": 728,
+        "lastN": 136,
+        "ddr": 31,
+        "pf": 27,
+        "net": 9
+      },
+      "transitionCauses": {
+        "window-closes": 8392
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 97480,
+        "gp": 263.09358122815996,
+        "gl": 759.8133661424325
+      },
+      "expired": {
+        "n": 271709,
+        "gp": 2189.317722247227,
+        "gl": 1695.5518089302243
+      },
+      "passedGp": 2245.9994726102987,
+      "passedGl": 318.9615901780655,
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 143318,
+      "recordedPassed": 16537,
+      "seated": 16537,
+      "passedPf": 7.041598555350922
+    },
+    {
+      "t": 1792216800000,
+      "verified": 143318,
+      "passed": 1575,
+      "firstFailures": {
+        "closes": 130353,
+        "net": 8417,
+        "lcb": 1889,
+        "rangeGate": 453,
+        "lastN": 243,
+        "pf": 358,
+        "green": 30
+      },
+      "dropped": 14966,
+      "gained": 4,
+      "unchangedPass": 1571,
+      "directionChanges": 14977,
+      "droppedDirectionFailures": {
+        "closes": 14454,
+        "net": 89,
+        "pf": 16,
+        "lcb": 366,
+        "lastN": 12,
+        "green": 30
+      },
+      "transitionCauses": {
+        "window-closes": 14966
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 162121,
+        "gp": 533.6850701968009,
+        "gl": 1358.120315395903
+      },
+      "expired": {
+        "n": 1165985,
+        "gp": 11390.794197476214,
+        "gl": 9928.733891879434
+      },
+      "passedGp": 72.18084991861176,
+      "passedGl": 6.571670976589079,
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 143318,
+      "recordedPassed": 1575,
+      "seated": 1575,
+      "passedPf": 10.983637217345303
+    },
+    {
+      "t": 1792220400000,
+      "verified": 143318,
+      "passed": 879,
+      "firstFailures": {
+        "closes": 132394,
+        "net": 7935,
+        "lcb": 1251,
+        "rangeGate": 440,
+        "lastN": 163,
+        "pf": 252,
+        "green": 4
+      },
+      "dropped": 726,
+      "gained": 30,
+      "unchangedPass": 849,
+      "directionChanges": 760,
+      "droppedDirectionFailures": {
+        "closes": 660,
+        "lcb": 52,
+        "green": 6,
+        "pf": 4,
+        "net": 4
+      },
+      "transitionCauses": {
+        "window-closes": 726
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 58518,
+        "gp": 318.59717331563536,
+        "gl": 511.98889315484973
+      },
+      "expired": {
+        "n": 121737,
+        "gp": 675.9980001173836,
+        "gl": 725.8485850517915
+      },
+      "passedGp": 37.3516625436255,
+      "passedGl": 2.467261735977776,
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 143318,
+      "recordedPassed": 879,
+      "seated": 879,
+      "passedPf": 15.138913719189599
+    },
+    {
+      "t": 1792224000000,
+      "verified": 143318,
+      "passed": 4,
+      "firstFailures": {
+        "closes": 131874,
+        "net": 10836,
+        "lcb": 325,
+        "pf": 140,
+        "rangeGate": 119,
+        "lastN": 20
+      },
+      "dropped": 879,
+      "gained": 4,
+      "unchangedPass": 0,
+      "directionChanges": 883,
+      "droppedDirectionFailures": {
+        "closes": 882
+      },
+      "transitionCauses": {
+        "window-closes": 879
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 173016,
+        "gp": 764.4077952754229,
+        "gl": 1104.3362833400977
+      },
+      "expired": {
+        "n": 188839,
+        "gp": 569.0160570680921,
+        "gl": 490.8979627305763
+      },
+      "passedGp": 0.21427814871062945,
+      "passedGl": 0.07439098179655695,
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 143318,
+      "recordedPassed": 4,
+      "seated": 4,
+      "passedPf": 2.880431788044326
+    }
+  ]
+}

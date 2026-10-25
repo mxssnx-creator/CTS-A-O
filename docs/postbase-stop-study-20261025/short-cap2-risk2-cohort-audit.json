@@ -1,0 +1,11 @@
+{
+  "scope": "Alternative funded subset of native source and independently entry-audited historical qualification; no new market simulation",
+  "originalFundedCloses": 30938,
+  "riskFundedCloses": 9770,
+  "identicalSourceReturns": 9770,
+  "missing": 0,
+  "maxPositionX": 0.5,
+  "maxExposureX": 2,
+  "capBasis": "realized balance notional",
+  "allNativeChecks": true
+}

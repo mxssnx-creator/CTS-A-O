@@ -1,3 +1,13 @@
+### Completed stop-grid matrix
+
+All ten candidate native runs completed; remote matrix40184860919 all4jobs SUCCESS. Long.75 whole-armPF.101833, peakDD38.0631%,minimum equity$6.457285;5151settledorders. No studies remain running locally for this turn. All native, exact-return, own-entry and hourly audits passed. Six ordinary ranges covered; Minimal Plus remains unconfigured, Signals unchanged on their own policy. Shared risk replay Short2 is strongest measured combination (PF2.014093/DD2.3035%), but end equity$9.932115 and6negativehours mean stability/profitability goal remains unmet. No financial default promotion. Report rebuilt with all candidate results; reproducible remote raw evidence is in workflow40184860919 artifacts. Never promote low-PF caps just because loss drawdown falls.
+
+### Strongest tested candidate and remaining study
+
+Short2 raw simulation complete: PF1.699, peak equityDD163.1641%, minimum equity -$7.645524; all58reportchecks,30938exactsource/own-directionentrychecks,1719816hourlydecisions pass. Shared notional caps .5× per symbol/direction /2× overall applied as separate report funding replay yield PF2.014093, peakDD2.3035%, minEq$9.779655, endEq$9.932115, cash-weightedPF1.009685;46positionsopened/29closed/17held,32720ordersopened/9770settled/22950held,5green/6red/1flat. All9770 funded closes retain exact original source returns/own-entry evidence, all58 nativechecks pass. This preserves high unit PF and lowers LOSS drawdown, but DOES NOT establish positive ending equity or hourly stability. Candidate only; no live/default settings changed.
+
+Micro1,Minimal1,General.75 remote native+entry+hourly checks passed (40184860919). Whole-armPF .213158/.135481/.280817 respectively, rejected as profitable settings. Long.75 still running at checkpoint. Local docs/repro protocols retained. New large-export proof:110000configIDs,19358916-byte legacy metadata →3chunks each≤8388608bytes,exact ordered SHA preserved,1.413s,330.6MB sampledRSS. Study workflow now manual-only to prevent repeat runs on report updates. All financial failures remain visible.
+
 ### Stop comparison follow-up
 
 Short1.25 completes PF.983847, peakDD30.9789%, so fails PF objective. Short1.5 PF1.390668, peakDD68.9742%, min equity$3.378472: preserves PF>1 but remains high risk. Separate report-only funding replay (maxPositionX.5,maxExposureX2) yields PF1.162964, peakDD2.725%, min equity$9.741976, end$9.916556; 46 positions opened/15held,15194orders opened/3508settled/11686held,5green/6red/1flat hours. All3508 funded closes exactly subset original12378 with unchanged returns, all58 nativechecks pass. Cash-weighted PF.412972, so not a positive dollar outcome. Do not present risk caps as improved intrinsic returns or profitable live qualification.
