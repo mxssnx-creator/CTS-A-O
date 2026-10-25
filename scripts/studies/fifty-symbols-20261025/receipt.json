@@ -1,0 +1,566 @@
+{
+  "status": "data-only checkpoint; no 50-symbol simulation or X02 run",
+  "configuration": {
+    "schema": "cts-public-binance-um-archive-v1",
+    "source": "Binance USD-M public historical daily klines",
+    "baseUrl": "https://data.binance.vision/data/futures/um/daily/klines",
+    "from": "2026-10-10T00:00:00.000Z",
+    "toExclusive": "2026-10-22T00:00:00.000Z",
+    "symbols": [
+      "BTC-USDT",
+      "ETH-USDT",
+      "BNB-USDT",
+      "SOL-USDT",
+      "XRP-USDT",
+      "DOGE-USDT",
+      "ADA-USDT",
+      "AVAX-USDT",
+      "LINK-USDT",
+      "LTC-USDT",
+      "DOT-USDT",
+      "ATOM-USDT",
+      "APT-USDT",
+      "NEAR-USDT",
+      "SUI-USDT",
+      "TRX-USDT",
+      "UNI-USDT",
+      "FIL-USDT",
+      "ETC-USDT",
+      "ARB-USDT",
+      "OP-USDT",
+      "XLM-USDT",
+      "BCH-USDT",
+      "AAVE-USDT",
+      "INJ-USDT",
+      "RUNE-USDT",
+      "TIA-USDT",
+      "SEI-USDT",
+      "ICP-USDT",
+      "TON-USDT",
+      "WLD-USDT",
+      "FET-USDT",
+      "RENDER-USDT",
+      "JUP-USDT",
+      "ENA-USDT",
+      "ONDO-USDT",
+      "STX-USDT",
+      "IMX-USDT",
+      "GRT-USDT",
+      "ALGO-USDT",
+      "VET-USDT",
+      "HBAR-USDT",
+      "EGLD-USDT",
+      "QNT-USDT",
+      "SAND-USDT",
+      "MANA-USDT",
+      "AXS-USDT",
+      "GALA-USDT",
+      "CRV-USDT",
+      "DYDX-USDT"
+    ],
+    "tfs": [
+      1,
+      5,
+      15,
+      30,
+      60
+    ],
+    "developmentSymbols": [
+      "BTC-USDT",
+      "ETH-USDT",
+      "BNB-USDT",
+      "SOL-USDT",
+      "XRP-USDT",
+      "DOGE-USDT",
+      "ADA-USDT",
+      "AVAX-USDT",
+      "LINK-USDT",
+      "LTC-USDT",
+      "DOT-USDT",
+      "ATOM-USDT",
+      "APT-USDT",
+      "NEAR-USDT",
+      "SUI-USDT",
+      "TRX-USDT",
+      "UNI-USDT",
+      "FIL-USDT",
+      "ETC-USDT",
+      "ARB-USDT"
+    ],
+    "holdoutSymbols": [
+      "BTC-USDT",
+      "ETH-USDT",
+      "BNB-USDT",
+      "SOL-USDT",
+      "XRP-USDT",
+      "DOGE-USDT",
+      "ADA-USDT",
+      "AVAX-USDT",
+      "LINK-USDT",
+      "LTC-USDT",
+      "DOT-USDT",
+      "ATOM-USDT",
+      "APT-USDT",
+      "NEAR-USDT",
+      "SUI-USDT",
+      "TRX-USDT",
+      "UNI-USDT",
+      "FIL-USDT",
+      "ETC-USDT",
+      "ARB-USDT",
+      "OP-USDT",
+      "XLM-USDT",
+      "BCH-USDT",
+      "AAVE-USDT",
+      "INJ-USDT",
+      "RUNE-USDT",
+      "TIA-USDT",
+      "SEI-USDT",
+      "ICP-USDT",
+      "TON-USDT",
+      "WLD-USDT",
+      "FET-USDT",
+      "RENDER-USDT",
+      "JUP-USDT",
+      "ENA-USDT",
+      "ONDO-USDT",
+      "STX-USDT",
+      "IMX-USDT",
+      "GRT-USDT",
+      "ALGO-USDT",
+      "VET-USDT",
+      "HBAR-USDT",
+      "EGLD-USDT",
+      "QNT-USDT",
+      "SAND-USDT",
+      "MANA-USDT",
+      "AXS-USDT",
+      "GALA-USDT",
+      "CRV-USDT",
+      "DYDX-USDT"
+    ],
+    "outcomesUsedForSelection": false,
+    "venueParity": "Binance USD-M history, distinct from earlier BingX feeds; not venue-owned execution evidence"
+  },
+  "feed": {
+    "path": "feed.json",
+    "bytes": 86293463,
+    "sha256": "fa94d8df57450d95942c7aaf13d5a8e99528eb2717e537d48f69b464d8d30fcc",
+    "symbols": 50,
+    "oneMinuteBars": 864000,
+    "symbolCoverage": {
+      "BTC-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "ETH-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "BNB-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "SOL-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "XRP-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "DOGE-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "ADA-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "AVAX-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "LINK-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "LTC-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "DOT-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "ATOM-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "APT-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "NEAR-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "SUI-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "TRX-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "UNI-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "FIL-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "ETC-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "ARB-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "OP-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "XLM-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "BCH-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "AAVE-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "INJ-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "RUNE-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "TIA-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "SEI-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "ICP-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "TON-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "WLD-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "FET-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "RENDER-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "JUP-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "ENA-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "ONDO-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "STX-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "IMX-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "GRT-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "ALGO-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "VET-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "HBAR-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "EGLD-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "QNT-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "SAND-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "MANA-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "AXS-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "GALA-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "CRV-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "DYDX-USDT": {
+        "bars": 17280,
+        "firstT": 1791590400000,
+        "lastT": 1792627140000,
+        "endExclusiveT": 1792627200000,
+        "gaps": 0,
+        "duplicates": 0
+      }
+    }
+  },
+  "archiveCount": 600,
+  "errors": 0,
+  "tests": {
+    "archiveChecks": 6,
+    "signalRoutingActivationPublication": 51
+  },
+  "pending": [
+    "Freeze 50-symbol ordinary/Signals/combined protocols",
+    "Run all configured types/ranges with post-Base audits",
+    "Evaluate new configs on held-out windows",
+    "Verify X02 identity, consistent backup and owned-position reconciliation before any activation"
+  ]
+}

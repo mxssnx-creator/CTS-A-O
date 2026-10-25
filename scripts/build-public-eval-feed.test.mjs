@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { archiveDates, parseArchiveCsv, sha256Bytes, validateCoverage, verifyArchiveChecksum } from "./lib/public-eval-feed.mjs";
+import { archiveDates, parseArchiveCsv, sha256Bytes, validateCoverage, verifyArchiveChecksum, validateArchiveScope } from "./lib/public-eval-feed.mjs";
 
 const from = Date.parse("2026-10-16T00:00:00Z");
 const row = (t, extra = {}) => {
@@ -53,3 +53,13 @@ test("UTC archive days use inclusive-exclusive bounds", () => {
   assert.deepEqual(archiveDates(from, from + 86_400_000), ["2026-10-16"]);
   assert.throws(() => archiveDates(from + 60_000, from + 86_400_000));
 });
+
+test("explicit 50-symbol scope keeps order and rejects duplicates, unsafe paths and clipped day boundaries", () => {
+  const symbols = Array.from({length: 50}, (_, i) => `S${i}-USDT`);
+  assert.deepEqual(validateArchiveScope(symbols, from, from + DAY).symbols, symbols);
+  for (const bad of [[], [...symbols, symbols[0]], ["../BTC-USDT"], ["btc-usdt"], ["BTC-USDT", 1]])
+    assert.throws(() => validateArchiveScope(bad, from, from + DAY));
+  assert.throws(() => validateArchiveScope(symbols, from + 60_000, from + DAY));
+  assert.throws(() => validateArchiveScope(symbols, from, from + 61 * DAY));
+});
+const DAY = 86_400_000;

@@ -83,3 +83,13 @@ export function verifyArchiveChecksum(bytes, checksumText, archiveName) {
   if (actual !== row.hash) throw new Error(`${archiveName}: SHA256 checksum mismatch`);
   return actual;
 }
+
+/** Explicit source inventory; never replace unavailable symbols using performance outcomes. */
+export function validateArchiveScope(symbols, fromT, toT) {
+  if (!Array.isArray(symbols) || !symbols.length || symbols.length > 200 ||
+      symbols.some(s => typeof s !== "string" || !/^[A-Z0-9]+-USDT$/.test(s)) ||
+      new Set(symbols).size !== symbols.length) throw new Error("Invalid or duplicate archive symbols");
+  const days = archiveDates(fromT, toT);
+  if (days.length > 60) throw new Error("Archive scope exceeds 60 days");
+  return { symbols: [...symbols], fromT, toT };
+}
