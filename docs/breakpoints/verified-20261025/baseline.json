@@ -1,0 +1,102 @@
+{
+  "schema": "cts-verified-breakpoint-v1",
+  "name": "verified-baseline-20261025",
+  "scope": "Verified software/reporting baseline; not financial stability or production/live certification",
+  "testedHead": "85bd819603a58cecbf6ca5c4f8e8237d89f9566b",
+  "previousRelease": "a88723702686d81463f7fa72068d50e5fdcd48e8",
+  "pr": 205,
+  "verificationRun": 40238823849,
+  "pfNeutral": 1,
+  "roundTripCost": 0.0015,
+  "results": [
+    {
+      "mode": "ordinary-EMA",
+      "scope": "12 symbols / 12h, Oct17 09\u201321 UTC",
+      "validationTimestamp": 1792227600000,
+      "validationPf": 5.619923188237076,
+      "passed": 5091,
+      "evaluated": 44623,
+      "validatedPct": 11.408914685252,
+      "denominator": "evaluated configs at run start; Base-qualified inventory separately 45063 includes440 disabled types",
+      "settledExecutionPf": 1.33660633637,
+      "positions": {
+        "opened": 15,
+        "closed": 4,
+        "held": 11
+      },
+      "orders": {
+        "opened": 7076,
+        "settled": 4882,
+        "held": 2194
+      },
+      "peakEquityDdPct": 22.5921,
+      "sourceSha256": "cb4a1ca7591a76b20cdc5a479719094cbe66399342ec1af3a7ae419a26b3e517"
+    },
+    {
+      "mode": "Signals",
+      "scope": "12 symbols / 12h later control, Oct17 09\u201321 UTC",
+      "validationTimestamp": 1792270800000,
+      "validationPf": 4.608183512107599,
+      "passed": 11436,
+      "evaluated": 3030936,
+      "validatedPct": 0.37730918765688226,
+      "denominator": "all config \u00d7 symbol \u00d7 direction contexts at endpoint including empty/insufficient",
+      "settledExecutionPf": 0.0659949007,
+      "positions": {
+        "opened": 4,
+        "closed": 2,
+        "held": 2
+      },
+      "orders": {
+        "opened": 863,
+        "settled": 280,
+        "held": 583
+      },
+      "peakEquityDdPct": 1.1745,
+      "sourceSha256": "9b8d3062c50e486f88228bfe6cb02ad63d3f48dd4a971156eb6e0d66784fda74",
+      "provenance": "Native computation succeeded but original report exited1; corrected report69/69, unchanged raw inputs, 39402168 scalar checks and29 comparison sections pass"
+    }
+  ],
+  "checks": {
+    "sessionReport": 41,
+    "ordinaryReplay": {
+      "passed": 80,
+      "total": 80,
+      "identicalHydratedSessionFields": 29
+    },
+    "earlierRecoveryReportNumerators": {
+      "checks": 266,
+      "cases": 10
+    },
+    "routingActivationPublication": 51
+  },
+  "unfinished": {
+    "broadOrdinaryRun": 40226266532,
+    "fiftySymbolBranch": "feat/fifty-symbol-study-20261025",
+    "fiftySymbolCommit": "885b8af528450f9440263b1e62001db1d5521afc",
+    "fiftySymbolScope": "data acquisition only; no trade simulation",
+    "x02": "not started; no connection, account or venue writes",
+    "other": [
+      "fractional Exit tactics",
+      "causal per-leg minute equity",
+      "held-out new-config evaluation",
+      "all-family financial stability"
+    ]
+  },
+  "fiftySymbolArchive": {
+    "libraryFileId": "libfile_4acf29eb0904819197974c394ea5face",
+    "bytes": 51423161,
+    "sha256": "fc31938ea0bd2d2d5c1ed0012e7da29412b19f78d1305ee9ee5fdc4f2deb807c",
+    "feedSha256": "fa94d8df57450d95942c7aaf13d5a8e99528eb2717e537d48f69b464d8d30fcc",
+    "symbols": 50,
+    "dailyArchives": 600,
+    "minuteBars": 864000,
+    "errors": 0
+  },
+  "mergeCommit": "92d6836a102db836d87fd72e30a11a4d6c829c4f",
+  "verification": "all seven CI jobs success; offline checks and production build success",
+  "testPasses": 4390,
+  "testFailures": 0,
+  "templateSkips": 8,
+  "slowExclusionsPassedSeparately": 2
+}
