@@ -1,8 +1,8 @@
 /** The user's primary PF metric: net returns after costs, independent of account size or order notional. */
 export function returnPf(
-  row?: { n?: unknown; pf?: unknown; pfBasis?: unknown } | null,
+  row?: ComparisonPf | null,
 ): number | null {
-  return row?.pfBasis !== "unavailable" &&
+  return !isFlatUnitSample(row) && row?.pfBasis !== "unavailable" &&
     typeof row?.n === "number" &&
     row.n > 0 &&
     typeof row.pf === "number" &&
@@ -13,8 +13,9 @@ export function returnPf(
 
 /** The finite engine sentinel is a ranking convention, not an exact ratio when the sample has no losses. */
 export function returnPfText(
-  row?: { n?: unknown; pf?: unknown; noLoss?: unknown; pfBasis?: unknown } | null,
+  row?: ComparisonPf | null,
 ): string {
+  if (isFlatUnitSample(row)) return "Flat (no ratio)";
   const value = returnPf(row);
   if (value === null) return "–";
   return row?.noLoss === true ? "No losses" : value.toFixed(2);
@@ -25,11 +26,29 @@ type ComparisonPf = {
   pf?: unknown;
   gp?: unknown;
   gl?: unknown;
+  returnGp?: unknown;
+  returnGl?: unknown;
   noLoss?: unknown;
   pfConvention?: unknown;
   pfBasis?: unknown;
   unknownReturns?: unknown;
 };
+
+/** Zero gains and zero losses have no ratio; they are not a measured losing PF of zero. */
+function isFlatUnitSample(row?: ComparisonPf | null): boolean {
+  if (!hasUnitReturnBasis(row) || typeof row?.n !== "number" || row.n <= 0) return false;
+  // Execution group rows name their normalized sums explicitly; never substitute cash sums.
+  return "returnGp" in row || "returnGl" in row
+    ? row.returnGp === 0 && row.returnGl === 0
+    : row.gp === 0 && row.gl === 0;
+}
+
+/** PF 1 is neutral. An explicit qualification floor may warn on a positive but unqualified ratio. */
+export function pfTone(value: unknown, min = 1): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value === 1) return "";
+  if (value < 1) return "v2-down";
+  return value >= min ? "v2-up" : "v2-warn";
+}
 
 /** Signed presentation only. Qualification still uses conventional PF (breakeven = 1). */
 export function returnPfEdge(row?: ComparisonPf | null): number | null {
@@ -88,6 +107,7 @@ function measuredComparisonPf(row?: ComparisonPf | null): number | null {
 
 /** Cached comparisons may predate gross-return provenance; their finite score is not a verified ratio. */
 export function comparisonPfText(row?: ComparisonPf | null): string {
+  if (isFlatUnitSample(row)) return "Flat (no ratio)";
   const pf = returnPf(row);
   if (pf === null)
     return typeof row?.n === "number" && row.n > 0 && row.pfBasis === "unavailable"

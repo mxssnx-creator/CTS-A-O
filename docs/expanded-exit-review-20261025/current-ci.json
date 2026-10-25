@@ -1,0 +1,53 @@
+{
+  "checkedAt": "2026-10-25T14:25:21.133Z",
+  "commit": "d02ab91c6c2beae9cec0086d0fdfca8feb2b5191",
+  "economicSource": "cb4415d4bf602c10ef1946178352c37d7bc6622f0bee19f68728b0daf4648d5b",
+  "run": 40200849871,
+  "jobs": [
+    {
+      "id": 121191592669,
+      "name": "core-tests (1)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 121191592858,
+      "name": "core-tests (4)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 121191592911,
+      "name": "slow-runtime",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 121191592920,
+      "name": "core-tests (2)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 121191592932,
+      "name": "core-tests (3)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 121191592935,
+      "name": "quality",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 121193998157,
+      "name": "verify",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "passedTests": 4324,
+  "templateSkips": 8,
+  "slowTestsPassedSeparately": 2
+}

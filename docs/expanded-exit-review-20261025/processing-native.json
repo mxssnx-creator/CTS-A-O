@@ -1,0 +1,48 @@
+{
+  "run": 40200402203,
+  "checkpoint": "f36df85babd445bfb1b3eb2a0ef7db4dc64f7bde",
+  "economicSource": "cb4415d4bf602c10ef1946178352c37d7bc6622f0bee19f68728b0daf4648d5b",
+  "checkedAt": "2026-10-25T14:30:36.622Z",
+  "jobs": [
+    {
+      "id": 121190167510,
+      "name": "signals (control-0)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 121190167621,
+      "name": "ordinary (0)",
+      "status": "in_progress",
+      "conclusion": null
+    },
+    {
+      "id": 121190167652,
+      "name": "ordinary (15)",
+      "status": "in_progress",
+      "conclusion": null
+    },
+    {
+      "id": 121190167745,
+      "name": "signals (control-12)",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 12601218039,
+      "name": "bounded-signals-control-0-40200402203",
+      "size_in_bytes": 150357628,
+      "digest": "sha256:48984b71a795de6efb9a009dcf4a72bdb4a65672e2adfc4388f19eacaf5ec588",
+      "commit": "f36df85babd445bfb1b3eb2a0ef7db4dc64f7bde"
+    },
+    {
+      "id": 12601098246,
+      "name": "bounded-signals-control-12-40200402203",
+      "size_in_bytes": 153700485,
+      "digest": "sha256:4807f6ea6e64ca435ffb69308fd670cabcf87e2b161a54c8988efb9c7de905f3",
+      "commit": "f36df85babd445bfb1b3eb2a0ef7db4dc64f7bde"
+    }
+  ]
+}

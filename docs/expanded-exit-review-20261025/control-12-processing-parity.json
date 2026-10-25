@@ -1,0 +1,76 @@
+{
+  "ok": true,
+  "beforeSource": "39c138751c6e36ce08993078d2bded69597ce713abee6e369ecabb596ed9c0f8",
+  "afterSource": "cb4415d4bf602c10ef1946178352c37d7bc6622f0bee19f68728b0daf4648d5b",
+  "exactInputs": [
+    "window",
+    "symbols",
+    "actualSettings",
+    "actualWf"
+  ],
+  "pfNeutral": 1,
+  "settledOrders": 278,
+  "heldOrders": 582,
+  "pf": 0.067947,
+  "counts": {
+    "openedPositions": 4,
+    "closedPositions": 2,
+    "openPositions": 2,
+    "openedOrders": 860,
+    "settledOrders": 278,
+    "openOrders": 582,
+    "basis": "funded-modeled-allocations"
+  },
+  "exactSections": [
+    "catalog",
+    "hourly",
+    "groups",
+    "ledger",
+    "account",
+    "entrySelection",
+    "exactTape",
+    "reportChecks"
+  ],
+  "nativeChecks": 68,
+  "scalarComparisons": 39402168,
+  "catalog": {
+    "sources": 118,
+    "sourceLanes": 663,
+    "requestedCells": 137241,
+    "expectedEffectiveConfiguredCells": 125970,
+    "builtConfigs": 126289,
+    "fittedOrRetainedConfigs": 319,
+    "missingConfiguredCells": 0,
+    "missingExamples": [],
+    "expectedExit": 10,
+    "builtExit": 10,
+    "closes": 10999508
+  },
+  "metrics": {
+    "before": {
+      "scenario": "control-12",
+      "runner": "Linux-6.18.55-x86_64-with-glibc2.39",
+      "machine": "x86_64",
+      "cpuCount": 9,
+      "sourceSha256": "39c138751c6e36ce08993078d2bded69597ce713abee6e369ecabb596ed9c0f8",
+      "exitCode": 0,
+      "wallSeconds": 529.0063681499996,
+      "childPeakRssMiB": 3499.4765625,
+      "userSeconds": 1031.785108,
+      "systemSeconds": 15.369178999999999
+    },
+    "after": {
+      "scenario": "control-12",
+      "runner": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+      "machine": "x86_64",
+      "cpuCount": 4,
+      "sourceSha256": "cb4415d4bf602c10ef1946178352c37d7bc6622f0bee19f68728b0daf4648d5b",
+      "exitCode": 0,
+      "wallSeconds": 368.14982936700005,
+      "childPeakRssMiB": 3531.19921875,
+      "userSeconds": 753.27886,
+      "systemSeconds": 6.489852
+    }
+  },
+  "timingScope": "Different hosts/runs; wall-time differences are observations, not a controlled speedup."
+}
