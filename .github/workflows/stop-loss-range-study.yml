@@ -1,0 +1,52 @@
+name: Post-Base stop-loss range comparison
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  study:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - { range: micro, ratio: 1 }
+          - { range: minimal, ratio: 1 }
+          - { range: general, ratio: 0.75 }
+          - { range: long, ratio: 0.75 }
+    env:
+      MALLOC_ARENA_MAX: '2'
+      MALLOC_MMAP_THRESHOLD_: '1048576'
+      CTS_CORE_STATE: 'off'
+      CTS_CORE_AUTOSTART: '0'
+      CTS_CORE_LIVE: '0'
+      CTS_CORE_COMPARE: '0'
+      CTS_CORE_VARIANTS: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci --ignore-scripts
+      - run: env -u DATABASE_URL npm run build
+      - name: Freeze stop experiment before scoring
+        run: node --experimental-strip-types --no-warnings scripts/micro-study.mjs prepare --feed scripts/studies/signals-coverage/feed.json.gz --out runs/stops-${{ matrix.range }} --range ${{ matrix.range }} --symbols 12 --end 1792227600000 --sl-ratio-cap ${{ matrix.ratio }} --provider 'Cached BingX minute data; retrospective stop comparison'
+      - name: Complete native minute replay
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: node --experimental-strip-types --no-warnings scripts/micro-study.mjs run --out runs/stops-${{ matrix.range }} --workers 2 --heap-mb 8192 --tape-trades-all > runs/stops-${{ matrix.range }}/run.log 2>&1
+      - name: Verify funded returns and independent qualification
+        run: |
+          node --experimental-strip-types --no-warnings scripts/summarize-range-session.mjs runs/stops-${{ matrix.range }} runs/stops-${{ matrix.range }}/report/data.json
+          node --experimental-strip-types --no-warnings scripts/audit-simulation-parity.mjs runs/stops-${{ matrix.range }}/raw.json runs/stops-${{ matrix.range }}/parity.json
+          node --experimental-strip-types --no-warnings .github/audits/session-entry-qualification.mjs runs/stops-${{ matrix.range }} runs/stops-${{ matrix.range }}/entry-audit.json
+          node --experimental-strip-types --no-warnings .github/audits/hourly-progress.mjs runs/stops-${{ matrix.range }} runs/stops-${{ matrix.range }}/hourly-audit.json --require-all
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: postbase-stops-${{ matrix.range }}-${{ github.run_id }}
+          path: runs/stops-${{ matrix.range }}/
+          retention-days: 30
+          compression-level: 3

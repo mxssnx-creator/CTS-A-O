@@ -242,3 +242,64 @@ it("stop before the detached live callback runs cannot grant it the restart gene
     rt.dispose();
   }
 });
+
+it("completed current books dispatch immediately and coalesce while exchange work is pending", async () => {
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { live: { enabled: true, mode: "overall" }, signals: { enabled: false } }, { market: "synthetic" });
+  const self = rt as unknown as { gen: number; dirty: boolean; settingsStale: boolean; resetUniverse: boolean; executionPending: boolean; paperRunning: boolean; stopped: boolean; releaseExecutionBook(gen: number): boolean };
+  Object.assign(self, { dirty: false, settingsStale: false, resetUniverse: false, executionPending: true, stopped: false });
+  let active = 0, peak = 0, calls = 0, release!: () => void;
+  const seen: unknown[] = [];
+  rt.onLive = async () => {
+    calls++; active++; peak = Math.max(peak, active); seen.push(rt.paper.positions);
+    if (calls === 1) await new Promise<void>(r => { release = r; });
+    active--;
+  };
+  try {
+    assert.equal(self.releaseExecutionBook(self.gen), true);
+    await settle();
+    assert.equal(calls, 1, "no polling timer needs to fire");
+    assert.equal(rt.executionEntryBlocked(), false);
+    rt.paper = { ...rt.paper, positions: [] };
+    self.releaseExecutionBook(self.gen);
+    rt.paper = { ...rt.paper, positions: [] };
+    const newest = rt.paper.positions;
+    self.releaseExecutionBook(self.gen);
+    assert.equal(calls, 1);
+    release(); await settle(); await settle();
+    assert.equal(calls, 2, "one immediate follow-up, not one queued task per book");
+    assert.equal(seen[1], newest);
+    assert.equal(peak, 1);
+    for (const field of ["dirty", "settingsStale", "resetUniverse", "paperRunning", "stopped"] as const) {
+      self.executionPending = true; self[field] = true;
+      assert.equal(self.releaseExecutionBook(self.gen), false, field);
+      assert.equal(rt.executionEntryBlocked(), true);
+      self[field] = false;
+    }
+    assert.equal(self.releaseExecutionBook(self.gen - 1), false);
+    await settle(); assert.equal(calls, 2);
+  } finally { rt.dispose(); rt.db.db.close(); }
+});
+
+it("cycle releases a persisted qualified book before a slow diagnostic audit", async () => {
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { live: { enabled: true, mode: "overall" }, signals: { enabled: false } }, { market: "synthetic" });
+  // Delayed diagnostics are controlled here; the production cycle and dispatch path remain real.
+  const self = rt as unknown as Record<string, any>;
+  Object.assign(self, { stopped: false, dirty: true, settingsStale: true, executionPending: true, resetUniverse: false });
+  self.syncMarket = async () => false;
+  self.compute = async () => { self.dirty = false; self.settingsStale = false; };
+  self.stepPaperGen = function* () { yield 0; rt.db.kvSet("ready-fixture", true); };
+  self.runAdjust = () => undefined;
+  self.incCapture = async () => undefined;
+  self.buildListings = () => undefined;
+  self.schedule = () => undefined;
+  let called = false, audit = false;
+  rt.onLive = async () => { assert.equal(rt.db.kvGet("ready-fixture"), true); called = true; };
+  self.runAuditAsync = async () => {
+    audit = true;
+    await settle();
+    assert.equal(called, true, "ready admission must not wait for audit completion");
+    assert.equal(rt.executionEntryBlocked(), false);
+  };
+  try { await rt.cycle(); assert.equal(audit, true); assert.equal(rt.status.error, null); }
+  finally { rt.dispose(); rt.db.db.close(); }
+});

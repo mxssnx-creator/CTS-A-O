@@ -1,0 +1,57 @@
+name: Frozen high-cell range capacity retry
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  retry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        range: [micro, minimal]
+    env:
+      MALLOC_ARENA_MAX: '2'
+      MALLOC_MMAP_THRESHOLD_: '1048576'
+      CTS_CORE_STATE: 'off'
+      CTS_CORE_AUTOSTART: '0'
+      CTS_CORE_LIVE: '0'
+      CTS_CORE_COMPARE: '0'
+      CTS_CORE_VARIANTS: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: env -u DATABASE_URL npm run build
+      - name: Freeze the identical economic settings and cached data
+        run: |
+          node --experimental-strip-types --no-warnings scripts/micro-study.mjs prepare --feed scripts/studies/signals-coverage/feed.json.gz --out runs/retry-${{ matrix.range }} --range ${{ matrix.range }} --symbols 12 --end 1792227600000 --provider 'Cached BingX minute data; unchanged retrospective case'
+          python - <<'PYCODE'
+          import json,hashlib
+          x=json.load(open('runs/retry-${{ matrix.range }}/protocol.json'))
+          expected={'micro': 'c9fa736ad3e5872bb7f2f63268e7d3acb29a59ae8439b572958c06b98255ac54', 'minimal': '738b19ddb15fc32b102b1fdb0be50fd698fc7b518fc81f8127f78f78303df617'}
+          actual=hashlib.sha256(json.dumps({'settings':x['actualSettings'],'wf':x['actualWf'],'window':x['window'],'feed':x['feed']['sha256']},sort_keys=True,separators=(',',':')).encode()).hexdigest()
+          assert actual==expected['${{ matrix.range }}'], 'Retry changed economic settings, window or feed'
+          print('Exact economic protocol parity:',actual)
+          PYCODE
+      - name: Complete all configured cells with larger test heap
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: node --experimental-strip-types --no-warnings scripts/micro-study.mjs run --out runs/retry-${{ matrix.range }} --workers 2 --heap-mb 8192 --tape-trades-all > runs/retry-${{ matrix.range }}/run.log 2>&1
+      - name: Reconcile source returns and exact context coverage
+        run: |
+          node --experimental-strip-types --no-warnings scripts/audit-simulation-parity.mjs runs/retry-${{ matrix.range }}/raw.json runs/retry-${{ matrix.range }}/parity.json > runs/retry-${{ matrix.range }}/parity.log
+          node --experimental-strip-types --no-warnings scripts/summarize-range-session.mjs runs/retry-${{ matrix.range }} runs/retry-${{ matrix.range }}/report/data.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ready-capacity-${{ matrix.range }}-${{ github.run_id }}
+          path: runs/retry-${{ matrix.range }}/
+          retention-days: 30
+          compression-level: 3

@@ -1,0 +1,50 @@
+{
+  "classification": "Exact funded modeled entries against saved candidate net closes and independent own-side historical PF/Last-N gates. This does not reconstruct unexported Base cell metadata or venue-owned fills.",
+  "study": {
+    "id": "micro-12-symbols-wide-12h-pre-12h-run",
+    "protocolSha256": "37b8b7f156cf105f3ada57c8e5fc8188048ec7a46c5b416c53e3b4fd09817f3c",
+    "feedSha256": "b97d1deeb9e65b355f5276b4d25368fafc12b0a9f386bd399b1efb4094269825",
+    "sourceSha256": "3d99231e34678de8c3213faaa19a81204d3dd415376b369201cddfe910d11d40",
+    "sourceCheckpoint": "921612d922c4413f4b092a98652157f4fa22257f",
+    "symbols": [
+      "ADA-USDT",
+      "AVAX-USDT",
+      "BCH-USDT",
+      "BNB-USDT",
+      "BTC-USDT",
+      "DOGE-USDT",
+      "DOT-USDT",
+      "ETH-USDT",
+      "LINK-USDT",
+      "LTC-USDT",
+      "SOL-USDT",
+      "XRP-USDT"
+    ],
+    "window": {
+      "indicatorStartT": 1792054800000,
+      "evaluationFromT": 1792141200000,
+      "tradeStartT": 1792184400000,
+      "endT": 1792227600000,
+      "preH": 12,
+      "runH": 12
+    },
+    "scope": "Base-qualified engine execution and separately qualified exact-config Signals; combined funded account reported separately"
+  },
+  "stats": {
+    "funding": {
+      "basis": "Exact per-close native report allocation",
+      "virtualCloses": 591,
+      "fundedCloses": 591,
+      "zeroAllocatedCloses": 0,
+      "unknownAllocations": 0
+    },
+    "orders": 591,
+    "matchedSourceCloses": 591,
+    "missingSourceCloses": 0,
+    "failedOwnDirectionAtEntry": 0,
+    "maxCostError": 9.745267193911333e-8,
+    "maxSourceUnitReturnError": 0,
+    "unknownReturns": 0
+  },
+  "violations": []
+}

@@ -1,0 +1,57 @@
+name: Live ready seven-range minute replay
+# Frozen retrospective matrix: dispatch explicitly after sealing a new study.
+# Report-only corrections use the preserved raw returns and do not rescore the market.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  range:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        range: [micro, minimal, short, general, long, wide, minimalPlus]
+    env:
+      MALLOC_ARENA_MAX: '2'
+      MALLOC_MMAP_THRESHOLD_: '1048576'
+      CTS_CORE_STATE: 'off'
+      CTS_CORE_AUTOSTART: '0'
+      CTS_CORE_LIVE: '0'
+      CTS_CORE_COMPARE: '0'
+      CTS_CORE_VARIANTS: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: env -u DATABASE_URL npm run build
+      - name: Freeze exact settings, source and cached minute feed
+        run: >-
+          node --experimental-strip-types --no-warnings scripts/micro-study.mjs prepare
+          --feed scripts/studies/signals-coverage/feed.json.gz
+          --out runs/range-${{ matrix.range }} --range ${{ matrix.range }} --symbols 12
+          --end 1792227600000 --provider 'Cached BingX native minute feed; retrospective regression'
+      - name: Run twelve hours and preserve full scalar histories
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: >-
+          node --experimental-strip-types --no-warnings scripts/micro-study.mjs run
+          --out runs/range-${{ matrix.range }} --workers 2 --tape-trades-all
+          > runs/range-${{ matrix.range }}/run.log 2>&1
+      - name: Independently reconcile funded source returns and stage counts
+        run: |
+          node --experimental-strip-types --no-warnings scripts/audit-micro-stages.mjs runs/range-${{ matrix.range }} > runs/range-${{ matrix.range }}/stages.log
+          node --experimental-strip-types --no-warnings scripts/audit-simulation-parity.mjs runs/range-${{ matrix.range }}/raw.json runs/range-${{ matrix.range }}/parity.json > runs/range-${{ matrix.range }}/parity.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ready-range-${{ matrix.range }}-${{ github.run_id }}
+          path: runs/range-${{ matrix.range }}/
+          retention-days: 30
+          compression-level: 3

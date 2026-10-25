@@ -1,0 +1,31 @@
+{
+  "config": "follow|micro-1-activity-acceleration-relative-fast@m1|tp3.6|sl1|tr0|h960|gn",
+  "window": [
+    1792141200000,
+    1792184400000
+  ],
+  "direction": -1,
+  "returns": [
+    -0.0115,
+    -0.011499999999999991,
+    -0.011500000000000038,
+    -0.011500000000000015,
+    -0.011499999999999918,
+    -0.011499999999999915,
+    0.03450000000000006,
+    -0.011500000000000066,
+    0.03449999999999998,
+    0.03450000000000005,
+    0.034500000000000024,
+    0.034500000000000045,
+    -0.011500000000000078,
+    -0.011499999999999995,
+    -0.011500000000000071,
+    0.03450000000000001
+  ],
+  "exactBinarySquaredResidual": "271801244711058659/166153499473114484112975882535043072",
+  "exactPositive": true,
+  "highPrecisionLcbPercent": "9.48315500200634489745887983400110633917451614055624246517599274500E-16",
+  "productionVerdictUnchanged": true,
+  "scalarAuditFix": "Resolve near-zero sign using exact integer arithmetic on IEEE-754 inputs; no gate or trade edits."
+}

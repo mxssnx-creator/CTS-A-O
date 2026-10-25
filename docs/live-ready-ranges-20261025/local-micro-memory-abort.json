@@ -1,0 +1,10 @@
+{
+  "completed": false,
+  "sourceSha256": "5aaee37338db18125aeb7798d08cfd91e549acb9c851cff475c4d2b9ec07d34c",
+  "memoryLimitBytes": 8589934592,
+  "workers": 2,
+  "allocatorEnvironmentSet": false,
+  "maxSampledRssMb": 6865,
+  "lastCompleteTapeProgressPct": 71,
+  "reason": "Memory guard aborted at 1178 MB available against a 1200 MB hard reserve; repeated fallback was stopped. No completed financial result."
+}

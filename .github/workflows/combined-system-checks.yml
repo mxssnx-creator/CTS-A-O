@@ -1,7 +1,7 @@
 name: Combined system scripts and UI checks
 on:
   push:
-    branches: [codex/incremental-cycle-20261020]
+    branches: [codex/incremental-cycle-20261020, fix/live-ready-progress-20261025]
     paths: [src/**, scripts/**, .github/**, package.json, package-lock.json]
 permissions:
   contents: read

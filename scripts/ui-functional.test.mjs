@@ -383,6 +383,13 @@ describe(
                 )
                 .catch(() => undefined);
               await settleRequests();
+              if (path === "/v2/statistics") {
+                assert.match(await page.locator("main").innerText(), /PF edge subtracts 1/);
+              }
+              if (path === "/v2/settings") {
+                assert.match(await page.locator("main").innerText(), /classic and coordinated Signals use the Signals range/);
+                assert.match(await page.locator("main").innerText(), /excluding Signals/);
+              }
               const r = await page.evaluate(() => {
                 const main = document.querySelector("main") ?? document.body;
                 const text = main.innerText;

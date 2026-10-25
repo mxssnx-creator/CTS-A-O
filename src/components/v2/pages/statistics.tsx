@@ -13,6 +13,7 @@ import {
   comparisonPfText,
   returnPf,
   returnPfText,
+  returnPfEdgeText,
   unitStatsPfText,
   liveBalanceUnavailable,
 } from "../accounting";
@@ -118,6 +119,9 @@ function GroupTable(props: {
               <td className="num">{pct(r.wr)}</td>
               <td className={`num ${pfTone(returnPf(r))}`}>
                 {props.comparison ? comparisonPfText(r) : returnPfText(r)}
+                <div className="v2-muted" title="PF edge = PF − 1. Zero is breakeven; positive means net gains exceed net losses.">
+                  edge {returnPfEdgeText(r)}
+                </div>
               </td>
               <td className="num v2-muted">{cashPfText(r)}</td>
               <td className={`num ${tone(r.net)}`}>{fmt.pct(r.net)}</td>
@@ -330,7 +334,10 @@ function Configs(props: { rows: Any[]; source: string }) {
                   <td className="num">{r.trail ? `${(r.trail * 100).toFixed(3)}%` : "–"}</td>
                   <td className="num">{r.n}</td>
                   <td className="num">{pct(r.wr)}</td>
-                  <td className={`num ${pfTone(returnPf(r))}`}>{returnPfText(r)}</td>
+                  <td className={`num ${pfTone(returnPf(r))}`}>
+                    {returnPfText(r)}
+                    <div className="v2-muted" title="PF edge = PF − 1; breakeven = 0">edge {returnPfEdgeText(r)}</div>
+                  </td>
                   <td className="num v2-muted">{cashPfText(r)}</td>
                   <td className={`num ${tone(r.usd)}`}>{fmt.usd(r.usd)}</td>
                   <td className="num">{fmt.h(r.ddt)}</td>
@@ -567,7 +574,7 @@ export function StatisticsPage() {
                   : "Model return PF before allocation"
             }
             value={returnPfText(T)}
-            sub={`${T.pfBasis === "unavailable" ? `unit-return evidence unavailable for ${fmt.num(T.unknownReturns)} closes · ` : ""}${r.source === "paper-history" ? "nominal paper cash PF" : "cash PF diagnostic"} ${cashPfText(T)} · ${r.source === "paper-history" ? "recorded WR" : "WR"} ${pct(T.wr)} · SQN ${fmt.pf(T.sqn)}`}
+            sub={`PF edge (PF − 1): ${returnPfEdgeText(T)} · ${T.pfBasis === "unavailable" ? `unit-return evidence unavailable for ${fmt.num(T.unknownReturns)} closes · ` : ""}${r.source === "paper-history" ? "nominal paper cash PF" : "cash PF diagnostic"} ${cashPfText(T)} · ${r.source === "paper-history" ? "recorded WR" : "WR"} ${pct(T.wr)} · SQN ${fmt.pf(T.sqn)}`}
             className={pfTone(returnPf(T))}
           />
           <Kpi
@@ -592,6 +599,10 @@ export function StatisticsPage() {
             sub={`${tl.ordersMax} orders · ${tl.setsMax} sets · margin ${usd(tl.marginMax)} at ${d.leverageFrom ?? "–"}`}
           />
         </div>
+        <p className="v2-muted">
+          Return PF: 1 is breakeven; below 1 is losing. PF edge subtracts 1: zero is breakeven,
+          positive is profitable on the displayed settled sample. No-loss samples have no finite ratio.
+        </p>
         {r.source === "sim" && (
           <p className="v2-muted">
             Return PF uses settled post-Base accepted modeled records before account allocation. The

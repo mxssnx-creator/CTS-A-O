@@ -10,11 +10,34 @@ import {
   paperUnitReturn,
   returnPf,
   returnPfText,
+  returnPfEdge,
+  returnPfEdgeText,
   sameDataScope,
   unitStatsPfText,
   presetMetricsPfText,
   liveBalanceUnavailable,
 } from "./accounting.ts";
+
+test("PF edge is zero at breakeven and never relabels a losing or unknown sample positive", () => {
+  const base = { n: 4, pfBasis: "unit-net-returns", unknownReturns: 0,
+    pfConvention: "gross-return-ratio", noLoss: false, gl: 1 };
+  for (const [pf, text] of [[0, "-1.00"], [0.2, "-0.80"], [1, "0.00"], [1.5, "+0.50"]] as const) {
+    const row = { ...base, pf, gp: pf };
+    assert.equal(returnPfEdge(row), pf - 1);
+    assert.equal(returnPfEdgeText(row), text);
+    assert.equal(returnPf(row), pf, "presentation must preserve the original PF");
+  }
+  const known = { ...base, gp: 2, pf: 2 };
+  for (const patch of [{ n: 0 }, { unknownReturns: 1 }, { pfBasis: "unavailable" },
+    { gp: undefined }, { gl: 0 }, { gl: NaN }, { noLoss: true }, { pfConvention: undefined }]) {
+    assert.equal(returnPfEdge({ ...known, ...patch }), null);
+    assert.equal(returnPfEdgeText({ ...known, ...patch }), "–");
+  }
+  const noLoss = { ...known, gl: 0, pf: 4, noLoss: true, pfConvention: "no-loss-sentinel" };
+  assert.equal(returnPfEdge(noLoss), null, "the no-loss score is not a finite ratio");
+  assert.equal(returnPfEdgeText(noLoss), "No losses");
+  assert.equal(returnPfEdgeText({ ...noLoss, gp: 0 }), "–");
+});
 
 test("return PF is the primary metric and cash PF remains a separate diagnostic", () => {
   const row = { n: 12, cashPf: 0.2, pf: 1.36 };

@@ -274,7 +274,7 @@ test("validation history splits checks losslessly and preserves empty steps and 
   const stored = JSON.parse(readFileSync(file, "utf8"));
   const sidecar = stored.validationSidecar;
   assert.deepEqual(stored.validation, []);
-  assert.equal(sidecar.schema, "cts-session-validation-v1");
+  assert.equal(sidecar.schema, "cts-session-validation-v2");
   assert.equal(sidecar.steps, 3);
   assert.equal(sidecar.rows, 30);
   assert.ok(sidecar.chunks.length > 2);
@@ -400,4 +400,29 @@ test("writer rejects a single row larger than the chunk bound", async (t) => {
   const { file } = workspace(t);
   const raw = { tapeTrades: [{ id: "one", trades: [["🚀".repeat(100), 1, 0, 1, 0.1]] }] };
   await assert.rejects(async () => writeSessionDump(file, raw, { maxChunkBytes: 256 }), /chunk|line|record|size|bytes|large|exceed/i);
+});
+
+
+test("large selected-config validation metadata streams without losing membership or checks", async (t) => {
+  const { file } = workspace(t);
+  const real = Array.from({ length: 3000 }, (_, i) => `source-α-${i}-` + "x".repeat(160));
+  const raw = { validation: [{ t: 123, real, checks: real.map((id, i) => [id, i % 2 === 0]) },
+    { t: 124, real: [], checks: [] }] };
+  await writeSessionDump(file, raw, { maxChunkBytes: 1024 });
+  assert.deepEqual(await readSessionDump(file), raw);
+  const stored = JSON.parse(readFileSync(file, "utf8"));
+  assert.equal(stored.validationSidecar.schema, "cts-session-validation-v2");
+  assert.ok(stored.validationSidecar.chunks.every(x => x.bytes <= 1024));
+  assert.equal(stored.validationSidecar.rows, 3000);
+  assert.equal(stored.validationSidecar.records, 6002);
+});
+
+test("legacy v1 validation metadata still reads unchanged", async (t) => {
+  const { file, dir } = workspace(t);
+  const payload = JSON.stringify(["v", 0, { t: 1, real: ["a", "a"] }]) + "\n" + JSON.stringify(["r", 0, 0, ["a", true]]) + "\n";
+  writeFileSync(join(dir, "legacy.jsonl"), payload);
+  const counts = { steps: 1, rows: 1, records: 2 };
+  writeFileSync(file, JSON.stringify({validation: [], validationSidecar: {schema: "cts-session-validation-v1", ...counts,
+    sha256: hash(payload), chunks: [{path:"legacy.jsonl", bytes: Buffer.byteLength(payload), sha256: hash(payload), ...counts}]}}));
+  assert.deepEqual((await readSessionDump(file)).validation, [{t:1,real:["a","a"],checks:[["a",true]]}]);
 });

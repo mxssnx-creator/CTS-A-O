@@ -1,3 +1,41 @@
+### Completed stop-grid matrix
+
+All ten candidate native runs completed; remote matrix40184860919 all4jobs SUCCESS. Long.75 whole-armPF.101833, peakDD38.0631%,minimum equity$6.457285;5151settledorders. No studies remain running locally for this turn. All native, exact-return, own-entry and hourly audits passed. Six ordinary ranges covered; Minimal Plus remains unconfigured, Signals unchanged on their own policy. Shared risk replay Short2 is strongest measured combination (PF2.014093/DD2.3035%), but end equity$9.932115 and6negativehours mean stability/profitability goal remains unmet. No financial default promotion. Report rebuilt with all candidate results; reproducible remote raw evidence is in workflow40184860919 artifacts. Never promote low-PF caps just because loss drawdown falls.
+
+### Strongest tested candidate and remaining study
+
+Short2 raw simulation complete: PF1.699, peak equityDD163.1641%, minimum equity -$7.645524; all58reportchecks,30938exactsource/own-directionentrychecks,1719816hourlydecisions pass. Shared notional caps .5× per symbol/direction /2× overall applied as separate report funding replay yield PF2.014093, peakDD2.3035%, minEq$9.779655, endEq$9.932115, cash-weightedPF1.009685;46positionsopened/29closed/17held,32720ordersopened/9770settled/22950held,5green/6red/1flat. All9770 funded closes retain exact original source returns/own-entry evidence, all58 nativechecks pass. This preserves high unit PF and lowers LOSS drawdown, but DOES NOT establish positive ending equity or hourly stability. Candidate only; no live/default settings changed.
+
+Micro1,Minimal1,General.75 remote native+entry+hourly checks passed (40184860919). Whole-armPF .213158/.135481/.280817 respectively, rejected as profitable settings. Long.75 still running at checkpoint. Local docs/repro protocols retained. New large-export proof:110000configIDs,19358916-byte legacy metadata →3chunks each≤8388608bytes,exact ordered SHA preserved,1.413s,330.6MB sampledRSS. Study workflow now manual-only to prevent repeat runs on report updates. All financial failures remain visible.
+
+### Stop comparison follow-up
+
+Short1.25 completes PF.983847, peakDD30.9789%, so fails PF objective. Short1.5 PF1.390668, peakDD68.9742%, min equity$3.378472: preserves PF>1 but remains high risk. Separate report-only funding replay (maxPositionX.5,maxExposureX2) yields PF1.162964, peakDD2.725%, min equity$9.741976, end$9.916556; 46 positions opened/15held,15194orders opened/3508settled/11686held,5green/6red/1flat hours. All3508 funded closes exactly subset original12378 with unchanged returns, all58 nativechecks pass. Cash-weighted PF.412972, so not a positive dollar outcome. Do not present risk caps as improved intrinsic returns or profitable live qualification.
+
+Fixed summary report override to load held allocations from the selected report, not the original uncapped report; supports explicit output path for retaining both. Short2 local run still active; remote stop matrix40184860919 runs Micro1/Minimal1/General.75/Long.75. Published checkpoint6df281d contains export fix, study settings and earlier evidence. No production defaults changed; goal of stable positive performance remains unmet.
+
+## 25 October — loss drawdown and post-Base stop comparison
+
+User explicitly means loss/open-P&L equity drawdown, not margin usage, and wants preserved high post-Base PF. Reconfirmed equity arithmetic excludes margin; new full native replay regression varies leverage 1→100 with identical funded notionals and proves unchanged P&L/PF/minimum equity/drawdown while margin changes 100×.
+
+Work based on PR199 head 921612d. Fixed actual high-cell evidence-export failure: completed Micro/Minimal runs produced 17,455,990 /13,541,750-byte selected-config metadata exceeding 8MiB. Validation sidecar v2 streams selected config IDs losslessly; reader still accepts v1. 44 sidecar/consumer tests pass, 41 report/funded tests plus margin-specific regression, 13 trailing/readiness tests, types/build pass. No economic production default changed.
+
+Stop experiments use scripts/micro-study.mjs --sl-ratio-cap (configured ladder ceiling; mandatory floors may yield higher actual ratios, disclosed). Same frozen 12 symbols/window, full 1m pricing and original PF/gates/sizing/cost/Exit. Wide baseline whole-arm PF .592, peak DD15.04%; cap1 PF.280 DD1.49%; cap0.5 PF.132 DD.649%. Short baseline PF2.016, peakDD231.95%, loss below initial272.94%; cap1 PF.663, peakDD8.22%, loss below initial7.95%. These tight candidates FAIL the PF objective and are not promoted. Short1.5/2 continue; report/docs/postbase-stop-study-20261025 retained protocols, own-entry and exact-return audits. First2,526 settled entries: zero own-direction gate failures, zero missing/mismatched source closes.
+
+Local runs/stop-study-* contain complete raw sidecars. scripts/summarize-stop-study.py rebuilds compact report. Workflow stop-loss-range-study.yml runs Micro1, Minimal1, General.75, Long.75 with full native reports and independent entry/hour audits. Pending studies are not successes. Main is not merged/reloaded; X02 remains clean from preceding technical test, no venue actions this turn. Stable positive execution across ranges remains UNMET. Do not weaken gates, discard losing evidence or attribute lower DD exclusively to stops when admission/exposure counts also change.
+
+## 25 October 2026 — ready-book execution and seven-range evidence (PR199)
+
+Branch `fix/live-ready-progress-20261025`, simulation capacity source `b8d4247b79fb98cfecc740f4f36bce3e3af08d99`. Main has not been merged/reloaded for this change. Backup `backup/main-before-ready-20261025` exists. Report: `docs/live-ready-ranges-20261025/report.md`.
+
+Completed five 12-hour arms (Short, General, Long, Wide, Minimal Plus); all corrected native report and exact-return parity checks pass. Independent scalar hourly audit: 7,097,568 decisions, zero discrepancies. General's old auditor falsely rounded a tiny positive LCB to zero; exact binary rational boundary checking fixes the auditor only. Eleven auditor tests pass. Original failure and precision receipt retained. Minimal Plus has no selected ordinary cells. Short PF exceeds 2 but modeled equity drawdown exceeds 231%; General/Long also exceed capital. No profitable promotion.
+
+Micro/Minimal original 4 GB heap attempts failed. Workflow 40149774312 retries unchanged economic protocols with 8 GB heap, still pending at this checkpoint. Do not claim full range completion. Original workflow 40148371319 preserves raw evidence; detailed local files under runs/ready-ranges-remote-20261025. The capacity workflow is now manual-only to avoid redundant expensive reruns.
+
+X02 VST technical lifecycle completed and independently reconciled: 14 positions, 84 accepted orders, 42 fills, 42 cancelled controls, zero final positions/orders, settings restored. Synthetic qualification is not actual strategy profitability. No further venue action needed.
+
+Full CI at b8d passed quality, slow runtime and three core partitions; partition 3 timed out an ordinary Exit Base test that inadvertently included expanded Signals defaults. Scoped that fixture to ordinary sources (Signals have separate runtime tests); all 22 Exit tests now pass in 1.93s. Production gates/defaults unchanged. New source still requires CI before merging. Regular reporting must retain failures, exact ownership and independent range/type denominators.
+
 ## Signal-only coordination and 150h history — merged and verified, 24 October 2026
 
 PR198 branch fix/signal-coordination-own-grid-20261024 from main cb7685c. Economic source619ba50f37a7c1e9c8a10ee5167a37baf44306b48b32df7a198f0b10c3cf781e. Signal/Exit defaults150h with atomic backup/once migration; Last4 unchanged. Runtime and presets use own Signal grid. Exact legacy held tagged identities stay exit-only. Incremental capture is selected/held only; complete discovery histories retained. UI no longer depends on ordinary grid switches.

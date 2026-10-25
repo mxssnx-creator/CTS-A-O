@@ -590,6 +590,8 @@ describe("independent historic exit strategy", () => {
         mainTop: 0,
         grid,
         gates: { ...DEFAULT_SETTINGS.gates, minTrades: 500 },
+        // This fixture tests ordinary Base rejection; expanded independent Signals have their own runtime matrix.
+        signals: { ...DEFAULT_SETTINGS.signals, enabled: false },
         exitStrategy: {
           ...DEFAULT_SETTINGS.exitStrategy,
           enabled: true,
@@ -618,7 +620,7 @@ describe("independent historic exit strategy", () => {
         Date.now() < deadline
       )
         await new Promise((resolve) => setTimeout(resolve, 25));
-      assert.ok(rt.status.computes >= 1 && rt.audit, "runtime completes the Exit history compute");
+      assert.ok(rt.status.computes >= 1 && rt.audit, `runtime completes the Exit history compute: ${JSON.stringify({ state: rt.status.state, computes: rt.status.computes, error: rt.status.error, phases: rt.status.phases })}`);
       assert.ok(rt.pipeline?.s1.some((run) => run.bot === "follow" && run.ind === "ema-9-21@m15"));
       assert.equal(rt.status.basePassed, 0, "the high Base sample floor admits no pair");
       const exitStatus = rt.status.exitStrategies;

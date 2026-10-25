@@ -1,0 +1,10 @@
+{
+  "selectedConfigs": 110000,
+  "legacyMetadataBytes": 19358916,
+  "maxChunkBytes": 8388538,
+  "chunks": 3,
+  "orderedOriginalSha": "79f73c42117be4527a599a7bc83987abe4c6bf13283356952da54bfa6d8e8929",
+  "orderedRestoredSha": "79f73c42117be4527a599a7bc83987abe4c6bf13283356952da54bfa6d8e8929",
+  "elapsedMs": 1413.300212,
+  "rssMb": 330.59375
+}

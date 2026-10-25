@@ -1037,7 +1037,7 @@ async function runEngine() {
   for (const tp of rt.tapes) {
     const sig = isSignalInd(tp.ind);
     const r = rangeOfId(tp.id);
-    const rl = sig ? "Signals" : RANGE_LABEL[r];
+    const rl = tp.kind === "exit" ? "Exit" : sig ? "Signals" : RANGE_LABEL[r];
     const kl = sig ? `signal:${signalSourceOf(tp.ind)}` : kindOfInd(tp.ind);
     // the book's rule: orders entered at or after the start and closed by the end
     const ex = tp.exitT.subarray(0, tp.n);
@@ -1627,6 +1627,11 @@ const raw = replay
 // dedicated Base pass is recorded separately. Recover that count when there are no engine pairs
 // (so none of the Exit Base rows can already be present in S1).
 if (replay) {
+  // Archived native reports used the ordinary protection tag for Exit heat cells.
+  // Repair only their display range; never change their counts, returns or tape identities.
+  const corrected = raw.tapeAgg?.heat?.filter(c => c.kind === "exit" && c.range !== "Exit") ?? [];
+  for (const cell of corrected) cell.range = "Exit";
+  if (corrected.length) raw.tapeAgg.exitHeatRangeCorrections = corrected.length;
   const cov = raw.engine?.coverage;
   const exit = raw.engine?.independentExit;
   if (cov && Array.isArray(cov.kindsAll) && (cov.signalCombos ?? 0) > 0 && !cov.kindsAll.includes("signal"))
@@ -4155,7 +4160,7 @@ const data = clean({
   coverage: raw.engine.coverage ?? null,
   qualificationThresholds: raw.tapeAgg?.evalAfterBase ?? null,
   heat: raw.tapeAgg?.heat
-    ? { cells: raw.tapeAgg.heat, ind: raw.tapeAgg.heatInd ?? [], exec: heatExec }
+    ? { cells: raw.tapeAgg.heat, ind: raw.tapeAgg.heatInd ?? [], exec: heatExec, exitRangeCorrections: raw.tapeAgg.exitHeatRangeCorrections ?? 0 }
     : null,
   // enabled / disabled overviews (walk-forward variants on the final tapes) and the live sizing replay
   variants: sessionStoredVariants(raw.variants) ?? null,

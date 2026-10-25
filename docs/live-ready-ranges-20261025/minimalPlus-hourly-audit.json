@@ -1,0 +1,5283 @@
+{
+  "schema": "cts-scalar-hourly-progress-v2",
+  "requireAll": true,
+  "sourceSha256": "5aaee37338db18125aeb7798d08cfd91e549acb9c851cff475c4d2b9ec07d34c",
+  "window": {
+    "indicatorStartT": 1792054800000,
+    "evaluationFromT": 1792141200000,
+    "tradeStartT": 1792184400000,
+    "endT": 1792227600000,
+    "preH": 12,
+    "runH": 12
+  },
+  "tapes": 798,
+  "decisions": 744,
+  "violations": [],
+  "complete": true,
+  "basis": "Independent scalar arithmetic directly from saved own net-return rows; does not call makeTape, configEval, production prefix sums, forward cursors or profitFactor. Long and short qualify separately; recorded selection summaries contain only passing directions, or zero if neither passes. Raw pooled and own-side windows independently conserve incoming minus expired closes regardless of changing qualifications. Missing histories remain explicitly unverified; EVERY passing config is required. Historical overlapping validation samples are not future execution profits.",
+  "steps": [
+    {
+      "t": 1792184400000,
+      "verified": 62,
+      "passed": 13,
+      "firstFailures": {
+        "net": 12,
+        "lastN": 35,
+        "pf": 1,
+        "green": 1
+      },
+      "dropped": 0,
+      "gained": 0,
+      "unchangedPass": 0,
+      "directionChanges": 0,
+      "droppedDirectionFailures": {},
+      "transitionCauses": {},
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 0,
+        "gp": 0,
+        "gl": 0
+      },
+      "expired": {
+        "n": 0,
+        "gp": 0,
+        "gl": 0
+      },
+      "passedGp": 2.681602329083298,
+      "passedGl": 0.8760374068032504,
+      "examples": [],
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 62,
+      "recordedPassed": 13,
+      "seated": 13,
+      "passedPf": 3.0610591605542714
+    },
+    {
+      "t": 1792188000000,
+      "verified": 62,
+      "passed": 16,
+      "firstFailures": {
+        "net": 11,
+        "lcb": 3,
+        "lastN": 31,
+        "pf": 1
+      },
+      "dropped": 6,
+      "gained": 9,
+      "unchangedPass": 7,
+      "directionChanges": 15,
+      "droppedDirectionFailures": {
+        "lastN": 6
+      },
+      "transitionCauses": {
+        "window-closes": 6
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 548,
+        "gp": 0.6574668022296203,
+        "gl": 1.2243419642814406
+      },
+      "expired": {
+        "n": 78,
+        "gp": 0.19154995267555083,
+        "gl": 0.0842560080558549
+      },
+      "passedGp": 2.850635155142512,
+      "passedGl": 1.009616091166773,
+      "examples": [
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp1.08|sl1.08|tr0|h105|hxS0",
+          "before": {
+            "ok": true,
+            "n": 70,
+            "gp": 0.3765892455690858,
+            "gl": 0.14362943683382715,
+            "pf": 2.6219503039950145,
+            "net": 23.295980873525863,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 70,
+                "gp": 0.3765892455690858,
+                "gl": 0.14362943683382715,
+                "net": 23.295980873525863,
+                "pf": 2.6219503039950145,
+                "lcb": 17.16290125813459,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.35,
+                "mdd": 0.08780613379889031,
+                "gh": 0.7272727272727273,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 82,
+                "gp": 0.38909700337682107,
+                "gl": 0.18265073354375677,
+                "net": 20.644626983306434,
+                "pf": 2.130278898023735,
+                "lcb": 14.011463394016394,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.35,
+                "mdd": 0.08780613379889031,
+                "gh": 0.6666666666666666,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 12,
+            "gp": 0.012507757807735321,
+            "gl": 0.0390212967099296,
+            "net": -2.6513538902194282,
+            "pf": 0.3205367033472396,
+            "lcb": -4.532506515035366,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.9166666666666666,
+            "mdd": 0.03699839786745349,
+            "gh": 0
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp1.08|sl2.16|tr0|h105|hxS0",
+          "before": {
+            "ok": true,
+            "n": 67,
+            "gp": 0.3660192186048195,
+            "gl": 0.13011206133528416,
+            "pf": 2.813107523226683,
+            "net": 23.590715726953537,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 67,
+                "gp": 0.3660192186048195,
+                "gl": 0.13011206133528416,
+                "net": 23.590715726953537,
+                "pf": 2.813107523226683,
+                "lcb": 17.4964042453606,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.35,
+                "mdd": 0.09654754988635049,
+                "gh": 0.8,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 79,
+                "gp": 0.37852697641200495,
+                "gl": 0.16952905889608705,
+                "net": 20.89979175159179,
+                "pf": 2.232814709624639,
+                "lcb": 14.278081854359497,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.35,
+                "mdd": 0.09654754988635049,
+                "gh": 0.7272727272727273,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 12,
+            "gp": 0.012507757807185434,
+            "gl": 0.039416997560802906,
+            "net": -2.6909239753617475,
+            "pf": 0.31731888731229524,
+            "lcb": -4.5955019815114495,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.9166666666666666,
+            "mdd": 0.0373940987183268,
+            "gh": 0
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-fast@m1|tp0.95|sl0.95|tr0|h105|hxS0",
+          "before": {
+            "ok": true,
+            "n": 64,
+            "gp": 0.3291339868673787,
+            "gl": 0.09298616434707309,
+            "pf": 3.5396017157872888,
+            "net": 23.61478225203056,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 64,
+                "gp": 0.3291339868673787,
+                "gl": 0.09298616434707309,
+                "net": 23.61478225203056,
+                "pf": 3.5396017157872888,
+                "lcb": 18.84296257721307,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 4.35,
+                "mdd": 0.06152845593842736,
+                "gh": 0.7,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 75,
+                "gp": 0.34735779361052505,
+                "gl": 0.11668393796273799,
+                "net": 23.067385564778707,
+                "pf": 2.976911815587256,
+                "lcb": 17.884706042074153,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 4.35,
+                "mdd": 0.06152845593842736,
+                "gh": 0.6666666666666666,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 11,
+            "gp": 0.01822380674314636,
+            "gl": 0.023697773615664913,
+            "net": -0.5473966872518551,
+            "pf": 0.7690092343147331,
+            "lcb": -2.186236245075387,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 1,
+            "mdd": 0.019970067562372577,
+            "gh": 0.5
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-fast@m1|tp0.95|sl1.9|tr0|h105|hxS0",
+          "before": {
+            "ok": true,
+            "n": 63,
+            "gp": 0.32005898041419373,
+            "gl": 0.07367581962294159,
+            "pf": 4.344152288392486,
+            "net": 24.638316079125218,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 63,
+                "gp": 0.32005898041419373,
+                "gl": 0.07367581962294159,
+                "net": 24.638316079125218,
+                "pf": 4.344152288392486,
+                "lcb": 20.34378970306451,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 3.9,
+                "mdd": 0.06198683697375605,
+                "gh": 0.8888888888888888,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 74,
+                "gp": 0.3379793044683141,
+                "gl": 0.09737359323860649,
+                "net": 24.060571122970764,
+                "pf": 3.470954426423618,
+                "lcb": 19.296805233217963,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 3.9,
+                "mdd": 0.06198683697375605,
+                "gh": 0.8181818181818182,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 11,
+            "gp": 0.017920324054120418,
+            "gl": 0.023697773615664913,
+            "net": -0.5777449561544492,
+            "pf": 0.7562028545278433,
+            "lcb": -2.2004197580323517,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 1,
+            "mdd": 0.019970067562372577,
+            "gh": 0.5
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-selective@m1|tp1.29|sl0.94|tr0|h105|hxS1",
+          "before": {
+            "ok": true,
+            "n": 65,
+            "gp": 0.24118077445127503,
+            "gl": 0.02626485399703206,
+            "pf": 9.182642876237903,
+            "net": 21.4915920454243,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 65,
+                "gp": 0.24118077445127503,
+                "gl": 0.02626485399703206,
+                "net": 21.4915920454243,
+                "pf": 9.182642876237903,
+                "lcb": 17.242478101838085,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 3.3666666666666667,
+                "mdd": 0.022887906427286376,
+                "gh": 0.875,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 73,
+                "gp": 0.25234958795459683,
+                "gl": 0.05138200526679206,
+                "net": 20.096758268780484,
+                "pf": 4.9112444452939465,
+                "lcb": 15.377086038245519,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 3.3666666666666667,
+                "mdd": 0.024601251212974157,
+                "gh": 0.7777777777777778,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 8,
+            "gp": 0.011168813503321828,
+            "gl": 0.02511715126976,
+            "net": -1.394833776643817,
+            "pf": 0.4446687995532604,
+            "lcb": -3.0428248481435625,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.9333333333333333,
+            "mdd": 0.02460125121297417,
+            "gh": 0
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-selective@m1|tp1.92|sl1.92|tr0|h105|hxS0",
+          "before": {
+            "ok": true,
+            "n": 43,
+            "gp": 0.23430481599405195,
+            "gl": 0.10146483657147351,
+            "pf": 2.3092218339996413,
+            "net": 13.283997942257846,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 43,
+                "gp": 0.23430481599405195,
+                "gl": 0.10146483657147351,
+                "net": 13.283997942257846,
+                "pf": 2.3092218339996413,
+                "lcb": 7.089347658974265,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 7.55,
+                "mdd": 0.09611162440547406,
+                "gh": 0.625,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 49,
+                "gp": 0.24246348327720504,
+                "gl": 0.114833191266764,
+                "net": 12.763029201044107,
+                "pf": 2.1114407829522794,
+                "lcb": 6.400586320399343,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 7.55,
+                "mdd": 0.09611162440547406,
+                "gh": 0.5555555555555556,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 6,
+            "gp": 0.008158667283153098,
+            "gl": 0.013368354695290498,
+            "net": -0.52096874121374,
+            "pf": 0.6102970387243909,
+            "lcb": -1.7930940838608678,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.9166666666666666,
+            "mdd": 0.013368354695290498,
+            "gh": 0
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        }
+      ],
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 62,
+      "recordedPassed": 16,
+      "seated": 16,
+      "passedPf": 2.823484272965724
+    },
+    {
+      "t": 1792191600000,
+      "verified": 62,
+      "passed": 10,
+      "firstFailures": {
+        "net": 11,
+        "lcb": 4,
+        "lastN": 37
+      },
+      "dropped": 7,
+      "gained": 1,
+      "unchangedPass": 9,
+      "directionChanges": 8,
+      "droppedDirectionFailures": {
+        "lastN": 7
+      },
+      "transitionCauses": {
+        "window-closes": 7
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 314,
+        "gp": 0.4487734898362742,
+        "gl": 0.4633041781392802
+      },
+      "expired": {
+        "n": 603,
+        "gp": 0.703100575727775,
+        "gl": 0.9705537640423743
+      },
+      "passedGp": 1.0655035490785816,
+      "passedGl": 0.1965780839318033,
+      "examples": [
+        {
+          "id": "exit|inverse-micro-1x15-drawdown-market-selective@m1|tp1.02|sl2.04|tr0|h105|hxS3",
+          "before": {
+            "ok": true,
+            "n": 86,
+            "gp": 0.26212030238385897,
+            "gl": 0.14889054304695581,
+            "pf": 1.7604899345500655,
+            "net": 11.32297593369032,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 86,
+                "gp": 0.26212030238385897,
+                "gl": 0.14889054304695581,
+                "net": 11.32297593369032,
+                "pf": 1.7604899345500655,
+                "lcb": 6.003598187311203,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 3.4,
+                "mdd": 0.08766345753227188,
+                "gh": 0.6363636363636364,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 81,
+                "gp": 0.26177093121812506,
+                "gl": 0.14139054304695584,
+                "net": 12.038038817116922,
+                "pf": 1.851403393586167,
+                "lcb": 6.761186768724227,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 3.966666666666667,
+                "mdd": 0.08766345753227188,
+                "gh": 0.6363636363636364,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 4,
+            "gp": 0.00763991398580454,
+            "gl": 0.0045000000000000005,
+            "net": 0.3139913985804541,
+            "pf": 1.6977586635121198,
+            "lcb": -0.5999999999999999,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 1,
+            "mdd": 0.004499999999999999,
+            "gh": 0.5
+          },
+          "expired": {
+            "n": 9,
+            "gp": 0.007989285151538515,
+            "gl": 0.011999999999999999,
+            "net": -0.40107148484614835,
+            "pf": 0.6657737626282096,
+            "lcb": -1.3499999999999999,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 13.25,
+            "mdd": 0.011999999999999999,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-fast@m1|tp0.95|sl0.65|tr0|h105|hxS1",
+          "before": {
+            "ok": true,
+            "n": 100,
+            "gp": 0.2644770800662526,
+            "gl": 0.07155874327150161,
+            "pf": 3.6959436118490503,
+            "net": 19.291833679475104,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 100,
+                "gp": 0.2644770800662526,
+                "gl": 0.07155874327150161,
+                "net": 19.291833679475104,
+                "pf": 3.6959436118490503,
+                "lcb": 14.946189536128271,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 2.9833333333333334,
+                "mdd": 0.041178264448818516,
+                "gh": 0.75,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 96,
+                "gp": 0.26011408833751265,
+                "gl": 0.0796425342159783,
+                "net": 18.04715541215344,
+                "pf": 3.26601973302511,
+                "lcb": 13.62439345537679,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 2.6166666666666667,
+                "mdd": 0.041178264448818516,
+                "gh": 0.6666666666666666,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 6,
+            "gp": 0.0007299176061895947,
+            "gl": 0.008958990280443056,
+            "net": -0.8229072674253463,
+            "pf": 0.08147319991885263,
+            "lcb": -1.3917940810229132,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.9666666666666667,
+            "mdd": 0.008693394181569608,
+            "gh": 0
+          },
+          "expired": {
+            "n": 10,
+            "gp": 0.005092909334929521,
+            "gl": 0.0008751993359663608,
+            "net": 0.42177099989631606,
+            "pf": 5.819142137837811,
+            "lcb": 0.2316797306835477,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.08333333333333333,
+            "mdd": 0.0005999652961082465,
+            "gh": 1
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-fast@m1|tp0.95|sl0.65|tr0.5|h105|hxS2",
+          "before": {
+            "ok": true,
+            "n": 104,
+            "gp": 0.24470276119555068,
+            "gl": 0.073133610871674,
+            "pf": 3.3459685400318255,
+            "net": 17.156915032387673,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 104,
+                "gp": 0.24470276119555068,
+                "gl": 0.073133610871674,
+                "net": 17.156915032387673,
+                "pf": 3.3459685400318255,
+                "lcb": 13.006806576644214,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 2.8833333333333333,
+                "mdd": 0.041178264448818516,
+                "gh": 0.7272727272727273,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 100,
+                "gp": 0.23644481170244327,
+                "gl": 0.0812174018161507,
+                "net": 15.52274098862926,
+                "pf": 2.911258011401005,
+                "lcb": 11.29580198038289,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 2.65,
+                "mdd": 0.041178264448818516,
+                "gh": 0.6363636363636364,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 6,
+            "gp": 0.0007299176061895947,
+            "gl": 0.008958990280443056,
+            "net": -0.8229072674253463,
+            "pf": 0.08147319991885263,
+            "lcb": -1.3917940810229132,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.9666666666666667,
+            "mdd": 0.008693394181569608,
+            "gh": 0
+          },
+          "expired": {
+            "n": 10,
+            "gp": 0.008987867099297001,
+            "gl": 0.0008751993359663608,
+            "net": 0.8112667763330642,
+            "pf": 10.269508590717738,
+            "lcb": 0.46643934520555297,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.06666666666666667,
+            "mdd": 0.0005579742707930357,
+            "gh": 1
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-fast@m1|tp0.95|sl0.87|tr0|h105|hxS1",
+          "before": {
+            "ok": true,
+            "n": 99,
+            "gp": 0.2619995257191511,
+            "gl": 0.06456621861643053,
+            "pf": 4.057842186416638,
+            "net": 19.743330710272062,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 99,
+                "gp": 0.2619995257191511,
+                "gl": 0.06456621861643053,
+                "net": 19.743330710272062,
+                "pf": 4.057842186416638,
+                "lcb": 15.420808059175334,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 2.5833333333333335,
+                "mdd": 0.03177826444881868,
+                "gh": 0.75,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 95,
+                "gp": 0.2576365339904112,
+                "gl": 0.07265000956090722,
+                "net": 18.498652442950398,
+                "pf": 3.546269787816308,
+                "lcb": 14.097875453994716,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 3.5833333333333335,
+                "mdd": 0.03177826444881868,
+                "gh": 0.6666666666666666,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 6,
+            "gp": 0.0007299176061895947,
+            "gl": 0.008958990280443056,
+            "net": -0.8229072674253463,
+            "pf": 0.08147319991885263,
+            "lcb": -1.3917940810229132,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.9666666666666667,
+            "mdd": 0.008693394181569608,
+            "gh": 0
+          },
+          "expired": {
+            "n": 10,
+            "gp": 0.005092909334929521,
+            "gl": 0.0008751993359663608,
+            "net": 0.42177099989631606,
+            "pf": 5.819142137837811,
+            "lcb": 0.2316797306835477,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.08333333333333333,
+            "mdd": 0.0005999652961082465,
+            "gh": 1
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-fast@m1|tp0.95|sl0.65|tr0.63|h105|hxS2",
+          "before": {
+            "ok": true,
+            "n": 100,
+            "gp": 0.26468874017176836,
+            "gl": 0.07155874327150161,
+            "pf": 3.6989014629213184,
+            "net": 19.312999690026682,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 100,
+                "gp": 0.26468874017176836,
+                "gl": 0.07155874327150161,
+                "net": 19.312999690026682,
+                "pf": 3.6989014629213184,
+                "lcb": 14.967865512491757,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 2.9833333333333334,
+                "mdd": 0.041178264448818516,
+                "gh": 0.75,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 96,
+                "gp": 0.26013394792489375,
+                "gl": 0.0796425342159783,
+                "net": 18.049141370891554,
+                "pf": 3.266269092084017,
+                "lcb": 13.626410577208508,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 2.6166666666666667,
+                "mdd": 0.041178264448818516,
+                "gh": 0.6666666666666666,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 6,
+            "gp": 0.0007299176061895947,
+            "gl": 0.008958990280443056,
+            "net": -0.8229072674253463,
+            "pf": 0.08147319991885263,
+            "lcb": -1.3917940810229132,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.9666666666666667,
+            "mdd": 0.008693394181569608,
+            "gh": 0
+          },
+          "expired": {
+            "n": 10,
+            "gp": 0.005284709853064189,
+            "gl": 0.0008751993359663608,
+            "net": 0.4409510517097828,
+            "pf": 6.038292804723189,
+            "lcb": 0.24608359136302024,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.08333333333333333,
+            "mdd": 0.0005999652961082465,
+            "gh": 1
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-fast@m1|tp1.35|sl0.65|tr0|h105|hxS1",
+          "before": {
+            "ok": true,
+            "n": 81,
+            "gp": 0.24558959745144388,
+            "gl": 0.08912755812813693,
+            "pf": 2.755484415924024,
+            "net": 15.646203932330701,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 81,
+                "gp": 0.24558959745144388,
+                "gl": 0.08912755812813693,
+                "net": 15.646203932330701,
+                "pf": 2.755484415924024,
+                "lcb": 10.543980804764598,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 4.516666666666667,
+                "mdd": 0.05712224781307412,
+                "gh": 0.75,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 80,
+                "gp": 0.24370883832692955,
+                "gl": 0.11123542421697631,
+                "net": 13.247341410995329,
+                "pf": 2.1909282950326148,
+                "lcb": 7.9445857589890725,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 4.15,
+                "mdd": 0.05712224781307412,
+                "gh": 0.6666666666666666,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 9,
+            "gp": 0.00321215021041524,
+            "gl": 0.02298306542480576,
+            "net": -1.9770915214390519,
+            "pf": 0.1397616092998781,
+            "lcb": -2.951404431908751,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.8333333333333334,
+            "mdd": 0.022676634765500747,
+            "gh": 0
+          },
+          "expired": {
+            "n": 10,
+            "gp": 0.005092909334929521,
+            "gl": 0.0008751993359663608,
+            "net": 0.42177099989631606,
+            "pf": 5.819142137837811,
+            "lcb": 0.2316797306835477,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.08333333333333333,
+            "mdd": 0.0005999652961082465,
+            "gh": 1
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-selective@m1|tp0|sl0.7|tr1.29|h105|to|ts0.66|tm3|hxS4",
+          "before": {
+            "ok": true,
+            "n": 73,
+            "gp": 0.22443054612620156,
+            "gl": 0.06608710303084274,
+            "pf": 3.39598099831158,
+            "net": 15.834344309535886,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 73,
+                "gp": 0.22443054612620156,
+                "gl": 0.06608710303084274,
+                "net": 15.834344309535886,
+                "pf": 3.39598099831158,
+                "lcb": 10.883494968544968,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 3.3666666666666667,
+                "mdd": 0.0348996412188764,
+                "gh": 0.7,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 70,
+                "gp": 0.2221801465159056,
+                "gl": 0.08580744239528967,
+                "net": 13.637270412061595,
+                "pf": 2.5892875992316253,
+                "lcb": 8.483990734739494,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 3.1,
+                "mdd": 0.04113863232186346,
+                "gh": 0.6,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 7,
+            "gp": 0.002842509724633541,
+            "gl": 0.020595538700413293,
+            "net": -1.7753028975779752,
+            "pf": 0.13801579876017034,
+            "lcb": -2.755790067857678,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.8333333333333334,
+            "mdd": 0.020595538700413293,
+            "gh": 0
+          },
+          "expired": {
+            "n": 10,
+            "gp": 0.005092909334929521,
+            "gl": 0.0008751993359663608,
+            "net": 0.42177099989631606,
+            "pf": 5.819142137837811,
+            "lcb": 0.2316797306835477,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.08333333333333333,
+            "mdd": 0.0005999652961082465,
+            "gh": 1
+          }
+        }
+      ],
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 62,
+      "recordedPassed": 10,
+      "seated": 10,
+      "passedPf": 5.420256051779532
+    },
+    {
+      "t": 1792195200000,
+      "verified": 62,
+      "passed": 9,
+      "firstFailures": {
+        "net": 12,
+        "lastN": 40,
+        "lcb": 1
+      },
+      "dropped": 1,
+      "gained": 0,
+      "unchangedPass": 9,
+      "directionChanges": 1,
+      "droppedDirectionFailures": {
+        "lcb": 1
+      },
+      "transitionCauses": {
+        "window-closes": 1
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 373,
+        "gp": 0.3736332228889724,
+        "gl": 1.271616139074316
+      },
+      "expired": {
+        "n": 447,
+        "gp": 0.817737912027954,
+        "gl": 1.8249432268712045
+      },
+      "passedGp": 0.7016833584852221,
+      "passedGl": 0.09897984226018967,
+      "examples": [
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-selective@m1|tp0.8|sl0.8|tr0|h105|hxL0",
+          "before": {
+            "ok": true,
+            "n": 40,
+            "gp": 0.13767574700935803,
+            "gl": 0.08733961539134956,
+            "pf": 1.5763264629969271,
+            "net": 5.033613161800846,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 40,
+                "gp": 0.13767574700935803,
+                "gl": 0.08733961539134956,
+                "net": 5.033613161800846,
+                "pf": 1.5763264629969271,
+                "lcb": 1.2397781998450035,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 11.433333333333334,
+                "mdd": 0.049753185161647735,
+                "gh": 0.75,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lcb",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 37,
+                "gp": 0.11413608077395596,
+                "gl": 0.08733961539134956,
+                "net": 2.6796465382606396,
+                "pf": 1.3068076870104974,
+                "lcb": -0.9772806582388577,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 11.8,
+                "mdd": 0.04975318516164774,
+                "gh": 0.75,
+                "ok": false,
+                "fail": "lcb"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 3,
+            "gp": 0.01284717577752279,
+            "gl": 0,
+            "net": 1.284717577752279,
+            "pf": 4,
+            "lcb": 0.7366580875043012,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 1
+          },
+          "expired": {
+            "n": 6,
+            "gp": 0.03638684201292485,
+            "gl": 0,
+            "net": 3.638684201292485,
+            "pf": 4,
+            "lcb": 3.562954889954765,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 1
+          }
+        }
+      ],
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 62,
+      "recordedPassed": 9,
+      "seated": 9,
+      "passedPf": 7.089154139493346
+    },
+    {
+      "t": 1792198800000,
+      "verified": 62,
+      "passed": 11,
+      "firstFailures": {
+        "net": 11,
+        "ddr": 2,
+        "lastN": 37,
+        "lcb": 1
+      },
+      "dropped": 9,
+      "gained": 11,
+      "unchangedPass": 0,
+      "directionChanges": 20,
+      "droppedDirectionFailures": {
+        "lastN": 9
+      },
+      "transitionCauses": {
+        "window-closes": 9
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 174,
+        "gp": 0.1216380827983915,
+        "gl": 0.4632660832453031
+      },
+      "expired": {
+        "n": 243,
+        "gp": 0.5510935303999432,
+        "gl": 0.735913274630024
+      },
+      "passedGp": 4.0236834616930395,
+      "passedGl": 1.7233082972982792,
+      "examples": [
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-selective@m1|tp0.8|sl0.5|tr0|h105|hxL1",
+          "before": {
+            "ok": true,
+            "n": 36,
+            "gp": 0.07400495242064276,
+            "gl": 0.004996873671163919,
+            "pf": 14.810250826974542,
+            "net": 6.900807874947884,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 36,
+                "gp": 0.07400495242064276,
+                "gl": 0.004996873671163919,
+                "net": 6.900807874947884,
+                "pf": 14.810250826974542,
+                "lcb": 5.24179990401505,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5,
+                "mdd": 0.0013277980647783969,
+                "gh": 1,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 42,
+                "gp": 0.07400495242064276,
+                "gl": 0.026767927637216707,
+                "net": 4.723702478342603,
+                "pf": 2.764687405899521,
+                "lcb": 2.5173456927473836,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5,
+                "mdd": 0.021771053966052806,
+                "gh": 0.8571428571428571,
+                "ok": false,
+                "fail": "lastN"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 6,
+            "gp": 0,
+            "gl": 0.021771053966052785,
+            "net": -2.1771053966052785,
+            "pf": 0,
+            "lcb": -2.947622396230499,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 1.45,
+            "mdd": 0.021771053966052785,
+            "gh": 0
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-selective@m1|tp0.8|sl0.5|tr0.5|h105|hxL2",
+          "before": {
+            "ok": true,
+            "n": 36,
+            "gp": 0.07477904415642694,
+            "gl": 0.004996873671163919,
+            "pf": 14.965166037309224,
+            "net": 6.978217048526303,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 36,
+                "gp": 0.07477904415642694,
+                "gl": 0.004996873671163919,
+                "net": 6.978217048526303,
+                "pf": 14.965166037309224,
+                "lcb": 5.32462057860256,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5,
+                "mdd": 0.0013277980647783969,
+                "gh": 1,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 42,
+                "gp": 0.07477904415642694,
+                "gl": 0.026767927637216707,
+                "net": 4.801111651921023,
+                "pf": 2.7936060336795787,
+                "lcb": 2.5959483516234996,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5,
+                "mdd": 0.021771053966052806,
+                "gh": 0.8571428571428571,
+                "ok": false,
+                "fail": "lastN"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 6,
+            "gp": 0,
+            "gl": 0.021771053966052785,
+            "net": -2.1771053966052785,
+            "pf": 0,
+            "lcb": -2.947622396230499,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 1.45,
+            "mdd": 0.021771053966052785,
+            "gh": 0
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-selective@m1|tp0.8|sl0.8|tr0|h105|hxL3",
+          "before": {
+            "ok": true,
+            "n": 37,
+            "gp": 0.10545566611527302,
+            "gl": 0.022500000000000003,
+            "pf": 4.686918494012134,
+            "net": 8.2955666115273,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 37,
+                "gp": 0.10545566611527302,
+                "gl": 0.022500000000000003,
+                "net": 8.2955666115273,
+                "pf": 4.686918494012134,
+                "lcb": 6.243492350078732,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.516666666666667,
+                "mdd": 0.007500000000000007,
+                "gh": 0.6666666666666666,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 38,
+                "gp": 0.10545566611527302,
+                "gl": 0.03199999999999997,
+                "net": 7.345566611527304,
+                "pf": 3.2954895661022845,
+                "lcb": 4.981948830427861,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.516666666666667,
+                "mdd": 0.01399999999999997,
+                "gh": 0.75,
+                "ok": false,
+                "fail": "lastN"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 4,
+            "gp": 0,
+            "gl": 0.013999999999999973,
+            "net": -1.3999999999999972,
+            "pf": 0,
+            "lcb": -2.199999999999995,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 1.45,
+            "mdd": 0.013999999999999973,
+            "gh": 0
+          },
+          "expired": {
+            "n": 3,
+            "gp": 0,
+            "gl": 0.0045000000000000005,
+            "net": -0.45000000000000007,
+            "pf": 0,
+            "lcb": -0.45000000000000007,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 13.933333333333334,
+            "mdd": 0.0045000000000000005,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-selective@m1|tp0|sl0.5|tr1.52|h105|to|ts0.33|tm3|hxL4",
+          "before": {
+            "ok": true,
+            "n": 33,
+            "gp": 0.08409258747924897,
+            "gl": 0.0205501413914668,
+            "pf": 4.092068559400151,
+            "net": 6.354244608778216,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 33,
+                "gp": 0.08409258747924897,
+                "gl": 0.0205501413914668,
+                "net": 6.354244608778216,
+                "pf": 4.092068559400151,
+                "lcb": 2.7881141164373124,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 6.65,
+                "mdd": 0.012897739926588846,
+                "gh": 0.7142857142857143,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 37,
+                "gp": 0.09449977971538136,
+                "gl": 0.040050141391466794,
+                "net": 5.444963832391456,
+                "pf": 2.3595367315111595,
+                "lcb": 1.5048714492589426,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 6.65,
+                "mdd": 0.02599999999999994,
+                "gh": 0.7142857142857143,
+                "ok": false,
+                "fail": "lastN"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 5,
+            "gp": 0.010407192236132387,
+            "gl": 0.025999999999999947,
+            "net": -1.5592807763867558,
+            "pf": 0.4002766244666311,
+            "lcb": -3.2499999999999933,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.6666666666666666,
+            "mdd": 0.025999999999999947,
+            "gh": 0
+          },
+          "expired": {
+            "n": 1,
+            "gp": 0,
+            "gl": 0.006499999999999952,
+            "net": -0.6499999999999952,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 13.933333333333334,
+            "mdd": 0.006499999999999952,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-selective@m1|tp0.8|sl0.94|tr0|h105|hxL1",
+          "before": {
+            "ok": true,
+            "n": 36,
+            "gp": 0.07255956245841814,
+            "gl": 0.004996873671163919,
+            "pf": 14.520991970869034,
+            "net": 6.756268878725424,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 36,
+                "gp": 0.07255956245841814,
+                "gl": 0.004996873671163919,
+                "net": 6.756268878725424,
+                "pf": 14.520991970869034,
+                "lcb": 5.1348197919534915,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 4.983333333333333,
+                "mdd": 0.0013277980647783969,
+                "gh": 1,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 40,
+                "gp": 0.07255956245841814,
+                "gl": 0.018167927637216676,
+                "net": 5.439163482120147,
+                "pf": 3.993827139083336,
+                "lcb": 3.341608668404511,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 4.983333333333333,
+                "mdd": 0.013171053966052775,
+                "gh": 0.8571428571428571,
+                "ok": false,
+                "fail": "lastN"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 4,
+            "gp": 0,
+            "gl": 0.013171053966052757,
+            "net": -1.3171053966052757,
+            "pf": 0,
+            "lcb": -2.331416350771256,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 1.45,
+            "mdd": 0.013171053966052757,
+            "gh": 0
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-selective@m1|tp0.8|sl0.5|tr0.53|h105|hxL2",
+          "before": {
+            "ok": true,
+            "n": 36,
+            "gp": 0.07432830324273929,
+            "gl": 0.004996873671163919,
+            "pf": 14.87496145273291,
+            "net": 6.933142957157537,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 36,
+                "gp": 0.07432830324273929,
+                "gl": 0.004996873671163919,
+                "net": 6.933142957157537,
+                "pf": 14.87496145273291,
+                "lcb": 5.276685122766617,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5,
+                "mdd": 0.0013277980647783969,
+                "gh": 1,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 42,
+                "gp": 0.07432830324273929,
+                "gl": 0.026767927637216707,
+                "net": 4.756037560552256,
+                "pf": 2.776767191323289,
+                "lcb": 2.5503988502430643,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5,
+                "mdd": 0.021771053966052806,
+                "gh": 0.8571428571428571,
+                "ok": false,
+                "fail": "lastN"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 6,
+            "gp": 0,
+            "gl": 0.021771053966052785,
+            "net": -2.1771053966052785,
+            "pf": 0,
+            "lcb": -2.947622396230499,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 1.45,
+            "mdd": 0.021771053966052785,
+            "gh": 0
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-selective@m1|tp0.8|sl1.6|tr0|h105|hxL3",
+          "before": {
+            "ok": true,
+            "n": 37,
+            "gp": 0.1045261837924269,
+            "gl": 0.022500000000000003,
+            "pf": 4.645608168552306,
+            "net": 8.202618379242688,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 37,
+                "gp": 0.1045261837924269,
+                "gl": 0.022500000000000003,
+                "net": 8.202618379242688,
+                "pf": 4.645608168552306,
+                "lcb": 6.16826749024679,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.516666666666667,
+                "mdd": 0.007500000000000007,
+                "gh": 0.6666666666666666,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 37,
+                "gp": 0.1045261837924269,
+                "gl": 0.022500000000000003,
+                "net": 8.202618379242688,
+                "pf": 4.645608168552306,
+                "lcb": 6.16826749024679,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.516666666666667,
+                "mdd": 0.007500000000000007,
+                "gh": 0.75,
+                "ok": false,
+                "fail": "lastN"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 3,
+            "gp": 0,
+            "gl": 0.0045000000000000005,
+            "net": -0.45000000000000007,
+            "pf": 0,
+            "lcb": -0.45000000000000007,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 1.45,
+            "mdd": 0.0045000000000000005,
+            "gh": 0
+          },
+          "expired": {
+            "n": 3,
+            "gp": 0,
+            "gl": 0.0045000000000000005,
+            "net": -0.45000000000000007,
+            "pf": 0,
+            "lcb": -0.45000000000000007,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 13.933333333333334,
+            "mdd": 0.0045000000000000005,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-selective@m1|tp0|sl0.5|tr0.8|h105|to|ts0.66|tm3|hxL4",
+          "before": {
+            "ok": true,
+            "n": 35,
+            "gp": 0.04724998981788851,
+            "gl": 0.004996873671163919,
+            "pf": 9.455910420661604,
+            "net": 4.225311614672458,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 35,
+                "gp": 0.04724998981788851,
+                "gl": 0.004996873671163919,
+                "net": 4.225311614672458,
+                "pf": 9.455910420661604,
+                "lcb": 3.107648674624539,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.083333333333333,
+                "mdd": 0.0013277980647783969,
+                "gh": 1,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 42,
+                "gp": 0.0552722316615306,
+                "gl": 0.026767927637216707,
+                "net": 2.8504304024313885,
+                "pf": 2.0648677929285424,
+                "lcb": 0.968211456197646,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.083333333333333,
+                "mdd": 0.020284638192931657,
+                "gh": 0.8571428571428571,
+                "ok": false,
+                "fail": "lastN"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 7,
+            "gp": 0.008022241843642084,
+            "gl": 0.021771053966052785,
+            "net": -1.3748812122410703,
+            "pf": 0.3684820154389871,
+            "lcb": -2.7657819382582596,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.9333333333333333,
+            "mdd": 0.020284638192931657,
+            "gh": 0
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        }
+      ],
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 62,
+      "recordedPassed": 11,
+      "seated": 11,
+      "passedPf": 2.334859913342946
+    },
+    {
+      "t": 1792202400000,
+      "verified": 62,
+      "passed": 3,
+      "firstFailures": {
+        "pf": 1,
+        "lcb": 7,
+        "net": 11,
+        "ddr": 1,
+        "lastN": 39
+      },
+      "dropped": 10,
+      "gained": 2,
+      "unchangedPass": 1,
+      "directionChanges": 12,
+      "droppedDirectionFailures": {
+        "lastN": 10
+      },
+      "transitionCauses": {
+        "window-closes": 10
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 313,
+        "gp": 0.24591653124764756,
+        "gl": 0.6119086470993514
+      },
+      "expired": {
+        "n": 420,
+        "gp": 1.1246656931442485,
+        "gl": 0.570174174993675
+      },
+      "passedGp": 0.7341182984852097,
+      "passedGl": 0.2719165611487987,
+      "examples": [
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp1.08|sl1.08|tr0|h105|hxS0",
+          "before": {
+            "ok": true,
+            "n": 83,
+            "gp": 0.38831089788568235,
+            "gl": 0.14609150643064994,
+            "pf": 2.657997767105062,
+            "net": 24.221939145503246,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 83,
+                "gp": 0.38831089788568235,
+                "gl": 0.14609150643064994,
+                "net": 24.221939145503246,
+                "pf": 2.657997767105062,
+                "lcb": 18.105477780473066,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 3.9166666666666665,
+                "mdd": 0.0893766962662533,
+                "gh": 0.6666666666666666,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 85,
+                "gp": 0.3446372256425406,
+                "gl": 0.15823049105031645,
+                "net": 18.640673459222405,
+                "pf": 2.1780708847888732,
+                "lcb": 12.538519416571416,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 4.916666666666667,
+                "mdd": 0.08937669626625341,
+                "gh": 0.5833333333333334,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 9,
+            "gp": 0.011599591827001146,
+            "gl": 0.012138984619666495,
+            "net": -0.053939279266534815,
+            "pf": 0.955565246224015,
+            "lcb": -1.2292502615806853,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.9666666666666667,
+            "mdd": 0.009630143635736388,
+            "gh": 0.5
+          },
+          "expired": {
+            "n": 7,
+            "gp": 0.05527326407014288,
+            "gl": 0,
+            "net": 5.527326407014288,
+            "pf": 4,
+            "lcb": 5.439331041738504,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 1
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp1.08|sl0.69|tr0|h105|hxS1",
+          "before": {
+            "ok": true,
+            "n": 126,
+            "gp": 0.3552603663389437,
+            "gl": 0.16335730339161872,
+            "pf": 2.174744311781844,
+            "net": 19.190306294732494,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 126,
+                "gp": 0.3552603663389437,
+                "gl": 0.16335730339161872,
+                "net": 19.190306294732494,
+                "pf": 2.174744311781844,
+                "lcb": 13.178872529929295,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.1,
+                "mdd": 0.08298883287977096,
+                "gh": 0.5,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 117,
+                "gp": 0.30682594896877075,
+                "gl": 0.162646088388859,
+                "net": 14.41798605799119,
+                "pf": 1.8864637447363772,
+                "lcb": 8.657975066489621,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 6.1,
+                "mdd": 0.08298883287977091,
+                "gh": 0.5,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 8,
+            "gp": 0.010964606090571339,
+            "gl": 0.001007117026202168,
+            "net": 0.9957489064369172,
+            "pf": 10.887122156914376,
+            "lcb": 0.5303324953664331,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.9666666666666667,
+            "mdd": 0.0010071170262021673,
+            "gh": 1
+          },
+          "expired": {
+            "n": 17,
+            "gp": 0.05939902346074425,
+            "gl": 0.0017183320289618947,
+            "net": 5.768069143178235,
+            "pf": 34.56783814745588,
+            "lcb": 4.1517610258566044,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.35,
+            "mdd": 0.0009742956700642194,
+            "gh": 1
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp1.08|sl0.69|tr0.5|h105|hxS2",
+          "before": {
+            "ok": true,
+            "n": 138,
+            "gp": 0.3437554964489944,
+            "gl": 0.17329929647158923,
+            "pf": 1.9835942986955508,
+            "net": 17.04561999774052,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 138,
+                "gp": 0.3437554964489944,
+                "gl": 0.17329929647158923,
+                "net": 17.04561999774052,
+                "pf": 1.9835942986955508,
+                "lcb": 11.248252958533559,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.1,
+                "mdd": 0.08508877381128202,
+                "gh": 0.5,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 128,
+                "gp": 0.2904529129977394,
+                "gl": 0.17258808146882954,
+                "net": 11.786483152890991,
+                "pf": 1.6829256720731145,
+                "lcb": 6.251673948472155,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 6.1,
+                "mdd": 0.08508877381128198,
+                "gh": 0.5,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 6,
+            "gp": 0.004859983832410629,
+            "gl": 0.001007117026202168,
+            "net": 0.38528668062084614,
+            "pf": 4.825639628730733,
+            "lcb": 0.10995694574338645,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.7,
+            "mdd": 0.0010071170262021677,
+            "gh": 1
+          },
+          "expired": {
+            "n": 16,
+            "gp": 0.05816256728366563,
+            "gl": 0.0017183320289618947,
+            "net": 5.644423525470374,
+            "pf": 33.84827047587753,
+            "lcb": 4.152056111938497,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.23333333333333334,
+            "mdd": 0.0005532261914232908,
+            "gh": 1
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp1.08|sl1.08|tr0|h105|hxS3",
+          "before": {
+            "ok": true,
+            "n": 106,
+            "gp": 0.37943211489026174,
+            "gl": 0.17486703266314285,
+            "pf": 2.1698321811246446,
+            "net": 20.45650822271189,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 106,
+                "gp": 0.37943211489026174,
+                "gl": 0.17486703266314285,
+                "net": 20.45650822271189,
+                "pf": 2.1698321811246446,
+                "lcb": 14.260979855413744,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.866666666666666,
+                "mdd": 0.09735445891117572,
+                "gh": 0.5833333333333334,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 99,
+                "gp": 0.33559166173014277,
+                "gl": 0.16736703266314285,
+                "net": 16.822462906699982,
+                "pf": 2.005124046176902,
+                "lcb": 10.880666877121579,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 6.866666666666666,
+                "mdd": 0.09735445891117575,
+                "gh": 0.5833333333333334,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 6,
+            "gp": 0.011432810910023902,
+            "gl": 0.0015,
+            "net": 0.9932810910023901,
+            "pf": 7.621873940015934,
+            "lcb": 0.5307614811196174,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.9666666666666667,
+            "mdd": 0.0014999999999999996,
+            "gh": 1
+          },
+          "expired": {
+            "n": 13,
+            "gp": 0.05527326407014288,
+            "gl": 0.009,
+            "net": 4.627326407014287,
+            "pf": 6.141473785571431,
+            "lcb": 2.8674180477840663,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 12.15,
+            "mdd": 0.006000000000000005,
+            "gh": 1
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp0|sl0.69|tr1.52|h105|to|ts0.33|tm3|hxS4",
+          "before": {
+            "ok": true,
+            "n": 106,
+            "gp": 0.3658651302803595,
+            "gl": 0.1469617123924152,
+            "pf": 2.4895268592368556,
+            "net": 21.89034178879444,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 106,
+                "gp": 0.3658651302803595,
+                "gl": 0.1469617123924152,
+                "net": 21.89034178879444,
+                "pf": 2.4895268592368556,
+                "lcb": 15.20614666995883,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.1,
+                "mdd": 0.11310182530605523,
+                "gh": 0.5,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 106,
+                "gp": 0.346651172545583,
+                "gl": 0.14975117973623417,
+                "net": 19.689999280934874,
+                "pf": 2.31484769038989,
+                "lcb": 13.078679394073905,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 6.1,
+                "mdd": 0.11310182530605523,
+                "gh": 0.5833333333333334,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 9,
+            "gp": 0.00938153133140635,
+            "gl": 0.0027894673438189723,
+            "net": 0.6592063987587379,
+            "pf": 3.3631981217469247,
+            "lcb": 0.22222401054897128,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.9666666666666667,
+            "mdd": 0.002789467343818972,
+            "gh": 1
+          },
+          "expired": {
+            "n": 9,
+            "gp": 0.028595489066182964,
+            "gl": 0,
+            "net": 2.859548906618296,
+            "pf": 4,
+            "lcb": 1.73087587608063,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 1
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp1.08|sl0.96|tr0|h105|hxS1",
+          "before": {
+            "ok": true,
+            "n": 119,
+            "gp": 0.34314778104179655,
+            "gl": 0.15083241033950898,
+            "pf": 2.2750268345470612,
+            "net": 19.23153707022875,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 119,
+                "gp": 0.34314778104179655,
+                "gl": 0.15083241033950898,
+                "net": 19.23153707022875,
+                "pf": 2.2750268345470612,
+                "lcb": 13.29535591254749,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.1,
+                "mdd": 0.08510683155359008,
+                "gh": 0.5,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 110,
+                "gp": 0.29471350842401894,
+                "gl": 0.15012119533674922,
+                "net": 14.459231308726963,
+                "pf": 1.9631705420605183,
+                "lcb": 8.772304163714683,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 6.1,
+                "mdd": 0.08510683155359003,
+                "gh": 0.5,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 8,
+            "gp": 0.010964606090571339,
+            "gl": 0.001007117026202168,
+            "net": 0.9957489064369172,
+            "pf": 10.887122156914376,
+            "lcb": 0.5303324953664331,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.9666666666666667,
+            "mdd": 0.0010071170262021673,
+            "gh": 1
+          },
+          "expired": {
+            "n": 17,
+            "gp": 0.05939887870834903,
+            "gl": 0.0017183320289618947,
+            "net": 5.768054667938713,
+            "pf": 34.56775390739472,
+            "lcb": 4.151753762686274,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.35,
+            "mdd": 0.0009742956700642194,
+            "gh": 1
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp1.08|sl0.69|tr0.71|h105|hxS2",
+          "before": {
+            "ok": true,
+            "n": 126,
+            "gp": 0.3555216558866738,
+            "gl": 0.16335730339161872,
+            "pf": 2.1763438089717777,
+            "net": 19.216435249505516,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 126,
+                "gp": 0.3555216558866738,
+                "gl": 0.16335730339161872,
+                "net": 19.216435249505516,
+                "pf": 2.1763438089717777,
+                "lcb": 13.20517909328447,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.1,
+                "mdd": 0.08298883287977096,
+                "gh": 0.5,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 117,
+                "gp": 0.3070872385165009,
+                "gl": 0.162646088388859,
+                "net": 14.4441150127642,
+                "pf": 1.8880702361701303,
+                "lcb": 8.684156509005254,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 6.1,
+                "mdd": 0.08298883287977091,
+                "gh": 0.5,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 8,
+            "gp": 0.010964606090571339,
+            "gl": 0.001007117026202168,
+            "net": 0.9957489064369172,
+            "pf": 10.887122156914376,
+            "lcb": 0.5303324953664331,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.9666666666666667,
+            "mdd": 0.0010071170262021673,
+            "gh": 1
+          },
+          "expired": {
+            "n": 17,
+            "gp": 0.05939902346074425,
+            "gl": 0.0017183320289618947,
+            "net": 5.768069143178235,
+            "pf": 34.56783814745588,
+            "lcb": 4.1517610258566044,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.35,
+            "mdd": 0.0009742956700642194,
+            "gh": 1
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp1.08|sl2.16|tr0|h105|hxS3",
+          "before": {
+            "ok": true,
+            "n": 105,
+            "gp": 0.3685614226407883,
+            "gl": 0.17486703266314338,
+            "pf": 2.107666705540602,
+            "net": 19.369438997764497,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 105,
+                "gp": 0.3685614226407883,
+                "gl": 0.17486703266314338,
+                "net": 19.369438997764497,
+                "pf": 2.107666705540602,
+                "lcb": 12.862651568705402,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.866666666666666,
+                "mdd": 0.09740254775069673,
+                "gh": 0.5833333333333334,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 98,
+                "gp": 0.3247215853999832,
+                "gl": 0.16736703266314334,
+                "net": 15.735455273683979,
+                "pf": 1.9401765104693263,
+                "lcb": 9.472988290904398,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 6.866666666666666,
+                "mdd": 0.09740254775069673,
+                "gh": 0.5833333333333334,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 6,
+            "gp": 0.011432810910023902,
+            "gl": 0.0015,
+            "net": 0.9932810910023901,
+            "pf": 7.621873940015934,
+            "lcb": 0.5307614811196174,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.9666666666666667,
+            "mdd": 0.0014999999999999996,
+            "gh": 1
+          },
+          "expired": {
+            "n": 13,
+            "gp": 0.055272648150829065,
+            "gl": 0.009,
+            "net": 4.627264815082905,
+            "pf": 6.141405350092119,
+            "lcb": 2.8673836559625734,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 12.15,
+            "mdd": 0.006000000000000005,
+            "gh": 1
+          }
+        }
+      ],
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 62,
+      "recordedPassed": 3,
+      "seated": 3,
+      "passedPf": 2.6997925223226256
+    },
+    {
+      "t": 1792206000000,
+      "verified": 62,
+      "passed": 0,
+      "firstFailures": {
+        "net": 13,
+        "lastN": 40,
+        "lcb": 9
+      },
+      "dropped": 3,
+      "gained": 0,
+      "unchangedPass": 0,
+      "directionChanges": 3,
+      "droppedDirectionFailures": {
+        "lastN": 3
+      },
+      "transitionCauses": {
+        "window-closes": 3
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 666,
+        "gp": 0.5034282163973312,
+        "gl": 1.0384968851341931
+      },
+      "expired": {
+        "n": 408,
+        "gp": 0.8008823510167812,
+        "gl": 1.0886813001599738
+      },
+      "passedGp": 0,
+      "passedGl": 0,
+      "examples": [
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp1.08|sl2.16|tr0|h105|hxS0",
+          "before": {
+            "ok": true,
+            "n": 83,
+            "gp": 0.35067811578653585,
+            "gl": 0.14332619190119045,
+            "pf": 2.446713410402298,
+            "net": 20.73519238853455,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 83,
+                "gp": 0.35067811578653585,
+                "gl": 0.14332619190119045,
+                "net": 20.73519238853455,
+                "pf": 2.446713410402298,
+                "lcb": 14.434532562439479,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 4.916666666666667,
+                "mdd": 0.08827276501016937,
+                "gh": 0.6666666666666666,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 89,
+                "gp": 0.3517762894741639,
+                "gl": 0.1347190936633062,
+                "net": 21.70571958108577,
+                "pf": 2.6111836110873283,
+                "lcb": 15.78214225298071,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.916666666666667,
+                "mdd": 0.08905109456628024,
+                "gh": 0.6923076923076923,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 11,
+            "gp": 0.003601291159641603,
+            "gl": 0.02054182839412938,
+            "net": -1.6940537234487776,
+            "pf": 0.1753150250574,
+            "lcb": -2.7340561111198585,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.21666666666666667,
+            "mdd": 0.01944231580274026,
+            "gh": 0
+          },
+          "expired": {
+            "n": 5,
+            "gp": 0.0025031174720135875,
+            "gl": 0.029148926632013645,
+            "net": -2.6645809160000056,
+            "pf": 0.08587340122721593,
+            "lcb": -4.965692265523107,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 14.466666666666667,
+            "mdd": 0.026645809160000058,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-fast@m1|tp0|sl0.65|tr1.52|h105|to|ts0.33|tm3|hxS4",
+          "before": {
+            "ok": true,
+            "n": 61,
+            "gp": 0.1911305804081076,
+            "gl": 0.06683359989800185,
+            "pf": 2.8597977768637586,
+            "net": 12.429698051010567,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 61,
+                "gp": 0.1911305804081076,
+                "gl": 0.06683359989800185,
+                "net": 12.429698051010567,
+                "pf": 2.8597977768637586,
+                "lcb": 7.965348080051776,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 6.1,
+                "mdd": 0.051564994596444994,
+                "gh": 0.6363636363636364,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 66,
+                "gp": 0.18343368962117937,
+                "gl": 0.0717171795372847,
+                "net": 11.171651008389462,
+                "pf": 2.557737083425247,
+                "lcb": 6.651647791729587,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 7.1,
+                "mdd": 0.061658896046876466,
+                "gh": 0.5454545454545454,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 10,
+            "gp": 0.0011578385041228177,
+            "gl": 0.012883579639282718,
+            "net": -1.17257411351599,
+            "pf": 0.0898693171106349,
+            "lcb": -1.979671232224462,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 1.9666666666666666,
+            "mdd": 0.011784067047893601,
+            "gh": 0
+          },
+          "expired": {
+            "n": 5,
+            "gp": 0.008854729291051038,
+            "gl": 0.007999999999999877,
+            "net": 0.08547292910511609,
+            "pf": 1.1068411613813967,
+            "lcb": -0.9433976855175772,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 12.7,
+            "mdd": 0.007999999999999877,
+            "gh": 1
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-fast@m1|tp1.35|sl0.65|tr0|h105|hxS1",
+          "before": {
+            "ok": true,
+            "n": 63,
+            "gp": 0.1923096022905662,
+            "gl": 0.0617567693496064,
+            "pf": 3.1139841723568376,
+            "net": 13.055283294095975,
+            "qualifiedSides": [
+              -1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 63,
+                "gp": 0.1923096022905662,
+                "gl": 0.0617567693496064,
+                "net": 13.055283294095975,
+                "pf": 3.1139841723568376,
+                "lcb": 8.748517404441142,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 6.1,
+                "mdd": 0.0542523360101429,
+                "gh": 0.6363636363636364,
+                "ok": true
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              },
+              {
+                "side": -1,
+                "n": 69,
+                "gp": 0.18771576830911652,
+                "gl": 0.06661256075709583,
+                "net": 12.110320755202062,
+                "pf": 2.818023600588276,
+                "lcb": 7.742043775580074,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 7.1,
+                "mdd": 0.056608148467595404,
+                "gh": 0.5454545454545454,
+                "ok": false,
+                "fail": "lastN"
+              }
+            ]
+          },
+          "entered": {
+            "n": 10,
+            "gp": 0.0011578385041228177,
+            "gl": 0.005132015183713196,
+            "net": -0.3974176679590378,
+            "pf": 0.2256108882524935,
+            "lcb": -0.6734637796672777,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 1.9666666666666666,
+            "mdd": 0.004032502592324079,
+            "gh": 0
+          },
+          "expired": {
+            "n": 4,
+            "gp": 0.005751672485572509,
+            "gl": 0.0002762237762237655,
+            "net": 0.5475448709348744,
+            "pf": 20.822510517389887,
+            "lcb": 0.32291791626641575,
+            "lcbPositive": true,
+            "lcbExactBoundary": false,
+            "ddt": 0.5833333333333334,
+            "mdd": 0.0002762237762237655,
+            "gh": 1
+          }
+        }
+      ],
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 62,
+      "recordedPassed": 0,
+      "seated": 0,
+      "passedPf": null
+    },
+    {
+      "t": 1792209600000,
+      "verified": 62,
+      "passed": 2,
+      "firstFailures": {
+        "lcb": 19,
+        "net": 9,
+        "lastN": 24,
+        "pf": 7,
+        "ddr": 1
+      },
+      "dropped": 0,
+      "gained": 2,
+      "unchangedPass": 0,
+      "directionChanges": 2,
+      "droppedDirectionFailures": {},
+      "transitionCauses": {},
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 311,
+        "gp": 0.29909233746796193,
+        "gl": 1.50978111232019
+      },
+      "expired": {
+        "n": 421,
+        "gp": 2.466243700938328,
+        "gl": 0.8194551066231459
+      },
+      "passedGp": 0.20543611922765276,
+      "passedGl": 0.10309358366529904,
+      "examples": [],
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 62,
+      "recordedPassed": 2,
+      "seated": 2,
+      "passedPf": 1.9927148899452012
+    },
+    {
+      "t": 1792213200000,
+      "verified": 62,
+      "passed": 8,
+      "firstFailures": {
+        "lastN": 13,
+        "net": 16,
+        "lcb": 17,
+        "ddr": 4,
+        "pf": 4
+      },
+      "dropped": 0,
+      "gained": 6,
+      "unchangedPass": 2,
+      "directionChanges": 6,
+      "droppedDirectionFailures": {},
+      "transitionCauses": {},
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 467,
+        "gp": 0.26851596521353693,
+        "gl": 1.2758900330315492
+      },
+      "expired": {
+        "n": 283,
+        "gp": 0.8048396305807821,
+        "gl": 0.6355973512943133
+      },
+      "passedGp": 1.1402846694098019,
+      "passedGl": 0.5989034137277136,
+      "examples": [],
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 62,
+      "recordedPassed": 8,
+      "seated": 8,
+      "passedPf": 1.9039541990792905
+    },
+    {
+      "t": 1792216800000,
+      "verified": 62,
+      "passed": 0,
+      "firstFailures": {
+        "lastN": 6,
+        "net": 35,
+        "pf": 4,
+        "lcb": 17
+      },
+      "dropped": 8,
+      "gained": 0,
+      "unchangedPass": 0,
+      "directionChanges": 8,
+      "droppedDirectionFailures": {
+        "lcb": 3,
+        "lastN": 5
+      },
+      "transitionCauses": {
+        "window-closes": 8
+      },
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 196,
+        "gp": 0.3158918284185042,
+        "gl": 0.5889880720844172
+      },
+      "expired": {
+        "n": 315,
+        "gp": 2.6279978349246558,
+        "gl": 0.007555841435094239
+      },
+      "passedGp": 0,
+      "passedGl": 0,
+      "examples": [
+        {
+          "id": "exit|inverse-micro-1x15-drawdown-market-selective@m1|tp0.85|sl1.7|tr0|h105|hxL0",
+          "before": {
+            "ok": true,
+            "n": 51,
+            "gp": 0.12908787399134883,
+            "gl": 0.06832927742543131,
+            "pf": 1.8892029720674892,
+            "net": 6.075859656591751,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 51,
+                "gp": 0.12908787399134883,
+                "gl": 0.06832927742543131,
+                "net": 6.075859656591751,
+                "pf": 1.8892029720674892,
+                "lcb": 2.9231577375087117,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 4.983333333333333,
+                "mdd": 0.046014621074419323,
+                "gh": 0.8,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lcb",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 60,
+                "gp": 0.14035850098400418,
+                "gl": 0.1012849699616001,
+                "net": 3.907353102240406,
+                "pf": 1.3857781765371302,
+                "lcb": -0.10833966692831015,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 5.983333333333333,
+                "mdd": 0.046014621074419323,
+                "gh": 0.7272727272727273,
+                "ok": false,
+                "fail": "lcb"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 9,
+            "gp": 0.011270626992655337,
+            "gl": 0.032955692536168785,
+            "net": -2.1685065543513447,
+            "pf": 0.3419933287788097,
+            "lcb": -4.568626016042591,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 1.7833333333333334,
+            "mdd": 0.03145569253616878,
+            "gh": 0
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x15-drawdown-market-selective@m1|tp1.22|sl1.22|tr0|h105|hxL0",
+          "before": {
+            "ok": true,
+            "n": 47,
+            "gp": 0.13003885444974878,
+            "gl": 0.06410582512549096,
+            "pf": 2.028502935500635,
+            "net": 6.593302932425783,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 47,
+                "gp": 0.13003885444974878,
+                "gl": 0.06410582512549096,
+                "net": 6.593302932425783,
+                "pf": 2.028502935500635,
+                "lcb": 3.1036229689685326,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.116666666666666,
+                "mdd": 0.03942237146581628,
+                "gh": 0.625,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 54,
+                "gp": 0.1345272841751868,
+                "gl": 0.09300582512549077,
+                "net": 4.152145904969603,
+                "pf": 1.4464393385432797,
+                "lcb": 0.06447379672299275,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.15,
+                "mdd": 0.03942237146581628,
+                "gh": 0.5555555555555556,
+                "ok": false,
+                "fail": "lastN"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 7,
+            "gp": 0.004488429725438028,
+            "gl": 0.02889999999999983,
+            "net": -2.44115702745618,
+            "pf": 0.15530898703937904,
+            "lcb": -4.319419619539157,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 1.7833333333333334,
+            "mdd": 0.027399999999999827,
+            "gh": 0
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp0.81|sl0.81|tr0|h105|hxL0",
+          "before": {
+            "ok": true,
+            "n": 64,
+            "gp": 0.1765257986800154,
+            "gl": 0.10516861735241163,
+            "pf": 1.6785026096567528,
+            "net": 7.135718132760376,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 64,
+                "gp": 0.1765257986800154,
+                "gl": 0.10516861735241163,
+                "net": 7.135718132760376,
+                "pf": 1.6785026096567528,
+                "lcb": 3.1154280228086617,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 4.983333333333333,
+                "mdd": 0.05644594684598871,
+                "gh": 0.5,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 73,
+                "gp": 0.18987662425742746,
+                "gl": 0.11626861735241165,
+                "net": 7.360800690501576,
+                "pf": 1.6330857679498245,
+                "lcb": 3.1665748412755677,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.983333333333333,
+                "mdd": 0.05644594684598871,
+                "gh": 0.5454545454545454,
+                "ok": false,
+                "fail": "lastN"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 9,
+            "gp": 0.013350825577412026,
+            "gl": 0.011100000000000013,
+            "net": 0.2250825577412012,
+            "pf": 1.2027770790461272,
+            "lcb": -1.0215163722995284,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.9666666666666667,
+            "mdd": 0.009600000000000013,
+            "gh": 0.5
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp0.81|sl1.62|tr0|h105|hxL0",
+          "before": {
+            "ok": true,
+            "n": 60,
+            "gp": 0.17156596533060078,
+            "gl": 0.08003115562109964,
+            "pf": 2.1437396973606697,
+            "net": 9.153480970950115,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 60,
+                "gp": 0.17156596533060078,
+                "gl": 0.08003115562109964,
+                "net": 9.153480970950115,
+                "pf": 2.1437396973606697,
+                "lcb": 5.577180364278983,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 4.983333333333333,
+                "mdd": 0.05375618006270161,
+                "gh": 0.7,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 69,
+                "gp": 0.1827948947748874,
+                "gl": 0.11372323967917346,
+                "net": 6.90716550957139,
+                "pf": 1.6073662277875054,
+                "lcb": 2.52383954065463,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.983333333333333,
+                "mdd": 0.05375618006270161,
+                "gh": 0.6363636363636364,
+                "ok": false,
+                "fail": "lastN"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 9,
+            "gp": 0.011228929444286587,
+            "gl": 0.03369208405807382,
+            "net": -2.2463154613787237,
+            "pf": 0.3332809399659484,
+            "lcb": -4.639900591498456,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.9666666666666667,
+            "mdd": 0.03219208405807382,
+            "gh": 0.5
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp0.81|sl1.62|tr0|h105|hxL3",
+          "before": {
+            "ok": true,
+            "n": 80,
+            "gp": 0.16576083397669567,
+            "gl": 0.10136596886740372,
+            "pf": 1.6352710463757962,
+            "net": 6.4394865109291874,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 80,
+                "gp": 0.16576083397669567,
+                "gl": 0.10136596886740372,
+                "net": 6.4394865109291874,
+                "pf": 1.6352710463757962,
+                "lcb": 2.884129320401705,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 4.983333333333333,
+                "mdd": 0.052678451096200916,
+                "gh": 0.7,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lcb",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 89,
+                "gp": 0.17437461863707304,
+                "gl": 0.1464565035601908,
+                "net": 2.7918115076882124,
+                "pf": 1.1906239354226318,
+                "lcb": -1.6149547564721292,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 5.983333333333333,
+                "mdd": 0.06263866302452634,
+                "gh": 0.6363636363636364,
+                "ok": false,
+                "fail": "lcb"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 9,
+            "gp": 0.008613784660377337,
+            "gl": 0.04509053469278708,
+            "net": -3.647675003240974,
+            "pf": 0.1910331008284815,
+            "lcb": -5.973806772150847,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.95,
+            "mdd": 0.04509053469278708,
+            "gh": 0.5
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x15-market-follow-selective@m1|tp1.21|sl1.21|tr0|h105|hxL0",
+          "before": {
+            "ok": true,
+            "n": 51,
+            "gp": 0.15633875840058967,
+            "gl": 0.07664946824430388,
+            "pf": 2.0396587475635592,
+            "net": 7.968929015628579,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 51,
+                "gp": 0.15633875840058967,
+                "gl": 0.07664946824430388,
+                "net": 7.968929015628579,
+                "pf": 2.0396587475635592,
+                "lcb": 4.056168223542993,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.2,
+                "mdd": 0.06321393627104313,
+                "gh": 0.75,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 62,
+                "gp": 0.16809761866312142,
+                "gl": 0.10534946824430372,
+                "net": 6.274815041881767,
+                "pf": 1.595619052137081,
+                "lcb": 1.8132576065984056,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 6.2,
+                "mdd": 0.06321393627104313,
+                "gh": 0.6666666666666666,
+                "ok": false,
+                "fail": "lastN"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 11,
+            "gp": 0.011758860262531723,
+            "gl": 0.02869999999999983,
+            "net": -1.6941139737468105,
+            "pf": 0.40971638545406946,
+            "lcb": -3.7126011820331732,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.95,
+            "mdd": 0.02719999999999983,
+            "gh": 0.5
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-selective@m1|tp0|sl0.5|tr1.52|h105|to|ts0.33|tm3|hxL4",
+          "before": {
+            "ok": true,
+            "n": 46,
+            "gp": 0.09852097008772476,
+            "gl": 0.04997851474374795,
+            "pf": 1.971266465057352,
+            "net": 4.85424553439768,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 46,
+                "gp": 0.09852097008772476,
+                "gl": 0.04997851474374795,
+                "net": 4.85424553439768,
+                "pf": 1.971266465057352,
+                "lcb": 1.3533766689638724,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 4.666666666666667,
+                "mdd": 0.043427540482308374,
+                "gh": 0.7777777777777778,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lcb",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 50,
+                "gp": 0.0997414046886441,
+                "gl": 0.069478514743748,
+                "net": 3.02628899448961,
+                "pf": 1.435571918261527,
+                "lcb": -0.6991238269226707,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 5.666666666666667,
+                "mdd": 0.043427540482308374,
+                "gh": 0.7,
+                "ok": false,
+                "fail": "lcb"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 4,
+            "gp": 0.001220434600919355,
+            "gl": 0.019500000000000052,
+            "net": -1.8279565399080697,
+            "pf": 0.06258638979073598,
+            "lcb": -2.6000000000000068,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.8666666666666667,
+            "mdd": 0.019500000000000052,
+            "gh": 0
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        },
+        {
+          "id": "exit|inverse-micro-1x5x15-market-follow-selective@m1|tp0.8|sl1.6|tr0|h105|hxL0",
+          "before": {
+            "ok": true,
+            "n": 45,
+            "gp": 0.11244561449307808,
+            "gl": 0.05327458634782458,
+            "pf": 2.110680198602231,
+            "net": 5.91710281452535,
+            "qualifiedSides": [
+              1
+            ],
+            "directions": [
+              {
+                "side": 1,
+                "n": 45,
+                "gp": 0.11244561449307808,
+                "gl": 0.05327458634782458,
+                "net": 5.91710281452535,
+                "pf": 2.110680198602231,
+                "lcb": 3.0805220094902555,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 5.333333333333333,
+                "mdd": 0.03902737334369711,
+                "gh": 0.8888888888888888,
+                "ok": true
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "after": {
+            "ok": false,
+            "fail": "lastN",
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "pf": 0,
+            "net": 0,
+            "qualifiedSides": [],
+            "directions": [
+              {
+                "side": 1,
+                "n": 47,
+                "gp": 0.11846049191247703,
+                "gl": 0.07077458634782458,
+                "net": 4.768590556465245,
+                "pf": 1.6737715898514494,
+                "lcb": 1.3279845111057378,
+                "lcbPositive": true,
+                "lcbExactBoundary": false,
+                "ddt": 6.333333333333333,
+                "mdd": 0.03902737334369711,
+                "gh": 0.8,
+                "ok": false,
+                "fail": "lastN"
+              },
+              {
+                "side": -1,
+                "n": 0,
+                "gp": 0,
+                "gl": 0,
+                "net": 0,
+                "pf": 0,
+                "lcb": 0,
+                "lcbPositive": false,
+                "lcbExactBoundary": false,
+                "ddt": 0,
+                "mdd": 0,
+                "gh": 0,
+                "ok": false,
+                "fail": "closes"
+              }
+            ]
+          },
+          "entered": {
+            "n": 2,
+            "gp": 0.006014877419398953,
+            "gl": 0.017499999999999998,
+            "net": -1.1485122580601046,
+            "pf": 0.3437072811085116,
+            "lcb": -3.4999999999999996,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0.9166666666666666,
+            "mdd": 0.017499999999999998,
+            "gh": 0
+          },
+          "expired": {
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": 0,
+            "lcb": 0,
+            "lcbPositive": false,
+            "lcbExactBoundary": false,
+            "ddt": 0,
+            "mdd": 0,
+            "gh": 0
+          }
+        }
+      ],
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 62,
+      "recordedPassed": 0,
+      "seated": 0,
+      "passedPf": null
+    },
+    {
+      "t": 1792220400000,
+      "verified": 62,
+      "passed": 0,
+      "firstFailures": {
+        "lcb": 6,
+        "net": 52,
+        "pf": 4
+      },
+      "dropped": 0,
+      "gained": 0,
+      "unchangedPass": 0,
+      "directionChanges": 0,
+      "droppedDirectionFailures": {},
+      "transitionCauses": {},
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 411,
+        "gp": 0.19469737151703265,
+        "gl": 0.8252564672115006
+      },
+      "expired": {
+        "n": 455,
+        "gp": 2.7526463561715415,
+        "gl": 0.026098878206377497
+      },
+      "passedGp": 0,
+      "passedGl": 0,
+      "examples": [],
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 62,
+      "recordedPassed": 0,
+      "seated": 0,
+      "passedPf": null
+    },
+    {
+      "t": 1792224000000,
+      "verified": 62,
+      "passed": 0,
+      "firstFailures": {
+        "pf": 4,
+        "net": 57,
+        "lcb": 1
+      },
+      "dropped": 0,
+      "gained": 0,
+      "unchangedPass": 0,
+      "directionChanges": 0,
+      "droppedDirectionFailures": {},
+      "transitionCauses": {},
+      "unexplainedTransitions": 0,
+      "entered": {
+        "n": 377,
+        "gp": 0.41905115745449206,
+        "gl": 0.562563671076077
+      },
+      "expired": {
+        "n": 473,
+        "gp": 1.0455433321386047,
+        "gl": 0.18159047677330029
+      },
+      "passedGp": 0,
+      "passedGl": 0,
+      "examples": [],
+      "unverifiedNeverPassed": 0,
+      "expectedChecks": 62,
+      "recordedPassed": 0,
+      "seated": 0,
+      "passedPf": null
+    }
+  ]
+}
