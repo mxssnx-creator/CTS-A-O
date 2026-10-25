@@ -1603,8 +1603,8 @@ export function RangeEditor(props: {
             onChange={(v) => props.set(p("slOfTp"), v)}
           />
           <Field
-            label="Maximum hold time (minutes)"
-            hint="The longest a position of this range is held: it closes by time after at most this long (earlier at its target, stop or trail), in place of the grid's maximum hold (16 / 24 h). One maximum per cell, so the range builds tp × stop × trail cells. A lane cannot hold shorter than one of its bars. 0 = the grid's hold (operator, 20 Oct: Micro 15 min)"
+            label={`${props.title} maximum hold (minutes)`}
+            hint="Independent time limit for this range's Normal and Trailing cells. Earlier target, stop and trail exits still apply. 0 uses the grid's hold times. A limit shorter than a lane's bar excludes that lane; e.g. 15 minutes excludes 30-minute lanes. Historic Exit uses its own hold setting."
           >
             <Num
               step={1}
@@ -2971,8 +2971,8 @@ export function SettingsPage() {
                   />
                 </Field>
                 <Field
-                  label="Max configs / source"
-                  hint="limit per source before held-out qualification; 6–512"
+                  label="Max qualified Exit configs / source"
+                  hint="Retain up to 6–512 independently qualified configurations per source across Exit tactics and directions. Every generated fit is tested on held-out history first; failed fits consume no slots. Entry-time gates still apply."
                 >
                   <Num
                     int

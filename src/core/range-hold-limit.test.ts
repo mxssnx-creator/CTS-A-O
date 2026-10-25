@@ -103,6 +103,25 @@ test("maximum hold minutes are never rounded up on a slower lane", async () => {
   }
 });
 
+test("Minimal and Short caps independently reach Base and executable cells on every lane", async () => {
+  const { baseRangeProtects, completeBaseRangeProtects } = await import("./pipeline/pipeline.ts");
+  for (const minutes of [15, 30, 60]) {
+    const g = grid({ minimal: { ...MINIMAL_RANGE, maxHoldMin: minutes },
+      short: { ...DEFAULT_SETTINGS.grid.short, maxHoldMin: minutes } });
+    for (const cells of [baseRangeProtects(g, 0.002), completeBaseRangeProtects(g, 0.002), protectGrid(15, g, 0.002)]) {
+      for (const tag of ["mn", "sh"]) {
+        const selected = cells.filter(p => p.tag === tag);
+        assert.ok(selected.length > 0);
+        for (const tf of [1,5,15,30]) for (const p of selected) {
+          const actual = laneProtect(p, `rsi-mom-14-20@m${tf}`);
+          assert.equal(actual.hold, Math.floor(minutes / tf));
+          assert.ok(actual.hold * tf <= minutes);
+        }
+      }
+    }
+  }
+});
+
 test("Base judges a range at its own maximum hold: Micro 15 min is 1 bar, Minimal 60 min 4 bars; others keep the grid hold", async () => {
   const { baseRangeProtects } = await import("./pipeline/pipeline.ts");
   const g = {

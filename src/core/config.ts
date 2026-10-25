@@ -356,7 +356,7 @@ export interface ExitStrategySettings {
   maxDdr: number;
   /** maximum hold horizon; shortened when the fit segment is small */
   holdH: number;
-  /** upper bound across independent Exit config families and both directions for each pair */
+  /** retained qualified configs across independent Exit families and both directions per pair; failed fits consume no slots */
   maxConfigsPerPair: number;
   /** MFE quantiles estimate each adjustable TP directly from the fit history */
   quantiles: number[];

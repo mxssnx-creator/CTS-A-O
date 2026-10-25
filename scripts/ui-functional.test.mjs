@@ -474,6 +474,19 @@ describe(
           assert.equal(await structure.inputValue(), "extrema", "additional Exit range survives settings save/reload");
           await page.getByRole("button", { name: "Remove range 2", exact: true }).click();
           await saveNow();
+          const minimalHold = page.getByRole("spinbutton", { name: /^Minimal range maximum hold \(minutes\)/ });
+          const shortHold = page.getByRole("spinbutton", { name: /^Short range maximum hold \(minutes\)/ });
+          const previousHolds = [await minimalHold.inputValue(), await shortHold.inputValue()];
+          await minimalHold.fill("15");
+          await shortHold.fill("30");
+          await saveNow();
+          await page.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });
+          await minimalHold.waitFor({ state: "visible", timeout: 60_000 });
+          assert.equal(await minimalHold.inputValue(), "15");
+          assert.equal(await shortHold.inputValue(), "30");
+          await minimalHold.fill(previousHolds[0]);
+          await shortHold.fill(previousHolds[1]);
+          await saveNow();
           await settleRequests();
         },
       );

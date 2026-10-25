@@ -910,7 +910,14 @@ describe("independent historic exit strategy", () => {
     finish(exitStrategyProtectsGen(u, [pair], { ...settings, signalRanges: [] }, null, u.nowT,
       validation, baselineDiagnostics, entryFilters));
     assert.ok(diagnostics.candidates > baselineDiagnostics.candidates, "additional fits create genuinely distinct candidate cells");
-    assert.ok(diagnostics.candidates <= settings.maxConfigsPerPair, "all fits share the bounded per-source cap");
+    assert.ok((local[pair]?.length ?? 0) <= settings.maxConfigsPerPair, "qualified fits share the bounded per-source cap");
+    const limitedDiagnostics = emptyExitStrategyDiagnostics();
+    const limited = finish(exitStrategyProtectsGen(u, [pair], {...settings,maxConfigsPerPair:6},
+      null,u.nowT,validation,limitedDiagnostics,entryFilters));
+    assert.equal(limitedDiagnostics.evaluated,diagnostics.evaluated,"a smaller retention limit cannot skip candidate qualification");
+    assert.equal(limited[pair]?.length ?? 0,Math.min(6,local[pair]?.length ?? 0));
+    const qualifiedIds=new Set((local[pair]??[]).map(p=>configId(EXIT_BOT,pair.split('|')[1],p)));
+    assert.ok((limited[pair]??[]).every(p=>qualifiedIds.has(configId(EXIT_BOT,pair.split('|')[1],p))));
     const ordinary = `${EXIT_BOT}|ema-9-21@m15`;
     const ordinaryFit = (expanded: boolean) => finish(exitStrategyProtectsGen(u, [ordinary],
       { ...settings, signalRanges: expanded ? settings.signalRanges : [] }, null, u.nowT, validation));

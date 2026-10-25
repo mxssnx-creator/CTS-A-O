@@ -528,9 +528,10 @@ export function* exitStrategyProtectsGen(
           return true;
         }));
       }
-    const candidates = capExitCandidates(groups, settings.maxConfigsPerPair);
+    // Failed fits must not consume the executable-config budget. Qualify every bounded
+    // generated cell first, then share the retained budget across tactic/direction groups.
+    const candidates = capExitCandidates(groups, groups.reduce((n, xs) => n + xs.length, 0));
     diagnostics.candidates += candidates.length;
-    diagnostics.capped += groups.reduce((n, xs) => n + xs.length, 0) - candidates.length;
     const kept: Protect[] = [];
     const ids = new Set<string>();
     for (const p of candidates) {
@@ -587,10 +588,16 @@ export function* exitStrategyProtectsGen(
       if (!ids.has(id)) {
         ids.add(id);
         kept.push(qualifiedProtect);
-        diagnostics.qualified++;
       }
     }
-    if (kept.length) out[pair] = kept;
+    const retained = capExitCandidates(groups.map(group => {
+      const groupIds = new Set(group.map(p => configId(bot, ind, entryFilter
+        ? capSignalProtect({ ...p, trailMax: validation.signalTrailMax ?? p.trailMax }) : p)));
+      return kept.filter(p => groupIds.has(configId(bot, ind, p)));
+    }), settings.maxConfigsPerPair);
+    diagnostics.capped += kept.length - retained.length;
+    diagnostics.qualified += retained.length;
+    if (retained.length) out[pair] = retained;
   }
   return out;
 }
