@@ -465,6 +465,7 @@ describe("signals: guards through the feed (as the simulation runs them)", () =>
     protect: { tp: 0.02, sl: 0.02, trail: 0, hold: 96 },
   } as unknown as ConfigTape;
   const entry = (i: number, r: number, cfg = tp.id) => ({
+    accepted: true,
     exitT: i * 60_000,
     sym: "A",
     side: 1,

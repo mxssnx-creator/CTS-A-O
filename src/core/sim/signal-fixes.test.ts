@@ -91,6 +91,7 @@ const close = (
   exitT: number,
   side = 1,
 ): BlockFeedEntry => ({
+  accepted: true,
   sym: "A",
   side,
   kind: "zz",

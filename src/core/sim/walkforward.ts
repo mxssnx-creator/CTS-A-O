@@ -616,8 +616,8 @@ export interface WalkForwardOptions {
   /** only signal groups (source × symbol × direction × type) with a recent PF above the minimum trade */
   signalAccept?: SignalAccept;
   /**
-   * direction acceptance: a signal entry on a side opens only while every signal candidate of that side (all sources,
-   * symbols and configs pooled, executed or not, closed before the entry) had a PF of at least minPf over the last
+   * direction acceptance: a Signal entry on a side opens only while settled accepted post-Base orders of that side
+   * (all sources, symbols and configs pooled, closed before the entry) had a PF of at least minPf over the last
    * `hours` hours — fewer than minTrades closes: judged on twice the hours, still fewer = valid (`acceptOnWindow`;
    * unset / disabled = off)
    */
@@ -3152,7 +3152,7 @@ export function bookFor(o: {
   return o.toggles.block ? blockBookOf(o.block, !!o.toggles.blockActive) : null;
 }
 
-/** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
+/** Own candidate validation stays complete; shared post-Base gates consume settled accepted orders only. */
 export function feedBooks(
   e: BlockFeedEntry,
   book: BlockBook | null,
@@ -3176,6 +3176,7 @@ export function feedBooks(
       e.side,
       onset,
       population,
+      e.accepted === true,
     );
     guard.addAccept(
       acceptKey(e.ind, e.sym, e.side, e.type ?? "normal", e.cfg),
@@ -3183,7 +3184,7 @@ export function feedBooks(
       e.exitT,
       onset,
     );
-    guard.addAccept(sideAcceptKey(e.side, coordination), e.r, e.exitT, onset);
+    if (e.accepted === true) guard.addAccept(sideAcceptKey(e.side, coordination), e.r, e.exitT, onset);
   }
 }
 
@@ -5367,7 +5368,7 @@ export function execDecision(
       )
     )
       return { ok: false, why: "signalPf" };
-    // direction acceptance: this side's signal candidates, pooled over every source and symbol, must clear the PF
+    // Direction acceptance: this side's settled accepted orders, pooled over source and symbol, must clear the PF.
     if (
       o.signalSideAccept?.enabled &&
       ctx.guard &&

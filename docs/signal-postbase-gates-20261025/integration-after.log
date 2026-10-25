@@ -1,0 +1,11 @@
+✔ rejected and legacy unproven Signal closes cannot qualify or veto shared post-Base direction and cluster gates (1.877305ms)
+✔ settled accepted losses still block and a rejected sibling cannot consume the accepted onset (0.22252ms)
+✔ walk-forward preserves qualified admissions against cap-rejected sibling losses and replays the exact accepted cohort (28.207945ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 318.687872

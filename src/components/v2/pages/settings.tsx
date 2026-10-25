@@ -751,7 +751,7 @@ export function SignalsSettings(props: {
         </Field>
         <Field
           label="Direction acceptance"
-          hint="signals only (the engine has its own switch under Real). ON: a side (long / short) trades signals only while all its signal candidates, every source and symbol pooled, have PF ≥ the minimum over the window — a losing direction stops until it recovers; too few closes in the window are judged on twice the hours, and still too few count as valid. OFF: signals trade both directions on their own acceptance alone. Positions are never closed by it."
+          hint="Signals only (the engine has its own switch under Real). ON: each direction uses settled accepted post-Base Signal orders, pooled across sources and symbols, with return PF ≥ the minimum. Rejected candidates and open marks do not enter this shared record. Too few signal entries in the window are judged on twice the hours; still too few means this shared gate has no veto, while every own-config gate still applies. A failing direction resumes when the retained record passes or ages out. OFF: Signals use their own acceptance alone. Held positions remain managed."
         >
           <Switch
             label="Signal direction acceptance"
@@ -836,7 +836,7 @@ export function SignalsSettings(props: {
       <div className="v2-grid v2-cols-4">
         <Field
           label="Loss-cluster guard"
-          hint="pause signal executions while many signals just lost together (all keep being computed)"
+          hint="Pause new Signal orders in a direction when many accepted post-Base Signal entries have settled at a loss within the window. Count each signal entry once; rejected candidates and open marks cannot trigger this shared pause. Own history keeps calculating and held positions remain managed."
         >
           <Switch
             label="Signal loss-cluster guard"
