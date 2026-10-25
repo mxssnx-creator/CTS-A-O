@@ -58,7 +58,7 @@ result = {"schema": "cts-recovery-summary-v1", "at": datetime.now(timezone.utc).
           "roundTripCost": .0015, "pfNeutral": 1,
           "sourceSha256": next(iter(cases.values()))["sourceSha256"],
           "cases": [cases.get(name, {"case": name, "status": "pending"}) for name in expected],
-          "ordinary": "Eight broad ordinary arms remain separate; no completion claimed here"}
+          "ordinary": "Broad ordinary study arms remain separate; no completion claimed here"}
 out.mkdir(parents=True, exist_ok=True)
 encoded = (json.dumps(result, indent=2) + "\n").encode()
 (out / "financial-results.json").write_bytes(encoded)
@@ -74,6 +74,13 @@ def pf(x):
         return "no losses (no finite ratio)"
     return f(x.get("pf"))
 
+def validated(q):
+    passed, evaluated = q.get("passed"), q.get("contexts")
+    if not isinstance(passed, int) or not isinstance(evaluated, int) or not 0 <= passed <= evaluated or not evaluated:
+        return "unavailable"
+    return f"{100*passed/evaluated:.4f}% ({passed:,}/{evaluated:,} exact contexts)"
+
+
 def triple(c, keys):
     return " / ".join(str(c[k]) for k in keys)
 
@@ -82,15 +89,16 @@ position_keys = ["openedPositions", "closedPositions", "openPositions"]
 md = ["# Frozen recovery comparison", "", result["scope"] + ". PF 1 is neutral; modeled costs are 0.15% once. "
       "Losses and endpoint holdings are retained. The two reused windows are not untouched forward evidence.", "",
       "Source: `" + result["sourceSha256"] + "`. " + result["ordinary"] + ".", "",
-      "| Case | Settled unit PF | Orders opened / settled / held | Positions opened / closed / held | Peak equity DD % | Ending equity change % | Native wall s / peak child MiB |",
-      "|---|---:|---|---|---:|---:|---|"]
+      "| Case | Endpoint validation PF | Endpoint validated | Settled unit PF | Orders opened / settled / held | Positions opened / closed / held | Peak equity DD % | Ending equity change % | Native wall s / peak child MiB |",
+      "|---|---:|---|---:|---|---|---:|---:|---|"]
 for name in expected:
     if name not in cases:
-        md.append(f"| {name} | pending | — | — | — | — | — |")
+        md.append(f"| {name} | pending | unavailable | pending | — | — | — | — | — |")
         continue
     x = cases[name]
     a, c, t = x["account"], x["account"]["fundedCounts"], x["timing"]
-    md.append(f"| {name} | {pf(a)} | {triple(c,order_keys)} | {triple(c,position_keys)} | "
+    q = x["hourlyQualification"][-1] if x["hourlyQualification"] else {}
+    md.append(f"| {name} | {pf(q.get('qualifiedHistory', {}))} | {validated(q)} | {pf(a)} | {triple(c,order_keys)} | {triple(c,position_keys)} | "
               f"{f(a['equityMaxDdPct']*100)} | {f((a['equityEnd']/10-1)*100)} | "
               f"{f(t['wallSeconds'],1)} / {f(t['childPeakRssMiB'],1)} |")
 md += ["", "Counts are modeled funded configuration orders and overlapping symbol/direction position episodes. "
@@ -107,15 +115,15 @@ for name in expected:
            f"{a['greenHours']}/{a['redHours']}/{a['flatHours']}. Endpoint held MTM: {f(a['openEnd']['mtm'],6)}.", "",
            "Last-4 percentages below are endpoint readiness, before the remaining PF/sample gates. "
            "Exact contexts count every config × symbol × direction; any-context configs have at least one ready context. "
-           "Qualified history PF and later settled execution PF have different cohorts.", "",
-           "| Dimension | Type / range | Configs | Last-4 exact contexts % | Any-context configs % | Contexts passing all evaluation gates | Qualified historical PF | Executed settled PF | Orders opened / settled / held | Positions opened / closed / held |",
+           "Qualified history PF and later settled execution PF have different cohorts. Validation percentage includes all configured exact contexts, including empty/insufficient contexts; it is not Last-4 readiness.", "",
+           "| Dimension | Type / range | Configs | Last-4 exact contexts % | Any-context configs % | Post-Base contexts validated % (passed/evaluated) | Qualified historical PF | Executed settled PF | Orders opened / settled / held | Positions opened / closed / held |",
            "|---|---|---:|---:|---:|---:|---:|---:|---|---|"]
     for g in x["groups"]:
         if g["dimension"] not in ["type", "strategyRange", "parameterRange", "lane"]:
             continue
         e, ex = g["end"], g["execution"]
         md.append(f"| {g['dimension']} | {g['label']} | {g['configs']} | {f(e['lastNReadyPct'],2)} | "
-                  f"{f(100*e['configsLastNReady']/g['configs'],2)} | {e['passed']} | "
+                  f"{f(100*e['configsLastNReady']/g['configs'],2)} | {validated(e)} | "
                   f"{pf(e['qualifiedHistory'])} | {pf(ex)} | {triple(ex['counts'],order_keys)} | "
                   f"{triple(ex['counts'],position_keys)} |")
     md += ["", "Group position episodes overlap; do not sum them into the account's position count.", "",
@@ -133,18 +141,20 @@ for name in expected:
     md += ["", "Protection extrema describe the configured/built inventory, not recommended optimal settings. "
            "A zero trail distance includes configs without trailing; unavailable SL/TP has no valid TP denominator. "
            "DDT is duration under the prior realized-return peak, not margin usage.", "",
-           "| UTC hour start | Settled PF | Orders opened / settled / held | Positions opened / closed / held | End equity | Minute peak equity DD % |",
-           "|---|---:|---|---|---:|---:|"]
+           "| UTC hour start | Validation PF at hour start | Validated at hour start | Settled PF | Orders opened / settled / held | Positions opened / closed / held | End equity | Minute peak equity DD % |",
+           "|---|---:|---|---:|---|---|---:|---:|"]
+    qualification_by_time = {q["t"]: q for q in x["hourlyQualification"]}
     for h in x["hourly"]:
         stamp = datetime.fromtimestamp(h["t"]/1000, timezone.utc).strftime("%m-%d %H:%M")
-        md.append(f"| {stamp} | {pf(h)} | {triple(h['fundedCounts'],order_keys)} | "
+        q = qualification_by_time.get(h["t"], {})
+        md.append(f"| {stamp} | {pf(q.get('qualifiedHistory', {})) if q else 'unavailable'} | {validated(q)} | {pf(h)} | {triple(h['fundedCounts'],order_keys)} | "
                   f"{triple(h['fundedCounts'],position_keys)} | {f(h['eqEnd'],6)} | {f(h['maxDdPct']*100)} |")
     md += ["", "Earlier-snapshot reasons for independently valid but unselected candidates: `" +
            json.dumps(x["admission"]["reasons"]) + "`. This is an admission diagnostic, not permission to bypass later gates.", ""]
     entry = x["admission"].get("entryActivation")
     if entry:
         md += ["Own activation reasons at the exact entry: `" + json.dumps(entry["entryActivationReasons"]) + "`. "
-               "The hourly selection delay remains a separate unresolved behavior; successful activation alone is not complete funded execution proof.", ""]
+               "These recorded entry reasons must be interpreted for this source revision; successful activation alone is not complete funded execution proof.", ""]
 md += ["Complete per-source/symbol/type/range details, protection limits and all hourly qualification totals are in [financial-results.json.gz](financial-results.json.gz). "
        "No profitable-default or X02 release decision follows from an empty, partial or losing arm.", ""]
 (out / "RESULTS.md").write_text("\n".join(md))

@@ -1,3 +1,9 @@
+## 2026-10-25 — mandatory PF / validation percentage reporting
+
+User requires every chat and information update to show post-Base return PF and validated percentage, with passed/evaluated counts, timestamp/window and cohort. Persisted in AGENTS.project.md for subsequent project chats. Ordinary EMA start validation PF5.619923,11.4089% (5091/44623 evaluated); later settled PF1.336606, positions15/4/11,orders7076/4882/2194. Signals endpoint validation PF4.608184,0.3773% (11436/3030936 exact contexts), later settled PF0.065995,positions4/2/2,orders863/280/583. Count triples opened/closed-or-settled/held. These are unchanged frozen results; no live activity or financial stability claim.
+
+Report-only changes add percentages with denominators to session range tables and audited recovery endpoint/hourly tables. Missing denominators are unavailable. Ordinary Base-qualified inventory includes440 disabled types (45063 total versus44623 evaluated); report scope explicitly distinguishes these. Signal active units and Last-4 readiness are not validation. Local41 report tests pass; representative audited Signal report generation passes. Full final CI and broad ordinary jobs remain pending at this checkpoint. See docs/postbase-reporting-20261025.
+
 ## 2026-10-25 — PR203/204 merged; source refreshed, no live activation
 
 PR203 merged as `5113aba0fb1f9afd96f6b4ea688e871db0e81e3b`; PR204 merged as `eb9a555bcb4ddee58ec4f86e801ae1f9412796b3`. Local main refreshed and exact combined tested tree verified: `c21222fee56f8743fbb128a0872afb498d49032a`. Backup branch `backup/main-before-axis-publication-20261025` preserves abe5e49. Both final heads (6d2bf59/d6da8b8) passed all seven CI jobs in 40235937270/40235988433. Combined release: 4,390 passes, zero failures, eight template skips; two slow core exclusions passed separately. Offline build and endpoint report pass.
