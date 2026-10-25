@@ -201,9 +201,12 @@ if (mode === "prepare") {
   if (p.harnessSha256 !== studySha256(readFileSync(new URL(import.meta.url))))
     throw new Error("Study harness changed since freeze");
   if (existsSync(`${out}/raw.json`)) throw new Error("Measured output already exists");
+  const heapMb = Number(arg("heap-mb", "4096"));
+  if (!Number.isInteger(heapMb) || heapMb < 1024 || heapMb > 8192)
+    throw new Error("--heap-mb must be an integer from 1024 to 8192");
   const args = [
     "--expose-gc",
-    "--max-old-space-size=4096",
+    `--max-old-space-size=${heapMb}`,
     "--experimental-strip-types",
     "--no-warnings",
     "scripts/core-session.mjs",
