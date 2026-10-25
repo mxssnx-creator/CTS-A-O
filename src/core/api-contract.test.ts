@@ -543,7 +543,7 @@ const FIELDS: Record<Fn, string[]> = {
       "ranges",
       "steps",
     ]),
-    ...under("settings.dca", ["levels", "step", "slOfTp", "stopGap"]),
+    ...under("settings.dca", ["levels", "step", "slOfTp", "stopGap", "maxDistance"]),
     ...under("settings.axis", [
       "volumeFactor",
       "levels",

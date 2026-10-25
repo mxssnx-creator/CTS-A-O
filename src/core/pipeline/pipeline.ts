@@ -393,7 +393,7 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
         }`
       : "";
   const dca = p.dca && (kind === "dca" || kind === "dca-active")
-    ? `|dc${p.dca.levels}s${pct(p.dca.step)}q${p.dca.stepOfTp ?? 0}g${p.dca.stopGap ?? 0.5}r${p.dca.addRatio ?? 1}` : "";
+    ? `|dc${p.dca.levels}s${pct(p.dca.step)}q${p.dca.stepOfTp ?? 0}g${p.dca.stopGap ?? 0.5}r${p.dca.addRatio ?? 1}${p.dca.maxDistance ? `m${pct(p.dca.maxDistance)}` : ""}` : "";
   const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}${mode}${exit}${dca}`;
   return kind === "dca"
     ? `${base}|dca`
@@ -435,9 +435,9 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   const ratio = /\|ts([\d.]+)(?=\||$)/.exec(id);
   const free = /\|tf1(?=\||$)/.exec(id);
   const ceiling = /\|tm([\d.]+)(?=\||$)/.exec(id);
-  const ladder = /\|dc([1-4])s([\d.]+)q([\d.]+)g([\d.]+)r([\d.]+)(?=\||$)/.exec(id);
+  const ladder = /\|dc([1-4])s([\d.]+)q([\d.]+)g([\d.]+)r([\d.]+)(?:m([\d.]+))?(?=\||$)/.exec(id);
   // Remove each token once; duplicates or malformed tokens remain and fail the strict grammar below.
-  const plainId = id.replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?=\||$)/, "");
+  const plainId = id.replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?:m[\d.]+)?(?=\||$)/, "");
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
@@ -457,6 +457,11 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
     if (![step, stepOfTp, stopGap, addRatio].every(Number.isFinite) || step < 0.001 || step > 0.1 ||
       stepOfTp < 0 || stepOfTp > 5 || stopGap < 0 || stopGap > 5 || addRatio <= 0 || addRatio > 2.5) return null;
     protect.dca = { levels, step, stepOfTp, stopGap, addRatio };
+    if (ladder[6]) {
+      const maxDistance = fromPct(ladder[6]);
+      if (!(maxDistance > 0 && maxDistance <= 0.1)) return null;
+      protect.dca.maxDistance = maxDistance;
+    }
   }
   if (ceiling) {
     const max = fromPct(ceiling[1]);

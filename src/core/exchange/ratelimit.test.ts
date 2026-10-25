@@ -79,6 +79,8 @@ describe("rate-limit bans", () => {
     noteRateLimit(`code:100410 unblocked after ${now + 300_000} [GET /openApi/swap/v2/trade/allOrders]`, now);
     assert.equal(blockingBanUntil(now), 0);
     assert.ok(rateLimitedUntil(now, "GET /openApi/swap/v2/trade/allOrders") > now + 300_000);
+    noteRateLimit(`code:100410 unblocked after ${now + 300_000} [GET /openApi/swap/v2/user/income]`, now);
+    assert.equal(blockingBanUntil(now), 0, "background account history must not pause position protection");
     noteRateLimit(`unblocked after ${now + 60_000} [GET /openApi/swap/v2/user/positions]`, now);
     assert.ok(blockingBanUntil(now) > now + 60_000);
   });

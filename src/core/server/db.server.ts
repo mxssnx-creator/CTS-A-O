@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, s
 -- held_px / entry / exit: the executable record (relation.ts) — the price when the book adopted the position, the sim's entry and exit
 CREATE TABLE IF NOT EXISTS paper_book_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, at INTEGER, held_px REAL, entry REAL, exit REAL, mult REAL, unit_r REAL, owned_notional_usd REAL, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS paper_book_trades_exit ON paper_book_trades (exit_t);
+CREATE INDEX IF NOT EXISTS paper_book_trades_lane_exit ON paper_book_trades (cfg,sym,side,exit_t DESC,entry_t DESC) WHERE reason != 'dropped';
+CREATE INDEX IF NOT EXISTS paper_book_trades_ambiguous ON paper_book_trades (exit_t) WHERE reason != 'dropped' AND exit_t IS NOT NULL AND (trim(cfg)='' OR trim(sym)='' OR coalesce(side,0) NOT IN (-1,1));
+CREATE INDEX IF NOT EXISTS paper_book_trades_invalid_clock ON paper_book_trades (cfg,sym,side) WHERE reason != 'dropped' AND exit_t IS NOT NULL AND (typeof(exit_t) NOT IN ('integer','real') OR exit_t NOT BETWEEN -1.7976931348623157e308 AND 1.7976931348623157e308);
 CREATE INDEX IF NOT EXISTS paper_trades_exit ON paper_trades (exit_t);
 CREATE TABLE IF NOT EXISTS paper_positions (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER, entry REAL, stop REAL, target REAL, mtm REAL, at INTEGER, PRIMARY KEY (cfg, sym, side)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS live_orders (coid TEXT PRIMARY KEY, cfg TEXT, sym TEXT, side INTEGER, kind TEXT, qty REAL, px REAL, status TEXT, msg TEXT, at INTEGER);
@@ -32,6 +35,8 @@ CREATE INDEX IF NOT EXISTS live_orders_cfg_kind ON live_orders (cfg, kind);
 CREATE INDEX IF NOT EXISTS live_orders_at ON live_orders (at);
 CREATE TABLE IF NOT EXISTS live_fills (coid TEXT PRIMARY KEY, sym TEXT, side INTEGER, kind TEXT, qty REAL, ref_px REAL, fill_px REAL, fee REAL, fee_known INTEGER, at INTEGER);
 CREATE INDEX IF NOT EXISTS live_fills_at ON live_fills (at);
+CREATE TABLE IF NOT EXISTS venue_income (scope TEXT NOT NULL, id TEXT NOT NULL, asset TEXT NOT NULL, type TEXT NOT NULL, sym TEXT NOT NULL, trade_id TEXT, at INTEGER NOT NULL, amount REAL NOT NULL, PRIMARY KEY(scope,asset,type,id)) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS venue_income_scope_at ON venue_income(scope,at);
 -- px_src: where the exit price comes from (fill / history / bar / ticker; NULL on rows from before it was recorded)
 CREATE TABLE IF NOT EXISTS live_lane_trades (id TEXT NOT NULL, exit_t INTEGER NOT NULL, cfg TEXT NOT NULL, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, px_src TEXT, PRIMARY KEY (id, exit_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS live_lane_trades_exit ON live_lane_trades (exit_t);
@@ -54,6 +59,7 @@ const TABLES = [
   "paper_positions",
   "live_orders",
   "live_fills",
+  "venue_income",
   "live_lane_trades",
   "events",
   "runs",

@@ -3615,6 +3615,21 @@ export function SettingsPage() {
             );
           })()}
           <BlockSources block={s.block} set={set} />
+          <div className="v2-grid v2-cols-2" style={{ marginTop: 10 }}>
+            {BLOCK_SOURCE_HELP.map(([source]) => (
+              <Field key={source} label={`${source === "type" ? "Strategy type" : source} ratio multiplier`}
+                hint={`Multiplies the standard ratio; effective addition per level ${blockRatioOf(s.block, source as Parameters<typeof blockRatioOf>[1]).toFixed(3)}× before steps and the shared cap.`}>
+                <Num step={0.1} min={0} max={10}
+                  value={s.block.sourceRatios?.[source as keyof NonNullable<typeof s.block.sourceRatios>] ?? 1}
+                  onChange={(v) => set(["block", "sourceRatios"], { ...s.block.sourceRatios, [source]: v })} />
+              </Field>
+            ))}
+          </div>
+          <Field label="Retain adjustment until net break-even"
+            hint="Retains each relation's raised level while its settled extra-leg unit balance is negative. Uses accepted modeled orders; no loss doubling, no change to stops or PF gates, and no borrowing from sibling relations. Off until explicitly enabled.">
+            <input type="checkbox" checked={!!s.block.holdUntilNet}
+              onChange={(e) => set(["block", "holdUntilNet"], e.target.checked)} />
+          </Field>
           {(() => {
             const r = { ...DEFAULT_BLOCK.ranges!, ...(s.block.ranges ?? {}) };
             const putR = (k: string, v: [number, number]) =>
@@ -3894,9 +3909,14 @@ export function SettingsPage() {
                 onChange={(v) => set(["dca", "levels"], v)}
               />
             </Field>
-            <Field label="Addition × original base" hint="each added leg uses this many original base units; never compounds · default: one addition of 2.5×, total 3.5×">
+            <Field label="Addition × original base" hint="each added leg uses this many original base notional units; never compounds · default: two additions of 2.5×, total 6×; compare drawdown before enabling">
               <Num step={0.1} min={0.1} max={2.5} value={s.dca.addRatio ?? 1}
                 onChange={(v) => set(["dca", "addRatio"], v)} />
+            </Field>
+            <Field label="Maximum addition distance (%)"
+              hint="Caps the deepest level from original entry. Ordinary defaults: 1% and 2%; Signals fit both levels inside their stop (normally 0.8% and 1.6%). Zero preserves legacy uncapped spacing; this is not the stop distance.">
+              <Num pct min={0} max={0.1} value={s.dca.maxDistance ?? 0}
+                onChange={(v) => set(["dca", "maxDistance"], v)} />
             </Field>
             <Field
               label="Step (%)"

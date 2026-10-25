@@ -66,10 +66,18 @@ it("a losing pooled run cannot veto a qualified native lane; its losing owned si
   assert.equal(liveReadiness(rt.sim, rt.settings.live, 1.1).ok, false);
   const exchange = new SimExchange(rng(52), { symbols: 2 }).withEquity(10000);
   for (const p of prices) exchange.px.set(p.sym, p.last);
-  await stepLive(rt as never, [], 1, exchange);
+  Object.assign(rt.status,{source:"bingx"});
+  let incomeReads=0,finishIncome!:(rows:unknown)=>void;
+  const withHistory:ExchangeClient=Object.assign(exchange,{incomeHistory:()=>{
+    incomeReads++;return new Promise<unknown>(resolve=>{finishIncome=resolve});
+  }});
+  await stepLive(rt as never, [], 1, withHistory);
   const book = await exchange.book();
   assert.ok(book.positions.some((p) => p.venueSymbol === good.sym && p.side === "long"));
   assert.ok(!book.positions.some((p) => p.venueSymbol === bad.sym));
+  assert.equal(incomeReads,1,"ready entries and protection finish while unrelated history remains pending");
+  finishIncome([]);
+  await new Promise(resolve=>setImmediate(resolve));
 });
 
 describe("strict live promotion uses two settled independent evidence axes", () => {

@@ -1,0 +1,50 @@
+{
+  "commit": "e089d8001509481edf7a8c31ad54a3cce352a68b",
+  "sourceSha256": "fc0797430294d8f287a6f021c81994fc2e4e5a5c7d2228cf8923bac2062c1c0b",
+  "checkedAt": "2026-10-25T15:07:36.982Z",
+  "run": 40204700430,
+  "jobs": [
+    {
+      "id": 121203053637,
+      "name": "quality",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 121203053804,
+      "name": "core-tests (2)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 121203053809,
+      "name": "core-tests (4)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 121203053816,
+      "name": "core-tests (1)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 121203053834,
+      "name": "core-tests (3)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 121203053907,
+      "name": "slow-runtime",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 121204992261,
+      "name": "verify",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ]
+}

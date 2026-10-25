@@ -6,7 +6,7 @@ The shared PF display now uses neutral color at exactly 1 and positive color abo
 
 ## Corrected Expanded execution
 
-Each case uses 12 symbols, 150 hours of fitting history, Last-4, 1/5/15-minute lanes and minute price calculations. Hourly bins are reporting only. The two windows cover 16 October 23:00–17 October 11:00 CEST and 17 October 11:00–23:00 CEST. Counts below are orders opened / settled / held and positions opened / closed / held. Position groups can overlap and must not be added.
+Every case keeps the Expanded Signal source/protection defaults. “Control” denotes the original independent Exit grid; the Expanded Exit experiment adds its optional profiles. Each case uses 12 symbols, 150 hours of fitting history, Last-4, 1/5/15-minute lanes and minute price calculations. Hourly bins are reporting only. The two windows cover 16 October 23:00–17 October 11:00 CEST and 17 October 11:00–23:00 CEST. Counts below are orders opened / settled / held and positions opened / closed / held. Position groups can overlap and must not be added.
 
 | Window | Range/type | PF (neutral 1) | Orders | Positions |
 |---|---|---:|---|---|
@@ -40,6 +40,8 @@ The original Exit control holds configurations for up to 1,350 minutes (22.5 hou
 
 The Exit-only expansion preserves **all 126,182 / 126,279 Signal configuration histories** and their **10,760,734 / 10,998,889 historical closes** in the original/later windows. Their own type/range start/end qualification proofs also match exactly. The settings differences are confined to the Exit grid. Executed Signal counts nevertheless differ: the explicitly enabled direction-acceptance and loss-cluster controls share Signal-source candidate outcomes, including their independent Exit configurations. This shared coordination is separate from each configuration's own PF gates; unchanged history does not imply an unchanged executed portfolio. See exit-signal-history-parity.json and its reproducible comparison script.
 
+Last-4 readiness is one requirement, not complete admission. These frozen cases also retain 30 pooled events for historical Signal fitting, six own-config acceptance onsets over 48h at PF1.3, and twenty shared-side onsets over 24h at PF1.3. The separate post-Base Live-entry replay retains its configured Last-25 proof. Own full-history and range PF/sample/DD gates still apply. No additional guard was silently lowered to increase counts.
+
 ## Controls and declared comparisons
 
 The original Exit grid on the corrected source reproduces whole-account PF **4.9612 / 0.0679**. Original-window orders: **449/366/83**, positions **14/6/8**. Later-window orders: **860/278/582**, positions **4/2/2**. Exit alone has seven winning closes and no losses in each control window; those small samples have no finite PF. All 68 native checks per control and 78,791,856 independent scalar comparisons pass.
@@ -55,6 +57,8 @@ No experimental Exit profile or validation default is promoted. Existing Expande
 The display follow-up's CI found an intermittent paper-equity audit failure. A deterministic 200-position test reproduced a partially published local tick: position marks and nested Exit protection changed before the matching equity. The local path now computes on private state and publishes its complete patch with equity atomically. Superseded work is discarded, including when a new paper book reuses the same position array.
 
 A second test found that missing prices removed held marks from ticker equity, even when the last known mark was a loss. The old result was +0.85 instead of −1.15 in the fixed test. The ticker now retains prior marks for unquoted symbols, including its first frame. Quote absence does not authorize a new fill or update protection. No audit threshold was relaxed. The new foreground source is `fc0797430294d8f287a6f021c81994fc2e4e5a5c7d2228cf8923bac2062c1c0b`; final CI and native revalidation are pending. Earlier financial studies remain identified by their own sources.
+
+The current-source synthetic publication benchmark covers 50 warmed frames, 20 symbols, 1/5/15m lanes, all five Exit tactics and intermittent missing quotes. Local recovery math plus complete patch publication takes p95 **1.22 ms for 200 position fixtures** and **56.06 ms for 20,000**, with maxima **4.22 / 60.17 ms** and sampled process RSS **91.57 / 244.20 MiB**. Every completed total matches an independent sum of held marks. This measures synthetic protection math/publication; it excludes DB, network, worker startup and trade selection, and ran beside a native replay. It is not a comparative speedup, order-entry SLA or PF sample. See tick-publication-benchmark.json.
 
 ## Correctness and processing changes
 

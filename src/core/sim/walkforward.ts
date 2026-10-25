@@ -69,6 +69,7 @@ import type {
   Bars,
   ProtectGridSpec,
   DcaConfig,
+  BlockAttribution,
   Gates,
   OpenPosition,
   Protect,
@@ -3009,6 +3010,7 @@ export interface WalkForwardResult {
 }
 
 export interface BlockFeedEntry {
+  blockAttribution?: BlockAttribution;
   exitT: number;
   sym: string;
   side: number;
@@ -5224,6 +5226,7 @@ export type ExecDecision =
       src?: BlockSource[];
       /** Explicit diagnostic capture from this entry's causal Block history. */
       blockLevels?: Partial<Record<BlockSource, number>>;
+      blockAttribution?: BlockAttribution;
       blockEffectiveLevels?: Partial<Record<BlockSource, number>>;
       blockSampleCounts?: Partial<Record<BlockSource, number>>;
     }
@@ -5590,6 +5593,7 @@ export function execDecision(
     vol: d.vol,
     src: d.src,
     ...(d.legs ? { legs: d.legs } : {}),
+    ...(d.blockAttribution ? { blockAttribution: d.blockAttribution } : {}),
     ...trace,
   };
 }
@@ -6690,6 +6694,7 @@ export function* walkForwardGen(
         }
         // All account-independent Real entry gates passed. Do not stamp candidates held back by any earlier gate.
         fx.accepted = true;
+        if (dec.blockAttribution) fx.blockAttribution = dec.blockAttribution;
         // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
         if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
         // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
@@ -6711,6 +6716,7 @@ export function* walkForwardGen(
           ...(hedging ? { hedge: true } : {}),
           level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
           ...(dec.legs ? { legs: dec.legs } : {}),
+          ...(dec.blockAttribution ? { blockAttribution: dec.blockAttribution } : {}),
           ...(dec.blockLevels
             ? {
                 blockLevels: dec.blockLevels,

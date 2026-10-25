@@ -5,6 +5,13 @@ import { checkMerged, checkSettings } from "./settings-check.ts";
 import { blockDecide } from "./sim/block.ts";
 
 describe("Block settings preserve independent Shared ratio and accepted-order history", () => {
+  it("validates every relation multiplier and the recovery switch", () => {
+    assert.doesNotThrow(() => checkSettings({block:{...DEFAULT_BLOCK,sourceRatios:{symbol:4,direction:2,indication:2,type:3},holdUntilNet:true}}));
+    for (const value of [-1,11,NaN,Infinity,"2",null])
+      assert.throws(()=>checkSettings({block:{sourceRatios:{symbol:value}}} as never));
+    assert.throws(()=>checkSettings({block:{sourceRatios:{unknown:2}}} as never));
+    assert.throws(()=>checkSettings({block:{holdUntilNet:1}} as never));
+  });
   it("round trips the operator's continuous 0.2 ratio with a higher Shared override", () => {
     const block = JSON.parse(JSON.stringify({ ...DEFAULT_BLOCK, ratio: 0.2, sharedRatio: 0.4,
       steps: 0, maxMult: 2, mode: "shared", historySource: "accepted-orders" }));

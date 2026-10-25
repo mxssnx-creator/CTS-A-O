@@ -380,6 +380,17 @@ export function checkSettings(s: Partial<CoreSettings>) {
   if (s.block) {
     num(s.block.ratio, 0, 2, "block ratio");
     num(s.block.sharedRatio, 0, 2, "block Shared ratio");
+    if (s.block.sourceRatios !== undefined) {
+      if (!s.block.sourceRatios || typeof s.block.sourceRatios !== "object" || Array.isArray(s.block.sourceRatios))
+        throw new Error("block relation ratios must be an object");
+      for (const [key, value] of Object.entries(s.block.sourceRatios)) {
+        if (!["config", "overall", "symbol", "direction", "indication", "type"].includes(key))
+          throw new Error("unknown Block relation ratio");
+        num(value, 0, 10, `block ${key} ratio multiplier`);
+      }
+    }
+    if (s.block.holdUntilNet !== undefined && typeof s.block.holdUntilNet !== "boolean")
+      throw new Error("block retain until net: on / off");
     if (
       s.block.historySource !== undefined &&
       !["accepted-orders", "real-candidates"].includes(s.block.historySource)
@@ -563,6 +574,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
   if (s.dca) {
     num(s.dca.levels, 1, 4, "dca levels (stack ≤ 5 stages: base + 4)");
     num(s.dca.step, 0.001, 0.1, "dca step");
+    num(s.dca.maxDistance, 0, 0.1, "dca maximum addition distance");
     if (s.dca.addRatio !== undefined) num(s.dca.addRatio, 0.1, 2.5, "dca addition (original base units)");
     if (s.dca.stepOfTp !== undefined) num(s.dca.stepOfTp, 0, 5, "dca step (× target)");
     if (s.dca.stopGap !== undefined) num(s.dca.stopGap, 0, 5, "dca stop gap (steps)");

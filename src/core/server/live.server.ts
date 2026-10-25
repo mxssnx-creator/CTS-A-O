@@ -19,6 +19,7 @@ import { positionMult, runSubset, rangeVolumeFactorFor, type WalkForwardResult }
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
 import { reconcileVenueFees } from "./fill-fees.ts";
+import { requestVenueIncome, venueIncomeSummary } from "./venue-history.server.ts";
 import {
   attributeLanes,
   laneKeyOf,
@@ -378,6 +379,7 @@ export interface ExchangeClient {
   ordersSince?(venueSymbol: string, startTime: number): Promise<unknown>;
   /** Settled order history including cumulative commissions; read after position protection, never before it. */
   feeHistory?(venueSymbol: string, startTime: number): Promise<unknown>;
+  incomeHistory?(from: number, to: number, limit: number): Promise<unknown>;
 }
 
 const orderReply = (resp: unknown): Record<string, unknown> | null => {
@@ -633,7 +635,28 @@ export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
     feeHistory: (sym, from) => bx.signed(network, connId, "GET", "/openApi/swap/v2/trade/allOrders", {
       symbol: sym, startTime: Math.max(from, Date.now() - 6.9 * 24 * 3_600_000), endTime: Date.now(), limit: 500,
     }),
+    incomeHistory: (from, to, limit) => bx.signed(network, connId, "GET", "/openApi/swap/v2/user/income", {
+      startTime: from, endTime: to, limit,
+    }),
   };
+}
+
+/** Read-only account history; independently scheduled so a slow history page cannot delay protection. */
+export function refreshVenueHistory(rt: CoreRuntime, client?: ExchangeClient) {
+  if (rt.status.source !== "bingx") return null;
+  const conn = rt.settings.live.connId, ex = client ?? bingxClient(conn);
+  if (!ex.incomeHistory || !ex.hasKeys()) return null;
+  const scope = ex.fingerprint?.() ?? conn;
+  const generation = rt.generation, epoch = rt.liveEpoch ?? 0;
+  requestVenueIncome(rt.db, scope, (from, to, limit) => ex.incomeHistory!(from, to, limit),
+    () => rt.generation === generation && (rt.liveEpoch ?? 0) === epoch && rt.settings.live.connId === conn &&
+      (ex.fingerprint?.() ?? conn) === scope);
+  return scope;
+}
+
+export function liveVenueHistory(rt: CoreRuntime, from: number, to: number) {
+  const scope = refreshVenueHistory(rt);
+  return scope ? venueIncomeSummary(rt.db, scope, from, to) : null;
 }
 
 /**
@@ -5605,6 +5628,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (row) row.px = px;
     }
     recordLanes(rt, { lanes: liveLanes, heldAfter, grew, shrank, external, externalWhy, externalSrc, laneExit, prices });
+    refreshVenueHistory(rt, ex);
     // Market replies often omit commission on VST. Reconcile one symbol per 30s only after all protection and
     // ownership work. Read failures keep the fee explicitly unknown and never reverse a confirmed order fill.
     if (ex.feeHistory && Date.now() - (Lm.feeSyncAt ?? 0) >= 30_000 && alive()) {

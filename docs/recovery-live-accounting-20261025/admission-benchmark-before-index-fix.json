@@ -1,0 +1,16 @@
+{
+  "scope": "Synthetic indexed read benchmark; not exchange latency or profitability evidence",
+  "rows": 100000,
+  "iterations": 20,
+  "compared": 20,
+  "full": {
+    "medianMs": 207.14044000000013,
+    "maxMs": 330.539454
+  },
+  "bounded": {
+    "medianMs": 62.36396399999967,
+    "maxMs": 88.90535899999986
+  },
+  "peakRssMiB": 707.01171875,
+  "node": "v24.22.1"
+}

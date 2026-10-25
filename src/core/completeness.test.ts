@@ -212,6 +212,7 @@ const CASES: Record<string, Case> = {
   "block.ranges.pause": span(0, 12),
   "dca.levels": num(1, 4, { int: true }),
   "dca.addRatio": num(0.1, 2.5),
+  "dca.maxDistance": num(0, 0.1),
   "dca.step": num(0.001, 0.1),
   "dca.stopGap": num(0, 5),
   "dca.slOfTp": num(0.25, 5),

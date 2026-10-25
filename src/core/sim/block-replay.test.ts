@@ -178,7 +178,8 @@ describe("audit replay with the Block window chosen by results (windowAuto)", ()
   for (const mode of ["overall", "shared", "additive"] as const)
     it(`${mode}: accepted-only simulation and replay use the same settled Real orders, never skipped candidates or marks`, () => {
       const original = x01({ mode, historySource: "accepted-orders", maxLevel: 3, minActiveLevel: 1,
-        ratio: .2, sharedRatio: .4, steps: 0, pause: 2, window: 1, windowCandidates: [1, 2] });
+        ratio: .2, sharedRatio: .4, steps: 0, pause: 2, window: 1, windowCandidates: [1, 2],
+        holdUntilNet: true, sourceRatios: {symbol:4,direction:2,indication:2,type:3} });
       const o = { ...original, toggles: { ...original.toggles, blockActive: false } };
       const sim = walkForward(u, tapes, o);
       assert.ok(sim.trades.length > 0, "Normal and other enabled bases can create actual accepted history");
