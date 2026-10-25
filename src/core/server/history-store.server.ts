@@ -131,6 +131,14 @@ function metadata(t: ConfigTape): Metadata {
   };
 }
 
+/** Clone ownership metadata without evaluating enumerable column getters or materializing a stored history. */
+export function withHistoryMetadata(tape: ConfigTape, patch: Partial<Omit<Metadata, "n" | "id" | "syms">>): ConfigTape {
+  const stored = historyOf(tape);
+  return stored
+    ? stored.store.restore({ ...metadata(tape), ...patch }, stored.record)
+    : { ...tape, ...patch };
+}
+
 export class TapeHistoryStore {
   readonly path: string;
   private cacheLimit: number;

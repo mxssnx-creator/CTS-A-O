@@ -21,8 +21,29 @@ Both use minute prices, 150h Signal history, Last4 and modeled 0.15% round-trip 
 
 The later window has 34.31% of config × symbol × direction contexts with Last4 at its end, including empty contexts in the denominator. 104,465 of 126,289 configs have at least one ready context (82.72%). Historical qualified-context PF at the end is 4.60818, while the subsequently settled executed cohort is 0.065995: these are different samples, not interchangeable guarantees.
 
+## End-to-end regression found and corrected
+
+The first native bounded-storage control (`393fdfb…`) completed every check and all 39,402,168 coverage comparisons with the exact same 863 opened / 280 settled / 583 held orders and 4 opened / 2 closed / 2 held positions. It took 1,482.84 seconds and peaked at 4,706.11 MiB, versus 1,198.02 seconds / 4,314.48 MiB for the preceding local resident control. This is a performance regression, despite the faster sampled activation benchmark.
+
+The replay was reopening every stored Signal tape at every minute merely to check its next entry timestamp. The follow-up uses a heap of upcoming closed/open entries, with the next closed-entry time retained in the cursor. Complete candidates still pass the same minute activation, caps, tie ordering, guards and independent order handling. No future return is read to choose an entry. Empty cursors are released. Carry-over and slimming also preserve stored ownership instead of evaluating all enumerable column getters, and activation-cache accounting now reserves metadata overhead as well as binary columns.
+
+The paired sampled 12h storage benchmark (1,263 configs / 111,471 historical closes, deliberately small 1 MiB cache) retained the exact complete result SHA-256 `aa5e560524e5ff7bcec84fbd4b1787c7faa60e9ac9e5df2844bd5aac759a44b1`. Runtime fell from 7,919.81 to 2,429.68 ms; reads fell from 68,207 to 18,803. This sparse sample settled only three orders and is performance/parity evidence, not profitability evidence. The full native follow-up is frozen on source `767bc5d9d87f29ca463fb36612d6eaadaec7726a15bad66356ee3251f39f6c99` and must finish before an end-to-end improvement is claimed. The default resident history budget remains 256 MiB.
+
+## DCA controls collected so far
+
+The predeclared study keeps all outcomes; Active and Block arms remain pending. The second 12h window fails the profitability condition with or without DCA.
+
+| Arm / offset | Orders opened / settled / held | Positions opened / closed / held | Settled unit PF | Peak equity DD |
+|---|---:|---:|---:|---:|
+| DCA unit / 0h | 491 / 386 / 105 | 15 / 6 / 9 | 4.425885 | 0.1359% |
+| DCA weighted / 0h | 494 / 389 / 105 | 15 / 6 / 9 | 4.490939 | 0.1360% |
+| DCA unit / 12h | 963 / 284 / 679 | 4 / 2 / 2 | 0.062541 | 1.4344% |
+| DCA weighted / 12h | 980 / 284 / 696 | 4 / 2 / 2 | 0.062541 | 1.6553% |
+
+[Complete control detail](control-detail.md) lists both controls by strategy range, type, parameter family, lane, symbol and every source, plus hourly order/position ledgers and protection distances.
+
 ## Verification and remaining work
 
-The native Signal replay on source `393fdfb39930f969c8b1ac85d2f86975db86f05e919979f29f36478ee17246e7` has started. The new workflow covers both complete ordinary windows at two Micro stop-ratio floors and both Signal controls. Existing minute-activation DCA/Block arms continue independently. 42 targeted tests pass, including memory-guard cancellation, lossless worker transport, metadata retention and causal minute evaluation. Typecheck and lint (zero errors) pass. Full CI and study outcomes must be appended before release claims.
+All seven CI jobs passed for the first bounded-history head. The follow-up passes 52 focused tests, including complete 720-minute entry scheduling with no idle-minute disk reads, independent orders, caps, lossless worker transport, cancellation, carried eligibility and causal minute evaluation. The two carry tests were repeated after correcting their typed range identifiers. Typecheck and lint (zero errors, 43 existing warnings) pass. The new workflow covers both complete ordinary windows at two Micro stop-ratio floors and both Signal controls. Existing minute-activation DCA/Block arms continue independently. Final-head CI and complete study outcomes must be appended before release claims.
 
 No venue action is part of this storage change. The user's stability condition for a complete X02 VST launch remains unmet by the losing later window; positive PF and production readiness are not claimed. Complete ordinary results, fractional Exit tactics and final X02 reconciliation remain outstanding.

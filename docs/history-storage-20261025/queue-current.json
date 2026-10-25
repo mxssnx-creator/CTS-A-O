@@ -1,0 +1,23 @@
+{
+  "scope": "Deterministic sampled 12h frozen-candle replay; 1MiB cache deliberately forces eviction. Not full-catalog or venue latency.",
+  "root": "/workspace/scratch/1bcaeeb063ee/CTS-A-O-continuation",
+  "stride": 100,
+  "tapes": 1263,
+  "closes": 111471,
+  "elapsedMs": 2429.682261,
+  "rssMiB": 528.6875,
+  "source": "b89c3bbf6c0a08bb0629cb2fa2372d119d5a48bb0af2867cf6607961eb617f74",
+  "resultSha256": "aa5e560524e5ff7bcec84fbd4b1787c7faa60e9ac9e5df2844bd5aac759a44b1",
+  "history": {
+    "tapes": 1263,
+    "rawBytes": 8400741,
+    "storedBytes": 3993774,
+    "reads": 18803,
+    "hits": 9169247,
+    "writeMs": 222.5270089999915,
+    "maxWriteMs": 2.424096999999165,
+    "peakCacheBytes": 1048576
+  },
+  "settled": 3,
+  "held": 0
+}

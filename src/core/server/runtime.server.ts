@@ -26,7 +26,7 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
-import { BoundedHistory, HistoryStorageError, historyOf, HISTORY_CACHE_BYTES, transferHistoriesGen, type HistoryTransfer } from "./history-store.server.ts";
+import { BoundedHistory, HistoryStorageError, historyOf, withHistoryMetadata, HISTORY_CACHE_BYTES, transferHistoriesGen, type HistoryTransfer } from "./history-store.server.ts";
 import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "../model-cost.ts";
 import { evaluationHistorySettings } from "../market/history-requirements.ts";
 import {
@@ -880,7 +880,7 @@ export function onCoreEvent(fn: (e: CoreEvent) => void): () => void {
  * in a buffer of their own, the rest in one, in the input order (the same tapes, the same bytes). In one buffer, a
  * carried tape kept the whole slim set — every signal tape with it, 0.5 GB on x01 — until the next slim.
  */
-function* compactByCarryGen(tapes: readonly ConfigTape[]): Generator<number, ConfigTape[]> {
+export function* compactByCarryGen(tapes: readonly ConfigTape[]): Generator<number, ConfigTape[]> {
   const carry = fallbackCarriedTags(MEM_FALLBACK_MAX);
   const groups = new Map<string, number[]>();
   tapes.forEach((t, i) => {
@@ -892,10 +892,16 @@ function* compactByCarryGen(tapes: readonly ConfigTape[]): Generator<number, Con
   const out: ConfigTape[] = new Array(tapes.length);
   let done = 0;
   for (const idx of groups.values()) {
-    const g = compactTapesGen(idx.map((i) => tapes[i]));
+    const resident: number[] = [];
+    for (const i of idx) {
+      if (historyOf(tapes[i])) out[i] = tapes[i];
+      else resident.push(i);
+    }
+    // Stored columns have no shared resident arena to compact. Repacking them defeats the memory bound.
+    const g = compactTapesGen(resident.map((i) => tapes[i]));
     for (let r = g.next(); ; r = g.next()) {
       if (r.done) {
-        r.value.forEach((c, j) => (out[idx[j]] = c));
+        r.value.forEach((c, j) => (out[resident[j]] = c));
         break;
       }
       yield done + r.value;
@@ -1907,7 +1913,7 @@ export class CoreRuntime {
           : tp.open.filter((o) => this.paper.positions.some((held) => posId(held) === posId(o)));
         opens.set(tp.id, [
           ...eligible,
-          ...pendingAsOpen({ ...tp, pending }, barEnd, s.tfMin, priceOf, s.cost),
+          ...pendingAsOpen(withHistoryMetadata(tp, { pending }), barEnd, s.tfMin, priceOf, s.cost),
         ]);
       }
       const before = this.paper.positions.length;
@@ -11965,10 +11971,10 @@ export function withCarried(
   const ids = new Set(built.map((t) => t.id));
   const carried = prev
     .filter((t) => !isSignalInd(t.ind) && !!t.protect.tag && tags.has(t.protect.tag) && !ids.has(t.id))
-    .map((t) => (allow && !t.heldOnly && !allow(t) ? { ...t, heldOnly: true } : t));
+    .map((t) => (allow && !t.heldOnly && !allow(t) ? withHistoryMetadata(t, { heldOnly: true }) : t));
   // Mark shallow copies so reports can distinguish them from the current compute's built sets. The large typed-array
   // tape columns remain shared; only metadata is copied.
-  return carried.length ? [...built, ...carried.map((t) => ({ ...t, carried: true }))] : built;
+  return carried.length ? [...built, ...carried.map((t) => withHistoryMetadata(t, { carried: true }))] : built;
 }
 
 /**

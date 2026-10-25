@@ -101,3 +101,22 @@ test("prepared own histories remain causal under adversarial future returns and 
     for(const book of books)assert.deepEqual([...drain(book.at(t))],expected,`causal minute ${minute}`);
   }
 });
+
+test("activation cache budgets metadata as well as columns and preserves gates across LRU eviction", () => {
+  const {tp, wf, sig} = fixture();
+  const tapes = Array.from({length: 8}, (_, i) => {
+    const ind = `sig-ema-cross-${i}-s@m5`, id = tp.id.replace(tp.ind, ind);
+    return makeTape(id, tp.bot, ind, tp.protect, tp.kind, tp.syms,
+      Array.from({length: tp.n}, (_, j) => ({...tradeAt(tp, j), cfg: id})), [], []);
+  });
+  const book = new SignalActivationBook(signalIndex(tapes), sig, 150, wf);
+  const cache = book as unknown as {ownLimit: number; ownBytes: number; own: Map<string, {bytes: number}>};
+  cache.ownLimit = 20_000;
+  for (const t of [start, start + 20 * M, start + 21 * M, start]) {
+    assert.deepEqual([...drain(book.at(t))], [...activeSignalsAt(tapes, t, sig, 150, wf)]);
+    assert.ok(cache.own.size > 0 && cache.own.size < tapes.length, "exercise nonempty repeated evictions");
+    assert.ok(cache.ownBytes <= cache.ownLimit);
+    assert.equal(cache.ownBytes, [...cache.own.values()].reduce((sum, row) => sum + row.bytes, 0));
+    assert.ok([...cache.own.values()].every(row => row.bytes >= 4096));
+  }
+});

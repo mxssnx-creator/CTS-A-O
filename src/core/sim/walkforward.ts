@@ -5968,7 +5968,7 @@ export class SignalActivationBook {
   private sig: SignalSettings;
   private windowH: number;
   private options: WalkForwardOptions;
-  private own = new Map<string, PreparedSignalContext>();
+  private own = new Map<string, PreparedSignalContext & { bytes: number }>();
   private ownBytes = 0;
   private ownLimit = 128 * 1024 * 1024;
 
@@ -5980,12 +5980,14 @@ export class SignalActivationBook {
       const tape = indexedEvaluationTape(row.tp, indices, 0, indices.length);
       const order = new Uint32Array(tape.n);
       for (let i = 0; i < order.length; i++) order[i] = i;
-      own = { tape, indices: order };
-      const bytes = tapeBytes(tape.n) + order.byteLength;
+      // Columns alone underestimate many short histories: each context also owns typed-array views,
+      // tape/result objects and cache keys. Reserve conservative overhead as well as exact binary bytes.
+      const bytes = tapeBytes(tape.n) + order.byteLength + 4096 + 2 * row.key.length;
+      own = { tape, indices: order, bytes };
       while (this.ownBytes + bytes > this.ownLimit && this.own.size) {
         const first = this.own.keys().next().value!;
         const expired = this.own.get(first)!;
-        this.ownBytes -= tapeBytes(expired.tape.n) + expired.indices.byteLength;
+        this.ownBytes -= expired.bytes;
         this.own.delete(first);
       }
       if (bytes > this.ownLimit) return own;
@@ -6224,6 +6226,48 @@ export class ExitHeap<T> {
     this.ss[a] = this.ss[b];
     this.ss[b] = s;
   }
+}
+
+export type SignalEntryCursor = {
+  tp: ConfigTape;
+  order: Uint32Array;
+  next: number;
+  nextT: number;
+  openOrder: Uint32Array;
+  nextOpen: number;
+};
+/** Only metadata and the next closed-entry timestamp are needed while a history has no due entry. */
+export function nextSignalEntryT(cursor: SignalEntryCursor): number {
+  return Math.min(cursor.nextT, cursor.nextOpen < cursor.openOrder.length
+    ? cursor.tp.open[cursor.openOrder[cursor.nextOpen]].entryT : Infinity);
+}
+/** Schedule complete immutable histories without reopening every stored tape at each minute. */
+export function* signalEntryQueueGen(
+  tapes: readonly ConfigTape[], startT: number, stopT: number, markOpen: boolean,
+): Generator<number, ExitHeap<SignalEntryCursor>> {
+  const queue = new ExitHeap<SignalEntryCursor>();
+  for (const tp of tapes) {
+    const entryT = tp.entryT;
+    let n = 0;
+    for (let i = 0; i < tp.n; i++) {
+      if (entryT[i] >= startT && entryT[i] < stopT) n++;
+      if ((i & 8191) === 8191) yield -3;
+    }
+    const order = new Uint32Array(n);
+    let j = 0;
+    for (let i = 0; i < tp.n; i++)
+      if (entryT[i] >= startT && entryT[i] < stopT) order[j++] = i;
+    order.sort((a, b) => entryT[a] - entryT[b] || a - b);
+    const openOrder = markOpen ? Uint32Array.from(tp.open.map((_, i) => i).filter(i =>
+      tp.open[i].entryT >= startT && tp.open[i].entryT < stopT)) : new Uint32Array(0);
+    openOrder.sort((a, b) => tp.open[a].entryT - tp.open[b].entryT || a - b);
+    if (order.length || openOrder.length) {
+      const cursor = { tp, order, next: 0, nextT: order.length ? entryT[order[0]] : Infinity, openOrder, nextOpen: 0 };
+      queue.push(nextSignalEntryT(cursor), cursor);
+    }
+    yield -3;
+  }
+  return queue;
 }
 
 const bump = (m: Map<string, number>, k: string, d: number) => {
@@ -6519,22 +6563,8 @@ export function* walkForwardGen(
   // the tapes end at the run's end: their positions still open there are orders of the run too (marked to market),
   // or the run would count only the orders that closed in time — a bias toward configs that exit fast
   const markOpen = stopT === endT;
-  const signalEntries: Array<{ tp: ConfigTape; order: Uint32Array; next: number }> = [];
-  for (const tp of sigTapes) {
-    let n = 0;
-    for (let i = 0; i < tp.n; i++) {
-      if (tp.entryT[i] >= startT && tp.entryT[i] < stopT) n++;
-      if ((i & 8191) === 8191) yield -3;
-    }
-    const order = new Uint32Array(n);
-    let j = 0;
-    for (let i = 0; i < tp.n; i++)
-      if (tp.entryT[i] >= startT && tp.entryT[i] < stopT) order[j++] = i;
-    // Four bytes per entry; no Trade objects, per-entry strings or global sort scratch array.
-    order.sort((a, b) => tp.entryT[a] - tp.entryT[b] || a - b);
-    signalEntries.push({ tp, order, next: 0 });
-    yield -3;
-  }
+  // Four bytes per closed/open entry plus one small cursor per tape with an entry in this run.
+  const signalEntries = yield* signalEntryQueueGen(sigTapes, startT, stopT, markOpen);
   let held = new Set<string>();
   // re-evaluating more often than one bar cannot change anything: the step is at least one bar
   const barH = (u.baseTf ?? u.bars[0]?.tfMin ?? 60) / 60;
@@ -6684,7 +6714,8 @@ export function* walkForwardGen(
               cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
       }
       let mergedSignals = 0;
-      for (const cursor of signalEntries) {
+      while (signalEntries.peekT() < batchEnd) {
+        const cursor = signalEntries.pop()!;
         const { tp, order } = cursor;
         const active: Array<boolean | undefined> = [];
         const take = (sym: string, side: number, slot: number) => {
@@ -6694,17 +6725,22 @@ export function* walkForwardGen(
           if (!yes) inactiveSig(side);
           return yes;
         };
-        while (cursor.next < order.length && tp.entryT[order[cursor.next]] < batchEnd) {
+        while (cursor.nextT < batchEnd) {
           const i = order[cursor.next++];
+          cursor.nextT = cursor.next < order.length ? tp.entryT[order[cursor.next]] : Infinity;
           if (++mergedSignals % 2048 === 0) yield -7;
           if (take(tp.syms[tp.symI[i]], tp.side[i], tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0)))
             cands.push({ tr: tradeAt(tp, i), tp });
         }
-        if (markOpen) for (const op of tp.open) {
-          if (op.entryT < batchT || op.entryT >= batchEnd) continue;
+        while (cursor.nextOpen < cursor.openOrder.length) {
+          const op = tp.open[cursor.openOrder[cursor.nextOpen]];
+          if (op.entryT >= batchEnd) break;
+          cursor.nextOpen++;
           if (take(op.sym, op.side, tp.syms.indexOf(op.sym) * 2 + (op.side > 0 ? 1 : 0)))
             cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
         }
+        const nextT = nextSignalEntryT(cursor);
+        if (Number.isFinite(nextT)) signalEntries.push(nextT, cursor);
         if (++mergedSignals % 32 === 0) yield -7;
       }
       // best first: at the same entry time the better candidate takes a capped slot first
