@@ -34,6 +34,8 @@ for root in roots:
                 "computeMs": coverage["engine"]["computeMs"],
                 "admission": {k: admission[k] for k in ["scope", "total", "reasons"]},
                 "origin": str(case)}
+        if "entryActivationReasons" in admission:
+            data["admission"]["entryActivation"] = admission
         extra = case / "admission-trace-entry.json"
         if extra.exists():
             data["admission"]["entryActivation"] = json.loads(extra.read_text())
@@ -117,6 +119,20 @@ for name in expected:
                   f"{pf(e['qualifiedHistory'])} | {pf(ex)} | {triple(ex['counts'],order_keys)} | "
                   f"{triple(ex['counts'],position_keys)} |")
     md += ["", "Group position episodes overlap; do not sum them into the account's position count.", "",
+           "| Type / range | SL minimum–maximum % | Maximum SL/TP ratio | Minimum trail activation % | Minimum trail gap % | Maximum hold hours | Maximum qualified-history DDT hours |",
+           "|---|---:|---:|---:|---:|---:|---:|"]
+    for g in x["groups"]:
+        if g["dimension"] not in ["type", "strategyRange"]:
+            continue
+        p = g["protection"]
+        val = lambda key, edge, scale=1: None if p.get(key, {}).get(edge) is None else p[key][edge]*scale
+        md.append(f"| {g['dimension']}: {g['label']} | {f(val('slFraction','min',100))}–{f(val('slFraction','max',100))} | "
+                  f"{f(val('slToTp','max'))} | {f(val('trailActivationFraction','min',100))} | "
+                  f"{f(val('trailGapFraction','min',100))} | {f(val('holdHours','max'))} | "
+                  f"{f(g['end'].get('maxPassedDdtH'))} |")
+    md += ["", "Protection extrema describe the configured/built inventory, not recommended optimal settings. "
+           "A zero trail distance includes configs without trailing; unavailable SL/TP has no valid TP denominator. "
+           "DDT is duration under the prior realized-return peak, not margin usage.", "",
            "| UTC hour start | Settled PF | Orders opened / settled / held | Positions opened / closed / held | End equity | Minute peak equity DD % |",
            "|---|---:|---|---|---:|---:|"]
     for h in x["hourly"]:

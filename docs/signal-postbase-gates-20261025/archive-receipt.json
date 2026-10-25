@@ -1,0 +1,9 @@
+{
+  "fileName": "cts-signal-postbase-evidence-9ac49d0.zip",
+  "libraryFileId": "libfile_325af82fc3c48191a8ace71d4dcaa544",
+  "bytes": 323418065,
+  "sha256": "961d8a5b5de898e1a27bab567edf4ac84e53db30982cfd9b1122228cd9782adb",
+  "zipCrcValidated": true,
+  "economicSourceSha256": "9ac49d0c8c5daeca5942e90f5100169ff0382afdc57e5268729054878b7cfee1",
+  "scope": "Full native source-tape and funded execution evidence for control-0 and control-12; 269 files plus plan and archive scope."
+}

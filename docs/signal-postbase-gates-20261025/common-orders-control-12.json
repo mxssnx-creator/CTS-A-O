@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "basis": "Exact funded settled config × symbol × direction × entry × exit, unit net returns; modeled 0.15% already retained once",
+  "before": 278,
+  "after": 278,
+  "matched": 278,
+  "added": 0,
+  "removed": 0,
+  "commonGp": 0.052823875247864936,
+  "commonGl": 0.7774235883271523,
+  "commonPf": 0.06794735333607578,
+  "commonPfState": "ratio",
+  "addedIdentities": [],
+  "removedIdentities": []
+}
