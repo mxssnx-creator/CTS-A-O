@@ -1811,6 +1811,8 @@ export interface TapeBuildStat {
   built: number;
   /** kept as a tape that can take a seat */
   kept: number;
+  /** Built retained cells rejected by the subsequent pre-run range gate. */
+  postGateRejected?: number;
   /** simulated, then dropped: fewer closes than the range gate needs (it could never seat) */
   few: number;
   /** not built, by reason: Base tags, Base targets, Micro own indications, lane floor, horizon fit */

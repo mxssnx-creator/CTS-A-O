@@ -891,7 +891,7 @@ describe("axis: ladder weight on open positions (paper / live volume)", () => {
     const op = r.open!;
     assert.ok(op);
     assert.equal(op.w, 2);
-    assert.ok(Math.abs(op.entry - 98.95) < 1e-9);
+    assert.ok(Math.abs(op.entry - 2 / (1 / 99.3 + 1 / 98.6)) < 1e-9);
     const ladder = (98.9 - 99.3) / 99.3 - 0.001 + (98.9 - 98.6) / 98.6 - 0.001;
     assert.ok(Math.abs(op.mtm * 2 - ladder) < 1e-12, "mtm is per unit (the ladder's result ÷ its weight)");
     // the tape's marked-open order carries the whole ladder, as a closed Axis order does (r and vol include w)
@@ -934,7 +934,7 @@ describe("axis: ladder weight on open positions (paper / live volume)", () => {
     assert.equal(op.w, 2);
     assert.equal(op.side, 1);
     assert.equal(op.entryI, 1);
-    assert.equal(op.entry, 98);
+    assert.equal(op.entry, 2 / (1 / 98.5 + 1 / 97.5));
     assert.ok(Math.abs(op.stop - 97.5 * 0.99) < 1e-9);
     assert.equal(op.target, 100);
     const ladder = (97.9 - 98.5) / 98.5 - 0.002 + (97.9 - 97.5) / 97.5 - 0.002;

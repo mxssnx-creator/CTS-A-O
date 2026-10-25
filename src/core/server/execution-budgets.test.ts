@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoreDb } from "./db.server.ts";
 import { accountGrowthBlock, controlTargets, scaleToRisk, ownCoidKind } from "./live.ts";
-import { laneContributions, liveKv, resetLiveBackoff, stepLive, type ControlStatus, type ExchangeClient } from "./live.server.ts";
+import { laneContributions, flushLiveKv, liveKv, resetLiveBackoff, stepLive, type ControlStatus, type ExchangeClient } from "./live.server.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
 import { SimExchange, fakeRt, lane } from "../test-support.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
@@ -71,6 +71,9 @@ describe("actual execution account budgets across independent Signal sets", () =
           assert.equal(ex.log.filter(o => o.type === "MARKET").length, marketCount, "held paper rows cannot reopen closed parents");
           const filled = rt.db.all<{qty:number}>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'");
           assert.ok(Math.abs(filled.reduce((sum,r) => sum+r.qty,0)-2)<1e-10, "partial plus final slices equal initial owned quantity exactly once");
+          // Match runtime shutdown: persist pending live state before closing its SQLite connection.
+          flushLiveKv(rt.db);
+          assert.deepEqual(rt.db.kvGet("laneOrders"), {});
           rt.db.db.close();
         });
 

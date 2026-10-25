@@ -2,7 +2,7 @@
 import { PF_NO_LOSS } from "../../src/core/config.ts";
 import { minPfOf } from "../../src/core/minimal-coord.ts";
 import { modeledUnitReturn as unitReturn } from "../../src/core/metrics/stats.ts";
-import { baseSetsGates, rangeCellPass, setsPassTags } from "../../src/core/pipeline/pipeline.ts";
+import { basePairRows, baseSetsGates, rangeCellPass, setsPassTags } from "../../src/core/pipeline/pipeline.ts";
 
 export const SESSION_QUALIFICATION = Object.freeze({
   version: 1,
@@ -69,4 +69,15 @@ export function sessionQualificationEvidence(saved) {
   if (saved?.version === SESSION_QUALIFICATION.version && saved.rule === SESSION_QUALIFICATION.rule && Number.isFinite(saved.tacticMinPf) && Number.isFinite(saved.noLossGateScore))
     return { ...saved, state: "recorded", note: `Qualification uses the recorded full indication's runtime gates; Tactic minimum return PF ${saved.tacticMinPf}, preserving stricter settings. No-loss qualification uses the runtime score ${saved.noLossGateScore}.` };
   return { state: "legacy-unverified", note: "Historical dump: indication-aware qualification provenance was not recorded. Archived qualification counts and thresholds are retained, not recomputed or certified against current gates." };
+}
+
+/** Independent Exit Base proof cannot be inferred from ordinary range qualification or headline PF. */
+export function sessionBasePairRows(runs, pairTags, targets, exitBasePassed) {
+  return basePairRows(runs, pairTags, targets).map(row => {
+    if (!row.pair.startsWith("exit|")) return row;
+    const recorded = exitBasePassed instanceof Set;
+    const passed = recorded && exitBasePassed.has(row.pair);
+    return { ...row, passed, tags: passed ? ["exit"] : [],
+      qualificationPath: "independent-exit", qualificationRecorded: recorded };
+  });
 }

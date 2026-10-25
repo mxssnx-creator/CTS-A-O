@@ -1,0 +1,26 @@
+[
+  {
+    "file": "cts-signal-minute-control-0-562927.zip",
+    "bytes": 198530927,
+    "sha256": "7b02789ff3cd0270ac56e1fc806daeb26d93acef96bb72c15cfa54329acdb325",
+    "libraryFileId": "libfile_f163cf9a9f9c8191b7b09b1d3b886a94"
+  },
+  {
+    "file": "cts-signal-minute-control-12-562927.zip",
+    "bytes": 254527445,
+    "sha256": "c80a44ca91df2351c2df269ff4f42224dea07b2c6224097e928861aa358ee5aa",
+    "libraryFileId": "libfile_2d3e7fc1580881918da74790fdcff461"
+  },
+  {
+    "file": "cts-signal-bounded-control-12-393fdf.zip",
+    "bytes": 269236114,
+    "sha256": "3b7f3bbc151607a7be282195f9af19ad875de90d7bf408181c3e2b1dbcefd203",
+    "libraryFileId": "libfile_49efa1398e188191ae331bc2a5c0f6c5"
+  },
+  {
+    "file": "cts-signal-working-set-control-12-f09e2e.zip",
+    "bytes": 252896399,
+    "sha256": "d18a6b3b545f7b34601179d81975da5641cc6e658e6d83dcb386d6bdfafcb62a",
+    "libraryFileId": "libfile_a48ce06b4f108191a8a4cb3f71a57b0e"
+  }
+]

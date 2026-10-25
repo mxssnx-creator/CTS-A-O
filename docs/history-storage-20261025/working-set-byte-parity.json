@@ -1,0 +1,21 @@
+[
+  {
+    "scenario": "control-12",
+    "ok": true,
+    "beforeSource": "562927400fb3e59a984e13130e9145f825e48855c563f41ad9cc13a7c9bbd986",
+    "afterSource": "f09e2ed2aec72b0eb6c5770fc47df903b4d268f0bf56998b4fad2f575401cfaa",
+    "tapeConfigs": 126289,
+    "historicalCloses": 10999508,
+    "recordDefinition": "One metadata row per tape plus one row per historical close",
+    "before": {
+      "bytes": 933916434,
+      "records": 11125797,
+      "sha256": "93918ea7fe50934848d1cd342ecee325d4f3e2dccbd141e7eadc62cc81a0bac9"
+    },
+    "after": {
+      "bytes": 933916434,
+      "records": 11125797,
+      "sha256": "93918ea7fe50934848d1cd342ecee325d4f3e2dccbd141e7eadc62cc81a0bac9"
+    }
+  }
+]

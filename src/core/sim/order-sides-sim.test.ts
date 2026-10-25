@@ -348,7 +348,7 @@ describe("order sides: Axis revert (simulateAxis)", () => {
     assert.equal(res.trades[0].reason, "sl");
     near(res.trades[0].exit, 103.525, "stop");
     assert.equal(res.trades[0].vol, 2, "base and level");
-    near(res.trades[0].entry, 102, "average entry");
+    near(res.trades[0].entry, 2 / (1 / 101.5 + 1 / 102.5), "quote-notional average entry");
   });
 
   for (const [name, s] of SIDES) {
@@ -378,7 +378,7 @@ describe("order sides: Axis revert (simulateAxis)", () => {
       );
       assert.ok(adverse.open, "still open");
       assert.equal(adverse.open.w, 2, "base and the add");
-      near(adverse.open.entry, pick(s, 98, 102), "average of the two legs");
+      near(adverse.open.entry, 2 / (1 / pick(s, 98.5, 101.5) + 1 / pick(s, 97.5, 102.5)), "quote-notional average of the two legs");
       const favourable = runRevert(
         s,
         [pick<Row>(s, bar(1, 98.6, 98.3, 99.5, 99.4), bar(-1, 101.4, 101.7, 100.5, 100.6))],

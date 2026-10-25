@@ -1,0 +1,1647 @@
+{
+  "schema": "cts-history-pf-schema-parity-v1",
+  "ok": true,
+  "checks": [
+    {
+      "name": "protocol.actualSettings",
+      "ok": true
+    },
+    {
+      "name": "protocol.actualWf",
+      "ok": true
+    },
+    {
+      "name": "protocol.window",
+      "ok": true
+    },
+    {
+      "name": "protocol.symbols",
+      "ok": true
+    },
+    {
+      "name": "protocol.feed",
+      "ok": true
+    },
+    {
+      "name": "coverage.window",
+      "ok": true
+    },
+    {
+      "name": "coverage.symbols",
+      "ok": true
+    },
+    {
+      "name": "coverage.catalog",
+      "ok": true
+    },
+    {
+      "name": "coverage.hourly",
+      "ok": true
+    },
+    {
+      "name": "coverage.groups",
+      "ok": true
+    },
+    {
+      "name": "coverage.funding",
+      "ok": true
+    },
+    {
+      "name": "coverage.settled",
+      "ok": true
+    },
+    {
+      "name": "coverage.ledger",
+      "ok": true
+    },
+    {
+      "name": "coverage.account",
+      "ok": true
+    },
+    {
+      "name": "coverage.entrySelection",
+      "ok": true
+    },
+    {
+      "name": "coverage.exactTape",
+      "ok": true
+    },
+    {
+      "name": "coverage.reportChecks",
+      "ok": true
+    },
+    {
+      "name": "coverage.ok",
+      "ok": true
+    },
+    {
+      "name": "baseline.coverage.ok",
+      "ok": true
+    },
+    {
+      "name": "audit.comparisons",
+      "ok": true
+    },
+    {
+      "name": "execution.basis",
+      "ok": true
+    },
+    {
+      "name": "execution.allBuiltConfigs",
+      "ok": true
+    },
+    {
+      "name": "execution.zeroExecutionConfigs",
+      "ok": true
+    },
+    {
+      "name": "execution.rows",
+      "ok": true
+    },
+    {
+      "name": "admission.ok",
+      "ok": true
+    },
+    {
+      "name": "admission.scope",
+      "ok": true
+    },
+    {
+      "name": "admission.total",
+      "ok": true
+    },
+    {
+      "name": "admission.reasons",
+      "ok": true
+    },
+    {
+      "name": "admission.examples",
+      "ok": true
+    }
+  ],
+  "baselineSource": "562927400fb3e59a984e13130e9145f825e48855c563f41ad9cc13a7c9bbd986",
+  "replaySource": "f09e2ed2aec72b0eb6c5770fc47df903b4d268f0bf56998b4fad2f575401cfaa",
+  "scope": "Identical frozen inputs; exact catalog, hourly gates, funded counts/returns, config execution and admission. Timing and source hashes are reported separately.",
+  "baseline": {
+    "account": {
+      "orders": 280,
+      "fundedOrders": 280,
+      "zeroAllocatedOrders": 0,
+      "unknownAllocations": 0,
+      "virtual": {
+        "n": 280,
+        "gpR": 0.052824,
+        "glR": 0.800424,
+        "pf": 0.065995,
+        "unknownReturns": 0,
+        "unknownReturnTotals": 0,
+        "pfBasis": "unit-net-returns",
+        "noLoss": false,
+        "basis": "all-virtual-modeled-closes"
+      },
+      "positions": 2,
+      "settledSlicePositions": 4,
+      "pf": 0.065995,
+      "cashPf": 0.065995,
+      "cashPfDiagnostic": 0.065996,
+      "pfR": 0.065995,
+      "noLoss": false,
+      "pfBasis": "unit-net-returns",
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "cashBasis": "funded-modeled-allocations",
+      "gpR": 0.052824,
+      "glR": 0.800424,
+      "netU": -0.7476,
+      "mddU": 0.7476,
+      "fixedUnit": 0.01,
+      "eqMin": 9.900678,
+      "ruinT": null,
+      "gp": 0.000528,
+      "gl": 0.008004,
+      "net": -0.007476,
+      "netPct": -0.000748,
+      "wins": 55,
+      "losses": 225,
+      "wr": 0.196429,
+      "ddtH": 8.75,
+      "ddr": null,
+      "closedMdd": 0.007476,
+      "balanceEnd": 9.992524,
+      "equityMaxDd": 0.117666,
+      "equityMaxDdPct": 0.011745,
+      "equityDdr": null,
+      "equityDdtMaxH": 3.916667,
+      "avgOpenOrders": 263.138889,
+      "maxOpenOrders": 687,
+      "avgOpenPositions": 1.909722,
+      "maxOpenPositions": 4,
+      "occupancyBasis": "native-virtual-orders",
+      "openedOrders": 863,
+      "fundedCounts": {
+        "openedPositions": 4,
+        "closedPositions": 2,
+        "openPositions": 2,
+        "openedOrders": 863,
+        "settledOrders": 280,
+        "openOrders": 583,
+        "basis": "funded-modeled-allocations"
+      },
+      "virtualOpenedOrders": 863,
+      "fundedOccupancy": {
+        "avgPositions": 1.909722,
+        "maxPositions": 4,
+        "avgOrders": 263.138889,
+        "maxOrders": 687,
+        "basis": "funded-modeled-allocations"
+      },
+      "marginMax": 0.686999,
+      "greenHours": 0,
+      "redHours": 4,
+      "flatHours": 8,
+      "fullHours": 12,
+      "partialHour": null,
+      "equityEnd": 9.913915,
+      "openEnd": {
+        "recorded": true,
+        "orders": 583,
+        "fundedOrders": 583,
+        "fundedPositions": 2,
+        "zeroAllocatedOrders": 0,
+        "unknownAllocations": 0,
+        "countBasis": "native-virtual-orders",
+        "positions": 2,
+        "mtm": -0.078609,
+        "rule": "exact: the orders the engine executed in the run and still open at its end (every gate, cap and Block volume applied), marked to market at the last close"
+      },
+      "caps": {
+        "on": true,
+        "maxPositionX": 0,
+        "maxExposureX": 0,
+        "source": "balance-volume defaults (no balance caps in the settings)",
+        "capped": 0,
+        "scaled": 0,
+        "cappedOpen": 0,
+        "scaledOpen": 0,
+        "byPosition": 0,
+        "byExposure": 0
+      },
+      "uncapped": {
+        "n": 280,
+        "fundedOrders": 280,
+        "zeroAllocatedOrders": 0,
+        "unknownAllocations": 0,
+        "unknownReturns": 0,
+        "unknownReturnTotals": 0,
+        "pfBasis": "unit-net-returns",
+        "virtual": {
+          "n": 280,
+          "gpR": 0.052824,
+          "glR": 0.800424,
+          "pf": 0.065995,
+          "unknownReturns": 0,
+          "unknownReturnTotals": 0,
+          "pfBasis": "unit-net-returns",
+          "noLoss": false,
+          "basis": "all-virtual-modeled-closes"
+        },
+        "net": -0.007476,
+        "gp": 0.000528,
+        "gl": 0.008004,
+        "gpR": 0.052824,
+        "glR": 0.800424,
+        "pf": 0.065995,
+        "cashPf": 0.065995,
+        "cashPfDiagnostic": 0.065996,
+        "cashBasis": "funded-modeled-allocations",
+        "balanceEnd": 9.992524,
+        "equityEnd": 9.913915,
+        "equityMaxDd": 0.117666,
+        "equityMaxDdPct": 0.011745,
+        "marginMax": 0.686999,
+        "eqMin": 9.900678,
+        "marginOverMinutes": 0
+      },
+      "feasible": true,
+      "marginOver": {
+        "minutes": 0,
+        "firstT": null,
+        "maxRatio": 0.068761
+      }
+    },
+    "engine": {
+      "computeMs": 1152553.357571,
+      "rssMaxMb": 2580,
+      "mem": {
+        "availMb": 5422,
+        "hostAvailMb": 6638,
+        "cgroup": {
+          "version": 2,
+          "basis": "clean-file-estimate",
+          "limitMb": 8192,
+          "usedMb": 7060,
+          "rawAvailMb": 1132,
+          "cacheCreditMb": 4290,
+          "availMb": 5422
+        },
+        "rssMb": 2408,
+        "level": "ok",
+        "fallback": 0,
+        "fallbackLabel": "full",
+        "minAvailMb": 4292,
+        "lastAbort": null,
+        "aborts": 0,
+        "abortsInRow": 0,
+        "retryAt": null,
+        "computeLevel": 0,
+        "heapMb": 637,
+        "heapLimitMb": 4288,
+        "heapAvailMb": 3651,
+        "heapTotalMb": 771,
+        "arrayBuffersMb": 117,
+        "nativeMb": 1520,
+        "dbMb": 0,
+        "tapeMb": 791,
+        "byPhase": {
+          "backfill": {
+            "rssMb": 260,
+            "heapMb": 132,
+            "arrayBuffersMb": 27
+          },
+          "Base": {
+            "rssMb": 879,
+            "heapMb": 63,
+            "arrayBuffersMb": 93
+          },
+          "Tapes": {
+            "rssMb": 1106,
+            "heapMb": 77,
+            "arrayBuffersMb": 101
+          },
+          "Signals": {
+            "rssMb": 2203,
+            "heapMb": 408,
+            "arrayBuffersMb": 110
+          },
+          "Real": {
+            "rssMb": 2452,
+            "heapMb": 902,
+            "arrayBuffersMb": 123
+          }
+        }
+      },
+      "phases": {
+        "Base (workers)": {
+          "ms": 75195.459974,
+          "maxSliceMs": 0,
+          "slowest": "663 of 663 combos on 2 cores",
+          "mainMs": 531.3927150005184
+        },
+        "Pipeline": {
+          "ms": 1.6307919999962905,
+          "maxSliceMs": 1.6307919999962905,
+          "slowest": "S5 0 armed (1 ms)"
+        },
+        "Persist": {
+          "ms": 6.553913999989163,
+          "maxSliceMs": 3.1389820000040345
+        },
+        "Exit history": {
+          "ms": 156.04647600001772,
+          "maxSliceMs": 0,
+          "mainMs": 12.883552999002859,
+          "slowest": "2 workers · 2 bounded chunks of at most 16 pairs"
+        },
+        "Signal history": {
+          "ms": 102428.45947499998,
+          "maxSliceMs": 0,
+          "mainMs": 722.5076509993523,
+          "slowest": "2 cores · 332 replies"
+        },
+        "Signal tapes": {
+          "ms": 101517.97250400003,
+          "maxSliceMs": 0,
+          "slowest": "2 cores · 309 replies",
+          "mainMs": 3361.520351998741
+        },
+        "Signal coordination tapes": {
+          "ms": 48896.846955999965,
+          "maxSliceMs": 0,
+          "slowest": "2 cores · 23 replies",
+          "mainMs": 583.4856210032594
+        },
+        "Simulation": {
+          "ms": 759578.3612779999,
+          "maxSliceMs": 480.5334070000099,
+          "slowest": "causal signal ranking (469 ms)"
+        },
+        "Signal status": {
+          "ms": 7.22790400008671,
+          "maxSliceMs": 7.22790400008671,
+          "slowest": " (4 ms)"
+        },
+        "Persist sim": {
+          "ms": 0.4468219999689609,
+          "maxSliceMs": 0.4468219999689609
+        },
+        "Auto preset": {
+          "ms": 0.20477299997583032,
+          "maxSliceMs": 0.20477299997583032
+        },
+        "Prehistoric": {
+          "ms": 1.1806179999839514,
+          "maxSliceMs": 1.1806179999839514,
+          "slowest": "finish (1 ms)"
+        },
+        "Paper": {
+          "ms": 465.97925799991935,
+          "maxSliceMs": 89.19847199996002,
+          "slowest": "select 321 · candidates 118 · entries 5 ms over 5 (wall, sliced) · 18535 older tape positions left to their tape"
+        },
+        "Adjust": {
+          "ms": 0.9392510000616312,
+          "maxSliceMs": 0.9392510000616312
+        },
+        "Audit": {
+          "ms": 236.8219369999133,
+          "maxSliceMs": 170.13775900006294,
+          "slowest": " (170 ms)"
+        }
+      },
+      "baseByRange": [
+        {
+          "tag": "",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Wide",
+          "enabled": true
+        },
+        {
+          "tag": "mc",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.05,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Micro",
+          "enabled": true
+        },
+        {
+          "tag": "mn",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.1,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Minimal",
+          "enabled": true
+        },
+        {
+          "tag": "mp",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.1,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Minimal plus",
+          "enabled": false
+        },
+        {
+          "tag": "sh",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.1,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Short",
+          "enabled": true
+        },
+        {
+          "tag": "gn",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.2,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "General",
+          "enabled": true
+        },
+        {
+          "tag": "lg",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.3,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Long",
+          "enabled": true
+        },
+        {
+          "tag": "sig",
+          "range": "Signals",
+          "enabled": true,
+          "evaluated": 663,
+          "passed": 12,
+          "minPf": 1.5,
+          "pfMedian": 0.7683062530523888,
+          "pfPassedMedian": 1.8460931457016556,
+          "pfPassedMean": 2.2525741382143427,
+          "pfPassedPooled": 1.9961049573558416,
+          "passedGp": 442.2589925806734,
+          "passedGl": 221.56099104453693,
+          "ownCells": 663
+        }
+      ],
+      "signals": {
+        "enabled": true,
+        "combos": 663,
+        "active": 6539,
+        "pairs": 663,
+        "configs": 137722,
+        "coordinationPairs": 45,
+        "coordinationConfigs": 9419,
+        "coordinationActive": 1006,
+        "discoveryPairs": 663,
+        "representativePassed": 12,
+        "representativeBaseGate": false,
+        "historic": {
+          "pairs": 663,
+          "insufficientEntries": 174,
+          "trailTooShort": 0,
+          "candidates": 19560,
+          "evaluated": 19560,
+          "insufficientTrades": 15795,
+          "pfRejected": 3190,
+          "ddrRejected": 94,
+          "qualified": 481
+        },
+        "builtConfigs": 126289,
+        "coordinationBuiltConfigs": 8630,
+        "activation": {
+          "counts": {
+            "long": {
+              "minTrades": 0,
+              "recent": 755,
+              "net": 0,
+              "block": 13,
+              "lowdd": 0,
+              "cap": 0,
+              "active": 349
+            },
+            "short": {
+              "minTrades": 0,
+              "recent": 4054,
+              "net": 0,
+              "block": 175,
+              "lowdd": 0,
+              "cap": 0,
+              "active": 6070
+            },
+            "pooled": {
+              "minTrades": 0,
+              "recent": 0,
+              "net": 0,
+              "block": 0,
+              "lowdd": 0,
+              "cap": 0,
+              "active": 0
+            }
+          },
+          "topLong": [
+            {
+              "key": "follow|sig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|normal|cfg=follow%7Csig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj%40m5%7Ctp1.79%7Csl1%7Ctr0%7Ch576%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 15,
+              "net": 13.44000000000004,
+              "dd": 2.2999999999999905,
+              "okShare": 0.6666666666666666,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj%40m5%7Ctp2.78%7Csl2.79%7Ctr0.74%7Ch450%7Cts1.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 14,
+              "net": 13.143741713299823,
+              "dd": 3.014607446217367,
+              "okShare": 0.7272727272727273,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj%40m5%7Ctp2.78%7Csl3%7Ctr0.74%7Ch450%7Cts1.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 14,
+              "net": 12.933741713299833,
+              "dd": 3.224607446217356,
+              "okShare": 0.7272727272727273,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj%40m5%7Ctp4.64%7Csl3%7Ctr1.05%7Ch576%7Cts0.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 12,
+              "net": 12.71597806646501,
+              "dd": 0,
+              "okShare": 1,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj%40m5%7Ctp2.92%7Csl3%7Ctr1%7Ch576%7Cts0.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 12,
+              "net": 12.524633957191,
+              "dd": 0,
+              "okShare": 1,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj%40m5%7Ctp1.79%7Csl3%7Ctr0.71%7Ch576%7Cts1.4999999999999998%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 14,
+              "net": 12.451213468071392,
+              "dd": 3.4949509098240683,
+              "okShare": 0.6363636363636364,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing-only|cfg=follow%7Csig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj%40m5%7Ctp0%7Csl1%7Ctr1.25%7Ch576%7Cto%7Cts0.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 15,
+              "net": 12.368935847042495,
+              "dd": 2.3620641035824788,
+              "okShare": 0.6666666666666666,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj%40m5%7Ctp2.92%7Csl3%7Ctr0.89%7Ch576%7Cts1.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 12,
+              "net": 12.2698671447171,
+              "dd": 0.5708514376996843,
+              "okShare": 0.7,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj%40m5%7Ctp2.35%7Csl3%7Ctr1.05%7Ch576%7Cts0.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 15,
+              "net": 12.16463239717023,
+              "dd": 3.1500000000000057,
+              "okShare": 0.8181818181818182,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj%40m5%7Ctp2.35%7Csl3%7Ctr1.05%7Ch576%7Cts0.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 12,
+              "net": 12.019470116388092,
+              "dd": 0,
+              "okShare": 1,
+              "recentN": 0,
+              "recentNet": 0
+            }
+          ]
+        },
+        "disabled": 0,
+        "trades": 280,
+        "pf": 0.06599490072283395,
+        "net": -74.75997130792875,
+        "noLoss": false,
+        "pfConvention": "gross-return-ratio",
+        "positions": 2,
+        "orders": 280,
+        "openedOrders": 863,
+        "openedPositions": 4,
+        "openAtEndOrders": 583,
+        "openAtEndPositions": 2,
+        "peakPositions": 4,
+        "peakOrders": 687,
+        "coordinationTrades": 17,
+        "coordinationPf": 0.010087618578979059,
+        "coordinationNet": -15.206352684258409,
+        "coordinationPositions": 0,
+        "coordinationOrders": 17,
+        "coordinationPeakPositions": 1,
+        "coordinationPeakOrders": 161,
+        "openOrders": 0,
+        "openPositions": 0
+      },
+      "independentExit": {
+        "enabled": true,
+        "pairs": 663,
+        "baseEvaluated": 663,
+        "basePassed": 27,
+        "baseRejected": 636,
+        "families": 5,
+        "timeframes": [
+          1,
+          5,
+          15
+        ],
+        "tactics": 0,
+        "relations": 0,
+        "configs": 10,
+        "history": {
+          "pairs": 27,
+          "baseEvaluated": 663,
+          "basePassed": 27,
+          "baseRejected": 636,
+          "noPrehistory": 0,
+          "insufficientEntries": 11,
+          "candidates": 812,
+          "capped": 0,
+          "evaluated": 812,
+          "trailTooShort": 0,
+          "insufficientTrades": 0,
+          "pfRejected": 393,
+          "greenHourRejected": 366,
+          "ddrRejected": 41,
+          "stabilityRejected": 0,
+          "qualified": 10
+        }
+      },
+      "skips": {
+        "sig:signalPf": 4,
+        "sig:signalValid": 71,
+        "sig:signalCluster": 550,
+        "sig:signalSide": 75
+      },
+      "skipsByRange": {
+        "sig": {
+          "sig:signalPf": 4,
+          "sig:signalValid": 71,
+          "sig:signalCluster": 550,
+          "sig:signalSide": 75
+        }
+      },
+      "signalFunnel": {
+        "candidates": 23480,
+        "inactive": 21917,
+        "inactiveBySide": {
+          "1": 11612,
+          "-1": 10305
+        }
+      }
+    },
+    "audit": {
+      "comparisons": 39402168,
+      "elapsedMs": 100709.182175,
+      "peakRssMb": 1612.763136
+    }
+  },
+  "replay": {
+    "account": {
+      "orders": 280,
+      "fundedOrders": 280,
+      "zeroAllocatedOrders": 0,
+      "unknownAllocations": 0,
+      "virtual": {
+        "n": 280,
+        "gpR": 0.052824,
+        "glR": 0.800424,
+        "pf": 0.065995,
+        "unknownReturns": 0,
+        "unknownReturnTotals": 0,
+        "pfBasis": "unit-net-returns",
+        "noLoss": false,
+        "basis": "all-virtual-modeled-closes"
+      },
+      "positions": 2,
+      "settledSlicePositions": 4,
+      "pf": 0.065995,
+      "cashPf": 0.065995,
+      "cashPfDiagnostic": 0.065996,
+      "pfR": 0.065995,
+      "noLoss": false,
+      "pfBasis": "unit-net-returns",
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "cashBasis": "funded-modeled-allocations",
+      "gpR": 0.052824,
+      "glR": 0.800424,
+      "netU": -0.7476,
+      "mddU": 0.7476,
+      "fixedUnit": 0.01,
+      "eqMin": 9.900678,
+      "ruinT": null,
+      "gp": 0.000528,
+      "gl": 0.008004,
+      "net": -0.007476,
+      "netPct": -0.000748,
+      "wins": 55,
+      "losses": 225,
+      "wr": 0.196429,
+      "ddtH": 8.75,
+      "ddr": null,
+      "closedMdd": 0.007476,
+      "balanceEnd": 9.992524,
+      "equityMaxDd": 0.117666,
+      "equityMaxDdPct": 0.011745,
+      "equityDdr": null,
+      "equityDdtMaxH": 3.916667,
+      "avgOpenOrders": 263.138889,
+      "maxOpenOrders": 687,
+      "avgOpenPositions": 1.909722,
+      "maxOpenPositions": 4,
+      "occupancyBasis": "native-virtual-orders",
+      "openedOrders": 863,
+      "fundedCounts": {
+        "openedPositions": 4,
+        "closedPositions": 2,
+        "openPositions": 2,
+        "openedOrders": 863,
+        "settledOrders": 280,
+        "openOrders": 583,
+        "basis": "funded-modeled-allocations"
+      },
+      "virtualOpenedOrders": 863,
+      "fundedOccupancy": {
+        "avgPositions": 1.909722,
+        "maxPositions": 4,
+        "avgOrders": 263.138889,
+        "maxOrders": 687,
+        "basis": "funded-modeled-allocations"
+      },
+      "marginMax": 0.686999,
+      "greenHours": 0,
+      "redHours": 4,
+      "flatHours": 8,
+      "fullHours": 12,
+      "partialHour": null,
+      "equityEnd": 9.913915,
+      "openEnd": {
+        "recorded": true,
+        "orders": 583,
+        "fundedOrders": 583,
+        "fundedPositions": 2,
+        "zeroAllocatedOrders": 0,
+        "unknownAllocations": 0,
+        "countBasis": "native-virtual-orders",
+        "positions": 2,
+        "mtm": -0.078609,
+        "rule": "exact: the orders the engine executed in the run and still open at its end (every gate, cap and Block volume applied), marked to market at the last close"
+      },
+      "caps": {
+        "on": true,
+        "maxPositionX": 0,
+        "maxExposureX": 0,
+        "source": "balance-volume defaults (no balance caps in the settings)",
+        "capped": 0,
+        "scaled": 0,
+        "cappedOpen": 0,
+        "scaledOpen": 0,
+        "byPosition": 0,
+        "byExposure": 0
+      },
+      "uncapped": {
+        "n": 280,
+        "fundedOrders": 280,
+        "zeroAllocatedOrders": 0,
+        "unknownAllocations": 0,
+        "unknownReturns": 0,
+        "unknownReturnTotals": 0,
+        "pfBasis": "unit-net-returns",
+        "virtual": {
+          "n": 280,
+          "gpR": 0.052824,
+          "glR": 0.800424,
+          "pf": 0.065995,
+          "unknownReturns": 0,
+          "unknownReturnTotals": 0,
+          "pfBasis": "unit-net-returns",
+          "noLoss": false,
+          "basis": "all-virtual-modeled-closes"
+        },
+        "net": -0.007476,
+        "gp": 0.000528,
+        "gl": 0.008004,
+        "gpR": 0.052824,
+        "glR": 0.800424,
+        "pf": 0.065995,
+        "cashPf": 0.065995,
+        "cashPfDiagnostic": 0.065996,
+        "cashBasis": "funded-modeled-allocations",
+        "balanceEnd": 9.992524,
+        "equityEnd": 9.913915,
+        "equityMaxDd": 0.117666,
+        "equityMaxDdPct": 0.011745,
+        "marginMax": 0.686999,
+        "eqMin": 9.900678,
+        "marginOverMinutes": 0
+      },
+      "feasible": true,
+      "marginOver": {
+        "minutes": 0,
+        "firstT": null,
+        "maxRatio": 0.068761
+      }
+    },
+    "engine": {
+      "computeMs": 718817.209172,
+      "rssMaxMb": 1981,
+      "mem": {
+        "availMb": 6065,
+        "hostAvailMb": 7426,
+        "cgroup": {
+          "version": 2,
+          "basis": "clean-file-estimate",
+          "limitMb": 8192,
+          "usedMb": 6663,
+          "rawAvailMb": 1529,
+          "cacheCreditMb": 4535,
+          "availMb": 6065
+        },
+        "rssMb": 1835,
+        "level": "ok",
+        "fallback": 0,
+        "fallbackLabel": "full",
+        "minAvailMb": 5909,
+        "lastAbort": null,
+        "aborts": 0,
+        "abortsInRow": 0,
+        "retryAt": null,
+        "computeLevel": 0,
+        "heapMb": 433,
+        "heapLimitMb": 4288,
+        "heapAvailMb": 3855,
+        "heapTotalMb": 603,
+        "arrayBuffersMb": 240,
+        "nativeMb": 991,
+        "dbMb": 0,
+        "tapeMb": 791,
+        "byPhase": {
+          "backfill": {
+            "rssMb": 239,
+            "heapMb": 84,
+            "arrayBuffersMb": 27
+          },
+          "Base": {
+            "rssMb": 894,
+            "heapMb": 41,
+            "arrayBuffersMb": 93
+          },
+          "Tapes": {
+            "rssMb": 1078,
+            "heapMb": 55,
+            "arrayBuffersMb": 101
+          },
+          "Signals": {
+            "rssMb": 1648,
+            "heapMb": 295,
+            "arrayBuffersMb": 158
+          },
+          "Real": {
+            "rssMb": 1889,
+            "heapMb": 712,
+            "arrayBuffersMb": 342
+          }
+        }
+      },
+      "phases": {
+        "Base (workers)": {
+          "ms": 77892.666391,
+          "maxSliceMs": 0,
+          "slowest": "663 of 663 combos on 2 cores",
+          "mainMs": 550.2932740037359
+        },
+        "Pipeline": {
+          "ms": 1.495238999996218,
+          "maxSliceMs": 1.495238999996218,
+          "slowest": "S5 0 armed (1 ms)"
+        },
+        "Persist": {
+          "ms": 7.685735000006389,
+          "maxSliceMs": 3.382359000010183
+        },
+        "Exit history": {
+          "ms": 154.7735190000094,
+          "maxSliceMs": 0,
+          "mainMs": 2.9988200001826044,
+          "slowest": "2 workers · 2 bounded chunks of at most 16 pairs"
+        },
+        "Signal history": {
+          "ms": 102227.70749100001,
+          "maxSliceMs": 0,
+          "mainMs": 779.8459850004583,
+          "slowest": "2 cores · 332 replies"
+        },
+        "Signal tapes": {
+          "ms": 106357.28309100002,
+          "maxSliceMs": 0,
+          "slowest": "2 cores · 309 replies",
+          "mainMs": 9247.360275999556
+        },
+        "Signal coordination tapes": {
+          "ms": 48394.799,
+          "maxSliceMs": 0,
+          "slowest": "2 cores · 23 replies",
+          "mainMs": 1622.5640269960859
+        },
+        "Simulation": {
+          "ms": 317200.338509,
+          "maxSliceMs": 481.6386810000986,
+          "slowest": "causal signal ranking (471 ms)"
+        },
+        "History storage": {
+          "ms": 4641.187294010189,
+          "maxSliceMs": 12.240793999982998,
+          "slowest": "87727 complete tapes · 535 MiB raw / 322 MiB stored · 64 MiB peak column cache"
+        },
+        "Signal status": {
+          "ms": 7.334374000085518,
+          "maxSliceMs": 7.334374000085518,
+          "slowest": " (4 ms)"
+        },
+        "Persist sim": {
+          "ms": 0.2618390000425279,
+          "maxSliceMs": 0.2618390000425279
+        },
+        "Auto preset": {
+          "ms": 0.0711260000243783,
+          "maxSliceMs": 0.0711260000243783
+        },
+        "Prehistoric": {
+          "ms": 1.3353330000536516,
+          "maxSliceMs": 1.3353330000536516,
+          "slowest": "finish (1 ms)"
+        },
+        "Paper": {
+          "ms": 912.5010460000485,
+          "maxSliceMs": 439.59717700001784,
+          "slowest": "select 327 · candidates 140 · entries 7 ms over 5 (wall, sliced) · 18535 older tape positions left to their tape"
+        },
+        "Adjust": {
+          "ms": 0.8764920000685379,
+          "maxSliceMs": 0.8764920000685379
+        },
+        "Audit": {
+          "ms": 219.84747600008268,
+          "maxSliceMs": 148.1261560000712,
+          "slowest": " (148 ms)"
+        }
+      },
+      "baseByRange": [
+        {
+          "tag": "",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Wide",
+          "enabled": true
+        },
+        {
+          "tag": "mc",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.05,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Micro",
+          "enabled": true
+        },
+        {
+          "tag": "mn",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.1,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Minimal",
+          "enabled": true
+        },
+        {
+          "tag": "mp",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.1,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Minimal plus",
+          "enabled": false
+        },
+        {
+          "tag": "sh",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.1,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Short",
+          "enabled": true
+        },
+        {
+          "tag": "gn",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.2,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "General",
+          "enabled": true
+        },
+        {
+          "tag": "lg",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.3,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Long",
+          "enabled": true
+        },
+        {
+          "tag": "sig",
+          "range": "Signals",
+          "enabled": true,
+          "evaluated": 663,
+          "passed": 12,
+          "minPf": 1.5,
+          "pfMedian": 0.7683062530523888,
+          "pfPassedMedian": 1.8460931457016556,
+          "pfPassedMean": 2.2525741382143427,
+          "pfPassedPooled": 1.9961049573558416,
+          "passedGp": 442.2589925806734,
+          "passedGl": 221.56099104453693,
+          "ownCells": 663
+        }
+      ],
+      "signals": {
+        "enabled": true,
+        "combos": 663,
+        "active": 6539,
+        "pairs": 663,
+        "configs": 137722,
+        "coordinationPairs": 45,
+        "coordinationConfigs": 9419,
+        "coordinationActive": 1006,
+        "discoveryPairs": 663,
+        "representativePassed": 12,
+        "representativeBaseGate": false,
+        "historic": {
+          "pairs": 663,
+          "insufficientEntries": 174,
+          "trailTooShort": 0,
+          "candidates": 19560,
+          "evaluated": 19560,
+          "insufficientTrades": 15795,
+          "pfRejected": 3190,
+          "ddrRejected": 94,
+          "qualified": 481
+        },
+        "builtConfigs": 126289,
+        "coordinationBuiltConfigs": 8630,
+        "activation": {
+          "counts": {
+            "long": {
+              "minTrades": 0,
+              "recent": 755,
+              "net": 0,
+              "block": 13,
+              "lowdd": 0,
+              "cap": 0,
+              "active": 349
+            },
+            "short": {
+              "minTrades": 0,
+              "recent": 4054,
+              "net": 0,
+              "block": 175,
+              "lowdd": 0,
+              "cap": 0,
+              "active": 6070
+            },
+            "pooled": {
+              "minTrades": 0,
+              "recent": 0,
+              "net": 0,
+              "block": 0,
+              "lowdd": 0,
+              "cap": 0,
+              "active": 0
+            }
+          },
+          "topLong": [
+            {
+              "key": "follow|sig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|normal|cfg=follow%7Csig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj%40m5%7Ctp1.79%7Csl1%7Ctr0%7Ch576%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 15,
+              "net": 13.44000000000004,
+              "dd": 2.2999999999999905,
+              "okShare": 0.6666666666666666,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj%40m5%7Ctp2.78%7Csl2.79%7Ctr0.74%7Ch450%7Cts1.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 14,
+              "net": 13.143741713299823,
+              "dd": 3.014607446217367,
+              "okShare": 0.7272727272727273,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj%40m5%7Ctp2.78%7Csl3%7Ctr0.74%7Ch450%7Cts1.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 14,
+              "net": 12.933741713299833,
+              "dd": 3.224607446217356,
+              "okShare": 0.7272727272727273,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj%40m5%7Ctp4.64%7Csl3%7Ctr1.05%7Ch576%7Cts0.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 12,
+              "net": 12.71597806646501,
+              "dd": 0,
+              "okShare": 1,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj%40m5%7Ctp2.92%7Csl3%7Ctr1%7Ch576%7Cts0.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 12,
+              "net": 12.524633957191,
+              "dd": 0,
+              "okShare": 1,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj%40m5%7Ctp1.79%7Csl3%7Ctr0.71%7Ch576%7Cts1.4999999999999998%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 14,
+              "net": 12.451213468071392,
+              "dd": 3.4949509098240683,
+              "okShare": 0.6363636363636364,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing-only|cfg=follow%7Csig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj%40m5%7Ctp0%7Csl1%7Ctr1.25%7Ch576%7Cto%7Cts0.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 15,
+              "net": 12.368935847042495,
+              "dd": 2.3620641035824788,
+              "okShare": 0.6666666666666666,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj%40m5%7Ctp2.92%7Csl3%7Ctr0.89%7Ch576%7Cts1.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 12,
+              "net": 12.2698671447171,
+              "dd": 0.5708514376996843,
+              "okShare": 0.7,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r60-n3-i1-brb7f16q855gqwbnqzfnj%40m5%7Ctp2.35%7Csl3%7Ctr1.05%7Ch576%7Cts0.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 15,
+              "net": 12.16463239717023,
+              "dd": 3.1500000000000057,
+              "okShare": 0.8181818181818182,
+              "recentN": 0,
+              "recentNet": 0
+            },
+            {
+              "key": "follow|sig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj@m5|DOT-USDT|1|trailing|cfg=follow%7Csig-coord-v2-r65-n3-i2-brb7f16q855gqwbnqzfnj%40m5%7Ctp2.35%7Csl3%7Ctr1.05%7Ch576%7Cts0.5%7Ctm3",
+              "side": 1,
+              "reason": "recent",
+              "n": 12,
+              "net": 12.019470116388092,
+              "dd": 0,
+              "okShare": 1,
+              "recentN": 0,
+              "recentNet": 0
+            }
+          ]
+        },
+        "disabled": 0,
+        "trades": 280,
+        "pf": 0.06599490072283395,
+        "net": -74.75997130792875,
+        "noLoss": false,
+        "pfConvention": "gross-return-ratio",
+        "positions": 2,
+        "orders": 280,
+        "openedOrders": 863,
+        "openedPositions": 4,
+        "openAtEndOrders": 583,
+        "openAtEndPositions": 2,
+        "peakPositions": 4,
+        "peakOrders": 687,
+        "coordinationTrades": 17,
+        "coordinationPf": 0.010087618578979059,
+        "coordinationNet": -15.206352684258409,
+        "coordinationPositions": 0,
+        "coordinationOrders": 17,
+        "coordinationPeakPositions": 1,
+        "coordinationPeakOrders": 161,
+        "openOrders": 0,
+        "openPositions": 0
+      },
+      "independentExit": {
+        "enabled": true,
+        "pairs": 663,
+        "baseEvaluated": 663,
+        "basePassed": 27,
+        "baseRejected": 636,
+        "families": 5,
+        "timeframes": [
+          1,
+          5,
+          15
+        ],
+        "tactics": 0,
+        "relations": 0,
+        "configs": 10,
+        "history": {
+          "pairs": 27,
+          "baseEvaluated": 663,
+          "basePassed": 27,
+          "baseRejected": 636,
+          "noPrehistory": 0,
+          "insufficientEntries": 11,
+          "candidates": 812,
+          "capped": 0,
+          "evaluated": 812,
+          "trailTooShort": 0,
+          "insufficientTrades": 0,
+          "pfRejected": 393,
+          "greenHourRejected": 366,
+          "ddrRejected": 41,
+          "stabilityRejected": 0,
+          "qualified": 10
+        }
+      },
+      "skips": {
+        "sig:signalPf": 4,
+        "sig:signalValid": 71,
+        "sig:signalCluster": 550,
+        "sig:signalSide": 75
+      },
+      "skipsByRange": {
+        "sig": {
+          "sig:signalPf": 4,
+          "sig:signalValid": 71,
+          "sig:signalCluster": 550,
+          "sig:signalSide": 75
+        }
+      },
+      "signalFunnel": {
+        "candidates": 23480,
+        "inactive": 21917,
+        "inactiveBySide": {
+          "1": 11612,
+          "-1": 10305
+        }
+      }
+    },
+    "audit": {
+      "comparisons": 39402168,
+      "elapsedMs": 98690.419031,
+      "peakRssMb": 1628.504064
+    }
+  },
+  "addedMetadata": [
+    "coverage.account.virtual.exactPf",
+    "coverage.account.virtual.pfState",
+    "coverage.account.uncapped.virtual.exactPf",
+    "coverage.account.uncapped.virtual.pfState",
+    "coverage.account.exactPf",
+    "coverage.account.pfState",
+    "coverage.account.pfConvention",
+    "report.total.virtual.exactPf",
+    "report.total.virtual.pfState",
+    "report.total.uncapped.virtual.exactPf",
+    "report.total.uncapped.virtual.pfState",
+    "report.total.exactPf",
+    "report.total.pfState",
+    "report.total.pfConvention",
+    "report.hours[0].virtual.exactPf",
+    "report.hours[0].virtual.pfState",
+    "report.hours[0].exactPf",
+    "report.hours[0].pfState",
+    "report.hours[0].noLoss",
+    "report.hours[0].pfBasis",
+    "report.hours[0].pfConvention",
+    "report.hours[0].cumExactPf",
+    "report.hours[0].cumPfState",
+    "report.hours[0].cumNoLoss",
+    "report.hours[0].cumPfBasis",
+    "report.hours[0].cumPfConvention",
+    "report.hours[1].virtual.exactPf",
+    "report.hours[1].virtual.pfState",
+    "report.hours[1].exactPf",
+    "report.hours[1].pfState",
+    "report.hours[1].noLoss",
+    "report.hours[1].pfBasis",
+    "report.hours[1].pfConvention",
+    "report.hours[1].cumExactPf",
+    "report.hours[1].cumPfState",
+    "report.hours[1].cumNoLoss",
+    "report.hours[1].cumPfBasis",
+    "report.hours[1].cumPfConvention",
+    "report.hours[2].virtual.exactPf",
+    "report.hours[2].virtual.pfState",
+    "report.hours[2].exactPf",
+    "report.hours[2].pfState",
+    "report.hours[2].noLoss",
+    "report.hours[2].pfBasis",
+    "report.hours[2].pfConvention",
+    "report.hours[2].cumExactPf",
+    "report.hours[2].cumPfState",
+    "report.hours[2].cumNoLoss",
+    "report.hours[2].cumPfBasis",
+    "report.hours[2].cumPfConvention",
+    "report.hours[3].virtual.exactPf",
+    "report.hours[3].virtual.pfState",
+    "report.hours[3].exactPf",
+    "report.hours[3].pfState",
+    "report.hours[3].noLoss",
+    "report.hours[3].pfBasis",
+    "report.hours[3].pfConvention",
+    "report.hours[3].cumExactPf",
+    "report.hours[3].cumPfState",
+    "report.hours[3].cumNoLoss",
+    "report.hours[3].cumPfBasis",
+    "report.hours[3].cumPfConvention",
+    "report.hours[4].virtual.exactPf",
+    "report.hours[4].virtual.pfState",
+    "report.hours[4].exactPf",
+    "report.hours[4].pfState",
+    "report.hours[4].noLoss",
+    "report.hours[4].pfBasis",
+    "report.hours[4].pfConvention",
+    "report.hours[4].cumExactPf",
+    "report.hours[4].cumPfState",
+    "report.hours[4].cumNoLoss",
+    "report.hours[4].cumPfBasis",
+    "report.hours[4].cumPfConvention",
+    "report.hours[5].virtual.exactPf",
+    "report.hours[5].virtual.pfState",
+    "report.hours[5].exactPf",
+    "report.hours[5].pfState",
+    "report.hours[5].noLoss",
+    "report.hours[5].pfBasis",
+    "report.hours[5].pfConvention",
+    "report.hours[5].cumExactPf",
+    "report.hours[5].cumPfState",
+    "report.hours[5].cumNoLoss",
+    "report.hours[5].cumPfBasis",
+    "report.hours[5].cumPfConvention",
+    "report.hours[6].virtual.exactPf",
+    "report.hours[6].virtual.pfState",
+    "report.hours[6].exactPf",
+    "report.hours[6].pfState",
+    "report.hours[6].noLoss",
+    "report.hours[6].pfBasis",
+    "report.hours[6].pfConvention",
+    "report.hours[6].cumExactPf",
+    "report.hours[6].cumPfState",
+    "report.hours[6].cumNoLoss",
+    "report.hours[6].cumPfBasis",
+    "report.hours[6].cumPfConvention",
+    "report.hours[7].virtual.exactPf",
+    "report.hours[7].virtual.pfState",
+    "report.hours[7].exactPf",
+    "report.hours[7].pfState",
+    "report.hours[7].noLoss",
+    "report.hours[7].pfBasis",
+    "report.hours[7].pfConvention",
+    "report.hours[7].cumExactPf",
+    "report.hours[7].cumPfState",
+    "report.hours[7].cumNoLoss",
+    "report.hours[7].cumPfBasis",
+    "report.hours[7].cumPfConvention",
+    "report.hours[8].virtual.exactPf",
+    "report.hours[8].virtual.pfState",
+    "report.hours[8].exactPf",
+    "report.hours[8].pfState",
+    "report.hours[8].noLoss",
+    "report.hours[8].pfBasis",
+    "report.hours[8].pfConvention",
+    "report.hours[8].cumExactPf",
+    "report.hours[8].cumPfState",
+    "report.hours[8].cumNoLoss",
+    "report.hours[8].cumPfBasis",
+    "report.hours[8].cumPfConvention",
+    "report.hours[9].virtual.exactPf",
+    "report.hours[9].virtual.pfState",
+    "report.hours[9].exactPf",
+    "report.hours[9].pfState",
+    "report.hours[9].noLoss",
+    "report.hours[9].pfBasis",
+    "report.hours[9].pfConvention",
+    "report.hours[9].cumExactPf",
+    "report.hours[9].cumPfState",
+    "report.hours[9].cumNoLoss",
+    "report.hours[9].cumPfBasis",
+    "report.hours[9].cumPfConvention",
+    "report.hours[10].virtual.exactPf",
+    "report.hours[10].virtual.pfState",
+    "report.hours[10].exactPf",
+    "report.hours[10].pfState",
+    "report.hours[10].noLoss",
+    "report.hours[10].pfBasis",
+    "report.hours[10].pfConvention",
+    "report.hours[10].cumExactPf",
+    "report.hours[10].cumPfState",
+    "report.hours[10].cumNoLoss",
+    "report.hours[10].cumPfBasis",
+    "report.hours[10].cumPfConvention",
+    "report.hours[11].virtual.exactPf",
+    "report.hours[11].virtual.pfState",
+    "report.hours[11].exactPf",
+    "report.hours[11].pfState",
+    "report.hours[11].noLoss",
+    "report.hours[11].pfBasis",
+    "report.hours[11].pfConvention",
+    "report.hours[11].cumExactPf",
+    "report.hours[11].cumPfState",
+    "report.hours[11].cumNoLoss",
+    "report.hours[11].cumPfBasis",
+    "report.hours[11].cumPfConvention"
+  ],
+  "fullSettledOrders": 280,
+  "fullHeldOrders": 583,
+  "completeHourlyLegacyFieldsEqual": true,
+  "completeAccountLegacyFieldsEqual": true,
+  "metrics": {
+    "before": {
+      "scenario": "control-12",
+      "runner": "Linux-6.18.55-x86_64-with-glibc2.39",
+      "machine": "x86_64",
+      "cpuCount": 9,
+      "sourceSha256": "562927400fb3e59a984e13130e9145f825e48855c563f41ad9cc13a7c9bbd986",
+      "exitCode": 0,
+      "wallSeconds": 1198.0193706369973,
+      "childPeakRssMiB": 4314.4765625,
+      "userSeconds": 1882.716667,
+      "systemSeconds": 28.103177
+    },
+    "after": {
+      "scenario": "control-12",
+      "runner": "Linux-6.18.55-x86_64-with-glibc2.39",
+      "machine": "x86_64",
+      "cpuCount": 9,
+      "sourceSha256": "f09e2ed2aec72b0eb6c5770fc47df903b4d268f0bf56998b4fad2f575401cfaa",
+      "exitCode": 0,
+      "wallSeconds": 776.8476575620007,
+      "childPeakRssMiB": 3106.12890625,
+      "userSeconds": 1663.372396,
+      "systemSeconds": 28.377873
+    }
+  },
+  "timingScope": "Same local environment, sequential complete runs; observed wall/RSS comparison, not a hard latency guarantee."
+}
