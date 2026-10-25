@@ -1,0 +1,33 @@
+{
+  "schema": "cts-pf-drop-release-v1",
+  "pr": 206,
+  "mergedCommit": "2279fa185f7f3068369332ee720a166b8e1356ed",
+  "testedHead": "5e39eadfbdfabd5b78b07fa64017ce25927b6ac9",
+  "testedTree": "aca8ca2d8a79e517b3755a02f218f382077d47d1",
+  "ci": {
+    "run": 40241142687,
+    "allSevenJobs": "success",
+    "passed": 4394,
+    "failed": 0,
+    "templateSkipped": 8,
+    "slowExcludedAndSeparatelyPassed": 2,
+    "offlineBuildRun": 40241142701
+  },
+  "baseline": {
+    "branch": "baseline/verified-20261025",
+    "commit": "5121115d54c7568e7bb7f0f99350c3dfd85649e8"
+  },
+  "archive": {
+    "filename": "cts-signal-gap-paired-2cc4c0.zip",
+    "bytes": 225889627,
+    "sha256": "e4d03d181dcba01ab1d210e218850b6c31a725b024db7054c57844f042ed378f",
+    "libraryFileId": "libfile_2f88fe8720588191bdadb8576525d29e",
+    "url": "https://chatgpt.com/library?file_id=libfile_2f88fe8720588191bdadb8576525d29e&account_id=personal"
+  },
+  "promotion": "No experimental trading defaults promoted. Paired settled PF8.381491/0.052474 is not consistently positive; historical post-Base PF4.613320/4.498920 with validation4100/1446672 (0.283409%) and4911/1446192 (0.339581%) uses separate endpoint contexts.",
+  "openWork": [
+    "Broad ordinary computation performance remains unresolved; two earlier jobs timed out and later jobs were still running.",
+    "50-symbol feed prepared, trade simulation not run.",
+    "No X02 run or live deployment."
+  ]
+}
