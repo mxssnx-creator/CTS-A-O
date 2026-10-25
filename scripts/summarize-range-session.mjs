@@ -15,6 +15,7 @@ const allocations = await readSessionDump(`${dir}/report/data.json`, { fields: [
 assert.ok(Array.isArray(allocations.sizedOpenOrders) || book.total.fundedCounts.openOrders === 0, 'Missing open allocation evidence');
 const open = (allocations.sizedOpenOrders ?? []).filter(x => x.allocatedNotional > 1e-9);
 assert.equal(open.length, book.total.fundedCounts.openOrders);
+const typeOfCfg = cfg => kindOfId(cfg) === 'exit' ? `exit:${parseConfigId(cfg)?.protect.exitSet ?? 'historic'}` : kindOfId(cfg);
 const range = cfg => kindOfId(cfg) === 'exit' ? 'Exit' : cfg.includes('|sig-') ? 'Signals' : RANGE_LABEL[rangeOfId(cfg)];
 const counts = (closed, held) => positionOrderCounts(closed, held);
 assert.deepEqual(counts(trades, open), Object.fromEntries(Object.entries(book.total.fundedCounts).filter(([k]) => k !== 'basis')));
@@ -30,8 +31,8 @@ for await (const step of iterateSessionValidation(`${dir}/raw.json`)) {
   if (initial) break;
   initial = step.t;
   for (const [cfg, passed] of step.checks) {
-    const key = `${range(cfg)}|${kindOfId(cfg)}`;
-    const row = coverage.get(key) ?? { range: range(cfg), type: kindOfId(cfg), evaluated: 0, passed: 0, sampleAtLeast4: 0, anyContextAtLeast4: 0, exactContextsAtLeast4: 0, exactContexts: 0, unknownHistory: 0 };
+    const key = `${range(cfg)}|${typeOfCfg(cfg)}`;
+    const row = coverage.get(key) ?? { range: range(cfg), type: typeOfCfg(cfg), evaluated: 0, passed: 0, sampleAtLeast4: 0, anyContextAtLeast4: 0, exactContextsAtLeast4: 0, exactContexts: 0, unknownHistory: 0 };
     const side = parseConfigId(cfg)?.protect.exitSide;
     const contextSides = side === 1 || side === -1 ? [side] : [1, -1];
     row.exactContexts += protocol.symbols.length * contextSides.length;
@@ -69,14 +70,14 @@ const ranges = names.map(name => {
       assert.ok(parsed.every(Boolean), 'Unparsed executed configuration');
       const ps = parsed.map(x => x.protect), trails = ps.filter(x => x.trail > 0), targets = ps.filter(x => x.tp > 0);
       return { scope: 'Executed config identities including endpoint holdings; distances are configured fractions of price',
-        minTp: targets.length ? Math.min(...targets.map(x => x.tp)) : null,
-        maxSl: ps.length ? Math.max(...ps.map(x => x.sl)) : null,
-        maxSlToTp: targets.length ? Math.max(...targets.map(x => x.sl / x.tp)) : null,
-        minTrail: trails.length ? Math.min(...trails.map(x => x.trail)) : null };
+        minTp: targets.length ? targets.reduce((n, x) => Math.min(n, x.tp), Infinity) : null,
+        maxSl: ps.length ? ps.reduce((n, x) => Math.max(n, x.sl), -Infinity) : null,
+        maxSlToTp: targets.length ? targets.reduce((n, x) => Math.max(n, x.sl / x.tp), -Infinity) : null,
+        minTrail: trails.length ? trails.reduce((n, x) => Math.min(n, x.trail), Infinity) : null };
     })(),
     symbols: new Set([...closed, ...held].map(x => x.sym)).size,
-    types: [...new Set([...closed, ...held].map(x => kindOfId(x.cfg)))].map(type => {
-      const a = closed.filter(x => kindOfId(x.cfg) === type), b = held.filter(x => kindOfId(x.cfg) === type);
+    types: [...new Set([...closed, ...held].map(x => typeOfCfg(x.cfg)))].map(type => {
+      const a = closed.filter(x => typeOfCfg(x.cfg) === type), b = held.filter(x => typeOfCfg(x.cfg) === type);
       return { type, ...counts(a, b), ...stat(a) };
     }),
     hours: ledger.map((row, i) => ({ ...row, ...stat(closed.filter(x => settledHourT(x.exitT) === raw.window.startT + i * 3600000)) })),
@@ -85,7 +86,7 @@ const ranges = names.map(name => {
 });
 const result = { schema: 'cts-range-detail-v1', sourceSha256: protocol.source.sha256,
   requestedRange: protocol.range, window: protocol.window, symbols: protocol.symbols,
-  runSeconds: raw.runSeconds, computeMs: raw.engine.computeMs, funding, total: book.total,
+  runSeconds: raw.runSeconds, computeMs: raw.engine.computeMs, peakRssMb: raw.engine.rssMaxMb, memory: raw.engine.mem, phases: raw.engine.phases, eventLoop: raw.engine.loop, funding, total: book.total,
   ranges, coverage: [...coverage.values()].map(x => ({ ...x, sampleAtLeast4Pct: 100 * x.sampleAtLeast4 / x.evaluated, anyContextAtLeast4Pct: 100 * x.anyContextAtLeast4 / x.evaluated, exactContextsAtLeast4Pct: 100 * x.exactContextsAtLeast4 / x.exactContexts })),
   coverageScope: 'Archived scalar closes in the initial 12h post-Base validation window; Pooled, any-context and exact config × symbol × direction Last-4 availability; exact denominator includes all configured symbols and eligible sides (side-specific Exit IDs exclude the opposite side). This is sample availability, not passing PF or a replacement for configured gates. Missing histories remain unknown.',
   base: { evaluated: raw.engine.baseEvaluated, passed: raw.engine.basePassed, ranges: raw.engine.baseByRange },

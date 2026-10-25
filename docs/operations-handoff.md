@@ -1,3 +1,15 @@
+## 25 October 2026 — ready-book execution and seven-range evidence (PR199)
+
+Branch `fix/live-ready-progress-20261025`, simulation capacity source `b8d4247b79fb98cfecc740f4f36bce3e3af08d99`. Main has not been merged/reloaded for this change. Backup `backup/main-before-ready-20261025` exists. Report: `docs/live-ready-ranges-20261025/report.md`.
+
+Completed five 12-hour arms (Short, General, Long, Wide, Minimal Plus); all corrected native report and exact-return parity checks pass. Independent scalar hourly audit: 7,097,568 decisions, zero discrepancies. General's old auditor falsely rounded a tiny positive LCB to zero; exact binary rational boundary checking fixes the auditor only. Eleven auditor tests pass. Original failure and precision receipt retained. Minimal Plus has no selected ordinary cells. Short PF exceeds 2 but modeled equity drawdown exceeds 231%; General/Long also exceed capital. No profitable promotion.
+
+Micro/Minimal original 4 GB heap attempts failed. Workflow 40149774312 retries unchanged economic protocols with 8 GB heap, still pending at this checkpoint. Do not claim full range completion. Original workflow 40148371319 preserves raw evidence; detailed local files under runs/ready-ranges-remote-20261025. The capacity workflow is now manual-only to avoid redundant expensive reruns.
+
+X02 VST technical lifecycle completed and independently reconciled: 14 positions, 84 accepted orders, 42 fills, 42 cancelled controls, zero final positions/orders, settings restored. Synthetic qualification is not actual strategy profitability. No further venue action needed.
+
+Full CI at b8d passed quality, slow runtime and three core partitions; partition 3 timed out an ordinary Exit Base test that inadvertently included expanded Signals defaults. Scoped that fixture to ordinary sources (Signals have separate runtime tests); all 22 Exit tests now pass in 1.93s. Production gates/defaults unchanged. New source still requires CI before merging. Regular reporting must retain failures, exact ownership and independent range/type denominators.
+
 ## Signal-only coordination and 150h history — merged and verified, 24 October 2026
 
 PR198 branch fix/signal-coordination-own-grid-20261024 from main cb7685c. Economic source619ba50f37a7c1e9c8a10ee5167a37baf44306b48b32df7a198f0b10c3cf781e. Signal/Exit defaults150h with atomic backup/once migration; Last4 unchanged. Runtime and presets use own Signal grid. Exact legacy held tagged identities stay exit-only. Incremental capture is selected/held only; complete discovery histories retained. UI no longer depends on ordinary grid switches.

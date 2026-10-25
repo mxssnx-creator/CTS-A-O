@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { scalarStats, scalarEval, scalarWindow } from "./hourly-progress.mjs";
+import { scalarStats, scalarEval, scalarWindow, exactPositiveLcb } from "./hourly-progress.mjs";
 const H = 3600000,
   T = Date.UTC(2026, 9, 17, 12);
 const options = {
@@ -179,4 +179,24 @@ test("legacy Micro keeps its configured 1.05 floor while first-class Micro retai
   const modern = scalarEval([...old, ...recent], T, o, microProtect, "trailing-only", "micro-1-turn-fast@m1");
   assert.equal(modern.ok, false);
   assert.equal(modern.directions[0].fail, "pre");
+});
+
+test("exact binary LCB boundary distinguishes zero and either side without weakening the gate", () => {
+  const rowsOf = values => values.map((r, i) => ["A", 1, T - 60000 * (values.length - i), T - 60000 * (values.length - i) + 1, r]);
+  const zero = [...Array(6).fill(1.5), ...Array(10).fill(-.5)];
+  const positive = [...zero], negative = [...zero];
+  positive[0] = 1.5000000000000002; negative[0] = 1.4999999999999998;
+  for (const scale of [1, 2 ** -200, 2 ** 200]) {
+    for (const [values, expected] of [[zero, false], [positive, true], [negative, false]]) {
+      const rows = rowsOf(values.map(x => x * scale));
+      assert.equal(exactPositiveLcb(rows), expected);
+      assert.equal(scalarStats(rows, T).lcbPositive, expected);
+      assert.equal(exactPositiveLcb([...rows].reverse()), expected);
+    }
+  }
+  const observed = rowsOf([-0.0115, -0.011499999999999991, -0.011500000000000038, -0.011500000000000015, -0.011499999999999918, -0.011499999999999915, 0.03450000000000006, -0.011500000000000066, 0.03449999999999998, 0.03450000000000005, 0.034500000000000024, 0.034500000000000045, -0.011500000000000078, -0.011499999999999995, -0.011500000000000071, 0.03450000000000001]);
+  const stats = scalarStats(observed, T);
+  assert.equal(stats.lcb, 0, "Welford rounding loses the actual tiny positive sign");
+  assert.equal(stats.lcbExactBoundary, true);
+  assert.equal(stats.lcbPositive, true, "exact input-double arithmetic preserves the positive result");
 });

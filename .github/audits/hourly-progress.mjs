@@ -10,6 +10,32 @@ import {
 } from "../../scripts/lib/session-dump.mjs";
 import { parseConfigId, kindOfId } from "../../src/core/pipeline/pipeline.ts";
 const H = 3600000;
+// For a positive sum S, the sample-standard-deviation LCB S - sd*sqrt(n)
+// is strictly positive exactly when S*S > sum(r*r). Resolve only numerical
+// boundaries with integer arithmetic over the input doubles' exact binary values.
+export function exactPositiveLcb(rows) {
+  if (rows.length < 2) return false;
+  const view = new DataView(new ArrayBuffer(8)), parts = [];
+  let exponent = Infinity;
+  for (const row of rows) {
+    const value = row[4];
+    assert.ok(Number.isFinite(value));
+    if (value === 0) continue;
+    view.setFloat64(0, value);
+    const bits = view.getBigUint64(0), e = Number((bits >> 52n) & 2047n);
+    const fraction = bits & ((1n << 52n) - 1n);
+    const mantissa = (bits >> 63n ? -1n : 1n) * (e ? fraction | (1n << 52n) : fraction);
+    const power = e ? e - 1075 : -1074;
+    exponent = Math.min(exponent, power);
+    parts.push([mantissa, power]);
+  }
+  let sum = 0n, squares = 0n;
+  for (const [mantissa, power] of parts) {
+    const value = mantissa << BigInt(power - exponent);
+    sum += value; squares += value * value;
+  }
+  return sum > 0n && sum * sum > squares;
+}
 export function scalarStats(rows, nowT) {
   let gp = 0,
     gl = 0,
@@ -45,16 +71,20 @@ export function scalarStats(rows, nowT) {
     }
   }
   if (dipped) ddt = Math.max(ddt, nowT - peakT);
+  const uncertainty = rows.length > 1
+    ? Math.sqrt(Math.max(0, m2 / (rows.length - 1))) * Math.sqrt(rows.length) : 0;
+  const lcb = rows.length > 1 ? (sum - uncertainty) * 100 : 0;
+  const boundary = rows.length > 1 && Math.abs(sum - uncertainty) <=
+    128 * Number.EPSILON * rows.length * (Math.abs(sum) + uncertainty);
   return {
     n: rows.length,
     gp,
     gl,
     net: sum * 100,
     pf: gl > 0 ? gp / gl : gp > 0 ? 4 : 0,
-    lcb:
-      rows.length > 1
-        ? (sum - Math.sqrt(Math.max(0, m2 / (rows.length - 1))) * Math.sqrt(rows.length)) * 100
-        : 0,
+    lcb,
+    lcbPositive: boundary ? exactPositiveLcb(rows) : lcb > 0,
+    lcbExactBoundary: boundary,
     ddt: ddt / H,
     mdd: maxDd,
     gh: hours.size ? [...hours.values()].filter((x) => x > 0).length / hours.size : 0,
@@ -110,7 +140,7 @@ export function scalarDirectionEval(rows, t, o, protect, kind = "normal", ind = 
     t,
   );
   if (o.preGate && pre.n >= 3 && (!(pre.pf >= minPf) || pre.net < 0)) return no("pre");
-  if (!(w.lcb > 0)) return no("lcb");
+  if (!w.lcbPositive) return no("lcb");
   if (
     !scalarLast(
       rows,
