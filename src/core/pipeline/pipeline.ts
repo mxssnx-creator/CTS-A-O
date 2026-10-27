@@ -1091,6 +1091,16 @@ export interface BaseRangeCount {
   ownCells: number;
 }
 
+const BASE_DIAGNOSTIC_BATCH = 128;
+
+/** Keep the synchronous public helpers available to reports and other non-interactive callers. */
+function finishBaseDiagnostics<R>(work: Generator<number, R>): R {
+  for (;;) {
+    const next = work.next();
+    if (next.done) return next.value;
+  }
+}
+
 /**
  * Base result per range type: each engine pair is judged at the default protect (Wide) and at every range's
  * representative cell (its own, else the default) against that range's own minimum, exactly as basePassTags.
@@ -1104,11 +1114,23 @@ export function baseRangeCounts(
   allTags: readonly string[],
   eligible: (ind: string, tag: string) => boolean = () => true,
 ): BaseRangeCount[] {
+  return finishBaseDiagnostics(baseRangeCountsGen(runs, g, allTags, eligible));
+}
+
+/** Incremental form for the runtime, with the same rows and arithmetic as the synchronous helper. */
+export function* baseRangeCountsGen(
+  runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
+  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  allTags: readonly string[],
+  eligible: (ind: string, tag: string) => boolean = () => true,
+): Generator<number, BaseRangeCount[]> {
   const median = (xs: number[]) => {
     const v = xs.filter(Number.isFinite).sort((a, b) => a - b);
     return v.length ? v[v.length >> 1] : null;
   };
-  return ["", ...allTags].map((tag) => {
+  const rows: BaseRangeCount[] = [];
+  let processed = 0;
+  for (const tag of ["", ...allTags]) {
     const pf: number[] = [];
     const pfOk: number[] = [];
     const stOk: Array<{ pf: number; net: number }> = [];
@@ -1117,6 +1139,8 @@ export function baseRangeCounts(
     let evaluated = 0;
     let ownCells = 0;
     for (const r of runs) {
+      if (processed > 0 && processed % BASE_DIAGNOSTIC_BATCH === 0) yield processed;
+      processed++;
       if (!eligible(r.ind, tag)) continue;
       evaluated++;
       const own = tag ? r.ranges?.[tag] : undefined;
@@ -1138,7 +1162,7 @@ export function baseRangeCounts(
       }
     }
     const pooled = pooledPf(stOk);
-    return {
+    rows.push({
       tag,
       evaluated,
       passed: pfOk.length,
@@ -1151,8 +1175,9 @@ export function baseRangeCounts(
       passedGl: pooled.gl,
       // the default / wide row is always its own cell
       ownCells: tag ? ownCells : evaluated,
-    };
-  });
+    });
+  }
+  return rows;
 }
 
 export interface BaseGateRow {
@@ -1188,12 +1213,28 @@ export function baseGateSensitivity(
   }> = [],
   eligible: (ind: string, tag: string) => boolean = () => true,
 ): BaseGateRow[] {
+  return finishBaseDiagnostics(baseGateSensitivityGen(runs, g, allTags, variants, eligible));
+}
+
+export function* baseGateSensitivityGen(
+  runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
+  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  allTags: readonly string[],
+  variants: ReadonlyArray<{
+    change: string;
+    minPf?: number;
+    minTrades?: number;
+    maxDdr?: number;
+  }> = [],
+  eligible: (ind: string, tag: string) => boolean = () => true,
+): Generator<number, BaseGateRow[]> {
   const median = (xs: number[]) => {
     const v = xs.filter(Number.isFinite).sort((a, b) => a - b);
     return v.length ? v[v.length >> 1] : null;
   };
   const rows: BaseGateRow[] = [];
   const all = [{ change: "as run" }, ...variants];
+  let processed = 0;
   for (const v of all) {
     const gg = {
       ...g,
@@ -1206,6 +1247,8 @@ export function baseGateSensitivity(
     let evaluated = 0;
     const pf: number[] = [];
     for (const r of runs) {
+      if (processed > 0 && processed % BASE_DIAGNOSTIC_BATCH === 0) yield processed;
+      processed++;
       evaluated++;
       const atDefault = passesBase(r.full, { ...gg, minPf: minPfOf(gg, "", r.ind) });
       if (atDefault) {
@@ -1270,10 +1313,27 @@ export function baseRangeWhy(
   allTags: readonly string[],
   eligible: (ind: string, tag: string) => boolean = () => true,
 ): BaseWhyRow[] {
+  return finishBaseDiagnostics(baseRangeWhyGen(runs, g, allTags, eligible));
+}
+
+export function* baseRangeWhyGen(
+  runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
+  g: {
+    minPf: number;
+    minTrades: number;
+    maxDdr?: number;
+    rangeMinPf?: Gates["rangeMinPf"];
+    baseWindows?: Gates["baseWindows"];
+  },
+  allTags: readonly string[],
+  eligible: (ind: string, tag: string) => boolean = () => true,
+): Generator<number, BaseWhyRow[]> {
   // the two-window gate is a reason of its own only while it is set (the rows are unchanged otherwise)
   const win = !!g.baseWindows?.gate;
   const zero = (): BaseGateCounts => (win ? { closes: 0, net: 0, pf: 0, ddr: 0, windows: 0 } : { closes: 0, net: 0, pf: 0, ddr: 0 });
-  return ["", ...allTags].map((tag) => {
+  const rows: BaseWhyRow[] = [];
+  let processed = 0;
+  for (const tag of ["", ...allTags]) {
     const row: BaseWhyRow = {
       tag,
       evaluated: 0,
@@ -1284,6 +1344,8 @@ export function baseRangeWhy(
     };
     const ddrPf: number[] = [];
     for (const r of runs) {
+      if (processed > 0 && processed % BASE_DIAGNOSTIC_BATCH === 0) yield processed;
+      processed++;
       if (!eligible(r.ind, tag)) continue;
       row.evaluated++;
       const own = tag ? r.ranges?.[tag] : undefined;
@@ -1311,8 +1373,9 @@ export function baseRangeWhy(
     }
     ddrPf.sort((a, b) => a - b);
     row.onlyDdrPfMedian = ddrPf.length ? ddrPf[ddrPf.length >> 1] : null;
-    return row;
-  });
+    rows.push(row);
+  }
+  return rows;
 }
 
 /** The Base-gate variations a report sweeps by default: each gate on its own, then the pair that matters most. */

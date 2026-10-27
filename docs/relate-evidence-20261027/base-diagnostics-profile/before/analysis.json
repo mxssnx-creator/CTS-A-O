@@ -1,0 +1,447 @@
+{
+  "sourceCommit": "38c9c7d87235db57a5d11376e639c28ea6f511a3",
+  "scope": "CPU sampled synthetic 4-symbol runtime; isolated 500ms diagnostic threshold, not live",
+  "pid": 23,
+  "profileFile": "cpu.cpuprofile.gz",
+  "clock": {
+    "pid": 23,
+    "threadId": 0,
+    "isMainThread": true,
+    "epochOffsetMs": 1793103987831.7722
+  },
+  "diag": {
+    "tapePhase": {
+      "ms": 3720.296371999997,
+      "maxSliceMs": 2.5176829999982147,
+      "slowest": "1 cores · 12 replies · longest history retain 0 ms",
+      "mainMs": 2351.2347500011383
+    },
+    "mergePhase": {
+      "ms": 1.9566760000016075,
+      "maxSliceMs": 1.9566760000016075,
+      "slowest": " (0 ms)"
+    },
+    "stallProbes": [
+      {
+        "startedAt": 1793122533905,
+        "ms": 1102,
+        "samples": 12,
+        "states": {
+          "R": 12
+        },
+        "syscalls": {
+          "running": 12
+        },
+        "wchans": {
+          "0": 12
+        },
+        "mainCpuMs": 1060,
+        "threadsCpuMs": {
+          "V8Worker": 610,
+          "v8:ProfEvntProc": 20,
+          "WorkerThread": 90
+        },
+        "stealTicks": 14,
+        "gc": [],
+        "verdict": "js",
+        "where": "Tapes"
+      }
+    ]
+  },
+  "events": [
+    {
+      "stall": {
+        "startedAt": 1793122533905,
+        "ms": 1102,
+        "samples": 12,
+        "states": {
+          "R": 12
+        },
+        "syscalls": {
+          "running": 12
+        },
+        "wchans": {
+          "0": 12
+        },
+        "mainCpuMs": 1060,
+        "threadsCpuMs": {
+          "V8Worker": 610,
+          "v8:ProfEvntProc": 20,
+          "WorkerThread": 90
+        },
+        "stealTicks": 14,
+        "gc": [],
+        "verdict": "js",
+        "where": "Tapes"
+      },
+      "profileSamples": 984,
+      "profileDurationMs": 1101.859,
+      "top": [
+        {
+          "function": "baseGateSensitivity",
+          "url": "repo:/src/core/pipeline/pipeline.ts",
+          "line": 1179,
+          "microseconds": 169701,
+          "samples": 157,
+          "stack": [
+            {
+              "fn": "baseGateSensitivity",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1179
+            },
+            {
+              "fn": "computeWithHistory",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 4172
+            },
+            {
+              "fn": "(root)",
+              "url": "",
+              "line": 0
+            }
+          ]
+        },
+        {
+          "function": "(anonymous)",
+          "url": "repo:/src/core/pipeline/pipeline.ts",
+          "line": 1223,
+          "microseconds": 162998,
+          "samples": 140,
+          "stack": [
+            {
+              "fn": "(anonymous)",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1223
+            },
+            {
+              "fn": "baseGateSensitivity",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1179
+            },
+            {
+              "fn": "computeWithHistory",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 4172
+            },
+            {
+              "fn": "(root)",
+              "url": "",
+              "line": 0
+            }
+          ]
+        },
+        {
+          "function": "laneOf",
+          "url": "repo:/src/core/indications/registry.ts",
+          "line": 1283,
+          "microseconds": 155607,
+          "samples": 136,
+          "stack": [
+            {
+              "fn": "laneOf",
+              "url": "repo:/src/core/indications/registry.ts",
+              "line": 1283
+            },
+            {
+              "fn": "rangeAppliesTo",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1362
+            },
+            {
+              "fn": "(anonymous)",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 5121
+            },
+            {
+              "fn": "(anonymous)",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1111
+            },
+            {
+              "fn": "baseRangeCounts",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1101
+            },
+            {
+              "fn": "computeWithHistory",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 4172
+            },
+            {
+              "fn": "(root)",
+              "url": "",
+              "line": 0
+            }
+          ]
+        },
+        {
+          "function": "passesBase",
+          "url": "repo:/src/core/pipeline/pipeline.ts",
+          "line": 288,
+          "microseconds": 112929,
+          "samples": 104,
+          "stack": [
+            {
+              "fn": "passesBase",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 288
+            },
+            {
+              "fn": "(anonymous)",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1111
+            },
+            {
+              "fn": "baseRangeCounts",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1101
+            },
+            {
+              "fn": "computeWithHistory",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 4172
+            },
+            {
+              "fn": "(root)",
+              "url": "",
+              "line": 0
+            }
+          ]
+        },
+        {
+          "function": "minPfOf",
+          "url": "repo:/src/core/minimal-coord.ts",
+          "line": 525,
+          "microseconds": 96962,
+          "samples": 80,
+          "stack": [
+            {
+              "fn": "minPfOf",
+              "url": "repo:/src/core/minimal-coord.ts",
+              "line": 525
+            },
+            {
+              "fn": "(anonymous)",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1111
+            },
+            {
+              "fn": "baseRangeCounts",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1101
+            },
+            {
+              "fn": "computeWithHistory",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 4172
+            },
+            {
+              "fn": "(root)",
+              "url": "",
+              "line": 0
+            }
+          ]
+        },
+        {
+          "function": "(anonymous)",
+          "url": "repo:/src/core/pipeline/pipeline.ts",
+          "line": 1276,
+          "microseconds": 71505,
+          "samples": 63,
+          "stack": [
+            {
+              "fn": "(anonymous)",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1276
+            },
+            {
+              "fn": "baseRangeWhy",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1261
+            },
+            {
+              "fn": "computeWithHistory",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 4172
+            },
+            {
+              "fn": "(root)",
+              "url": "",
+              "line": 0
+            }
+          ]
+        },
+        {
+          "function": "rangeAppliesTo",
+          "url": "repo:/src/core/pipeline/pipeline.ts",
+          "line": 1362,
+          "microseconds": 65856,
+          "samples": 60,
+          "stack": [
+            {
+              "fn": "rangeAppliesTo",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1362
+            },
+            {
+              "fn": "(anonymous)",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 5121
+            },
+            {
+              "fn": "(anonymous)",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1111
+            },
+            {
+              "fn": "baseRangeCounts",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1101
+            },
+            {
+              "fn": "computeWithHistory",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 4172
+            },
+            {
+              "fn": "(root)",
+              "url": "",
+              "line": 0
+            }
+          ]
+        },
+        {
+          "function": "(anonymous)",
+          "url": "repo:/src/core/pipeline/pipeline.ts",
+          "line": 1111,
+          "microseconds": 59035,
+          "samples": 55,
+          "stack": [
+            {
+              "fn": "(anonymous)",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1111
+            },
+            {
+              "fn": "baseRangeCounts",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1101
+            },
+            {
+              "fn": "computeWithHistory",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 4172
+            },
+            {
+              "fn": "(root)",
+              "url": "",
+              "line": 0
+            }
+          ]
+        },
+        {
+          "function": "(anonymous)",
+          "url": "repo:/src/core/server/runtime.server.ts",
+          "line": 5163,
+          "microseconds": 32017,
+          "samples": 27,
+          "stack": [
+            {
+              "fn": "(anonymous)",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 5163
+            },
+            {
+              "fn": "(anonymous)",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1223
+            },
+            {
+              "fn": "baseGateSensitivity",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1179
+            },
+            {
+              "fn": "computeWithHistory",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 4172
+            },
+            {
+              "fn": "(root)",
+              "url": "",
+              "line": 0
+            }
+          ]
+        },
+        {
+          "function": "baseRangeCounts",
+          "url": "repo:/src/core/pipeline/pipeline.ts",
+          "line": 1101,
+          "microseconds": 30672,
+          "samples": 30,
+          "stack": [
+            {
+              "fn": "baseRangeCounts",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1101
+            },
+            {
+              "fn": "computeWithHistory",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 4172
+            },
+            {
+              "fn": "(root)",
+              "url": "",
+              "line": 0
+            }
+          ]
+        },
+        {
+          "function": "baseRangeWhy",
+          "url": "repo:/src/core/pipeline/pipeline.ts",
+          "line": 1261,
+          "microseconds": 24017,
+          "samples": 18,
+          "stack": [
+            {
+              "fn": "baseRangeWhy",
+              "url": "repo:/src/core/pipeline/pipeline.ts",
+              "line": 1261
+            },
+            {
+              "fn": "computeWithHistory",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 4172
+            },
+            {
+              "fn": "(root)",
+              "url": "",
+              "line": 0
+            }
+          ]
+        },
+        {
+          "function": "computeWithHistory",
+          "url": "repo:/src/core/server/runtime.server.ts",
+          "line": 4172,
+          "microseconds": 17964,
+          "samples": 16,
+          "stack": [
+            {
+              "fn": "computeWithHistory",
+              "url": "repo:/src/core/server/runtime.server.ts",
+              "line": 4172
+            },
+            {
+              "fn": "(root)",
+              "url": "",
+              "line": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "originalProfileFile": "CPU.20261027.183337.23.0.001.cpuprofile"
+}

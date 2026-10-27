@@ -1,0 +1,113 @@
+{
+  "source": "BingX public swap candles; no authenticated or venue orders",
+  "fetchedAt": "2026-10-27T13:22:27.337Z",
+  "symbols": [
+    "BTC-USDT",
+    "ETH-USDT",
+    "SOL-USDT",
+    "XRP-USDT",
+    "BNB-USDT",
+    "DOGE-USDT",
+    "ADA-USDT",
+    "TRX-USDT",
+    "LINK-USDT",
+    "AVAX-USDT",
+    "SUI-USDT",
+    "LTC-USDT"
+  ],
+  "selection": "fixed majors in repository order; TON absent from current ticker, next available major LTC used",
+  "startUtc": "2026-10-24T13:00:00.000Z",
+  "endExclusiveUtc": "2026-10-27T13:00:00.000Z",
+  "tradingFromUtc": "2026-10-26T13:00:00.000Z",
+  "prehistoryHours": 24,
+  "precedingWarmupHours": 24,
+  "intervalMinutes": 1,
+  "checks": [
+    {
+      "sym": "BTC-USDT",
+      "bars": 4320,
+      "gap": 0,
+      "first": 1792846800000,
+      "last": 1793105940000
+    },
+    {
+      "sym": "ETH-USDT",
+      "bars": 4320,
+      "gap": 0,
+      "first": 1792846800000,
+      "last": 1793105940000
+    },
+    {
+      "sym": "SOL-USDT",
+      "bars": 4320,
+      "gap": 0,
+      "first": 1792846800000,
+      "last": 1793105940000
+    },
+    {
+      "sym": "XRP-USDT",
+      "bars": 4320,
+      "gap": 0,
+      "first": 1792846800000,
+      "last": 1793105940000
+    },
+    {
+      "sym": "BNB-USDT",
+      "bars": 4320,
+      "gap": 0,
+      "first": 1792846800000,
+      "last": 1793105940000
+    },
+    {
+      "sym": "DOGE-USDT",
+      "bars": 4320,
+      "gap": 0,
+      "first": 1792846800000,
+      "last": 1793105940000
+    },
+    {
+      "sym": "ADA-USDT",
+      "bars": 4320,
+      "gap": 0,
+      "first": 1792846800000,
+      "last": 1793105940000
+    },
+    {
+      "sym": "TRX-USDT",
+      "bars": 4320,
+      "gap": 0,
+      "first": 1792846800000,
+      "last": 1793105940000
+    },
+    {
+      "sym": "LINK-USDT",
+      "bars": 4320,
+      "gap": 0,
+      "first": 1792846800000,
+      "last": 1793105940000
+    },
+    {
+      "sym": "AVAX-USDT",
+      "bars": 4320,
+      "gap": 0,
+      "first": 1792846800000,
+      "last": 1793105940000
+    },
+    {
+      "sym": "SUI-USDT",
+      "bars": 4320,
+      "gap": 0,
+      "first": 1792846800000,
+      "last": 1793105940000
+    },
+    {
+      "sym": "LTC-USDT",
+      "bars": 4320,
+      "gap": 0,
+      "first": 1792846800000,
+      "last": 1793105940000
+    }
+  ],
+  "sha256": "b3b6f2632acf39976ff2ea1b0885e764c8b03cc7f9edd8911999dc977390818c",
+  "complete": true
+}

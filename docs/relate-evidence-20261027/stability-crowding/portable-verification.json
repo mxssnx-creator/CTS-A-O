@@ -1,0 +1,80 @@
+{
+  "scope": "modeled whole orders, price paths, recorded hourly selections and reported returns; not venue fills or per-entry Last-N proof",
+  "results": [
+    {
+      "id": "unlimited",
+      "sha256": "ce3355d8928a07f6953f4639100179c299c937193bcb5944ed79cf7e8f5b8d6a",
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "settledPf": 0.7526954688453649,
+      "priceAndSelectionAudit": true,
+      "maxReturnError": 1.0231815376210429e-7
+    },
+    {
+      "id": "crowd-5",
+      "sha256": "71ad410152289d371d8599db48c1afe60c0c53bf847991465683e71e6071cd39",
+      "counts": {
+        "openedPositions": 76,
+        "closedPositions": 64,
+        "openPositions": 12,
+        "openedOrders": 3970,
+        "settledOrders": 3201,
+        "openOrders": 769
+      },
+      "settledPf": 0.7377000502891601,
+      "priceAndSelectionAudit": true,
+      "maxReturnError": 1.0149938070580511e-7
+    },
+    {
+      "id": "crowd-10",
+      "sha256": "bc0cf25a0644ef41b79eef69f6e404b714415948c673c2a3968f6322198ef6c9",
+      "counts": {
+        "openedPositions": 74,
+        "closedPositions": 62,
+        "openPositions": 12,
+        "openedOrders": 6309,
+        "settledOrders": 5061,
+        "openOrders": 1248
+      },
+      "settledPf": 0.7148515073714755,
+      "priceAndSelectionAudit": true,
+      "maxReturnError": 1.0231815376210429e-7
+    },
+    {
+      "id": "crowd-20",
+      "sha256": "162da7324ebe413ecb05686fd932838e67ecab566b169c651f78a94f23913169",
+      "counts": {
+        "openedPositions": 72,
+        "closedPositions": 60,
+        "openPositions": 12,
+        "openedOrders": 8595,
+        "settledOrders": 6882,
+        "openOrders": 1713
+      },
+      "settledPf": 0.7105764205413001,
+      "priceAndSelectionAudit": true,
+      "maxReturnError": 1.0231815376210429e-7
+    },
+    {
+      "id": "crowd-10-last-25",
+      "sha256": "1a1dc20e68b15a7323c6ce8b2d075f9e66c315637d274ba6dc287057dfa06082",
+      "counts": {
+        "openedPositions": 74,
+        "closedPositions": 62,
+        "openPositions": 12,
+        "openedOrders": 6175,
+        "settledOrders": 4931,
+        "openOrders": 1244
+      },
+      "settledPf": 0.7239433332658693,
+      "priceAndSelectionAudit": true,
+      "maxReturnError": 1.0231815376210429e-7
+    }
+  ]
+}

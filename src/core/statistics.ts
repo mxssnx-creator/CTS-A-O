@@ -48,6 +48,7 @@ export interface StatTrade {
   /** Persisted unit net return; explicit null marks a legacy close whose execution weighting is unknown. */
   unitR?: number | null;
   coordVol?: number;
+  relateVol?: number;
   volFactor?: number;
   hedgeVol?: number;
   rangeVol?: number;
@@ -375,8 +376,8 @@ export const KIND_LABEL: Record<StratKind, string> = {
 
 const indOf = (cfg: string) => cfg.split("|")[1] ?? "";
 export const kindOfTrade = (x: StatTrade): StratKind => x.kind ?? kindOfId(x.cfg);
-/** Block multiple excluding independent relation, type, range and hedge sizing factors. */
-export const blockMult = (x: StatTrade) => (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.volFactor ?? 1) * (x.hedgeVol ?? 1) * (x.rangeVol ?? 1));
+/** Block multiple excluding independent coordination, Relate, type, range and hedge sizing factors. */
+export const blockMult = (x: StatTrade) => (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.relateVol ?? 1) * (x.volFactor ?? 1) * (x.hedgeVol ?? 1) * (x.rangeVol ?? 1));
 
 /** Main type of a trade: Signals, or its sub-strategy. */
 export function typeOf(x: StatTrade): string {

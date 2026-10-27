@@ -69,6 +69,9 @@ const fixture = () => {
     signalSourceGate: undefined, engineSideAccept: undefined,
     coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
     symGate: undefined, signalPerSymbol: 0, signalMaxOpen: 0, signalMaxPositions: 0,
+    // This archived lifecycle fixture predates Relate; leave the new feature absent so its option snapshot
+    // remains comparable to the archived implementation while exercising the same inert execution path.
+    relate: undefined,
     toggles: { normal: true, trailing: true, block: false, blockActive: false, dca: false, dcaActive: false, axis: false },
   };
   return { tapes, o, u: { bars: [], caches: [], startT: start - H, endT: start + hours * H, splitT: start,

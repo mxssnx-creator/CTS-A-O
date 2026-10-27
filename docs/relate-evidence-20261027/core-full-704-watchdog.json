@@ -1,0 +1,9 @@
+{
+  "sourceCommit": "704fcf8",
+  "startedAt": "2026-10-27T16:29:36.113Z",
+  "endedAt": "2026-10-27T16:43:46.997Z",
+  "code": 1,
+  "signal": null,
+  "reason": "stopped the offline suite to preserve demo-control memory headroom",
+  "peakCgroupBytes": 6221651968
+}

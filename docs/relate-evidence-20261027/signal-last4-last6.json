@@ -1,0 +1,354 @@
+{
+  "scope": "Retrospective funded model on an already examined window; no exchange executions. Full exact-context audit covers configured Signal grid and hourly clocks.",
+  "window": {
+    "evaluationFromT": 1791644400000,
+    "tradeStartT": 1792184400000,
+    "endT": 1792270800000,
+    "preH": 150,
+    "runH": 24
+  },
+  "symbols": [
+    "BTC-USDT",
+    "ETH-USDT",
+    "BNB-USDT",
+    "SOL-USDT",
+    "XRP-USDT",
+    "DOGE-USDT",
+    "ADA-USDT",
+    "LINK-USDT",
+    "AVAX-USDT",
+    "LTC-USDT",
+    "DOT-USDT",
+    "BCH-USDT"
+  ],
+  "marketData": {
+    "path": "scripts/studies/signals-coverage/feed.json.gz",
+    "sha256": "e21d39b0b7583685e2fe355f6261e0860deff3057ca5c81b43a6c3cf374e2f03",
+    "source": "archived Binance USD-M minute candles"
+  },
+  "sourceSha256": "0571cd00f5a1d9d3488c17ec336c618ac9c79872d3970fe4005c171fe0fd5f2b",
+  "signalSources": 103,
+  "signalLanesMinutes": [
+    1,
+    5
+  ],
+  "signalHoldHours": 1,
+  "signalHistoryHours": 150,
+  "selectionHoursOverride": 100,
+  "cost": 0.0015,
+  "account": {
+    "balance": 10000,
+    "sizing": {
+      "mode": "fixed",
+      "pct": 0.002
+    },
+    "notional": 2,
+    "leverage": 10
+  },
+  "positionAndExposureCaps": false,
+  "guardLastN": 4,
+  "settingsIdenticalExcept": "actualWf.signalValidLastN",
+  "last4RepeatMatchesOriginalTotal": true,
+  "arms": [
+    {
+      "id": "last4",
+      "signalValidLastN": 4,
+      "signalGuardN": 4,
+      "settledUnitReturnPf": 0.2485389881645875,
+      "wins": 11,
+      "losses": 13,
+      "winRate": 0.4583333333333333,
+      "netUsd": -0.21406763137320728,
+      "counts": {
+        "openedPositions": 4,
+        "closedPositions": 4,
+        "openPositions": 0,
+        "openedOrders": 24,
+        "settledOrders": 24,
+        "openOrders": 0,
+        "basis": "funded-modeled-allocations"
+      },
+      "unknownAllocations": 0,
+      "checks": {
+        "passed": 55,
+        "total": 55
+      },
+      "builtSignalConfigs": 3296,
+      "representativeSignalPairs": {
+        "evaluated": 412,
+        "passed": 6
+      },
+      "exactContextValidation": {
+        "clock": 1792184400000,
+        "t": 1792184400000,
+        "contexts": 79104,
+        "empty": 27776,
+        "lastNReady": 26244,
+        "warmupSampleReady": 26244,
+        "minimumSampleReady": 9632,
+        "passed": 195,
+        "configs": 3296,
+        "configsLastNReady": 2749,
+        "configsPassed": 174,
+        "historyCloses": 335028,
+        "passedCloses": 3026,
+        "passedGp": 12.988625431767874,
+        "passedGl": 5.001932926445405,
+        "maxPassedDdtH": 72.16666666666667,
+        "failures": {
+          "closes": 69472,
+          "net": 7732,
+          "pf": 1229,
+          "lastN": 299,
+          "lcb": 148,
+          "ddt": 25,
+          "green": 3,
+          "ddr": 1
+        },
+        "lastNReadyPct": 33.17657766990291,
+        "minimumSampleReadyPct": 12.176375404530745,
+        "passedPct": 0.24651092233009708,
+        "qualifiedHistory": {
+          "n": 3026,
+          "gp": 12.988625431767874,
+          "gl": 5.001932926445405,
+          "pf": 2.596721232125391,
+          "pfState": "ratio"
+        },
+        "atEnd": {
+          "t": 1792270800000,
+          "contexts": 79104,
+          "empty": 27768,
+          "lastNReady": 26293,
+          "warmupSampleReady": 26293,
+          "minimumSampleReady": 9705,
+          "passed": 175,
+          "configs": 3296,
+          "configsLastNReady": 2749,
+          "configsPassed": 158,
+          "historyCloses": 337084,
+          "passedCloses": 2687,
+          "passedGp": 11.420766453808376,
+          "passedGl": 4.387176896340719,
+          "maxPassedDdtH": 72.16666666666667,
+          "failures": {
+            "closes": 69399,
+            "net": 7799,
+            "pf": 1246,
+            "lastN": 326,
+            "ddt": 28,
+            "lcb": 129,
+            "green": 2
+          },
+          "lastNReadyPct": 33.23852144012945,
+          "minimumSampleReadyPct": 12.268658980582524,
+          "passedPct": 0.22122775080906149,
+          "qualifiedHistory": {
+            "n": 2687,
+            "gp": 11.420766453808376,
+            "gl": 4.387176896340719,
+            "pf": 2.603215398798775,
+            "pfState": "ratio"
+          }
+        },
+        "catalog": {
+          "sources": 103,
+          "sourceLanes": 412,
+          "requestedCells": 3296,
+          "expectedEffectiveConfiguredCells": 3296,
+          "builtConfigs": 3296,
+          "fittedOrRetainedConfigs": 0,
+          "missingConfiguredCells": 0,
+          "missingExamples": [],
+          "expectedExit": 0,
+          "builtExit": 0,
+          "closes": 337398
+        },
+        "comparisons": 1977600,
+        "exactTape": {
+          "ok": true,
+          "matched": 24,
+          "missing": 0,
+          "mismatched": 0
+        },
+        "checks": {
+          "passed": 56,
+          "total": 56
+        },
+        "funding": {
+          "basis": "Exact per-close native report allocation",
+          "virtualCloses": 24,
+          "fundedCloses": 24,
+          "zeroAllocatedCloses": 0,
+          "unknownAllocations": 0
+        }
+      },
+      "memory": {
+        "fallback": 0,
+        "aborts": 0,
+        "computeLevel": 0
+      },
+      "evidence": {
+        "signal-audit-v5-last4-protocol.json": "a4d0485e10c51a69ca485b4bcc690fd2428f89d0f01cfddb34433c7bd5df47a5",
+        "signal-audit-v5-last4-configs.jsonl.gz": "844d6a198301d6ad62dbc914aec78e35a055a123b658452d7298b2cb69907857",
+        "signal-audit-v5-last4.json.gz": "092715f43de9097fe4bd802c210a913a7a822a4dd5e7649187c612b2bf48ac40"
+      },
+      "previousEvidence": {
+        "signal-audit-last4-protocol.json": "15f95cb01ad9ac4243c2d4b5e5fe7b6dbc302c57b2910b00fe78fc7e4976bf1e",
+        "signal-audit-last4-configs.jsonl.gz": "844d6a198301d6ad62dbc914aec78e35a055a123b658452d7298b2cb69907857",
+        "signal-audit-last4.json.gz": "f93dfa10054d7505766ab09e34921098ede225973aed89fd943eacb93a5aceb5"
+      }
+    },
+    {
+      "id": "last6",
+      "signalValidLastN": 6,
+      "signalGuardN": 4,
+      "settledUnitReturnPf": 0.6937749773450212,
+      "wins": 14,
+      "losses": 7,
+      "winRate": 0.6666666666666666,
+      "netUsd": -0.04264588579300477,
+      "counts": {
+        "openedPositions": 5,
+        "closedPositions": 5,
+        "openPositions": 0,
+        "openedOrders": 21,
+        "settledOrders": 21,
+        "openOrders": 0,
+        "basis": "funded-modeled-allocations"
+      },
+      "unknownAllocations": 0,
+      "checks": {
+        "passed": 55,
+        "total": 55
+      },
+      "builtSignalConfigs": 3296,
+      "representativeSignalPairs": {
+        "evaluated": 412,
+        "passed": 6
+      },
+      "exactContextValidation": {
+        "clock": 1792184400000,
+        "t": 1792184400000,
+        "contexts": 79104,
+        "empty": 27776,
+        "lastNReady": 20464,
+        "warmupSampleReady": 23114,
+        "minimumSampleReady": 9632,
+        "passed": 174,
+        "configs": 3296,
+        "configsLastNReady": 2452,
+        "configsPassed": 157,
+        "historyCloses": 335028,
+        "passedCloses": 2719,
+        "passedGp": 11.647962548643475,
+        "passedGl": 4.487495172068188,
+        "maxPassedDdtH": 72.16666666666667,
+        "failures": {
+          "closes": 69472,
+          "net": 7732,
+          "pf": 1229,
+          "lastN": 351,
+          "ddt": 20,
+          "lcb": 123,
+          "green": 2,
+          "ddr": 1
+        },
+        "lastNReadyPct": 25.869741100323626,
+        "minimumSampleReadyPct": 12.176375404530745,
+        "passedPct": 0.2199635922330097,
+        "qualifiedHistory": {
+          "n": 2719,
+          "gp": 11.647962548643475,
+          "gl": 4.487495172068188,
+          "pf": 2.5956490429548884,
+          "pfState": "ratio"
+        },
+        "atEnd": {
+          "t": 1792270800000,
+          "contexts": 79104,
+          "empty": 27768,
+          "lastNReady": 20548,
+          "warmupSampleReady": 23165,
+          "minimumSampleReady": 9705,
+          "passed": 165,
+          "configs": 3296,
+          "configsLastNReady": 2452,
+          "configsPassed": 148,
+          "historyCloses": 337084,
+          "passedCloses": 2538,
+          "passedGp": 10.887628514194057,
+          "passedGl": 4.178518042293921,
+          "maxPassedDdtH": 72.16666666666667,
+          "failures": {
+            "closes": 69399,
+            "net": 7799,
+            "pf": 1246,
+            "lastN": 354,
+            "ddt": 21,
+            "lcb": 118,
+            "green": 2
+          },
+          "lastNReadyPct": 25.975930420711975,
+          "minimumSampleReadyPct": 12.268658980582524,
+          "passedPct": 0.2085861650485437,
+          "qualifiedHistory": {
+            "n": 2538,
+            "gp": 10.887628514194057,
+            "gl": 4.178518042293921,
+            "pf": 2.6056196010145674,
+            "pfState": "ratio"
+          }
+        },
+        "catalog": {
+          "sources": 103,
+          "sourceLanes": 412,
+          "requestedCells": 3296,
+          "expectedEffectiveConfiguredCells": 3296,
+          "builtConfigs": 3296,
+          "fittedOrRetainedConfigs": 0,
+          "missingConfiguredCells": 0,
+          "missingExamples": [],
+          "expectedExit": 0,
+          "builtExit": 0,
+          "closes": 337398
+        },
+        "comparisons": 1977600,
+        "exactTape": {
+          "ok": true,
+          "matched": 21,
+          "missing": 0,
+          "mismatched": 0
+        },
+        "checks": {
+          "passed": 56,
+          "total": 56
+        },
+        "funding": {
+          "basis": "Exact per-close native report allocation",
+          "virtualCloses": 21,
+          "fundedCloses": 21,
+          "zeroAllocatedCloses": 0,
+          "unknownAllocations": 0
+        }
+      },
+      "memory": {
+        "fallback": 0,
+        "aborts": 0,
+        "computeLevel": 0
+      },
+      "evidence": {
+        "signal-audit-v5-last6-protocol.json": "aa92800c730c95d3fd1c8485a6141cee4449e8935140dff0a488e5b8115fbddc",
+        "signal-audit-v5-last6-configs.jsonl.gz": "ca1d33f02849fcb78339750dcd8dd2b5ac42203307706bbe6456cd669d642b02",
+        "signal-audit-v5-last6.json.gz": "745a22e7fa28c6fdd935cf206c899a5bde4f75bf8f6d569f0732a7b28ba50c80"
+      },
+      "previousEvidence": {
+        "signal-audit-last6-protocol.json": "7ba5b8bf28a146aa85b0121536e0be3f191d67e779772eda243c4cbddfd8cd04",
+        "signal-audit-last6-configs.jsonl.gz": "ca1d33f02849fcb78339750dcd8dd2b5ac42203307706bbe6456cd669d642b02",
+        "signal-audit-last6.json.gz": "b335d9da904564812267ac81d25bcc91c05c9845919582f2bcdd9f444d02fff1"
+      }
+    }
+  ],
+  "previousSourceSha256": "fbdeebed0fbb164ed10ea02e473a0bff56c0ac1318dec04439ff0cf8c236d023",
+  "sourceCorrectionRepeat": "After the Relate DCA/Axis audit correction, both full-history Signal reruns reproduced the prior full report totals and every hourly exact-context result."
+}

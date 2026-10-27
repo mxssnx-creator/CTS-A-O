@@ -38,7 +38,7 @@ import {
   STRATEGY_PRESETS,
   SYMBOL_RANK_CHOICES,
 } from "@/core/config";
-import { INDICATION_KINDS, type AxisRange } from "@/core/domain/types";
+import { INDICATION_KINDS, type AxisRange, type RelateSource } from "@/core/domain/types";
 import { BREAK_CONFIG_IDS } from "@/core/indications/break-config";
 import { INVERSE_CONFIG_IDS } from "@/core/indications/inverse-config";
 import {
@@ -322,6 +322,17 @@ const BLOCK_SOURCE_HELP: Array<[string, string]> = [
     "exact indication ID × timeframe lane × direction; sibling indications and lanes stay independent",
   ],
   ["type", "same strategy type (Normal, Trailing, DCA, Axis)"],
+];
+
+const RELATE_SOURCE_HELP: Array<[RelateSource, string]> = [
+  ["config", "exact config × symbol × direction; each config set has its own settled record"],
+  ["overall", "all accepted, settled Real orders across the active book"],
+  ["symbol", "same symbol and direction; long and short remain separate"],
+  ["direction", "same direction across symbols; long and short remain separate"],
+  ["indication", "exact indication and timeframe lane × direction"],
+  ["strategy", "same Normal, Trailing, DCA, Axis, or Exit strategy × direction"],
+  ["coordination", "coordination family × direction; ordinary configurations stay in their own group"],
+  ["range", "same Wide, Micro, Minimal, Short, or other range × direction"],
 ];
 
 /** Block sources and how their levels combine (shared = strongest, additive = sum, overall = each its own Block). */
@@ -3978,6 +3989,80 @@ export function SettingsPage() {
                 onChange={(v) => set(["dca", "slOfTp"], v)}
               />
             </Field>
+          </div>
+        </Panel>
+        <Panel
+          title="Relate"
+          sub="post-Base volume adjustment from accepted, settled Real-stage orders"
+        >
+          <div className="v2-grid v2-cols-2">
+            <Field label="Enable Relate" hint="Off by default. Uses only accepted, settled simulated Real orders; it does not read candidate-only or open-position marks.">
+              <Switch label="Enable Relate" checked={s.relate.enabled}
+                onChange={(v) => set(["relate", "enabled"], v)} />
+            </Field>
+            <Field label="Auto Mode" hint="Scores Active thresholds using settled unit-return PF. Ratio and step depth do not change that score; ties favor the lowest ratio and the step count nearest your manual setting. Sized PF is hypothetical and does not select a winner.">
+              <Switch label="Relate Auto Mode" checked={s.relate.auto}
+                onChange={(v) => set(["relate", "auto"], v)} />
+            </Field>
+            <Field label="Stack mode" hint="Additive sums qualified relation additions. Shared divides their combined additions by the number of qualified active relations and tracks each share independently.">
+              <select className="v2-select" aria-label="Relate stack mode" value={s.relate.mode}
+                onChange={(e) => set(["relate", "mode"], e.target.value)}>
+                <option value="additive">Additive</option>
+                <option value="shared">Shared</option>
+              </select>
+            </Field>
+            <Field label="Volume increment ratio" hint="Each positive step adds this fraction of the relation's previous recorded volume. Additive sums the portions; Shared averages them. Max stack caps the total.">
+              <Num step={0.2} min={0.2} max={6} value={s.relate.ratio}
+                onChange={(v) => set(["relate", "ratio"], Math.round(v * 5) / 5)} />
+            </Field>
+            <Field label="Maximum positive steps" hint="Consecutive positive settled orders, capped at this many steps. Auto Mode searches 2–15; manual default is 5.">
+              <Num int min={2} max={15} value={s.relate.steps}
+                onChange={(v) => set(["relate"], { ...s.relate, steps: v, activeStep: Math.min(s.relate.activeStep, v) })} />
+            </Field>
+            <Field label="Active minimum step" hint="0 disables skipping. The selected step cannot exceed the maximum steps. Once qualified, skipped simulated closes advance shadow steps without entering the accepted PF sample; base entries build the initial sample.">
+              <Num int min={0} max={Math.min(6, s.relate.steps)} value={s.relate.activeStep}
+                onChange={(v) => set(["relate", "activeStep"], v)} />
+            </Field>
+            <Field label="Minimum PF" hint="A relation cannot size orders unless its accepted settled unit returns clear this PF. Auto candidates must also clear it.">
+              <Num step={0.1} min={0} max={100} value={s.relate.minPf}
+                onChange={(v) => set(["relate", "minPf"], v)} />
+            </Field>
+            <Field label="Last-N evaluation" hint="Settled order window. The supported range is 60–250; default 250.">
+              <Num int min={60} max={250} value={s.relate.lastN}
+                onChange={(v) => set(["relate"], { ...s.relate, lastN: v, minTrades: Math.min(s.relate.minTrades, v) })} />
+            </Field>
+            <Field label="Minimum sample" hint="The relation needs at least this many settled orders before PF is judged; minimum 60 and no more than Last-N.">
+              <Num int min={60} max={s.relate.lastN} value={s.relate.minTrades}
+                onChange={(v) => set(["relate", "minTrades"], v)} />
+            </Field>
+            <Field label="Max stack × base" hint="The model reserves capacity for possible DCA and Axis ladder fills, so their initial size can be lower. Overall exchange sizing and venue minimums are controlled separately and can exceed this modeled limit.">
+              <Num int step={1} min={1} max={250} value={s.relate.maxStack}
+                onChange={(v) => set(["relate", "maxStack"], v)} />
+            </Field>
+          </div>
+          <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 8 }}>
+            {(() => {
+              const requested = (1 + s.relate.ratio) ** s.relate.steps;
+              const applied = Math.min(requested, s.relate.maxStack);
+              return `Manual example for one relation and a 1× starting base: ${fmt.num(requested, 2)}× at step ${s.relate.steps}, limited to ${fmt.num(applied, 2)}× by Max stack. Other sizing factors and relations can reach the limit sooner.`;
+            })()}
+          </div>
+          <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 8 }}>
+            {status?.relateAdjustment
+              ? `Last compute: ${status.relateAdjustment.qualified}/${status.relateAdjustment.relations} relations clear PF and sample gates · ${fmt.num(status.relateAdjustment.closes)} relation-key closes · ${fmt.num(status.relateAdjustment.shadowCloses ?? 0)} shadow-only closes · max stack ${fmt.num(status.relateAdjustment.maxStack)}×.`
+              : `Auto Mode is ${s.relate.auto ? "on" : "off"}; execution is ${s.relate.enabled ? "on" : "off"}.`}
+          </div>
+          <div className="v2-lines" style={{ gap: 6, marginTop: 10 }}>
+            {RELATE_SOURCE_HELP.map(([source, help]) => (
+              <div key={source} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <Switch label={`Relate source ${source}`} checked={s.relate.sources?.[source] !== false}
+                  onChange={(v) => set(["relate", "sources", source], v)} />
+                <div>
+                  <div style={{ fontWeight: 600, textTransform: "capitalize" }}>{source}</div>
+                  <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>{help}</div>
+                </div>
+              </div>
+            ))}
           </div>
         </Panel>
         <Panel

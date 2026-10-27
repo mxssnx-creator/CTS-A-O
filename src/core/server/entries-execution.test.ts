@@ -231,12 +231,155 @@ describe("entries mode: actual MARKET execution quantities", () => {
     const { rt, state, step } = fixture();
     Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
       maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
-    rt.settings.grid.micro = { ...rt.settings.grid.micro, volumeFactor: 2.5 } as never;
-    assert.equal((rt.settings.grid.micro as unknown as { volumeFactor: number }).volumeFactor, 2.5);
+    const microGrid = rt.settings.grid.micro;
+    assert.ok(microGrid && typeof microGrid === "object");
+    Object.assign(microGrid, { volumeFactor: 2.5 });
+    assert.equal((microGrid as unknown as { volumeFactor: number }).volumeFactor, 2.5);
     await step([micro]);
     const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
     assert.equal(Number(entry.quantity), 2.5, "$10 normal size × Micro's 2.5 factor at $10 per unit");
   });
+
+  for (const { name, tag, rangeFactor, cfg, expected } of [
+    { name: "Micro", tag: "micro", rangeFactor: 2.5, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc", expected: 27 },
+    { name: "Minimal", tag: "minimal", rangeFactor: 1.7, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mn", expected: 18.36 },
+  ] as const) {
+    it(`${name} live sizing stacks Block, Relate, coordination, strategy, and range factors before caps`, async () => {
+      const { rt, state, step } = fixture();
+      Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
+        maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+      const rangeGrid = rt.settings.grid[tag];
+      assert.ok(rangeGrid && typeof rangeGrid === "object");
+      Object.assign(rangeGrid, { volumeFactor: rangeFactor });
+      state.entry.order = { orderId: "entry", status: "PARTIALLY_FILLED", executedQty: 0.25, avgPrice: 10.2, commission: -.01 };
+      const relation: LiveIntent = {
+        ...intent,
+        cfg,
+        blockVol: 2,
+        relateVol: 1.5,
+        coordVol: 1.2,
+        volFactor: 3,
+      };
+      const result = await step([relation]);
+      assert.equal(result.placed, 1, `${name} entry reaches the synthetic live exchange: ${JSON.stringify(result)}`);
+      const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+      assert.equal(Number(entry.quantity), expected,
+        `$10 × ${rangeFactor} range × 1.2 coordination × 2 Block × 1.5 Relate × 3 strategy ÷ $10 price`);
+      const stops = state.sent.filter((p) => p.type === "STOP_MARKET");
+      assert.equal(stops.length, 1, `${name} partial fills receive native protection`);
+      assert.equal(Number(stops[0].quantity), 0.25,
+        `${name} protects only the exchange-confirmed partial fill, not the requested scaled quantity`);
+      const fill = rt.db.get<{ qty: number; fill_px: number; fee: number }>(
+        "SELECT qty,fill_px,fee FROM live_fills WHERE kind='E'",
+      );
+      assert.deepEqual(fill && { qty: fill.qty, fill_px: fill.fill_px, fee: fill.fee },
+        { qty: 0.25, fill_px: 10.2, fee: 0.01 },
+        `${name} ledger records the actual exchange fill and fee`);
+    });
+  }
+
+  for (const { name, tag, rangeFactor, cfg } of [
+    { name: "Micro", tag: "micro", rangeFactor: 2.5, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc" },
+    { name: "Minimal", tag: "minimal", rangeFactor: 1.7, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mn" },
+  ] as const) {
+    it(`${name} applies the same account position cap after every stacked sizing factor`, async () => {
+      const { rt, state, step } = fixture();
+      Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0.5,
+        maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+      const rangeGrid = rt.settings.grid[tag];
+      assert.ok(rangeGrid && typeof rangeGrid === "object");
+      Object.assign(rangeGrid, { volumeFactor: rangeFactor });
+      const result = await step([{
+        ...intent, cfg, blockVol: 2, relateVol: 1.5, coordVol: 1.2, volFactor: 3,
+      }]);
+      assert.equal(result.placed, 1, JSON.stringify(result));
+      const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+      assert.equal(Number(entry.quantity), 5, `${name} factors would raise size above the $50 cap; venue quantity stays $50 / $10`);
+      assert.equal(Number(state.sent.find((p) => p.type === "STOP_MARKET")!.quantity), 0.25,
+        `${name} protective quantity follows the actual partial fill after account capping`);
+    });
+  }
+
+  for (const { name, tag, rangeFactor, cfg } of [
+    { name: "Micro", tag: "micro", rangeFactor: 2.5, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc" },
+    { name: "Minimal", tag: "minimal", rangeFactor: 1.7, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mn" },
+  ] as const) {
+    it(`${name} rechecks Max stack after resolving live range and strategy factors`, async () => {
+      const { rt, state, step } = fixture();
+      Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
+        maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+      const rangeGrid = rt.settings.grid[tag];
+      assert.ok(rangeGrid && typeof rangeGrid === "object");
+      Object.assign(rangeGrid, { volumeFactor: rangeFactor });
+      const result = await step([{
+        ...intent, cfg, blockVol: 2, relateVol: 1.5, coordVol: 1.2, volFactor: 3, maxStack: 15,
+      }]);
+      assert.equal(result.placed, 1, JSON.stringify(result));
+      const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+      assert.equal(Number(entry.quantity), 15,
+        `${name} must cap the combined execution multiplier at 15× even if the current factors would exceed it`);
+    });
+  }
+
+  for (const { name, tag, captured, cfg } of [
+    { name: "Micro", tag: "micro", captured: 2.5, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc" },
+    { name: "Minimal", tag: "minimal", captured: 1.7, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mn" },
+  ] as const) {
+    it(`${name} uses the range multiplier captured by the validated Real intent`, async () => {
+      const { rt, state, step } = fixture();
+      Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
+        maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+      const rangeGrid = rt.settings.grid[tag];
+      assert.ok(rangeGrid && typeof rangeGrid === "object");
+      Object.assign(rangeGrid, { volumeFactor: 4 });
+      await step([{ ...intent, cfg, rangeVol: captured, blockVol: 1.2, relateVol: 1.44, maxStack: 50 }]);
+      const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+      assert.ok(entry, `${name} entry is sent`);
+      assert.ok(Math.abs(Number(entry.quantity) - captured * 1.2 * 1.44) <= 0.001,
+        `${name} keeps the captured Real multiplier rather than repricing it from the edited grid`);
+    });
+  }
+
+  for (const { name, cfg } of [
+    { name: "Micro", cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc" },
+    { name: "Minimal", cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mn" },
+  ] as const) {
+    it(`${name} does not round a venue minimum above the captured Max stack`, async () => {
+      const { rt, state, step } = fixture();
+      Object.assign(rt.settings.live, { notionalUsd: 0.5, maxNotionalUsd: 0, maxPositionX: 0,
+        maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+      const result = await step([{ ...intent, cfg, maxStack: 2 }]);
+      assert.equal(result.placed, 0);
+      assert.equal(state.sent.length, 0);
+      assert.ok(result.skipped.some((x) => x.why.includes("exchange minimum exceeds the captured Max stack")), JSON.stringify(result));
+    });
+
+    it(`${name} accepts a venue minimum exactly at the captured Max stack`, async () => {
+      const { rt, state, step } = fixture();
+      Object.assign(rt.settings.live, { notionalUsd: 1, maxNotionalUsd: 0, maxPositionX: 0,
+        maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+      const result = await step([{ ...intent, cfg, maxStack: 2 }]);
+      assert.equal(result.placed, 1, JSON.stringify(result));
+      assert.equal(Number(state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!.quantity), 0.2);
+    });
+  }
+
+  for (const [name, invalid] of [
+    ["range", { rangeVol: NaN }],
+    ["Block", { blockVol: Infinity }],
+    ["Relate", { relateVol: 0 }],
+    ["coordination", { coordVol: -1 }],
+    ["strategy", { volFactor: NaN }],
+    ["max stack", { maxStack: NaN }],
+  ] as const) {
+    it(`rejects an invalid captured ${name} multiplier instead of substituting neutral size`, async () => {
+      const { state, step } = fixture();
+      const result = await step([{ ...intent, ...invalid }]);
+      assert.equal(result.placed, 0);
+      assert.equal(state.sent.length, 0);
+      assert.ok(result.skipped.some((x) => x.why.includes("invalid captured execution sizing")));
+    });
+  }
 
   for (const { name, cfg, factor } of [
     { name: "Wide", cfg: intent.cfg, factor: 1.4 },

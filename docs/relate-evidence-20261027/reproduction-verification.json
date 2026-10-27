@@ -1,0 +1,123 @@
+{
+  "matched": true,
+  "scope": "Exact equality of modeled trade, open-order, validation, per-range step and skip arrays for every arm; common native baseline digest also matches. Timing excluded.",
+  "sourceSha256": "e0e8636c4fae198d17a85dad040c55ffb3c5637a584eaacf0b62a6a91e3b89cb",
+  "baselineDigest": "9dfe711dca2880c947d6b621c6bc4de14430993fdfd1ce1419d4d5c02b3fc3c7",
+  "arms": [
+    {
+      "arm": "off",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "config-r02-s2",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "config-r02-s3",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "config-r02-s4",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "config-r02-s5",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "config-r02-s10",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "config-r06-s5",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "config-r26-s5",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "overall-r02-s2",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "overall-r02-s3",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "overall-r02-s4",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "overall-r02-s5",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "overall-r02-s10",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "additive-all-r02-s2",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "additive-all-r02-s3",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "additive-all-r02-s4",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "additive-all-r02-s10",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "additive-all-r06-s5",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "additive-all-r26-s5",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "additive-all-r02-s5",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "shared-all-r02-s5",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "config-active2-r02-s5",
+      "settled": 7785,
+      "held": 1999
+    },
+    {
+      "arm": "auto-all",
+      "settled": 5676,
+      "held": 1474
+    }
+  ]
+}

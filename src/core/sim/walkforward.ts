@@ -57,6 +57,7 @@ import type { BaseConfigCounter } from "../base-config-counts.ts";
 import {
   DEFAULT_BLOCK,
   DEFAULT_DCA,
+  DEFAULT_RELATE_ADJUSTMENT,
   DEFAULT_TOGGLES,
   PF_NEUTRAL,
   type CoreSettings,
@@ -71,6 +72,9 @@ import type {
   DcaConfig,
   BlockAttribution,
   Gates,
+  RelateAdjustmentConfig,
+  RelateParts,
+  RelateSource,
   OpenPosition,
   Protect,
   Stats,
@@ -108,6 +112,7 @@ import {
   sourceKey,
   type BlockSource,
 } from "./block.ts";
+import { capRelateParts, relateBookOf, relateExternalStackCap, type RelateBook } from "./relate-volume.ts";
 import { S2Coord } from "./s2coord.ts";
 import { isSignalCoordinationInd } from "../signal-coordination.ts";
 import { botFamilyOf } from "../bot-stats.ts";
@@ -633,6 +638,8 @@ export interface WalkForwardOptions {
   indicationVolumeFactors?: SignalVolumeFactors;
   toggles: StrategyToggles;
   block: BlockConfig;
+  /** Settled-order volume adjustment; undefined on legacy research callers is inert. */
+  relate?: RelateAdjustmentConfig;
   /** Explicit diagnostic source-level capture; off by default and independent of execution decisions. */
   blockTrace?: boolean;
   dca: DcaConfig;
@@ -922,6 +929,8 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     toggles: { ...DEFAULT_TOGGLES, ...(s.toggles ?? {}) },
     block: { ...DEFAULT_BLOCK, ...(s.block ?? {}) },
     dca: { ...DEFAULT_DCA, ...(s.dca ?? {}) },
+    relate: { ...DEFAULT_RELATE_ADJUSTMENT, ...(s.relate ?? {}),
+      sources: { ...DEFAULT_RELATE_ADJUSTMENT.sources, ...(s.relate?.sources ?? {}) } },
     gates: s.gates,
     cost: s.cost,
     // with timeframe lanes the grid is expressed on the 15m reference and every lane scales it (laneProtect)
@@ -3013,6 +3022,8 @@ export interface WalkForwardResult {
   };
   /** Stable-02 coordination state at the end of the run (paper / live: relation factor, held-back symbols) */
   s2?: { factor: number; paused: string[] };
+  /** Bounded Relate history diagnostics; closes count relation-key observations, not unique exchange fills. */
+  relate?: { relations: number; qualified: number; closes: number; maxSample: number; shadowCloses: number };
   /** negative-hour hedge signals at the end of the run (paper / live) */
   hedgeEnd?: string[];
 }
@@ -3048,6 +3059,12 @@ export interface BlockFeedEntry {
   autoSources?: number[];
   /** Passed every actual Real entry gate; only settled accepted orders feed accepted-order Block history. */
   accepted?: boolean;
+  /** Proven relation portions from the modeled accepted entry; absent legacy provenance is unknown. */
+  relateMeasured?: boolean;
+  relateBase?: number;
+  relateParts?: RelateParts;
+  /** Rejected solely by Relate Active; its later close advances shadow steps, not accepted PF. */
+  relateShadow?: boolean;
 }
 
 const acceptIndexCache = new WeakMap<object, SignalAcceptIndex>();
@@ -3160,16 +3177,40 @@ export function bookFor(o: {
   return o.toggles.block ? blockBookOf(o.block, !!o.toggles.blockActive) : null;
 }
 
+/** Relate keeps its own bounded accepted-order history and never borrows Block/candidate-only evidence. */
+export function relateBookFor(o: { relate?: RelateAdjustmentConfig }): RelateBook | null {
+  return relateBookOf(o.relate);
+}
+
 /** Own candidate validation stays complete; shared post-Base gates consume settled accepted orders only. */
 export function feedBooks(
   e: BlockFeedEntry,
   book: BlockBook | null,
   guard?: SignalGuard | null,
   direction?: CandidateDirectionBook | null,
+  relate?: RelateBook | null,
 ) {
   if (e.open) return; // not closed: its mark is no result
   direction?.add(e); // every candidate, including signals and rejected entries; never accepted-only Block evidence
   if (book && (!book.acceptedOnly || e.accepted === true)) book.add(e, !!e.ind && isSignalInd(e.ind));
+  if (relate && (e.accepted === true || e.relateShadow === true) && e.cfg && e.ind) {
+    const entry = {
+      cfg: e.cfg,
+      sym: e.sym,
+      side: e.side,
+      ind: e.ind,
+      strategy: e.type ?? "normal",
+      coordination: isSignalCoordinationInd(e.ind) ? (e.cfg.split("|")[0] ?? "signal") : "ordinary",
+      range: rangeOfId(e.cfg) || "wide",
+      r: e.r,
+      accepted: e.accepted === true,
+      relateMeasured: e.relateMeasured,
+      relateBase: e.relateBase,
+      relateParts: e.relateParts,
+    };
+    if (e.accepted === true) relate.add(entry);
+    else relate.advanceShadow(entry);
+  }
   // keyed by the candidate's config (the same key execDecision checks); the exit time feeds the loss-cluster guard
   if (guard && e.ind && isSignalInd(e.ind)) {
     const coordination = isSignalCoordinationInd(e.ind);
@@ -5255,8 +5296,13 @@ export type ExecDecision =
       blockAttribution?: BlockAttribution;
       blockEffectiveLevels?: Partial<Record<BlockSource, number>>;
       blockSampleCounts?: Partial<Record<BlockSource, number>>;
+      /** Relate multiplier captured from settled accepted-order history. */
+      relateVol?: number;
+      relateBase?: number;
+      relateLevels?: Partial<Record<RelateSource, number>>;
+      relateParts?: RelateParts;
     }
-  | { ok: false; why: string };
+  | { ok: false; why: string; relateParts?: RelateParts; relateBaseVol?: number; relateBase?: number };
 
 /** Range sizing sits outside the Block / coordination stack and does not change unit-return qualification. */
 export function rangeVolumeFactorFor(
@@ -5325,11 +5371,38 @@ export function execDecision(
     book?: BlockBook | null;
     guard?: SignalGuard | null;
     direction?: CandidateDirectionBook | null;
+    relate?: RelateBook | null;
+    /** Complete current external base, resolved from the Block decision before Relate sizes the entry. */
+    relateBase?: (blockVolume: number) => number;
     sym: string;
     side: number;
   },
 ): ExecDecision {
   const tg = o.toggles;
+  const applyRelate = (decision: Extract<ExecDecision, { ok: true }>): ExecDecision => {
+    if (!o.relate?.enabled) return decision;
+    if (!ctx?.relate) return { ok: false, why: "relateUnavailable" };
+    const base = ctx.relateBase ? ctx.relateBase(decision.vol) : decision.vol;
+    if (!Number.isFinite(base) || !(base > 0)) return { ok: false, why: "relateVolumeUnknown" };
+    const relation = ctx.relate.decide({
+      cfg: tp.id,
+      sym: ctx.sym,
+      side: ctx.side,
+      ind: tp.ind,
+      strategy: tp.kind,
+      coordination: isSignalCoordinationInd(tp.ind) ? tp.bot : "ordinary",
+      range: tp.protect.tag ?? "wide",
+    }, base);
+    if (!relation.allowed)
+      return { ok: false, why: "relateActive", relateParts: relation.parts, relateBaseVol: decision.vol, relateBase: base };
+    return {
+      ...decision,
+      relateBase: base,
+      ...(relation.volume !== 1 ? { relateVol: relation.volume } : {}),
+      ...(Object.keys(relation.levels).length ? { relateLevels: relation.levels } : {}),
+      ...(Object.keys(relation.parts).length ? { relateParts: relation.parts } : {}),
+    };
+  };
   if (tp.heldOnly) return { ok: false, why: "heldOnly" };
   const pair = `${tp.bot}|${tp.ind}`;
   if (
@@ -5542,13 +5615,13 @@ export function execDecision(
   if (!tg.block) {
     if (plain && !kindBaseOn && !sigBase) return { ok: false, why: "normalOff" };
     if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };
-    return { ok: true, level: 0, vol: 1 };
+    return applyRelate({ ok: true, level: 0, vol: 1 });
   }
   // a type Block never raises trades at its own volume (and Block Active does not skip it); the Normal base PF
   // still applies, as for a range Block never raises
   if (o.block.excludeKinds?.includes(tp.kind)) {
     if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };
-    return { ok: true, level: 0, vol: 1 };
+    return applyRelate({ ok: true, level: 0, vol: 1 });
   }
   // a range Block never raises: its unit, on its own record (the Normal base PF still applies). "wide" is the untagged
   // Normal / Trailing grid, as live.excludeRanges reads it: signals and the untagged Axis / DCA ladders are not Wide
@@ -5556,7 +5629,7 @@ export function execDecision(
     tp.kind === "exit" ? "" : tp.protect.tag || (plain && !isSignalInd(tp.ind) ? "wide" : "");
   if (blockRange && o.block.excludeRanges?.includes(blockRange)) {
     if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };
-    return { ok: true, level: 0, vol: 1 };
+    return applyRelate({ ok: true, level: 0, vol: 1 });
   }
   const t = {
     sym: ctx?.sym ?? "",
@@ -5609,11 +5682,11 @@ export function execDecision(
   // own base trades at its unit then
   if (tg.blockActive && !d.adjusted && !sigBase) return { ok: false, why: "blockActive" };
   if (!d.adjusted && gatedBase)
-    return baseOk() ? { ok: true, level: 0, vol: 1, ...trace } : { ok: false, why: "normalPf" };
+    return baseOk() ? applyRelate({ ok: true, level: 0, vol: 1, ...trace }) : { ok: false, why: "normalPf" };
   // Normal off: a plain Normal / Trailing entry needs Block (DCA / Axis are not plain and run on their own)
   if (plain && !kindBaseOn && !d.adjusted && !sigBase) return { ok: false, why: "normalOff" };
-  if (!d.adjusted) return { ok: true, level: 0, vol: 1, ...trace };
-  return {
+  if (!d.adjusted) return applyRelate({ ok: true, level: 0, vol: 1, ...trace });
+  return applyRelate({
     ok: true,
     level: d.level,
     vol: d.vol,
@@ -5621,7 +5694,7 @@ export function execDecision(
     ...(d.legs ? { legs: d.legs } : {}),
     ...(d.blockAttribution ? { blockAttribution: d.blockAttribution } : {}),
     ...trace,
-  };
+  });
 }
 
 /** Synchronous wrapper (CLI / tests). The runtime drives walkForwardGen so it can yield between hours. */
@@ -6530,6 +6603,7 @@ export function* walkForwardGen(
   };
   // Block evidence is settled accepted Real orders, or the explicitly configured legacy candidate diagnostic.
   const book = bookFor(o);
+  const relateBook = relateBookFor(o);
   const direction = candidateDirectionFor(o);
   // acceptance on the tapes' record: every candidate of the source closed before the entry (before the run too)
   const guard = new SignalGuard();
@@ -6575,7 +6649,7 @@ export function* walkForwardGen(
       const fx = vopen.pop()!;
       if (fx.cfg && !sigCfg(fx.cfg)) engineOpen.add(fx.sym, fx.side, -1);
       feed.push(fx);
-      feedBooks(fx, book, guard, direction);
+      feedBooks(fx, book, guard, direction, relateBook);
       if (!fx.open) s2?.close(fx);
       if (++settled % 32 === 0) yield -2;
     }
@@ -6873,17 +6947,35 @@ export function* walkForwardGen(
           (crowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) >= crowdCapOf(o, tr.cfg)
         )
           why = "crowd";
+        const vf = indicationVolumeFactors.get(tp.id) ?? 1;
+        const hedgeVol = hedging ? (o.coord?.hedgeVolumeFactor ?? 1) : 1;
+        const rangeVol = rangeVolumeFactorFor(tp, o);
+        const baseForBlock = (blockVolume: number) => {
+          const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, blockStackCap(o.block) / blockVolume)) : 1;
+          return blockVolume * cv * vf * hedgeVol * rangeVol;
+        };
         const dec = why
           ? null
           : execDecision(tp, tr.entryT, stepOpts, {
               book,
               guard,
               direction,
+              relate: relateBook,
+              relateBase: baseForBlock,
               sym: tr.sym,
               side: tr.side,
             });
         if (dec && !dec.ok) why = dec.why;
         if (why || !dec || !dec.ok) {
+          if (dec && !dec.ok && dec.why === "relateActive" && o.relate?.enabled) {
+            const shadowBase = dec.relateBase ?? baseForBlock(dec.relateBaseVol ?? 1);
+            const shadowCap = relateExternalStackCap(o.relate.maxStack, tp.kind, tp.protect);
+            fx.relateShadow = true;
+            fx.relateMeasured = true;
+            fx.relateBase = Math.min(shadowBase, shadowCap);
+            fx.relateParts = capRelateParts(dec.relateParts ?? {}, Math.min(1, shadowCap / shadowBase),
+              shadowCap / shadowBase, shadowBase);
+          }
           skipped++;
           skip(skipName(why), tr.side, tr.cfg);
           skipR(skipName(why), tr.r);
@@ -6891,22 +6983,37 @@ export function* walkForwardGen(
         }
         // All account-independent Real entry gates passed. Do not stamp candidates held back by any earlier gate.
         fx.accepted = true;
+        delete fx.relateShadow;
         if (dec.blockAttribution) fx.blockAttribution = dec.blockAttribution;
         // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
         if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
         // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
         const stackCap = blockStackCap(o.block);
         const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
-        const vf = indicationVolumeFactors.get(tp.id) ?? 1;
-        const hedgeVol = hedging ? (o.coord?.hedgeVolumeFactor ?? 1) : 1;
-        const rangeVol = rangeVolumeFactorFor(tp, o);
-        const executionMult = dec.vol * cv * vf * hedgeVol * rangeVol;
+        const baseExecutionMult = dec.vol * cv * vf * hedgeVol * rangeVol;
+        const relationCap = relateExternalStackCap(o.relate?.maxStack ?? 250, tp.kind, tp.protect);
+        const relateVol = o.relate?.enabled
+          ? Math.min(dec.relateVol ?? 1, relationCap / Math.max(Number.MIN_VALUE, baseExecutionMult))
+          : 1;
+        const relateParts = o.relate?.enabled
+          ? capRelateParts(dec.relateParts ?? {}, relateVol, relationCap / baseExecutionMult, baseExecutionMult)
+          : {};
+        if (o.relate?.enabled) {
+          fx.relateMeasured = true;
+          fx.relateBase = Math.min(baseExecutionMult, relationCap);
+          if (Object.keys(relateParts).length) fx.relateParts = relateParts;
+        }
+        const executionMult = baseExecutionMult * relateVol;
         const x: Trade = {
           ...tr,
           r: tr.r * executionMult,
           vol: (tr.vol ?? 1) * executionMult,
           mult: executionMult,
           ...(cv !== 1 ? { coordVol: cv } : {}),
+          ...(relateVol !== 1 ? { relateVol } : {}),
+          ...(o.relate?.enabled ? { relateMeasured: true } : {}),
+          ...(o.relate?.enabled ? { relateBase: Math.min(baseExecutionMult, relationCap) } : {}),
+          ...(Object.keys(relateParts).length ? { relateParts } : {}),
           ...(vf !== 1 ? { volFactor: vf } : {}),
           ...(hedgeVol !== 1 ? { hedgeVol } : {}),
           ...(rangeVol !== 1 ? { rangeVol } : {}),
@@ -7064,6 +7171,7 @@ export function* walkForwardGen(
     stable,
     feed,
     ...(s2 ? { s2: s2.snapshot(stopT) } : {}),
+    ...(relateBook ? { relate: relateBook.summary() } : {}),
     ...(hasHedgeEnd ? { hedgeEnd: hedgeEndKeys ?? [] } : {}),
     ...(o.signalRank
       ? { signalSteps, signalActiveEnd: signalActiveEnd ?? [], signalActivationEnd: activationEnd(activationRep) }

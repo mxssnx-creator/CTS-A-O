@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { auditState, tapeReturnIndex, type AuditInput } from "./audit.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
 import { sigActiveKey } from "./signals.ts";
-import { modeledUnitStatsOf } from "./metrics/stats.ts";
+import { modeledUnitStatsOf, statsOf } from "./metrics/stats.ts";
 import {
   defaultWalkForward,
   makeTape,
@@ -129,6 +129,15 @@ const u = {
 
 const RUNS = {
   overall: walkForward(u, TAPES, opts()),
+  relateOn: walkForward(u, TAPES, opts({
+    relate: {
+      ...DEFAULT_SETTINGS.relate,
+      enabled: true,
+      // Exercise the Relate audit path without changing this fixture's trade sizing.
+      sources: { config: false, overall: false, symbol: false, direction: false,
+        indication: false, strategy: false, coordination: false, range: false },
+    },
+  })),
   shared: walkForward(
     u,
     TAPES,
@@ -364,6 +373,16 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
   ],
   [REPLAY]: [
     {
+      run: "relateOn",
+      what: "missing entry-time Relate base provenance",
+      corrupt: (i) => withTrade(i, 0, { relateBase: undefined }),
+    },
+    {
+      run: "relateOn",
+      what: "a fabricated relation portion on an otherwise unchanged trade",
+      corrupt: (i) => withTrade(i, 0, { relateParts: { config: { volume: 2, level: 1 } } }),
+    },
+    {
       run: "overall",
       what: "a recorded Block level the rules did not give",
       corrupt: (i) => {
@@ -436,6 +455,67 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         [REPLAY]: "both judge mult ÷ coordination volume: with Block off the replayed volume is 1",
         ...UNIT_AND_COST_MULT_FAILS,
       },
+    },
+  ],
+  "relate: total external stack within Max stack": [
+    {
+      run: "relateOn",
+      what: "an open Real-stage order above the configured total stack cap",
+      corrupt: (i) => withSim(i, (s) => {
+        const source = s.trades[0];
+        assert.ok(source, "the fixture has a settled trade to seed an open-order record");
+        const mult = s.opts.relate!.maxStack + 1;
+        const openAtEnd = [...(s.openAtEnd ?? []), {
+          ...source,
+          entryT: s.endT - H,
+          exitT: s.endT,
+          r: source.r * mult / (source.mult ?? 1),
+          mult,
+          markedOpen: true,
+        }];
+        const all = [...s.trades, ...openAtEnd].sort((a, b) => a.exitT - b.exitT);
+        return {
+          openAtEnd,
+          stats: modeledUnitStatsOf(all, s.endT),
+          sizedStats: statsOf(all, s.endT),
+        };
+      }),
+    },
+    {
+      run: "relateOn",
+      what: "an open order with a nonpositive execution multiplier",
+      corrupt: (i) => withSim(i, (s) => {
+        const source = s.trades[0];
+        assert.ok(source, "the fixture has a settled trade to seed an open-order record");
+        const openAtEnd = [...(s.openAtEnd ?? []), {
+          ...source,
+          entryT: s.endT - H,
+          exitT: s.endT,
+          mult: 0,
+          markedOpen: true,
+        }];
+        const all = [...s.trades, ...openAtEnd].sort((a, b) => a.exitT - b.exitT);
+        return {
+          openAtEnd,
+          stats: modeledUnitStatsOf(all, s.endT),
+          sizedStats: statsOf(all, s.endT),
+        };
+      }),
+      alsoFails: {
+        "numbers: stats match the trade list": "a zero execution multiplier cannot provide a known unit return",
+      },
+    },
+  ],
+  "relate: modeled volume within Max stack": [
+    {
+      run: "relateOn",
+      what: "a settled ladder's modeled volume above the captured stack ceiling",
+      corrupt: (i) => withTrade(i, 0, { vol: i.sim!.opts.relate!.maxStack + 1 }),
+    },
+    {
+      run: "relateOn",
+      what: "a settled order whose modeled volume is unknown",
+      corrupt: (i) => withTrade(i, 0, { vol: undefined }),
     },
   ],
   "caps: max open": [
@@ -638,7 +718,7 @@ describe("audit: every check can fail", () => {
   it("the table names every check audit.ts can add", () => {
     const src = readFileSync(new URL("./audit.ts", import.meta.url), "utf8");
     const names = new Set(
-      [...src.matchAll(/"((?:stages|lanes|toggles|numbers|replay|block|caps|paper): [^"]+)"/g)].map(
+      [...src.matchAll(/"((?:stages|lanes|toggles|numbers|replay|block|relate|caps|paper): [^"]+)"/g)].map(
         (m) => m[1],
       ),
     );

@@ -22,6 +22,7 @@ import {
 } from "./walkforward.ts";
 import { DEFAULT_AXIS, DEFAULT_SETTINGS } from "../config.ts";
 import { signalSettings } from "../signal-config.ts";
+import { relateExternalStackCap } from "./relate-volume.ts";
 
 const mk = (rows: Array<[number, number, number, number]>): Candle[] =>
   rows.map(([o, h, l, c], i) => ({ t: i * 900_000, o, h, l, c, v: 1 }));
@@ -47,6 +48,15 @@ describe("axis", () => {
   const b = barsFromCandles("X", 15, mk(rows));
   const center = new Float64Array([100, 100, 100]);
   const atr = new Float64Array([1, 1, 1]);
+
+  it("the maximum supported revert ladder fits Relate's entry-time reservation", () => {
+    const data = barsFromCandles("X", 15, mk([[98.5, 98.6, 98.4, 98.5], [98.5, 98.6, 91.4, 91.5]]));
+    const result = simulateAxis("c", data, new Int8Array([1, 0]), P,
+      { ...AX, levels: 8, ratio: 5 }, new Float64Array([100, 100]), new Float64Array([1, 1]), 0);
+    assert.ok(result.open);
+    assert.equal(result.open.w, 36, "the base and all seven maximum-size rungs filled");
+    assert.ok(result.open.w * relateExternalStackCap(2, "axis", P) <= 2 + 1e-12);
+  });
 
   it("ladders toward the axis and takes profit at the axis price, cost per leg", () => {
     const r = simulateAxis("c", b, new Int8Array([1, 0, 0]), P, AX, center, atr, 0.002);

@@ -1,0 +1,19 @@
+{
+  "sourceCommit": "38c9c7d87235db57a5d11376e639c28ea6f511a3",
+  "scope": "single synthetic four-symbol runtime; not live or full grid",
+  "probeThresholdMs": 1000,
+  "loopMaxMs": 968,
+  "tapePhase": {
+    "ms": 3414.440638,
+    "maxSliceMs": 2.836964000001899,
+    "slowest": "1 cores · 12 replies · longest history retain 0 ms",
+    "mainMs": 57.2760410001938
+  },
+  "mergePhase": {
+    "ms": 1.3544070000061765,
+    "maxSliceMs": 1.3544070000061765,
+    "slowest": " (0 ms)"
+  },
+  "stallProbes": [],
+  "interpretation": "No pause crossed this probe threshold in this run. The sampled loop maximum still exceeds the 500 ms target, and its cause is not established."
+}

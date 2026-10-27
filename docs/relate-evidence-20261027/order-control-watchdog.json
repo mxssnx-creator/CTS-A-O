@@ -1,0 +1,11 @@
+{
+  "sourceCommit": "38c9c7d87235db57a5d11376e639c28ea6f511a3",
+  "files": 19,
+  "startedAt": "2026-10-27T17:25:10.283Z",
+  "endedAt": "2026-10-27T17:25:49.275Z",
+  "code": 0,
+  "signal": null,
+  "reason": null,
+  "peakCgroupBytes": 5726453760,
+  "sourceNote": "The tested source bytes matched this commit; the diagnostic fix was already present in the worktree and disabled during these tests."
+}

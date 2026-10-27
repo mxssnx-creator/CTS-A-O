@@ -5,6 +5,7 @@ import { CoreDb } from "./db.server.ts";
 import { CandleSeries } from "../market/candle-series.ts";
 import { syntheticCandles } from "../market/bars.ts";
 import { closePool } from "./pool.server.ts";
+import { baseRangeCountsGen } from "../pipeline/pipeline.ts";
 
 const runtimes: CoreRuntime[] = [];
 after(async () => {
@@ -15,7 +16,9 @@ after(async () => {
   }
   await closePool();
 });
-const statusFields = ["basePassed", "baseBuilt", "baseEvaluated", "baseHistory"] as const;
+const statusFields = [
+  "basePassed", "baseBuilt", "baseEvaluated", "baseHistory", "baseByRange", "baseGates", "baseWhy", "strategyCoverage",
+] as const;
 const fields = [
   "basePassed",
   "exitBasePassed",
@@ -101,6 +104,8 @@ function fixture() {
   rt.status.baseBuilt = 3;
   rt.status.baseEvaluated = 21;
   rt.status.baseHistory = [{ at: 1, compute: 0, passed: 17, built: 3, byRange: { wide: 17 } }];
+  rt.status.strategyCoverage = { completedAt: 1, through: 1, total: 1,
+    byKind: { axis: { engine: 1, signals: 0, heldOnly: 0, carried: 0 } } };
   const inner = rt as unknown as Inner;
   inner.inc = { current: true };
   inner.incTail = { current: true };
@@ -171,6 +176,8 @@ test("current qualifications and realtime inputs survive simulation slices, then
   await f.rt.compute();
   assert.equal(observed, true);
   assert.equal(f.rt.status.computes, 1);
+  assert.notEqual(f.rt.status.strategyCoverage, f.oldStatus.strategyCoverage);
+  assert.equal(f.rt.status.strategyCoverage?.total, f.rt.tapes.length);
   assert.deepEqual(
     [...(f.rt.wf.basePassed ?? [])],
     [],
@@ -208,6 +215,72 @@ for (const mode of ["failure", "settings", "generation"] as const)
     assertCurrent(f);
     assert.equal(f.rt.status.computes, 0);
     assert.equal(f.rt.sim, null);
+  });
+
+for (const mode of ["failure", "settings", "generation"] as const)
+  test(`coverage ${mode} cannot publish an unfinished replacement`, async () => {
+    const f = fixture(), drive = f.inner.drive.bind(f.rt), stop = new Error("coverage interrupted");
+    f.inner.drive = async (name, ...args) => {
+      if (name !== "Strategy coverage") return drive(name, ...args);
+      assertCurrent(f);
+      if (mode === "failure") throw stop;
+      const result = await drive(name, ...args);
+      if (mode === "settings") f.rt.updateSettings({ cost: .001 });
+      else f.rt.stop();
+      return result;
+    };
+    if (mode === "failure") await assert.rejects(f.rt.compute(), (error) => error === stop);
+    else await f.rt.compute();
+    assertCurrent(f);
+    assert.equal(f.rt.status.computes, 0);
+    assert.equal(f.rt.sim, null);
+  });
+
+for (const phase of ["Base ranges", "Base gate sensitivity", "Base gate reasons"] as const)
+  for (const mode of ["failure", "settings", "generation"] as const)
+    test(`${phase} ${mode} cannot publish unfinished qualifications`, async () => {
+      const f = fixture(), drive = f.inner.drive.bind(f.rt), stop = new Error("Base diagnostics interrupted");
+      let observed = false;
+      f.inner.drive = async (name, ...args) => {
+        if (name !== phase) return drive(name, ...args);
+        observed = true;
+        assertCurrent(f);
+        if (mode === "failure") throw stop;
+        const result = await drive(name, ...args);
+        if (mode === "settings") f.rt.updateSettings({ cost: 0.001 });
+        else f.rt.stop();
+        return result;
+      };
+      if (mode === "failure") await assert.rejects(f.rt.compute(), (error) => error === stop);
+      else await f.rt.compute();
+      assert.equal(observed, true);
+      assertCurrent(f);
+      assert.equal(f.rt.status.computes, 0);
+      assert.equal(f.rt.sim, null);
+    });
+
+for (const cancel of [false, true])
+  test(`large Base diagnostics yield to the event loop${cancel ? " and honor cancellation" : ""}`, async () => {
+    const f = fixture();
+    const runs = Array.from({ length: 384 }, () => ({
+      ind: "ema-21-55@m1",
+      full: { n: 12, pf: 1.5, net: 2, mdd: 1 },
+    })) as unknown as Parameters<typeof baseRangeCountsGen>[0];
+    const work = baseRangeCountsGen(runs, { minPf: 1, minTrades: 3 }, [], () => {
+      const until = performance.now() + 0.15;
+      while (performance.now() < until) { /* emulate a costly gate */ }
+      return true;
+    });
+    let intervened = false;
+    setImmediate(() => {
+      intervened = true;
+      if (cancel) f.rt.stop();
+    });
+    const result = f.inner.drive("Base ranges", work, () => {}, f.inner.gen);
+    if (cancel) await assert.rejects(result, /superseded by a newer loop generation/);
+    else await result;
+    assert.equal(intervened, true);
+    assertCurrent(f);
   });
 
 test("timing-only settings changes do not discard a completed economic calculation", async () => {

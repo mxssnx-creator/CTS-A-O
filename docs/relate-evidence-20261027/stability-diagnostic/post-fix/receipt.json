@@ -1,0 +1,20 @@
+{
+  "protocolSha256": "3aa087aaf7257042556d6f1b8ef25818565174a402b738eccda36f703d81834f",
+  "startedAt": "2026-10-27T17:04:28.029Z",
+  "cases": [
+    {
+      "id": "unlimited",
+      "wf": {
+        "maxPerSymbol": 0,
+        "lastN": 0
+      },
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "maxCgroupBytes": 4602327040,
+      "at": "2026-10-27T17:04:56.009Z"
+    }
+  ],
+  "status": "complete",
+  "endedAt": "2026-10-27T17:04:56.010Z"
+}

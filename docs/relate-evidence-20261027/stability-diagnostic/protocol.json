@@ -1,0 +1,26 @@
+{
+  "createdAt": "2026-10-27T16:36:00Z",
+  "classification": "Post-hoc causal replay on an already examined window; not a fresh holdout, venue result, or candidate promotion",
+  "sourceCommit": "704fcf8b08644f98986d47e318abc26b8a20dc12",
+  "feed": "docs/relate-evidence-20261027/reproduction-feed.json.gz",
+  "feedSha256": "e0a687b8f1799201cfa8a062ef54555271bbfb9248c34b5d1814273222a7b3bb",
+  "desk": "docs/relate-evidence-20261027/desk-reduced.json",
+  "deskSha256": "0514856b61d1e8362b4d8fc38d0042756953699d512498fd1d4ad98adc609ecf",
+  "symbols": 12,
+  "evaluationFrom": "2026-10-25T13:00:00Z",
+  "start": "2026-10-26T13:00:00Z",
+  "end": "2026-10-27T13:00:00Z",
+  "prehistoryHours": 24,
+  "selectionHours": 24,
+  "mode": "existing causal Real admission; account funding caps off; normal and trailing only; Relate off",
+  "cases": [
+    { "id": "unlimited", "wf": { "maxPerSymbol": 0, "lastN": 0 } },
+    { "id": "last-15", "wf": { "maxPerSymbol": 0, "lastN": 15 } },
+    { "id": "last-25", "wf": { "maxPerSymbol": 0, "lastN": 25 } },
+    { "id": "per-symbol-5", "wf": { "maxPerSymbol": 5, "lastN": 0 } },
+    { "id": "per-symbol-20", "wf": { "maxPerSymbol": 20, "lastN": 0 } },
+    { "id": "per-symbol-50", "wf": { "maxPerSymbol": 50, "lastN": 0 } },
+    { "id": "last-15-per-symbol-20", "wf": { "maxPerSymbol": 20, "lastN": 15 } }
+  ],
+  "comparisons": "Report every case and all losses; compare settled unit PF, counts, the previously observed two-hour cluster and later hours. Caps can reject otherwise valid orders; no saved/live setting will change."
+}

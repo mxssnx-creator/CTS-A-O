@@ -1544,8 +1544,12 @@ async function runStepNow(
         sl: Math.max(i.protect.sl, s.minStopPct ?? 0.01),
         barT: i.barT,
         volFactor: i.volFactor,
+        rangeVol: i.rangeVol,
         managed: i.protect.trail > 0 || (i.kind !== undefined && i.kind !== "normal"),
         coordVol: i.coordVol,
+        blockVol: i.blockVol,
+        relateVol: i.relateVol,
+        maxStack: i.maxStack,
         hedge: i.hedge,
         hedgeVol: i.hedgeVol,
       })),
@@ -1799,15 +1803,26 @@ async function runStepNow(
     for (const e of plan.entries) {
       if (!alive()) break;
       const ind = e.cfg.split("|")[1] ?? "";
-      const rangeFactor = rangeVolumeFactorFor({ind,protect:{tag:rangeOfId(e.cfg)||undefined,
+      const configuredRangeFactor = rangeVolumeFactorFor({ind,protect:{tag:rangeOfId(e.cfg)||undefined,
         exitType:kindOfId(e.cfg)==="exit"?"historic":undefined}},{rangeVolumeFactors,
         signalRangeVolumeFactors:rt.settings.signals.rangeVolumeFactors,
         exitVolumeFactor:rt.settings.exitStrategy.volumeFactor});
-      // Apply the per-range multiplier before the same per-position, account, and aggregate-risk checks as normal size.
+      const rangeFactor = e.rangeVol === undefined ? configuredRangeFactor : e.rangeVol;
+      // Every supplied factor is entry-time evidence; invalid values cannot silently become neutral sizing.
+      if ([rangeFactor, e.coordVol === undefined ? 1 : e.coordVol, e.blockVol === undefined ? 1 : e.blockVol,
+          e.relateVol === undefined ? 1 : e.relateVol, e.hedge ? (e.hedgeVol === undefined ? 1 : e.hedgeVol) : 1,
+          e.volFactor === undefined ? 1 : e.volFactor].some((x) => !Number.isFinite(x) || !(x > 0)) ||
+          (e.maxStack !== undefined && (!Number.isFinite(e.maxStack) || e.maxStack < 1 || e.maxStack > 250))) {
+        status.skipped.push({ sym: e.sym, why: "invalid captured execution sizing" });
+        continue;
+      }
+      // Combine the captured sizing factors before the Real stack and account caps.
       const coordFactor = e.coordVol ?? 1;
+      const blockFactor = e.blockVol ?? 1;
+      const relateFactor = e.relateVol ?? 1;
       const hedgeFactor = e.hedge ? (e.hedgeVol ?? 1) : 1;
-      // Coordination multipliers are captured when the intent is validated; all account and position caps still gate size.
-      const unit = Math.min(raw * rangeFactor * coordFactor * hedgeFactor, cap);
+      // Real-stage Block, Relate and coordination multipliers are captured at validation; account and position caps
+      // still gate the resulting size.
       const promotion = rt.livePromotionGate?.(e);
       rt.status.livePromotion = promotionStatus([{ cfg: e.cfg, sym: e.sym, side: e.side,
         ...(promotion ?? { required: true, ok: false, n: 0, pf: null, state: "execution-insufficient" }) }]);
@@ -1828,7 +1843,10 @@ async function runStepNow(
       const intentFactor = Number.isFinite(e.volFactor)
         ? Math.min(110, Math.max(0.01, e.volFactor!))
         : 1;
-      const intentUnit = Math.min(unit * intentFactor, cap);
+      const stack = rangeFactor * coordFactor * blockFactor * relateFactor * hedgeFactor * intentFactor;
+      const maxStack = Number.isFinite(e.maxStack) ? Math.max(1, Math.min(250, e.maxStack!)) : Infinity;
+      // Reapply the captured stack ceiling, then the venue-account position cap.
+      const intentUnit = Math.min(raw * Math.min(stack, maxStack), cap);
       const minNotional = bx.exchangeMinNotional(spec, px);
       const blockedMin =
         minNotional > intentUnit * MIN_RAISE_UNIT_X
@@ -1847,6 +1865,13 @@ async function runStepNow(
       let qty = sized.qty;
       if (!(qty > 0)) {
         status.skipped.push({ sym: e.sym, why: "size rounds to zero" });
+        continue;
+      }
+      // Lot/minimum rounding may increase the requested size. The captured stack ceiling applies to the
+      // quantity sent to the venue as well as the pre-rounding intent; do not trade above it to meet a minimum.
+      const stackLimitUsd = raw * maxStack;
+      if (Number.isFinite(stackLimitUsd) && qty * px > stackLimitUsd + Math.max(1e-9, stackLimitUsd * 1e-9)) {
+        status.skipped.push({ sym: e.sym, why: "exchange minimum exceeds the captured Max stack" });
         continue;
       }
       const signalEntry = isSignalConfig(e.cfg);
@@ -2292,7 +2317,7 @@ export function* laneContributionsGen(
     // Minimum-lane units remove intrinsic DCA / Axis ladder weight for every Block mode. A legacy unraised
     // ordinary parent with no ladder/external provenance retains its documented single-unit rule.
     const externalUnits = legsN > 0 || (p.level ?? 0) > 0 || p.w !== undefined || p.volFactor !== undefined ||
-      p.coordVol !== undefined || p.rangeVol !== undefined || p.hedgeVol !== undefined;
+      p.coordVol !== undefined || p.relateVol !== undefined || p.rangeVol !== undefined || p.hedgeVol !== undefined;
     const intrinsic = p.w ?? 1;
     const multiplier = positionMult(p);
     const unitsKnown = Number.isFinite(intrinsic) && intrinsic > 0 && Number.isFinite(multiplier) && multiplier > 0;

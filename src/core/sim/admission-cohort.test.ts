@@ -4,9 +4,10 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import type { RangeTag, Trade } from "../domain/types.ts";
 import { protectCellKey } from "../pipeline/pipeline.ts";
 import {
-  baseAllowsTape, configDirectionEval, defaultWalkForward, execDecision, makeTape,
-  passedCellsOf, selectAt, selectDurable, selectFixed,
+  baseAllowsTape, configDirectionEval, configEval, defaultWalkForward, execDecision, makeTape,
+  passedCellsOf, selectAt, selectDurable, selectFixed, tapeTrades,
 } from "./walkforward.ts";
+import { validationProgressOf } from "../validation-progress.ts";
 
 const T = Date.UTC(2026, 9, 17);
 const ind = "rsi-mom-14-20@m15", pair = `follow|${ind}`;
@@ -34,6 +35,27 @@ function fixture(tag: RangeTag, side: 1 | -1, trailing = false) {
 }
 
 describe("exact published admission cohort", () => {
+  it("collects post-Base validation PF and counts without changing the selected seats", () => {
+    const { tape, options } = fixture("mc", 1);
+    const rows = tapeTrades(tape);
+    rows[0].r = -0.01;
+    const good = makeTape(tape.id, tape.bot, tape.ind, tape.protect, tape.kind, tape.syms, rows, [], []);
+    const badId = `${tape.id}|other`;
+    const bad = makeTape(badId, tape.bot, tape.ind, tape.protect, tape.kind, tape.syms,
+      rows.map((r) => ({ ...r, cfg: badId, r: -0.01 })), [], []);
+    const unreported = selectFixed([good, bad], T, options);
+    const measured = selectFixed([good, bad], T, { ...options, recordValidation: "summary" });
+    assert.deepEqual(measured.picks, unreported.picks);
+    const actual = validationProgressOf(measured.validationSummary, T);
+    const expected = configEval(good, T, options);
+    assert.equal(expected.ok, true);
+    assert.equal(actual?.evaluated, 2);
+    assert.equal(actual?.passed, 1);
+    assert.equal(actual?.closes, expected.n);
+    assert.ok(Math.abs(actual!.pf! - expected.gp! / expected.gl!) < 1e-12);
+    assert.equal(actual?.noLoss, false);
+  });
+
   for (const tag of ["mc", "mn", "mp", "sh", "gn", "lg"] as const)
     for (const side of [1, -1] as const)
       for (const trailing of [false, true])

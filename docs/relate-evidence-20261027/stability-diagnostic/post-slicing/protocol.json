@@ -1,0 +1,26 @@
+{
+  "createdAt": "2026-10-27T17:49:58.625Z",
+  "classification": "Final-source recheck of already examined baseline; not a holdout or actual execution",
+  "sourceCommit": "02ad0ae9fd6324a5ebeaaba4bf2590ca4bb63796",
+  "feed": "docs/relate-evidence-20261027/reproduction-feed.json.gz",
+  "feedSha256": "e0a687b8f1799201cfa8a062ef54555271bbfb9248c34b5d1814273222a7b3bb",
+  "desk": "docs/relate-evidence-20261027/desk-reduced.json",
+  "deskSha256": "0514856b61d1e8362b4d8fc38d0042756953699d512498fd1d4ad98adc609ecf",
+  "symbols": 12,
+  "evaluationFrom": "2026-10-25T13:00:00Z",
+  "start": "2026-10-26T13:00:00Z",
+  "end": "2026-10-27T13:00:00Z",
+  "prehistoryHours": 24,
+  "selectionHours": 24,
+  "mode": "existing causal Real admission; account funding caps off; normal and trailing only; Relate off",
+  "cases": [
+    {
+      "id": "unlimited",
+      "wf": {
+        "maxPerSymbol": 0,
+        "lastN": 0
+      }
+    }
+  ],
+  "comparisons": "Compare every retained baseline closed and open order and validation record; do not promote settings."
+}

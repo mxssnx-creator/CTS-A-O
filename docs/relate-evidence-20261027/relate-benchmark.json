@@ -1,0 +1,20 @@
+{
+  "benchmark": "synthetic Relate eight-source Auto",
+  "symbols": 50,
+  "acceptedBootstrapCloses": 12500,
+  "updateAndDecisionCount": 500,
+  "bootstrapMs": 37.837,
+  "coldDecisionsMs": 45.521,
+  "cachedDecisionsMs": 1.857,
+  "updatesAndDecisionsMs": 927.688,
+  "updateAndDecisionMedianMs": 1.751,
+  "updateAndDecisionP95Ms": 2.572,
+  "maxRssMiB": 91.8,
+  "summary": {
+    "relations": 106,
+    "qualified": 106,
+    "closes": 26500,
+    "maxSample": 250,
+    "shadowCloses": 0
+  }
+}

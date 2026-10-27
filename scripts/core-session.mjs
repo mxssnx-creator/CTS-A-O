@@ -57,6 +57,7 @@ import {
 } from "./lib/session-dump.mjs";
 import { BOOK_NOTIONAL_EPS_USD, normalizedBookNotional } from "./lib/book-notional.mjs";
 import { sessionSettingsEvidence } from "./lib/session-settings.mjs";
+import { studyWithRequestedWindow } from "./lib/session-study.mjs";
 import {
   sessionAllocation,
   sessionCashPnl,
@@ -740,7 +741,7 @@ async function runEngine() {
   // causal by default: Base / Main / Real rank on the history before the run (--lookahead: on every bar up to the
   // end, as the live desk does — the run is then partly in-sample)
   const wfExtra = { causalBase: !flag("lookahead"), ...wfAll, ...JSON.parse(arg("wf", "{}")) };
-  rt.updateSettings({}, { preH, simH: runH, ...wfExtra });
+  rt.updateSettings({}, studyWithRequestedWindow(wfExtra, preH, runH));
   // Production sanitizeWf keeps longH >= 24 h. This narrow override is accepted only for a bounded offline replay,
   // so an explicitly requested shorter research window can be reproduced without changing saved/live defaults.
   if (replaySelectionHours !== null) rt.wf = { ...rt.wf, longH: replaySelectionHours };
@@ -4249,7 +4250,7 @@ const data = clean({
     virtualPf:
       "separate diagnostic: all virtual modeled closes before book allocation; known zero allocations excluded from funded primary PF",
     unitPf:
-      "the same funded settled closes with recorded Block/coordination execution multiples removed; ladder/tape leg semantics retained; independent of book sizing",
+      "the same funded settled closes with recorded combined external execution multiples removed, including any Block, Relate, coordination, range and strategy factors; ladder/tape leg semantics retained; independent of book sizing",
     variantEffect:
       "walk-forward variants (one switch flipped against the options as run, on the same tapes): changes results = a different order set; changes volume = the same orders at other volumes / results; no effect = the identical trade set; n/a = the switch has nothing to act on; needs a recompute = it shapes the tapes when they are built. Primary PF uses recorded unit gross returns; net/marks/curves keep volume-weighted stored r × 100. Legacy primary PF is unavailable without recorded unit gross sums",
     sizingReplay:
@@ -5139,7 +5140,7 @@ function clientMain(D) {
   <span class="chip">${cnt((r) => r.status === "recompute")} need a recompute</span>
   ${cnt((r) => r.status === "skipped") ? `<span class="chip">${cnt((r) => r.status === "skipped")} skipped (memory)</span>` : ""}
 </div>`;
-    const intro = `<p class="note">Every row re-runs the session's walk-forward on its own final tapes (${V.tapes.toLocaleString("en-US")} config tapes, ${V.signalTapes.toLocaleString("en-US")} of them signal tapes — no new tapes) with <b>one switch flipped</b> against the baseline, the options the session ran with. <b>Changes results</b>: a different set of orders; <b>changes results (volume)</b>: the same orders at other volumes; <b>no effect</b>: the identical trade set — the switch is not working on this window; <b>n/a</b>: it has nothing to act on (e.g. a Block mode with Block off); <b>needs a recompute</b>: it shapes the tapes when they are built. Return PF excludes recorded Block/coordination execution multiples and retains ladder/tape leg semantics. Net, side/type net, marks and drawdown retain volume-weighted trade % (Σ stored r × 100); these are not account cash results. Archived variants without recorded unit gross sums show <b>unit basis not recorded</b> for primary PF. ${V.reproduces ? "The baseline re-run reproduces the session's run exactly." : `<b class="bad">The baseline re-run differs from the session's run</b> (${V.session.orders} orders, net ${n2(V.session.net)} % in the session) — compare the variants with the baseline row, not with the totals above.`} ${run.length} walk-forward runs in ${n2(runMs / 1000, 0)} s (${n2(runMs / Math.max(1, run.length) / 1000, 1)} s each${V.mainSimMs ? `; the session's own walk-forward took ${n2(V.mainSimMs / 1000, 0)} s` : ""}).</p>`;
+    const intro = `<p class="note">Every row re-runs the session's walk-forward on its own final tapes (${V.tapes.toLocaleString("en-US")} config tapes, ${V.signalTapes.toLocaleString("en-US")} of them signal tapes — no new tapes) with <b>one switch flipped</b> against the baseline, the options the session ran with. <b>Changes results</b>: a different set of orders; <b>changes results (volume)</b>: the same orders at other volumes; <b>no effect</b>: the identical trade set — the switch is not working on this window; <b>n/a</b>: it has nothing to act on (e.g. a Block mode with Block off); <b>needs a recompute</b>: it shapes the tapes when they are built. Return PF excludes recorded combined external execution multiples, including Relate, and retains ladder/tape leg semantics. Net, side/type net, marks and drawdown retain volume-weighted trade % (Σ stored r × 100); these are not account cash results. Archived variants without recorded unit gross sums show <b>unit basis not recorded</b> for primary PF. ${V.reproduces ? "The baseline re-run reproduces the session's run exactly." : `<b class="bad">The baseline re-run differs from the session's run</b> (${V.session.orders} orders, net ${n2(V.session.net)} % in the session) — compare the variants with the baseline row, not with the totals above.`} ${run.length} walk-forward runs in ${n2(runMs / 1000, 0)} s (${n2(runMs / Math.max(1, run.length) / 1000, 1)} s each${V.mainSimMs ? `; the session's own walk-forward took ${n2(V.mainSimMs / 1000, 0)} s` : ""}).</p>`;
     const grp = (g) =>
       varRows(g).length
         ? `<h3>${esc(VAR_GROUPS[g].title)}</h3>${g === "tactics" ? "" : varCards(g, VAR_GROUPS[g].title)}<div class="tw" id="tVar_${g}"></div>`

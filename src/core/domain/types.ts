@@ -256,6 +256,43 @@ export interface StrategyToggles {
   axis: boolean;
 }
 
+export type RelateSource =
+  | "config"
+  | "overall"
+  | "symbol"
+  | "direction"
+  | "indication"
+  | "strategy"
+  | "coordination"
+  | "range";
+
+/** Entry-time logical volume of one relation in original-base units. Shadow portions do not claim an execution. */
+export type RelateParts = Partial<Record<RelateSource, { volume: number; level: number; shadow?: true }>>;
+
+/** Settled-order volume adjustment. It is deliberately disabled until a desk opts in. */
+export interface RelateAdjustmentConfig {
+  enabled: boolean;
+  /** Average qualified relation additions, or sum independent additions. */
+  mode: "shared" | "additive";
+  /** Auto mode searches the supported ratio, depth and Active grids per relation. */
+  auto: boolean;
+  /** Each qualified step adds this fraction of the relation's last recorded volume (0.2–6, by 0.2). */
+  ratio: number;
+  /** Maximum positive-result run used for the manual/automatic level (2–15). */
+  steps: number;
+  /** Skip entries below this positive-result step; 0 keeps the entry at base volume. */
+  activeStep: number;
+  /** Minimum settled-order unit PF required before a relation can adjust size. */
+  minPf: number;
+  /** Settled-order sample window, 60–250. */
+  lastN: number;
+  /** Minimum sample before the PF window is judged; 60–lastN. */
+  minTrades: number;
+  /** Modeled total multiplier ceiling, reserving capacity for intrinsic ladder fills as well as external factors. */
+  maxStack: number;
+  sources: Partial<Record<RelateSource, boolean>>;
+}
+
 export interface AxisConfig {
   /** Execution volume of each independent Axis set relative to its corresponding base set (0.1 =10%). */
   volumeFactor?: number;
@@ -514,6 +551,12 @@ export interface Trade {
   mult?: number;
   /** part of mult from coordination volume (Stable-02 relation volume). */
   coordVol?: number;
+  /** Relate volume multiplier captured at entry, included in the total execution multiple. */
+  relateVol?: number;
+  /** Proven entry-time relation portions; absent legacy provenance must not be inferred. */
+  relateMeasured?: boolean;
+  relateBase?: number;
+  relateParts?: RelateParts;
   /** additional type / combined-lane factor in mult; removed from Block reporting and audit. */
   volFactor?: number;
   /** Negative-hour hedge volume factor captured at entry. */
@@ -564,6 +607,12 @@ export interface OpenPosition {
   w?: number;
   /** execution factors retained at entry for exact closes after settings change or restart */
   coordVol?: number;
+  /** Relate volume multiplier captured at entry; held positions never get resized by later settings. */
+  relateVol?: number;
+  /** Entry-time relation portions used for subsequent independently scoped adjustments. */
+  relateMeasured?: boolean;
+  relateBase?: number;
+  relateParts?: RelateParts;
   volFactor?: number;
   /** Negative-hour hedge volume factor captured at entry. */
   hedgeVol?: number;

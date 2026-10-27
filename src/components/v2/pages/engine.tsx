@@ -248,6 +248,12 @@ export function EnginePage() {
             <Line k="Compute queued" v={st.pending ? "yes" : "no"} />
             <Line k="Base workers" v={st.workers ?? "–"} />
             <Line
+              k="Relate adjustment"
+              v={st.relateAdjustment
+                ? `${st.relateAdjustment.enabled ? "enabled" : "off"} · auto ${st.relateAdjustment.auto ? "on" : "off"} · ${fmt.num(st.relateAdjustment.qualified)}/${fmt.num(st.relateAdjustment.relations)} qualified · max ${fmt.num(st.relateAdjustment.maxStack)}×`
+                : "not evaluated"}
+            />
+            <Line
               k="Tick (positions + live)"
               v={
                 st.tick

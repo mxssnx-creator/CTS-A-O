@@ -4,6 +4,7 @@ import { MAX_MODEL_RT_COST } from "./model-cost.ts";
 import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
 import { validVolumeRatio } from "./volume-ratio.ts";
+import { AXIS_MAX_LEVELS, AXIS_MAX_RUNG_RATIO } from "./sim/relate-volume.ts";
 
 /** Range checks for a settings patch (Settings page and preset dialog alike). */
 export function checkSettings(s: Partial<CoreSettings>) {
@@ -505,9 +506,9 @@ export function checkSettings(s: Partial<CoreSettings>) {
   }
   if (s.axis) {
     volumeFactor(s.axis.volumeFactor, "axis set volume factor");
-    num(s.axis.levels, 1, 8, "axis levels");
+    num(s.axis.levels, 1, AXIS_MAX_LEVELS, "axis levels");
     num(s.axis.spacing, 0.1, 5, "axis spacing (ATR)");
-    num(s.axis.ratio, 0.1, 5, "axis rung ratio");
+    num(s.axis.ratio, 0.1, AXIS_MAX_RUNG_RATIO, "axis rung ratio");
     num(s.axis.minDisp, 0, 10, "axis min displacement");
     num(s.axis.maxDisp, 0.1, 20, "axis max displacement");
     num(s.axis.center, 5, 400, "axis EMA period");
@@ -560,7 +561,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       )
         throw new Error("axis ladder depths: 1–16 values");
       for (const l of s.axis.levelsSet) {
-        num(l, 1, 8, "axis ladder depth");
+        num(l, 1, AXIS_MAX_LEVELS, "axis ladder depth");
         int(l, "axis ladder depth");
       }
     }
@@ -570,6 +571,50 @@ export function checkSettings(s: Partial<CoreSettings>) {
       s.axis.minDisp >= s.axis.maxDisp
     )
       throw new Error("axis min displacement must be below max");
+  }
+  if (s.relate) {
+    if (s.relate.enabled !== undefined && typeof s.relate.enabled !== "boolean")
+      throw new Error("Relate enabled: on / off");
+    if (s.relate.auto !== undefined && typeof s.relate.auto !== "boolean")
+      throw new Error("Relate Auto mode: on / off");
+    if (s.relate.mode !== undefined && s.relate.mode !== "shared" && s.relate.mode !== "additive")
+      throw new Error("Relate mode must be shared or additive");
+    if (s.relate.ratio !== undefined) num(s.relate.ratio, 0.2, 6, "Relate ratio");
+    if (s.relate.ratio !== undefined && Math.abs(s.relate.ratio * 5 - Math.round(s.relate.ratio * 5)) > 1e-8)
+      throw new Error("Relate ratio must use 0.2 increments");
+    if (s.relate.steps !== undefined) {
+      int(s.relate.steps, "Relate steps");
+      num(s.relate.steps, 2, 15, "Relate steps");
+    }
+    if (s.relate.activeStep !== undefined) {
+      int(s.relate.activeStep, "Relate Active step");
+      num(s.relate.activeStep, 0, 6, "Relate Active step");
+    }
+    if (s.relate.steps !== undefined && s.relate.activeStep !== undefined && s.relate.activeStep > s.relate.steps)
+      throw new Error("Relate Active step cannot exceed its maximum steps");
+    if (s.relate.minPf !== undefined) num(s.relate.minPf, 0, 100, "Relate minimum PF");
+    if (s.relate.lastN !== undefined) {
+      int(s.relate.lastN, "Relate last-N");
+      num(s.relate.lastN, 60, 250, "Relate last-N");
+    }
+    if (s.relate.minTrades !== undefined) {
+      int(s.relate.minTrades, "Relate minimum trades");
+      num(s.relate.minTrades, 60, 250, "Relate minimum trades");
+    }
+    if (s.relate.minTrades !== undefined && s.relate.lastN !== undefined && s.relate.minTrades > s.relate.lastN)
+      throw new Error("Relate minimum trades must not exceed last-N");
+    if (s.relate.maxStack !== undefined) {
+      int(s.relate.maxStack, "Relate maximum stack");
+      num(s.relate.maxStack, 1, 250, "Relate maximum stack");
+    }
+    if (s.relate.sources !== undefined) {
+      if (!s.relate.sources || typeof s.relate.sources !== "object" || Array.isArray(s.relate.sources))
+        throw new Error("Relate sources must be an object of switches");
+      const relateSources = ["config", "overall", "symbol", "direction", "indication", "strategy", "coordination", "range"];
+      for (const [key, value] of Object.entries(s.relate.sources))
+        if (!relateSources.includes(key) || typeof value !== "boolean")
+          throw new Error(`Relate source ${key} must be a known source with an on/off value`);
+    }
   }
   if (s.dca) {
     num(s.dca.levels, 1, 4, "dca levels (stack ≤ 5 stages: base + 4)");
@@ -1032,6 +1077,11 @@ export function checkMerged(cur: CoreSettings, patch: Partial<CoreSettings>) {
   const merged: Partial<CoreSettings> = {};
   if (patch.adjust) merged.adjust = { ...cur.adjust, ...patch.adjust } as CoreSettings["adjust"];
   if (patch.axis) merged.axis = { ...cur.axis, ...patch.axis } as CoreSettings["axis"];
+  if (patch.relate) merged.relate = {
+    ...cur.relate,
+    ...patch.relate,
+    sources: { ...cur.relate.sources, ...(patch.relate.sources ?? {}) },
+  } as CoreSettings["relate"];
   if (patch.signals?.ranges)
     merged.signals = {
       ranges: { ...cur.signals?.ranges, ...patch.signals.ranges },

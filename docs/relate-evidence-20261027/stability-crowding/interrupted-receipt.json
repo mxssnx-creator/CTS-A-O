@@ -1,0 +1,33 @@
+{
+  "protocolSha256": "33a5d9c4e872aab170be9dbde7c5ea3d3bb21a46ec5d0fee86a04e2b1cd0f86f",
+  "startedAt": "2026-10-27T16:41:40.773Z",
+  "cases": [
+    {
+      "id": "unlimited",
+      "wf": {
+        "lastN": 0
+      },
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "maxCgroupBytes": 5530365952,
+      "at": "2026-10-27T16:42:08.641Z"
+    },
+    {
+      "id": "crowd-5",
+      "wf": {
+        "lastN": 0,
+        "entryCrowd": {
+          "mc": 5,
+          "mn": 5
+        }
+      },
+      "code": null,
+      "signal": "SIGTERM",
+      "reason": "stopped to preserve memory headroom for the full suite and x02 demo",
+      "maxCgroupBytes": 5761384448,
+      "at": "2026-10-27T16:42:33.200Z"
+    }
+  ],
+  "status": "incomplete"
+}

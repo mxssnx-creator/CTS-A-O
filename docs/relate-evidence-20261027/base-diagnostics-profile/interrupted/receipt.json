@@ -1,0 +1,10 @@
+{
+  "sourceCommit": "8371d7d",
+  "runtimePatch": "isolated 500ms probe threshold",
+  "startedAt": "2026-10-27T17:43:27.852Z",
+  "endedAt": "2026-10-27T17:45:02.488Z",
+  "code": 1,
+  "signal": null,
+  "reason": "stopped to preserve demo-control memory headroom",
+  "peakCgroupBytes": 5833240576
+}

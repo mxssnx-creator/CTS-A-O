@@ -1,0 +1,65 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> build
+> node scripts/with-app-env.mjs vite build && npm run build:core-worker && npm run db:migrate
+
+[nitro:vercel] ℹ Using nodejs24.x runtime.
+[nitro:vercel] ℹ Using web entry format.
+Both esbuild and oxc options were set. oxc options will be used and esbuild options will be ignored. The following esbuild options were set: `{ legalComments: 'none' }`
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 1957 modules transformed.
+rendering chunks...
+.vercel/output/static/assets/styles-EeajTTjQ.css              34.30 kB
+.vercel/output/static/assets/market-CQOMskQ_.js                0.07 kB
+.vercel/output/static/assets/trading-CIwUCA48.js               0.07 kB
+.vercel/output/static/assets/settings-BmPZYDKL.js              0.07 kB
+.vercel/output/static/assets/useRouter-VhwLfQSd.js             0.15 kB
+.vercel/output/static/assets/model-cost-BGXH0XjV.js            0.30 kB
+.vercel/output/static/assets/progression-DygnuQpx.js           0.85 kB
+.vercel/output/static/assets/progress-C-M_JKOX.js              0.93 kB
+.vercel/output/static/assets/bots-BxbyHAaK.js                  1.16 kB
+.vercel/output/static/assets/indication-ui-B3C4VKjb.js         1.41 kB
+.vercel/output/static/assets/minimal-coord-iDZCDKap.js         1.42 kB
+.vercel/output/static/assets/execution-summary-_uMn1vR7.js     1.54 kB
+.vercel/output/static/assets/strategy-coverage-C-iMJp8g.js     1.79 kB
+.vercel/output/static/assets/matrix-DYsGnARA.js                2.35 kB
+.vercel/output/static/assets/signal-units-CM7P59S5.js          2.69 kB
+.vercel/output/static/assets/compare-C8WneSFr.js               3.84 kB
+.vercel/output/static/assets/promotion-evidence-DgG5znQq.js    4.42 kB
+.vercel/output/static/assets/results-DYmIizwc.js               4.76 kB
+.vercel/output/static/assets/config._id-TvXXzTmU.js            5.34 kB
+.vercel/output/static/assets/hourly-B4h51lk8.js                5.78 kB
+.vercel/output/static/assets/config-OdFdSxIS.js                8.69 kB
+.vercel/output/static/assets/v2-BnEZlSGV.js                    9.44 kB
+.vercel/output/static/assets/relate-CR3S8-OM.js                9.92 kB
+.vercel/output/static/assets/prehistoric-D23eXXxa.js          10.77 kB
+.vercel/output/static/assets/link-CkKc5ylV.js                 11.26 kB
+.vercel/output/static/assets/preset-settings-SxSV7qes.js      11.73 kB
+.vercel/output/static/assets/engine-BbDkiZv2.js               12.20 kB
+.vercel/output/static/assets/signal-config-DlWi9Upg.js        14.75 kB
+.vercel/output/static/assets/v2-CT60Gq8O.js                   15.71 kB
+.vercel/output/static/assets/charts-BiE6HSJc.js               17.09 kB
+.vercel/output/static/assets/trading-BpyNXt74.js              18.26 kB
+.vercel/output/static/assets/ui-BDp60SeC.js                   18.97 kB
+.vercel/output/static/assets/presets-dRppFCjM.js              19.55 kB
+.vercel/output/static/assets/stages-CwytpQld.js               22.96 kB
+.vercel/output/static/assets/statistics-B7rTcXIK.js           23.28 kB
+.vercel/output/static/assets/break-config-Cl5wJNxv.js         41.46 kB
+.vercel/output/static/assets/jsx-runtime-D6cXz5cu.js          41.58 kB
+.vercel/output/static/assets/registry-D56TpgF5.js             92.17 kB
+.vercel/output/static/assets/settings-NBfu9_2v.js            137.45 kB
+.vercel/output/static/assets/index-OpXo78FX.js               351.56 kB
+
+✓ built in 9.74s
+[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 9.5s of this 9.7s build (98%).
+The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+  - @tailwindcss/vite:generate:build transform (93%, 9.0s, 1 call)
+Additional hook time came from the hooks below and from hooks under 1s.
+2 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+  - tanstack-start-core:import-protection resolveId (5742 calls)
+  - tanstack-start-core::server-fn:client transform (15 calls)
+See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+
+vite v8.2.2 building ssr environment for production...
+transforming...

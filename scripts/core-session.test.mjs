@@ -33,6 +33,8 @@ describe("session CLI settings precedence", () => {
     const settingsPatch = source.indexOf('const settingsExtra = JSON.parse(arg("settings", "{}"));');
     const focusOverride = source.indexOf('if (arg("focus") === "all") rt.updateSettings({ focus: [] });');
     assert.ok(settingsPatch >= 0 && focusOverride > settingsPatch, "explicit all-focus override must win over the settings snapshot");
+    assert.match(source, /rt\.updateSettings\(\{\}, studyWithRequestedWindow\(wfExtra, preH, runH\)\)/,
+      "the requested replay interval must override stale preH/simH values from the desk");
   });
 });
 

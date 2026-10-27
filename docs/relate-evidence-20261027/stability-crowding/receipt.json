@@ -1,0 +1,79 @@
+{
+  "protocolSha256": "33a5d9c4e872aab170be9dbde7c5ea3d3bb21a46ec5d0fee86a04e2b1cd0f86f",
+  "startedAt": "2026-10-27T16:45:40.144Z",
+  "cases": [
+    {
+      "id": "unlimited",
+      "wf": {
+        "lastN": 0
+      },
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "maxCgroupBytes": 4555759616,
+      "at": "2026-10-27T16:46:06.545Z"
+    },
+    {
+      "id": "crowd-5",
+      "wf": {
+        "lastN": 0,
+        "entryCrowd": {
+          "mc": 5,
+          "mn": 5
+        }
+      },
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "maxCgroupBytes": 4534476800,
+      "at": "2026-10-27T16:46:32.477Z"
+    },
+    {
+      "id": "crowd-10",
+      "wf": {
+        "lastN": 0,
+        "entryCrowd": {
+          "mc": 10,
+          "mn": 10
+        }
+      },
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "maxCgroupBytes": 4627222528,
+      "at": "2026-10-27T16:46:59.334Z"
+    },
+    {
+      "id": "crowd-20",
+      "wf": {
+        "lastN": 0,
+        "entryCrowd": {
+          "mc": 20,
+          "mn": 20
+        }
+      },
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "maxCgroupBytes": 4947656704,
+      "at": "2026-10-27T16:47:25.385Z"
+    },
+    {
+      "id": "crowd-10-last-25",
+      "wf": {
+        "lastN": 25,
+        "entryCrowd": {
+          "mc": 10,
+          "mn": 10
+        }
+      },
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "maxCgroupBytes": 5101015040,
+      "at": "2026-10-27T16:47:51.060Z"
+    }
+  ],
+  "status": "complete",
+  "endedAt": "2026-10-27T16:47:51.060Z"
+}

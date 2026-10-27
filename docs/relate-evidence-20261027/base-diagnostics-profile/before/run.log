@@ -1,0 +1,15 @@
+[profile-clock] {"pid":16,"threadId":0,"isMainThread":true,"epochOffsetMs":1793103987831.0293}
+[profile-clock] {"pid":23,"threadId":0,"isMainThread":true,"epochOffsetMs":1793103987831.7722}
+[core-v2] compute #1 done in 144832 ms · sim PF including 69 open marks: 1.58 n 1330 · loop max 1102 ms (worst slice of the last 60 s 1052 ms in Tapes, 5 over 40 ms)
+{"tapePhase":{"ms":3720.296371999997,"maxSliceMs":2.5176829999982147,"slowest":"1 cores · 12 replies · longest history retain 0 ms","mainMs":2351.2347500011383},"mergePhase":{"ms":1.9566760000016075,"maxSliceMs":1.9566760000016075,"slowest":" (0 ms)"},"stallProbes":[{"startedAt":1793122533905,"ms":1102,"samples":12,"states":{"R":12},"syscalls":{"running":12},"wchans":{"0":12},"mainCpuMs":1060,"threadsCpuMs":{"V8Worker":610,"v8:ProfEvntProc":20,"WorkerThread":90},"stealTicks":14,"gc":[],"verdict":"js","where":"Tapes"}]}
+▶ processing through the stages, every strategy type, every toggle combination
+  ✔ Base evaluates every combo of every lane; Main keeps lanes; tapes carry every strategy type and range (73.187135ms)
+✔ processing through the stages, every strategy type, every toggle combination (145462.776891ms)
+ℹ tests 1
+ℹ suites 1
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 146214.448673

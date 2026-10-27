@@ -1,0 +1,45 @@
+{
+  "sourceCommit": "38c9c7d87235db57a5d11376e639c28ea6f511a3",
+  "runtimePatch": "Only the opt-in probe threshold was reduced to 500ms in a disposable source copy.",
+  "patchedRuntimeSha256": "4e1cee5c33fc23c0f085ded9c097b3e6f41a26271320c6af2d350dc37a3efeb2",
+  "scope": "one synthetic four-symbol fixture; not live or full grid",
+  "probeThresholdMs": 500,
+  "loopMaxMs": 1011,
+  "tapePhase": {
+    "ms": 3561.9518709999975,
+    "maxSliceMs": 3.062036999996053,
+    "slowest": "1 cores · 12 replies · longest history retain 0 ms",
+    "mainMs": 64.21856499984278
+  },
+  "mergePhase": {
+    "ms": 2.372793999995338,
+    "maxSliceMs": 2.372793999995338,
+    "slowest": " (1 ms)"
+  },
+  "stallProbes": [
+    {
+      "startedAt": 1793122326618,
+      "ms": 1007,
+      "samples": 10,
+      "states": {
+        "R": 10
+      },
+      "syscalls": {
+        "running": 10
+      },
+      "wchans": {
+        "0": 10
+      },
+      "mainCpuMs": 960,
+      "threadsCpuMs": {
+        "V8Worker": 370,
+        "WorkerThread": 60
+      },
+      "stealTicks": 6,
+      "gc": [],
+      "verdict": "js",
+      "where": "Tapes"
+    }
+  ],
+  "interpretation": "The captured pause used substantial main-thread CPU. The probe cannot distinguish individual JavaScript functions from native work, and a missing GC event is not proof that GC was absent."
+}

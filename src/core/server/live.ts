@@ -143,6 +143,8 @@ export interface LiveIntentLite {
   barT: number;
   /** Extra multiplier relative to a normal order; 1 = neutral. */
   volFactor?: number;
+  /** Range multiplier captured by the validated Real entry. */
+  rangeVol?: number;
   /**
    * the simulation manages the exit (trailing stop, DCA / Axis legs, …): a static exchange SL / TP cannot mirror
    * it, so entries mode skips it (overall mode mirrors every paper exit)
@@ -150,6 +152,12 @@ export interface LiveIntentLite {
   managed?: boolean;
   /** Stable-02 relation-volume multiplier captured by the runtime's validated intent. */
   coordVol?: number;
+  /** Block's settled-order execution multiplier captured by the Real-stage decision. */
+  blockVol?: number;
+  /** Relate's settled-order execution multiplier captured by the Real-stage decision. */
+  relateVol?: number;
+  /** Real-stage maximum for the combined external execution multiplier. */
+  maxStack?: number;
   /** This entry belongs to the negative-hour hedge-only Signal set. */
   hedge?: boolean;
   /** Hedge-only size multiplier captured with the intent. */

@@ -1,0 +1,205 @@
+{
+  "kind": "post-hoc allocation sensitivity; the strategy decisions and accepted feedback were computed before these caps were applied",
+  "window": {
+    "start": "2026-10-26T13:00:00Z",
+    "end": "2026-10-27T13:00:00Z"
+  },
+  "postBase": {
+    "at": "2026-10-26T13:00:00Z",
+    "pf": 2.877097,
+    "passed": 343,
+    "evaluated": 732
+  },
+  "account": {
+    "balance": 10000,
+    "unitUsd": 2,
+    "leverage": 10,
+    "cost": 0.0015,
+    "maxPositionX": 0.2,
+    "maxExposureX": 1
+  },
+  "limitations": "Not an independently rerun adaptive strategy, venue execution, held-out evidence, or proof of profitability. Zero-funded histories may still affect later original strategy decisions.",
+  "rows": [
+    {
+      "arm": "off",
+      "unitReturnPf": 0.7526954688453649,
+      "sizedDollarPf": 0.7526954688453457,
+      "wins": 4239,
+      "losses": 3546,
+      "netUsd": -12.615323157025053,
+      "fundedCounts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999,
+        "basis": "funded-modeled-allocations"
+      },
+      "zeroAllocatedSettled": 0,
+      "zeroAllocatedOpen": 0,
+      "unknownAllocations": 0,
+      "cap": {
+        "on": true,
+        "maxPositionX": 0.2,
+        "maxExposureX": 1,
+        "source": "flags",
+        "capped": 0,
+        "scaled": 0,
+        "cappedOpen": 0,
+        "scaledOpen": 0,
+        "byPosition": 0,
+        "byExposure": 0
+      },
+      "marginOver": {
+        "minutes": 0,
+        "firstT": null,
+        "maxRatio": 0.04880485694038272
+      },
+      "checks": {
+        "passed": 67,
+        "total": 67
+      },
+      "rawInput": {
+        "file": "allocation-off-raw.json.gz",
+        "sha256": "9d28b29f8616337ca64a75c9d60cf2d626b695dcf7747f2bb7d05869ee9aa505"
+      }
+    },
+    {
+      "arm": "auto",
+      "unitReturnPf": 0.5684147003131648,
+      "sizedDollarPf": 0.3056421567084626,
+      "wins": 2817,
+      "losses": 2859,
+      "netUsd": -74.13069604969787,
+      "fundedCounts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 7150,
+        "settledOrders": 5676,
+        "openOrders": 1474,
+        "basis": "funded-modeled-allocations"
+      },
+      "zeroAllocatedSettled": 0,
+      "zeroAllocatedOpen": 0,
+      "unknownAllocations": 0,
+      "cap": {
+        "on": true,
+        "maxPositionX": 0.2,
+        "maxExposureX": 1,
+        "source": "flags",
+        "capped": 0,
+        "scaled": 0,
+        "cappedOpen": 0,
+        "scaledOpen": 0,
+        "byPosition": 0,
+        "byExposure": 0
+      },
+      "marginOver": {
+        "minutes": 0,
+        "firstT": null,
+        "maxRatio": 0.09649089212505955
+      },
+      "checks": {
+        "passed": 67,
+        "total": 67
+      },
+      "rawInput": {
+        "file": "allocation-auto-raw.json.gz",
+        "sha256": "b1c123ca749f691e26427433194e9cb0fc6ced035138e175e0b57a34bd36935c"
+      }
+    },
+    {
+      "arm": "additive-r02",
+      "unitReturnPf": 0.7637808536828713,
+      "sizedDollarPf": 0.41030976417841214,
+      "wins": 4228,
+      "losses": 3461,
+      "netUsd": -73.98893597836984,
+      "fundedCounts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9688,
+        "settledOrders": 7689,
+        "openOrders": 1999,
+        "basis": "funded-modeled-allocations"
+      },
+      "zeroAllocatedSettled": 96,
+      "zeroAllocatedOpen": 0,
+      "unknownAllocations": 0,
+      "cap": {
+        "on": true,
+        "maxPositionX": 0.2,
+        "maxExposureX": 1,
+        "source": "flags",
+        "capped": 96,
+        "scaled": 355,
+        "cappedOpen": 0,
+        "scaledOpen": 0,
+        "byPosition": 0,
+        "byExposure": 451
+      },
+      "marginOver": {
+        "minutes": 0,
+        "firstT": null,
+        "maxRatio": 0.10100173284053794
+      },
+      "checks": {
+        "passed": 67,
+        "total": 67
+      },
+      "rawInput": {
+        "file": "allocation-additive-r02-raw.json.gz",
+        "sha256": "97483eb34ee0a2809894b2aea294ec57d0546e0527e64d03c73da266a6f0defd"
+      }
+    },
+    {
+      "arm": "additive-r26",
+      "unitReturnPf": 1.0058016464851196,
+      "sizedDollarPf": 1.0611007580062424,
+      "wins": 3471,
+      "losses": 2445,
+      "netUsd": 8.547767254924679,
+      "fundedCounts": {
+        "openedPositions": 75,
+        "closedPositions": 63,
+        "openPositions": 12,
+        "openedOrders": 7426,
+        "settledOrders": 5916,
+        "openOrders": 1510,
+        "basis": "funded-modeled-allocations"
+      },
+      "zeroAllocatedSettled": 1869,
+      "zeroAllocatedOpen": 489,
+      "unknownAllocations": 0,
+      "cap": {
+        "on": true,
+        "maxPositionX": 0.2,
+        "maxExposureX": 1,
+        "source": "flags",
+        "capped": 1869,
+        "scaled": 2943,
+        "cappedOpen": 489,
+        "scaledOpen": 1355,
+        "byPosition": 3954,
+        "byExposure": 5669
+      },
+      "marginOver": {
+        "minutes": 0,
+        "firstT": null,
+        "maxRatio": 0.10085375175941828
+      },
+      "checks": {
+        "passed": 67,
+        "total": 67
+      },
+      "rawInput": {
+        "file": "allocation-additive-r26-raw.json.gz",
+        "sha256": "46d4325df1e925f679850cccffbef160c0242e0a40f2d12782b1ff94bae7ccba"
+      }
+    }
+  ],
+  "currentSourceReplay": "The archived 2.6-ratio raw stream was decompressed and every total was reproduced exactly after the DCA/Axis audit correction."
+}

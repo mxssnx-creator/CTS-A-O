@@ -1,0 +1,103 @@
+{
+  "createdAt": "2026-10-27T17:10:33.539Z",
+  "classification": "Additional historical comparison selected after the first window; archived feed appeared in prior Signal studies, so not guaranteed an unseen holdout or actual execution",
+  "sourceCommit": "40b9c03ddada0e1f585c6c2d1ec50f43b1f5cb20",
+  "archive": "scripts/studies/signals-coverage/feed.json.gz",
+  "archiveSha256": "e21d39b0b7583685e2fe355f6261e0860deff3057ca5c81b43a6c3cf374e2f03",
+  "feed": "docs/relate-evidence-20261027/stability-second-window/feed.json.gz",
+  "feedSha256": "45867028a35238abb4deccda8b4f493e8945f1810840af17f8257e4930039d7b",
+  "desk": "docs/relate-evidence-20261027/stability-second-window/desk.json",
+  "deskSha256": "6c90cda168f21951b2bfd2174e8b55aa95b28ccf61d2c4ddffb4bebe07fff414",
+  "symbols": 12,
+  "evaluationFrom": "2026-10-15T21:00:00Z",
+  "start": "2026-10-16T21:00:00Z",
+  "end": "2026-10-17T21:00:00Z",
+  "prehistoryHours": 24,
+  "selectionHours": 24,
+  "mode": "existing causal Real admission; account funding caps off; normal and trailing only; Relate off",
+  "cases": [
+    {
+      "id": "unlimited",
+      "wf": {
+        "maxPerSymbol": 0,
+        "lastN": 0
+      }
+    },
+    {
+      "id": "last-15",
+      "wf": {
+        "maxPerSymbol": 0,
+        "lastN": 15
+      }
+    },
+    {
+      "id": "last-25",
+      "wf": {
+        "maxPerSymbol": 0,
+        "lastN": 25
+      }
+    },
+    {
+      "id": "per-symbol-5",
+      "wf": {
+        "maxPerSymbol": 5,
+        "lastN": 0
+      }
+    },
+    {
+      "id": "per-symbol-20",
+      "wf": {
+        "maxPerSymbol": 20,
+        "lastN": 0
+      }
+    },
+    {
+      "id": "per-symbol-50",
+      "wf": {
+        "maxPerSymbol": 50,
+        "lastN": 0
+      }
+    },
+    {
+      "id": "crowd-5",
+      "wf": {
+        "lastN": 0,
+        "entryCrowd": {
+          "mc": 5,
+          "mn": 5
+        }
+      }
+    },
+    {
+      "id": "crowd-10",
+      "wf": {
+        "lastN": 0,
+        "entryCrowd": {
+          "mc": 10,
+          "mn": 10
+        }
+      }
+    },
+    {
+      "id": "crowd-20",
+      "wf": {
+        "lastN": 0,
+        "entryCrowd": {
+          "mc": 20,
+          "mn": 20
+        }
+      }
+    },
+    {
+      "id": "crowd-10-last-25",
+      "wf": {
+        "lastN": 25,
+        "entryCrowd": {
+          "mc": 10,
+          "mn": 10
+        }
+      }
+    }
+  ],
+  "comparisons": "Report every predeclared arm and all losses and skips; compare full window and each hour. Different symbols and market from first window; no saved/live setting change."
+}

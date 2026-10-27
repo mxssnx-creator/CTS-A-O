@@ -4,6 +4,7 @@ import { RANGE_LABEL } from "@/core/minimal-coord";
 import { hasUnitReturnBasis, unitStatsPfText } from "./accounting";
 import { pooledBasePfText, signalProgressCounts } from "./progression";
 import { fmt, pfTone, Pill } from "./ui";
+import { StrategyCoverageTable } from "./strategy-coverage";
 
 type Any = any;
 
@@ -112,6 +113,14 @@ export function PrehistoricPanel(props: {
       </div>
       <div className="v2-grid v2-cols-6" style={{ gap: 8 }}>
         <Stat
+          k="Post-Base validation PF"
+          v={st.postBaseValidation?.noLoss ? "no losses" : fmt.pf(st.postBaseValidation?.pf)}
+          cls={pfTone(st.postBaseValidation?.pf, props.minPf)}
+          sub={st.postBaseValidation
+            ? `${fmt.num(st.postBaseValidation.passed)} / ${fmt.num(st.postBaseValidation.evaluated)} engine configs · ${fmt.frac(st.postBaseValidation.evaluated > 0 ? st.postBaseValidation.passed / st.postBaseValidation.evaluated : null)} · ${fmt.time(st.postBaseValidation.at)} UTC`
+            : "engine selection-pool validation unavailable"}
+        />
+        <Stat
           k="Settled model return PF"
           v={s ? unitStatsPfText(s) : "–"}
           cls={pfTone(s?.pf, props.minPf)}
@@ -136,6 +145,9 @@ export function PrehistoricPanel(props: {
         <Stat k="Green hours" v={fmt.ratio(s?.greenHours)} sub={`net ${fmt.pct(s?.net, 1)}`} />
         <Stat k="Symbols trading" v={`${s?.perSymbol?.length ?? 0}`} sub={`of ${p.ready} ready`} />
       </div>
+      {st.postBaseValidation && <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+        Validation PF pools the passing engine configs&apos; overlapping historical windows. It is separate from later modeled closes, allocated paper results and exchange fills; Signals use their own context validation.
+      </div>}
       <div className="v2-grid v2-cols-6" style={{ gap: 8 }}>
         <Stat k="Base evaluated" v={fmt.num(st.baseEvaluated ?? c.base)} sub="pairs" />
         <Stat
@@ -148,6 +160,7 @@ export function PrehistoricPanel(props: {
         <Stat k="Real" v={fmt.num(c.real)} sub="selected now" />
         <Stat k="Evals · armed" v={`${c.evals} · ${c.armed}`} sub="continuous evals" />
       </div>
+      <StrategyCoverageTable coverage={st.strategyCoverage} />
       {s && !knownReturns && <div className="v2-muted">Unit-return basis unavailable for {fmt.num(s.unknownReturns)} closes. All {fmt.num(s.n)} modeled closes remain counted; this is not a zero-return sample.</div>}
       {st.signals?.enabled && <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
         Signals: {fmt.num(signalCounts.discovery)} initialized discovery pairs · {fmt.num(signalCounts.representativePassed)} representative pairs passed Base · {fmt.num(signalCounts.requested)} requested protection configurations (effective IDs can merge identical cells).

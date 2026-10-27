@@ -1,0 +1,9 @@
+{
+  "startedAt": "2026-10-27T17:20:30.674Z",
+  "endedAt": "2026-10-27T17:23:06.029Z",
+  "sourceCommit": "11451de",
+  "code": 0,
+  "signal": null,
+  "reason": null,
+  "peakCgroupBytes": 5122592768
+}

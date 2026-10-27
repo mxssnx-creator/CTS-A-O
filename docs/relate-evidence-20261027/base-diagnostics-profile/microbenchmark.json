@@ -1,0 +1,172 @@
+{
+  "startedAt": "2026-10-27T17:49:36.353Z",
+  "endedAt": "2026-10-27T17:49:41.896Z",
+  "status": "complete",
+  "beforeCommit": "38c9c7d87235db57a5d11376e639c28ea6f511a3",
+  "afterCommit": "02ad0ae",
+  "note": "Synthetic diagnostic microbenchmark; not an end-to-end or live-cycle measurement.",
+  "results": [
+    {
+      "repeat": 1,
+      "mode": "before",
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "peakCgroupBytes": 4753924096,
+      "measurements": {
+        "mode": "before",
+        "runs": 16000,
+        "digest": "aa6af2be0961fed0ac2fe520c21d031d99faccc1fe01b1a815431b2845968f11",
+        "computeMs": 465.948858,
+        "maxHeartbeatGapMs": 466.580728,
+        "beats": 5,
+        "rssMiB": 168.0625,
+        "phases": null
+      },
+      "stderr": ""
+    },
+    {
+      "repeat": 1,
+      "mode": "after",
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "peakCgroupBytes": 4759838720,
+      "measurements": {
+        "mode": "after",
+        "runs": 16000,
+        "digest": "aa6af2be0961fed0ac2fe520c21d031d99faccc1fe01b1a815431b2845968f11",
+        "computeMs": 446.49169800000004,
+        "maxHeartbeatGapMs": 29.453704000000073,
+        "beats": 37,
+        "rssMiB": 190.5078125,
+        "phases": {
+          "Base ranges": {
+            "ms": 113.44749300000007,
+            "maxSliceMs": 16.335071000000028,
+            "slowest": " (9 ms)"
+          },
+          "Base gate sensitivity": {
+            "ms": 261.273733,
+            "maxSliceMs": 14.444495999999958,
+            "slowest": " (3 ms)"
+          },
+          "Base gate reasons": {
+            "ms": 70.63090499999998,
+            "maxSliceMs": 12.351062999999954,
+            "slowest": " (1 ms)"
+          }
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "repeat": 2,
+      "mode": "before",
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "peakCgroupBytes": 4758208512,
+      "measurements": {
+        "mode": "before",
+        "runs": 16000,
+        "digest": "aa6af2be0961fed0ac2fe520c21d031d99faccc1fe01b1a815431b2845968f11",
+        "computeMs": 480.09026800000004,
+        "maxHeartbeatGapMs": 480.71605900000003,
+        "beats": 5,
+        "rssMiB": 172.765625,
+        "phases": null
+      },
+      "stderr": ""
+    },
+    {
+      "repeat": 2,
+      "mode": "after",
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "peakCgroupBytes": 4761153536,
+      "measurements": {
+        "mode": "after",
+        "runs": 16000,
+        "digest": "aa6af2be0961fed0ac2fe520c21d031d99faccc1fe01b1a815431b2845968f11",
+        "computeMs": 466.866719,
+        "maxHeartbeatGapMs": 28.082904999999982,
+        "beats": 38,
+        "rssMiB": 180.80078125,
+        "phases": {
+          "Base ranges": {
+            "ms": 125.69208800000001,
+            "maxSliceMs": 18.562491000000023,
+            "slowest": " (9 ms)"
+          },
+          "Base gate sensitivity": {
+            "ms": 269.016527,
+            "maxSliceMs": 13.029982000000018,
+            "slowest": " (2 ms)"
+          },
+          "Base gate reasons": {
+            "ms": 69.83451200000002,
+            "maxSliceMs": 12.109425999999985,
+            "slowest": " (1 ms)"
+          }
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "repeat": 3,
+      "mode": "before",
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "peakCgroupBytes": 4751106048,
+      "measurements": {
+        "mode": "before",
+        "runs": 16000,
+        "digest": "aa6af2be0961fed0ac2fe520c21d031d99faccc1fe01b1a815431b2845968f11",
+        "computeMs": 450.026895,
+        "maxHeartbeatGapMs": 450.750571,
+        "beats": 5,
+        "rssMiB": 169.6640625,
+        "phases": null
+      },
+      "stderr": ""
+    },
+    {
+      "repeat": 3,
+      "mode": "after",
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "peakCgroupBytes": 4761874432,
+      "measurements": {
+        "mode": "after",
+        "runs": 16000,
+        "digest": "aa6af2be0961fed0ac2fe520c21d031d99faccc1fe01b1a815431b2845968f11",
+        "computeMs": 441.03735000000006,
+        "maxHeartbeatGapMs": 27.583988999999974,
+        "beats": 37,
+        "rssMiB": 187.9609375,
+        "phases": {
+          "Base ranges": {
+            "ms": 115.75391000000002,
+            "maxSliceMs": 20.83330699999999,
+            "slowest": " (9 ms)"
+          },
+          "Base gate sensitivity": {
+            "ms": 244.048806,
+            "maxSliceMs": 12.2278510000001,
+            "slowest": " (2 ms)"
+          },
+          "Base gate reasons": {
+            "ms": 79.87775599999998,
+            "maxSliceMs": 12.074676000000068,
+            "slowest": " (1 ms)"
+          }
+        }
+      },
+      "stderr": ""
+    }
+  ]
+}

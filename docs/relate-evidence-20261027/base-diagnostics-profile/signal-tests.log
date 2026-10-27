@@ -1,0 +1,46 @@
+[core-v2] compute #1 done in 460 ms · sim PF including 0 open marks: ∞ (no loss; gate score 4.00) n 200 · loop max 137 ms (worst slice of the last 60 s 111 ms in Base, 1 over 40 ms)
+[core-v2] compute #1 done in 944 ms · sim PF including 0 open marks: ∞ (no loss; gate score 4.00) n 200 · loop max 137 ms (worst slice of the last 60 s 117 ms in Base, 1 over 40 ms)
+✔ full worker/fallback and incremental rebuilds preserve independent Signal history (1385.895593ms)
+[core-v2] compute #1 done in 326 ms · sim PF including 0 open marks: ∞ (no loss; gate score 4.00) n 212 · loop max 35 ms
+✔ local historical fitting reports intermediate progress and completes the job (395.973404ms)
+[core-v2] compute #1 done in 568 ms · sim PF including 0 open marks: ∞ (no loss; gate score 4.00) n 300 · loop max 38 ms
+[core-v2] compute #1 done in 326 ms · sim PF including 0 open marks: ∞ (no loss; gate score 4.00) n 300 · loop max 49 ms
+✔ historical coordinators use the Signal range and exact configs survive incremental rebuilds (1277.027569ms)
+✔ a Signal validated between report hours executes on its next minute onset (30.404126ms)
+✔ minute activation equals fresh full ranking, including family caps, Exit keys and backward clocks (53.93936ms)
+✔ cancelling an activation build cannot publish a partial ranking or retain stale minute verdicts (7.181693ms)
+✔ prepared own histories remain causal under adversarial future returns and bounded cache eviction (8.611302ms)
+✔ activation cache budgets metadata as well as columns and preserves gates across LRU eviction (4.902621ms)
+✔ early rejected Signals recover at strict close boundaries, on policy changes and on backward clocks (5.183926ms)
+✔ a cached PF rejection expires when an old loss leaves the rolling history, without a new close (6.631732ms)
+▶ signals: the active ranking
+  ✔ a pair held only for its open positions never takes an active slot from a pair that may open (22.794492ms)
+  ✔ keeps Signal Exit active outside the Signals Normal/Trailing cap and bypasses Signal entry Base (0.654295ms)
+✔ signals: the active ranking (24.565344ms)
+▶ signals: Strategy Base validation window
+  ✔ preserves runtime tie order across the pooled Signals last-N boundary (1.531359ms)
+  ✔ uses signalValidLastN in both diagnostics and actual Base selection (1.551628ms)
+  ✔ uses only the Signals range's own validation and entry last-N values (3.894053ms)
+✔ signals: Strategy Base validation window (7.237305ms)
+▶ signals: acceptance on the source's record
+  ✔ counts the group's closes from before the run (regression: the first hours of every run accepted nothing) (3.854145ms)
+  ✔ keeps lanes and parameter ranges independent; closes after the entry never count (3.552921ms)
+  ✔ the record by group: count and PF of the closes in (t − hours, t] (0.428122ms)
+✔ signals: acceptance on the source's record (8.200136ms)
+▶ signal defaults (the validated settings, PR #65)
+  ✔ judge signals on their own exits, on all four lanes, with acceptance and their own Block level (7.302391ms)
+✔ signal defaults (the validated settings, PR #65) (7.494505ms)
+✔ rejected and legacy unproven Signal closes cannot qualify or veto shared post-Base direction and cluster gates (3.133852ms)
+✔ settled accepted losses still block and a rejected sibling cannot consume the accepted onset (0.291781ms)
+✔ walk-forward preserves qualified admissions against cap-rejected sibling losses and replays the exact accepted cohort (33.076988ms)
+▶ signal history window
+  ✔ is 150 h independently of the engine history and warmup (17.641984ms)
+✔ signal history window (18.772271ms)
+ℹ tests 23
+ℹ suites 5
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4958.040708
