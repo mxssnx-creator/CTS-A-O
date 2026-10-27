@@ -576,6 +576,8 @@ export function fakeRt(db: CoreDb = new CoreDb(":memory:"), symbols = 12) {
   let positions: FakePaperPosition[] = [];
   const rt = {
     generation: 1,
+    // This synthetic fixture never sends to a live venue; explicit opt-in for its ephemeral memory database.
+    testOnlyAllowMemoryLive: true,
     db,
     settings: {
       ...DEFAULT_SETTINGS,

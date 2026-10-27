@@ -150,15 +150,20 @@ export class CoreDb {
   private loadState(path: string) {
     this.statePath = path;
     try {
-      if (!existsSync(path)) return;
-      const j = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+      const j: unknown = JSON.parse(readFileSync(path, "utf8"));
+      if (!j || typeof j !== "object" || Array.isArray(j)) throw new Error("state root must be an object");
       for (const [k, v] of Object.entries(j)) if (isDurableKey(k)) this.kvWrite(k, v);
     } catch (err) {
-      console.warn(
-        `[core-v2] state file ${path} not loaded: ${err instanceof Error ? err.message : err}`,
-      );
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+      // An unreadable configured file may contain the only account binding or pending order reservation.
+      // Never treat it as a pristine state and bind it to whatever key is currently configured.
+      this.lastStateError = err instanceof Error ? err.message : String(err);
+      console.warn(`[core-v2] state file ${path} not loaded: ${this.lastStateError}`);
     }
   }
+
+  /** Whether a state file is actually configured; flushState alone intentionally permits memory-only tests. */
+  hasStateStore(): boolean { return this.statePath !== null; }
 
   /** Debounced write of the durable keys; a read-only host disables it quietly. */
   private persistState() {
@@ -562,6 +567,7 @@ const DURABLE_KEYS = new Set([
   "laneQuantityCaps",
   "positionExitCleanup",
   "orphanExitFences",
+  "liveOwnershipAccount",
   "controlSuppressed",
   "hostSettingsApplied",
   "stopHits",

@@ -5,7 +5,7 @@ import { liveKv, resetLiveBackoff, stepLive, type LiveStatus } from "./live.serv
 import { liveTag, makeCoid } from "./live.ts";
 import { liveTrades, type LedgerRow } from "../statistics.ts";
 import { authorizeSyntheticLanes, fakeRt, syntheticExecutionRun } from "../test-support.ts";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
@@ -79,6 +79,19 @@ function fixture(db = new CoreDb(":memory:")) {
     "SELECT o.*,f.fill_px AS fillPx,f.fee,f.fee_known AS feeKnown FROM live_orders o LEFT JOIN live_fills f USING(coid) ORDER BY o.at,o.rowid",
   ), liveTag(rt.settings.live.connId).length);
   return { rt, state, step, seed, history };
+}
+
+/** Establish the simulated account on an empty store before adding same-account historical rows. */
+async function isolatedBoundFixture() {
+  const first = fixture();
+  await first.step([]);
+  const binding = first.rt.db.kvGet("liveOwnershipAccount");
+  assert.ok(binding, "the empty fixture established its account before seeding history");
+  // The synthetic live-cache flush may still have an unref'd timer; keep this in-memory fixture open until exit.
+  mock.restoreAll();
+  const next = fixture();
+  next.rt.db.kvSet("liveOwnershipAccount", binding);
+  return next;
 }
 
 let fixtureClock = 1_790_000_000_000;
@@ -157,8 +170,25 @@ describe("entries mode: actual MARKET execution quantities", () => {
     assert.equal(state.sent.filter((o) => o.type === "MARKET").length, 2, "each exact direction remains deduplicated");
   });
 
+  for (const legacy of ["entry", "pending"] as const) it(`unbound legacy ${legacy} remains held without venue writes or polling`, async () => {
+    const { rt, state, step } = fixture();
+    const coid = makeCoid(rt.settings.live.connId, "E"), key = `${intent.cfg}|${intent.sym}|${intent.barT}`;
+    if (legacy === "entry") rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+      coid, intent.cfg, intent.sym, 1, "E", 1, 10, "ok", key, Date.now());
+    else rt.db.kvSet(`entriesPendingExecutions|${rt.settings.live.connId}`, {
+      [coid]: { oid: "unknown-account-order", cfg: intent.cfg, sym: intent.sym, side: 1, kind: "E", sentQty: 1, px: 10, key, at: Date.now() },
+    });
+    const before = rt.db.all("SELECT * FROM live_orders");
+    const status = await step([intent]);
+    assert.match(status.reason, /legacy live ownership has no account fingerprint/i);
+    assert.equal(state.sent.length, 0); assert.equal(state.polls, 0);
+    assert.deepEqual(rt.db.all("SELECT * FROM live_orders"), before);
+    assert.equal(rt.db.kvGet("liveOwnershipAccount"), undefined);
+  });
+
   it("a legacy row with exact long side blocks only that side without rewriting the row", async () => {
     const { rt, state, step } = fixture();
+    await step([]); // establish account identity while the ledger is still empty
     const coid = makeCoid(rt.settings.live.connId, "E"), legacy = `${intent.cfg}|${intent.sym}|${intent.barT}`;
     rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
       coid, intent.cfg, intent.sym, 1, "E", 0, 10, "error", legacy, Date.now() - 1_000);
@@ -172,6 +202,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
   for (const legacy of ["missing-side", "conflicting-side", "malformed-key"] as const) {
     it(`an ${legacy} legacy identity conservatively holds both sides`, async () => {
       const { rt, state, step } = fixture();
+      await step([]); // establish account identity while the ledger is still empty
       const coid = makeCoid(rt.settings.live.connId, "E"), key = `${intent.cfg}|${intent.sym}|${intent.barT}`;
       const msg = legacy === "malformed-key" ? "unparseable-legacy" : legacy === "conflicting-side" ? `${key}|side=-1` : key;
       rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -230,7 +261,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
   });
 
   it("compresses repeated terminal bars to one directional watermark without discarding a pending request", async () => {
-    const { rt, step } = fixture();
+    const { rt, step } = await isolatedBoundFixture();
     for (let bar = 1; bar <= 100; bar++)
       rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
         `${liveTag(rt.settings.live.connId)}Ehistory${bar}`, intent.cfg, intent.sym, 1, "E", 0, 10, "error",
@@ -281,7 +312,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
   });
 
   it("a durable non-dispatch marker wins over stale pre-crash request metadata", async () => {
-    const { rt, state, step } = fixture();
+    const { rt, state, step } = await isolatedBoundFixture();
     const coid = makeCoid(rt.settings.live.connId, "E");
     const key = `${intent.cfg}|${intent.sym}|${intent.barT}`;
     rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -713,6 +744,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
   for (const gate of ["gross", "risk", "backstop"] as const) {
     it(`${gate} still reserves an owned position protected by its resting stop after the24h recent-entry window`, async () => {
       const { rt, state, step, seed } = fixture();
+      await step([]); // establish account identity while the ledger is still empty
       Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
         maxExposureX: gate === "gross" ? 1 : 0, maxRiskPct: gate === "risk" ? .05 : 0,
         maxBackstopLossPct: gate === "backstop" ? .05 : 0, minFreeMargin: 0 });
@@ -1024,6 +1056,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
 
   it("a partially executed protective close is not retried until exact terminal cancellation, then only its remaining quantity", async () => {
     const { rt, state, step, seed } = fixture();
+    await step([]); // establish account identity while the ledger is still empty
     seed();
     state.close.order = { orderId: "close", status: "NEW", executedQty: 0 };
     await step([]);
@@ -1061,6 +1094,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
 
   it("an opposite-side stop row with the same old message cannot suppress a needed protective close", async () => {
     const { rt, state, step, seed } = fixture();
+    await step([]); // establish account identity while the ledger is still empty
     seed();
     const coid = makeCoid(rt.settings.live.connId, "S");
     rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -1075,6 +1109,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
 
   it("zero and partial accepted protective closes do not overbook closes or submit duplicates", async () => {
     const { rt, state, step, seed, history } = fixture();
+    await step([]); // establish account identity while the ledger is still empty
     seed();
     state.close.order = { orderId: "close", status: "NEW", executedQty: 0 };
     assert.equal((await step([])).closed, 0);
@@ -1151,9 +1186,14 @@ describe("entries mode: actual MARKET execution quantities", () => {
       first.state.entry.order = { orderId: "entry", status: "NEW", executedQty: 0 };
       await first.step();
       const original = db.get<{ coid: string; at: number }>("SELECT coid,at FROM live_orders WHERE kind='E'")!;
+      const binding = db.kvGet("liveOwnershipAccount");
+      assert.ok(binding);
+      // Only the verified account binding is carried in state; the orders and pending executions must come from
+      // the journal. Without this binding the legacy journal correctly cannot be assigned to the current account.
+      const statePath = join(dir, "binding.json");
+      writeFileSync(statePath, JSON.stringify({ liveOwnershipAccount: binding }));
       mock.restoreAll();
-      // A new database and runtime see the journal only: no snapshot, KV flush or process-local pending map.
-      const restored = new CoreDb(":memory:");
+      const restored = new CoreDb(":memory:", { statePath });
       restored.journalPath = db.journalPath;
       assert.ok(restored.replayJournal() >= 3);
       const pending = restored.kvGet<Record<string, { sentQty: number; oid: string }>>("entriesPendingExecutions|bingx-vst-02")!;
@@ -1170,7 +1210,8 @@ describe("entries mode: actual MARKET execution quantities", () => {
       assert.equal(restored.get<{ qty: number }>("SELECT qty FROM live_orders WHERE coid=?", original.coid)?.qty, 1);
       assert.equal(next.history().length, 1);
       assert.equal(next.history()[0].entry, 10.6);
-      const again = new CoreDb(":memory:");
+      writeFileSync(statePath, JSON.stringify({ liveOwnershipAccount: binding }));
+      const again = new CoreDb(":memory:", { statePath });
       again.journalPath = db.journalPath;
       again.replayJournal();
       const after = again.kvGet<Record<string, unknown>>("entriesPendingExecutions|bingx-vst-02")!;
@@ -1187,6 +1228,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
       const first = fixture(db);
       if (kind === "E") first.state.entry.order = { orderId: "entry", status: "NEW", executedQty: 0 };
       else {
+        await first.step([]); // bind the known account before seeding its existing position
         first.seed();
         first.state.close.order = { orderId: "close", status: "NEW", executedQty: 0 };
       }

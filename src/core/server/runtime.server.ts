@@ -1,4 +1,5 @@
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
+import { lstatSync } from "node:fs";
 import { mergeWorkerTapesGen } from "./tape-merge.ts";
 import { strategyCoverageGen, type StrategyCoverage } from "./strategy-coverage.ts";
 import { validationProgressOf, type ValidationProgress } from "../validation-progress.ts";
@@ -1403,20 +1404,31 @@ export class CoreRuntime {
     if (this.disposed) throw new Error("runtime disposed");
     if (!this.stopped && this.status.state !== "idle" && this.status.state !== "error") return;
     if (this.snapshotPath) this.db.journalPath = `${this.snapshotPath}.journal`;
-    if (this.status.state === "idle" && this.snapshotPath && this.db.restore(this.snapshotPath)) {
-      // the ledger writes since that snapshot (a crash between snapshots loses none of them)
-      const n = this.db.replayJournal();
-      this.baseConfigRunner.restore(this.db.kvGet<BaseConfigSnapshot>("baseConfigCounts"));
-      this.db.event(
-        "info",
-        `restored snapshot ${this.snapshotPath}${n ? ` + ${n} journaled write(s)` : ""}`,
-      );
-      // the paper book the snapshot carries (an empty book here held nothing: every unselected config's position
-      // was closed on the exchange after the first compute)
-      if (!this.paper.positions.length && !this.paper.selected.length) {
-        const p = this.restorePaperBook();
-        if (p)
-          this.db.event("info", `paper book continued from the snapshot: ${p} open position(s)`);
+    if (this.status.state === "idle" && this.snapshotPath) {
+      if (this.db.restore(this.snapshotPath)) {
+        // Do not accept a partial replay of a malformed or unreadable journal as the live ownership ledger.
+        const replay = this.db.replayJournalChecked();
+        this.baseConfigRunner.restore(this.db.kvGet<BaseConfigSnapshot>("baseConfigCounts"));
+        if (replay.ok) this.db.event("info", `restored snapshot ${this.snapshotPath}${replay.writes ? ` + ${replay.writes} journaled write(s)` : ""}`);
+        else this.db.event("error", `live journal replay unavailable — reconciliation required: ${replay.error}`);
+        // Paper can still continue from the snapshot; live execution is fenced when journal proof is incomplete.
+        if (!this.paper.positions.length && !this.paper.selected.length) {
+          const p = this.restorePaperBook();
+          if (p) this.db.event("info", `paper book continued from the snapshot: ${p} open position(s)`);
+        }
+      } else {
+        try {
+          const artifacts = [this.snapshotPath, `${this.snapshotPath}.tmp`, `${this.snapshotPath}.tmp.old`,
+            `${this.snapshotPath}.journal`, `${this.snapshotPath}.journal.prev`];
+          const present = artifacts.some((path) => {
+            try { lstatSync(path); return true; }
+            catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return false; throw err; }
+          });
+          if (present) this.db.lastJournalError ||= "snapshot unavailable while recovery artifacts exist — live ownership requires reconciliation";
+        } catch (err) {
+          this.db.lastJournalError ||= `recovery artifacts unavailable — live ownership requires reconciliation: ${err instanceof Error ? err.message : String(err)}`;
+        }
+        if (this.db.lastJournalError) this.db.event("error", this.db.lastJournalError);
       }
     }
     this.stopped = false;
@@ -2589,10 +2601,11 @@ export class CoreRuntime {
     // (db.snapshot) and leaves the previous snapshot in place
     this.db.event(
       "info",
-      `${reason}: state saved${this.snapshotPath ? ", writing the snapshot" : ""}`,
+      `${reason}: state saved${this.snapshotPath && !this.db.lastJournalError ? ", writing the snapshot" : ""}`,
     );
     let snapshot = false;
-    if (this.snapshotPath) snapshot = this.db.snapshot(this.snapshotPath);
+    if (this.snapshotPath && !this.db.lastJournalError) snapshot = this.db.snapshot(this.snapshotPath);
+    else if (this.snapshotPath) this.db.event("error", "snapshot skipped: live journal recovery requires reconciliation");
     this.db.flushState();
     return { snapshot };
   }
@@ -3235,7 +3248,7 @@ export class CoreRuntime {
         (computed || (this.compareInput && Date.now() >= this.compareRetryAt))
       )
         compareGen = gen;
-      if (this.snapshotPath && Date.now() - this.lastSnapshot > 10 * 60_000) {
+      if (this.snapshotPath && !this.db.lastJournalError && Date.now() - this.lastSnapshot > 10 * 60_000) {
         this.lastSnapshot = Date.now();
         // in the background: the loop (and the live tick) keeps running while the pages are copied
         void this.db.snapshotAsync(this.snapshotPath);

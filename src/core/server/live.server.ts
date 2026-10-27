@@ -363,6 +363,8 @@ export interface ExchangeClient {
   hasKeys(): boolean;
   /** identity of the connection: conn id, network, host and a one-way fingerprint of the API key (never the key) */
   fingerprint(): string;
+  /** Full-strength identity for durable ownership; older short fingerprints remain for legacy cache keys. */
+  accountFingerprint?(): string;
   /** `fresh`: a book shared with other processes is only reused when read after `notBefore` and within `maxAgeMs` */
   book(fresh?: { notBefore: number; maxAgeMs: number }): Promise<BookView>;
   contracts(): Promise<Map<string, bx.ContractSpec>>;
@@ -587,14 +589,17 @@ function sharedRead<T>(reads: Map<string, Promise<T>>, id: string, read: () => P
 }
 /** the account balance (sizing, status) is re-read at most once a minute */
 const ACCOUNT_MS = 60_000;
+const clientCacheFingerprint = (ex: ExchangeClient) => ex.accountFingerprint?.() ?? ex.fingerprint();
 export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient {
-  const key = () => ex.fingerprint();
+  const key = () => clientCacheFingerprint(ex);
+  const checkKey = (id: string) => { if (key() !== id) throw new Error("cached venue read superseded by an account change"); };
   const touch = (id: string) => {
     const c = bookChanges.get(id);
     bookChanges.set(id, { revision: (c?.revision ?? 0) + 1, at: Date.now() });
   };
   return {
     ...ex,
+    ...(ex.accountFingerprint ? { accountFingerprint: () => ex.accountFingerprint!() } : {}),
     book: async (fresh) => {
       const id = key();
       for (;;) {
@@ -609,6 +614,7 @@ export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient
         const pending = bookReads.get(id);
         if (pending) {
           const book = await pending.promise;
+          checkKey(id);
           if (pending.revision === (bookChanges.get(id)?.revision ?? 0) &&
               pending.notBefore >= notBefore && pending.maxAgeMs <= maxAgeMs) return book;
           continue;
@@ -616,6 +622,7 @@ export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient
         const startedAt = Date.now();
         const read = { revision, notBefore, maxAgeMs, promise: null as unknown as Promise<BookView> };
         read.promise = Promise.resolve().then(() => ex.book({ notBefore, maxAgeMs })).then((book) => {
+          checkKey(id);
           // Even the very first read may race an order. Never mark its pre-order snapshot clean.
           if ((bookChanges.get(id)?.revision ?? 0) === revision)
             bookCache.set(id, { at: startedAt, book, revision, notBefore, maxAgeMs });
@@ -636,6 +643,7 @@ export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient
             if (c && Date.now() - c.at < ACCOUNT_MS) return c.snap;
             return sharedRead(accountReads, id, async () => {
               const snap = await ex.account!();
+              checkKey(id);
               accountCache.set(id, { at: snap?.at ?? Date.now(), snap });
               return snap;
             });
@@ -650,7 +658,9 @@ export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient
         let specs: Map<string, bx.ContractSpec>;
         try {
           specs = await ex.contracts();
+          checkKey(id);
         } catch (err) {
+          checkKey(id);
           // a failed or late refresh never stops the step: the last good list serves (lot steps and minimums change
           // rarely); without one the step reports the error as before
           if (c) return c.specs;
@@ -693,6 +703,11 @@ export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
     fingerprint: () => {
       const k = bx.keysFor(connId).apiKey;
       const fp = k ? createHash("sha256").update(k).digest("hex").slice(0, 10) : "nokey";
+      return `${connId}|${network}|${bx.HOSTS[network][0]}|${fp}`;
+    },
+    accountFingerprint: () => {
+      const k = bx.keysFor(connId).apiKey;
+      const fp = k ? createHash("sha256").update(k).digest("hex") : "nokey";
       return `${connId}|${network}|${bx.HOSTS[network][0]}|${fp}`;
     },
     book: (fresh) => bx.fetchBook(network, connId, fresh),
@@ -752,7 +767,7 @@ export function liveVenueHistory(rt: CoreRuntime, from: number, to: number) {
  */
 const EQUITY_MAX_AGE = ACCOUNT_MS + 15_000;
 const balanceCache = new Map<string, { at: number; goodAt: number; balance: number | null }>();
-let observedAccount = new WeakMap<CoreRuntime, { connId: string; at: number; balance: number | null; equity: number | null; paper: boolean }>();
+let observedAccount = new WeakMap<CoreRuntime, { connId: string; scope: string; scopeNow: () => string; at: number; balance: number | null; equity: number | null; paper: boolean }>();
 const usableEquity = (eq: number | null | undefined): number | null =>
   typeof eq === "number" && Number.isFinite(eq) && eq > 0 ? eq : null;
 const usableBalance = (balance: number | null | undefined): number | null =>
@@ -763,14 +778,16 @@ export async function liveUnit(
   snapshot?: bx.AccountSnapshot | null,
 ): Promise<number | null> {
   const s = rt.settings.live;
+  const conn = s.connId, scope = ownershipFingerprint(conn, ex), scopeNow = () => ownershipFingerprint(conn, ex);
   const sz = sizingSettings(rt.settings.sizing);
   const paper = !ex.account && !ex.equity;
   const observe = (balance: number | null, equity: number | null, at = Date.now()) => {
+    if (rt.settings.live.connId !== conn || scopeNow() !== scope) return null;
     if (!Number.isFinite(at) || Date.now() - at > EQUITY_MAX_AGE) {
       balance = null;
       equity = null;
     }
-    observedAccount.set(rt, { connId: s.connId, at, balance, equity, paper });
+    observedAccount.set(rt, { connId: conn, scope, scopeNow, at, balance, equity, paper });
     if (sz.mode !== "equityPct") return s.notionalUsd;
     // the %-of-balance unit on B = min(wallet, equity): open profit never sizes a unit up, an open loss sizes it down
     const base = balance === null ? null : (budgetBase({ equity, wallet: balance }) ?? balance);
@@ -779,7 +796,7 @@ export async function liveUnit(
   // Overall mode already read this snapshot. Reading equity again could size at yesterday's high balance while
   // the budgets use today's smaller account (and left minQty/fixed previews showing the paper balance).
   if (snapshot !== undefined && ex.account)
-    return observe(usableBalance(snapshot?.wallet), usableEquity(snapshot?.equity), snapshot?.at ?? accountCache.get(ex.fingerprint())?.at ?? Date.now());
+    return observe(usableBalance(snapshot?.wallet), usableEquity(snapshot?.equity), snapshot?.at ?? accountCache.get(clientCacheFingerprint(ex))?.at ?? Date.now());
   if (paper) {
     const balance = usableBalance(rt.settings.paperBalance);
     return observe(balance, balance ?? null);
@@ -788,12 +805,12 @@ export async function liveUnit(
   if (ex.account) {
     try {
       const account = await ex.account();
-      return observe(usableBalance(account?.wallet), usableEquity(account?.equity), account?.at ?? accountCache.get(ex.fingerprint())?.at ?? Date.now());
+      return observe(usableBalance(account?.wallet), usableEquity(account?.equity), account?.at ?? accountCache.get(clientCacheFingerprint(ex))?.at ?? Date.now());
     } catch {
       return observe(null, null);
     }
   }
-  const k = ex.fingerprint();
+  const k = clientCacheFingerprint(ex);
   let c = balanceCache.get(k);
   if (!c || Date.now() - c.at > 30_000) {
     let balance: number | null = null;
@@ -833,7 +850,8 @@ export function liveUnitPeek(rt: CoreRuntime): {
   const s = rt.settings.live;
   const sz = sizingSettings(rt.settings.sizing);
   const seen = observedAccount.get(rt);
-  const current = seen && seen.connId === s.connId && Date.now() - seen.at <= EQUITY_MAX_AGE ? seen : null;
+  const current = seen && seen.connId === s.connId && seen.scopeNow() === seen.scope &&
+    Date.now() - seen.at <= EQUITY_MAX_AGE ? seen : null;
   const balance = current?.balance ?? null;
   const equity = current?.equity ?? null;
   const base = budgetBase({ equity, wallet: balance });
@@ -975,7 +993,8 @@ export function controlRows(rt: { db: CoreDb }): Map<string, ControlRow> {
 
 /** A stop belongs to the current episode only when its ordering against all opens / flats is proven. */
 export function controlStopPxOf(rows: Iterable<ControlRow>, key: string): number | null {
-  const events = [...rows].filter((r) => r.k === key && (r.kind === "O" || r.kind === "F" || r.kind === "S"));
+  const events: ControlRow[] = [];
+  for (const r of rows) if (r.k === key && (r.kind === "O" || r.kind === "F" || r.kind === "S")) events.push(r);
   if (events.some((r) => !Number.isFinite(r.at))) return null;
   const sequenced = events.filter((r) => typeof r.submissionSeq === "number" &&
     Number.isSafeInteger(r.submissionSeq) && r.submissionSeq > 0)
@@ -1382,6 +1401,7 @@ async function stampAccount(
   status: LiveStatus,
   ex: ExchangeClient,
   book: BookView,
+  checkCurrent?: () => void,
 ): Promise<bx.AccountSnapshot | null> {
   let snap: bx.AccountSnapshot | null = null;
   if (ex.account) {
@@ -1391,12 +1411,14 @@ async function stampAccount(
       /* the position sums still describe the open book */
     }
   }
-  status.account = liveAccount(book, snap, snap?.at ?? (snap ? accountCache.get(ex.fingerprint())?.at : undefined) ?? Date.now());
+  checkCurrent?.();
+  status.account = liveAccount(book, snap, snap?.at ?? (snap ? accountCache.get(clientCacheFingerprint(ex))?.at : undefined) ?? Date.now());
   // the last account read, per connection, for every sizing mode: the preview and the statistics read it (never the
   // paper balance for a live number); a failed read keeps the last one, with its age
-  if (snap) accountSeen.set(connIdOf(ex), { at: status.account.readAt ?? Date.now(), snap });
+  const scope = ownershipFingerprint(connIdOf(ex), ex);
+  if (snap) accountSeen.set(scope, { at: status.account.readAt ?? Date.now(), snap });
   else {
-    const last = accountSeen.get(connIdOf(ex));
+    const last = accountSeen.get(scope);
     if (last) {
       status.account.wallet = last.snap.wallet;
       status.account.equity = last.snap.equity;
@@ -1411,10 +1433,11 @@ async function stampAccount(
 /** the connection id of a client (its fingerprint starts with it) */
 const connIdOf = (ex: ExchangeClient) => ex.fingerprint().split("|")[0];
 
-/** The last account read per connection id (wallet, equity, free margin), with its time. */
+/** The last account read is scoped to the full current credential identity, not merely its connection label. */
 const accountSeen = new Map<string, { at: number; snap: bx.AccountSnapshot }>();
 export function lastAccount(connId: string): { at: number; snap: bx.AccountSnapshot } | null {
-  return accountSeen.get(connId) ?? null;
+  const ex = bingxClient(connId as LiveSettings["connId"]);
+  return accountSeen.get(ownershipFingerprint(connId, ex)) ?? null;
 }
 /** tests: forget every account read */
 export function resetAccountSeen() {
@@ -1450,16 +1473,23 @@ export function stepLive(
   // it checks alive() before every order, so it sends nothing more and the new step runs at once
   const epoch = rt.liveEpoch ?? 0;
   const prev = L.running && L.runningEpoch === epoch ? L.running : Promise.resolve(null);
-  const next: Promise<LiveStatus> = prev.then(() =>
-    (rt.settings.live.mode ?? "overall") === "overall"
+  const next: Promise<LiveStatus> = prev.then(() => {
+    // A missing/invalid recovery baseline or journal makes every ownership-dependent action unsafe. Keep
+    // existing exchange orders untouched and expose the error for reconciliation before either live mode runs.
+    if (rt.db.lastJournalError) {
+      const reason = `live ownership journal unavailable — reconciliation required: ${rt.db.lastJournalError}`;
+      return done(rt, { at: Date.now(), enabled: false, reason, placed: 0, closed: 0, cancelled: 0,
+        skipped: [], error: reason, mode: rt.settings.live.mode ?? "overall" }, reason);
+    }
+    return (rt.settings.live.mode ?? "overall") === "overall"
       ? runControl(
           rt,
           gen,
           client ??
             cachedClient(bingxClient(rt.settings.live.connId), rt.settings.live.syncMs ?? 1000),
         )
-      : runStep(rt, intents, gen),
-  );
+      : runStep(rt, intents, gen);
+  });
   // the chain itself never rejects (callers get `next`, which may); no unhandled rejection can end the process
   const tail: Promise<unknown> = next
     .then(
@@ -1599,7 +1629,20 @@ async function runStepNow(
   };
   // the step's epoch: abandoned by the watchdog (stuck too long), it sends nothing more
   const epoch = rt.liveEpoch ?? 0;
-  const alive = () => rt.generation === gen && (rt.liveEpoch ?? 0) === epoch;
+  const entryConn = s.connId, entryExchange = bingxClient(entryConn);
+  const entryFingerprint = ownershipFingerprint(entryConn, entryExchange);
+  const alive = () => rt.generation === gen && (rt.liveEpoch ?? 0) === epoch && rt.settings.live.connId === entryConn &&
+    ownershipFingerprint(entryConn, entryExchange) === entryFingerprint;
+  // Disabled or unauthenticated steps cannot recover or mutate account-specific pending state.
+  if (!s.enabled) { status.reason = "live disabled in settings"; return finish(); }
+  if (process.env.CTS_CORE_LIVE !== "1") { status.reason = "CTS_CORE_LIVE=1 not set on the host"; return finish(); }
+  if (!entryExchange.hasKeys()) { status.reason = `no API keys for ${entryConn}`; return finish(); }
+  const why = ensureLiveOwnershipAccount(rt, entryConn, entryExchange);
+  if (why) { status.reason = why; status.error = why; return finish(); }
+  const checkAccount = () => { if (!alive()) throw new Error("live entry step superseded by an account change"); };
+  const signed: typeof bx.signed = async (...args) => { checkAccount(); const reply = await bx.signed(...args); checkAccount(); return reply; };
+  const fetchBook: typeof bx.fetchBook = async (...args) => { checkAccount(); const reply = await bx.fetchBook(...args); checkAccount(); return reply; };
+  const cancelOrder: typeof bx.cancelOrder = async (...args) => { checkAccount(); const reply = await bx.cancelOrder(...args); checkAccount(); return reply; };
   let entryBudgetQty: Map<string, number> | null = null;
   let entryBudgetStops: Map<string, number> | null = null;
   const record = (
@@ -1614,6 +1657,7 @@ async function runStepNow(
     key: string,
     at = Date.now(),
   ) => {
+    if (!alive()) throw new Error("entry ledger update superseded by an account change");
     const old = kind === "E" || kind === "C"
       ? rt.db.get<{ qty: number; status: string }>("SELECT qty,status FROM live_orders WHERE coid=?", coid) : null;
     const known = (status: string, q: number) => (status === "ok" || status === "pending") && q > 0 ? q : 0;
@@ -1679,6 +1723,7 @@ async function runStepNow(
   const pendingJson = () => JSON.stringify(stateOf(false));
   let savedPending = pendingJson();
   const savePending = () => {
+    if (!alive()) throw new Error("entry pending update superseded by an account change");
     const json = pendingJson();
     const changed = json !== savedPending;
     if (changed) {
@@ -1811,8 +1856,8 @@ async function runStepNow(
     let account: bx.AccountSnapshot | null = null;
     if (s.enabled && envArmed && hasKeys) {
       try {
-        book = await bx.fetchBook(network, s.connId);
-        account = await stampAccount(status, bingxClient(s.connId), book);
+        book = await fetchBook(network, s.connId);
+        account = await stampAccount(status, entryExchange, book, checkAccount);
       } catch (err) {
         rt.db.event("warn", `live book: ${err instanceof Error ? err.message : err}`);
       }
@@ -1841,7 +1886,7 @@ async function runStepNow(
         if (Date.now() - (p.polledAt ?? 0) < 1_000) continue;
         p.polledAt = Date.now();
         try {
-          const resp = await bx.signed(network, s.connId, "GET", "/openApi/swap/v2/trade/order", {
+          const resp = await signed(network, s.connId, "GET", "/openApi/swap/v2/trade/order", {
             symbol: p.sym, ...(p.oid ? { orderId: p.oid } : { clientOrderID: coid }),
           });
           const receipt = entryExecutionReceipt(resp, { coid, oid: p.oid, sym: p.sym, side: p.side,
@@ -1863,7 +1908,7 @@ async function runStepNow(
         }
       }
       savePending();
-      if (changed) book = await bx.fetchBook(network, s.connId, { notBefore: Date.now(), maxAgeMs: 0 });
+      if (changed) book = await fetchBook(network, s.connId, { notBefore: Date.now(), maxAgeMs: 0 });
       for (const [coid, p] of Object.entries(pending))
         if (p.kind === "E" && p.terminal && book.positions.some((b) => b.venueSymbol === p.sym &&
           (oneway || (p.side > 0) === (b.side === "long")) && b.qty > 0) && recordedStopCovers(coid, p, book)) delete pending[coid];
@@ -2080,7 +2125,7 @@ async function runStepNow(
         const [sym, side] = key.split("|");
         return qty > 0 && sym === o.venueSymbol && (oneway || !o.positionSide || (o.positionSide === "LONG") === (Number(side) > 0));
       })) continue; // confirmed fills keep their protection while their position endpoint has never shown them
-      if (await bx.cancelOrder(network, s.connId, o.venueSymbol, o.id)) status.cancelled++;
+      if (await cancelOrder(network, s.connId, o.venueSymbol, o.id)) status.cancelled++;
     }
 
     // Protection pass: an own entry without its own stop can receive a bounded market close for its measured
@@ -2141,7 +2186,7 @@ async function runStepNow(
         pending[c] = { oid: "", cfg: "protect", sym: p.venueSymbol, side: p.side === "long" ? 1 : -1,
           kind: "C", sentQty: qty, px: 0, key: ks[0], at: closeAt, polledAt: Date.now() };
         savePending();
-        const resp = await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
+        const resp = await signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
           symbol: p.venueSymbol,
           side: p.side === "long" ? "SELL" : "BUY",
           positionSide: oneway ? "BOTH" : p.side === "long" ? "LONG" : "SHORT",
@@ -2347,7 +2392,7 @@ async function runStepNow(
           status.skipped.push({ sym: e.sym, why: "entry not sent: ownership checkpoint unavailable" });
           continue;
         }
-        const resp = await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
+        const resp = await signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
           symbol: e.sym,
           side,
           positionSide,
@@ -2407,7 +2452,7 @@ async function runStepNow(
         let c = makeCoid(s.connId, kind);
         let sp = stopPrice;
         const placeExit = (cc: string, p: number) =>
-          bx.signed(
+          signed(
             network,
             s.connId,
             "POST",
@@ -2462,7 +2507,7 @@ async function runStepNow(
           pending[c] = { oid: "", cfg: e.cfg, sym: e.sym, side: e.side, kind: "C", sentQty: qty,
             px, key, at: closeAt, polledAt: Date.now() };
           savePending();
-          const resp = await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
+          const resp = await signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
             symbol: e.sym,
             side: exitSide,
             positionSide,
@@ -2555,6 +2600,64 @@ export function flushLiveKv(db: CoreDb) {
       db.kvSet(k, e.v);
       m.set(k, { v: e.v, wroteAt: Date.now(), dirty: false });
     }
+}
+
+/** The durable account binding prevents a ledger from being used under a different API-key account. */
+function ownershipFingerprint(conn: string, ex: ExchangeClient): string {
+  const identity = ex.accountFingerprint ? ex.accountFingerprint() : ex.fingerprint();
+  return createHash("sha256").update(conn).update("\0").update(identity).digest("hex");
+}
+function ensureLiveOwnershipAccount(rt: CoreRuntime, conn: string, ex: ExchangeClient): string | null {
+  const db = rt.db;
+  const current = ownershipFingerprint(conn, ex);
+  // Only the explicit synthetic fixture opts into ephemeral ownership. An arbitrary injected client is not proof
+  // that a venue is simulated; real execution requires a configured, successfully checkpointed state file.
+  const fixtureMemory = (rt as CoreRuntime & { testOnlyAllowMemoryLive?: boolean }).testOnlyAllowMemoryLive === true;
+  if (!db.hasStateStore() && !fixtureMemory)
+    return "live ownership account checkpoint unavailable: no durable state file configured";
+  // A failed configured checkpoint is sticky. A binding cached before that failure is not durable evidence.
+  if (db.lastStateError || db.lastJournalError)
+    return `live ownership account checkpoint unavailable: ${db.lastStateError || db.lastJournalError}`;
+  // Presence is distinct from value: persisted null, arrays, and malformed bindings are not an empty store.
+  // Check both the live cache and SQLite because a debounced write may currently live only in memory.
+  const present = memOf(db).has("liveOwnershipAccount") || !!db.get("SELECT 1 FROM kv WHERE k=?", "liveOwnershipAccount");
+  const binding = liveKv<unknown>(db, "liveOwnershipAccount");
+  if (present) {
+    if (!binding || typeof binding !== "object" || Array.isArray(binding) ||
+      (binding as { version?: unknown }).version !== 1 ||
+      (binding as { fingerprint?: unknown }).fingerprint !== current)
+      return "live ownership account differs or is invalid — existing positions and orders require reconciliation";
+    return null;
+  }
+  // Legacy live data has no cryptographic account provenance. Neither the short UI connHash nor an API-key name
+  // can prove which account created it; never assign existing orders or pending executions to the current key.
+  const rows = db.get("SELECT 1 FROM live_orders LIMIT 1") || db.get("SELECT 1 FROM live_fills LIMIT 1") ||
+    db.get("SELECT 1 FROM live_lane_trades LIMIT 1") || db.get("SELECT 1 FROM live_submission_sequence LIMIT 1");
+  const hasKey = (key: string) => memOf(db).has(key) || !!db.get("SELECT 1 FROM kv WHERE k=?", key);
+  const hasOwnershipState = (key: string) => {
+    if (!hasKey(key)) return false;
+    const value = liveKv<unknown>(db, key);
+    // Only an actual, valid empty object proves that this particular store has no reservations.
+    return !value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length > 0;
+  };
+  const pendingPrefix = "entriesPendingExecutions|";
+  const pendingKeys = new Set([
+    ...db.all<{ k: string }>("SELECT k FROM kv WHERE substr(k,1,?)=? AND length(k)>?", pendingPrefix.length, pendingPrefix, pendingPrefix.length).map((r) => r.k),
+    ...[...memOf(db).keys()].filter((k) => k.startsWith(pendingPrefix) && k.length > pendingPrefix.length),
+  ]);
+  const stored = ["liveLaneOpen", "laneOrders", "laneQuantityCaps", "positionExitCleanup", "orphanExitFences", "controlSuppressed", ...pendingKeys]
+    .some(hasOwnershipState);
+  // A persisted control status, including a partial or empty object, shows that this store has prior control
+  // history but supplies no cryptographic account provenance. Its latest held/actions snapshot cannot prove that
+  // older or lost orders never existed, so it cannot make an unbound ledger pristine.
+  const statusEvidence = hasKey("controlStatus");
+  if (rows || stored || statusEvidence)
+    return "legacy live ownership has no account fingerprint — existing positions and orders require reconciliation";
+  liveKvSet(db, "liveOwnershipAccount", { version: 1, fingerprint: current });
+  flushLiveKv(db);
+  if (!db.flushState() || db.lastJournalError)
+    return `live ownership account checkpoint unavailable: ${db.lastStateError || db.lastJournalError}`;
+  return null;
 }
 
 // ── Overall control orders ─────────────────────────────────────────────────────
@@ -3019,7 +3122,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
   };
   // the step's epoch: abandoned by the watchdog (stuck too long), it sends nothing more
   const epoch = rt.liveEpoch ?? 0;
-  const alive = () => rt.generation === gen && (rt.liveEpoch ?? 0) === epoch;
+  const initialConn = s.connId, initialFingerprint = ownershipFingerprint(initialConn, ex);
+  const observed = observedAccount.get(rt);
+  if (observed && observed.scope !== initialFingerprint) observedAccount.delete(rt);
+  const alive = () => rt.generation === gen && (rt.liveEpoch ?? 0) === epoch && rt.settings.live.connId === initialConn &&
+    ownershipFingerprint(initialConn, ex) === initialFingerprint;
+  const checkAccount = () => { if (!alive()) throw new Error("live control step superseded by an account change"); };
   const phase = (p: string) => {
     if (alive()) rt.livePhase = p;
   };
@@ -3058,6 +3166,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     at = Date.now(),
     trackMovement = true,
   ) => {
+    if (!alive()) throw new Error("fill update superseded by an account change");
     if (!(qty > 0)) return;
     const f = parseFill(resp);
     if (trackMovement && f && f.px > 0) (kind === "O" || kind === "I" ? grew : shrank).set(`${a.sym}|${a.side}`, f.px);
@@ -3090,6 +3199,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     msg = "",
     at = Date.now(),
   ) => {
+    if (!alive()) throw new Error("control ledger update superseded by an account change");
     const previousRow = controlRows(rt).get(coid);
     let submissionSeq = previousRow?.submissionSeq ?? null;
     if (st === "pending" && ["O", "I", "S", "T", "V", "Y"].includes(kind) && !previousRow) {
@@ -3161,12 +3271,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const envArmed = process.env.CTS_CORE_LIVE === "1";
     const sim = rt.sim;
     const minPf = rt.settings.gates.minPf;
-    if (!s.enabled) return done(rt, status, "live disabled in settings");
-    if (!envArmed) return done(rt, status, "CTS_CORE_LIVE=1 not set on the host");
-    if (!ex.hasKeys()) return done(rt, status, `no API keys for ${s.connId}`);
+    if (!s.enabled) return done(rt, status, "live disabled in settings", ex);
+    if (!envArmed) return done(rt, status, "CTS_CORE_LIVE=1 not set on the host", ex);
+    if (!ex.hasKeys()) return done(rt, status, `no API keys for ${s.connId}`, ex);
+    const accountHold = ensureLiveOwnershipAccount(rt, initialConn, ex);
+    if (accountHold) { status.error = accountHold; return done(rt, status, accountHold, ex); }
     const banned = bx.blockingBanUntil();
     if (banned)
-      return done(rt, status, `exchange rate limit until ${new Date(banned).toISOString()}`);
+      return done(rt, status, `exchange rate limit until ${new Date(banned).toISOString()}`, ex);
     // readiness (rolling simulated run PF ≥ min and stable) can be waived per connection, e.g. on a testnet. Not
     // ready only blocks opening and increasing: positions already held are still closed, reduced and protected.
     const readiness = liveEntryReadiness(sim, s, minPf, typeof rt.livePromotionGate === "function");
@@ -3207,7 +3319,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             for (const [id, pending] of matching) orphanFences[id] = { ...pending, cancelPending: true };
             persistOrphanFences(); // a failure aborts this venue cancellation before dispatch
           }
-          try { return await target.cancel(sym, oid); } catch (err) {
+          try {
+            const reply = await target.cancel(sym, oid);
+            if (!alive()) throw new Error("venue cancellation reply superseded by an account change");
+            return reply;
+          } catch (err) {
             if (err instanceof bx.RequestBudgetDeferred && matching.length && alive() &&
               rt.settings.live.connId === orphanConnName && orphanConnHash() === orphanConn) {
               // This typed deferral is guaranteed not dispatched, so undo only this request's pending marker.
@@ -3220,6 +3336,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         };
         if (prop !== "order") {
           const value = Reflect.get(target, prop, target);
+          const guarded = ["book", "contracts", "account", "equity", "leverage", "marginMode", "orderStatus",
+            "ordersSince", "feeHistory", "incomeHistory", "setPositionMode", "setMarginMode", "setLeverage"];
+          if (guarded.includes(String(prop)) && typeof value === "function")
+            return async (...args: unknown[]) => {
+              if (!alive()) throw new Error("venue request superseded by an account change");
+              const reply = await Reflect.apply(value, target, args);
+              if (!alive()) throw new Error("venue reply superseded by an account change");
+              return reply;
+            };
           return typeof value === "function" ? value.bind(target) : value;
         }
         return async (p: Record<string, string | number>) => {
@@ -3228,8 +3353,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           const coid = String(p.clientOrderID ?? "");
           const kind = ownCoidKind(coid, orphanConnName);
           const type = String(p.type ?? "").toUpperCase();
-          if ((kind !== "S" && kind !== "T") || (type !== "STOP_MARKET" && type !== "TAKE_PROFIT_MARKET"))
-            return target.order(p);
+          if ((kind !== "S" && kind !== "T") || (type !== "STOP_MARKET" && type !== "TAKE_PROFIT_MARKET")) {
+            const reply = await target.order(p);
+            if (!alive()) throw new Error("venue order reply superseded by an account change");
+            return reply;
+          }
           const sym = String(p.symbol ?? "");
           const rawSide = String(p.positionSide ?? "").toUpperCase();
           const positionSide = rawSide === "LONG" || rawSide === "SHORT" ? rawSide : "BOTH";
@@ -3425,7 +3553,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const key of pendingKeys)
       status.skipped.push({ sym: key.split("|")[0], why: "accepted order execution pending — no duplicate action" });
     phase("account");
-    const acct = await stampAccount(status, ex, book);
+    const acct = await stampAccount(status, ex, book, checkAccount);
     // B = min(wallet, equity): every account budget and equity-scaled cap is sized on it — open profit never
     // inflates a budget (budgetBase)
     const B = budgetBase(acct);
@@ -3788,6 +3916,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const specs = await ex.contracts();
     phase("tickers");
     const prices = new Map((await rt.freshTickers()).map((t) => [t.sym, t.last] as const));
+    checkAccount();
     // stale prices: never open or increase (closing / reducing stays allowed)
     const pricesFresh = Date.now() - rt.tickersAt <= 30_000;
     // A known partial entry can stop out while its remaining MARKET quantity is still pending. Book only an own
@@ -3841,6 +3970,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // (in slices: 20 k positions took 55–95 ms in one piece)
     phase("lanes");
     const allLanes = await sliced(laneContributionsGen(rt, prices, ps));
+    checkAccount();
     const nowSup = Date.now();
     // (the lanes' id lookups change only with the lanes: built once per lane set, not on every step)
     const { laneIds, legacyIds, laneIdByKey } =
@@ -4519,6 +4649,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // the proofs are rebuilt in slices when a close landed (not in one piece inside this step), and read from memo below
     phase("proofs");
     await rt.warmProofs?.();
+    checkAccount();
     const { sendable, validLane, closedConfig, unproven } = liveLaneFilter(
       s,
       selected,
@@ -4610,6 +4741,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       for (let i = 0; i < allLanes.length; i++) {
         if ((i & 511) === 511 && performance.now() - t > 12) {
           await new Promise<void>((res) => setImmediate(res));
+          checkAccount();
           t = performance.now();
         }
         if (keepLane(allLanes[i])) lanes.push(allLanes[i]);
@@ -4789,6 +4921,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // sized: held positions are kept as they are (closes of lanes that ended still run), nothing opens or grows
     phase("sizing");
     const unitRaw = await liveUnit(rt, ex, acct);
+    checkAccount();
     // account-balance ratio budgets need a fresh wallet balance; unknown balance never lifts a cap
     // the exposure scaler switched off: maxExposureX bounds nothing (neither the fill budget nor the targets)
     const maxExposureX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
@@ -5044,7 +5177,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     if (noSpecs) for (const k of held.keys()) keep.add(k);
     // free-margin floor: an unknown free margin counts as below it (never open blind on a guarded account)
     const floor = s.minFreeMargin ?? 0;
-    const accountAt = acct?.at ?? accountCache.get(ex.fingerprint())?.at;
+    const accountAt = acct?.at ?? accountCache.get(clientCacheFingerprint(ex))?.at;
     const freshAccount = accountAt === undefined || (Number.isFinite(accountAt) && Date.now() - accountAt <= EQUITY_MAX_AGE);
     const free = freshAccount && typeof acct?.availableMargin === "number" && Number.isFinite(acct.availableMargin)
       ? acct.availableMargin : null;
@@ -6977,7 +7110,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
     } else rt.db.event("error", `live control step: ${status.error}`);
   }
-  carryAccount(rt, status);
+  if (!alive()) delete status.account;
+  carryAccount(rt, status, ex);
   liveKvSet(rt.db, "liveStatus", status);
   rt.emit?.("live");
   return status;
@@ -6987,14 +7121,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
  * A step that ended before its account read (gates, errors) still shows the last account read of the connection,
  * with that read's time — never no account, never a stand-in.
  */
-function carryAccount(rt: CoreRuntime, status: LiveStatus) {
+function carryAccount(rt: CoreRuntime, status: LiveStatus, ex: ExchangeClient) {
   if (status.account) return;
-  const prev = liveKv<LiveStatus>(rt.db, "liveStatus")?.account;
-  if (prev) {
-    status.account = { ...prev, carried: true };
-    return;
-  }
-  const last = accountSeen.get(rt.settings.live.connId);
+  const last = accountSeen.get(ownershipFingerprint(rt.settings.live.connId, ex));
   if (!last) return;
   const a = last.snap;
   status.account = {
@@ -7015,9 +7144,9 @@ function carryAccount(rt: CoreRuntime, status: LiveStatus) {
   };
 }
 
-function done(rt: CoreRuntime, status: LiveStatus, reason: string): LiveStatus {
+function done(rt: CoreRuntime, status: LiveStatus, reason: string, ex?: ExchangeClient): LiveStatus {
   status.reason = reason;
-  carryAccount(rt, status);
+  if (ex) carryAccount(rt, status, ex);
   liveKvSet(rt.db, "liveStatus", status);
   rt.emit?.("live");
   return status;

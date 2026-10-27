@@ -6,7 +6,7 @@ import { exactVenueOrderIds } from "./venue-order-id.ts";
 //   bingx-vst-02  BINGX_X02_API_KEY / BINGX_X02_SECRET          (testnet)
 // The demo connections (vst-01 / vst-02) fall back to the x01 keys (then BINGX_API_KEY / BINGX_SECRET): a BingX
 // key belongs to the account and signs on the VST host too.
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { takeSignedRequestSlot } from "./request-budget.server.ts";
 
@@ -664,12 +664,21 @@ export function parseEquity(raw: unknown): number | null {
 
 const accountCache = new Map<string, { at: number; snap: AccountSnapshot }>();
 
-/** Balance snapshot, reused for 15 s so the overview and the sizer share one read. */
+/** Credential-scoped identity for caches and shared books; never persist or expose the API key itself. */
+function cacheScope(network: Network, conn: ConnId): string {
+  return createHash("sha256").update(network).update("\0").update(conn).update("\0").update(keysFor(conn).apiKey).digest("hex");
+}
+function checkCacheScope(network: Network, conn: ConnId, scope: string): void {
+  if (cacheScope(network, conn) !== scope) throw new Error("exchange cache read superseded by an account change");
+}
+
+/** Balance snapshot, reused for 15 s only for this exact account identity. */
 export async function fetchAccount(network: Network, conn: ConnId): Promise<AccountSnapshot | null> {
-  const k = `${network}|${conn}`;
+  const k = cacheScope(network, conn);
   const hit = accountCache.get(k);
   if (hit && Date.now() - hit.at < 15_000) return hit.snap;
   const snap = parseAccount(await signed(network, conn, "GET", "/openApi/swap/v2/user/balance"));
+  checkCacheScope(network, conn, k);
   if (snap) {
     snap.at = Date.now();
     accountCache.set(k, { at: snap.at, snap });
@@ -685,7 +694,7 @@ export async function fetchEquity(network: Network, conn: ConnId): Promise<numbe
 type Book = { positions: BookPosition[]; orders: BookOrder[]; ordersAt?: number };
 export const OPEN_ORDERS = "GET /openApi/swap/v2/trade/openOrders";
 /** the last complete book read in this process, per connection (open orders while their endpoint is rate limited) */
-const lastBook = new Map<ConnId, { startedAt: number; book: Book }>();
+const lastBook = new Map<string, { startedAt: number; book: Book }>();
 function sharedBook(file: string): { startedAt: number; book: Book } | null {
   if (!file) return null;
   try {
@@ -704,8 +713,10 @@ export async function fetchBook(
   conn: ConnId,
   fresh?: { notBefore: number; maxAgeMs: number },
 ): Promise<Book> {
+  const scope = cacheScope(network, conn);
   const base = env("CTS_BINGX_BOOK_FILE");
-  const file = base ? `${base}.${conn}` : "";
+  // Unscoped legacy shared books are intentionally ignored: a connection label is not account provenance.
+  const file = base ? `${base}.${conn}.${scope}` : "";
   if (file && fresh) {
     try {
       const c = JSON.parse(readFileSync(file, "utf8")) as { startedAt: number; book: Book };
@@ -717,16 +728,18 @@ export async function fetchBook(
   const startedAt = Date.now();
   // the open orders are rate limited, positions are not: fresh positions with the last open orders read
   if (rateLimitedUntil(startedAt, OPEN_ORDERS)) {
-    const last = lastBook.get(conn) ?? sharedBook(file);
+    const last = lastBook.get(scope) ?? sharedBook(file);
     if (last) {
       const positions = (await readBook(network, conn, false)).positions;
+      checkCacheScope(network, conn, scope);
       const book = { positions, orders: last.book.orders, ordersAt: last.book.ordersAt ?? last.startedAt };
       share(file, startedAt, book);
       return book;
     }
   }
   const book = await readBook(network, conn);
-  lastBook.set(conn, { startedAt, book });
+  checkCacheScope(network, conn, scope);
+  lastBook.set(scope, { startedAt, book });
   share(file, startedAt, book);
   return book;
 }
