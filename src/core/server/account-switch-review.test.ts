@@ -322,7 +322,7 @@ for (const invalid of [null, [], {}, "a", 1])
 test("a denied account switch cannot show or size from the old account balance", async () => {
   const db = new CoreDb(":memory:"), { rt } = fakeRt(db), ex = new SimExchange().withEquity(100);
   try {
-    ex.key = "account-a"; rt.settings.sizing = { mode: "equityPct", pct: 0.1 };
+    ex.key = "account-a"; Object.assign(rt.settings, { sizing: { mode: "equityPct", pct: 0.1 } });
     await stepLive(rt as unknown as CoreRuntime, [], rt.generation, ex);
     assert.equal(liveUnitPeek(rt as unknown as CoreRuntime).wallet, 100);
     ex.key = "account-b";
