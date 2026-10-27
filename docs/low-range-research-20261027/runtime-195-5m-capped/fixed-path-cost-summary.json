@@ -1,0 +1,312 @@
+{
+  "status": "passed",
+  "protocolSha256": "7a7fd423f1402f6a14fd19bf43ff0db487c7503bb28b04656af0548f9093db78",
+  "detailSha256": "8904b912e2edc520c72a0ce366a4c346ea847bce524eeaecafee83e1d3c718d6",
+  "reportHeaderSha256": "466807ee6dfa5cd6842855438272b6d77662f00ca366b74d805de4eb91501ef2",
+  "rawHeaderSha256": "81340d1f2faed6604bbd8c9cc53500425b4f42cd78a04fcc865ff307e0348ceb",
+  "sourceCheckpoint": "582e209cc3e94ce25981c716263389d65952c3e6",
+  "sourceSha256": "d4847b799025e5309ce575e762e38525e93016350244b8457fcc5e7102e29d42",
+  "symbols": [
+    "ADA-USDT",
+    "APT-USDT",
+    "ARB-USDT",
+    "ATOM-USDT",
+    "AVAX-USDT",
+    "BCH-USDT",
+    "BNB-USDT",
+    "BTC-USDT",
+    "DOGE-USDT",
+    "DOT-USDT",
+    "ETC-USDT",
+    "ETH-USDT",
+    "FIL-USDT",
+    "LINK-USDT",
+    "LTC-USDT",
+    "NEAR-USDT",
+    "OP-USDT",
+    "SOL-USDT",
+    "SUI-USDT",
+    "TRX-USDT"
+  ],
+  "startT": 1792368000000,
+  "endT": 1792454400000,
+  "scope": "Known-positive allocations among settled modeled orders; equal order-weighted unit returns; fees added back holding the observed path fixed. This is not a zero-cost rerun, dollar-weighted account return, venue fill or independent holdout.",
+  "arithmetic": "mean gross bp = 10000 * ((sum net unit gains - sum net unit losses) / settled orders + modeled round-trip cost)",
+  "independentChecks": {
+    "totalRows": 144863,
+    "fundedPriceRows": 135811,
+    "maxPriceReconstructionDifferenceBp": 0.0011406019127802036
+  },
+  "costFraction": 0.0015,
+  "zeroAllocated": 9052,
+  "total": {
+    "settled": 135811,
+    "long": 99466,
+    "short": 36345,
+    "gp": 159.85339453324727,
+    "gl": 581.3607989669829,
+    "cash": -0.2889086781444212,
+    "net": -421.5074044337356,
+    "netPf": 0.2749641785570853,
+    "meanNetBp": -31.036322862929776,
+    "meanGrossFrozenPathBp": -16.036322862929776
+  },
+  "byStep": {
+    "2": {
+      "settled": 8824,
+      "long": 7392,
+      "short": 1432,
+      "gp": 16.039719954872062,
+      "gl": 33.837778336150706,
+      "cash": -0.00726637687923725,
+      "net": -17.798058381278643,
+      "netPf": 0.47401811654212456,
+      "meanNetBp": -20.17005709573736,
+      "meanGrossFrozenPathBp": -5.1700570957373575
+    },
+    "3": {
+      "settled": 16450,
+      "long": 10168,
+      "short": 6282,
+      "gp": 18.09679943882461,
+      "gl": 84.21231572190091,
+      "cash": -0.06415011711622014,
+      "net": -66.11551628307629,
+      "netPf": 0.21489492699128113,
+      "meanNetBp": -40.19180321159652,
+      "meanGrossFrozenPathBp": -25.191803211596525
+    },
+    "4": {
+      "settled": 13367,
+      "long": 10172,
+      "short": 3195,
+      "gp": 16.306555512459006,
+      "gl": 71.4895606450913,
+      "cash": -0.02772097092328602,
+      "net": -55.183005132632296,
+      "netPf": 0.22809701675763014,
+      "meanNetBp": -41.28301423852196,
+      "meanGrossFrozenPathBp": -26.283014238521954
+    },
+    "5": {
+      "settled": 19889,
+      "long": 14830,
+      "short": 5059,
+      "gp": 29.15124593305254,
+      "gl": 90.01664557048535,
+      "cash": -0.04058106453544655,
+      "net": -60.865399637432816,
+      "netPf": 0.3238428376030338,
+      "meanNetBp": -30.60254393756992,
+      "meanGrossFrozenPathBp": -15.60254393756992
+    },
+    "6": {
+      "settled": 20536,
+      "long": 15149,
+      "short": 5387,
+      "gp": 28.328769245635513,
+      "gl": 78.42938992639404,
+      "cash": -0.022996447744246983,
+      "net": -50.100620680758524,
+      "netPf": 0.3612009384775536,
+      "meanNetBp": -24.396484554323393,
+      "meanGrossFrozenPathBp": -9.396484554323393
+    },
+    "noTP": {
+      "settled": 56745,
+      "long": 41755,
+      "short": 14990,
+      "gp": 51.93030444843047,
+      "gl": 223.37510876658808,
+      "cash": -0.12619370094600293,
+      "net": -171.44480431815762,
+      "netPf": 0.23248026485661002,
+      "meanNetBp": -30.213200161804146,
+      "meanGrossFrozenPathBp": -15.213200161804147
+    }
+  },
+  "byDirection": {
+    "long": {
+      "settled": 99466,
+      "long": 99466,
+      "short": 0,
+      "gp": 135.586447928806,
+      "gl": 400.69500468650034,
+      "cash": -0.0976539636194265,
+      "net": -265.1085567576944,
+      "netPf": 0.3383781837632027,
+      "meanNetBp": -26.65318367660249,
+      "meanGrossFrozenPathBp": -11.653183676602493
+    },
+    "short": {
+      "settled": 36345,
+      "long": 0,
+      "short": 36345,
+      "gp": 24.26694660445404,
+      "gl": 180.66579428044216,
+      "cash": -0.19125471452500856,
+      "net": -156.39884767598812,
+      "netPf": 0.13431954123415957,
+      "meanNetBp": -43.031736876045706,
+      "meanGrossFrozenPathBp": -28.03173687604571
+    }
+  },
+  "byStepDirection": {
+    "2": {
+      "long": {
+        "settled": 7392,
+        "long": 7392,
+        "short": 0,
+        "gp": 14.721453669329804,
+        "gl": 26.035413679279987,
+        "cash": 0.0024247545146312624,
+        "net": -11.313960009950183,
+        "netPf": 0.5654395912689384,
+        "meanNetBp": -15.305681831642563,
+        "meanGrossFrozenPathBp": -0.30568183164256246
+      },
+      "short": {
+        "settled": 1432,
+        "long": 0,
+        "short": 1432,
+        "gp": 1.318266285542339,
+        "gl": 7.8023646568711955,
+        "cash": -0.009691131393868502,
+        "net": -6.484098371328857,
+        "netPf": 0.16895727686623832,
+        "meanNetBp": -45.28001655955905,
+        "meanGrossFrozenPathBp": -30.28001655955905
+      }
+    },
+    "3": {
+      "long": {
+        "settled": 10168,
+        "long": 10168,
+        "short": 0,
+        "gp": 11.142527760528807,
+        "gl": 49.21336704314134,
+        "cash": -0.010670608602824516,
+        "net": -38.07083928261253,
+        "netPf": 0.2264126279098332,
+        "meanNetBp": -37.441816761027276,
+        "meanGrossFrozenPathBp": -22.441816761027273
+      },
+      "short": {
+        "settled": 6282,
+        "long": 0,
+        "short": 6282,
+        "gp": 6.954271678295269,
+        "gl": 34.99894867876094,
+        "cash": -0.0534795085133957,
+        "net": -28.04467700046567,
+        "netPf": 0.19869944500691414,
+        "meanNetBp": -44.64291149389632,
+        "meanGrossFrozenPathBp": -29.64291149389632
+      }
+    },
+    "4": {
+      "long": {
+        "settled": 10172,
+        "long": 10172,
+        "short": 0,
+        "gp": 13.620147496038852,
+        "gl": 55.86400241947419,
+        "cash": -0.008170441135566671,
+        "net": -42.243854923435336,
+        "netPf": 0.24380901665024396,
+        "meanNetBp": -41.529546719853855,
+        "meanGrossFrozenPathBp": -26.52954671985385
+      },
+      "short": {
+        "settled": 3195,
+        "long": 0,
+        "short": 3195,
+        "gp": 2.6864080164199824,
+        "gl": 15.625558225616489,
+        "cash": -0.019550529787719387,
+        "net": -12.939150209196507,
+        "netPf": 0.17192397081954447,
+        "meanNetBp": -40.498122720489846,
+        "meanGrossFrozenPathBp": -25.498122720489846
+      }
+    },
+    "5": {
+      "long": {
+        "settled": 14830,
+        "long": 14830,
+        "short": 0,
+        "gp": 25.93484402600453,
+        "gl": 67.56066366547442,
+        "cash": -0.01732066346167196,
+        "net": -41.625819639469896,
+        "netPf": 0.383874915060345,
+        "meanNetBp": -28.06865788231281,
+        "meanGrossFrozenPathBp": -13.06865788231281
+      },
+      "short": {
+        "settled": 5059,
+        "long": 0,
+        "short": 5059,
+        "gp": 3.2164019070472722,
+        "gl": 22.455981905009907,
+        "cash": -0.02326040107377368,
+        "net": -19.239579997962636,
+        "netPf": 0.14323140803429737,
+        "meanNetBp": -38.03040126104494,
+        "meanGrossFrozenPathBp": -23.030401261044943
+      }
+    },
+    "6": {
+      "long": {
+        "settled": 15149,
+        "long": 15149,
+        "short": 0,
+        "gp": 25.280279392984752,
+        "gl": 55.34033769580956,
+        "cash": -0.007995895356024602,
+        "net": -30.060058302824807,
+        "netPf": 0.4568146933244863,
+        "meanNetBp": -19.842932406643875,
+        "meanGrossFrozenPathBp": -4.842932406643875
+      },
+      "short": {
+        "settled": 5387,
+        "long": 0,
+        "short": 5387,
+        "gp": 3.0484898526499156,
+        "gl": 23.089052230578453,
+        "cash": -0.015000552388223287,
+        "net": -20.040562377928538,
+        "netPf": 0.13203183145874592,
+        "meanNetBp": -37.20171222930859,
+        "meanGrossFrozenPathBp": -22.20171222930859
+      }
+    },
+    "noTP": {
+      "long": {
+        "settled": 41755,
+        "long": 41755,
+        "short": 0,
+        "gp": 44.88719558393639,
+        "gl": 146.68122018301958,
+        "cash": -0.055921109577977156,
+        "net": -101.79402459908319,
+        "netPf": 0.3060186950171875,
+        "meanNetBp": -24.378882672514234,
+        "meanGrossFrozenPathBp": -9.378882672514232
+      },
+      "short": {
+        "settled": 14990,
+        "long": 0,
+        "short": 14990,
+        "gp": 7.043108864495086,
+        "gl": 76.69388858361424,
+        "cash": -0.07027259136803428,
+        "net": -69.65077971911916,
+        "netPf": 0.0918340299933606,
+        "meanNetBp": -46.464829699212245,
+        "meanGrossFrozenPathBp": -31.464829699212245
+      }
+    }
+  }
+}

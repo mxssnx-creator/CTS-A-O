@@ -14,7 +14,7 @@ const id = { cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc", sym: "AAA-USDT", side
 const sources = { config: true, overall: false, symbol: false, direction: false, indication: false,
   strategy: false, coordination: false, range: false };
 const config = { ...DEFAULT_RELATE_ADJUSTMENT, enabled: true, auto: false, ratio: 0.2, steps: 5,
-  minTrades: 60, lastN: 250, activeStep: 2, sources };
+  minTrades: 60, lastN: 250, activeStep: 2, maxSl: 0.01, sources };
 const feed = (count: number, lastLoss = false): BlockFeedEntry[] => Array.from({ length: count }, (_, i) => ({
   cfg: id.cfg, sym: id.sym, side: 1, ind: id.ind, type: "normal", kind: "none",
   entryT: i * H, exitT: i * H + H / 2, r: lastLoss && i === count - 1 ? -0.01 : 0.01,
@@ -112,6 +112,45 @@ describe("Relate realtime learning", () => {
       const book = hooks.booksAt()(64 * H).relate!;
       assert.equal(book.summary().closes, 60);
       assert.equal(book.summary().shadowCloses, 2);
+    } finally {
+      rt.dispose();
+      db.db.close();
+    }
+  });
+
+  it("preserves Active admission for an unraised wide-stop entry and counts only accepted closes", () => {
+    const { rt, db, hooks } = fixture(feed(60, true));
+    try {
+      hooks.wf = { ...hooks.wf, lastN: 0, validLastN: 0, basePassed: undefined, rangeOpts: undefined,
+        probe: { perRange: 0, perCell: 1 }, relate: { ...config, maxSl: .0075 },
+        toggles: { ...hooks.wf.toggles, normal: true, block: false, blockActive: false },
+        coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false } };
+      rt.settings.live.liveLastN = 0;
+      hooks.sim = { ...hooks.sim!, startT: 0, endT: 60 * H, trades: [],
+        steps: [{ t: 60 * H, real: [id.cfg] }] } as unknown as WalkForwardResult;
+      hooks.realtimeLearning = { sim: hooks.sim, feed: [...hooks.sim.feed], accepted: [] };
+      hooks.paper.selected = [id.cfg];
+      hooks.lastSelection = { picks: [{ id: id.cfg, score: 1, window: { n: 60, net: 1, pf: 2, ddt: 0 } }], eligible: 1 };
+      for (let i = 0; i < 2; i++) {
+        const row = trade((61 + i) * H);
+        const tp = tape(row); // This existing 1% fixed stop is wider than the 0.75% raise limit.
+        hooks.tapes = [tp];
+        const open: OpenPosition = { ...row, entryI: 0, stop: 99, target: 101, peak: 100, trailOn: false, mtm: 0 };
+        drain(hooks.stepPaperGen({ opens: new Map([[id.cfg, [open]]]), t: row.entryT }));
+        assert.equal(hooks.paper.positions.length, 0, "Active is an independent admission gate");
+        assert.ok(hooks.relateShadowPending.has(orderKey(row)), JSON.stringify(rt.status.paperSkips));
+        drain(hooks.appendRealtimeLearningGen([tp]));
+      }
+      const row = trade(63 * H);
+      hooks.tapes = [tape(row)];
+      const open: OpenPosition = { ...row, entryI: 0, stop: 99, target: 101, peak: 100, trailOn: false, mtm: 0 };
+      drain(hooks.stepPaperGen({ opens: new Map([[id.cfg, [open]]]), t: row.entryT }));
+      assert.equal(hooks.paper.positions.length, 1, JSON.stringify(rt.status.paperSkips));
+      assert.equal(hooks.paper.positions[0].relateVol ?? 1, 1, "ineligible stops never receive a Relate raise");
+      assert.equal(hooks.paper.positions[0].relateParts, undefined, "hypothetical parts are never funded evidence");
+      const book = hooks.booksAt()(64 * H).relate!;
+      assert.equal(book.summary().closes, 60, "skips never enter funded PF history");
+      assert.equal(book.summary().shadowCloses, 2, "Active shadows advance their own progression");
     } finally {
       rt.dispose();
       db.db.close();

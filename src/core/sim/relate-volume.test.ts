@@ -73,9 +73,10 @@ describe("Relate settled-order sizing", () => {
         lastN: DEFAULT_RELATE_ADJUSTMENT.lastN,
         minTrades: DEFAULT_RELATE_ADJUSTMENT.minTrades,
         maxStack: DEFAULT_RELATE_ADJUSTMENT.maxStack,
+        maxSl: DEFAULT_RELATE_ADJUSTMENT.maxSl,
       },
       { enabled: false, auto: true, mode: "additive", ratio: 2.6, steps: 5, activeStep: 0,
-        minPf: 1.5, lastN: 250, minTrades: 60, maxStack: 250 },
+        minPf: 1.5, lastN: 250, minTrades: 60, maxStack: 250, maxSl: 0.0075 },
     );
     assert.doesNotThrow(() => checkSettings({ relate: DEFAULT_RELATE_ADJUSTMENT }));
   });
@@ -96,6 +97,10 @@ describe("Relate settled-order sizing", () => {
     assert.throws(() => checkSettings({ relate: { ...DEFAULT_RELATE_ADJUSTMENT, minTrades: 251 } }));
     assert.throws(() => checkSettings({ relate: { ...DEFAULT_RELATE_ADJUSTMENT, minPf: -0.1 } }));
     assert.throws(() => checkSettings({ relate: { ...DEFAULT_RELATE_ADJUSTMENT, maxStack: 1.5 } }));
+    for (const maxSl of [0.0025, 0.005, 0.0075, 0.01, 0.0125, 0.015])
+      assert.doesNotThrow(() => checkSettings({ relate: { ...DEFAULT_RELATE_ADJUSTMENT, maxSl } }));
+    for (const maxSl of [0, 0.0024, 0.003, 0.0151, NaN, Infinity])
+      assert.throws(() => checkSettings({ relate: { ...DEFAULT_RELATE_ADJUSTMENT, maxSl } }));
     assert.throws(() => checkSettings({ relate: { ...DEFAULT_RELATE_ADJUSTMENT, sources: { unknown: true } as never } }));
     assert.doesNotThrow(() => checkMerged(DEFAULT_SETTINGS, {
       relate: { ...DEFAULT_RELATE_ADJUSTMENT, sources: { ...DEFAULT_RELATE_ADJUSTMENT.sources, range: false } },
@@ -433,6 +438,7 @@ describe("Relate settled-order sizing", () => {
       lastN: 250,
       minTrades: 60,
       maxStack: 250,
+      maxSl: 0.01,
       sources: { config: true, overall: false, symbol: false, direction: false,
         indication: false, strategy: false, coordination: false, range: false },
     };
@@ -570,10 +576,12 @@ describe("Relate settled-order sizing", () => {
     const hour = 3_600_000;
     const endT = Date.UTC(2026, 9, 20);
     const startT = endT - 82 * hour;
-    for (const tag of ["mc", "mn"] as const) {
+    for (const maxSl of [0.01, 0.0075]) for (const tag of ["mc", "mn"] as const) {
       const cfg = identity.cfg.replace(/\|mc$/, `|${tag}`);
+      // Neutral unraised wins restart their Active level; place the loss on an actually admitted entry.
+      const lossAt = maxSl < .01 ? 73 : 74;
       const rows: Trade[] = Array.from({ length: 81 }, (_, i) => {
-        const r = i === 74 ? -0.02 : 0.01;
+        const r = i === lossAt ? -0.02 : 0.01;
         return { cfg, sym: identity.sym, side: 1, entryT: startT + i * hour,
           exitT: startT + i * hour + 30 * 60_000, entry: 100, exit: 100 * (1 + r),
           r, reason: r > 0 ? "tp" : "sl", bars: 2, mfe: 0, mae: 0, kind: "normal" };
@@ -581,7 +589,7 @@ describe("Relate settled-order sizing", () => {
       const tape = makeTape(cfg, "follow", identity.ind,
         { tp: 0.01, sl: 0.01, trail: 0, hold: 32, tag }, "normal", [identity.sym], rows, [], []);
       const defaults = defaultWalkForward(DEFAULT_SETTINGS);
-      const relate = config({ ratio: 0.2, steps: 5, activeStep: 2, lastN: 250, minTrades: 60 });
+      const relate = config({ ratio: 0.2, steps: 5, activeStep: 2, lastN: 250, minTrades: 60, maxSl });
       const options = { ...defaults, startT, simH: 82, lastN: 0, validLastN: 0,
         normalBaseMinPf: 0, preGate: false, robustFrac: 0, symGate: "off" as const, rangeGate: undefined,
         engineSideAccept: { ...defaults.engineSideAccept!, enabled: false },
@@ -592,14 +600,20 @@ describe("Relate settled-order sizing", () => {
       const universe = { bars: [], caches: [], startT, endT, splitT: startT, nowT: endT, baseTf: 60 } as never;
       const sim = walkForward(universe, [tape], options);
       const at = (i: number) => sim.feed.find((row) => row.entryT === startT + i * hour);
-      assert.equal(at(74)?.accepted, true, `${tag}: the loss is an accepted close`);
-      for (const i of [75, 76]) {
+      assert.equal(at(lossAt)?.accepted, true, `${tag}: the loss is an accepted close`);
+      for (const i of [lossAt + 1, lossAt + 2]) {
         assert.equal(at(i)?.accepted, undefined, `${tag}: skipped step ${i} is not accepted`);
         assert.equal(at(i)?.relateShadow, true, `${tag}: skipped step ${i} is explicitly marked`);
         assert.ok(!sim.trades.some((row) => row.entryT === startT + i * hour));
       }
-      assert.equal(at(77)?.accepted, true, `${tag}: the entry recovers after the two shadow closes`);
-      assert.equal(sim.trades.find((row) => row.entryT === startT + 77 * hour)?.relateVol, 1.44);
+      const recovered = lossAt + 3;
+      assert.equal(at(recovered)?.accepted, true, `${tag}: the entry recovers after the two shadow closes`);
+      assert.equal(sim.trades.find((row) => row.entryT === startT + recovered * hour)?.relateVol ?? 1,
+        maxSl >= .01 ? 1.44 : 1, `${tag}: only eligible stops receive a raise`);
+      if (maxSl < .01) {
+        assert.equal(at(recovered)?.relateParts, undefined, `${tag}: no hypothetical raise enters the accepted feed`);
+        assert.equal(at(recovered + 1)?.relateShadow, true, `${tag}: the accepted neutral close restarts Active progression`);
+      }
       const replay = relateBookFor({ relate })!;
       for (const row of sim.feed) feedBooks(row, null, null, null, replay);
       assert.deepEqual(replay.summary(), sim.relate, `${tag}: a replay reconstructs accepted and shadow histories`);

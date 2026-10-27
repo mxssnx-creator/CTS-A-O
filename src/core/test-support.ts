@@ -311,7 +311,8 @@ export class SimExchange implements ExchangeClient {
   async ordersSince(sym: string, from: number) {
     return { orders: this.history.filter((h) => h.symbol === sym && Number(h.updateTime) >= from) };
   }
-  async orderStatus(_sym: string, id: string) {
+  // Like the real exchange client, status fixtures may return partial, malformed, or future venue payloads.
+  async orderStatus(_sym: string, id: string): Promise<unknown> {
     const d = this.done.get(id);
     if (d) return { order: { orderId: id, status: d.status, avgPrice: d.px ?? 0, executedQty: d.qty ?? 0 } };
     return this.orders.some((o) => o.id === id) ? { order: { orderId: id, status: "NEW" } } : null;

@@ -1,0 +1,24 @@
+{
+  "protocolSha256": "1c76edd72cb836acaf8376cf16d16ba16c30eea4998c2c476551ff51f4ee5040",
+  "startedAt": "2026-10-27T21:06:30.438Z",
+  "cases": [
+    {
+      "id": "relate-off",
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "maxCgroupBytes": 5499744256,
+      "endedAt": "2026-10-27T21:06:54.772Z"
+    },
+    {
+      "id": "relate-on",
+      "code": 0,
+      "signal": null,
+      "reason": null,
+      "maxCgroupBytes": 5541650432,
+      "endedAt": "2026-10-27T21:07:19.517Z"
+    }
+  ],
+  "status": "complete",
+  "endedAt": "2026-10-27T21:07:19.517Z"
+}

@@ -115,11 +115,13 @@ describe("first-class indication minimum return PF is consistent from Base throu
     assert.deepEqual(basePassTags(lowRun, g, ["mc", "sh", "gn"]), []);
     assert.deepEqual(
       basePassTags({ ...lowRun, ind: OTHER }, g, ["mc", "sh", "gn"]).sort(),
-      ["", "mc", "sh"].sort(),
+      ["", "mc"].sort(),
     );
     for (const tag of ["", "mc", "sh"]) {
       assert.equal(rangeCellPass({ ...G, baseSetsMinPf: 1 }, IND)(tag, low), false);
-      assert.equal(rangeCellPass({ ...G, baseSetsMinPf: 1 }, OTHER)(tag, low), true);
+      assert.equal(rangeCellPass({ ...G, baseSetsMinPf: 1 }, OTHER)(tag, low), tag !== "sh",
+        "ordinary Short also keeps the 1.1 range floor");
+      assert.equal(rangeCellPass({ ...G, baseSetsMinPf: 1 }, OTHER)(tag, sample(1.12)), true);
       assert.equal(rangeCellPass({ ...G, baseSetsMinPf: 1 }, IND)(tag, sample(1.12)), true);
     }
     assert.equal(rangeCellPass({ ...G, baseSetsMinPf: undefined }, IND)("gn", sample(1.2)), false);

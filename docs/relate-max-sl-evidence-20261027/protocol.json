@@ -1,0 +1,42 @@
+{
+  "createdAt": "2026-10-27T21:06:30.424Z",
+  "sourceCommit": "f3d217869829cf0444703d8d0bfe157875c77860",
+  "feed": "docs/relate-evidence-20261027/reproduction-feed.json.gz",
+  "feedSha256": "e0a687b8f1799201cfa8a062ef54555271bbfb9248c34b5d1814273222a7b3bb",
+  "desk": "docs/relate-evidence-20261027/desk-reduced.json",
+  "deskSha256": "0514856b61d1e8362b4d8fc38d0042756953699d512498fd1d4ad98adc609ecf",
+  "symbols": 12,
+  "evaluationFrom": "2026-10-26T01:00:00Z",
+  "start": "2026-10-27T01:00:00Z",
+  "end": "2026-10-27T13:00:00Z",
+  "selectionHours": 24,
+  "prehistoryHours": 24,
+  "simulatedHours": 12,
+  "scope": "Already examined Binance USD-M public candles; reduced 6-pair 1m Micro/Minimal grid; Normal/Trailing only, Signal/Exit/DCA/Axis/Block off; offline modeled execution, not independent holdout or live fills.",
+  "account": {
+    "balance": 10000,
+    "sizing": "fixed",
+    "notional": 2,
+    "leverage": 10,
+    "caps": "on"
+  },
+  "cases": [
+    {
+      "id": "relate-off",
+      "settings": {
+        "relate": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "id": "relate-on",
+      "settings": {
+        "relate": {
+          "enabled": true
+        }
+      }
+    }
+  ],
+  "policy": "No validation or Last-N gates relaxed; Relate Auto enabled by default, 250 closes, minimum 60, 1.5 min PF, max stack 250, modeled fixed-stop eligibility 0.75%."
+}

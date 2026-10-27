@@ -1,0 +1,126 @@
+{
+  "schema": "cts-low-range-24h-breakout-crosscheck-v1",
+  "scope": "post-selected earlier-window unallocated candidate tapes, not an independent holdout or venue execution",
+  "frozenAt": "2026-10-27T18:42:38.967Z",
+  "hashes": {
+    "source": "12e1717a2abc169c0a6b7ec62c6a8c0496a899aba23cdc56a6b1334bdab7a188",
+    "tests": "fe104507ede4d3c6b1762f5124dbb3edff1073a089a49d1ef5a49ce8024b8e79",
+    "runner": "a964281dfc019e450af966e805e84c08444caa00aca6bec3a57b3912f2ec616a",
+    "description": "c0a9e0007d54060a4b8bb5010b1cf408d99a2f88ebae09edbd3310261f8c350c",
+    "feed": "a7beade8b9f2da1f5c2d5fda9b8ef32a4ce5bcc045ad10c67cd5678333c4224e"
+  },
+  "feed": {
+    "path": "docs/micro-optimization-2026-10-20/reproduction-feed.json.gz",
+    "provider": "Previously examined cached Binance USD-M minute candles; retrospective, not a fresh holdout"
+  },
+  "symbols": [
+    "ADA-USDT",
+    "APT-USDT",
+    "ARB-USDT",
+    "ATOM-USDT",
+    "AVAX-USDT",
+    "BCH-USDT",
+    "BNB-USDT",
+    "BTC-USDT",
+    "DOGE-USDT",
+    "DOT-USDT",
+    "ETC-USDT",
+    "ETH-USDT",
+    "FIL-USDT",
+    "LINK-USDT",
+    "LTC-USDT",
+    "NEAR-USDT",
+    "OP-USDT",
+    "SOL-USDT",
+    "SUI-USDT",
+    "TRX-USDT"
+  ],
+  "warm": 1791288000000,
+  "evalFrom": 1791374400000,
+  "start": 1791460800000,
+  "end": 1791547200000,
+  "tfs": [
+    15
+  ],
+  "policy": {
+    "step": 0.002,
+    "cost": 0.0015,
+    "steps": [
+      2,
+      3
+    ],
+    "slRatios": [
+      0.5,
+      0.75,
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2,
+      2.25,
+      2.5,
+      2.75,
+      3,
+      3.25,
+      3.5
+    ],
+    "trailRatios": [
+      0,
+      0.25,
+      0.5,
+      0.75
+    ],
+    "tags": [
+      "mc",
+      "mn",
+      "sh"
+    ]
+  },
+  "methods": [
+    "breakout"
+  ],
+  "relations": [
+    "standalone",
+    "trend",
+    "breakout",
+    "activity",
+    "trend-breakout"
+  ],
+  "windows": [
+    12,
+    24,
+    48
+  ],
+  "requestedPerSignalLane": 312,
+  "distinctPerSignalLane": 195,
+  "countPerStep": {
+    "2": 78,
+    "3": 117
+  },
+  "totalCells": 2925,
+  "gates": {
+    "minPf": 1.1,
+    "maxDdtH": 35,
+    "minDdtH": 18,
+    "maxDdr": 1,
+    "rangeMinPf": {
+      "micro": 1.05,
+      "minimal": 1.1,
+      "short": 1.1,
+      "general": 1.2,
+      "long": 1.3
+    },
+    "minTrades": 12,
+    "quorum": 0.6,
+    "baseSetsMinPf": 1,
+    "warmup": true,
+    "lastNFloor": 5
+  },
+  "validLastN": 15,
+  "rangeGate": {
+    "lastN": 75,
+    "minPf": 1.35
+  },
+  "preH": 24,
+  "longH": 24
+}

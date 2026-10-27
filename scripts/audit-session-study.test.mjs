@@ -90,6 +90,18 @@ describe('frozen session independent audit', () => {
     assert.throws(() => auditSessionStudy(raw, data), /identity.*mismatched/);
   });
 
+  it('reconciles an explicitly empty funded cohort while keeping PF unavailable', () => {
+    const { raw, data } = fixture({ n: 0 });
+    data.total.gpR = null; data.total.glR = null;
+    const a = auditSessionStudy(raw, data);
+    assert.equal(a.checksOk, true);
+    assert.equal(a.total.state, 'empty');
+    assert.equal(a.total.exactPf, null);
+    assert.equal(a.total.closes, 0);
+    delete data.total.gpR;
+    assert.equal(auditSessionStudy(raw, data).checksOk, false, 'missing gross data is not an explicit empty sample');
+  });
+
   it('preserves missing unit or allocation evidence as unknown and prevents pruning', () => {
     const unknown = fixture({ unknownUnit: true });
     const a = auditSessionStudy(unknown.raw, unknown.data, { purpose: 'selection' });

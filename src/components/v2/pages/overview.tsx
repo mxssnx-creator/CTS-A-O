@@ -8,6 +8,7 @@ import { PromotionEvidence } from "../promotion-evidence";
 import { PrehistoricPanel } from "../prehistoric";
 import { ArcShare, EquityChart, MultiArcGauge, RadialHours, SignedBars } from "../charts";
 import { sizeText } from "@/core/live-labels";
+import { hasCompleteAccountMark, hasCompleteOwnership } from "@/core/account-mark";
 import {
   Age,
   Empty,
@@ -187,8 +188,12 @@ function AccountNets(props: { d: Any }) {
   const a = props.d.live?.account;
   const ss = props.d.liveSession;
   const rows = (a?.positionsDetail ?? []) as Any[];
-  const own = rows.filter((x) => !x.foreign);
-  const foreign = rows.filter((x) => x.foreign);
+  const own = rows.filter((x) => !x.ownershipUnknown && x.ownQty > 0);
+  const foreign = rows.filter((x) => !x.ownershipUnknown && x.ownQty < x.qty);
+  const unknown = rows.filter((x) => x.ownershipUnknown);
+  const incomplete = !!a && !hasCompleteOwnership(a);
+  const ownMarkMissing = !!a && !hasCompleteAccountMark(a, "own");
+  const foreignMarkMissing = !!a && !hasCompleteAccountMark(a, "foreign");
   return (
     <>
       <div className="v2-grid v2-cols-4">
@@ -205,11 +210,15 @@ function AccountNets(props: { d: Any }) {
         />
         <Kpi
           label="Own open · uPnL (exchange)"
-          value={fmt.usdSigned(a?.own?.upnl)}
-          className={tone(a?.own?.upnl)}
+          value={incomplete || ownMarkMissing ? "–" : fmt.usdSigned(a?.own?.upnl)}
+          className={incomplete || ownMarkMissing ? undefined : tone(a?.own?.upnl)}
           sub={
-            a?.own
-              ? `${fmt.num(a.own.n)} own positions · margin ${usdFine(a.own.margin)} · own quantity only`
+            incomplete
+              ? "Ownership unresolved or unavailable · awaiting a fresh account read"
+              : ownMarkMissing
+              ? "Own position mark unavailable · awaiting a fresh account read"
+              : a?.own
+              ? `${fmt.num(a.own.n)} own positions · margin ${usdFine(a.own.margin)} · pro-rata estimate`
               : "no account read"
           }
         />
@@ -226,8 +235,8 @@ function AccountNets(props: { d: Any }) {
         <Kpi
           label="Not ours (apart)"
           value={`${fmt.num(a?.foreign?.n ?? 0)} positions`}
-          className={tone(a?.foreign?.upnl)}
-          sub={`uPnL ${fmt.usdSigned(a?.foreign?.upnl)} · ended by orders not ours: ${fmt.num(ss?.hand?.n ?? 0)} (${fmt.usdSigned(ss?.hand?.usd)}) · never in the own numbers`}
+          className={incomplete || foreignMarkMissing ? undefined : tone(a?.foreign?.upnl)}
+          sub={`${incomplete ? "uPnL incomplete · ownership unresolved" : foreignMarkMissing ? "uPnL incomplete · position mark unavailable" : `uPnL ${fmt.usdSigned(a?.foreign?.upnl)} · pro-rata estimate`} · ended by orders not ours: ${fmt.num(ss?.hand?.n ?? 0)} (${fmt.usdSigned(ss?.hand?.usd)})`}
         />
       </div>
       {ss?.venueHistory && (
@@ -245,7 +254,7 @@ function AccountNets(props: { d: Any }) {
         </Panel>
       )}
       {rows.length > 0 && (
-        <Panel title="Exchange positions" sub={`own ${own.length} · not ours ${foreign.length} · from the last account read`} flush>
+        <Panel title="Exchange positions" sub={`own share ${own.length} · foreign share ${foreign.length} · unresolved ${unknown.length} · from the last account read`} flush>
           <div className="v2-table-wrap">
             <table className="v2-table">
               <thead>
@@ -255,21 +264,22 @@ function AccountNets(props: { d: Any }) {
                   <th className="num">qty (own / exchange)</th>
                   <th className="num">entry</th>
                   <th className="num">mark</th>
-                  <th className="num">uPnL $</th>
-                  <th className="num">margin $</th>
+                  <th className="num">uPnL $ (whole)</th>
+                  <th className="num">margin $ (whole)</th>
                   <th className="num">leverage</th>
                   <th className="num">stop</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((x) => (
-                  <tr key={x.key} className={x.foreign ? "v2-muted" : undefined}>
+                {rows.map((x, i) => (
+                  <tr key={`${x.key}-${i}`} className={x.foreign || x.ownershipUnknown ? "v2-muted" : undefined}>
                     <td className="v2-mono">
                       {x.sym} {x.side > 0 ? "long" : "short"}
                     </td>
-                    <td>{x.foreign ? <Pill>not ours</Pill> : <Pill kind="ok">own</Pill>}</td>
+                    <td>{x.ownershipUnknown ? <Pill>unresolved</Pill> : x.foreign ? <Pill>not ours</Pill> :
+                      x.ownQty < x.qty ? <Pill>mixed</Pill> : <Pill kind="ok">own</Pill>}</td>
                     <td className="num">
-                      {fmt.num(x.ownQty, 4)} / {fmt.num(x.qty, 4)}
+                      {x.ownershipUnknown ? "–" : fmt.num(x.ownQty, 4)} / {fmt.num(x.qty, 4)}
                     </td>
                     <td className="num">{x.entry ? fmt.num(x.entry, 5) : "–"}</td>
                     <td className="num">{x.mark ? fmt.num(x.mark, 5) : "–"}</td>

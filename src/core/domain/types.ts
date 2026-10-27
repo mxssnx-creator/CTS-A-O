@@ -49,6 +49,7 @@ export const INDICATION_KINDS = [
   "relate",
   "micro",
   "inverse",
+  "low-range",
 ] as const;
 export type IndicationKind = (typeof INDICATION_KINDS)[number];
 
@@ -80,6 +81,8 @@ export interface Protect {
   sl: number;
   /** trailing distance from peak; 0 = off. Activates once MFE >= trail. */
   trail: number;
+  /** Internal Short-grid ownership: this cell is only for Low-Range sources. */
+  lowRangeOnly?: boolean;
   /** trailing distance after activation as a share of `trail` (default 1: stop = peak · (1 − trail)) */
   trailStep?: number;
   /** once the trail is active the target is dropped and the trail alone exits (let winners run) */
@@ -113,6 +116,8 @@ export interface Protect {
   exitSide?: 1 | -1;
   /** Independently evaluated Historic Exit config family; encoded in its lane id. */
   exitSet?: ExitConfigSet;
+  /** Historic Exit's own trailing-gap floor, captured in the qualified config identity. */
+  exitTrailFloor?: number;
 }
 
 /** Historic Exit config families share the Exit strategy kind, but keep separate fits and execution identities. */
@@ -126,6 +131,8 @@ export interface ExitProtectionState {
   baseSl: number;
   baseTrail: number;
   baseTrailDist: number;
+  /** Entry-time Historic Exit trailing-gap floor; absent on legacy held states. */
+  trailFloor?: number;
   /** Modeled round-trip cost captured at entry; absent legacy states retain their original zero-cost lock. */
   cost?: number;
   previousClose: number;
@@ -290,6 +297,8 @@ export interface RelateAdjustmentConfig {
   minTrades: number;
   /** Modeled total multiplier ceiling, reserving capacity for intrinsic ladder fills as well as external factors. */
   maxStack: number;
+  /** Maximum original-entry stop distance for a modeled Relate raise, as a fraction of entry. */
+  maxSl: number;
   sources: Partial<Record<RelateSource, boolean>>;
 }
 
@@ -553,6 +562,8 @@ export interface Trade {
   coordVol?: number;
   /** Relate volume multiplier captured at entry, included in the total execution multiple. */
   relateVol?: number;
+  /** Optional entry-time stop ceiling, in fractions of the original entry, captured by the simulator. */
+  entryStopMax?: number;
   /** Proven entry-time relation portions; absent legacy provenance must not be inferred. */
   relateMeasured?: boolean;
   relateBase?: number;
@@ -609,6 +620,8 @@ export interface OpenPosition {
   coordVol?: number;
   /** Relate volume multiplier captured at entry; held positions never get resized by later settings. */
   relateVol?: number;
+  /** Optional stop ceiling captured at this position's original entry; not inferred for legacy positions. */
+  entryStopMax?: number;
   /** Entry-time relation portions used for subsequent independently scoped adjustments. */
   relateMeasured?: boolean;
   relateBase?: number;
@@ -815,6 +828,16 @@ export interface BaseWindowsResult {
 /** The ranges with their own stage minimum PF (Gates.rangeMinPf). */
 export type RangeMinPfKey = "micro" | "minimal" | "short" | "general" | "long";
 
+export interface LowRangeGrid {
+  enabled: boolean;
+  /** Fixed range step as a fraction of price. */
+  step: number;
+  steps: readonly number[];
+  slRatios: readonly number[];
+  trailRatios: readonly number[];
+  maxHoldMin: number;
+}
+
 export interface ProtectGridSpec {
   /** Additional independent no-TP sets derived from every nonzero trailing cell; hard start stop at most 3%. */
   trailingOnly?: boolean;
@@ -842,6 +865,8 @@ export interface ProtectGridSpec {
    * walk-forward keeps whichever cell actually holds PF and green hours.
    */
   short?: false | RangeGrid;
+  /** Dedicated cost-aware Short cells for Low-Range indication identities. */
+  lowRange?: LowRangeGrid;
   /**
    * Minimal range, under the short range (4-8x cost, tagged "mn"): targets from 1x position cost up to the short
    * range. Counted on top of the wide and short grids. The walk-forward seats only the cells that clear PF and
@@ -913,7 +938,7 @@ export interface ProtectGridSpec {
    * ordinary noise and is taken out before the target can be reached.
    */
   minSlEval?: number;
-  /** short / minimal / plus each hold their own seat per pair (off: they compete with the wide cells) */
+  /** Legacy range-seat option; economic range identities are always separate in selection. */
   rangeSeats?: boolean;
   /**
    * Range cells fitted to each indication's horizon: a cell is computed when its target is within lo…hi × the

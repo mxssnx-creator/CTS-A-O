@@ -1,11 +1,12 @@
 // What the Core v2 server functions return: each page's data as a plain async function of its input (api.ts wraps
 // them as server functions; tests call them directly against a runtime). Server modules load on demand.
-import { MAX_BACKTEST_DAYS, type CoreSettings } from "./config.ts";
+import { MAX_BACKTEST_DAYS, type SettingsPatch } from "./config.ts";
 import { checkMerged, checkSettings } from "./settings-check.ts";
 import { positionOrderCounts, openBook } from "./positions.ts";
 import { statsOf, modeledUnitStatsOf as unitStatsOf } from "./metrics/stats.ts";
 import { returnGroup, modeledReturnReport as unitReturnReport, unitStatsReport, type ReturnStatsReport } from "./reporting-stats.ts";
 import { runBlocks, runStable, type WalkForwardResult } from "./sim/walkforward.ts";
+import { hasCompleteAccountMark, hasCompleteOwnership } from "./account-mark.ts";
 
 type ReturnGroup = ReturnType<typeof returnGroup>;
 type PrimarySimSummary = {
@@ -835,7 +836,7 @@ export async function coreSettingsData(data: ReturnType<typeof connInput>) {
 
 /** Input of saveCoreSettings. */
 export const saveCoreSettingsInput = (d: {
-  settings?: Partial<CoreSettings>;
+  settings?: SettingsPatch;
   wf?: Record<string, unknown>;
   conn?: string;
 }) => {
@@ -927,7 +928,7 @@ export const presetActionInput = (d: {
   label?: string;
   info?: string;
   days?: number;
-  settings?: Partial<CoreSettings>;
+  settings?: SettingsPatch;
   wf?: Record<string, unknown>;
   conn?: string;
 }) => {
@@ -1152,9 +1153,9 @@ async function liveOrdersView(r: Awaited<ReturnType<typeof rt>>) {
  * reader): own realized closes in USD (hand-ended positions apart), the own open uPnL of the last account read (own
  * quantity only), and their sum. Every page shows this one object.
  */
-async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
+export async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
   const since = r.db.kvGet<number>("liveSince") ?? null;
-  const st = await liveState<{ account?: { own?: { upnl: number; n: number }; readAt?: number | null } }>(
+  const st = await liveState<{ account?: { own?: { upnl: number; n: number }; ownershipUnknown?: { n: number; pendingKeys?: number }; markUnknown?: { own: number }; readAt?: number | null } }>(
     r.db,
     "liveStatus",
   );
@@ -1182,15 +1183,18 @@ async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
     realized += usd;
   }
   const own = st?.account?.own ?? null;
+  // The known-position subtotal is useful separately, but it is not the complete open or session P&L while
+  // a physical position's own share is unresolved. Do not silently treat that missing contribution as zero.
+  const incomplete = !hasCompleteAccountMark(st?.account, "own");
   return {
     since,
     closes: n,
     realized,
     hand,
     flat,
-    openUpnl: own ? own.upnl : null,
-    openPositions: own ? own.n : null,
-    net: realized + (own?.upnl ?? 0),
+    openUpnl: own && !incomplete ? own.upnl : null,
+    openPositions: own && !incomplete ? own.n : null,
+    net: own && !incomplete ? realized + own.upnl : null,
     accountAt: st?.account?.readAt ?? null,
     feesModelled,
     unknownNetReturns,
@@ -1296,9 +1300,11 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     // the margin line at the desk's actual leverage: fixed in the settings, or ("max") what the own positions hold now
     // (own notional / own margin of the last account read); unknown → 1× (margin = notional, labelled)
     const lev = r.settings.live.leverage;
-    const own = (
-      await liveState<{ account?: { own?: { notional: number; margin: number } } }>(r.db, "liveStatus")
-    )?.account?.own;
+    const liveAccount = (
+      await liveState<{ account?: { own?: { notional: number; margin: number }; ownershipUnknown?: { n: number; pendingKeys?: number } } }>(r.db, "liveStatus")
+    )?.account;
+    const incomplete = !hasCompleteOwnership(liveAccount);
+    const own = incomplete ? undefined : liveAccount?.own;
     if (typeof lev === "number" && lev > 0) {
       leverage = lev;
       leverageFrom = `${lev}× (settings)`;

@@ -1,0 +1,69 @@
+{
+  "sourceCommit": "7d06cb1ad40e4579c0fda1d7c22ce51ada909153",
+  "tests": [
+    {
+      "test": "src/core/sim/relate-causal-stop.test.ts",
+      "passed": 20,
+      "failed": 0,
+      "logSha256": "fce2c1daa8b79a68035ac7906590ee24edc4465456d8f3bb4815517f93f31576"
+    },
+    {
+      "test": "src/core/sim/backtest-resume.test.ts",
+      "passed": 39,
+      "failed": 0,
+      "logSha256": "c07c1cd3ab9d2caeda507b2501389e66af42c604596c4b519143f4c71ea92cf3"
+    },
+    {
+      "test": "src/core/sim/fixed-price-path.test.ts",
+      "passed": 9,
+      "failed": 0,
+      "logSha256": "56f0f062150b1ad86abe8dd0f77d9035c51443286c534d32fa4365f1667b1bfe"
+    },
+    {
+      "test": "src/core/sim/exit-protection.test.ts",
+      "passed": 9,
+      "failed": 0,
+      "logSha256": "a7ce3a5dd00645f3678b98d1c95111bea9e24dfba96bdbb21721f816a212f49b"
+    },
+    {
+      "test": "src/core/sim/realtime.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "logSha256": "e459284d947ca64c77544f8bb51c082cfc495a06eeab02bb4f29c27a07095378"
+    },
+    {
+      "test": "src/core/sim/tape-extend.test.ts",
+      "passed": 10,
+      "failed": 0,
+      "logSha256": "b97f4091c5ffc17c8a5d8538bd4305c34809b99da013a7309d63ec1a386f3308"
+    },
+    {
+      "test": "src/core/sim/relate-volume.test.ts",
+      "passed": 23,
+      "failed": 0,
+      "logSha256": "0159eff98947dfd3781215c52c9d85b48dd37d9e467c28174c16d5060985824a"
+    },
+    {
+      "test": "src/core/micro-order-identity.test.ts",
+      "passed": 2,
+      "failed": 0,
+      "logSha256": "d3e0e5b6da6dcd3e3bb49726e0baa8f0ee1f2dc689f43be61fbd98f14fbc5bf9"
+    }
+  ],
+  "totalPassed": 115,
+  "scopedTypecheck": {
+    "scope": "changed core modules and their imports",
+    "peakCgroupBytes": 7542669312,
+    "reason": null,
+    "exitCode": 0
+  },
+  "fullTypecheck": {
+    "status": "incomplete",
+    "attempts": [
+      "512 MB Node heap exhausted",
+      "768 MB retry stopped by shared memory safeguard"
+    ]
+  },
+  "newTwelveSymbolReplay": "not run; earlier report is on f3d2178",
+  "parallelExitBranch": "not merged or tested here"
+}

@@ -1,0 +1,136 @@
+{
+  "schema": "cts-low-range-short-detail-24h-research-v1",
+  "scope": "unallocated independent candidate tapes, not production or venue execution",
+  "frozenAt": "2026-10-27T19:04:39.517Z",
+  "hashes": {
+    "source": "12e1717a2abc169c0a6b7ec62c6a8c0496a899aba23cdc56a6b1334bdab7a188",
+    "tests": "fe104507ede4d3c6b1762f5124dbb3edff1073a089a49d1ef5a49ce8024b8e79",
+    "runner": "9bfa0cdb5bef716701aa80ab1650ae6598b3075cb968061b576777311791e3e1",
+    "description": "35062918766259379f472199014c98e2f9d2f56f4e657b2eeb2341c6b7aaf469",
+    "feed": "a7beade8b9f2da1f5c2d5fda9b8ef32a4ce5bcc045ad10c67cd5678333c4224e"
+  },
+  "feed": {
+    "path": "docs/micro-optimization-2026-10-20/reproduction-feed.json.gz",
+    "provider": "Previously examined cached Binance USD-M minute candles; retrospective, not a fresh holdout"
+  },
+  "symbols": [
+    "ADA-USDT",
+    "APT-USDT",
+    "ARB-USDT",
+    "ATOM-USDT",
+    "AVAX-USDT",
+    "BCH-USDT",
+    "BNB-USDT",
+    "BTC-USDT",
+    "DOGE-USDT",
+    "DOT-USDT",
+    "ETC-USDT",
+    "ETH-USDT",
+    "FIL-USDT",
+    "LINK-USDT",
+    "LTC-USDT",
+    "NEAR-USDT",
+    "OP-USDT",
+    "SOL-USDT",
+    "SUI-USDT",
+    "TRX-USDT"
+  ],
+  "warm": 1791374400000,
+  "evalFrom": 1791460800000,
+  "start": 1791547200000,
+  "end": 1791633600000,
+  "tfs": [
+    1,
+    5,
+    15
+  ],
+  "policy": {
+    "step": 0.002,
+    "cost": 0.0015,
+    "steps": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "slRatios": [
+      0.5,
+      0.75,
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2,
+      2.25,
+      2.5,
+      2.75,
+      3,
+      3.25,
+      3.5
+    ],
+    "trailRatios": [
+      0,
+      0.25,
+      0.5,
+      0.75
+    ],
+    "tags": [
+      "sh"
+    ]
+  },
+  "methods": [
+    "edge-turn",
+    "failed-break",
+    "breakout",
+    "mid-reclaim",
+    "compression-break"
+  ],
+  "relations": [
+    "standalone",
+    "trend",
+    "breakout",
+    "activity",
+    "trend-breakout"
+  ],
+  "windows": [
+    12,
+    24,
+    48
+  ],
+  "requestedPerSignalLane": 260,
+  "distinctPerSignalLane": 208,
+  "countPerStep": {
+    "2": 26,
+    "3": 39,
+    "4": 39,
+    "5": 52,
+    "6": 52
+  },
+  "totalCells": 46800,
+  "gates": {
+    "minPf": 1.1,
+    "maxDdtH": 35,
+    "minDdtH": 18,
+    "maxDdr": 1,
+    "rangeMinPf": {
+      "micro": 1.05,
+      "minimal": 1.1,
+      "short": 1.1,
+      "general": 1.2,
+      "long": 1.3
+    },
+    "minTrades": 12,
+    "quorum": 0.6,
+    "baseSetsMinPf": 1,
+    "warmup": true,
+    "lastNFloor": 5
+  },
+  "validLastN": 15,
+  "rangeGate": {
+    "lastN": 75,
+    "minPf": 1.35
+  },
+  "preH": 24,
+  "longH": 24
+}

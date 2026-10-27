@@ -130,6 +130,34 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
     return (ms: number) => mock.timers.tick(ms);
   };
 
+  for (const side of [1, -1] as const) for (const firstType of ["STOP_MARKET", "TAKE_PROFIT_MARKET"] as const) {
+    it(`documents unlinked position exits before a foreign merge is observed, side ${side}, first ${firstType}`, async () => {
+      const ex = new Venue(), { rt } = rtOf({ foreignSides: "independent", laneOrders: false });
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      const ps = side === 1 ? "LONG" : "SHORT", key = `S1-USDT|${ps}`;
+      rt.paper.positions = [lane("combo|ema-9-21@m15|a", "S1-USDT", side, 10, 0.02, 0.05, 2)];
+      await step();
+      const qty = ex.positions.get(key) ?? 0;
+      assert.ok(qty > 0);
+      const ownStop = ex.of(key, "STOP_MARKET")[0], ownTarget = ex.of(key, "TAKE_PROFIT_MARKET")[0];
+      assert.ok(ownStop && ownTarget);
+      assert.ok(near(ownStop.qty ?? 0, qty) && near(ownTarget.qty ?? 0, qty));
+      ex.positions.set(key, 2 * qty);
+      ex.orders.push({ id: `foreign-${ps}`, venueSymbol: "S1-USDT", symbol: "S1-USDT", positionSide: ps,
+        type: "STOP_MARKET", qty, stopPrice: side === 1 ? 8 : 12, clientOrderId: "manual-foreign" });
+      // Both own exit legs trigger before the next desk poll can observe the additional foreign quantity.
+      const first = firstType === "STOP_MARKET" ? ownStop : ownTarget;
+      const second = firstType === "STOP_MARKET" ? ownTarget : ownStop;
+      ex.triggerOrder(first.id);
+      assert.ok(near(ex.positions.get(key) ?? 0, qty));
+      ex.triggerOrder(second.id);
+      assert.equal(ex.positions.has(key), false, "both own orders consumed the foreign portion in the model");
+      assert.ok(near(ex.done.get(first.id)?.qty ?? 0, qty) && near(ex.done.get(second.id)?.qty ?? 0, qty));
+      assert.ok(ex.orders.some((o) => o.id === `foreign-${ps}`), "the foreign protection was not itself triggered");
+      rt.db.db.close();
+    });
+  }
+
   it("a Trailing-only venue backstop starts at at most 3%, without a TP, on both sides", async () => {
     const { rt }=rtOf();const ex=new Venue();
     rt.paper.positions=[lane("follow|ema-9-21@m15|tp0|sl9|tr1|h32|tm3|to","S1-USDT",1,10,.09),
@@ -232,7 +260,6 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
     const { rt } = rtOf();
     const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
     rt.paper.positions = [
-      lane("combo|ema-9-21@m15|a", "S1-USDT", 1, 10, 0.02, 0.03),
       lane("combo|ema-9-21@m15|b", "S1-USDT", 1, 10, 0.02, 0.05, 2),
       lane("combo|ema-9-21@m15|c", "S1-USDT", -1, 10, 0.02, 0.04, 3),
     ];
@@ -245,7 +272,7 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
     assert.ok(ls && lt && ss && st, "a stop and a take-profit on each side");
     assert.ok(ls.stopPrice! < 10 && lt.stopPrice! > 10, "long: stop below, take-profit above");
     assert.ok(ss.stopPrice! > 10 && st.stopPrice! < 10, "short: stop above, take-profit below");
-    // beyond the farthest lane target by 1.2 × its distance: long 10.5 → 10.6, short 9.6 → 9.52
+    // Beyond each held parent's target by 1.2 × its distance: long 10.5 → 10.6, short 9.6 → 9.52.
     assert.ok(near(lt.stopPrice!, 10.6), `long take-profit ${lt.stopPrice}`);
     assert.ok(near(st.stopPrice!, 9.52), `short take-profit ${st.stopPrice}`);
     const sent = ex.log.filter((p) => p.type === "TAKE_PROFIT_MARKET");
@@ -288,24 +315,21 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
     await step();
     assert.equal(ex.of("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 1, "the upkeep placed it after the backoff");
 
-    // a lane with no target joins: no take-profit may cut its run
-    const b = { ...lane("combo|ema-9-21@m15|b", "S1-USDT", 1, 10, 0.02, undefined, 2) };
-    rt.paper.positions = [a, b];
+    // The same held parent no longer has a target: no take-profit may cut its run.
+    rt.paper.positions = [{ ...a, target: undefined }];
     tick(1_000);
     await step();
     assert.equal(ex.of("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 0, "removed for the target-less lane");
     assert.equal(statusOf(rt).protect?.noTarget, 1);
 
-    // it leaves; a lane with a farther target joins: placed beyond the new farthest target (10.8 → 10.96)
-    const c = lane("combo|ema-9-21@m15|c", "S1-USDT", 1, 10, 0.02, 0.08, 3);
-    rt.paper.positions = [a, c];
+    // The same parent receives a farther target: place its backstop beyond 10.8 → 10.96.
+    rt.paper.positions = [{ ...a, target: 10.8 }];
     tick(1_000);
     await step();
     const [t1] = ex.of("S1-USDT|LONG", "TAKE_PROFIT_MARKET");
     assert.ok(t1 && near(t1.stopPrice!, 10.96), `beyond 10.8: ${t1?.stopPrice}`);
-    // a still farther one (11.2): the resting take-profit lies inside it — re-priced (at most once a minute)
-    const d = lane("combo|ema-9-21@m15|d", "S1-USDT", 1, 10, 0.02, 0.12, 4);
-    rt.paper.positions = [a, c, d];
+    // A still farther target (11.2): the resting take-profit lies inside it — re-priced at most once a minute.
+    rt.paper.positions = [{ ...a, target: 11.2 }];
     tick(61_000);
     await step();
     const tps = ex.of("S1-USDT|LONG", "TAKE_PROFIT_MARKET");
@@ -330,6 +354,7 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
       rt.paper.positions = [a, s];
       await step();
       const tp = ex.of("S1-USDT|LONG", "TAKE_PROFIT_MARKET")[0].stopPrice!;
+      const leftStop = ex.of("S1-USDT|LONG", "STOP_MARKET")[0];
       const sp = ex.of("S2-USDT|SHORT", "STOP_MARKET")[0].stopPrice!;
       // the long runs through its take-profit, the short's stop is hit
       price("S1-USDT", tp);
@@ -382,8 +407,27 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
       );
       assert.ok(booked[0].r > 0 && booked[1].r < 0, "the take-profit wins, the stop loses");
       await step();
-      assert.equal(ex.log.filter((p) => p.type === "MARKET").length, opens, "not reopened");
-      assert.equal(ex.orders.length, 0, "no own order left on a flat side");
+      assert.equal(ex.log.filter((p) => p.type === "MARKET").length, opens, "the closed parents are not reopened");
+      if (!keepStop) assert.equal(ex.orders.length, 0, "the venue removed both sets of exits");
+      else {
+        assert.deepEqual(ex.orders.map((o) => o.id), [leftStop.id], "the unresolved sibling stop remains identifiable");
+        const fresh = lane("combo|ema-9-21@m15|new", "S1-USDT", 1, tp, 0.02, undefined, 2);
+        rt.paper.positions = [fresh, s];
+        await step();
+        assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the old stop blocks a new parent");
+        assert.equal(ex.log.filter((p) => p.type === "MARKET").length, opens, "no extra open before reconciliation");
+        // A separately reconciled cancellation proves this exact stop has zero executed quantity.
+        assert.equal(await ex.cancel("S1-USDT", leftStop.id), true);
+        const cancelled = await ex.orderStatus("S1-USDT", leftStop.id);
+        assert.ok(cancelled && typeof cancelled === "object" && "order" in cancelled);
+        assert.ok(cancelled.order && typeof cancelled.order === "object" && "status" in cancelled.order && "executedQty" in cancelled.order);
+        assert.equal(cancelled.order.status, "CANCELLED");
+        assert.equal(cancelled.order.executedQty, 0);
+        await step();
+        assert.ok(ex.positions.has("S1-USDT|LONG"), "a new parent can open after exact cancellation confirmation");
+        assert.equal(ex.log.filter((p) => p.type === "MARKET").length, opens + 1);
+        assert.equal(ex.of("S1-USDT|LONG", "STOP_MARKET").length, 1, "the new parent has its own stop");
+      }
     }
   });
 
@@ -514,21 +558,23 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
     assert.ok(r[0].stopPrice! > 9.8, `repaired stop ${r[0].stopPrice}`);
   });
 
-  it('positionSize "min": every position at the exchange minimum whatever its lanes, never resized', async () => {
+  it('positionSize "min": a held parent remains at the exchange minimum as its volume changes', async () => {
     const ex = new Venue();
     const { rt } = rtOf({ positionSize: "min", ratio: 1 }, { mode: "minQty", pct: 0.02 });
     const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
     // S1 at 10: the minimum is max(0.001, 2 USDT / 10) = 0.2
-    const ls = [1, 2, 3, 4, 5].map((i) => lane(`combo|ema-9-21@m15|${i}`, "S1-USDT", 1, 10, 0.02, 0.05, i));
-    rt.paper.positions = ls.slice(0, 3);
+    const own = lane("combo|ema-9-21@m15|own", "S1-USDT", 1, 10, 0.02, 0.05, 1);
+    const sibling = lane("combo|ema-9-21@m15|sibling", "S1-USDT", 1, 10, 0.02, 0.05, 2);
+    rt.paper.positions = [own];
     await step();
-    assert.equal(ex.positions.get("S1-USDT|LONG"), 0.2, "3 lanes: the minimum");
+    assert.equal(ex.positions.get("S1-USDT|LONG"), 0.2, "the held parent starts at the minimum");
     const n = ex.log.filter((p) => p.type === "MARKET").length;
-    rt.paper.positions = ls;
+    rt.paper.positions = [{ ...own, vol: 3 }, sibling];
     await step();
-    rt.paper.positions = ls.slice(4);
+    assert.equal(ex.positions.get("S1-USDT|LONG"), 0.2, "a new sibling does not join an aggregate parent");
+    rt.paper.positions = [{ ...own, vol: 5 }];
     await step();
-    assert.equal(ex.positions.get("S1-USDT|LONG"), 0.2, "5 lanes, then 1: still the minimum");
+    assert.equal(ex.positions.get("S1-USDT|LONG"), 0.2, "changed parent volume: still the minimum");
     assert.equal(ex.log.filter((p) => p.type === "MARKET").length, n, "never resized");
     rt.paper.positions = [];
     await step();

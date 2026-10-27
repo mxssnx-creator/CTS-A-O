@@ -520,7 +520,8 @@ const RANGE_MIN_PF_KEY: Readonly<Record<RangeTag, RangeMinPfKey>> = {
 
 /**
  * The stage minimum PF of a config with this range tag: its range's own value (Gates.rangeMinPf, 1.05–3) or the
- * stage minimum. Untagged configs (Wide, the signals) keep the stage minimum.
+ * stage minimum. Short is never below 1.1; older saved settings below that floor remain readable. Untagged
+ * configs (Wide, the signals) keep their own stage minimum.
  */
 export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf">, tag: string | null | undefined, ind?: string): number {
   // A coordination Signal may borrow tagged protection distances. Its economic range is still Signals;
@@ -528,9 +529,10 @@ export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf">, tag: string 
   if (ind?.startsWith("sig-")) return Math.max(SIGNAL_MIN_PF, gates.minPf);
   const key = tag ? RANGE_MIN_PF_KEY[tag as RangeTag] : undefined;
   const v = key ? gates.rangeMinPf?.[key] : undefined;
-  const min = typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;
+  const configured = typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;
+  const min = tag === "sh" ? Math.max(1.1, configured) : configured;
   // First-class Tactic, Relate and relational Break configs share a minimum return PF of 1.1 from Base onward.
-  return ind && (ind.startsWith("micro-") || ind.startsWith("inverse-") || ind.startsWith("tactic-") || ind.startsWith("relate-") || ind.startsWith("break-rel-") || ind.startsWith("break-mc-rel-"))
+  return ind && (ind.startsWith("low-range-") || ind.startsWith("micro-") || ind.startsWith("inverse-") || ind.startsWith("tactic-") || ind.startsWith("relate-") || ind.startsWith("break-rel-") || ind.startsWith("break-mc-rel-"))
     ? Math.max(1.1, min)
     : min;
 }

@@ -643,8 +643,9 @@ test("Base sets floor: lowering Wide never weakens a configured range floor", ()
   const wide = baseSetsGates({ ...g, baseSetsMinPf: 0.9 });
   assert.equal(wide.minPf, 0.9);
   assert.deepEqual(wide.rangeMinPf, { long: 1.18 }, "tagged range floors remain active");
-  // PF 0.95 (net negative) computes Wide and Short sets under their 0.9 fallback; Long still needs 1.18.
-  assert.deepEqual(basePassTags({ full: st(0.95, -2) }, wide, ["sh", "lg"]), ["", "sh"]);
+  // PF 0.95 can pass the Wide discovery prefilter, but Short retains its independent 1.1 floor and Long 1.18.
+  assert.deepEqual(basePassTags({ full: st(0.95, -2) }, wide, ["sh", "lg"]), [""]);
+  assert.deepEqual(basePassTags({ full: st(1.1, 2) }, wide, ["sh", "lg"]), ["", "sh"]);
   assert.deepEqual(basePassTags({ full: st(0.95, -2) }, g, ["sh", "lg"]), []);
   // at the stage gate a positive net is still required
   assert.deepEqual(basePassTags({ full: st(1.1, -1) }, g, ["sh"]), []);

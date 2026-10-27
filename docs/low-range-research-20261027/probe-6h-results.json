@@ -1,0 +1,424 @@
+{
+  "scope": "research-only initial qualified contexts; overlapping unallocated candidate tapes, not runtime execution",
+  "stage": {
+    "evaluatedCells": 1458,
+    "basePassedCells": 16,
+    "directionContextsEvaluated": 32,
+    "directionContextsPassed": 13,
+    "gp": 164.61749374387247,
+    "gl": 19.670763482218646,
+    "failureReasons": {
+      "closes": 8,
+      "lastN": 2,
+      "lcb": 1,
+      "net": 8
+    },
+    "byRange": {
+      "mc": {
+        "cells": 486,
+        "basePassed": 0,
+        "contexts": 0,
+        "passed": 0
+      },
+      "mn": {
+        "cells": 486,
+        "basePassed": 0,
+        "contexts": 0,
+        "passed": 0
+      },
+      "sh": {
+        "cells": 486,
+        "basePassed": 16,
+        "contexts": 32,
+        "passed": 13
+      }
+    },
+    "byMethod": {
+      "edge-turn": {
+        "cells": 486,
+        "basePassed": 16,
+        "contexts": 32,
+        "passed": 13
+      },
+      "failed-break": {
+        "cells": 486,
+        "basePassed": 0,
+        "contexts": 0,
+        "passed": 0
+      },
+      "breakout": {
+        "cells": 486,
+        "basePassed": 0,
+        "contexts": 0,
+        "passed": 0
+      }
+    },
+    "pf": 8.368637744675146,
+    "validatedPct": 40.625
+  },
+  "outcomes": {
+    "settled": 215,
+    "long": 215,
+    "short": 0,
+    "openAtEnd": 145,
+    "gp": 0.5187106575527244,
+    "gl": 0.9505249777056769,
+    "byRange": {
+      "sh": {
+        "count": 215,
+        "gp": 0.5187106575527244,
+        "gl": 0.9505249777056769
+      }
+    },
+    "pf": 0.5457096548948758
+  },
+  "hourly": [
+    {
+      "from": 1791612000000,
+      "count": 0,
+      "long": 0,
+      "short": 0,
+      "gp": 0,
+      "gl": 0,
+      "pf": null
+    },
+    {
+      "from": 1791615600000,
+      "count": 16,
+      "long": 16,
+      "short": 0,
+      "gp": 0.04000000000000039,
+      "gl": 0.3290000000000002,
+      "pf": 0.12158054711246312
+    },
+    {
+      "from": 1791619200000,
+      "count": 33,
+      "long": 33,
+      "short": 0,
+      "gp": 0.29468273866923966,
+      "gl": 0.0001848800758181262,
+      "pf": 1593.9129047044023
+    },
+    {
+      "from": 1791622800000,
+      "count": 61,
+      "long": 61,
+      "short": 0,
+      "gp": 0.04830386553870595,
+      "gl": 0.24001272349442573,
+      "pf": 0.20125543694281608
+    },
+    {
+      "from": 1791626400000,
+      "count": 47,
+      "long": 47,
+      "short": 0,
+      "gp": 0.03254114506069459,
+      "gl": 0.26710146123361594,
+      "pf": 0.12183065158237007
+    },
+    {
+      "from": 1791630000000,
+      "count": 58,
+      "long": 58,
+      "short": 0,
+      "gp": 0.10318290828408357,
+      "gl": 0.11422591290181766,
+      "pf": 0.9033231222478734
+    }
+  ],
+  "rows": [
+    {
+      "ind": "low-range-12-edge-turn-breakout@m1",
+      "tag": "sh",
+      "side": 1,
+      "protect": {
+        "tp": 0.0095,
+        "sl": 0.0295,
+        "trail": 0,
+        "hold": 180,
+        "tag": "sh",
+        "maxHoldMin": 180
+      },
+      "historical": {
+        "n": 18,
+        "pf": 6.887823564767217,
+        "gp": 8.952963943143287,
+        "gl": 1.299824808077218
+      },
+      "forwardSettled": 16,
+      "openAtEnd": 9
+    },
+    {
+      "ind": "low-range-12-edge-turn-breakout@m1",
+      "tag": "sh",
+      "side": 1,
+      "protect": {
+        "tp": 0.0095,
+        "sl": 0.0295,
+        "trail": 0.0055,
+        "hold": 180,
+        "tag": "sh",
+        "maxHoldMin": 180,
+        "trailStep": 1,
+        "trailFree": false
+      },
+      "historical": {
+        "n": 18,
+        "pf": 6.322298537050059,
+        "gp": 8.217880482527969,
+        "gl": 1.299824808077218
+      },
+      "forwardSettled": 17,
+      "openAtEnd": 8
+    },
+    {
+      "ind": "low-range-12-edge-turn-breakout@m1",
+      "tag": "sh",
+      "side": 1,
+      "protect": {
+        "tp": 0.0135,
+        "sl": 0.0195,
+        "trail": 0,
+        "hold": 180,
+        "tag": "sh",
+        "maxHoldMin": 180
+      },
+      "historical": {
+        "n": 19,
+        "pf": 4.57589120554237,
+        "gp": 12.843123397441362,
+        "gl": 2.8066933457433665
+      },
+      "forwardSettled": 16,
+      "openAtEnd": 9
+    },
+    {
+      "ind": "low-range-12-edge-turn-breakout@m1",
+      "tag": "sh",
+      "side": 1,
+      "protect": {
+        "tp": 0.0135,
+        "sl": 0.0195,
+        "trail": 0.0075,
+        "hold": 180,
+        "tag": "sh",
+        "maxHoldMin": 180,
+        "trailStep": 1,
+        "trailFree": false
+      },
+      "historical": {
+        "n": 19,
+        "pf": 3.711700752638343,
+        "gp": 10.417605803820683,
+        "gl": 2.8066933457433665
+      },
+      "forwardSettled": 16,
+      "openAtEnd": 9
+    },
+    {
+      "ind": "low-range-12-edge-turn-breakout@m1",
+      "tag": "sh",
+      "side": 1,
+      "protect": {
+        "tp": 0.0135,
+        "sl": 0.0435,
+        "trail": 0,
+        "hold": 180,
+        "tag": "sh",
+        "maxHoldMin": 180
+      },
+      "historical": {
+        "n": 18,
+        "pf": 8.95745590104915,
+        "gp": 11.643123397441354,
+        "gl": 1.299824808077218
+      },
+      "forwardSettled": 16,
+      "openAtEnd": 9
+    },
+    {
+      "ind": "low-range-12-edge-turn-breakout@m1",
+      "tag": "sh",
+      "side": 1,
+      "protect": {
+        "tp": 0.0135,
+        "sl": 0.0435,
+        "trail": 0.0075,
+        "hold": 180,
+        "tag": "sh",
+        "maxHoldMin": 180,
+        "trailStep": 1,
+        "trailFree": false
+      },
+      "historical": {
+        "n": 18,
+        "pf": 7.787066848080392,
+        "gp": 10.121822671290563,
+        "gl": 1.299824808077218
+      },
+      "forwardSettled": 16,
+      "openAtEnd": 9
+    },
+    {
+      "ind": "low-range-24-edge-turn-breakout@m1",
+      "tag": "sh",
+      "side": 1,
+      "protect": {
+        "tp": 0.0095,
+        "sl": 0.0295,
+        "trail": 0,
+        "hold": 180,
+        "tag": "sh",
+        "maxHoldMin": 180
+      },
+      "historical": {
+        "n": 26,
+        "pf": 11.164910904333228,
+        "gp": 15.638000455571783,
+        "gl": 1.4006381770142473
+      },
+      "forwardSettled": 17,
+      "openAtEnd": 12
+    },
+    {
+      "ind": "low-range-24-edge-turn-breakout@m1",
+      "tag": "sh",
+      "side": 1,
+      "protect": {
+        "tp": 0.0095,
+        "sl": 0.0295,
+        "trail": 0.0055,
+        "hold": 180,
+        "tag": "sh",
+        "maxHoldMin": 180,
+        "trailStep": 1,
+        "trailFree": false
+      },
+      "historical": {
+        "n": 27,
+        "pf": 10.397083296122199,
+        "gp": 14.562551794145879,
+        "gl": 1.4006381770142473
+      },
+      "forwardSettled": 18,
+      "openAtEnd": 11
+    },
+    {
+      "ind": "low-range-24-edge-turn-breakout@m1",
+      "tag": "sh",
+      "side": 1,
+      "protect": {
+        "tp": 0.0135,
+        "sl": 0.0195,
+        "trail": 0,
+        "hold": 180,
+        "tag": "sh",
+        "maxHoldMin": 180
+      },
+      "historical": {
+        "n": 23,
+        "pf": 6.917228854472265,
+        "gp": 16.804820313111126,
+        "gl": 2.4294151121292074
+      },
+      "forwardSettled": 16,
+      "openAtEnd": 14
+    },
+    {
+      "ind": "low-range-24-edge-turn-breakout@m1",
+      "tag": "sh",
+      "side": 1,
+      "protect": {
+        "tp": 0.0135,
+        "sl": 0.0195,
+        "trail": 0.0075,
+        "hold": 180,
+        "tag": "sh",
+        "maxHoldMin": 180,
+        "trailStep": 1,
+        "trailFree": false
+      },
+      "historical": {
+        "n": 25,
+        "pf": 10.258347712314,
+        "gp": 15.313070267320189,
+        "gl": 1.492742369118426
+      },
+      "forwardSettled": 17,
+      "openAtEnd": 13
+    },
+    {
+      "ind": "low-range-24-edge-turn-breakout@m1",
+      "tag": "sh",
+      "side": 1,
+      "protect": {
+        "tp": 0.0135,
+        "sl": 0.0435,
+        "trail": 0.0075,
+        "hold": 180,
+        "tag": "sh",
+        "maxHoldMin": 180,
+        "trailStep": 1,
+        "trailFree": false
+      },
+      "historical": {
+        "n": 25,
+        "pf": 10.258347712314,
+        "gp": 15.313070267320189,
+        "gl": 1.492742369118426
+      },
+      "forwardSettled": 16,
+      "openAtEnd": 13
+    },
+    {
+      "ind": "low-range-48-edge-turn-breakout@m1",
+      "tag": "sh",
+      "side": 1,
+      "protect": {
+        "tp": 0.0095,
+        "sl": 0.0295,
+        "trail": 0.0055,
+        "hold": 180,
+        "tag": "sh",
+        "maxHoldMin": 180,
+        "trailStep": 1,
+        "trailFree": false
+      },
+      "historical": {
+        "n": 22,
+        "pf": 37.32018145720392,
+        "gp": 11.977937504984098,
+        "gl": 0.3209506770142457
+      },
+      "forwardSettled": 17,
+      "openAtEnd": 15
+    },
+    {
+      "ind": "low-range-48-edge-turn-breakout@m1",
+      "tag": "sh",
+      "side": 1,
+      "protect": {
+        "tp": 0.0135,
+        "sl": 0.0435,
+        "trail": 0.0075,
+        "hold": 180,
+        "tag": "sh",
+        "maxHoldMin": 180,
+        "trailStep": 1,
+        "trailFree": false
+      },
+      "historical": {
+        "n": 21,
+        "pf": 39.91742147091756,
+        "gp": 12.811523445753977,
+        "gl": 0.3209506770142457
+      },
+      "forwardSettled": 17,
+      "openAtEnd": 14
+    }
+  ],
+  "elapsedMs": 1271.8080929999999,
+  "rssBytes": 236257280
+}

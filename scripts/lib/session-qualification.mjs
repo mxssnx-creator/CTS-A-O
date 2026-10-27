@@ -5,9 +5,10 @@ import { modeledUnitReturn as unitReturn } from "../../src/core/metrics/stats.ts
 import { basePairRows, baseSetsGates, rangeCellPass, setsPassTags } from "../../src/core/pipeline/pipeline.ts";
 
 export const SESSION_QUALIFICATION = Object.freeze({
-  version: 1,
+  version: 2,
   rule: "full-indication-runtime-helpers",
   tacticMinPf: minPfOf({ minPf: 0 }, "", "tactic-trend-s"),
+  shortMinPf: minPfOf({ minPf: 0, rangeMinPf: { short: 1.05 } }, "sh"),
   noLossGateScore: PF_NO_LOSS,
 });
 
@@ -66,9 +67,11 @@ export function recordSessionMinimum(row, gates, tag, ind) {
 }
 
 export function sessionQualificationEvidence(saved) {
-  if (saved?.version === SESSION_QUALIFICATION.version && saved.rule === SESSION_QUALIFICATION.rule && Number.isFinite(saved.tacticMinPf) && Number.isFinite(saved.noLossGateScore))
-    return { ...saved, state: "recorded", note: `Qualification uses the recorded full indication's runtime gates; Tactic minimum return PF ${saved.tacticMinPf}, preserving stricter settings. No-loss qualification uses the runtime score ${saved.noLossGateScore}.` };
-  return { state: "legacy-unverified", note: "Historical dump: indication-aware qualification provenance was not recorded. Archived qualification counts and thresholds are retained, not recomputed or certified against current gates." };
+  if (saved?.version === SESSION_QUALIFICATION.version && saved.rule === SESSION_QUALIFICATION.rule &&
+      Number.isFinite(saved.tacticMinPf) && Number.isFinite(saved.noLossGateScore) &&
+      Number.isFinite(saved.shortMinPf) && saved.shortMinPf >= SESSION_QUALIFICATION.shortMinPf)
+    return { ...saved, state: "recorded", note: `Qualification uses the recorded full indication's runtime gates; Tactic minimum return PF ${saved.tacticMinPf}, Short minimum return PF ${saved.shortMinPf}, preserving stricter settings. No-loss qualification uses the runtime score ${saved.noLossGateScore}.` };
+  return { state: "legacy-unverified", note: "Historical dump: qualification provenance does not establish the Short 1.1 minimum PF rule. Archived qualification counts and thresholds are retained, not recomputed or certified against current gates." };
 }
 
 /** Independent Exit Base proof cannot be inferred from ordinary range qualification or headline PF. */

@@ -30,7 +30,7 @@ const trade = (r: number, mult: number, i: number): Trade => ({
   reason: r > 0 ? "tp" : "sl", bars: 1, mfe: 0, mae: 0, kind: "normal", vol: mult,
 });
 function install(r: InstanceType<typeof CoreRuntime>, trades = [trade(0.016, 2, 0), trade(-0.01, 1, 1)]) {
-  const tp = makeTape(CFG, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal", ["AAA-USDT"], trades.map((t) => ({ ...t, r: t.r / t.mult!, mult: undefined })), [], []);
+  const tp = makeTape(CFG, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal", ["AAA-USDT"], trades.map((t) => ({ ...t, r: t.r / t.mult!, vol: t.vol! / t.mult!, mult: undefined })), [], []);
   const u = { bars: [], caches: [], startT: END - 4 * H, endT: END, splitT: END - 3 * H, nowT: END, baseTf: 60 } as never;
   const sim = walkForward(u, [], { ...r.wf, simH: 3 });
   sim.trades = trades; sim.openAtEnd = [];

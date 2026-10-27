@@ -3,6 +3,7 @@ import { progressText } from "@/core/progress";
 import { SIGNAL_VALID_LAST_N } from "@/core/signal-policy";
 import { boundedModelCost, DEFAULT_MODEL_FEES, MAX_MODEL_RT_COST } from "@/core/model-cost";
 import { MICRO_CONFIG_IDS, MICRO_METHODS } from "@/core/indications/micro-family";
+import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "@/core/indications/low-range";
 import { sizeText } from "@/core/live-labels";
 import { TACTIC_TECHNIQUES } from "@/core/indications/tactic";
 import {
@@ -2059,15 +2060,15 @@ export function RangeGate(props: {
       </Field>
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         <Switch
-          label="Range seats"
-          checked={!!props.grid.rangeSeats}
-          onChange={(v) => props.set(["grid", "rangeSeats"], v)}
+          label="Independent range seats"
+          checked={true}
+          disabled
+          onChange={() => {}}
         />
         <div>
-          <div style={{ fontWeight: 600 }}>Range seats</div>
+          <div style={{ fontWeight: 600 }}>Independent range seats</div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-            short / minimal / plus hold their own seat per pair instead of competing with the wide
-            cells
+            always on; the legacy setting is retained without changing stored preferences
           </div>
         </div>
       </div>
@@ -2138,9 +2139,11 @@ export function RangeFit(props: {
 }
 
 /** Every protect range with its switch (Settings and the preset dialog). */
-export function ProtectRanges(props: { grid: object; set: (path: string[], v: unknown) => void }) {
+export function ProtectRanges(props: { grid: object; set: (path: string[], v: unknown) => void;
+  focus?: readonly string[]; pinned?: readonly string[]; disabledKinds?: readonly string[] }) {
   return (
     <>
+      <LowRangeShortSettings {...props} />
       <MinimalRange grid={props.grid} set={props.set} />
       <ShortRange grid={props.grid} set={props.set} />
       <GeneralRange grid={props.grid} set={props.set} />
@@ -2151,6 +2154,53 @@ export function ProtectRanges(props: { grid: object; set: (path: string[], v: un
       <RangeFit grid={props.grid as never} set={props.set} />
     </>
   );
+}
+
+/** Low-Range owns a cost-aware Short grid; every edit replaces its complete nested settings object. */
+export function LowRangeShortSettings(props: { grid: object; set: (path: string[], v: unknown) => void;
+  focus?: readonly string[]; pinned?: readonly string[]; disabledKinds?: readonly string[] }) {
+  const g = props.grid as { lowRange?: typeof DEFAULT_LOW_RANGE_GRID; short?: unknown };
+  const lr = { ...DEFAULT_LOW_RANGE_GRID, ...(g.lowRange ?? {}) };
+  const put = (patch: Partial<typeof DEFAULT_LOW_RANGE_GRID>) => props.set(["grid", "lowRange"], { ...lr, ...patch });
+  return <div className="v2-lines" style={{ gap: 9, marginBottom: 18 }}>
+    <SwitchRow label="Low-Range on Short" title="Low-Range on Short"
+      help="Independent Low-Range sources use only their own Short cells. The Short range's lane floor, PF gates and volume factor remain in force."
+      checked={lr.enabled} onChange={(enabled) => put({ enabled })} />
+    {lr.enabled && !g.short && <div className="v2-warn">Enable the Short range to calculate Low-Range cells.</div>}
+    {lr.enabled && props.disabledKinds?.includes("low-range") &&
+      <div className="v2-warn">The Low-Range indication kind is disabled.</div>}
+    {lr.enabled && props.focus && indicationFocusCoverage(props.focus, LOW_RANGE_IDS, props.pinned).covered === 0 &&
+      <div className="v2-warn">No Low-Range source is in focus, so this grid cannot produce candidates.</div>}
+    {props.focus && <div>
+      <button type="button" className="v2-btn" onClick={() => {
+        props.set(["focus"], includeIndicationsInFocus(props.focus ?? [], LOW_RANGE_IDS));
+        props.set(["disabledKinds"], (props.disabledKinds ?? []).filter((kind) => kind !== "low-range"));
+      }}>Include all Low-Range sources</button>
+      <span className="v2-muted" style={{ marginLeft: 8 }}>
+        {indicationFocusCoverage(props.focus, LOW_RANGE_IDS, props.pinned).covered}/{LOW_RANGE_IDS.length} in focus
+      </span>
+    </div>}
+    <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+      Price target = cost + step × target steps. Stop = cost + max(one step, net target × stop ratio).
+      Trailing peak gap = cost + max(two steps, net target × trailing ratio). Cost is deducted once from the settled return.
+      The separate trailing-only sets retain the engine's 3% ceiling. Short's minimum timeframe controls eligible lanes.
+    </div>
+    <div className="v2-grid v2-cols-3">
+      <Field label="Low-Range step (%)" hint="Fraction of price; default 0.20%. Independent of the configured round-trip cost.">
+        <Num pct step={0.01} min={0.000001} max={0.008} value={lr.step} onChange={(step) => put({ step })} />
+      </Field>
+      <Field label="Low-Range maximum hold (minutes)" hint="A timeframe longer than this hold is ineligible.">
+        <Num int min={1} max={1440} value={lr.maxHoldMin} onChange={(maxHoldMin) => put({ maxHoldMin })} />
+      </Field>
+      <Field label="Target steps" hint="Whole numbers from 2 to 6, comma separated.">
+        <List value={lr.steps} onChange={(steps) => put({ steps })} />
+      </Field>
+      <StepList label="Stop ratios · minimum / maximum / increment" lo={0.5} hi={3.5} max={64}
+        value={lr.slRatios} onChange={(slRatios) => put({ slRatios })} />
+      <StepList label="Trailing ratios · minimum / maximum / increment" lo={0} hi={1} max={64}
+        value={lr.trailRatios} onChange={(trailRatios) => put({ trailRatios })} />
+    </div>
+  </div>;
 }
 
 /** how the universe is chosen (settings.symbolRank; default 1H volatility) */
@@ -2665,16 +2715,18 @@ export function SettingsPage() {
               ] as const
             ).map(([k, label]) => {
               const v = s.gates.rangeMinPf?.[k];
+              const choices = k === "short" ? RANGE_PF_CHOICES.filter((c) => c >= 1.1) : RANGE_PF_CHOICES;
+              const effective = k === "short" && v !== undefined ? Math.max(1.1, v) : v;
               return (
-                <Field key={k} label={label} hint="this range's stage min PF (empty = Min PF)">
+                <Field key={k} label={label} hint={k === "short" ? "stage min PF, at least 1.10 (empty = Min PF, floored at 1.10)" : "this range's stage min PF (empty = Min PF)"}>
                   <select
                     className="v2-select"
                     value={
-                      v === undefined
+                      effective === undefined
                         ? ""
                         : String(
-                            RANGE_PF_CHOICES.reduce((a, b) =>
-                              Math.abs(b - v) < Math.abs(a - v) ? b : a,
+                            choices.reduce((a, b) =>
+                              Math.abs(b - effective) < Math.abs(a - effective) ? b : a,
                             ),
                           )
                     }
@@ -2686,7 +2738,7 @@ export function SettingsPage() {
                     }
                   >
                     <option value="">= Min PF</option>
-                    {RANGE_PF_CHOICES.map((c) => (
+                    {choices.map((c) => (
                       <option key={c} value={String(c)}>
                         {c.toFixed(2)}
                       </option>
@@ -3375,6 +3427,17 @@ export function SettingsPage() {
                 );
               }}
             />
+            <div style={{ marginTop: 10 }}>
+              <button type="button" className="v2-btn" onClick={() => {
+                set(["focus"], includeIndicationsInFocus(s.focus ?? [], LOW_RANGE_IDS));
+                set(["disabledKinds"], (s.disabledKinds ?? []).filter((kind: string) => kind !== "low-range"));
+                set(["grid", "lowRange"], { ...DEFAULT_LOW_RANGE_GRID, ...(s.grid?.lowRange ?? {}), enabled: true });
+              }}>Include Low-Range in Short focus</button>
+              <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 5 }}>
+                {indicationFocusCoverage(s.focus ?? [], LOW_RANGE_IDS, s.pinned ?? []).covered}/{LOW_RANGE_IDS.length} variants in focus.
+                Each source, lane and Short cell has independent Base and post-Base gates; candidate history is not a venue fill.
+              </div>
+            </div>
             <TacticFocusInfo
               focus={s.focus ?? []}
               pinned={s.pinned ?? []}
@@ -4039,6 +4102,10 @@ export function SettingsPage() {
               <Num int step={1} min={1} max={250} value={s.relate.maxStack}
                 onChange={(v) => set(["relate", "maxStack"], v)} />
             </Field>
+            <Field label="Max SL (%)" hint="For modeled Relate volume raises, the existing fixed entry stop must already be within this distance from the original entry. Wider or unverified stops receive no Relate raise; Active admission still applies, and Max stack may still reserve capacity. This does not move stops; ATR and ladder stops are not yet qualified, and live venue enforcement is not verified.">
+              <Num pct step={0.25} min={0.0025} max={0.015} value={s.relate.maxSl}
+                onChange={(v) => set(["relate", "maxSl"], Math.round(v * 400) / 400)} />
+            </Field>
           </div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 8 }}>
             {(() => {
@@ -4237,7 +4304,7 @@ export function SettingsPage() {
                 </div>
               </div>
             </div>
-            <ProtectRanges grid={s.grid} set={set} />
+            <ProtectRanges grid={s.grid} set={set} focus={s.focus ?? []} pinned={s.pinned ?? []} disabledKinds={s.disabledKinds ?? []} />
           </div>
         </Panel>
       </div>
@@ -4335,7 +4402,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Robust share"
-              hint="share of a pair's variants that must pass the long window · 0 – 1"
+              hint="hourly pair-seat coordination: share of sibling variants that must pass · 0 – 1; config seats evaluate independently"
             >
               <Num
                 step={0.05}
@@ -4585,14 +4652,14 @@ export function SettingsPage() {
             <SwitchRow
               label="Family seats"
               title="Family seats"
-              help="Normal / Trailing, DCA and Axis each get their own seats instead of competing for one seat per pair"
+              help="separate untagged-family portfolio limits; strategy types always keep independent seat identities"
               checked={wf.familySeats !== false}
               onChange={(v) => setW("familySeats", v)}
             />
             <SwitchRow
               label="DCA / Axis need a base"
               title="DCA / Axis need a base"
-              help="a DCA or Axis set takes a seat only when it beats a Normal / Trailing result on the same pair"
+              help="optional pair-seat coordination: DCA / Axis must beat a Normal result on the same pair and range; off leaves their own validation independent"
               checked={wf.familyNeedsBase === true}
               onChange={(v) => setW("familyNeedsBase", v)}
             />
@@ -4914,7 +4981,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Live last N"
-              hint="a config opens new entries only while its last N forward (live-price paper) closes hold the live min PF; with fewer closes its simulated validation decides. Held positions are never cut · 0 = off · default 25 · 0 – 200"
+              hint="uses each config and direction's last N accepted post-Base modeled closes; a short sample is unjudged paper warm-up, not promotion proof. Held positions are never cut · 0 = off · default 25 · 0 – 200"
             >
               <Num
                 int

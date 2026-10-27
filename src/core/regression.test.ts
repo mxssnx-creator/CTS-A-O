@@ -2,7 +2,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { checkSettings } from "./settings-check.ts";
-import { DEFAULT_SETTINGS, GRID_VARIANTS_MAX, RT_COST, SHORT_RANGE } from "./config.ts";
+import { DEFAULT_SETTINGS, GRID_VARIANTS_MAX, RT_COST, SHORT_RANGE, mergeGridSettings } from "./config.ts";
 import { RANGE_COST_BASIS } from "./minimal-coord.ts";
 import { simulate } from "./sim/backtest.ts";
 import { barsFromCandles } from "./market/bars.ts";
@@ -408,7 +408,7 @@ describe("protect grid", () => {
       assert.deepEqual(p.settings.grid.short.tp, [...SHORT_RANGE.tp]);
       // the matrix presets keep a small grid; a desk preset with every range stays inside the server limit
       assert.ok(
-        gridVariants({ ...DEFAULT_SETTINGS.grid, ...p.settings.grid }) <= GRID_VARIANTS_MAX,
+        gridVariants(mergeGridSettings(DEFAULT_SETTINGS.grid, p.settings.grid)) <= GRID_VARIANTS_MAX,
         p.id,
       );
     }

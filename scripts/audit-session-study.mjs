@@ -93,8 +93,14 @@ export function auditSessionStudy(raw, data, { purpose = 'development', protocol
   check('funded close count reconciles to report', Array.isArray(allocations) && total.closes === data.total?.fundedOrders, total.closes, data.total?.fundedOrders ?? null);
   check('no unknown/dust funding ownership', !excluded.unknownAllocations && !excluded.dustAllocations, excluded);
   check('all funded returns known', total.unknownReturns === 0, total.unknownReturns, 0);
-  check('gross unit gains reconcile to report', finite(data.total?.gpR) && finite(total.unitGp) && Math.abs(total.unitGp - data.total.gpR) <= 2e-6, total.unitGp, data.total?.gpR ?? null);
-  check('gross unit losses reconcile to report', finite(data.total?.glR) && finite(total.unitGl) && Math.abs(total.unitGl - data.total.glR) <= 2e-6, total.unitGl, data.total?.glR ?? null);
+  // The report deliberately stores null gross returns for an empty sample, not numeric zero. Accept only a
+  // proven empty funded cohort; a missing or unknown return in a nonempty cohort must still fail reconciliation.
+  const emptyGross = (reported, measured) => total.state === 'empty' && total.closes === 0 &&
+    data.total?.fundedOrders === 0 && reported === null && measured === 0;
+  check('gross unit gains reconcile to report', emptyGross(data.total?.gpR, total.unitGp) ||
+    (finite(data.total?.gpR) && finite(total.unitGp) && Math.abs(total.unitGp - data.total.gpR) <= 2e-6), total.unitGp, data.total?.gpR ?? null);
+  check('gross unit losses reconcile to report', emptyGross(data.total?.glR, total.unitGl) ||
+    (finite(data.total?.glR) && finite(total.unitGl) && Math.abs(total.unitGl - data.total.glR) <= 2e-6), total.unitGl, data.total?.glR ?? null);
   check('cash net reconciles to report', finite(data.total?.net) && finite(total.sizedNetUsd) && Math.abs(total.sizedNetUsd - data.total.net) <= 2e-6, total.sizedNetUsd, data.total?.net ?? null);
   const engineRows = funded.filter((x) => cohortOf(x) === 'Engine');
   const basePairs = new Map((raw.basePairs ?? []).map((x) => [x.pair, x]));

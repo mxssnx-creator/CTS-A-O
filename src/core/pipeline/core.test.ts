@@ -5,6 +5,8 @@ import { barsFromCandles, syntheticCandles, tailBars } from "../market/bars.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { isMicroInd } from "../indications/micro.ts";
 import { INDICATIONS, indicationState, mtfState } from "../indications/registry.ts";
+import { LOW_RANGE_IDS, LOW_RANGE_METHODS, LOW_RANGE_RELATIONS, LOW_RANGE_WINDOWS } from "../indications/low-range.ts";
+import { controlledLowRange } from "../indications/test-support.ts";
 import { BOTS, comboSignal } from "../bots/bots.ts";
 import { optimizeLastN, windowDdt, gatedTrades } from "../lastn/optimizer.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
@@ -92,13 +94,34 @@ describe("indications", () => {
         !s.id.startsWith("break-rel-") &&
         !s.id.startsWith("break-mc-rel-") &&
         s.kind !== "micro" &&
-        s.kind !== "inverse",
+        s.kind !== "inverse" &&
+        s.kind !== "low-range",
     );
     for (const s of unanchored) {
       const st = indicationState(s.id, kFull)!;
       if (st.includes(1) && st.includes(-1)) both++;
     }
     assert.ok(both >= unanchored.length * 0.8, `${both}/${unanchored.length}`);
+  });
+
+  it("covers every sparse Low-Range identity in both directions with causal engineered regimes", () => {
+    const seen = new Set<string>();
+    for (const window of LOW_RANGE_WINDOWS) for (const method of LOW_RANGE_METHODS)
+      for (const relation of LOW_RANGE_RELATIONS) {
+        const id = `low-range-${window}-${method}-${relation}`;
+        seen.add(id);
+        for (const side of [1, -1] as const) {
+          const b = barsFromCandles("LOW-RANGE", 1, controlledLowRange(window, method, relation, side));
+          const full = indicationState(id, new SeriesCache(b));
+          assert.ok(full, `${id} is registered`);
+          assert.equal(full.at(-1), side, `${id}/${side}`);
+          const prefix = head(b, b.n - 1);
+          const partial = indicationState(id, new SeriesCache(prefix));
+          assert.deepEqual(partial, full.slice(0, prefix.n), `${id}/${side} prefix`);
+        }
+      }
+    assert.deepEqual([...seen].sort(), [...LOW_RANGE_IDS].sort());
+    assert.deepEqual(INDICATIONS.filter((s) => s.kind === "low-range").map((s) => s.id).sort(), [...seen].sort());
   });
 });
 

@@ -50,6 +50,7 @@ import {
 } from "../indications/micro-family.ts";
 import { isRelateInd, relateAnchorTf } from "../indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "../indications/break-config.ts";
+import { isLowRangeInd, LOW_RANGE_TIMEFRAMES, lowRangeGridProtects } from "../indications/low-range.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { MarketSource } from "../indications/market.ts";
 import {
@@ -257,7 +258,9 @@ export function laneInds(base: string, tfs: readonly number[]): string[] {
     const anchor = microAnchorTf(base);
     return anchor !== null && tfs.includes(anchor) ? [laneInd(base, anchor)] : [];
   }
-  const lanes = isInverseInd(base)
+  const lanes = isLowRangeInd(base)
+    ? tfs.filter((tf) => (LOW_RANGE_TIMEFRAMES as readonly number[]).includes(tf))
+    : isInverseInd(base)
     ? tfs.filter((tf) => (INVERSE_TIMEFRAMES as readonly number[]).includes(tf)) : tfs;
   for (const tf of lanes) {
     out.push(laneInd(base, tf));
@@ -319,6 +322,8 @@ export function allCombos(
    * work counted as "evaluated".
    */
   microMinTf = 0,
+  lowRangeEnabled = false,
+  lowRangeMinTf = 0,
 ): Combo[] {
   const off = new Set(disabledKinds ?? []);
   const plain: Combo[] = [];
@@ -328,6 +333,7 @@ export function allCombos(
     // ("s2-…") run as signal sources only (as engine combos they added 26 % Base work)
     for (const ind of INDICATIONS)
       if (!off.has(ind.kind) && !ind.id.startsWith("sig-") && !ind.id.startsWith("s2-") &&
+          (!isLowRangeInd(ind.id) || (lowRangeEnabled && b.type === "follow")) &&
           (!isInverseInd(ind.id) || b.type === "follow"))
         plain.push({ bot: b.type, ind: ind.id });
   }
@@ -341,6 +347,7 @@ export function allCombos(
                 isMicroInd(laneOf(ind).base) &&
                 (laneOf(ind).tf ?? 0) < microMinTf
               ) &&
+              !(isLowRangeInd(laneOf(ind).base) && (laneOf(ind).tf ?? 0) < lowRangeMinTf) &&
               (!isRelateInd(laneOf(ind).base) ||
                 (!laneOf(ind).combined && laneOf(ind).tf === relateAnchorTf(laneOf(ind).base))) &&
               (!isBreakRelInd(laneOf(ind).base) ||
@@ -376,6 +383,8 @@ const atrTag = (p: Protect) =>
   p.atr ? `|atr${p.atr.sl}x${p.atr.tpRatio}${p.atr.trail ? `t${p.atr.trail}` : ""}` : "";
 export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind): string {
   const mode = `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}${p.trail > 0 && p.trailFree ? "|tf1" : ""}${p.trailMax !== undefined ? `|tm${pct(p.trailMax)}` : ""}`;
+  const exitFloor = p.exitType === "historic" && p.trail > 0 && (p.exitTrailFloor ?? 0) > 0
+    ? `|eg${pct(p.exitTrailFloor ?? 0)}` : "";
   const exit =
     p.exitType === "historic" || kind === "exit"
       ? `|hx${p.exitSide === 1 ? "L" : p.exitSide === -1 ? "S" : ""}${
@@ -394,7 +403,7 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
       : "";
   const dca = p.dca && (kind === "dca" || kind === "dca-active")
     ? `|dc${p.dca.levels}s${pct(p.dca.step)}q${p.dca.stepOfTp ?? 0}g${p.dca.stopGap ?? 0.5}r${p.dca.addRatio ?? 1}${p.dca.maxDistance ? `m${pct(p.dca.maxDistance)}` : ""}` : "";
-  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}${mode}${exit}${dca}`;
+  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}${mode}${exitFloor}${exit}${dca}`;
   return kind === "dca"
     ? `${base}|dca`
     : kind === "dca-active"
@@ -435,9 +444,10 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   const ratio = /\|ts([\d.]+)(?=\||$)/.exec(id);
   const free = /\|tf1(?=\||$)/.exec(id);
   const ceiling = /\|tm([\d.]+)(?=\||$)/.exec(id);
+  const exitFloor = /\|eg([\d.]+)(?=\||$)/.exec(id);
   const ladder = /\|dc([1-4])s([\d.]+)q([\d.]+)g([\d.]+)r([\d.]+)(?:m([\d.]+))?(?=\||$)/.exec(id);
   // Remove each token once; duplicates or malformed tokens remain and fail the strict grammar below.
-  const plainId = id.replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?:m[\d.]+)?(?=\||$)/, "");
+  const plainId = id.replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|eg[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?:m[\d.]+)?(?=\||$)/, "");
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
@@ -471,6 +481,7 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   if (m[7] !== undefined)
     protect.atr = { sl: +m[7], tpRatio: +m[8], ...(m[9] !== undefined ? { trail: +m[9] } : {}) };
   if (m[10] !== undefined) protect.tag = m[10].slice(1) as RangeTag;
+  if (isLowRangeInd(m[2])) protect.lowRangeOnly = true;
   if (m[11] !== undefined) {
     protect.exitType = "historic";
     if (m[12] === "L") protect.exitSide = 1;
@@ -480,6 +491,12 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
     if (m[13] === "2") protect.exitSet = "trailing";
     if (m[13] === "3") protect.exitSet = "breakeven";
     if (m[13] === "4") protect.exitSet = "trailing-only";
+  }
+  if (exitFloor) {
+    const floor = fromPct(exitFloor[1]);
+    if (!(protect.exitType === "historic" && (protect.exitSet === "trailing" || protect.exitSet === "trailing-only") &&
+        protect.trail > 0 && Number.isFinite(floor) && floor > 0 && floor <= 0.1)) return null;
+    protect.exitTrailFloor = floor;
   }
   if (ratio) {
     const step = Number(ratio[1]);
@@ -676,7 +693,9 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
     (tp, k, tr, h, minSl, minTrail, slEval) => emit(tp, k, tr, h, minSl, minTrail, "mc", slEval),
     cost,
   );
-  if (g.trailingOnly) out.push(...trailingOnlyProtects(out));
+  const lowRange = g.short ? lowRangeGridProtects(g.lowRange, cost, REF_TF) : [];
+  if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
+  out.push(...lowRange);
   return out;
 }
 
@@ -893,6 +912,10 @@ export function basePassTags(
   /** every range tag of the grid; one without its own Base cell passes with the default protect */
   allTags: readonly string[] = [],
 ): string[] {
+  if (r.ind && isLowRangeInd(laneOf(r.ind).base)) {
+    const sh = r.ranges?.sh;
+    return sh && passesBase(sh, { ...g, minPf: minPfOf(g, "sh", r.ind) }) ? ["sh"] : [];
+  }
   const out: string[] = [];
   const own = new Set(Object.keys(r.ranges ?? {}));
   if (passesBase(r.full, { ...g, minPf: minPfOf(g, "", r.ind) })) {
@@ -1434,6 +1457,7 @@ export function rangeAppliesTo(
   },
 ): boolean {
   if (!o.enabled(tag)) return false;
+  if (isLowRangeInd(laneOf(ind).base) && tag !== "sh") return false;
   if (!microIndFits(o.microOwnInds, tag, isMicroInd(laneOf(ind).base), isMicroFamilyInd(ind)))
     return false;
   const tf = laneOf(ind).tf ?? o.baseTf ?? 1;
@@ -1495,9 +1519,11 @@ export function rangeBaseStats(
   // rangeAppliesTo uses, so the Base-by-range counts match the cells actually computed
   const laneTf = laneOf(ind).tf ?? baseTf ?? 1;
   const microInd = isMicroInd(laneOf(ind).base);
+  const lowRangeInd = isLowRangeInd(laneOf(ind).base);
   const bw = windows ? { plan: windows.plan, fromT: laneFromT(u, ind) } : undefined;
   const out: Record<string, RangeBaseStat> = {};
   for (const p of protects) {
+    if ((p.lowRangeOnly === true) !== lowRangeInd) continue;
     if (p.tag && laneTf < (minTf?.[p.tag] ?? 0)) continue;
     if (!microIndFits(microOwnInds, p.tag, microInd, isMicroFamilyInd(ind))) continue;
     // the cell's whole-history stats only (cellStats = runCombo(…).full, without its per-symbol and in-sample work)
@@ -1506,7 +1532,9 @@ export function rangeBaseStats(
     // several cells of one range (Base at every config): a passing cell first, then the higher net
     const k = p.tag ?? "";
     const prev = out[k];
-    if (cellsOut && k && pass && pass(k, cand)) cellsOut.push(protectCellKey(p));
+    // Low-Range retains its actual lane hold, so post-Base selection compares the same identity the tape trades.
+    if (cellsOut && k && pass && pass(k, cand))
+      cellsOut.push(protectCellKey(lowRangeInd ? laneProtect(p, ind) : p));
     if (tpsOut && k && pass && pass(k, cand)) {
       const xs = (tpsOut[k] ??= []);
       if (!xs.includes(p.tp)) xs.push(p.tp);
@@ -1856,7 +1884,7 @@ export function baseRuns(
       if (r) {
         // signal pairs never use range cells (they take their own configs): no range runs for them
         const tps: Record<string, number[]> = {};
-        const cellKeys: string[] | undefined = cells ? [] : undefined;
+        const cellKeys: string[] | undefined = cells || isLowRangeInd(c.ind) ? [] : undefined;
         const engine = !isSignalInd(c.ind) && c.bot !== "exit";
         const ruleTps = plan && engine ? baseRunWindows(u, r, plan) : undefined;
         const ranges = !engine
@@ -1865,7 +1893,7 @@ export function baseRuns(
               u,
               c.bot as BotType,
               c.ind,
-              completeRangeProtects.length && (isMicroFamilyInd(c.ind) || isInverseInd(c.ind))
+              completeRangeProtects.length && (isMicroFamilyInd(c.ind) || isInverseInd(c.ind) || isLowRangeInd(c.ind))
                 ? completeRangeProtects
                 : rangeProtects,
               cost,
@@ -1914,7 +1942,8 @@ export function* runPipeline(
   const combos = pre
     ? []
     : [
-        ...allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid)),
+        ...allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid),
+          s.grid.lowRange?.enabled === true && !!s.grid.short, rangeMinTfOf(s.grid).sh ?? 0),
         ...signalCombos(signalSettings(s.signals), s.tfs ?? []),
         ...additionalCombos,
       ];
@@ -1940,12 +1969,12 @@ export function* runPipeline(
       const microOwn = microIndRule(g);
       const tps: Record<string, number[]> = {};
       const ruleTps = plan ? baseRunWindows(u, r, plan) : undefined;
-      const cellKeys: string[] | undefined = g.baseCells === true ? [] : undefined;
+      const cellKeys: string[] | undefined = g.baseCells === true || isLowRangeInd(c.ind) ? [] : undefined;
       const ranges = rangeBaseStats(
         u,
         c.bot,
         c.ind,
-        isMicroFamilyInd(c.ind) || isInverseInd(c.ind)
+        isMicroFamilyInd(c.ind) || isInverseInd(c.ind) || isLowRangeInd(c.ind)
           ? completeBaseRangeProtects(g as CoreSettings["grid"], cost)
           : baseRangeProtects(g, cost),
         cost,

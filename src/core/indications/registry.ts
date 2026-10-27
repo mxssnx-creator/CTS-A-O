@@ -24,6 +24,7 @@ import {
 } from "../signal-coordination.ts";
 import { relateSpecs } from "./relate.ts";
 import { breakSpecs } from "./break.ts";
+import { isLowRangeInd, LOW_RANGE_TIMEFRAMES, lowRangeSpecs } from "./low-range.ts";
 
 export { SIGNAL_SOURCES, signalId };
 
@@ -1245,6 +1246,8 @@ for (const x of microSpecs()) add(x);
 for (const x of microFamilySpecs()) add(x);
 for (const x of inverseSpecs([...BASE_INDICATIONS, ...VARIANTS])) add(x);
 for (const x of inverseMicroSpecs()) add(x);
+// Low-Range uses its own Short protection cells and explicit enablement.
+for (const x of lowRangeSpecs()) add(x);
 
 // ── combined timeframes ─────────────────────────────────────
 // "<id>@x4": the indication on this timeframe, kept only where it agrees on the 4× timeframe (1h → 4h, 15m → 1h),
@@ -1316,7 +1319,9 @@ export function indicationState(id: string, k: SeriesCache): Int8Array | null {
     if (lane.base === "none") return null;
     if (!lane.combined) return indicationState(lane.base, k);
     // the higher enabled lanes (Bars.lanes): the ones laneInds generated the lane from, not the fixed ladder
-    const ladder = isInverseInd(lane.base)
+    const ladder = isLowRangeInd(lane.base)
+      ? (k.b.lanes ?? LOW_RANGE_TIMEFRAMES).filter((tf) => (LOW_RANGE_TIMEFRAMES as readonly number[]).includes(tf))
+      : isInverseInd(lane.base)
       ? (k.b.lanes ?? INVERSE_TIMEFRAMES).filter((tf) =>
           (INVERSE_TIMEFRAMES as readonly number[]).includes(tf),
         )

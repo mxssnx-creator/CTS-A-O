@@ -19,8 +19,14 @@ export interface LaneOrder {
   qty: number;
   /** Logical Block source allocations inside this one exact parent exit; weights, not separately inferred fills. */
   weights?: Record<string, number>;
-  s?: { coid: string; oid?: string; px: number; filledQty?: number; qty?: number };
-  t?: { coid: string; oid?: string; px: number; filledQty?: number; qty?: number };
+  s?: { coid: string; oid?: string; px: number; filledQty?: number; filledNotional?: number; qty?: number };
+  t?: { coid: string; oid?: string; px: number; filledQty?: number; filledNotional?: number; qty?: number };
+  /** Confirmed aggregate of this exact parent's native partial exits, across replacement orders. */
+  exitQty?: number;
+  exitNotional?: number;
+  /** Original verified venue levels retained while draining after laneOrders is switched off. */
+  drainStopPx?: number;
+  drainTargetPx?: number;
   /** when the lane joined the exchange (its orders are placed in this order) */
   at: number;
   /** Measured full exit; keep unresolved sibling orders durable until cancellation confirms. */
@@ -184,7 +190,8 @@ export function goneOrderOf(resp: unknown): GoneOrder {
   const o = ((resp as { order?: unknown })?.order ?? resp) as Record<string, unknown> | null;
   if (!o || typeof o !== "object") return { status: "unknown" };
   const st = String(o.status ?? "").toUpperCase();
-  const terminal = st === "FILLED" || st.startsWith("CANCEL") || st === "EXPIRED" || st === "FAILED" || st === "REJECTED";
+  // A cancel request or cancellation in progress is not a terminal outcome: an order may still fill.
+  const terminal = ["FILLED", "CANCELLED", "CANCELED", "EXPIRED", "REJECTED"].includes(st);
   const rawQty = o.executedQty ?? o.cumExecQty ?? o.filledQty;
   const qty = (typeof rawQty === "number" || (typeof rawQty === "string" && rawQty.trim() !== ""))
     ? Number(rawQty) : NaN;

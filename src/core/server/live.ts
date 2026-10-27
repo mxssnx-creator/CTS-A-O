@@ -125,6 +125,7 @@ export interface BookView {
     positionSide?: "LONG" | "SHORT";
     type?: string;
     stopPrice?: number;
+    remainingQty?: number;
   }>;
   /**
    * Set when the open orders could not be read (their endpoint is rate limited): positions are fresh, `orders` is
@@ -170,6 +171,12 @@ export interface LivePlan {
   entries: LiveIntentLite[];
   skipped: Array<{ sym: string; why: string }>;
 }
+
+/** Side is part of an Entries intent: hedge-mode long and short can coexist on the same bar. */
+export const entryIntentKey = (i: { cfg: string; sym: string; barT: number; side: 1 | -1 }): string =>
+  `${i.cfg}|${i.sym}|${i.barT}|side=${i.side}`;
+export const legacyEntryIntentKey = (i: { cfg: string; sym: string; barT: number }): string =>
+  `${i.cfg}|${i.sym}|${i.barT}`;
 
 export function planLive(input: {
   settings: LiveSettings;
@@ -232,8 +239,13 @@ export function planLive(input: {
   const skipped: LivePlan["skipped"] = [];
   const seen = new Set<string>();
   for (const it of intents) {
-    const key = `${it.cfg}|${it.sym}|${it.barT}`;
-    if (input.sent.has(key)) continue;
+    if (it.side !== 1 && it.side !== -1) {
+      skipped.push({ sym: it.sym, why: "invalid entry direction" });
+      continue;
+    }
+    const key = entryIntentKey(it);
+    // A legacy key has no direction. Callers without ledger-side evidence must conservatively dedupe both.
+    if (input.sent.has(key) || input.sent.has(legacyEntryIntentKey(it))) continue;
     if (it.managed) {
       skipped.push({ sym: it.sym, why: "managed exit (trailing / DCA / Axis) needs overall mode" });
       continue;
@@ -714,18 +726,20 @@ export interface AccountPosition {
   side: 1 | -1;
   /** on the exchange, every owner */
   qty: number;
-  /** of it, what own fills prove (the ledger-capped held quantity); 0 = not ours */
-  ownQty: number;
+  /** Ledger-capped share; null when the owned share cannot be reconciled, 0 when known to be foreign. */
+  ownQty: number | null;
   entry: number | null;
   mark: number | null;
   /** unrealized P&L / initial margin of the whole exchange position, USDT */
-  upnl: number;
+  upnl: number | null;
   margin: number;
   leverage: number | null;
   /** the trigger price of a stop resting on the position side (own or not), null when none is read */
   stop: number | null;
   /** no part of it is ours (a foreign position, or a side someone else trades) */
   foreign: boolean;
+  /** The side is frozen or unverified and its own/foreign split cannot be reported safely. */
+  ownershipUnknown?: true;
 }
 
 /**
@@ -737,19 +751,32 @@ export function accountPositions(
   book: BookView,
   held: ReadonlyMap<string, number>,
   foreign: ReadonlySet<string>,
+  unknown: ReadonlySet<string> = new Set(),
 ): {
   rows: AccountPosition[];
   own: { n: number; upnl: number; margin: number; notional: number };
   foreign: { n: number; upnl: number; margin: number };
+  ownershipUnknown: { n: number };
+  markUnknown: { own: number; foreign: number };
 } {
   const rows: AccountPosition[] = [];
   const own = { n: 0, upnl: 0, margin: 0, notional: 0 };
   const fr = { n: 0, upnl: 0, margin: 0 };
+  const ownershipUnknown = { n: 0 };
+  const markUnknown = { own: 0, foreign: 0 };
+  const rowCounts = new Map<string, number>();
+  for (const p of book.positions) {
+    const key = `${p.venueSymbol}|${p.side === "long" ? 1 : -1}`;
+    rowCounts.set(key, (rowCounts.get(key) ?? 0) + 1);
+  }
   for (const p of book.positions) {
     const side: 1 | -1 = p.side === "long" ? 1 : -1;
     const key = `${p.venueSymbol}|${side}`;
     const ps = side === 1 ? "LONG" : "SHORT";
-    const ownQty = isForeign(foreign, key) ? 0 : Math.min(p.qty, held.get(key) ?? 0);
+    // A side-level ledger cannot allocate its quantity among multiple separate physical position rows. Keep
+    // every venue row visible, but never apply the full side's own quantity to each row.
+    const ownQty = isForeign(unknown, key) || (rowCounts.get(key) ?? 0) > 1
+      ? null : isForeign(foreign, key) ? 0 : Math.min(p.qty, held.get(key) ?? 0);
     const stopO = book.orders.find(
       (o) =>
         o.venueSymbol === p.venueSymbol &&
@@ -758,7 +785,7 @@ export function accountPositions(
         !/TAKE_PROFIT/i.test(o.type ?? "") &&
         (o.stopPrice ?? 0) > 0,
     );
-    const upnl = Number.isFinite(p.upnl) ? (p.upnl ?? 0) : 0;
+    const upnl = typeof p.upnl === "number" && Number.isFinite(p.upnl) ? p.upnl : null;
     const margin = Number.isFinite(p.margin) ? (p.margin ?? 0) : 0;
     const row: AccountPosition = {
       key,
@@ -772,23 +799,32 @@ export function accountPositions(
       margin,
       leverage: p.leverage && p.leverage > 0 ? p.leverage : null,
       stop: stopO?.stopPrice ?? null,
-      foreign: !(ownQty > 0),
+      foreign: ownQty === 0,
+      ...(ownQty === null ? { ownershipUnknown: true as const } : {}),
     };
     rows.push(row);
+    if (ownQty === null) {
+      ownershipUnknown.n++;
+      continue;
+    }
     if (ownQty > 0) {
       const share = p.qty > 0 ? ownQty / p.qty : 0;
       own.n++;
-      own.upnl += upnl * share;
+      if (upnl === null) markUnknown.own++;
+      else own.upnl += upnl * share;
       own.margin += margin * share;
       own.notional += ownQty * (row.mark ?? row.entry ?? 0);
-    } else {
+    }
+    if (ownQty < p.qty) {
+      const share = p.qty > 0 ? (p.qty - ownQty) / p.qty : 0;
       fr.n++;
-      fr.upnl += upnl;
-      fr.margin += margin;
+      if (upnl === null) markUnknown.foreign++;
+      else fr.upnl += upnl * share;
+      fr.margin += margin * share;
     }
   }
   rows.sort((a, b) => Number(a.foreign) - Number(b.foreign) || (a.key < b.key ? -1 : 1));
-  return { rows, own, foreign: fr };
+  return { rows, own, foreign: fr, ownershipUnknown, markUnknown };
 }
 
 /**
@@ -1056,6 +1092,8 @@ export function controlTargets(
         tgt: win?.tgt,
         noTgt: win?.noTgt,
         lw: win?.lw,
+        stopMax: win?.stopMax,
+        unbounded: win?.unbounded,
         tag: tags.length && tags.every((t) => t === tags[0]) ? tags[0] : "mix",
       });
     }
@@ -1639,8 +1677,13 @@ export function outsideReduction(x: {
   const shortfall = own + Math.max(0, x.prevForeign) - Math.max(0, x.ex);
   if (!(shortfall > x.tol) || !(own > 0)) return null;
   const explained = Math.min(shortfall, Math.max(0, x.ownFilled), own);
-  const unexplained = Math.min(own - explained, shortfall - explained);
-  const left = Math.max(0, own - explained - unexplained);
+  let unexplained = Math.min(own - explained, shortfall - explained);
+  let left = Math.max(0, own - explained - unexplained);
+  // Quantity arithmetic can leave a few floating-point ulps after a measured full reduction (for example,
+  // 0.294 beside 10). Avoid turning numerical dust into a forever-open side, but never round a meaningful lot.
+  const ulps = Math.min(Math.max(0, x.tol) * 1e-6,
+    Number.EPSILON * 8 * Math.max(1, own, Math.abs(x.ex), Math.abs(x.prevForeign)));
+  if (left > 0 && left <= ulps) { unexplained = own - explained; left = 0; }
   return { shortfall, explained, unexplained, own: left, foreign: Math.max(0, x.ex - left) };
 }
 

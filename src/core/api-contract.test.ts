@@ -904,6 +904,7 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
     "live.account.positionsDetail[]": "as live.account.own.upnl",
     "liveSession.since": "null until the desk's first live step on this database",
     "liveSession.openUpnl": "null until an account read with the book",
+    "liveSession.net": "null until a complete own account mark is available",
     "liveSession.accountAt": "as liveSession.openUpnl",
     "status.prehistoric.symbols{}.n": "only a symbol that traded in the run",
     "status.prehistoric.symbols{}.pf": "only a symbol that traded in the run",

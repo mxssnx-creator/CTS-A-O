@@ -1,3 +1,89 @@
+## 2026-10-27 — Low-Range progression and independent lanes
+
+The latest audited 20-symbol Short replay on the 5m lane validated
+**10,439/14,702 configs (71.00%)**, historical return PF **4.570829** at
+2026-10-19 00:00 UTC. Its later modeled settled PF was **0.258533** over
+144,863 orders; the account allocation was infeasible for 635 minutes.
+The post-hoc balance-capped allocation on the identical virtual cohort had
+later modeled PF **0.274964** on 135,811 funded settled orders, seven funded
+orders held and no observed margin exceedance; its historical validation is
+the same 10,439/14,702 (71.00%) at PF 4.570829.
+The separate 15m replay validated **1,047/2,715 (38.56%)**, historical PF
+**23.055106**, with later modeled settled PF **0.078848** on 2,156 orders.
+These are different 24h retrospective windows and not venue fills. Read
+`docs/low-range-research-20261027/PROGRESSION-HANDOFF.md` first for exact
+boundaries, source seal, position/order counts, audits, failed attempts and
+open release blockers. Low-Range is now registered and opt-in; the earlier
+unregistered research description below is retained as historical context.
+
+## 2026-10-27 — Low-Range isolated research; not production-integrated
+
+Source checkpoint `bd20431` froze the 75-candidate Low-Range research module and the
+20-symbol, 24-hour protocol. This is **not a registered indication**, Settings feature,
+complete runtime test or venue execution, and must not be promoted as one. The
+provisional step is the existing fixed 0.20% range reference; modeled round-trip
+cost is 0.15%. See `docs/low-range-research-20261027/PROTOCOL-24H.md`.
+
+For the retrospective initial evaluation at **2026-10-09 12:00 UTC**, 4,043 of
+140,400 distinct cells passed the Base-style cell gate; **1,139/8,086 (14.09%)**
+associated direction contexts passed config validation, at pooled historical
+unit-return PF **3.889810**. As a separate coverage denominator, 1,139/280,800
+prospective cell-direction contexts is 0.4056%; failed-Base contexts were not
+post-Base evaluated. Historical context results overlap.
+
+During **2026-10-09 12:00–2026-10-10 12:00 UTC**, the later dynamically gated,
+unallocated candidate tapes settled 17,266 records (15,250 Long / 2,016 Short)
+at unit-return PF **0.816072**, with 69 endpoint-open candidate records; 7 of
+24 aggregate candidate hours were positive and 17 negative. Records overlap
+across configs and cannot be treated as funded orders or account P&L. A weaker
+six-hour prototype from the earlier checkpoint has separate evidence and must
+not be substituted for this 24-hour result.
+
+The ledger audit checked every cell and unique identity; an independent
+selection-clock-only recomputation covered 43 stratified cells. Eleven focused
+Low-Range and existing cost/trailing checks passed and TypeScript passed before
+the run. The research run took about 238 seconds with sampled peak RSS about
+405 MB; this is neither the complete production pipeline nor a foreground-cycle
+latency measurement. Its fixed protocol, raw summaries and complete compressed
+cell ledger are under `docs/low-range-research-20261027/`. Results do not
+establish profitable live settings. Production registration, settings, exact
+Base-to-tape/restart integration, complete functional/visual QA, funded replay,
+demo and later forward evidence remain open. The normal post-Base reporting
+standard in `AGENTS.project.md` continues for every future update.
+
+The step-2 and step-3 15m breakout subgroups were subsequently checked on the
+earlier **2026-10-08 12:00–2026-10-09 12:00 UTC** period using a 24-hour
+prior evaluation. All **2,925** distinct cells were computed and **0** passed
+Base; therefore post-Base validation percentage and PF and later qualifying
+candidate PF are unavailable, not 0. The cell ledger audit passed and two
+failed-Base cells were independently recomputed without future candles. This
+period overlaps the main study's selection history and is not an independent
+holdout. See `PROTOCOL-BREAKOUT-CROSSCHECK.md` and `crosscheck-*` evidence.
+
+## 2026-10-27 — Causal entry-stop foundation and Historic Exit restoration
+
+This section preserves the original parallel checkpoint and its own test/result provenance; subsequent integration does not imply production enforcement or a live release.
+
+User confirmed the default limit is **0.75% of the original entry** and wants the separate Exit-lane work combined later. On local branch `feat/relate-max-sl-20261027`, source checkpoint `7d06cb1ad40e4579c0fda1d7c22ce51ada909153` adds an opt-in per-entry stop to the bar simulator. The chosen limit and config × symbol × side × entry owner survive simulated restart, and invalid or crossed-lane saved states fail closed. It handles both directions, ATR resolution, ordinary trailing, early exits, subsequent signals and adverse gap fills without changing the config's target or Historic Exit adaptation anchors. The coordinator does not yet call this API: it is not an enabled Real or live enforcement path. Compact tapes, realtime delta appends and incremental extensions explicitly reject capped entries until their schema can preserve the stop provenance. The prior conservative Relate eligibility guard remains active.
+
+A separate **reproduced simulation-state bug** was fixed: JSON restored Historic Exit position and protection records as disconnected objects, leaving published protection history stale while the position advanced. Restore verifies the two saved copies and reconnects them; contradictory state is rejected. This does not demonstrate the cause of the observed PF drop, nor does it substitute for the parallel chat's Exit-lane and venue ownership changes. The complete remaining integration sequence and [verification details](relate-max-sl-evidence-20261027/CAUSAL-STOP-HANDOFF.md) are saved alongside the earlier study.
+
+At `7d06cb1`, **115 focused checks passed**, including all six stop settings, long/short, modeled gaps, incremental and restart parity, Exit protection, Relate and Micro/Inverse order identity. Changed core modules and their imports passed a scoped typecheck. Full-project typecheck is **incomplete**: one 512 MB heap attempt exhausted its heap and another was stopped by the shared-memory safeguard. There is no new 12-symbol replay, live execution, full build or integration with the parallel branch at this checkpoint. The prior full typecheck and 12-symbol results below belong to `f3d2178`, not `7d06cb1`. Do not merge, push or reload before the requested later combination and the checks described in the handoff.
+
+Unchanged 12-symbol reduced cohort at **2026-10-27 01:00 UTC**: post-Base config PF **3.815123**, **489/1,176 (41.58%)** validated. Subsequent modeled settled PF **1.073082 off / 1.127375 on**, positions **35/23/12** in both arms and orders **8,713/4,976/3,737 off / 8,540/4,816/3,724 on** opened/settled/held. The older Oct 26 14:00 Vienna cohort: post-Base PF **2.877097**, **343/732 (46.86%)**, later modeled settled PF **0.752695**, positions **71/59/12**, orders **9,784/7,785/1,999**. No figures are live fills.
+
+## 2026-10-27 — Relate max SL: partial model guard, not ready for live release
+
+**Integration update:** The source and study described below use `f3d2178`, where Active admission was bypassed for ineligible stops. Subsequent fix `78bfbd3` preserves Active admission for all stops while suppressing raises for ineligible stops. Its passing focused tests do not rerun or revise this older study; the integrated result must be measured independently. This model guard does not establish live stop-loss enforcement.
+
+Local branch `feat/relate-max-sl-20261027`, economic source checkpoint `f3d217869829cf0444703d8d0bfe157875c77860`, adds a Settings value 0.25%–1.5% by 0.25 percentage point, default 0.75%. It only permits a modeled Relate raise when an existing fixed stop is already within the limit; it does not tighten exits. ATR, DCA and Axis cannot receive the raise without proved entry-time/ladder stop paths. Max-stack reservation still applies, and Active skipping is bypassed on ineligible stops. The existing precomputed tape contains exit timing and returns before the Relate decision; changing a paper or native stop alone would leave that tape, re-entry timing and PF false. The final implementation still needs causal replay, captured ownership/partials and native Entries/Overall protection checks. In particular the live minimum stop and venue rounding can widen beyond the limit. Do not push, merge or reload this partial change as completed live protection. The separate Exit-lane work in the parallel checkout was not merged, changed or tested with this branch; combine and retest it later as requested.
+
+The retained [12-symbol 12-hour reduced study](relate-max-sl-evidence-20261027/README.md) uses prior examined candles, 24h history, 0.15% cost, Normal/Trailing only and an uncapped $10,000/$2 account model. At **2026-10-27 01:00 UTC** post-Base config pooled PF was **3.815123** with **489/1,176 (41.58%)** validated; Base accepted **55/134**. Subsequent funded-model settled PF was **1.073082 off** and **1.127375 on**, positions **35/23/12** in both arms, orders **8,713/4,976/3,737 off** and **8,540/4,816/3,724 on** opened/settled/held. The 106 actually raised settled orders had PF **0.161479** and 25 wins. Relate-on settled $2.63 while endpoint held marks were −$56.00. The aggregate difference includes Auto skips and does not demonstrate that raising volume improved performance; this was not a live fill or a fresh holdout.
+
+At `f3d2178`, **589/589 focused tests**, **127/127 synthetic execution/control/accounting/promotion tests** and **4/4 funded-cohort tests** passed, as did typecheck; both session reports passed 68/68 checks plus the independent identity, candle and exact allocation audits. Two aggregate execution-test attempts were stopped by the shared 5.75 GB cgroup safeguard; their unfinished tests are not passes. No post-change production build, exchange execution, 50-symbol run or merged-branch integration is claimed. Both replay arms completed without memory fallback; one cold compute used 20.94/20.60 seconds and 498/476 MB peak RSS off/on.
+
+Unchanged prior comparisons: Oct 26 14:00 Vienna post-Base PF **2.877097**, **343/732 (46.86%)**, then modeled settled PF **0.752695**, positions **71/59/12** and orders **9,784/7,785/1,999** opened/settled/held. Oct 16 23:00 Vienna post-Base PF **3.898302**, **54/168 (32.14%)**, then modeled settled PF **0.260276**, positions **35/29/6** and orders **191/166/25**. Preserve those exact cohort and time distinctions.
+
 ## 2026-10-27 — PR 207 merged; release verification and live limits
 
 PR [#207](https://github.com/mxssnx-creator/CTS-A-O/pull/207) merged as `d00b20c56c5d58694e0009eb36b2a1af51814df7`. Its tested head `ba1abbe1c08f63ba21e11a7e0f0fe4a67a7dfc3f` and merge had tree `06fd0e9a89e662b1370d3eeea927407c81901b89`, byte-identical to local source checkpoint `35112f3e5aafd5f2db432b71d279ef13ec149297`. The original 28-commit local history is preserved and checksum-verified on [archive/stability-local-history-20261027](https://github.com/mxssnx-creator/CTS-A-O/tree/archive/stability-local-history-20261027/docs/source-archives/stability-20261027); instructions there restore its original commit IDs. Main before merge is preserved as `backup/main-before-stability-relate-20261027`.
@@ -4210,3 +4296,36 @@ Expanded follow-up: bb7c7cc cost/stability study run 40195897281 is running five
 Expanded diagnostic round 3: intermediate bb7c7cc results remain losing (cost-12 Exit PF .195735, 53/50/3 orders and 10/7/3 positions; slices-0 Exit PF0, 20/19/1 orders and 1/0/1 positions). These precede exact-zero correction; no default promotion. Corrected five-case net study40196687465 on65f58ca is running. Baseline loss attribution: expanded-0 has45 losing time closes; expanded-12 has12 long SL closes contributing .3213 of .342477 gross unit losses. Next frozen tests use existing causal Signal/Exit EMA direction filter1h and3h across -12/0/+12h windows, unchanged PF/sample/cost gates and full Expanded fits. This is a declared diagnostic parameter comparison, not fresh out-of-sample proof. New workflow expanded-exit-trend-study.yml needs its one-time PR trigger removed on a subsequent push. No financial result for it yet.
 
 Summary generation now skips reading multi-GB historical tapes when the initial validation catalog is absent (coverage comes from the independent archived audit). Exact reconstructed funded summary parity against control-0 passes. It labels zero-gain/zero-loss samples flat, never infinite, and formats PF1 neutral and infinity only for real positive/no-loss samples.
+
+### 27 October 2026 — Low-Range Short, research only / local branch
+
+See `docs/low-range-research-20261027/SHORT-HANDOFF.md` for source seals, scope, settings, exact formulas, audited 20-symbol/hourly results and remaining release work. On the tactics-off 15m production-path replay, initial post-Base validation was **559/1,469 configs (38.05%), historical PF 25.123751**; the subsequent 24h funded-model cohort had **1,883 settled orders / 14 positions, PF 0.078058**, zero held. This was an after-observation tactic comparison on previously examined data, not a fresh holdout or venue execution. The default-tactic replay had no Base-passed pairs and post-Base PF/percentage unavailable. The independent 1m/5m/15m candidate research had **952/6,446 validated (14.77%), historical PF 4.221097**, later unallocated candidate PF **0.822958**; do not combine these cohorts. The new feature stays off by default; the requested systemwide floor migration, full release/browser checks and external merge remain outstanding.
+
+## Independent Exit and Low-Range follow-up — 27 October 2026
+
+See `docs/low-range-research-20261027/PROGRESSION-HANDOFF.md` for the complete
+current source, replay denominators, audit results, limits and report scope.
+Economic source `c910672` / SHA-256
+`edc598b9c7e04b98429a9cfe0a77ea12b3642ade2964079d97af6f3ed76e082d`
+retains exact strategy/range/config lanes and adds conservative live-side
+admission and verified native-exit handling. The parallel Relate branch through
+`cb6d629` is incorporated locally and retains its original study provenance.
+
+The final-source 20-symbol 5m capped Short-range replay, 19 October 00:00–20
+October 00:00 UTC, validated 10,439/14,702 configs (71.00%, historical pooled
+PF 4.570829); the later 135,811 settled funded-model orders had return PF
+0.274964. Historic Exit was excluded, so this loss cannot be attributed to an
+Exit collision. The final-source 12-symbol 150h-fit mixed Exit replay had 0/40
+Exit pairs pass Base, leaving Exit post-Base validation and PF unavailable.
+Its separate ordinary cohort was 72/1,344 validated (5.36%, historical PF
+3.114704), followed by 141 settled modeled orders and 121 still held.
+
+The complete 317-file offline core suite on `c910672` failed: 3,894 passed,
+58 failed, two skipped and zero canceled; evidence is in
+`docs/low-range-research-20261027/core-audit-c910672/`. Later fixes and tests
+are in progress and require a new combined verification. Combined typecheck
+passed for `c910672`. Actual venue fills,
+non-atomic concurrent native exits, held-position cost changes, systemwide
+cost-plus-step floors, long/short-specific Base proof, real-browser visual QA,
+stable forward profitability and public publication remain unresolved. No
+live settings, venue orders or deployment were changed.

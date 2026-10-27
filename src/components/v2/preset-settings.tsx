@@ -405,7 +405,7 @@ export function PresetSettingsDialog(props: {
                 <Num pct min={0} max={0.2} value={s.grid.minSl} onChange={(v) => set(["grid", "minSl"], v)} />
               </Field>
             </div>
-            <ProtectRanges grid={s.grid} set={set} />
+            <ProtectRanges grid={s.grid} set={set} focus={s.focus ?? []} pinned={s.pinned ?? []} disabledKinds={s.disabledKinds ?? []} />
           </Section>
           <Section title="Block · DCA · Axis">
             <div className="v2-grid v2-cols-4">

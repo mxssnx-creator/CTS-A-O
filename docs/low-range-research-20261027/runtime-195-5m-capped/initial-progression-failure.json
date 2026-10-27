@@ -1,0 +1,128 @@
+{
+  "status": "failed",
+  "violationCount": 9053,
+  "violations": [
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-breakout-move-follow@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,144]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-breakout-move-follow@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,145]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-move-follow@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,146]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-move-follow@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,147]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-trend-breakout-move-follow@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,148]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-trend-breakout-move-follow@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,149]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-trend-move-follow@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,150]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-trend-move-follow@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,151]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-breakout@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,152]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-breakout@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,153]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-standalone@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,154]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-standalone@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,155]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-trend-breakout@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,156]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-trend-breakout@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,157]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-trend@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,158]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-breakout-trend@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,159]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-compression-break-breakout-move-follow@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,160]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-compression-break-breakout-move-follow@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,161]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-compression-break-move-follow@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,162]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-compression-break-move-follow@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,163]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-compression-break-trend-breakout-move-follow@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,164]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-compression-break-trend-breakout-move-follow@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,165]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-compression-break-trend-move-follow@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,166]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-compression-break-trend-move-follow@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,167]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-compression-break-breakout@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,168]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-compression-break-breakout@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,169]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-compression-break-standalone@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,170]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-compression-break-standalone@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,171]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-compression-break-trend-breakout@m5|tp0.55|sl0.35|tr0.55|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,172]"
+    },
+    {
+      "reason": "invalid funded close",
+      "key": "[\"follow|low-range-24-compression-break-trend-breakout@m5|tp0.55|sl0.35|tr0|h36|sh\",\"LTC-USDT\",1,1792368900000,1792369200000,173]"
+    }
+  ],
+  "fullReceiptSha256": "8b206e783e3043472f251262f2660219ac646fb86e182a0690357ab1ddf11d3b",
+  "cause": "Known zero allocations were misclassified by the original progression auditor; corrected with separate zero/unknown handling and retested."
+}

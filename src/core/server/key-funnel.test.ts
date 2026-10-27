@@ -51,6 +51,29 @@ describe("control completeness (keyFunnel)", () => {
     assert.equal(keys.at(-1)!.key, "A|1");
   });
 
+  it("reports why the one admissible parent has no target before the sibling reservation", () => {
+    const funnel = new Map([
+      f("A|1", { paper: 1000, sent: 1, notSent: 999, why: "aggregate position reserved for another parent" }),
+      f("B|1", { paper: 2, sent: 0, notSent: 2, why: "aggregate position has held or pending ownership of another or unknown parent" }),
+      f("C|1", { paper: 2, sent: 1, notSent: 1, why: "aggregate position reserved for another parent" }),
+      f("D|1", { paper: 2, sent: 1, notSent: 1, why: "aggregate position reserved for another parent" }),
+      f("D|-1", { paper: 2, sent: 1, notSent: 1, why: "aggregate position reserved for another parent" }),
+    ]);
+    const rows = keyFunnel(funnel, [{ key: "C|1" }], [
+      { sym: "A", why: "max exchange positions (symbol × direction)" },
+      { sym: "B", why: "max exchange positions (symbol × direction)" },
+      { sym: "D", why: "max exchange positions (symbol × direction)" },
+    ]);
+    const byKey = Object.fromEntries(rows.map((x) => [x.key, x]));
+    assert.equal(byKey["A|1"].why, "max exchange positions (symbol × direction)");
+    assert.equal(byKey["A|1"].notSent, 999, "the sibling reservation count is retained");
+    assert.match(byKey["B|1"].why ?? "", /held or pending ownership/, "an actually blocked held side stays explicit");
+    assert.equal(byKey["C|1"].target, true, "a surviving parent can still produce a target");
+    assert.match(byKey["C|1"].why ?? "", /reserved for another parent/, "a targeted key still reports blocked siblings");
+    for (const side of [1, -1]) assert.match(byKey[`D|${side}`].why ?? "", /reserved for another parent/,
+      "a symbol-only planner reason cannot identify which hedge side was blocked");
+  });
+
   it("lanes held back by the signal proof are named when they are most of the lanes not sent", () => {
     const funnel = new Map([
       f("P|1", { paper: 3, notSent: 3, unproven: 3 }),

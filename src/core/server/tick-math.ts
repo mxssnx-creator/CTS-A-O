@@ -277,8 +277,10 @@ export function carryTrail(
       : {}),
     ...(op.exitProtection && prev.exitProtection &&
       prev.exitProtection.lastBarT <= op.exitProtection.lastBarT &&
-      op.exitProtection.cost !== prev.exitProtection.cost
-      ? { exitProtection: { ...op.exitProtection, cost: prev.exitProtection.cost ?? 0 } }
+      (op.exitProtection.cost !== prev.exitProtection.cost ||
+       op.exitProtection.trailFloor !== prev.exitProtection.trailFloor)
+      ? { exitProtection: { ...op.exitProtection, cost: prev.exitProtection.cost ?? 0,
+          trailFloor: prev.exitProtection.trailFloor } }
       : {}),
     ...(prev.tkBar !== undefined
       ? {

@@ -1,0 +1,4005 @@
+{
+  "schema": "cts-session-study-audit-v1",
+  "purpose": "development",
+  "provenance": {
+    "study": {
+      "id": "exit-mixed-12symbol-150h-24h",
+      "protocolSha256": "33d5a4dadade0b91699693605579afdeee0f373d35cc9125f00f42d1b04b5a5c",
+      "feedSha256": "110c18584d5a0d72a962ff6fcbc759e015d6d9a19bf2eaf4e6a95225f1e90873",
+      "sourceSha256": "86fb0a4ada247b7049704b2948bb15b45a87c4ee776ec024f9022ff44bebd2d6",
+      "sourceCheckpoint": "cd150259b4617b5fd8a89af9cca1de891cf79ece",
+      "symbols": [
+        "ADA-USDT",
+        "AVAX-USDT",
+        "BCH-USDT",
+        "BNB-USDT",
+        "BTC-USDT",
+        "DOGE-USDT",
+        "DOT-USDT",
+        "ETH-USDT",
+        "LINK-USDT",
+        "LTC-USDT",
+        "SOL-USDT",
+        "XRP-USDT"
+      ],
+      "window": {
+        "indicatorStartT": 1791284400000,
+        "evaluationFromT": 1791644400000,
+        "tradeStartT": 1792184400000,
+        "endT": 1792270800000,
+        "warmH": 100,
+        "preH": 150,
+        "runH": 24
+      },
+      "scope": "Base-qualified engine execution and separately qualified exact-config Signals; combined funded account reported separately"
+    },
+    "provider": null,
+    "sourceMode": "offline-cached-feed",
+    "actualExecution": false,
+    "scope": "Funded settled engine orders after Base/config validation; exact-qualified Signals reported separately",
+    "selectionUsesFutureHours": false,
+    "missingAllocationRows": false,
+    "inputSha256": {
+      "raw": "5dcefa80b50b17be023dc2750e0230f457c4a8c074f204aae0046b8b6bf47eda",
+      "allocationReport": "c2bc98aa900a5a2f0c0fe11027935f0de1af5b568896ae76781e224af9c1f8f6",
+      "protocol": "33d5a4dadade0b91699693605579afdeee0f373d35cc9125f00f42d1b04b5a5c"
+    }
+  },
+  "window": {
+    "startT": 1792184400000,
+    "endT": 1792270800000,
+    "hours": 24,
+    "symbols": [
+      "ADA-USDT",
+      "AVAX-USDT",
+      "BCH-USDT",
+      "BNB-USDT",
+      "BTC-USDT",
+      "DOGE-USDT",
+      "DOT-USDT",
+      "ETH-USDT",
+      "LINK-USDT",
+      "LTC-USDT",
+      "SOL-USDT",
+      "XRP-USDT"
+    ]
+  },
+  "total": {
+    "closes": 141,
+    "symbols": 6,
+    "configs": 51,
+    "unknownReturns": 0,
+    "unknownCash": 0,
+    "state": "measured",
+    "unitGp": 0.42565493075319827,
+    "unitGl": 0.005949460628512802,
+    "unitNet": 0.41970547012468545,
+    "exactPf": 71.54512943799412,
+    "noLoss": false,
+    "noLossGateScore": null,
+    "sizedNetUsd": 0.008394113495991243,
+    "sizedPfDiagnostic": 71.54509627916923,
+    "sizedNoLoss": false
+  },
+  "cohorts": [
+    {
+      "key": "Engine",
+      "closes": 141,
+      "symbols": 6,
+      "configs": 51,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "measured",
+      "unitGp": 0.42565493075319827,
+      "unitGl": 0.005949460628512802,
+      "unitNet": 0.41970547012468545,
+      "exactPf": 71.54512943799412,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0.008394113495991243,
+      "sizedPfDiagnostic": 71.54509627916923,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Signals",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    }
+  ],
+  "byType": [
+    {
+      "key": "Engine · trailing",
+      "closes": 141,
+      "symbols": 6,
+      "configs": 51,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "measured",
+      "unitGp": 0.42565493075319827,
+      "unitGl": 0.005949460628512802,
+      "unitNet": 0.41970547012468545,
+      "exactPf": 71.54512943799412,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0.008394113495991243,
+      "sizedPfDiagnostic": 71.54509627916923,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Engine · normal",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Engine · trailing-only",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Engine · dca",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Engine · dca-active",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Engine · axis",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Signals · normal",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Signals · trailing",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Signals · trailing-only",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Signals · dca",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Signals · dca-active",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Signals · axis",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    }
+  ],
+  "byRange": [
+    {
+      "key": "Minimal",
+      "closes": 141,
+      "symbols": 6,
+      "configs": 51,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "measured",
+      "unitGp": 0.42565493075319827,
+      "unitGl": 0.005949460628512802,
+      "unitNet": 0.41970547012468545,
+      "exactPf": 71.54512943799412,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0.008394113495991243,
+      "sizedPfDiagnostic": 71.54509627916923,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Micro",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Minimal plus",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Short",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "General",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Long",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Wide",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Signals",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    }
+  ],
+  "byDirection": [
+    {
+      "key": "Long",
+      "closes": 0,
+      "symbols": 0,
+      "configs": 0,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "empty",
+      "unitGp": 0,
+      "unitGl": 0,
+      "unitNet": 0,
+      "exactPf": null,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0,
+      "sizedPfDiagnostic": null,
+      "sizedNoLoss": false
+    },
+    {
+      "key": "Short",
+      "closes": 141,
+      "symbols": 6,
+      "configs": 51,
+      "unknownReturns": 0,
+      "unknownCash": 0,
+      "state": "measured",
+      "unitGp": 0.42565493075319827,
+      "unitGl": 0.005949460628512802,
+      "unitNet": 0.41970547012468545,
+      "exactPf": 71.54512943799412,
+      "noLoss": false,
+      "noLossGateScore": null,
+      "sizedNetUsd": 0.008394113495991243,
+      "sizedPfDiagnostic": 71.54509627916923,
+      "sizedNoLoss": false
+    }
+  ],
+  "hours": [
+    {
+      "t": 1792184400000,
+      "from": "2026-10-16T21:00:00.000Z",
+      "to": "2026-10-16T22:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 10,
+        "equityEnd": 10.00242,
+        "netUsd": 0,
+        "equityDdPct": 0,
+        "equityDdtH": 0,
+        "marginMax": 0.102
+      }
+    },
+    {
+      "t": 1792188000000,
+      "from": "2026-10-16T22:00:00.000Z",
+      "to": "2026-10-16T23:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 5,
+        "symbols": 1,
+        "configs": 5,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "measured",
+        "unitGp": 0,
+        "unitGl": 0.0031886363636366897,
+        "unitNet": -0.0031886363636366897,
+        "exactPf": 0,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": -0.0000637727272727338,
+        "sizedPfDiagnostic": 0,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 5,
+        "symbols": 1,
+        "configs": 5,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "measured",
+        "unitGp": 0,
+        "unitGl": 0.0031886363636366897,
+        "unitNet": -0.0031886363636366897,
+        "exactPf": 0,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": -0.0000637727272727338,
+        "sizedPfDiagnostic": 0,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 9.995459,
+        "netUsd": -0.000064,
+        "equityDdPct": 0.000696,
+        "equityDdtH": 1,
+        "marginMax": 0.102
+      }
+    },
+    {
+      "t": 1792191600000,
+      "from": "2026-10-16T23:00:00.000Z",
+      "to": "2026-10-17T00:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 9.994065,
+        "netUsd": 0,
+        "equityDdPct": 0.000835,
+        "equityDdtH": 2,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792195200000,
+      "from": "2026-10-17T00:00:00.000Z",
+      "to": "2026-10-17T01:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 9.996853,
+        "netUsd": 0,
+        "equityDdPct": 0.000557,
+        "equityDdtH": 3,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792198800000,
+      "from": "2026-10-17T01:00:00.000Z",
+      "to": "2026-10-17T02:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 9.996698,
+        "netUsd": 0,
+        "equityDdPct": 0.000572,
+        "equityDdtH": 4,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792202400000,
+      "from": "2026-10-17T02:00:00.000Z",
+      "to": "2026-10-17T03:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 9.994684,
+        "netUsd": 0,
+        "equityDdPct": 0.000773,
+        "equityDdtH": 5,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792206000000,
+      "from": "2026-10-17T03:00:00.000Z",
+      "to": "2026-10-17T04:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 9.991277,
+        "netUsd": 0,
+        "equityDdPct": 0.001114,
+        "equityDdtH": 6,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792209600000,
+      "from": "2026-10-17T04:00:00.000Z",
+      "to": "2026-10-17T05:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 9.993135,
+        "netUsd": 0,
+        "equityDdPct": 0.000928,
+        "equityDdtH": 7,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792213200000,
+      "from": "2026-10-17T05:00:00.000Z",
+      "to": "2026-10-17T06:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 9.994839,
+        "netUsd": 0,
+        "equityDdPct": 0.000758,
+        "equityDdtH": 8,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792216800000,
+      "from": "2026-10-17T06:00:00.000Z",
+      "to": "2026-10-17T07:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 9.993755,
+        "netUsd": 0,
+        "equityDdPct": 0.000866,
+        "equityDdtH": 9,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792220400000,
+      "from": "2026-10-17T07:00:00.000Z",
+      "to": "2026-10-17T08:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 9.998556,
+        "netUsd": 0,
+        "equityDdPct": 0.000386,
+        "equityDdtH": 10,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792224000000,
+      "from": "2026-10-17T08:00:00.000Z",
+      "to": "2026-10-17T09:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 9.997782,
+        "netUsd": 0,
+        "equityDdPct": 0.000464,
+        "equityDdtH": 11,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792227600000,
+      "from": "2026-10-17T09:00:00.000Z",
+      "to": "2026-10-17T10:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 9.99995,
+        "netUsd": 0,
+        "equityDdPct": 0.000247,
+        "equityDdtH": 12,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792231200000,
+      "from": "2026-10-17T10:00:00.000Z",
+      "to": "2026-10-17T11:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 9.996078,
+        "netUsd": 0,
+        "equityDdPct": 0.000634,
+        "equityDdtH": 13,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792234800000,
+      "from": "2026-10-17T11:00:00.000Z",
+      "to": "2026-10-17T12:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 9.996078,
+        "netUsd": 0,
+        "equityDdPct": 0.000634,
+        "equityDdtH": 14,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792238400000,
+      "from": "2026-10-17T12:00:00.000Z",
+      "to": "2026-10-17T13:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 9.999936,
+        "equityEnd": 10.00057,
+        "netUsd": 0,
+        "equityDdPct": 0.000185,
+        "equityDdtH": 15,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792242000000,
+      "from": "2026-10-17T13:00:00.000Z",
+      "to": "2026-10-17T14:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 23,
+        "symbols": 1,
+        "configs": 23,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "no-loss",
+        "unitGp": 0.004220538720539272,
+        "unitGl": 0,
+        "unitNet": 0.004220538720539272,
+        "exactPf": null,
+        "noLoss": true,
+        "noLossGateScore": 4,
+        "sizedNetUsd": 0.00008441077441078546,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": true
+      },
+      "engine": {
+        "closes": 23,
+        "symbols": 1,
+        "configs": 23,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "no-loss",
+        "unitGp": 0.004220538720539272,
+        "unitGl": 0,
+        "unitNet": 0.004220538720539272,
+        "exactPf": null,
+        "noLoss": true,
+        "noLossGateScore": 4,
+        "sizedNetUsd": 0.00008441077441078546,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": true
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 10.000021,
+        "equityEnd": 10.000725,
+        "netUsd": 0.000084,
+        "equityDdPct": 0.000169,
+        "equityDdtH": 16,
+        "marginMax": 0.092
+      }
+    },
+    {
+      "t": 1792245600000,
+      "from": "2026-10-17T14:00:00.000Z",
+      "to": "2026-10-17T15:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 10.000021,
+        "equityEnd": 9.99964,
+        "netUsd": 0,
+        "equityDdPct": 0.000278,
+        "equityDdtH": 17,
+        "marginMax": 0.046
+      }
+    },
+    {
+      "t": 1792249200000,
+      "from": "2026-10-17T15:00:00.000Z",
+      "to": "2026-10-17T16:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 10.000021,
+        "equityEnd": 10.009395,
+        "netUsd": 0,
+        "equityDdPct": 0.000461,
+        "equityDdtH": 0.1,
+        "marginMax": 0.468001
+      }
+    },
+    {
+      "t": 1792252800000,
+      "from": "2026-10-17T16:00:00.000Z",
+      "to": "2026-10-17T17:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 33,
+        "symbols": 3,
+        "configs": 28,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "measured",
+        "unitGp": 0.32879716151720567,
+        "unitGl": 0.002760824264876112,
+        "unitNet": 0.32603633725232956,
+        "exactPf": 119.09383936538241,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0.0065207270148410655,
+        "sizedPfDiagnostic": 119.0936005293748,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 33,
+        "symbols": 3,
+        "configs": 28,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "measured",
+        "unitGp": 0.32879716151720567,
+        "unitGl": 0.002760824264876112,
+        "unitNet": 0.32603633725232956,
+        "exactPf": 119.09383936538241,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0.0065207270148410655,
+        "sizedPfDiagnostic": 119.0936005293748,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 10.006541,
+        "equityEnd": 10.024492,
+        "netUsd": 0.006521,
+        "equityDdPct": 0.000541,
+        "equityDdtH": 0.066667,
+        "marginMax": 0.468001
+      }
+    },
+    {
+      "t": 1792256400000,
+      "from": "2026-10-17T17:00:00.000Z",
+      "to": "2026-10-17T18:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 10,
+        "symbols": 2,
+        "configs": 5,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "no-loss",
+        "unitGp": 0.03601035987108679,
+        "unitGl": 0,
+        "unitNet": 0.03601035987108679,
+        "exactPf": null,
+        "noLoss": true,
+        "noLossGateScore": 4,
+        "sizedNetUsd": 0.0007202086837887447,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": true
+      },
+      "engine": {
+        "closes": 10,
+        "symbols": 2,
+        "configs": 5,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "no-loss",
+        "unitGp": 0.03601035987108679,
+        "unitGl": 0,
+        "unitNet": 0.03601035987108679,
+        "exactPf": null,
+        "noLoss": true,
+        "noLossGateScore": 4,
+        "sizedNetUsd": 0.0007202086837887447,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": true
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 10.007262,
+        "equityEnd": 10.011751,
+        "netUsd": 0.00072,
+        "equityDdPct": 0.001928,
+        "equityDdtH": 0.916667,
+        "marginMax": 0.402001
+      }
+    },
+    {
+      "t": 1792260000000,
+      "from": "2026-10-17T18:00:00.000Z",
+      "to": "2026-10-17T19:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 57,
+        "symbols": 3,
+        "configs": 27,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "no-loss",
+        "unitGp": 0.04641816900036573,
+        "unitGl": 0,
+        "unitNet": 0.04641816900036573,
+        "exactPf": null,
+        "noLoss": true,
+        "noLossGateScore": 4,
+        "sizedNetUsd": 0.000928365295968035,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": true
+      },
+      "engine": {
+        "closes": 57,
+        "symbols": 3,
+        "configs": 27,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "no-loss",
+        "unitGp": 0.04641816900036573,
+        "unitGl": 0,
+        "unitNet": 0.04641816900036573,
+        "exactPf": null,
+        "noLoss": true,
+        "noLossGateScore": 4,
+        "sizedNetUsd": 0.000928365295968035,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": true
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 10.00819,
+        "equityEnd": 9.995919,
+        "netUsd": 0.000928,
+        "equityDdPct": 0.003506,
+        "equityDdtH": 1.916667,
+        "marginMax": 0.382001
+      }
+    },
+    {
+      "t": 1792263600000,
+      "from": "2026-10-17T19:00:00.000Z",
+      "to": "2026-10-17T20:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 13,
+        "symbols": 1,
+        "configs": 13,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "no-loss",
+        "unitGp": 0.010208701644000779,
+        "unitGl": 0,
+        "unitNet": 0.010208701644000779,
+        "exactPf": null,
+        "noLoss": true,
+        "noLossGateScore": 4,
+        "sizedNetUsd": 0.0002041744542553471,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": true
+      },
+      "engine": {
+        "closes": 13,
+        "symbols": 1,
+        "configs": 13,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "no-loss",
+        "unitGp": 0.010208701644000779,
+        "unitGl": 0,
+        "unitNet": 0.010208701644000779,
+        "exactPf": null,
+        "noLoss": true,
+        "noLossGateScore": 4,
+        "sizedNetUsd": 0.0002041744542553471,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": true
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 10.008394,
+        "equityEnd": 9.988626,
+        "netUsd": 0.000204,
+        "equityDdPct": 0.004233,
+        "equityDdtH": 2.916667,
+        "marginMax": 0.268001
+      }
+    },
+    {
+      "t": 1792267200000,
+      "from": "2026-10-17T20:00:00.000Z",
+      "to": "2026-10-17T21:00:00.000Z",
+      "fullHour": true,
+      "combined": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "engine": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "signals": {
+        "closes": 0,
+        "symbols": 0,
+        "configs": 0,
+        "unknownReturns": 0,
+        "unknownCash": 0,
+        "state": "empty",
+        "unitGp": 0,
+        "unitGl": 0,
+        "unitNet": 0,
+        "exactPf": null,
+        "noLoss": false,
+        "noLossGateScore": null,
+        "sizedNetUsd": 0,
+        "sizedPfDiagnostic": null,
+        "sizedNoLoss": false
+      },
+      "account": {
+        "balance": 10.008394,
+        "equityEnd": 9.980972,
+        "netUsd": 0,
+        "equityDdPct": 0.004996,
+        "equityDdtH": 3.916667,
+        "marginMax": 0.242
+      }
+    }
+  ],
+  "eligibility": {
+    "base": {
+      "evaluated": 20,
+      "passed": 2,
+      "byRange": [
+        {
+          "tag": "",
+          "evaluated": 10,
+          "passed": 1,
+          "minPf": 1,
+          "pfMedian": 0.6303530788190617,
+          "pfPassedMedian": 1.4000535276463755,
+          "pfPassedMean": 1.4000535276463755,
+          "pfPassedPooled": 1.4000535276463753,
+          "passedGp": 94.67731813953493,
+          "passedGl": 67.62407027301064,
+          "ownCells": 10,
+          "range": "Wide",
+          "enabled": true
+        },
+        {
+          "tag": "mc",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.05,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Micro",
+          "enabled": false
+        },
+        {
+          "tag": "mn",
+          "evaluated": 10,
+          "passed": 2,
+          "minPf": 1.1,
+          "pfMedian": 1.0306237120530928,
+          "pfPassedMedian": 2.131180236712885,
+          "pfPassedMean": 1.7053147527311552,
+          "pfPassedPooled": 1.4893905531113687,
+          "passedGp": 157.50487266422996,
+          "passedGl": 105.75122309940728,
+          "ownCells": 10,
+          "range": "Minimal",
+          "enabled": true
+        },
+        {
+          "tag": "mp",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.1,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Minimal plus",
+          "enabled": false
+        },
+        {
+          "tag": "sh",
+          "evaluated": 2,
+          "passed": 1,
+          "minPf": 1.1,
+          "pfMedian": 1.5272945079246834,
+          "pfPassedMedian": 1.5272945079246834,
+          "pfPassedMean": 1.5272945079246834,
+          "pfPassedPooled": 1.5272945079246831,
+          "passedGp": 55.80939059230284,
+          "passedGl": 36.54134176658417,
+          "ownCells": 2,
+          "range": "Short",
+          "enabled": true
+        },
+        {
+          "tag": "gn",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.2,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "General",
+          "enabled": false
+        },
+        {
+          "tag": "lg",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.3,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Long",
+          "enabled": false
+        }
+      ],
+      "firstFailure": [
+        {
+          "tag": "",
+          "evaluated": 10,
+          "passed": 1,
+          "first": {
+            "closes": 1,
+            "net": 6,
+            "pf": 0,
+            "ddr": 2
+          },
+          "only": {
+            "closes": 0,
+            "net": 0,
+            "pf": 0,
+            "ddr": 2
+          },
+          "onlyDdrPfMedian": 1.0807203043221782
+        },
+        {
+          "tag": "mn",
+          "evaluated": 10,
+          "passed": 2,
+          "first": {
+            "closes": 1,
+            "net": 4,
+            "pf": 2,
+            "ddr": 1
+          },
+          "only": {
+            "closes": 0,
+            "net": 0,
+            "pf": 0,
+            "ddr": 1
+          },
+          "onlyDdrPfMedian": 1.1762527754957681
+        },
+        {
+          "tag": "sh",
+          "evaluated": 2,
+          "passed": 1,
+          "first": {
+            "closes": 0,
+            "net": 0,
+            "pf": 0,
+            "ddr": 1
+          },
+          "only": {
+            "closes": 0,
+            "net": 0,
+            "pf": 0,
+            "ddr": 1
+          },
+          "onlyDdrPfMedian": 1.1714774642183798
+        }
+      ],
+      "fundedEngineMembership": {
+        "tested": 141,
+        "passed": 141,
+        "failed": 0,
+        "missing": 0
+      }
+    },
+    "configuredInventory": {
+      "engineTapes": {
+        "normal|mn": {
+          "configs": 140,
+          "activeConfigs": 140,
+          "closes": 11510
+        },
+        "trailing|mn": {
+          "configs": 420,
+          "activeConfigs": 420,
+          "closes": 36000
+        },
+        "trailing-only|mn": {
+          "configs": 500,
+          "activeConfigs": 500,
+          "closes": 54216
+        },
+        "dca|wide": {
+          "configs": 8,
+          "activeConfigs": 8,
+          "closes": 851
+        },
+        "dca-active|wide": {
+          "configs": 8,
+          "activeConfigs": 8,
+          "closes": 407
+        },
+        "axis|wide": {
+          "configs": 16,
+          "activeConfigs": 16,
+          "closes": 0
+        },
+        "normal|sh": {
+          "configs": 42,
+          "activeConfigs": 42,
+          "closes": 2618
+        },
+        "trailing|sh": {
+          "configs": 126,
+          "activeConfigs": 126,
+          "closes": 8684
+        },
+        "trailing-only|sh": {
+          "configs": 96,
+          "activeConfigs": 96,
+          "closes": 6945
+        }
+      },
+      "signalTapes": {},
+      "buildSets": [
+        {
+          "ind": "ema-9-21",
+          "tag": "mn",
+          "kind": "normal",
+          "lanes": 2,
+          "grid": 252,
+          "built": 140,
+          "kept": 140,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {
+            "baseTarget": 112
+          },
+          "tps": 8,
+          "sls": 43,
+          "trails": 1
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "mn",
+          "kind": "trailing",
+          "lanes": 2,
+          "grid": 756,
+          "built": 420,
+          "kept": 420,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {
+            "baseTarget": 336
+          },
+          "tps": 8,
+          "sls": 43,
+          "trails": 20
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "mn",
+          "kind": "trailing-only",
+          "lanes": 2,
+          "grid": 500,
+          "built": 500,
+          "kept": 500,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {},
+          "tps": 1,
+          "sls": 28,
+          "trails": 20
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "wide",
+          "kind": "dca",
+          "lanes": 2,
+          "grid": 8,
+          "built": 8,
+          "kept": 8,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {},
+          "tps": 8,
+          "sls": 8,
+          "trails": 1
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "wide",
+          "kind": "dca-active",
+          "lanes": 2,
+          "grid": 8,
+          "built": 8,
+          "kept": 8,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {},
+          "tps": 8,
+          "sls": 8,
+          "trails": 1
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "wide",
+          "kind": "axis",
+          "lanes": 2,
+          "grid": 16,
+          "built": 16,
+          "kept": 16,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {},
+          "tps": 2,
+          "sls": 2,
+          "trails": 1
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "sh",
+          "kind": "normal",
+          "lanes": 1,
+          "grid": 84,
+          "built": 42,
+          "kept": 42,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {
+            "baseTarget": 42
+          },
+          "tps": 3,
+          "sls": 21,
+          "trails": 1
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "sh",
+          "kind": "trailing",
+          "lanes": 1,
+          "grid": 252,
+          "built": 126,
+          "kept": 126,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {
+            "baseTarget": 126
+          },
+          "tps": 3,
+          "sls": 21,
+          "trails": 9
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "sh",
+          "kind": "trailing-only",
+          "lanes": 1,
+          "grid": 96,
+          "built": 96,
+          "kept": 96,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {},
+          "tps": 1,
+          "sls": 11,
+          "trails": 18
+        }
+      ]
+    },
+    "configRunStart": {
+      "t": 1792184400000,
+      "evaluated": 728,
+      "passed": 72,
+      "firstFailureByRange": {
+        "Minimal": {
+          "configs": 1060,
+          "passed": 71,
+          "lastN": 112,
+          "lcb": 122,
+          "net": 195,
+          "ddt": 11,
+          "base off": 500,
+          "pf": 48,
+          "ddr": 1,
+          "pfEvaluatedMedian": 1.16545,
+          "pfPassedMedian": 3.0655,
+          "evaluatedN": 560,
+          "ddtLimitMinH": 72.92,
+          "ddtLimitMedianH": 72.92,
+          "ddtLimitMaxH": 72.92
+        },
+        "Wide": {
+          "configs": 32,
+          "passed": 0,
+          "type off": 32,
+          "pfEvaluatedMedian": null,
+          "pfPassedMedian": null,
+          "evaluatedN": 0,
+          "ddtLimitMinH": null,
+          "ddtLimitMedianH": null,
+          "ddtLimitMaxH": null
+        },
+        "Short": {
+          "configs": 264,
+          "passed": 1,
+          "lcb": 44,
+          "pf": 18,
+          "net": 22,
+          "lastN": 83,
+          "base off": 96,
+          "pfEvaluatedMedian": 1.55485,
+          "pfPassedMedian": 2.7235,
+          "evaluatedN": 168,
+          "ddtLimitMinH": 72.92,
+          "ddtLimitMedianH": 72.92,
+          "ddtLimitMaxH": 72.92
+        }
+      },
+      "afterBase": {
+        "Minimal|normal": {
+          "configs": 140,
+          "passed": 0,
+          "okGp": 0,
+          "okGl": 0,
+          "minPfByInd": {
+            "ema-9-21@m5c": 1.1,
+            "ema-9-21@m15": 1.1
+          },
+          "minPf": 1.1,
+          "minPfMax": 1.1,
+          "lastN": 53,
+          "net": 46,
+          "pf": 15,
+          "lcb": 25,
+          "ddr": 1,
+          "pfMedian": 1.187,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedSum": 0,
+          "pfPassedPooled": null
+        },
+        "Minimal|trailing": {
+          "configs": 420,
+          "passed": 71,
+          "okGp": 2445.4867395749357,
+          "okGl": 784.1520269218528,
+          "minPfByInd": {
+            "ema-9-21@m5c": 1.1,
+            "ema-9-21@m15": 1.1
+          },
+          "minPf": 1.1,
+          "minPfMax": 1.1,
+          "lcb": 97,
+          "ddt": 11,
+          "net": 149,
+          "lastN": 59,
+          "pf": 33,
+          "pfMedian": 1.163,
+          "pfPassedMedian": 3.065,
+          "pfPassedMean": 5.191,
+          "pfPassedSum": 368.5433289496915,
+          "pfPassedPooled": 3.119
+        },
+        "Wide|dca": {
+          "configs": 8,
+          "passed": 0,
+          "okGp": 0,
+          "okGl": 0,
+          "minPfByInd": {
+            "ema-9-21@m5c": 1.1,
+            "ema-9-21@m15": 1.1
+          },
+          "minPf": 1.1,
+          "minPfMax": 1.1,
+          "type off": 8,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedSum": 0,
+          "pfPassedPooled": null
+        },
+        "Wide|dca-active": {
+          "configs": 8,
+          "passed": 0,
+          "okGp": 0,
+          "okGl": 0,
+          "minPfByInd": {
+            "ema-9-21@m5c": 1.1,
+            "ema-9-21@m15": 1.1
+          },
+          "minPf": 1.1,
+          "minPfMax": 1.1,
+          "type off": 8,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedSum": 0,
+          "pfPassedPooled": null
+        },
+        "Wide|axis": {
+          "configs": 16,
+          "passed": 0,
+          "okGp": 0,
+          "okGl": 0,
+          "minPfByInd": {
+            "ema-9-21@m5c": 1.1,
+            "ema-9-21@m15": 1.1
+          },
+          "minPf": 1.1,
+          "minPfMax": 1.1,
+          "type off": 16,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedSum": 0,
+          "pfPassedPooled": null
+        },
+        "Short|normal": {
+          "configs": 42,
+          "passed": 0,
+          "okGp": 0,
+          "okGl": 0,
+          "minPfByInd": {
+            "ema-9-21@m15": 1.1
+          },
+          "minPf": 1.1,
+          "minPfMax": 1.1,
+          "lcb": 10,
+          "pf": 1,
+          "lastN": 28,
+          "net": 3,
+          "pfMedian": 1.638,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedSum": 0,
+          "pfPassedPooled": null
+        },
+        "Short|trailing": {
+          "configs": 126,
+          "passed": 1,
+          "okGp": 21.482524864365992,
+          "okGl": 7.887729522357624,
+          "minPfByInd": {
+            "ema-9-21@m15": 1.1
+          },
+          "minPf": 1.1,
+          "minPfMax": 1.1,
+          "net": 19,
+          "lcb": 34,
+          "pf": 17,
+          "lastN": 55,
+          "pfMedian": 1.363,
+          "pfPassedMedian": 2.724,
+          "pfPassedMean": 2.724,
+          "pfPassedSum": 2.723537210990079,
+          "pfPassedPooled": 2.724
+        }
+      }
+    },
+    "gateProofLimitation": "Arithmetic and Base pair membership independently checked. Later exact config verdicts are runtime-recorded scope; hourly aggregate flow is not reconstructed per-entry gate proof.",
+    "firstStepSelection": {
+      "t": 1792184400000,
+      "ids": [
+        "follow|ema-9-21@m5c|tp1.5|sl2.62|tr1.12|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3|tr1.12|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.38|tr1.12|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3|tr1.12|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.75|tr1.12|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.12|tr1.12|h288|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl2.8|tr1.2|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.38|tr1.12|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.5|tr1.12|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.75|tr1.12|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.12|tr1.12|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl2.62|tr1.12|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.5|tr1.12|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3|tr0.75|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.38|tr0.75|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.75|tr0.75|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl2.62|tr0.75|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3|tr0.75|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl2.62|tr0.75|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl2.4|tr1.2|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.12|tr0.75|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl2.8|tr1.2|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl2.25|tr1.12|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.5|tr0.75|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.38|tr0.75|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.75|tr0.75|h288|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl2.4|tr1.2|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.12|tr0.75|h288|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl3.2|tr0.8|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.5|tr0.75|h288|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl3.6|tr0.8|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl3.2|tr0.8|h288|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl2.8|tr0.8|h288|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl4|tr0.8|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl3.6|tr0.8|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl2.25|tr1.12|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl2.8|tr0.8|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl4.4|tr0.8|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl4|tr0.8|h288|mn",
+        "follow|ema-9-21@m15|tp1.1|sl2.75|tr0.55|h96|mn",
+        "follow|ema-9-21@m15|tp1.1|sl3.02|tr0.55|h96|mn",
+        "follow|ema-9-21@m15|tp1.1|sl3.3|tr0.55|h96|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl2.25|tr0.75|h288|mn",
+        "follow|ema-9-21@m15|tp1.2|sl2.7|tr0.6|h96|mn",
+        "follow|ema-9-21@m15|tp1.2|sl3|tr0.6|h96|mn",
+        "follow|ema-9-21@m15|tp1.2|sl3.3|tr0.6|h96|mn",
+        "follow|ema-9-21@m15|tp1.2|sl3.6|tr0.6|h96|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl4.8|tr0.8|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl4.4|tr0.8|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl2.25|tr0.75|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl4.8|tr0.8|h288|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl2.4|tr0.8|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl2.4|tr0.8|h288|mn",
+        "follow|ema-9-21@m15|tp1.1|sl2.75|tr0.55|h64|mn",
+        "follow|ema-9-21@m15|tp1.1|sl3.02|tr0.55|h64|mn",
+        "follow|ema-9-21@m15|tp1.1|sl3.3|tr0.55|h64|mn",
+        "follow|ema-9-21@m15|tp1.1|sl2.2|tr0.55|h96|mn",
+        "follow|ema-9-21@m15|tp1.2|sl2.7|tr0.6|h64|mn",
+        "follow|ema-9-21@m15|tp1.2|sl3|tr0.6|h64|mn",
+        "follow|ema-9-21@m15|tp1.2|sl3.3|tr0.6|h64|mn",
+        "follow|ema-9-21@m15|tp1.2|sl3.6|tr0.6|h64|mn",
+        "follow|ema-9-21@m15|tp1.1|sl2.47|tr0.55|h96|mn",
+        "follow|ema-9-21@m15|tp1.2|sl2.4|tr0.6|h96|mn",
+        "follow|ema-9-21@m15|tp1.1|sl2.2|tr0.55|h64|mn",
+        "follow|ema-9-21@m15|tp1.1|sl2.47|tr0.55|h64|mn",
+        "follow|ema-9-21@m15|tp1.2|sl2.4|tr0.6|h64|mn",
+        "follow|ema-9-21@m15|tp1.8|sl2.25|tr0.9|h96|sh",
+        "follow|ema-9-21@m5c|tp1.5|sl3|tr0.37|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.38|tr0.37|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.75|tr0.37|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.12|tr0.37|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.5|tr0.37|h192|mn"
+      ],
+      "configs": 72,
+      "engineConfigs": 72,
+      "signalConfigs": 0
+    },
+    "paperAfterCompute": {
+      "t": 1792270800000,
+      "ids": [
+        "follow|ema-9-21@m5c|tp1.5|sl2.62|tr1.12|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3|tr1.12|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.38|tr1.12|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.75|tr1.12|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.12|tr1.12|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.5|tr1.12|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3|tr1.12|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.38|tr1.12|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.75|tr1.12|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl2.62|tr1.12|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3|tr0.75|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl2.25|tr1.12|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3|tr0.75|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl2.62|tr0.75|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.38|tr0.75|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.75|tr0.75|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.38|tr0.75|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl2.62|tr0.75|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.75|tr0.75|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.12|tr0.75|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.12|tr0.75|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.5|tr0.75|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.5|tr0.75|h288|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl3.2|tr0.8|h288|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl2.8|tr0.8|h288|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl3.2|tr0.8|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl3.6|tr0.8|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl2.25|tr0.75|h288|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl3.6|tr0.8|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl4|tr0.8|h288|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl2.25|tr1.12|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl4|tr0.8|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl4.4|tr0.8|h288|mn",
+        "follow|ema-9-21@m15|tp1.1|sl2.75|tr0.55|h96|mn",
+        "follow|ema-9-21@m15|tp1.1|sl3.02|tr0.55|h96|mn",
+        "follow|ema-9-21@m15|tp1.1|sl3.3|tr0.55|h96|mn",
+        "follow|ema-9-21@m15|tp1.2|sl2.7|tr0.6|h96|mn",
+        "follow|ema-9-21@m15|tp1.2|sl3|tr0.6|h96|mn",
+        "follow|ema-9-21@m15|tp1.2|sl3.3|tr0.6|h96|mn",
+        "follow|ema-9-21@m15|tp1.2|sl3.6|tr0.6|h96|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl2.8|tr0.8|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl4.4|tr0.8|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl4.8|tr0.8|h288|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl4.8|tr0.8|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl2.25|tr0.75|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl2.4|tr0.8|h192|mn",
+        "follow|ema-9-21@m5c|tp1.6|sl2.4|tr0.8|h288|mn",
+        "follow|ema-9-21@m15|tp1.1|sl2.75|tr0.55|h64|mn",
+        "follow|ema-9-21@m15|tp1.1|sl3.02|tr0.55|h64|mn",
+        "follow|ema-9-21@m15|tp1.1|sl3.3|tr0.55|h64|mn",
+        "follow|ema-9-21@m15|tp1.1|sl2.2|tr0.55|h96|mn",
+        "follow|ema-9-21@m15|tp1.2|sl2.7|tr0.6|h64|mn",
+        "follow|ema-9-21@m15|tp1.2|sl3|tr0.6|h64|mn",
+        "follow|ema-9-21@m15|tp1.2|sl3.3|tr0.6|h64|mn",
+        "follow|ema-9-21@m15|tp1.2|sl3.6|tr0.6|h64|mn",
+        "follow|ema-9-21@m15|tp1.1|sl2.47|tr0.55|h96|mn",
+        "follow|ema-9-21@m15|tp1.2|sl2.4|tr0.6|h96|mn",
+        "follow|ema-9-21@m15|tp1.1|sl2.2|tr0.55|h64|mn",
+        "follow|ema-9-21@m15|tp1.1|sl2.47|tr0.55|h64|mn",
+        "follow|ema-9-21@m15|tp1.2|sl2.4|tr0.6|h64|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3|tr0.37|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.38|tr0.37|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl3.75|tr0.37|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.12|tr0.37|h192|mn",
+        "follow|ema-9-21@m5c|tp1.5|sl4.5|tr0.37|h192|mn"
+      ],
+      "configs": 65,
+      "engineConfigs": 65,
+      "signalConfigs": 0,
+      "capturedAt": "2026-10-27T19:59:56.358Z",
+      "compute": 1,
+      "phase": "paper-current-after-compute",
+      "complete": true
+    },
+    "hourlyFlow": [
+      {
+        "t": 1792184400000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 71,
+            "candidates": 51,
+            "taken": 51
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 1,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792188000000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 71,
+            "candidates": 40,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 1,
+            "candidates": 2,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792191600000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 71,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 1,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792195200000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 71,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 1,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792198800000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 71,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 1,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792202400000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 71,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792206000000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 71,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792209600000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 71,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792213200000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 70,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792216800000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 70,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792220400000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 70,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792224000000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 70,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792227600000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 70,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792231200000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 70,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792234800000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 67,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792238400000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 67,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792242000000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 67,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792245600000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 66,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792249200000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 67,
+            "candidates": 230,
+            "taken": 211
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 1,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792252800000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 67,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 1,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792256400000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 66,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792260000000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 67,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792263600000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 63,
+            "candidates": 43,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      },
+      {
+        "t": 1792267200000,
+        "byRange": {
+          "mn": {
+            "tapes": 1060,
+            "validated": 65,
+            "candidates": 0,
+            "taken": 0
+          },
+          "": {
+            "tapes": 32,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          },
+          "sh": {
+            "tapes": 264,
+            "validated": 0,
+            "candidates": 0,
+            "taken": 0
+          }
+        }
+      }
+    ],
+    "flowDefinition": "Engine validated=configs in that step; Signal validated=active exact units; candidates/taken are pre-funding modeled events, not settled fills",
+    "executionSkips": {
+      "directionValidation": 85,
+      "symPf": 19
+    },
+    "skipsByRange": {
+      "mn": {
+        "directionValidation": 83,
+        "symPf": 19
+      },
+      "sh": {
+        "directionValidation": 2
+      }
+    }
+  },
+  "account": {
+    "startingBalance": 10,
+    "sizing": {
+      "mode": "equityPct",
+      "pct": 0.002
+    },
+    "leverage": 10,
+    "closedNetUsd": 0.008394,
+    "endingBalance": 10.008394,
+    "markedEndingEquity": 9.980972,
+    "equityMaxDdUsd": 0.050679,
+    "equityMaxDdPct": 0.005052,
+    "greenHours": 5,
+    "redHours": 1,
+    "flatHours": 18,
+    "unknownAllocations": 0,
+    "zeroAllocations": 0,
+    "openAtEnd": 121
+  },
+  "performance": {
+    "wallSeconds": 4,
+    "computeMs": 3955.1955809999995,
+    "peakRssMb": 470,
+    "mem": {
+      "availMb": 7214,
+      "hostAvailMb": 8698,
+      "cgroup": {
+        "version": 2,
+        "basis": "clean-file-estimate",
+        "limitMb": 8192,
+        "usedMb": 5709,
+        "rawAvailMb": 2483,
+        "cacheCreditMb": 4730,
+        "availMb": 7214
+      },
+      "rssMb": 430,
+      "level": "ok",
+      "fallback": 0,
+      "fallbackLabel": "full",
+      "minAvailMb": 7193,
+      "lastAbort": null,
+      "aborts": 0,
+      "abortsInRow": 0,
+      "retryAt": null,
+      "computeLevel": 0,
+      "heapMb": 68,
+      "heapLimitMb": 4288,
+      "heapAvailMb": 4220,
+      "heapTotalMb": 168,
+      "arrayBuffersMb": 71,
+      "nativeMb": 191,
+      "dbMb": 1,
+      "tapeMb": 9,
+      "byPhase": {
+        "backfill": {
+          "rssMb": 262,
+          "heapMb": 98,
+          "arrayBuffersMb": 33
+        },
+        "Base": {
+          "rssMb": 358,
+          "heapMb": 27,
+          "arrayBuffersMb": 63
+        },
+        "Tapes": {
+          "rssMb": 449,
+          "heapMb": 33,
+          "arrayBuffersMb": 106
+        }
+      }
+    },
+    "phases": {
+      "Base (workers)": {
+        "ms": 947.506765,
+        "maxSliceMs": 0,
+        "slowest": "20 of 20 combos on 1 cores",
+        "mainMs": 26.503535999055657
+      },
+      "Pipeline": {
+        "ms": 729.162499,
+        "maxSliceMs": 23.908866000000216,
+        "slowest": "S2 follow × ema-9-21@m5c (17 ms)"
+      },
+      "Persist": {
+        "ms": 23.047687000000224,
+        "maxSliceMs": 6.347940999999992
+      },
+      "Base ranges": {
+        "ms": 0.5551479999999174,
+        "maxSliceMs": 0.5551479999999174,
+        "slowest": "finish (1 ms)"
+      },
+      "Base gate sensitivity": {
+        "ms": 0.8844540000000052,
+        "maxSliceMs": 0.8844540000000052,
+        "slowest": "finish (1 ms)"
+      },
+      "Base gate reasons": {
+        "ms": 0.25905199999988326,
+        "maxSliceMs": 0.25905199999988326,
+        "slowest": "finish (0 ms)"
+      },
+      "Tape merge": {
+        "ms": 2.530101000000286,
+        "maxSliceMs": 2.530101000000286,
+        "slowest": " (1 ms)"
+      },
+      "Tapes": {
+        "ms": 1383.430731,
+        "maxSliceMs": 2.530101000000286,
+        "slowest": "1 cores · 2 replies · longest history retain 0 ms",
+        "mainMs": 31.929289002363475
+      },
+      "Simulation": {
+        "ms": 682.3528590000001,
+        "maxSliceMs": 19.945338000000447,
+        "slowest": "fixed seat selection (14 ms)"
+      },
+      "Strategy coverage": {
+        "ms": 0.36353599999984,
+        "maxSliceMs": 0.36353599999984,
+        "slowest": " (0 ms)"
+      },
+      "Persist sim": {
+        "ms": 0.21737000000030093,
+        "maxSliceMs": 0.21737000000030093
+      },
+      "Auto preset": {
+        "ms": 0.06140099999993254,
+        "maxSliceMs": 0.06140099999993254
+      },
+      "Prehistoric": {
+        "ms": 1.6505740000002334,
+        "maxSliceMs": 1.6505740000002334,
+        "slowest": "finish (1 ms)"
+      },
+      "Paper": {
+        "ms": 44.884908999999425,
+        "maxSliceMs": 17.726039999999557,
+        "slowest": "select 35 · candidates 6 · entries 3 ms over 0 (wall, sliced) · 160 older tape positions left to their tape"
+      },
+      "Adjust": {
+        "ms": 0.5939259999995556,
+        "maxSliceMs": 0.5939259999995556
+      },
+      "Audit": {
+        "ms": 9.035547000000406,
+        "maxSliceMs": 9.035547000000406,
+        "slowest": " (6 ms)"
+      }
+    },
+    "loop": {
+      "p50": 20.332543,
+      "p99": 39.124991,
+      "max": 100.204543,
+      "recent": {
+        "ms": 87,
+        "where": "Base",
+        "at": 1793131192269,
+        "n": 3
+      }
+    },
+    "stalls": [],
+    "coverage": {
+      "sets": [
+        {
+          "ind": "ema-9-21",
+          "tag": "mn",
+          "kind": "normal",
+          "lanes": 2,
+          "grid": 252,
+          "built": 140,
+          "kept": 140,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {
+            "baseTarget": 112
+          },
+          "tps": 8,
+          "sls": 43,
+          "trails": 1
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "mn",
+          "kind": "trailing",
+          "lanes": 2,
+          "grid": 756,
+          "built": 420,
+          "kept": 420,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {
+            "baseTarget": 336
+          },
+          "tps": 8,
+          "sls": 43,
+          "trails": 20
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "mn",
+          "kind": "trailing-only",
+          "lanes": 2,
+          "grid": 500,
+          "built": 500,
+          "kept": 500,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {},
+          "tps": 1,
+          "sls": 28,
+          "trails": 20
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "wide",
+          "kind": "dca",
+          "lanes": 2,
+          "grid": 8,
+          "built": 8,
+          "kept": 8,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {},
+          "tps": 8,
+          "sls": 8,
+          "trails": 1
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "wide",
+          "kind": "dca-active",
+          "lanes": 2,
+          "grid": 8,
+          "built": 8,
+          "kept": 8,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {},
+          "tps": 8,
+          "sls": 8,
+          "trails": 1
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "wide",
+          "kind": "axis",
+          "lanes": 2,
+          "grid": 16,
+          "built": 16,
+          "kept": 16,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {},
+          "tps": 2,
+          "sls": 2,
+          "trails": 1
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "sh",
+          "kind": "normal",
+          "lanes": 1,
+          "grid": 84,
+          "built": 42,
+          "kept": 42,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {
+            "baseTarget": 42
+          },
+          "tps": 3,
+          "sls": 21,
+          "trails": 1
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "sh",
+          "kind": "trailing",
+          "lanes": 1,
+          "grid": 252,
+          "built": 126,
+          "kept": 126,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {
+            "baseTarget": 126
+          },
+          "tps": 3,
+          "sls": 21,
+          "trails": 9
+        },
+        {
+          "ind": "ema-9-21",
+          "tag": "sh",
+          "kind": "trailing-only",
+          "lanes": 1,
+          "grid": 96,
+          "built": 96,
+          "kept": 96,
+          "postGateRejected": 0,
+          "few": 0,
+          "skip": {},
+          "tps": 1,
+          "sls": 11,
+          "trails": 18
+        }
+      ],
+      "noSets": [
+        "rsi-mom-14-20"
+      ],
+      "allSets": false,
+      "perInd": {
+        "ema-9-21": {
+          "kind": "ema",
+          "lanes": [
+            1,
+            5,
+            15
+          ],
+          "baseEval": 10,
+          "basePass": 2,
+          "rangePass": 2,
+          "sets": {
+            "normal": 182,
+            "trailing": 546,
+            "trailing-only": 596,
+            "dca": 8,
+            "dca-active": 8,
+            "axis": 16
+          },
+          "exitModels": {
+            "fixed": 214,
+            "trailing": 1142
+          },
+          "configs": 1356,
+          "validated": 75,
+          "executed": 51,
+          "orders": 141,
+          "gp": 0.42565493075319827,
+          "gl": 0.005949460628512802,
+          "exits": {
+            "trail": 95,
+            "time": 23,
+            "tp": 23
+          }
+        },
+        "rsi-mom-14-20": {
+          "kind": "rsi",
+          "lanes": [
+            1,
+            5,
+            15
+          ],
+          "baseEval": 10,
+          "basePass": 0,
+          "rangePass": 0,
+          "sets": {},
+          "exitModels": {},
+          "configs": 0,
+          "validated": 0,
+          "executed": 0,
+          "orders": 0,
+          "gp": 0,
+          "gl": 0,
+          "exits": {}
+        }
+      },
+      "exits": {
+        "trailing|trailing|trail": {
+          "n": 95,
+          "gp": 0.10193439203265936,
+          "gl": 0.005949460628512802
+        },
+        "trailing|trailing|time": {
+          "n": 23,
+          "gp": 0.004220538720539272,
+          "gl": 0
+        },
+        "trailing|trailing|tp": {
+          "n": 23,
+          "gp": 0.3194999999999998,
+          "gl": 0
+        }
+      },
+      "expectedCombos": 20,
+      "engineCombos": 10,
+      "signalCombos": 0,
+      "exitCombos": 10,
+      "evaluated": 20,
+      "exitBaseEvaluated": 10,
+      "exitBaseInS1": 10,
+      "exitBaseAdditional": 0,
+      "byKind": {
+        "ema": {
+          "evaluated": 10,
+          "passed": 2
+        },
+        "rsi": {
+          "evaluated": 10,
+          "passed": 0
+        }
+      },
+      "kindsAll": [
+        "rsi",
+        "ema"
+      ],
+      "tapes": {
+        "normal|mn": {
+          "configs": 140,
+          "activeConfigs": 140,
+          "closes": 11510
+        },
+        "trailing|mn": {
+          "configs": 420,
+          "activeConfigs": 420,
+          "closes": 36000
+        },
+        "trailing-only|mn": {
+          "configs": 500,
+          "activeConfigs": 500,
+          "closes": 54216
+        },
+        "dca|wide": {
+          "configs": 8,
+          "activeConfigs": 8,
+          "closes": 851
+        },
+        "dca-active|wide": {
+          "configs": 8,
+          "activeConfigs": 8,
+          "closes": 407
+        },
+        "axis|wide": {
+          "configs": 16,
+          "activeConfigs": 16,
+          "closes": 0
+        },
+        "normal|sh": {
+          "configs": 42,
+          "activeConfigs": 42,
+          "closes": 2618
+        },
+        "trailing|sh": {
+          "configs": 126,
+          "activeConfigs": 126,
+          "closes": 8684
+        },
+        "trailing-only|sh": {
+          "configs": 96,
+          "activeConfigs": 96,
+          "closes": 6945
+        }
+      },
+      "engineTapes": {
+        "normal|mn": {
+          "configs": 140,
+          "activeConfigs": 140,
+          "closes": 11510
+        },
+        "trailing|mn": {
+          "configs": 420,
+          "activeConfigs": 420,
+          "closes": 36000
+        },
+        "trailing-only|mn": {
+          "configs": 500,
+          "activeConfigs": 500,
+          "closes": 54216
+        },
+        "dca|wide": {
+          "configs": 8,
+          "activeConfigs": 8,
+          "closes": 851
+        },
+        "dca-active|wide": {
+          "configs": 8,
+          "activeConfigs": 8,
+          "closes": 407
+        },
+        "axis|wide": {
+          "configs": 16,
+          "activeConfigs": 16,
+          "closes": 0
+        },
+        "normal|sh": {
+          "configs": 42,
+          "activeConfigs": 42,
+          "closes": 2618
+        },
+        "trailing|sh": {
+          "configs": 126,
+          "activeConfigs": 126,
+          "closes": 8684
+        },
+        "trailing-only|sh": {
+          "configs": 96,
+          "activeConfigs": 96,
+          "closes": 6945
+        }
+      },
+      "signalTapes": {},
+      "toggles": {
+        "normal": true,
+        "trailing": true,
+        "exit": true,
+        "block": false,
+        "blockActive": false,
+        "dca": false,
+        "dcaActive": false,
+        "axis": false
+      },
+      "ranges": {
+        "mc": false,
+        "mn": true,
+        "sh": true,
+        "gn": false,
+        "lg": false,
+        "mp": false,
+        "wide": false
+      }
+    }
+  },
+  "checksOk": true,
+  "checks": [
+    {
+      "name": "all virtual closes retain exact allocation rows",
+      "ok": true,
+      "actual": 141,
+      "expected": 141
+    },
+    {
+      "name": "all unit returns agree with exact allocation rows",
+      "ok": true,
+      "actual": 0,
+      "expected": 0
+    },
+    {
+      "name": "cash is weighted exactly once on every funded close",
+      "ok": true,
+      "actual": 0,
+      "expected": 0
+    },
+    {
+      "name": "funded close count reconciles to report",
+      "ok": true,
+      "actual": 141,
+      "expected": 141
+    },
+    {
+      "name": "no unknown/dust funding ownership",
+      "ok": true,
+      "actual": {
+        "zeroAllocations": 0,
+        "unknownAllocations": 0,
+        "dustAllocations": 0
+      },
+      "expected": null
+    },
+    {
+      "name": "all funded returns known",
+      "ok": true,
+      "actual": 0,
+      "expected": 0
+    },
+    {
+      "name": "gross unit gains reconcile to report",
+      "ok": true,
+      "actual": 0.42565493075319827,
+      "expected": 0.425655
+    },
+    {
+      "name": "gross unit losses reconcile to report",
+      "ok": true,
+      "actual": 0.005949460628512802,
+      "expected": 0.005949
+    },
+    {
+      "name": "cash net reconciles to report",
+      "ok": true,
+      "actual": 0.008394113495991243,
+      "expected": 0.008394
+    },
+    {
+      "name": "funded engine orders belong to recorded Base-passed pairs",
+      "ok": true,
+      "actual": {
+        "tested": 141,
+        "passed": 141,
+        "failed": 0,
+        "missing": 0
+      },
+      "expected": null
+    },
+    {
+      "name": "raw/report frozen study provenance agrees",
+      "ok": true,
+      "actual": null,
+      "expected": null
+    },
+    {
+      "name": "protocol file checksum matches frozen study",
+      "ok": true,
+      "actual": null,
+      "expected": null
+    },
+    {
+      "name": "protocol identity and source match",
+      "ok": true,
+      "actual": null,
+      "expected": null
+    },
+    {
+      "name": "protocol exact symbols match",
+      "ok": true,
+      "actual": null,
+      "expected": null
+    },
+    {
+      "name": "protocol execution window matches",
+      "ok": true,
+      "actual": null,
+      "expected": null
+    },
+    {
+      "name": "hourly funded count reconciles",
+      "ok": true,
+      "actual": null,
+      "expected": null
+    }
+  ],
+  "fullAuditSha256": "39fd1c10bb2b665d8785c0a51e4f67f0d4d76f130d439c463d096cb22b139823"
+}

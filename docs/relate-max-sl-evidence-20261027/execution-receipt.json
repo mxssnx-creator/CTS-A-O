@@ -1,0 +1,36 @@
+[
+  {
+    "file": "src/core/server/entries-execution.test.ts",
+    "code": 0,
+    "status": "passed",
+    "peakCgroupBytes": 5664792576
+  },
+  {
+    "file": "src/core/server/control-mirror.test.ts",
+    "code": 0,
+    "status": "passed",
+    "peakCgroupBytes": 5402562560
+  },
+  {
+    "file": "src/core/server/control-orders.test.ts",
+    "code": 0,
+    "status": "passed",
+    "peakCgroupBytes": 5422034944
+  },
+  {
+    "file": "src/core/server/execution-accounting.test.ts",
+    "code": 0,
+    "status": "passed",
+    "peakCgroupBytes": 5422850048
+  },
+  {
+    "file": "src/core/server/live-promotion.test.ts",
+    "code": 0,
+    "status": "passed",
+    "peakCgroupBytes": 5577703424
+  },
+  {
+    "file": "scripts/session-funded-cohort.test.mjs",
+    "status": "not-started-memory-headroom"
+  }
+]

@@ -1,3 +1,4 @@
+import { exactVenueOrderIds } from "./venue-order-id.ts";
 // Self-contained BingX perpetual-swap client for the Live stage (signing, contracts, book, orders).
 // Keys come only from the host environment:
 //   bingx-x01     BINGX_X01_API_KEY / BINGX_X01_SECRET          (mainnet)
@@ -601,6 +602,14 @@ export interface BookPosition {
   mark?: number;
   leverage?: number;
 }
+
+/** An absent, blank or invalid venue position mark is unavailable, not a zero-valued mark. */
+export function parsePositionUpnl(value: unknown): number | undefined {
+  if (typeof value !== "number" && (typeof value !== "string" || value.trim() === "")) return undefined;
+  if (typeof value === "string" && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim())) return undefined;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : undefined;
+}
 export interface BookOrder {
   id: string;
   symbol: string;
@@ -611,6 +620,8 @@ export interface BookOrder {
   type?: string;
   /** a conditional order's trigger price (stop / take-profit; display only) */
   stopPrice?: number;
+  /** Explicit original minus executed quantity; absent when the venue fields are missing or inconsistent. */
+  remainingQty?: number;
 }
 
 /** Account equity in USDT (swap wallet balance + unrealized P&L); null when the reply carries none. */
@@ -729,6 +740,20 @@ function share(file: string, startedAt: number, book: Book) {
       // best effort
     }
 }
+function measuredOrderRemaining(row: Record<string, unknown>): number | undefined {
+  // These flags can make a conditional close more than its nominal quantity.
+  if ([row.closePosition, row.stopGuaranteed].some((v) => v === true || /^(true|1|cutfee)$/i.test(String(v ?? "")))) return undefined;
+  const number = (v: unknown) => typeof v === "number" || (typeof v === "string" && v.trim() !== "") ? Number(v) : NaN;
+  const originals = [row.origQty, row.quantity].filter((v) => v !== undefined).map(number);
+  const executions = [row.executedQty, row.cumExecQty, row.filledQty].filter((v) => v !== undefined).map(number);
+  if (!originals.length || !executions.length) return undefined;
+  const orig = originals[0], done = executions[0], tolerance = Math.max(1e-12, Math.abs(orig) * 1e-12);
+  if (!Number.isFinite(orig) || !(orig > 0) || !Number.isFinite(done) || done < 0 || done > orig + tolerance ||
+      originals.some((v) => !Number.isFinite(v) || Math.abs(v - orig) > tolerance) ||
+      executions.some((v) => !Number.isFinite(v) || Math.abs(v - done) > tolerance)) return undefined;
+  return Math.max(0, orig - done);
+}
+
 async function readBook(network: Network, conn: ConnId, withOrders = true): Promise<Book> {
   const [posRaw, ordRaw] = await Promise.all([
     signed(network, conn, "GET", "/openApi/swap/v2/user/positions"),
@@ -751,7 +776,7 @@ async function readBook(network: Network, conn: ConnId, withOrders = true): Prom
       venueSymbol,
       side,
       qty,
-      upnl: n(r.unrealizedProfit),
+      upnl: parsePositionUpnl(r.unrealizedProfit),
       margin: n(r.initialMargin),
       liq: n(r.liquidationPrice),
       entry: n(r.avgPrice ?? r.entryPrice),
@@ -764,21 +789,26 @@ async function readBook(network: Network, conn: ConnId, withOrders = true): Prom
   ) as Array<Record<string, unknown>>;
   const orders: BookOrder[] = ordRows
     .filter((r) => r.symbol)
-    .map((r) => ({
-      id: String(r.orderId ?? r.orderID ?? ""),
-      symbol: String(r.symbol).replace("-", ""),
-      venueSymbol: String(r.symbol),
-      clientOrderId:
-        String(r.clientOrderID ?? r.clientOrderId ?? r.clientOid ?? "").trim() || undefined,
-      positionSide:
-        String(r.positionSide ?? "").toUpperCase() === "SHORT"
-          ? ("SHORT" as const)
-          : String(r.positionSide ?? "").toUpperCase() === "LONG"
-            ? ("LONG" as const)
-            : undefined, // BOTH (one-way) → undefined = any
-      type: r.type ? String(r.type) : undefined,
-      ...(n(r.stopPrice) > 0 ? { stopPrice: n(r.stopPrice) } : {}),
-    }));
+    .map((r) => {
+      const remainingQty = measuredOrderRemaining(r);
+      return {
+        // A numeric JSON ID above 2^53 has already rounded: it cannot safely identify an order for cancellation.
+        id: exactVenueOrderIds(r.orderID, r.orderId),
+        symbol: String(r.symbol).replace("-", ""),
+        venueSymbol: String(r.symbol),
+        clientOrderId:
+          String(r.clientOrderID ?? r.clientOrderId ?? r.clientOid ?? "").trim() || undefined,
+        positionSide:
+          String(r.positionSide ?? "").toUpperCase() === "SHORT"
+            ? ("SHORT" as const)
+            : String(r.positionSide ?? "").toUpperCase() === "LONG"
+              ? ("LONG" as const)
+              : undefined, // BOTH (one-way) → undefined = any
+        type: r.type ? String(r.type) : undefined,
+        ...(n(r.stopPrice) > 0 ? { stopPrice: n(r.stopPrice) } : {}),
+        ...(remainingQty !== undefined ? { remainingQty } : {}),
+      };
+    });
   return { positions, orders };
 }
 
@@ -787,6 +817,7 @@ export async function cancelOrder(
   conn: ConnId,
   venueSymbol: string,
   orderId: string,
+  opts: { propagateNotSent?: boolean } = {},
 ): Promise<boolean> {
   try {
     await signed(network, conn, "DELETE", "/openApi/swap/v2/trade/order", {
@@ -794,7 +825,9 @@ export async function cancelOrder(
       orderId,
     });
     return true;
-  } catch {
+  } catch (err) {
+    // Only a typed local budget deferral proves the DELETE never left this process.
+    if (opts.propagateNotSent && err instanceof RequestBudgetDeferred) throw err;
     return false;
   }
 }

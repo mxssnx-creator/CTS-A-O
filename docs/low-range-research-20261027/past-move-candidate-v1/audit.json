@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "cells": 74880,
+  "distinctConfigIds": 74880,
+  "basePassed": 2917,
+  "directionContexts": 5834,
+  "validated": 1108,
+  "ledgerSha256": "8c51feb92542e3397d56d8b0783bcb62cb3c39e41d0c07e2de669e02af671c33",
+  "limitations": "Does not prove runtime integration, venue execution, account funding, or independent performance."
+}

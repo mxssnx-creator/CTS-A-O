@@ -17,6 +17,7 @@ import { isRelateInd, relateAnchorTf } from "./indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { isMicroCalculationInd as isMicroFamilyInd, microAnchorTf } from "./indications/micro-family.ts";
 import { INVERSE_TIMEFRAMES, isInverseInd } from "./indications/inverse-config.ts";
+import { isLowRangeInd, LOW_RANGE_TIMEFRAMES } from "./indications/low-range.ts";
 import { SeriesCache } from "./indications/cache.ts";
 import { MarketSource } from "./indications/market.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
@@ -136,7 +137,9 @@ describe("every indication works", () => {
       // New Micro and inverse relations require coherent native lanes and BTC/ETH peers. Their universal
       // onset coverage lives in indications-both-sides.test.ts; this disjoint-symbol fixture still checks
       // every state's shape and domain, without inventing the missing market context.
-      if (!fired && !quietSweepOnly.has(x.id) && x.kind !== "micro" && x.kind !== "inverse") silent.push(x.id);
+      // Low-Range's joint conditions have targeted, mirrored trigger fixtures for every identity; the broad
+      // shock/random-walk series need not contain each quiet-channel and activity combination.
+      if (!fired && !quietSweepOnly.has(x.id) && x.kind !== "micro" && x.kind !== "inverse" && x.kind !== "low-range") silent.push(x.id);
     }
     assert.deepEqual(bad.slice(0, 10), []);
     assert.ok([...quietSweepOnly].every((id) => engine.some((x) => x.id === id)), "quiet fixture exception stays registered");
@@ -163,7 +166,7 @@ describe("every indication works", () => {
 
   it("every indication uses its eligible Base lanes (Relate and Break use anchor lanes)", () => {
     const tfs = [1, 5, 15, 30];
-    const combos = allCombos([], [], tfs);
+    const combos = allCombos([], [], tfs, 0, true);
     const keys = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
     assert.equal(keys.size, combos.length, "no duplicate combos");
     const lanesOf = new Map<string, Set<string>>();
@@ -190,16 +193,17 @@ describe("every indication works", () => {
             missing.push(`${x.id}@m${lane}: unexpected ${family} lane`);
       }
       else for (const tf of tfs) {
-        const eligible = !isInverseInd(x.id) || (INVERSE_TIMEFRAMES as readonly number[]).includes(tf);
+        const eligible = isLowRangeInd(x.id) ? (LOW_RANGE_TIMEFRAMES as readonly number[]).includes(tf)
+          : !isInverseInd(x.id) || (INVERSE_TIMEFRAMES as readonly number[]).includes(tf);
         if (eligible && !got.has(String(tf)) && !got.has(`${tf}c`)) missing.push(`${x.id}@m${tf}`);
-        if (!eligible && (got.has(String(tf)) || got.has(`${tf}c`))) missing.push(`${x.id}@m${tf}: ineligible inverse lane`);
+        if (!eligible && (got.has(String(tf)) || got.has(`${tf}c`))) missing.push(`${x.id}@m${tf}: ineligible lane`);
       }
     }
     assert.deepEqual(missing, []);
     // a disabled kind drops only its own indications
     const kinds = [...new Set(engine.map((x) => x.kind))];
     const off = kinds[0];
-    const rest = allCombos([], [off], tfs);
+    const rest = allCombos([], [off], tfs, 0, true);
     assert.ok(rest.length < combos.length && rest.length > 0);
     assert.ok(rest.every((c) => c.ind === "none" || INDICATIONS.find((x) => x.id === laneOf(c.ind).base)?.kind !== off));
   });

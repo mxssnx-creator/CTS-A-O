@@ -31,6 +31,9 @@ CREATE INDEX IF NOT EXISTS paper_trades_exit ON paper_trades (exit_t);
 CREATE TABLE IF NOT EXISTS paper_positions (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER, entry REAL, stop REAL, target REAL, mtm REAL, at INTEGER, PRIMARY KEY (cfg, sym, side)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS live_orders (coid TEXT PRIMARY KEY, cfg TEXT, sym TEXT, side INTEGER, kind TEXT, qty REAL, px REAL, status TEXT, msg TEXT, at INTEGER);
 CREATE INDEX IF NOT EXISTS live_orders_cfg_kind ON live_orders (cfg, kind);
+-- A durable submission order is independent of millisecond clock ties and INSERT OR REPLACE rowid changes.
+CREATE TABLE IF NOT EXISTS live_submission_sequence (seq INTEGER PRIMARY KEY AUTOINCREMENT, coid TEXT NOT NULL UNIQUE, k TEXT NOT NULL, kind TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS live_submission_sequence_key ON live_submission_sequence (k, kind, seq);
 -- the time windows of the statistics and the desk report (at >= ?) scan these without an index
 CREATE INDEX IF NOT EXISTS live_orders_at ON live_orders (at);
 CREATE TABLE IF NOT EXISTS live_fills (coid TEXT PRIMARY KEY, sym TEXT, side INTEGER, kind TEXT, qty REAL, ref_px REAL, fill_px REAL, fee REAL, fee_known INTEGER, at INTEGER);
@@ -58,6 +61,7 @@ const TABLES = [
   "paper_book_trades",
   "paper_positions",
   "live_orders",
+  "live_submission_sequence",
   "live_fills",
   "venue_income",
   "live_lane_trades",
@@ -148,7 +152,7 @@ export class CoreDb {
     try {
       if (!existsSync(path)) return;
       const j = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-      for (const [k, v] of Object.entries(j)) if (DURABLE_KEYS.has(k)) this.kvWrite(k, v);
+      for (const [k, v] of Object.entries(j)) if (isDurableKey(k)) this.kvWrite(k, v);
     } catch (err) {
       console.warn(
         `[core-v2] state file ${path} not loaded: ${err instanceof Error ? err.message : err}`,
@@ -182,8 +186,9 @@ export class CoreDb {
         const keys = [...DURABLE_KEYS];
         const marks = keys.map(() => "?").join(", ");
         const rows = this.all<{ k: string; v: string }>(
-          `SELECT k, v FROM kv WHERE k IN (${marks}) ORDER BY k`,
+          `SELECT k, v FROM kv WHERE k IN (${marks}) OR (substr(k, 1, ?) = ? AND length(k) > ?) ORDER BY k`,
           ...keys,
+          ENTRY_PENDING_PREFIX.length, ENTRY_PENDING_PREFIX, ENTRY_PENDING_PREFIX.length,
         );
         const json = `{${rows.map(({ k, v }) => `${JSON.stringify(k)}:${v}`).join(",")}}`;
         mkdirSync(dirname(this.statePath), { recursive: true });
@@ -289,13 +294,61 @@ export class CoreDb {
     }
     return n;
   }
+  /**
+   * Validate and replay both journal generations as a single transaction. Unlike the legacy replay above,
+   * malformed lines, invalid parameters, read errors and failed SQL make the entire replay unavailable; no
+   * prefix of an incomplete journal may be treated as a recovered live ledger. The configured baseline,
+   * completeness of the files, exclusive access, and storage durability still require separate verification
+   * by the caller; these records have no checksum and valid-looking corruption cannot be detected here.
+   */
+  replayJournalChecked(): { ok: true; writes: number } | { ok: false; writes: 0; error: string } {
+    if (this.lastJournalError) return { ok: false, writes: 0, error: this.lastJournalError };
+    if (!this.journalPath) {
+      this.lastJournalError = "live ownership journal is not configured";
+      return { ok: false, writes: 0, error: this.lastJournalError };
+    }
+    const journalPath = this.journalPath;
+    let writes = 0;
+    try {
+      this.tx(() => {
+        for (const file of [`${journalPath}.prev`, journalPath]) {
+          let raw: string;
+          try { raw = readFileSync(file, "utf8"); }
+          catch (err) {
+            if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+            throw new Error(`journal ${file} could not be read: ${err instanceof Error ? err.message : String(err)}`);
+          }
+          const lines = raw.split("\n");
+          for (let i = 0; i < lines.length; i++) {
+            if (i === lines.length - 1 && lines[i] === "") continue; // normal final newline, or empty file
+            if (!lines[i].trim()) throw new Error(`journal ${file} has blank record ${i + 1}`);
+            let record: unknown;
+            try { record = JSON.parse(lines[i]); }
+            catch { throw new Error(`journal ${file} has malformed record ${i + 1}`); }
+            if (!Array.isArray(record) || record.length !== 2 || typeof record[0] !== "string" ||
+              !/^\s*(?:INSERT|UPDATE|DELETE)\b/i.test(record[0]) || !Array.isArray(record[1]) ||
+              record[1].some((p: unknown) => p !== null && typeof p !== "string" &&
+                (typeof p !== "number" || !Number.isFinite(p))))
+              throw new Error(`journal ${file} has invalid record ${i + 1}`);
+            try { this.run(record[0], ...record[1]); }
+            catch (err) { throw new Error(`journal ${file} record ${i + 1} failed: ${err instanceof Error ? err.message : String(err)}`); }
+            writes++;
+          }
+        }
+      });
+      return { ok: true, writes };
+    } catch (err) {
+      this.lastJournalError = err instanceof Error ? err.message : String(err);
+      return { ok: false, writes: 0, error: this.lastJournalError };
+    }
+  }
   kvGet<T>(k: string): T | undefined {
     const r = this.get<{ v: string }>("SELECT v FROM kv WHERE k = ?", k);
     return r ? (JSON.parse(r.v) as T) : undefined;
   }
   kvSet(k: string, v: unknown) {
     this.kvWrite(k, v);
-    if (DURABLE_KEYS.has(k)) this.persistState();
+    if (isDurableKey(k)) this.persistState();
   }
   private kvWrite(k: string, v: unknown) {
     this.run(
@@ -454,9 +507,11 @@ export class CoreDb {
           if (t === "kv")
             this.db
               .prepare(
-                `INSERT OR REPLACE INTO main.kv SELECT * FROM snap.kv WHERE k NOT IN (SELECT value FROM json_each(?)) OR k NOT IN (SELECT k FROM main.kv)`,
+                `INSERT OR REPLACE INTO main.kv SELECT * FROM snap.kv WHERE ` +
+                  `(k NOT IN (SELECT value FROM json_each(?)) AND NOT (substr(k, 1, ?) = ? AND length(k) > ?)) ` +
+                  `OR k NOT IN (SELECT k FROM main.kv)`,
               )
-              .run(JSON.stringify([...DURABLE_KEYS]));
+              .run(JSON.stringify([...DURABLE_KEYS]), ENTRY_PENDING_PREFIX.length, ENTRY_PENDING_PREFIX, ENTRY_PENDING_PREFIX.length);
           else {
             // the columns both sides have: a snapshot from before a column was added still restores (the new
             // column stays empty) instead of failing the whole restore
@@ -505,11 +560,19 @@ const DURABLE_KEYS = new Set([
   "liveLaneOpen",
   "laneOrders",
   "laneQuantityCaps",
+  "positionExitCleanup",
+  "orphanExitFences",
   "controlSuppressed",
   "hostSettingsApplied",
   "stopHits",
   "connsEnabled",
 ]);
+
+// Entries-mode execution reservations are scoped by connection. Do not accept
+// the bare prefix or similar keys: only a named connection is durable.
+const ENTRY_PENDING_PREFIX = "entriesPendingExecutions|";
+const isDurableKey = (key: string) => DURABLE_KEYS.has(key) ||
+  (key.startsWith(ENTRY_PENDING_PREFIX) && key.length > ENTRY_PENDING_PREFIX.length);
 
 export function coreDb(): CoreDb {
   // CTS_CORE_STATE=/path/state.json (default ./.cts-core/state.json); CTS_CORE_STATE=off keeps everything in memory

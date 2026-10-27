@@ -54,10 +54,11 @@ describe("Signal config identity through execution and persistence", () => {
     assert.equal(new Set(lanes.map(laneKeyOf)).size, ids.length * 2);
   });
 
-  it("retains engine alias deduplication independently of Signal identity", () => {
+  it("keeps ordinary engine sources independent alongside Signal and Axis identities", () => {
     const engine = "follow|ema-9-21@m15|tp1|sl1|tr0|h32";
     const alias = "follow|ema-cross-9-21@m15|tp1|sl1|tr0|h32";
-    assert.equal(orderCfgKey(engine), orderCfgKey(alias));
+    assert.notEqual(orderCfgKey(engine), orderCfgKey(alias));
+    assert.equal(orderCfgKey(engine), engine, "a retry of the same exact config retains its identity");
     assert.notEqual(orderCfgKey(engine), orderCfgKey(cfg(1)));
     assert.notEqual(
       orderCfgKey(`${engine}|ax-linear2|axis`),

@@ -11,18 +11,22 @@ import {
 } from "../config.ts";
 import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "../indications/micro-family.ts";
 import { INVERSE_CONFIG_IDS } from "../indications/inverse-config.ts";
+import { LOW_RANGE_IDS } from "../indications/low-range.ts";
 import { PRE_CONTEXT_FOCUS_21OCT } from "../indications/context-default-focus.ts";
 import { allCombos, microLaneFloor } from "../pipeline/pipeline.ts";
 import { checkSettings } from "../settings-check.ts";
 
 test("Inverse joins the factory Focus and upgrades only the former factory selection, including presets", () => {
   assert.equal(INVERSE_FOCUS_20OCT.length, 114);
-  assert.deepEqual(DEFAULT_SETTINGS.focus, [
+  const formerFocus = [
     ...PREVIOUS_DEFAULT_FOCUS_20OCT,
     ...INVERSE_FOCUS_20OCT,
     ...MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
     ...INVERSE_MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
-  ]);
+  ];
+  assert.equal(formerFocus.length, 1191);
+  assert.equal(DEFAULT_SETTINGS.grid.lowRange?.enabled, false, "Low-Range remains opt-in");
+  assert.deepEqual(DEFAULT_SETTINGS.focus, [...formerFocus, ...LOW_RANGE_IDS.map((id) => `follow|${id}`)]);
   checkSettings(DEFAULT_SETTINGS);
   const combos = allCombos(
     DEFAULT_SETTINGS.focus,
@@ -46,6 +50,7 @@ test("Inverse joins the factory Focus and upgrades only the former factory selec
   const runtime = new CoreRuntime(db, undefined, { market: "synthetic" });
   try {
     assert.deepEqual(runtime.settings.focus, DEFAULT_SETTINGS.focus);
+    assert.equal(runtime.settings.grid.lowRange?.enabled, false);
     assert.ok(
       runtime.settings.disabledKinds.includes("inverse"),
       "a deliberately disabled type stays disabled",
@@ -72,7 +77,7 @@ test("the published 102-identity factory selection upgrades at v37 without chang
   ]);
   const runtime = new CoreRuntime(db, undefined, { market: "synthetic" });
   try {
-    assert.equal(runtime.settings.focus.length, 1191);
+    assert.equal(runtime.settings.focus.length, 1191 + LOW_RANGE_IDS.length);
     assert.deepEqual(runtime.settings.focus, DEFAULT_SETTINGS.focus);
     assert.ok(runtime.settings.disabledKinds.includes("inverse"));
     const presets = db.kvGet<Array<{ settings: { focus: string[] } }>>("presets")!;

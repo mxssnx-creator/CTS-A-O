@@ -424,7 +424,10 @@ describe("paper entry allocation provenance", () => {
         ["legacy", undefined, 1, 1, null],
       ] as const) {
         const path = join(dir, `${name}.sqlite`), first = fixture(path, 1);
-        const tr = close(.02, 0, { mult: closeVol, vol: closeVol, r: .02 * closeVol });
+        // Keep the held close causal on the paper step's hour boundary and distinct from the raw diagnostic tape.
+        const cut = Math.floor(NOW / H) * H;
+        const tr = close(.02, 0, { entryT: cut - 2 * H, exitT: cut - H,
+          mult: closeVol, vol: closeVol, r: .02 * closeVol });
         const p = { ...tr, entryI: 0, stop: 99, target: 103, peak: 100, trailOn: false, mtm: 0, vol: positionVol } as OpenPosition & { vol: number };
         first.db.kvSet("paperBook", { startedAt: NOW - 24 * H, selected: [CFG], positions: [p],
           ownedEntryAllocations: allocation ? [[orderKey(p), allocation]] : [] });

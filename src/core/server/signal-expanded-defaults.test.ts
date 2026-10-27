@@ -37,6 +37,10 @@ it("fresh Expanded defaults match the verified source/grid catalog with own Last
   expected.guard.lastN = 4;
   expected.hist.lookbackH = 150;
   expected.coordination.volumeFactor = 1; // Operator neutral-sizing default; archived receipt stays immutable.
+  assert.equal(Object.hasOwn(expected.combinedVolumeFactors, "low-range"), false, "archived receipt predates Low-Range");
+  assert.equal(DEFAULT_SIGNALS.combinedVolumeFactors["low-range"], 1);
+  assert.equal(rt.settings.signals.combinedVolumeFactors["low-range"], 1);
+  expected.combinedVolumeFactors["low-range"] = 1; // New indication kind; retain exact archived values for every prior kind.
   const normalized = { ...rt.settings.signals, sourcesMode: "allow", sources: Object.fromEntries(SIGNAL_SOURCES.map(s => [s.name, true])) };
   assert.deepEqual(normalized, expected);
   assert.deepEqual(signalCombos(rt.settings.signals, rt.settings.tfs), signalCombos(expected, recorded.actualSettings.tfs));

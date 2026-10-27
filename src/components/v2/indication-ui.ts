@@ -1,5 +1,6 @@
 /** Keep the registered first-class indication name visible in every type selector. */
 export function indicationKindLabel(kind: string): string {
+  if (kind === "low-range") return "Low-Range";
   if (kind === "inverse") return "Inverse";
   if (kind === "micro") return "Micro";
   if (kind === "tactic") return "Tactic";
@@ -65,10 +66,20 @@ export function indicationFocusCoverage(focus: readonly string[], ids: readonly 
   if (!focus.length) return { all: true, covered: ids.length, full: ids.length, total: ids.length };
   const effective = [...focus, ...pinned];
   const set = new Set(effective);
+  // Parse the focus inventory once: settings can contain thousands of lanes and hundreds of source ids.
+  // Preserve the former prefix semantics, including an id that itself contains an @m fragment.
+  const coveredIndications = new Set<string>();
+  for (const pair of effective) {
+    const ind = pair.split("|")[1];
+    if (ind === undefined) continue;
+    coveredIndications.add(ind);
+    for (let at = ind.indexOf("@m"); at !== -1; at = ind.indexOf("@m", at + 2))
+      coveredIndications.add(ind.slice(0, at));
+  }
   const bases = ids.map((id) => `follow|${id}`);
   return {
     all: false,
-    covered: ids.filter((id) => effective.some((pair) => { const ind = pair.split("|")[1]; return ind === id || ind?.startsWith(`${id}@m`); })).length,
+    covered: ids.filter((id) => coveredIndications.has(id)).length,
     full: bases.filter((base) => set.has(base)).length,
     total: ids.length,
   };

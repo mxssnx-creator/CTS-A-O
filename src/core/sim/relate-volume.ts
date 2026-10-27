@@ -7,6 +7,18 @@ export const AXIS_MAX_RUNG_RATIO = 5;
 const DCA_MAX_INTRINSIC = 1 + 4 * 2.5;
 
 /**
+ * A raise may use an existing fixed stop only when the replay knows that stop at entry and its
+ * simulator never widens it. This deliberately does not tighten stops or qualify ATR / ladder
+ * paths: changing those exits after tapes were built would make their returns and re-entry times false.
+ */
+export function relateFixedStopWithinLimit(kind: StratKind, protect: Protect, maxSl: number): boolean {
+  if (kind !== "normal" && kind !== "trailing" && kind !== "trailing-only" && kind !== "exit") return false;
+  if (protect.atr || protect.dca) return false;
+  return Number.isFinite(maxSl) && maxSl >= 0.0025 && maxSl <= 0.015 &&
+    Number.isFinite(protect.sl) && protect.sl > 0 && protect.sl <= maxSl + 1e-12;
+}
+
+/**
  * Reserve capacity for every possible intrinsic ladder fill at entry. Tapes cannot change their leg weights after
  * admission without replaying prices and exits, so this conservative bound preserves their original per-leg math
  * without using the eventually observed number of fills. Existing held entries keep their captured multiplier.

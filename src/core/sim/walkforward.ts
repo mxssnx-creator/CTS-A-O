@@ -1,4 +1,5 @@
 import { DerivedCache } from "./derived-cache.ts";
+import { isLowRangeInd, lowRangeGridProtects } from "../indications/low-range.ts";
 import {
   coordVariants,
   EVAL_MIN_SL,
@@ -59,6 +60,7 @@ import {
   DEFAULT_DCA,
   DEFAULT_RELATE_ADJUSTMENT,
   DEFAULT_TOGGLES,
+  GRID_VARIANTS_MAX,
   PF_NEUTRAL,
   type CoreSettings,
 } from "../config.ts";
@@ -112,7 +114,7 @@ import {
   sourceKey,
   type BlockSource,
 } from "./block.ts";
-import { capRelateParts, relateBookOf, relateExternalStackCap, type RelateBook } from "./relate-volume.ts";
+import { capRelateParts, relateBookOf, relateExternalStackCap, relateFixedStopWithinLimit, type RelateBook } from "./relate-volume.ts";
 import { S2Coord } from "./s2coord.ts";
 import { isSignalCoordinationInd } from "../signal-coordination.ts";
 import { botFamilyOf } from "../bot-stats.ts";
@@ -120,7 +122,6 @@ import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indica
 import { signalRangeOf } from "../signal-config.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import { isMicroCalculationInd as isMicroFamilyInd } from "../indications/micro-family.ts";
-import { isInverseInd } from "../indications/inverse-config.ts";
 import {
   acceptKey,
   activationEnd,
@@ -465,8 +466,7 @@ export interface WalkForwardOptions {
    * independent: they interact through Block and the signal confirmation, so a range's
    * response measured in one run with a global value need not hold once other ranges change too — a per-range winner
    * is a candidate, and adopting a combination needs a causal run of that combination recorded in
-   * docs/positive-coordinations.md. `mode` splits the selection only while no seat spans two ranges (seatPer "config"
-   * or rangeSeats; modeGroups), else the global mode selects everything. longH stays global (the selection keeps one
+   * docs/positive-coordinations.md. `mode` selection remains range-specific even under legacy pair seats. longH stays global (the selection keeps one
    * window cursor per step). Unset = the global values everywhere, on the same code path.
    */
   rangeOpts?: Partial<Record<RangeOptTag, RangeOpts>>;
@@ -482,7 +482,7 @@ export interface WalkForwardOptions {
     /** the ranges it gates (unset = GATED_RANGES: Micro, Minimal, Short, Minimal plus) */
     ranges?: readonly string[];
   } | null;
-  /** each range takes its own seat per pair instead of competing with the wide cells of that pair */
+  /** Retained legacy setting; range seat identities are always separate. */
   rangeSeats?: boolean;
   /**
    * Demo probe (never on mainnet): besides the normal picks, the best `perRange` range tapes of each range
@@ -584,7 +584,7 @@ export interface WalkForwardOptions {
   familySeats?: boolean;
   /** best first at the same entry time (default); false = by config id (the former order) */
   bestFirst?: boolean;
-  /** DCA / Axis need a base (Normal / Trailing) result on the same pair to beat (default); false = pass when none */
+  /** Optional cross-family coordination: DCA / Axis must beat a base result of the same pair. Off by default. */
   familyNeedsBase?: boolean;
   /**
    * DCA / Axis take a seat only while a Normal / Trailing config of the same pair holds one at that step (measurement,
@@ -595,7 +595,8 @@ export interface WalkForwardOptions {
   /**
    * "config": every config is its own seat — each one that clears its own evaluation trades, independent of the
    * other configs of its pair (TP / SL / trailing variants, strategy types); DCA / Axis are judged on their own
-   * results, not against the pair's base (default). "pair": one config per pair × family (the best scored).
+   * results, not against the pair's base (default). "pair": one best config per pair × range × type. Historic Exit
+   * and Micro always retain one seat per exact config, including with legacy pair settings.
    */
   seatPer?: "pair" | "config";
   /** minimum Real seats per timeframe lane group (validated configs only); the portfolio grows to fit */
@@ -694,9 +695,9 @@ export const DEFAULT_GRID: ProtectGridSpec = {
   trailFree: false,
 };
 
-/** Upper bound on protect variants (wide grid plus the optional short range). Dedup can only make it smaller. */
-export function gridVariants(g: ProtectGridSpec): number {
-  if (g.trailingOnly) return protectGrid(REF_TF, g).length;
+/** Upper bound on protect variants at the effective modeled cost. Dedup can only make it smaller. */
+export function gridVariants(g: ProtectGridSpec, cost?: number): number {
+  if (g.trailingOnly) return protectGrid(REF_TF, g, cost).length;
   const hold = g.holdH.length || 1;
   const main = g.tp.length * g.slOfTp.length * g.trailOfTp.length * hold;
   const plus = g.minimalPlus;
@@ -708,8 +709,17 @@ export function gridVariants(g: ProtectGridSpec): number {
     coordVariants(hold, g.general) +
     coordVariants(hold, g.long) +
     coordVariants(hold, g.micro) +
-    plusN
+    plusN + (g.short ? lowRangeGridProtects(g.lowRange, cost).length : 0)
   );
+}
+
+/** Refuse an oversized effective grid before publishing settings or running a preset. */
+export function checkGridVariantBudget(g: ProtectGridSpec, cost: number, limit = GRID_VARIANTS_MAX): number {
+  if (!(Number.isFinite(cost) && cost >= 0)) throw new RangeError("grid budget requires a finite nonnegative modeled cost");
+  if (!(Number.isSafeInteger(limit) && limit > 0)) throw new RangeError("grid budget requires a positive integer limit");
+  const variants = gridVariants(g, cost);
+  if (variants > limit) throw new Error(`protect grid too large (${variants} variants, max ${limit})`);
+  return variants;
 }
 
 /** upper bound of a Wide stop / trail (grid.maxSl / maxTrail); none when unset */
@@ -820,7 +830,9 @@ export function protectGrid(
           ...(c.trail > 0 ? { trailStep: g.trailStep ?? 1, trailFree: g.trailFree ?? false } : {}),
         });
   }
-  if (g.trailingOnly) out.push(...trailingOnlyProtects(out));
+  const lowRange = g.short ? lowRangeGridProtects(g.lowRange, cost, tfMin) : [];
+  if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
+  out.push(...lowRange);
   return out;
 }
 
@@ -1280,6 +1292,8 @@ export function makeTape(
   open: OpenPosition[],
   pending: ConfigTape["pending"],
 ): ConfigTape {
+  if (open.some((p) => p.entryStopMax !== undefined))
+    throw new Error("compact tape cannot retain per-entry stop-limit provenance");
   trades.sort(compareTapeTrades);
   const n = trades.length;
   const symIdx = symbolIndex(syms);
@@ -1314,6 +1328,8 @@ export function makeTape(
   };
   for (let i = 0; i < n; i++) {
     const t = trades[i];
+    if (t.entryStopMax !== undefined)
+      throw new Error("compact tape cannot retain per-entry stop-limit provenance");
     tp.exitT[i] = t.exitT;
     tp.entryT[i] = t.entryT;
     tp.r[i] = t.r;
@@ -1355,41 +1371,13 @@ export function tradeAt(tp: ConfigTape, i: number): Trade {
   };
 }
 
-/**
- * Independent source families and every Axis variant retain their full config ID. Remaining plain engine aliases
- * remove only the indication. Identical Axis onsets can have different subsequent ladder fills and qualification.
- */
+/** Each source, timeframe, range and strategy owns its own order, even when another has the same onset and exits. */
 export function orderCfgKey(cfg: string): string {
-  // memoized by id (split / filter / join per call was 1.1 s of a 24-symbol compute; a config id repeats per trade)
-  let k = ORDER_CFG_KEY.get(cfg);
-  if (k === undefined) {
-    const parts = cfg.split("|");
-    // Signal, Tactic, Relate and Break sources, parameter ranges and timeframe lanes own independent trades even when their protect
-    // and onset coincide. Axis mode/range/depth/hybrid identities also remain independent through admission.
-    if (
-      parts.includes("axis") ||
-      isSignalInd(parts[1] ?? "") ||
-      isMicroFamilyInd(parts[1] ?? "") ||
-      isMicroInd(parts[1] ?? "") ||
-      isInverseInd(parts[1] ?? "") ||
-      parts[1]?.startsWith("tactic-") ||
-      parts[1]?.startsWith("relate-") ||
-      parts[1]?.startsWith("break-rel-") ||
-      parts[1]?.startsWith("break-mc-rel-")
-    )
-      k = cfg;
-    else
-      k = `${parts[0]}|${parts.slice(2).join("|")}`;
-    if (ORDER_CFG_KEY.size > 200_000) ORDER_CFG_KEY.clear();
-    ORDER_CFG_KEY.set(cfg, k);
-  }
-  return k;
+  return cfg;
 }
-const ORDER_CFG_KEY = new Map<string, string>();
 
 /**
- * Exact event identity under orderCfgKey's explicit source/alias policy: symbol, side,
- * entry, exit, result and strategy type. Independent Micro/Inverse sources never share a key.
+ * Exact event identity: config, symbol, side, entry, exit, result and strategy type.
  */
 export function dupKey(
   tr: Pick<Trade, "cfg" | "sym" | "side" | "entryT" | "exitT" | "r" | "kind">,
@@ -1443,7 +1431,7 @@ export function pendingAsOpen(
     const requested = pe.protect ?? tp.protect;
     const q = isSignalConfig(tp.id) ? capSignalProtect(requested) : requested;
     const side = pe.side;
-    const exitProtection = createExitProtection(q, px);
+    const exitProtection = createExitProtection(q, px, cost);
     out.push({
       cfg: tp.id,
       sym: pe.sym,
@@ -1558,21 +1546,22 @@ export const lossPriorOf = (
 const rangeGateOn = (g: { ranges?: readonly string[] }, tag: string | undefined | null) =>
   g.ranges ? !!tag && g.ranges.includes(tag) : rangeGated(tag);
 
-/** Protection tags describe distances; they never route Signals through ordinary range qualification. */
-const tapeRangeGateOn = (g: { ranges?: readonly string[] }, tp: Pick<ConfigTape, "ind" | "protect">) =>
-  !isSignalInd(tp.ind) && rangeGateOn(g, tp.protect.tag);
+/** Protection tags describe distances; they never route Signals or Historic Exit through ordinary range qualification. */
+const tapeRangeGateOn = (g: { ranges?: readonly string[] }, tp: Pick<ConfigTape, "ind" | "protect"> & Partial<Pick<ConfigTape, "kind">>) =>
+  tp.kind !== "exit" && !isSignalInd(tp.ind) && rangeGateOn(g, tp.protect.tag);
 
 /**
  * A tape's per-range options (wf.rangeOpts): those of its range tag, "wide" for an untagged engine config, and "sig"
  * for Signals. Signals use only the supported own-range validation and entry last-N values; they retain their own
- * source × symbol × direction validation and signal ranking instead of engine seat controls. Undefined when unset.
+ * source × symbol × direction validation and signal ranking instead of engine seat controls. Historic Exit has its
+ * own policy and never borrows an ordinary or Signal range's options. Undefined when unset.
  */
 export function rangeOptsOf(
   o: Pick<WalkForwardOptions, "rangeOpts">,
-  tp: Pick<ConfigTape, "protect" | "ind">,
+  tp: Pick<ConfigTape, "protect" | "ind"> & Partial<Pick<ConfigTape, "kind">>,
 ): RangeOpts | undefined {
   const ro = o.rangeOpts;
-  if (!ro) return undefined;
+  if (!ro || tp.kind === "exit") return undefined;
   if (isSignalInd(tp.ind)) {
     const signal = ro.sig;
     if (!signal) return undefined;
@@ -2013,6 +2002,19 @@ export function* buildTapesGen(
     if (!tags) heldRangeTagsByPair.set(pair, (tags = new Set()));
     tags.add(tag);
   }
+  // A held Low-Range position can outlive a settings change or restart. Rebuild its exact historical
+  // distances and lane hold, but only to manage that position; it must never acquire a new seat.
+  const recoveredLowRange = new Map<string, Protect[]>();
+  for (const id of floors?.heldIds ?? []) {
+    const parsed = parseConfigId(id);
+    const kind = kindOfId(id);
+    if (!parsed || !isLowRangeInd(parsed.ind) ||
+        !(kind === "normal" || kind === "trailing" || kind === "trailing-only")) continue;
+    const pair = `${parsed.bot}|${parsed.ind}`;
+    const list = recoveredLowRange.get(pair) ?? [];
+    list.push(parsed.protect);
+    recoveredLowRange.set(pair, list);
+  }
   const syms = u.bars.map((b) => b.sym);
   const out: ConfigTape[] = [];
   // range cells fitted to each indication's horizon, and range tapes that could never seat dropped
@@ -2110,6 +2112,7 @@ export function* buildTapesGen(
   // (a pair's own configs count in the progress too)
   if (floors?.pairProtects)
     for (const c of combos) total += floors.pairProtects[`${c.bot}|${c.ind}`]?.length ?? 0;
+  for (const c of combos) total += recoveredLowRange.get(`${c.bot}|${c.ind}`)?.length ?? 0;
   let done = 0;
   let cachePairs = 0;
   for (const c of combos) {
@@ -2165,10 +2168,11 @@ export function* buildTapesGen(
               reason,
             );
         };
-        for (const p of protects) record(p, protectKind(p));
+        for (const p of protects)
+          if ((p.lowRangeOnly === true) === isLowRangeInd(c.ind)) record(p, protectKind(p));
         if (dcaOpt) {
           const tags = floors.pairTags?.[`${c.bot}|${c.ind}`];
-          const wide = !(dcaOpt.axis?.perRange && tags && !tags.includes(""));
+          const wide = !isLowRangeInd(c.ind) && !(dcaOpt.axis?.perRange && tags && !tags.includes(""));
           if (!dcaOpt.noDca && wide)
             for (const p of dcaOpt.protects) {
               record(p, "dca");
@@ -2182,12 +2186,13 @@ export function* buildTapesGen(
               if (!w || (index >= w.offset && index < w.offset + w.limit)) record(p, "axis");
             };
             if (wide) for (const v of axisVariants(dcaOpt.axis, dcaOpt.protects)) recordAxis(v.p0);
-            if (dcaOpt.axis.perRange && tags)
+            if (dcaOpt.axis.perRange && tags && !isLowRangeInd(c.ind))
               for (const v of axisRangeVariants(dcaOpt.axis, protects, tags)) recordAxis(v.p0);
           }
         }
       }
-      done += per + (floors?.pairProtects?.[`${c.bot}|${c.ind}`]?.length ?? 0);
+      done += per + (floors?.pairProtects?.[`${c.bot}|${c.ind}`]?.length ?? 0) +
+        (recoveredLowRange.get(`${c.bot}|${c.ind}`)?.length ?? 0);
       continue;
     }
     // long and short run independently: each direction on its own side-filtered signal (its own position slot), so
@@ -2230,7 +2235,9 @@ export function* buildTapesGen(
     const fitted = fittedRangeTps(
       c.ind,
       laneOf(c.ind).tf ?? u.bars[series[0]]?.tfMin ?? 1,
-      floors?.countFitProtects ?? protects,
+      floors?.rangeFit
+        ? (floors.countFitProtects ?? protects).filter((p) => (p.lowRangeOnly === true) === isLowRangeInd(c.ind))
+        : protects,
       sigma1m,
       floors?.rangeFit,
     );
@@ -2245,14 +2252,21 @@ export function* buildTapesGen(
     const cellTags = cellKeys ? new Set(cellKeys.map((k) => k.slice(0, k.indexOf("|")))) : null;
     const microInd = isMicroInd(laneOf(c.ind).base);
     const own = floors?.pairProtects?.[`${c.bot}|${c.ind}`];
-    for (const p0 of own?.length ? [...protects, ...own] : protects) {
+    const recovered = recoveredLowRange.get(pairKey) ?? [];
+    const recoveredSet = new Set(recovered);
+    const pairProtects = own?.length || recovered.length ? [...protects, ...(own ?? []), ...recovered] : protects;
+    for (const p0 of pairProtects) {
       const exitConfig = p0.exitType === "historic";
       const kind: StratKind = protectKind(p0);
+      if (!exitConfig && (p0.lowRangeOnly === true) !== isLowRangeInd(c.ind)) {
+        done++;
+        continue;
+      }
       if (floors?.countKinds && !floors.countKinds.includes(kind)) {
         done++;
         continue;
       }
-      const lane = laneProtect(p0, c.ind);
+      const lane = recoveredSet.has(p0) ? p0 : laneProtect(p0, c.ind);
       if (lane.hold < 1) {
         floors?.baseConfigCounter?.record(c.bot, c.ind, lane, kind, [], "holdTooShort");
         done++;
@@ -2283,7 +2297,7 @@ export function* buildTapesGen(
       }
       // Recovered-only protects already encode the distances of the held entry. Reapplying a relative live
       // adjustment would widen them again, change the id and discard the very position this tape preserves.
-      const p = floors?.heldOnlyIds?.has(laneId) ? lane : adj(c.bot, c.ind, kind, lane);
+      const p = recoveredSet.has(p0) || floors?.heldOnlyIds?.has(laneId) ? lane : adj(c.bot, c.ind, kind, lane);
       const id = configId(c.bot, c.ind, p);
       if (notOnly(id)) {
         floors?.baseConfigCounter?.record(c.bot, c.ind, p, kind, [], "only-ids");
@@ -2307,10 +2321,17 @@ export function* buildTapesGen(
               ? "laneFloor"
               : !exitConfig && !!tagsOk && !tagsOk.includes(p0.tag ?? "")
                 ? "baseRange"
+                : !exitConfig && isLowRangeInd(c.ind) && !!floors?.pairTags && !cellSet
+                  ? "baseCell"
                 : // only the targets of this range that passed Base
                   !exitConfig && !p0.trailOnly && !!tps && !tps.includes(p0.tp)
                   ? "baseTarget"
-                  : !exitConfig && !!p0.tag && !!cellSet && cellTags!.has(p0.tag) && !cellSet.has(protectCellKey(p0))
+                  : !exitConfig && !!p0.tag && !!cellSet &&
+                    (isLowRangeInd(c.ind)
+                      // Low-Range proof is for the effective lane cell, including feedback. A different
+                      // already-measured cell may prove that exact result; the source cell cannot.
+                      ? !cellSet.has(protectCellKey(p))
+                      : cellTags!.has(p0.tag) && !cellSet.has(protectCellKey(p0)))
                     ? "baseCell"
                     : !exitConfig && !p0.trailOnly && !!p0.tag && !!fitted && !fitted.has(`${p0.tag}|${p0.tp}`)
                       ? "rangeFit"
@@ -2382,7 +2403,7 @@ export function* buildTapesGen(
       floors?.baseConfigCounter?.record(c.bot, c.ind, p, kind, trades);
       if (!floors?.countOnly && (enough || held)) {
         const tp = atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending));
-        if (filtered || !enough || floors?.heldOnlyIds?.has(id)) tp.heldOnly = true;
+        if (filtered || !enough || recoveredSet.has(p0) || floors?.heldOnlyIds?.has(id)) tp.heldOnly = true;
         out.push(floors?.tapeSink?.(tp) ?? tp);
       }
       done++;
@@ -2417,7 +2438,7 @@ export function* buildTapesGen(
       // Axis per range: the Wide ladders (DCA and Axis) only for a pair that passed Base for Wide — a pair that
       // passed only in a range gets that range's ladders instead of being judged as Wide
       const failedBase = tagsOk !== undefined && tagsOk.length === 0;
-      const wideOk = !failedBase && !(dcaOpt.axis?.perRange && tagsOk && !tagsOk.includes(""));
+      const wideOk = !isLowRangeInd(c.ind) && !failedBase && !(dcaOpt.axis?.perRange && tagsOk && !tagsOk.includes(""));
       for (const p0 of dcaOpt.noDca ? [] : dcaOpt.protects) {
         for (const active of [false, true]) {
           const kind: StratKind = active ? "dca-active" : "dca";
@@ -2602,10 +2623,11 @@ export function* buildTapesGen(
         const axisRangeTags = tagsOk
           ? [...new Set([...tagsOk.filter(Boolean), ...heldRangeTags])]
           : null;
-        if (dcaOpt.axis.perRange && axisRangeTags)
+        // Axis changes entry/exit economics and has no matching Low-Range Base-cell proof yet.
+        if (dcaOpt.axis.perRange && axisRangeTags && !isLowRangeInd(c.ind))
           for (const rv of axisRangeVariants(
             dcaOpt.axis,
-            protects,
+            protects.filter((p) => (p.lowRangeOnly === true) === isLowRangeInd(c.ind)),
             axisRangeTags,
             floors?.pairTps?.[`${c.bot}|${c.ind}`],
           )) {
@@ -3332,22 +3354,19 @@ const seatKey = (
   tp: ConfigTape,
   o: Pick<WalkForwardOptions, "familySeats" | "rangeSeats" | "seatPer">,
 ) => {
-  // Historic Exit has no range tag; its tactic × side is an independent family even when familySeats is off.
-  const tag = tp.kind === "exit" ? undefined : tp.protect.tag;
+  // Historic Exit and Signals never borrow an ordinary range's seat from their protection distances.
+  const tag = tp.kind === "exit" || isSignalInd(tp.ind) ? undefined : tp.protect.tag;
   const family = familyOf(tp.kind, tp.protect.exitSet, tp.protect.exitSide);
-  // independent configs: the config id is the seat (its family and range stay readable for the seat counts)
-  if (o.seatPer === "config")
+  // Historic Exit always owns its exact config; a sibling's score or robustness cannot withdraw its seat.
+  if (o.seatPer === "config" || tp.kind === "exit" || tag === "mc")
     return `${tag ? `${tag}|` : ""}${tp.bot}|${tp.ind}|${family}#${tp.id.replaceAll("|", "~")}${
       isTrailingKind(tp.kind) ? `|${tp.kind === "trailing-only" ? "to" : "tr"}` : ""
     }`;
-  if (tag === "mc") return `mc|${tp.id}`;
   const trail = isTrailingKind(tp.kind) ? `|${tp.kind === "trailing-only" ? "to" : "tr"}` : "";
-  if (tp.kind === "exit") return `${tp.bot}|${tp.ind}|${family}`;
-  const key = o.familySeats
-    ? `${tp.bot}|${tp.ind}|${family}${trail}`
-    : `${tp.bot}|${tp.ind}${trail}`;
-  // range seats: short / minimal / plus each hold a seat of their own per pair
-  return o.rangeSeats && tag ? `${tag}|${key}` : key;
+  // Pair mode may select one variant, but never across economic ranges or strategy types. The familySeats
+  // option controls shared portfolio limits, not the identity on which validation and selection compete.
+  const seatType = tp.kind === "dca-active" ? "dca-active" : family;
+  return `${tag ? `${tag}|` : ""}${tp.bot}|${tp.ind}|${seatType}${trail}`;
 };
 /**
  * Micro seats per step: no cap of its own (operator, 5 Oct — "disable micro sets cap"). Micro follows `portfolio`
@@ -3367,7 +3386,20 @@ const seatFamily = (pair: string, familySeats: boolean | undefined) => {
   if (family.startsWith("exit-")) return family;
   return pair.endsWith("|tr") ? "trailing" : familySeats ? family : "base";
 };
-const famOfKey = (pair: string) => (pair.split("|")[2] ?? "base").split("#")[0];
+const famOfKey = (pair: string) => {
+  const fields = pair.split("|");
+  const family = (fields[rangeSeat(pair) ? 3 : 2] ?? "base").split("#")[0];
+  return family === "dca-active" ? "dca" : family;
+};
+/** The optional family comparison never borrows another range's base. */
+const baseComparisonKey = (tp: Pick<ConfigTape, "bot" | "ind" | "protect" | "kind">) =>
+  `${tp.bot}|${tp.ind}|${tp.kind === "exit" || isSignalInd(tp.ind) ? "" : tp.protect.tag ?? ""}`;
+const seatComparisonKey = (pair: string) => {
+  const fields = pair.split("|");
+  const tag = rangeSeat(pair);
+  const offset = tag ? 1 : 0;
+  return `${fields[offset]}|${fields[offset + 1]}|${tag}`;
+};
 
 /**
  * Additional strategies (DCA, Axis) must beat the base: a candidate of another family stays only when its window
@@ -3378,13 +3410,13 @@ function beatsBase<T extends { pair: string; window: { pf: number } }>(
   basePf: ReadonlyMap<string, number>,
   o: Pick<WalkForwardOptions, "familySeats" | "familyNeedsBase" | "seatPer">,
 ): T[] {
-  if (!o.familySeats || o.seatPer === "config") return xs;
+  if (!o.familySeats || o.seatPer === "config" || o.familyNeedsBase !== true) return xs;
   return xs.filter((c) => {
     const f = famOfKey(c.pair);
     if (f === "base" || f === "trailing" || f === "trailing-only" || f.startsWith("exit-")) return true;
-    const b = basePf.get(c.pair.split("|").slice(0, 2).join("|"));
-    // no base to beat in the window: rejected (unless the gate is relaxed) — nothing shows DCA / Axis improve it
-    if (b === undefined) return o.familyNeedsBase === false;
+    const b = basePf.get(seatComparisonKey(c.pair));
+    // The explicitly enabled comparison requires an observed base result.
+    if (b === undefined) return false;
     return c.window.pf >= b;
   });
 }
@@ -3395,7 +3427,7 @@ const noteBase = (m: Map<string, number>, tp: ConfigTape, w: { n: number; pf: nu
     familyOf(tp.kind, tp.protect.exitSet, tp.protect.exitSide) !== "base"
   )
     return;
-  const k = `${tp.bot}|${tp.ind}`;
+  const k = baseComparisonKey(tp);
   m.set(k, Math.max(m.get(k) ?? -Infinity, w.pf));
 };
 
@@ -3485,7 +3517,8 @@ function pickByLane(
   laneSeats = 0,
 ): Selection[] {
   const laneKey = (pair: string) => {
-    const ind = pair.split("|")[1] ?? "";
+    const fields = pair.split("|");
+    const ind = fields[rangeSeat(pair) ? 2 : 1] ?? "";
     const l = laneOf(ind);
     // signals are a share of their own (they compete with each other, not with the engine's lanes)
     return isSignalInd(ind)
@@ -4011,7 +4044,7 @@ export function signalConfigEval(
 
 /** Signals have an independently tuned validation sample; every Strategy Base path must use the same sample. */
 function validLastNOf(
-  tp: Pick<ConfigTape, "ind" | "protect">,
+  tp: Pick<ConfigTape, "ind" | "protect"> & Partial<Pick<ConfigTape, "kind">>,
   o: Pick<WalkForwardOptions, "validLastN" | "signalValidLastN" | "rangeOpts">,
 ): number {
   // Signals prefer their dedicated range value, then the legacy signal setting, then the global value.
@@ -4021,7 +4054,7 @@ function validLastNOf(
 }
 
 /** Signal entry last-N is owned by the Signals range when set; legacy signalValidLastN remains its fallback. */
-function signalEntryLastNOf(tp: Pick<ConfigTape, "ind" | "protect">, o: WalkForwardOptions): number {
+function signalEntryLastNOf(tp: Pick<ConfigTape, "ind" | "protect"> & Partial<Pick<ConfigTape, "kind">>, o: WalkForwardOptions): number {
   const own = rangeOptsOf(o, tp)?.lastN;
   if (own !== undefined) return own;
   return o.signalValidLastN !== undefined ? Math.min(o.lastN, o.signalValidLastN) : o.lastN;
@@ -4040,7 +4073,7 @@ function minPfForTape(
   o: Pick<WalkForwardOptions, "gates" | "exitMinPf">,
 ): number {
   return Math.max(
-    minPfOf(o.gates, tp.protect.tag, tp.ind),
+    minPfOf(o.gates, tp.kind === "exit" ? undefined : tp.protect.tag, tp.ind),
     isSignalInd(tp.ind) ? (o.gates.baseSetsMinPf ?? 0) : 0,
     tp.kind === "exit" ? (o.exitMinPf ?? 0) : 0,
   );
@@ -4252,13 +4285,16 @@ export function passedCellsOf(pairCells: Readonly<Record<string, readonly string
 }
 /** Whether a tape's cell is one its pair's Base passed (true without cells for the pair / its range: the pair level decides). */
 export function cellAllowed(
-  tp: Pick<ConfigTape, "bot" | "ind" | "protect">,
+  tp: Pick<ConfigTape, "bot" | "ind" | "protect"> & Partial<Pick<ConfigTape, "kind">>,
   o: Pick<WalkForwardOptions, "basePassedCells">,
   pair = `${tp.bot}|${tp.ind}`,
 ): boolean {
+  // Historic Exit has a separate Base proof; a same-pair ordinary cell must never decide its admission.
+  if (tp.kind === "exit") return true;
   const c = o.basePassedCells?.[pair];
   const tag = tp.protect.tag;
-  if (!c || !tag || !c.tags.has(tag)) return true;
+  if (!c) return !o.basePassedCells || !isLowRangeInd(tp.ind);
+  if (!tag || !c.tags.has(tag)) return !isLowRangeInd(tp.ind);
   return c.keys.has(protectCellKey(tp.protect));
 }
 
@@ -4279,7 +4315,7 @@ function selInfoOf(
   o: WalkForwardOptions,
   botOk: ReadonlySet<string> | null,
 ): SelInfo {
-  const pairKey = `${tp.bot}|${tp.ind}`;
+  const pairKey = baseComparisonKey(tp);
   const seat = seatKey(tp, o);
   const fam = familyOf(tp.kind, tp.protect.exitSet, tp.protect.exitSide);
   return {
@@ -4441,8 +4477,8 @@ export function validatedTapes(
 ): ConfigTape[] {
   const needBase = !!o.familySeats && o.seatPer !== "config";
   const pairs = new Set<string>();
-  if (needBase) for (const tp of tapes) if (v.has(tp.id)) pairs.add(`${tp.bot}|${tp.ind}`);
-  return tapes.filter((tp) => v.has(tp.id) || (needBase && familyOf(tp.kind) === "base" && pairs.has(`${tp.bot}|${tp.ind}`)));
+  if (needBase) for (const tp of tapes) if (v.has(tp.id)) pairs.add(baseComparisonKey(tp));
+  return tapes.filter((tp) => v.has(tp.id) || (needBase && familyOf(tp.kind) === "base" && pairs.has(baseComparisonKey(tp))));
 }
 
 /** selectFixed in slices: yields −1 every ~8 ms (with every config its own seat, ~100k tapes per step). */
@@ -4636,17 +4672,14 @@ const modeGroupsMemo = new WeakMap<readonly ConfigTape[], { n: number; sig: stri
  * Per-range selection modes (wf.rangeOpts[tag].mode): the engine tapes grouped by their range's mode (fixed, durable,
  * hourly, in that order), one array per group and tape list (memoized, like engineTapesOf: selectFixedGen's per-tape
  * infos and window cursors carry from step to step and from the simulation to the paper step). null when no range's
- * mode differs from the global one, or when a seat can span ranges (seatPer not "config" and no rangeSeats): the
- * selection then runs once on the whole list, as without rangeOpts.
+ * mode differs from the global one. Seats no longer span ranges, including under legacy pair settings.
  */
 export function modeGroups(
   tapes: readonly ConfigTape[],
   o: Pick<WalkForwardOptions, "rangeOpts" | "mode" | "seatPer" | "rangeSeats">,
 ): ModeGroup[] | null {
   const ro = o.rangeOpts;
-  // the groups select apart only while no seat spans two ranges: every config its own seat, or every range its own
-  // seats per pair; otherwise (pair seats across ranges) one selection over the whole list, on the global mode
-  if (!ro || !(o.seatPer === "config" || o.rangeSeats)) return null;
+  if (!ro) return null;
   let sig = "";
   for (const k of RANGE_OPT_TAGS) {
     const m = ro[k]?.mode;
@@ -4674,8 +4707,8 @@ export function modeGroups(
 
 /**
  * The selection over mode groups: each group selects on its own tapes with its own mode, and the picks are
- * concatenated. modeGroups splits only while no seat spans two ranges (every config its own seat, or range seats), so
- * a group's seats are its own; the seat caps (portfolio) apply per group. The fixed group's validation record
+ * concatenated. Range seat identities remain separate, so a group's seats are its own; the seat caps (portfolio)
+ * apply per group. The fixed group's validation record
  * (recordValidation) is kept.
  */
 export function* selectGroupsGen(
@@ -5241,7 +5274,7 @@ export function signalValidationOk(
     o.gates.lastNFloor ?? 0, o.gates.warmup !== false, lossPriorOf(tp, o.gates),
   );
   const n = validLastNOf(tp, o);
-  const floor = minPfOf(o.gates, tp.protect.tag, tp.ind);
+  const floor = minPfForTape(tp, o);
   return signalConfigEval(tp, entryT, o, sym, side).ok && check(n, floor) && check(signalEntryLastNOf(tp, o), Math.max(o.lastNMinPf, floor));
 }
 
@@ -5263,7 +5296,7 @@ export function configContextEval(
   if (!o.symGate || o.symGate === "off" || isSignalInd(tp.ind)) return yes();
   const minN = o.symMinN ?? 2;
   const proven = o.symGate === "proven" || o.symGate === "provenSide";
-  const fails = w.net <= 0 || w.pf < minPfOf(o.gates, tp.protect.tag, tp.ind);
+  const fails = w.net <= 0 || w.pf < minPfForTape(tp, o);
   // Warmup can relax the sample floor for an observed result. An empty result proves no symbol/side PF and
   // must never inherit the config's or another symbol's qualification, including when symMinN is zero.
   if (proven && (w.n === 0 || (o.gates.warmup === false && w.n < minN)))
@@ -5395,6 +5428,11 @@ export function execDecision(
     }, base);
     if (!relation.allowed)
       return { ok: false, why: "relateActive", relateParts: relation.parts, relateBaseVol: decision.vol, relateBase: base };
+    // Active gates every entry independently of raise eligibility. When the path cannot prove this limit,
+    // keep the original trade/stop and record no hypothetical relation parts as actual funded sizing.
+    // Legacy settings acquire the same default as the settings merger.
+    if (!relateFixedStopWithinLimit(tp.kind, tp.protect, o.relate.maxSl ?? DEFAULT_RELATE_ADJUSTMENT.maxSl))
+      return { ...decision, relateBase: base };
     return {
       ...decision,
       relateBase: base,
@@ -5485,7 +5523,7 @@ export function execDecision(
         ctx.side,
         entryT,
         validLastNOf(tp, o),
-        minPfOf(o.gates, tp.protect.tag, tp.ind),
+        minPfForTape(tp, o),
         o.gates.maxDdtH,
         o.gates.maxDdr ?? 0,
         o.gates.lastNFloor ?? 0,
@@ -5537,7 +5575,7 @@ export function execDecision(
           ctx.side,
           entryT,
           lastN,
-          Math.max(o.lastNMinPf, minPfOf(o.gates, tp.protect.tag, tp.ind)),
+          Math.max(o.lastNMinPf, minPfForTape(tp, o)),
           o.gates.maxDdtH,
           o.gates.maxDdr ?? 0,
           o.gates.lastNFloor ?? 0,
@@ -5549,7 +5587,7 @@ export function execDecision(
           ctx?.side ?? 0,
           entryT,
           lastN,
-          Math.max(o.lastNMinPf, minPfOf(o.gates, tp.protect.tag, tp.ind)),
+          Math.max(o.lastNMinPf, minPfForTape(tp, o)),
           o.gates.maxDdtH,
           o.gates.maxDdr ?? 0,
           o.gates.lastNFloor ?? 0,

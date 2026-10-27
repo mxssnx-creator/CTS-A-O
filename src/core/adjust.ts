@@ -6,6 +6,7 @@
 // twice on the same trades. With `slScale` / `trailScale` each level also widens the set's OWN stop / trailing
 // distance (× 1 + level × scale, up to `scaleMax`), and `stepEvery` asks that many new closes before the next step.
 import { profitFactor } from "./metrics/stats.ts";
+import { distanceAtFloor } from "./minimal-coord.ts";
 import type { Protect, StratKind } from "./domain/types.ts";
 import type { AdjustSettings } from "./config.ts";
 export { DEFAULT_ADJUST, type AdjustSettings } from "./config.ts";
@@ -211,11 +212,19 @@ export function adjustProtect(
   if (!adj) return p;
   const sm = adj.slMult ?? 1;
   const tm = adj.trailMult ?? 1;
+  const sl = +Math.max(p.sl * sm, adj.minSl).toFixed(4);
+  const trail = p.trail > 0 ? +Math.max(p.trail * tm, adj.minTrail / (p.trailStep ?? 1)).toFixed(4) : 0;
   const out: Protect = {
     ...p,
-    sl: +Math.max(p.sl * sm, adj.minSl).toFixed(4),
+    // Low-Range cells retain six-decimal price distances and carry their own cost + step floors. The legacy
+    // four-decimal feedback rounding can otherwise narrow an unchanged distance, even when only the other
+    // multiplier is raised. Preserve the legacy result when it already widens or preserves the original.
+    sl: p.lowRangeOnly ? distanceAtFloor(sl, Math.max(p.sl, adj.minSl), 6) : sl,
     // the floor is on the trailing distance (trail × trailStep), not on the arming move
-    trail: p.trail > 0 ? +Math.max(p.trail * tm, adj.minTrail / (p.trailStep ?? 1)).toFixed(4) : 0,
+    trail: p.trail > 0 && (p.lowRangeOnly || p.exitTrailFloor !== undefined)
+      ? distanceAtFloor(trail, Math.max(p.lowRangeOnly ? p.trail : 0,
+          Math.max(adj.minTrail, p.exitTrailFloor ?? 0) / (p.trailStep ?? 1)), 6)
+      : trail,
   };
   // an ATR protect: the floors apply to the distances resolved at every entry
   if (p.atr)

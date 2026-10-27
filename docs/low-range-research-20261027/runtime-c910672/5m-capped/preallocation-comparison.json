@@ -1,0 +1,39 @@
+{
+  "status": "passed",
+  "checks": {
+    "virtualCloses": true,
+    "tradesSha256": true,
+    "basePairs": true,
+    "basePairsSha256": true,
+    "validationSteps": true,
+    "validationSha256": true,
+    "endpointVirtualOrders": true,
+    "endpointSha256": true
+  },
+  "original": {
+    "virtualCloses": 144863,
+    "tradesSha256": "2d2951ae917842c7003c46f398bd1a266ebcaa2edbca9162ab7abbbd6c6dafc5",
+    "basePairs": 195,
+    "basePairsSha256": "330611f2b6eab241100b72c59f342e4a0cdd3f5c344c34547ad22b10ef393564",
+    "validationSteps": 24,
+    "validationSha256": "ef37358a3bf777cc036324b985caf18b95cdbc6d6bd932c1fd510b3dac54f572",
+    "endpointVirtualOrders": 10,
+    "endpointSha256": "d3075e2c2c9838cae273aa2d24496396a6dd0708cb3914136e22aa0053016558"
+  },
+  "capped": {
+    "virtualCloses": 144863,
+    "tradesSha256": "2d2951ae917842c7003c46f398bd1a266ebcaa2edbca9162ab7abbbd6c6dafc5",
+    "basePairs": 195,
+    "basePairsSha256": "330611f2b6eab241100b72c59f342e4a0cdd3f5c344c34547ad22b10ef393564",
+    "validationSteps": 24,
+    "validationSha256": "ef37358a3bf777cc036324b985caf18b95cdbc6d6bd932c1fd510b3dac54f572",
+    "endpointVirtualOrders": 10,
+    "endpointSha256": "d3075e2c2c9838cae273aa2d24496396a6dd0708cb3914136e22aa0053016558"
+  },
+  "parentProtocolSha256": "6ee855cf2bebff9e0f353f135560148b9b2bccb633271fd53c010fe669c87be9",
+  "cappedProtocolSha256": "9095bac7ee01d8637c6db41211a2ec70e65188263a244d50cbebe6009f5a19e6",
+  "settingsCompatibility": "inactive-relate-maxsl-default",
+  "originalSourceSha256": "86fb0a4ada247b7049704b2948bb15b45a87c4ee776ec024f9022ff44bebd2d6",
+  "cappedSourceSha256": "edc598b9c7e04b98429a9cfe0a77ea12b3642ade2964079d97af6f3ed76e082d",
+  "scope": "Exact ordered virtual trades, Base rows, recorded validation steps and virtual endpoint orders before account allocation; later funding and returns require their own audits. Distinct source seals and unmodeled venue execution remain explicit."
+}

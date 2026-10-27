@@ -1,7 +1,7 @@
 // Durable state: settings, presets and backtest results survive a restart; other kv keys do not.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, existsSync, readFileSync, chmodSync, mkdirSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { CoreDb } from "./db.server.ts";
@@ -46,6 +46,38 @@ describe("durable state", () => {
     const c = new CoreDb(":memory:");
     assert.ok(c.restore(snap));
     assert.deepEqual(c.kvGet("settings"), { symbols: 20 });
+  });
+
+  it("persists named per-connection pending executions and preserves newer reservations over old snapshots", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-entry-state-"));
+    const path = join(dir, "state.json"), snap = join(dir, "snap.db");
+    try {
+      const a = new CoreDb(":memory:", { statePath: path });
+      const k1 = "entriesPendingExecutions|bingx-vst-01", k2 = "entriesPendingExecutions|bingx-vst-02";
+      const entry = { e: { kind: "E", sentQty: 1, oid: "entry-a", unresolved: true } };
+      const exit = { c: { kind: "C", sentQty: 2, oid: "exit-b", unresolved: true } };
+      a.kvSet(k1, entry); a.kvSet(k2, exit); a.kvSet("entriesPendingExecutions|", { malformed: true });
+      a.kvSet("entriesPendingExecutionsX|ignored", { ignored: true });
+      assert.ok(a.flushState()); assert.ok(a.snapshot(snap));
+      const latestEntry = { e: { ...entry.e, sentQty: .5 } };
+      a.kvSet(k1, latestEntry); a.kvSet(k2, {}); a.kvSet("entriesPendingExecutions|third", exit);
+      assert.ok(a.flushState());
+      const state = JSON.parse(readFileSync(path, "utf8"));
+      assert.deepEqual(state[k1], latestEntry); assert.deepEqual(state[k2], {});
+      assert.deepEqual(state["entriesPendingExecutions|third"], exit);
+      assert.equal(state["entriesPendingExecutions|"], undefined);
+      assert.equal(state["entriesPendingExecutionsX|ignored"], undefined);
+      const b = new CoreDb(":memory:", { statePath: path });
+      assert.ok(b.restore(snap));
+      assert.deepEqual(b.kvGet(k1), latestEntry, "older snapshot cannot replace newer connection state");
+      assert.deepEqual(b.kvGet(k2), {}, "a completed reservation cannot be resurrected");
+      assert.deepEqual(b.kvGet("entriesPendingExecutions|third"), exit, "a newer connection survives restore");
+      const c = new CoreDb(":memory:");
+      assert.ok(c.restore(snap));
+      assert.deepEqual(c.kvGet(k1), entry, "snapshot fills missing connection state");
+      assert.deepEqual(c.kvGet(k2), exit);
+      a.db.close(); b.db.close(); c.db.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
   it("a read-only location falls back to memory without throwing", async () => {

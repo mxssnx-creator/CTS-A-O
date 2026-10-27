@@ -165,8 +165,12 @@ export function extendTape(
   cost: number,
   tactics?: Tactics | null,
 ): { tape: ConfigTape; resume: TapeResume } | null {
+  if (tp.open.some((p) => p.entryStopMax !== undefined))
+    throw new Error("compact tape cannot retain per-entry stop-limit provenance");
   const r = runConfig(tp, u, cost, tactics, resume);
   if (!r) return null;
+  if (r.open.some((p) => p.entryStopMax !== undefined))
+    throw new Error("compact tape cannot retain per-entry stop-limit provenance");
   const add = r.trades;
   // every new trade closes after every stored one (it closes on a bar the stored run had not seen)
   add.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);
@@ -195,6 +199,8 @@ export function extendTape(
   const symIdx = symbolIndex(tp.syms);
   for (let j = 0; j < m; j++) {
     const t = add[j];
+    if (t.entryStopMax !== undefined)
+      throw new Error("compact tape cannot retain per-entry stop-limit provenance");
     const i = k + j;
     v.exitT[i] = t.exitT;
     v.entryT[i] = t.entryT;

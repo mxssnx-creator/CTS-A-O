@@ -13,6 +13,7 @@ import { tacticState } from "./tactic.ts";
 import { barsFromCandles, resample, syntheticCandles, headBars } from "../market/bars.ts";
 import { makeUniverse } from "../pipeline/pipeline.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
+import { LOW_RANGE_IDS } from "./low-range.ts";
 import { PRE_CONTEXT_FOCUS_21OCT } from "./context-default-focus.ts";
 import { controlledRetestTrend } from "./test-support.ts";
 const end = Date.UTC(2026, 9, 1);
@@ -53,8 +54,13 @@ test("all 28 Retest/Tactic profile, subset and mirror identities have actual ons
 test("112 context identities join the ordinary factory focus without changing any original source state", () => {
   assert.equal(MICRO_CONFIG_IDS.filter(child).length, 56);
   assert.equal(PRE_CONTEXT_FOCUS_21OCT.length, 1079);
-  assert.equal(DEFAULT_SETTINGS.focus.length, 1191);
-  assert.ok(PRE_CONTEXT_FOCUS_21OCT.every((id) => DEFAULT_SETTINGS.focus.includes(id)));
+  const lowRangeFocus = DEFAULT_SETTINGS.focus.filter((id) => id.startsWith("follow|low-range-"));
+  const originalFocus = DEFAULT_SETTINGS.focus.filter((id) => !id.startsWith("follow|low-range-"));
+  assert.equal(DEFAULT_SETTINGS.grid.lowRange?.enabled, false, "Low-Range remains opt-in");
+  assert.deepEqual([...lowRangeFocus].sort(), LOW_RANGE_IDS.map((id) => `follow|${id}`).sort());
+  assert.equal(new Set(DEFAULT_SETTINGS.focus).size, DEFAULT_SETTINGS.focus.length);
+  assert.equal(originalFocus.length, 1191);
+  assert.ok(PRE_CONTEXT_FOCUS_21OCT.every((id) => originalFocus.includes(id)));
   const u = makeUniverse(bars),
     h = createHash("sha256");
   let cases = 0;
