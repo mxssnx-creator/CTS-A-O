@@ -1,0 +1,17 @@
+file:///workspace/scratch/1acb10a11301/relate-study-20261027/signal-final-02ad-run.mjs:1
+import{spawn}from'node:child_process';import{readFileSync,writeFileSync}from'node:fs';const env={...process.env,CTS_CORE_LIVE:'0',NODE_OPTIONS:'--require /workspace/scratch/1acb10a11301/CTS-A-O/scripts/lib/core-test-offline-guard.cjs'};delete env.DATABASE_URL;const start=new Date().toISOString();const child=spawn('nice',['-n','19',process.execPath,'--experimental-strip-types','--no-warnings','--test','--test-concurrency=1',...["src/core/server/signal-progress.test.ts","src/core/sim/signal-postbase-feedback.test.ts","src/core/sim/signal-activation-clock.test.ts","src/core/sim/signal-window.test.ts","src/core/sim/signal-gates.test.ts"],{cwd:'/workspace/scratch/1acb10a11301/CTS-A-O',stdio:'inherit',env});let reason=null,peak=0;const timer=setInterval(()=>{try{const n=Number(readFileSync('/sys/fs/cgroup/memory.current','utf8').trim());if(!Number.isFinite(n))throw Error();peak=Math.max(peak,n);if(n>5750000000&&!reason){reason='demo memory headroom';child.kill('SIGTERM')}}catch{if(!reason){reason='memory monitoring unavailable';child.kill('SIGTERM')}}},250);child.once('exit',(code,signal)=>{clearInterval(timer);writeFileSync('/workspace/scratch/1acb10a11301/relate-study-20261027/signal-final-02ad-receipt.json',JSON.stringify({sourceCommit:'02ad0ae',startedAt:start,endedAt:new Date().toISOString(),code,signal,reason,peakCgroupBytes:peak},null,2));process.exitCode=code??1});
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     ^
+
+SyntaxError: Unexpected token ')'
+    at compileSourceTextModule (node:internal/modules/esm/utils:319:16)
+    at ModuleLoader.moduleStrategy (node:internal/modules/esm/translators:89:18)
+    at #translate (node:internal/modules/esm/loader:438:20)
+    at afterLoad (node:internal/modules/esm/loader:506:29)
+    at ModuleLoader.loadAndTranslate (node:internal/modules/esm/loader:511:12)
+    at #getOrCreateModuleJobAfterResolve (node:internal/modules/esm/loader:564:36)
+    at afterResolve (node:internal/modules/esm/loader:611:52)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:617:12)
+    at node:internal/modules/esm/loader:636:32
+    at TracingChannel.tracePromise (node:diagnostics_channel:370:14)
+
+Node.js v24.22.1

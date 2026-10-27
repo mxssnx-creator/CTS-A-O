@@ -1,0 +1,62 @@
+[
+  {
+    "id": "unlimited",
+    "file": "unlimited.json.gz",
+    "bytes": 115995,
+    "sha256": "b4b316e314a42265b25e533365a008e44ae3c7de96484c43ff7c408e08d5d3e9"
+  },
+  {
+    "id": "last-15",
+    "file": "last-15.json.gz",
+    "bytes": 115972,
+    "sha256": "9069e096f99813ebfb93c6858b320a7e87375dc6002f74c44981cc812a0d7185"
+  },
+  {
+    "id": "last-25",
+    "file": "last-25.json.gz",
+    "bytes": 115444,
+    "sha256": "3460762e295dab415d900ef41e73e4ef20692015bf5d28867cc2fe6eedc43be3"
+  },
+  {
+    "id": "per-symbol-5",
+    "file": "per-symbol-5.json.gz",
+    "bytes": 114781,
+    "sha256": "3bdfacea926a1555db8161b6766bb5953df3a32cdf7ef98c532cb9206a588fb4"
+  },
+  {
+    "id": "per-symbol-20",
+    "file": "per-symbol-20.json.gz",
+    "bytes": 115734,
+    "sha256": "8067acbfd80ff7bf1ff480f228cf08215f990e4f12efc3056121317121a9f453"
+  },
+  {
+    "id": "per-symbol-50",
+    "file": "per-symbol-50.json.gz",
+    "bytes": 115970,
+    "sha256": "66e75ff79a36e17dd179d84ebe28ce56624846a8504a2102896caa77320305f5"
+  },
+  {
+    "id": "crowd-5",
+    "file": "crowd-5.json.gz",
+    "bytes": 115672,
+    "sha256": "35aadbe9424934486f77000bd017b91f57396689252e36e4d0645f3d2cde8b70"
+  },
+  {
+    "id": "crowd-10",
+    "file": "crowd-10.json.gz",
+    "bytes": 115945,
+    "sha256": "2132d3c58dc8ac458e04201c1cc083b4789226c6fbd8e3bf8b511230df46c9dd"
+  },
+  {
+    "id": "crowd-20",
+    "file": "crowd-20.json.gz",
+    "bytes": 116000,
+    "sha256": "3fc2300a82b6e3c8ca57a8050bfb79b74dc00e95e5354e7ede59bfdd13ff6923"
+  },
+  {
+    "id": "crowd-10-last-25",
+    "file": "crowd-10-last-25.json.gz",
+    "bytes": 115462,
+    "sha256": "effea43e812a0960b250c338a6737605c1d239557dfdc004a97e6464a600be9b"
+  }
+]

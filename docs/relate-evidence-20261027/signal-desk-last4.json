@@ -1,0 +1,403 @@
+{
+  "settings": {
+    "symbols": 12,
+    "forceSymbols": [
+      "BTC-USDT",
+      "ETH-USDT",
+      "BNB-USDT",
+      "SOL-USDT",
+      "XRP-USDT",
+      "DOGE-USDT",
+      "ADA-USDT",
+      "LINK-USDT",
+      "AVAX-USDT",
+      "LTC-USDT",
+      "DOT-USDT",
+      "BCH-USDT"
+    ],
+    "symbolRank": "market",
+    "focus": [
+      "follow|inverse-known-ema-9-21"
+    ],
+    "pinned": [],
+    "tfs": [
+      1,
+      5
+    ],
+    "tfMin": 1,
+    "historyDays": 3,
+    "tfDays": {
+      "1": 3,
+      "5": 3,
+      "15": 3,
+      "30": 3
+    },
+    "grid": {
+      "trailingOnly": true,
+      "volumeFactor": 1,
+      "tp": [],
+      "slOfTp": [
+        1,
+        2
+      ],
+      "trailOfTp": [
+        0,
+        0.5
+      ],
+      "minTrail": 0.006,
+      "minSl": 0.01,
+      "holdH": [
+        4
+      ],
+      "trailStep": 1,
+      "trailFree": false,
+      "minimal": false,
+      "short": false,
+      "general": false,
+      "long": false,
+      "micro": false,
+      "minimalPlus": false,
+      "rangeGate": {
+        "enabled": true,
+        "lastN": 75,
+        "minPf": 1.35
+      },
+      "baseBest": true,
+      "rangeFit": {
+        "enabled": false
+      },
+      "baseTargets": true,
+      "baseRanges": true,
+      "baseTrailCells": false,
+      "allSets": false
+    },
+    "toggles": {
+      "normal": true,
+      "trailing": true,
+      "exit": false,
+      "block": false,
+      "blockActive": false,
+      "dca": false,
+      "dcaActive": false,
+      "axis": false
+    },
+    "signals": {
+      "enabled": true,
+      "count": 0,
+      "sourcesMode": "allow",
+      "sources": {
+        "act-burst": true,
+        "act-hf": true,
+        "adx": true,
+        "aroon": true,
+        "atr-break": true,
+        "bb-walk": true,
+        "bollinger": true,
+        "cci": true,
+        "cmf": true,
+        "donchian": true,
+        "ema-cross": true,
+        "ema-cross-fast": true,
+        "ema-pullback": true,
+        "ema-slope": true,
+        "ema-trend": true,
+        "heikin-ashi": true,
+        "hma": true,
+        "ichi-cloud": true,
+        "ichimoku": true,
+        "impulse": true,
+        "kama": true,
+        "keltner": true,
+        "macd-cross": true,
+        "macd-hist": true,
+        "macd-slow": true,
+        "mfi": true,
+        "obv": true,
+        "r-apz-reclaim": true,
+        "r-awesome": true,
+        "r-bb-adx": true,
+        "r-bbw-expand": true,
+        "r-bos": true,
+        "r-camarilla": true,
+        "r-capit": true,
+        "r-chand": true,
+        "r-choch": true,
+        "r-clv-thrust": true,
+        "r-connors": true,
+        "r-cvd-div": true,
+        "r-donch-vol": true,
+        "r-elder": true,
+        "r-engulf": true,
+        "r-fakeout": true,
+        "r-fisher": true,
+        "r-fractal": true,
+        "r-frama-pullback": true,
+        "r-fvg": true,
+        "r-inside": true,
+        "r-klinger": true,
+        "r-laguerre": true,
+        "r-linreg": true,
+        "r-nr-break": true,
+        "r-orb": true,
+        "r-pdhl": true,
+        "r-pin": true,
+        "r-roofing": true,
+        "r-rsi2": true,
+        "r-rvi": true,
+        "r-session-trend": true,
+        "r-spring": true,
+        "r-squeeze": true,
+        "r-st-pullback": true,
+        "r-star": true,
+        "r-stc": true,
+        "r-streak": true,
+        "r-sweep": true,
+        "r-tsi": true,
+        "r-valuearea": true,
+        "r-vol-regime": true,
+        "r-vortex": true,
+        "r-vwap-reclaim": true,
+        "r-zdist": true,
+        "reclaim": true,
+        "rsi-mid": true,
+        "rsi-momentum": true,
+        "rsi-reversal": true,
+        "s2-active-hf": true,
+        "s2-adx-gate": true,
+        "s2-atr-break": true,
+        "s2-bb-bounce": true,
+        "s2-block-scale": true,
+        "s2-block-stack": true,
+        "s2-confluence": true,
+        "s2-ema-cross": true,
+        "s2-range-break": true,
+        "s2-range-shift": true,
+        "s2-rsi-revert": true,
+        "s2-st-trail": true,
+        "s2-stoch-swing": true,
+        "s2-vol-break": true,
+        "s2-vwap-axis": true,
+        "sar": true,
+        "squeeze": true,
+        "st-slow": true,
+        "stoch-rsi": true,
+        "supertrend": true,
+        "swing": true,
+        "thrust": true,
+        "trix": true,
+        "volume-break": true,
+        "vwap": true,
+        "williams-r": true,
+        "zscore": true
+      },
+      "ranges": {
+        "short": true,
+        "medium": true
+      },
+      "rangeVolumeFactors": {
+        "short": 1,
+        "medium": 1
+      },
+      "lanes": [
+        1,
+        5
+      ],
+      "normal": {
+        "tp": [
+          0.01,
+          0.025
+        ],
+        "slOfTp": [
+          0.5,
+          1
+        ]
+      },
+      "trailing": {
+        "tp": [
+          0.01,
+          0.03
+        ],
+        "trailOfTp": [
+          0.3,
+          0.6
+        ],
+        "slOfTp": 3
+      },
+      "trailingOnly": {
+        "enabled": false,
+        "sl": [
+          0.015,
+          0.03,
+          0.06
+        ],
+        "trail": [
+          0.005,
+          0.01,
+          0.02
+        ],
+        "trailStep": 1
+      },
+      "trailRatios": [
+        1
+      ],
+      "holdH": 1,
+      "trailMax": 0.03,
+      "exits": "pct",
+      "atr": {
+        "sl": [
+          0.7,
+          1.15,
+          1.5
+        ],
+        "tpRatio": [
+          1,
+          1.6,
+          2.2
+        ],
+        "trail": [
+          0.8
+        ],
+        "holdBars": 3
+      },
+      "hist": {
+        "enabled": false,
+        "quantiles": [
+          0.5,
+          0.75
+        ],
+        "trailOfTp": [
+          0.25,
+          0.5,
+          0.75
+        ],
+        "slOfTp": [
+          1,
+          2
+        ],
+        "minN": 30,
+        "lookbackH": 150
+      },
+      "guard": {
+        "enabled": true,
+        "lastN": 4
+      },
+      "cluster": {
+        "enabled": true,
+        "windowMin": 60,
+        "minLosses": 8,
+        "lossShare": 0.6
+      },
+      "coordination": {
+        "enabled": false,
+        "minSources": 3,
+        "count": 0,
+        "volumeFactor": 1,
+        "ranges": {
+          "short": true,
+          "normal": true,
+          "long": true
+        }
+      },
+      "combinedVolumeFactors": {
+        "trend": 1,
+        "break": 1,
+        "active": 1,
+        "direction": 1,
+        "move": 1,
+        "rsi": 1,
+        "bollinger": 1,
+        "sar": 1,
+        "macd": 1,
+        "ema": 1,
+        "osc": 1,
+        "volume": 1,
+        "channel": 1,
+        "ichimoku": 1,
+        "smooth": 1,
+        "tactic": 1,
+        "relate": 1,
+        "micro": 1,
+        "inverse": 1
+      },
+      "minTrades": 3,
+      "rank": "lowdd",
+      "minBlockShare": 0.6,
+      "validate": true,
+      "validateH": 24,
+      "minSl": 0.005,
+      "minTrail": 0.002,
+      "sourceGate": {
+        "enabled": false,
+        "days": 2,
+        "minShare": 0.5,
+        "minTrades": 5
+      },
+      "perSymbol": 0,
+      "maxOpen": 0,
+      "maxPositions": 250,
+      "strategies": {
+        "dca": false,
+        "axis": false
+      },
+      "ownBase": true,
+      "filter": {
+        "trendH": 0,
+        "volFloor": 0.003
+      },
+      "accept": {
+        "enabled": true,
+        "minPf": 1.3,
+        "hours": 48,
+        "minTrades": 6
+      },
+      "sideAccept": {
+        "enabled": true,
+        "minPf": 1.3,
+        "hours": 24,
+        "minTrades": 20
+      },
+      "baseGate": false
+    },
+    "exitStrategy": {
+      "enabled": false
+    },
+    "relate": {
+      "enabled": false,
+      "mode": "additive",
+      "auto": true,
+      "ratio": 2.6,
+      "steps": 5,
+      "activeStep": 0,
+      "minPf": 1.5,
+      "lastN": 250,
+      "minTrades": 60,
+      "maxStack": 250,
+      "sources": {
+        "config": true,
+        "overall": true,
+        "symbol": true,
+        "direction": true,
+        "indication": true,
+        "strategy": true,
+        "coordination": true,
+        "range": true
+      }
+    },
+    "live": {
+      "enabled": false
+    }
+  },
+  "wf": {
+    "causalBase": true,
+    "longH": 24,
+    "signalValidLastN": 4,
+    "coord": {
+      "enabled": false,
+      "hourLock": 0,
+      "cooldown": "off",
+      "conflict": false,
+      "confirm": false
+    },
+    "recordValidation": true
+  }
+}

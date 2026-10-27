@@ -1,0 +1,1202 @@
+{
+  "schema": "cts-relate-exploratory-v1",
+  "window": {
+    "start": "2026-10-26T13:00:00Z",
+    "end": "2026-10-27T13:00:00Z",
+    "prehistoryHours": 24,
+    "indicatorWarmupHours": 24
+  },
+  "feedSha256": "b3b6f2632acf39976ff2ea1b0885e764c8b03cc7f9edd8911999dc977390818c",
+  "symbols": [
+    "BTC-USDT",
+    "ETH-USDT",
+    "SOL-USDT",
+    "XRP-USDT",
+    "BNB-USDT",
+    "DOGE-USDT",
+    "ADA-USDT",
+    "TRX-USDT",
+    "LINK-USDT",
+    "AVAX-USDT",
+    "SUI-USDT",
+    "LTC-USDT"
+  ],
+  "commonBaselineDigest": "9dfe711dca2880c947d6b621c6bc4de14430993fdfd1ce1419d4d5c02b3fc3c7",
+  "sourceSha256": "e0e8636c4fae198d17a85dad040c55ffb3c5637a584eaacf0b62a6a91e3b89cb",
+  "cost": 0.0015,
+  "account": {
+    "balance": 10000,
+    "modeledFixedUnit": 2,
+    "leverage": 10,
+    "accountPositionAndExposureCaps": "off for diagnostic"
+  },
+  "baseValidation": {
+    "at": "2026-10-26T13:00:00Z",
+    "evaluated": 732,
+    "passed": 343,
+    "gp": 5890.699734410032,
+    "gl": 2047.4459502838686,
+    "pooledPf": 2.8770965766365233
+  },
+  "rows": [
+    {
+      "arm": "off",
+      "settings": {
+        "enabled": false,
+        "mode": "additive",
+        "auto": true,
+        "ratio": 2.6,
+        "steps": 5,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": true,
+          "symbol": true,
+          "direction": true,
+          "indication": true,
+          "strategy": true,
+          "coordination": true,
+          "range": true
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.7526954688453457,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": null,
+      "shadowCloses": 0,
+      "netDollars": -12.615323157025053,
+      "equityEnd": 9958.114014085282,
+      "peakEquityDrawdown": 0.006295623331507993,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "config-r02-s2",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 2,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": false,
+          "symbol": false,
+          "direction": false,
+          "indication": false,
+          "strategy": false,
+          "coordination": false,
+          "range": false
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.7526954688453457,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 0,
+        "wins": 0,
+        "positiveRate": null,
+        "pf": null,
+        "pfState": "empty",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -12.615323157025053,
+      "equityEnd": 9958.114014085282,
+      "peakEquityDrawdown": 0.006295623331507993,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "config-r02-s3",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 3,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": false,
+          "symbol": false,
+          "direction": false,
+          "indication": false,
+          "strategy": false,
+          "coordination": false,
+          "range": false
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.7526954688453457,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 0,
+        "wins": 0,
+        "positiveRate": null,
+        "pf": null,
+        "pfState": "empty",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -12.615323157025053,
+      "equityEnd": 9958.114014085282,
+      "peakEquityDrawdown": 0.006295623331507993,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "config-r02-s4",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 4,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": false,
+          "symbol": false,
+          "direction": false,
+          "indication": false,
+          "strategy": false,
+          "coordination": false,
+          "range": false
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.7526954688453457,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 0,
+        "wins": 0,
+        "positiveRate": null,
+        "pf": null,
+        "pfState": "empty",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -12.615323157025053,
+      "equityEnd": 9958.114014085282,
+      "peakEquityDrawdown": 0.006295623331507993,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "config-r02-s5",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 5,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": false,
+          "symbol": false,
+          "direction": false,
+          "indication": false,
+          "strategy": false,
+          "coordination": false,
+          "range": false
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.7526954688453457,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 0,
+        "wins": 0,
+        "positiveRate": null,
+        "pf": null,
+        "pfState": "empty",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -12.615323157025053,
+      "equityEnd": 9958.114014085282,
+      "peakEquityDrawdown": 0.006295623331507993,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "config-r02-s10",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 10,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": false,
+          "symbol": false,
+          "direction": false,
+          "indication": false,
+          "strategy": false,
+          "coordination": false,
+          "range": false
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.7526954688453457,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 0,
+        "wins": 0,
+        "positiveRate": null,
+        "pf": null,
+        "pfState": "empty",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -12.615323157025053,
+      "equityEnd": 9958.114014085282,
+      "peakEquityDrawdown": 0.006295623331507993,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "config-r06-s5",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.6,
+        "steps": 5,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": false,
+          "symbol": false,
+          "direction": false,
+          "indication": false,
+          "strategy": false,
+          "coordination": false,
+          "range": false
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.7526954688453457,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 0,
+        "wins": 0,
+        "positiveRate": null,
+        "pf": null,
+        "pfState": "empty",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -12.615323157025053,
+      "equityEnd": 9958.114014085282,
+      "peakEquityDrawdown": 0.006295623331507993,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "config-r26-s5",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 2.6,
+        "steps": 5,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": false,
+          "symbol": false,
+          "direction": false,
+          "indication": false,
+          "strategy": false,
+          "coordination": false,
+          "range": false
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.7526954688453457,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 0,
+        "wins": 0,
+        "positiveRate": null,
+        "pf": null,
+        "pfState": "empty",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -12.615323157025053,
+      "equityEnd": 9958.114014085282,
+      "peakEquityDrawdown": 0.006295623331507993,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "overall-r02-s2",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 2,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": false,
+          "overall": true,
+          "symbol": false,
+          "direction": false,
+          "indication": false,
+          "strategy": false,
+          "coordination": false,
+          "range": false
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.6569511258843433,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 1224,
+        "wins": 205,
+        "positiveRate": 0.16748366013071894,
+        "pf": 0.0995180745300827,
+        "pfState": "ratio",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -20.733004393347983,
+      "equityEnd": 9944.619326672264,
+      "peakEquityDrawdown": 0.007808492069450953,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "overall-r02-s3",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 3,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": false,
+          "overall": true,
+          "symbol": false,
+          "direction": false,
+          "indication": false,
+          "strategy": false,
+          "coordination": false,
+          "range": false
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.630351763989145,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 592,
+        "wins": 72,
+        "positiveRate": 0.12162162162162163,
+        "pf": 0.04645626877752678,
+        "pfState": "ratio",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -23.358328644727663,
+      "equityEnd": 9941.418532528523,
+      "peakEquityDrawdown": 0.008145055956935723,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "overall-r02-s4",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 4,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": false,
+          "overall": true,
+          "symbol": false,
+          "direction": false,
+          "indication": false,
+          "strategy": false,
+          "coordination": false,
+          "range": false
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.610811743173786,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 304,
+        "wins": 11,
+        "positiveRate": 0.03618421052631579,
+        "pf": 0.0023942861206809824,
+        "pfState": "ratio",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -25.382910824356316,
+      "equityEnd": 9939.393950348895,
+      "peakEquityDrawdown": 0.00834725318319914,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "overall-r02-s5",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 5,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": false,
+          "overall": true,
+          "symbol": false,
+          "direction": false,
+          "indication": false,
+          "strategy": false,
+          "coordination": false,
+          "range": false
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.610811743173786,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 0,
+        "wins": 0,
+        "positiveRate": null,
+        "pf": null,
+        "pfState": "empty",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -25.382910824356316,
+      "equityEnd": 9939.393950348895,
+      "peakEquityDrawdown": 0.00834725318319914,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "overall-r02-s10",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 10,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": false,
+          "overall": true,
+          "symbol": false,
+          "direction": false,
+          "indication": false,
+          "strategy": false,
+          "coordination": false,
+          "range": false
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.610811743173786,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 0,
+        "wins": 0,
+        "positiveRate": null,
+        "pf": null,
+        "pfState": "empty",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -25.382910824356316,
+      "equityEnd": 9939.393950348895,
+      "peakEquityDrawdown": 0.00834725318319914,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "additive-all-r02-s2",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 2,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": true,
+          "symbol": true,
+          "direction": true,
+          "indication": true,
+          "strategy": true,
+          "coordination": true,
+          "range": true
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.4853478836952088,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 3451,
+        "wins": 1400,
+        "positiveRate": 0.4056795131845842,
+        "pf": 0.3072933142707513,
+        "pfState": "ratio",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -53.715372846680566,
+      "equityEnd": 9893.076831977975,
+      "peakEquityDrawdown": 0.01376891688129783,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "additive-all-r02-s3",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 3,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": true,
+          "symbol": true,
+          "direction": true,
+          "indication": true,
+          "strategy": true,
+          "coordination": true,
+          "range": true
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.4459080910905834,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 1803,
+        "wins": 458,
+        "positiveRate": 0.2540210759844703,
+        "pf": 0.1466976147509598,
+        "pfState": "ratio",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -64.71082045949784,
+      "equityEnd": 9879.60235409673,
+      "peakEquityDrawdown": 0.015248520730963062,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "additive-all-r02-s4",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 4,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": true,
+          "symbol": true,
+          "direction": true,
+          "indication": true,
+          "strategy": true,
+          "coordination": true,
+          "range": true
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.41062866506235673,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 1162,
+        "wins": 113,
+        "positiveRate": 0.0972461273666093,
+        "pf": 0.03990812429047084,
+        "pfState": "ratio",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -75.19916797884332,
+      "equityEnd": 9867.438764937697,
+      "peakEquityDrawdown": 0.01650795495316411,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "additive-all-r02-s5",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 5,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": true,
+          "symbol": true,
+          "direction": true,
+          "indication": true,
+          "strategy": true,
+          "coordination": true,
+          "range": true
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.4105568048883726,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 6,
+        "wins": 0,
+        "positiveRate": 0,
+        "pf": 0,
+        "pfState": "ratio",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -75.2215005658984,
+      "equityEnd": 9866.972785017366,
+      "peakEquityDrawdown": 0.016570992269653015,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "additive-all-r02-s10",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 10,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": true,
+          "symbol": true,
+          "direction": true,
+          "indication": true,
+          "strategy": true,
+          "coordination": true,
+          "range": true
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.4105568048883726,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 0,
+        "wins": 0,
+        "positiveRate": null,
+        "pf": null,
+        "pfState": "empty",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -75.2215005658984,
+      "equityEnd": 9866.972785017366,
+      "peakEquityDrawdown": 0.016570992269653015,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "additive-all-r06-s5",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.6,
+        "steps": 5,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": true,
+          "symbol": true,
+          "direction": true,
+          "indication": true,
+          "strategy": true,
+          "coordination": true,
+          "range": true
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.23917533318107276,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 6,
+        "wins": 0,
+        "positiveRate": 0,
+        "pf": 0,
+        "pfState": "ratio",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -284.82410876334893,
+      "equityEnd": 9577.457053750426,
+      "peakEquityDrawdown": 0.04879828567471933,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "additive-all-r26-s5",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 2.6,
+        "steps": 5,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": true,
+          "symbol": true,
+          "direction": true,
+          "indication": true,
+          "strategy": true,
+          "coordination": true,
+          "range": true
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.10866283293271202,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 6,
+        "wins": 0,
+        "positiveRate": 0,
+        "pf": 0,
+        "pfState": "ratio",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -4857.007542552197,
+      "equityEnd": 3664.2357771546303,
+      "peakEquityDrawdown": 0.6777195810812509,
+      "marginOverMinutes": 495
+    },
+    {
+      "arm": "shared-all-r02-s5",
+      "settings": {
+        "enabled": true,
+        "mode": "shared",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 5,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": true,
+          "symbol": true,
+          "direction": true,
+          "indication": true,
+          "strategy": true,
+          "coordination": true,
+          "range": true
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.6985913332004976,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 6,
+        "wins": 0,
+        "positiveRate": 0,
+        "pf": 0,
+        "pfState": "ratio",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -17.391371524536225,
+      "equityEnd": 9950.322729044006,
+      "peakEquityDrawdown": 0.00713909651711368,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "config-active2-r02-s5",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": false,
+        "ratio": 0.2,
+        "steps": 5,
+        "activeStep": 2,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": false,
+          "symbol": false,
+          "direction": false,
+          "indication": false,
+          "strategy": false,
+          "coordination": false,
+          "range": false
+        }
+      },
+      "settledUnitPf": 0.7526954688453649,
+      "modeledSizedDollarPf": 0.7526954688453457,
+      "positiveRate": 0.5445086705202312,
+      "opened": 9784,
+      "settled": 7785,
+      "held": 1999,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": {
+        "n": 0,
+        "wins": 0,
+        "positiveRate": null,
+        "pf": null,
+        "pfState": "empty",
+        "unknown": 0
+      },
+      "shadowCloses": 0,
+      "netDollars": -12.615323157025053,
+      "equityEnd": 9958.114014085282,
+      "peakEquityDrawdown": 0.006295623331507993,
+      "marginOverMinutes": 0
+    },
+    {
+      "arm": "auto-all",
+      "settings": {
+        "enabled": true,
+        "mode": "additive",
+        "auto": true,
+        "ratio": 2.6,
+        "steps": 5,
+        "activeStep": 0,
+        "minPf": 1.5,
+        "lastN": 250,
+        "minTrades": 60,
+        "maxStack": 250,
+        "sources": {
+          "config": true,
+          "overall": true,
+          "symbol": true,
+          "direction": true,
+          "indication": true,
+          "strategy": true,
+          "coordination": true,
+          "range": true
+        }
+      },
+      "settledUnitPf": 0.5684147003131648,
+      "modeledSizedDollarPf": 0.3056421567084626,
+      "positiveRate": 0.4963002114164905,
+      "opened": 7150,
+      "settled": 5676,
+      "held": 1474,
+      "positions": {
+        "opened": 71,
+        "closed": 59,
+        "held": 12
+      },
+      "highestStep": null,
+      "shadowCloses": 2109,
+      "netDollars": -74.13069604969787,
+      "equityEnd": 9887.191899158544,
+      "peakEquityDrawdown": 0.013791528193202219,
+      "marginOverMinutes": 0
+    }
+  ],
+  "signals": [
+    {
+      "scope": "48-hour hold, two sources",
+      "lastN": 4,
+      "guardLastN": 4,
+      "configuredTapes": 64,
+      "active": 0,
+      "candidates": 125,
+      "inactive": 125,
+      "settled": 0,
+      "pf": null
+    },
+    {
+      "scope": "48-hour hold, two sources",
+      "lastN": 6,
+      "guardLastN": 4,
+      "configuredTapes": 64,
+      "active": 0,
+      "candidates": 125,
+      "inactive": 125,
+      "settled": 0,
+      "pf": null
+    },
+    {
+      "scope": "one-hour hold, three sources",
+      "lastN": 4,
+      "guardLastN": 4,
+      "configuredTapes": 96,
+      "active": 0,
+      "candidates": 322,
+      "inactive": 322,
+      "settled": 0,
+      "pf": null
+    },
+    {
+      "scope": "one-hour hold, three sources",
+      "lastN": 6,
+      "guardLastN": 4,
+      "configuredTapes": 96,
+      "active": 0,
+      "candidates": 322,
+      "inactive": 322,
+      "settled": 0,
+      "pf": null
+    }
+  ]
+}

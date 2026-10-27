@@ -1,0 +1,168 @@
+{
+  "settings": {
+    "symbols": 12,
+    "forceSymbols": [
+      "BTC-USDT",
+      "ETH-USDT",
+      "SOL-USDT",
+      "XRP-USDT",
+      "BNB-USDT",
+      "DOGE-USDT",
+      "ADA-USDT",
+      "TRX-USDT",
+      "LINK-USDT",
+      "AVAX-USDT",
+      "SUI-USDT",
+      "LTC-USDT"
+    ],
+    "symbolRank": "market",
+    "focus": [
+      "follow|micro-1-drawdown-turn-fast",
+      "follow|micro-1-drawdown-trend-fast",
+      "follow|micro-1-range-reclaim-fast",
+      "follow|micro-1-impulse-retest-fast",
+      "follow|inverse-known-ema-9-21",
+      "follow|inverse-turn-ema-9-21"
+    ],
+    "pinned": [],
+    "tfs": [
+      1
+    ],
+    "tfMin": 1,
+    "historyDays": 3,
+    "tfDays": {
+      "1": 3,
+      "5": 3,
+      "15": 3,
+      "30": 3
+    },
+    "grid": {
+      "trailingOnly": true,
+      "volumeFactor": 1,
+      "tp": [],
+      "slOfTp": [
+        1,
+        2
+      ],
+      "trailOfTp": [
+        0,
+        0.5
+      ],
+      "minTrail": 0.006,
+      "minSl": 0.01,
+      "holdH": [
+        4
+      ],
+      "trailStep": 1,
+      "trailFree": false,
+      "minimal": {
+        "volumeFactor": 1,
+        "tp": [
+          0.008,
+          0.012,
+          0.016
+        ],
+        "slOfTp": [
+          1.5,
+          2,
+          3
+        ],
+        "trailOfTp": [
+          0,
+          0.5
+        ],
+        "trailSlOfTp": 1,
+        "minSl": 0.006,
+        "minTrail": 0.003,
+        "minTf": 0,
+        "microInds": true
+      },
+      "short": false,
+      "general": false,
+      "long": false,
+      "micro": {
+        "volumeFactor": 1,
+        "tp": [
+          0.002,
+          0.004,
+          0.008
+        ],
+        "slOfTp": [
+          1,
+          2,
+          4
+        ],
+        "trailOfTp": [
+          0,
+          0.5
+        ],
+        "trailSlOfTp": 1,
+        "minSl": 0.005,
+        "minTrail": 0.001,
+        "tpNetOfCost": true,
+        "minSlNet": 0.002,
+        "minTf": 0
+      },
+      "minimalPlus": false,
+      "rangeGate": {
+        "enabled": true,
+        "lastN": 75,
+        "minPf": 1.35
+      },
+      "baseBest": true,
+      "rangeFit": {
+        "enabled": false
+      },
+      "baseTargets": true,
+      "baseRanges": true,
+      "baseTrailCells": false,
+      "allSets": false
+    },
+    "toggles": {
+      "normal": true,
+      "trailing": true,
+      "exit": false,
+      "block": false,
+      "blockActive": false,
+      "dca": false,
+      "dcaActive": false,
+      "axis": false
+    },
+    "signals": {
+      "enabled": false
+    },
+    "exitStrategy": {
+      "enabled": false
+    },
+    "relate": {
+      "enabled": false,
+      "mode": "additive",
+      "auto": true,
+      "ratio": 2.6,
+      "steps": 5,
+      "activeStep": 0,
+      "minPf": 1.5,
+      "lastN": 250,
+      "minTrades": 60,
+      "maxStack": 250,
+      "sources": {
+        "config": true,
+        "overall": true,
+        "symbol": true,
+        "direction": true,
+        "indication": true,
+        "strategy": true,
+        "coordination": true,
+        "range": true
+      }
+    },
+    "live": {
+      "enabled": false
+    }
+  },
+  "wf": {
+    "causalBase": true,
+    "longH": 24,
+    "recordValidation": true
+  }
+}

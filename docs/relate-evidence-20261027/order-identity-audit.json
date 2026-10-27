@@ -1,0 +1,912 @@
+{
+  "createdAt": "2026-10-27T16:17:59.013Z",
+  "scope": "23 overlapping modeled research arms; sums are repeated comparison observations, not independent executions or venue fills. Each arm is checked separately.",
+  "summary": {
+    "arms": 23,
+    "modeledOrderRecordsAcrossArms": 222398,
+    "exactDuplicateRows": 0,
+    "canonicalCollisions": 0,
+    "duplicateClosedEvents": 0,
+    "invalidRecords": 0,
+    "unknownSettledReturns": 0
+  },
+  "arms": [
+    {
+      "name": "additive-all-r02-s10",
+      "rawSha256": "a2d33730290a9a4719e6ce9eb68c6ab93279b92ffe2a461cc2b63edd4c1ff53f",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "additive-all-r02-s2",
+      "rawSha256": "123ad96e47e87927020919951e98c32caed6f38204558686860f48b577c179d1",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "additive-all-r02-s3",
+      "rawSha256": "488e77f3fdc804e33e8bafb8c6fb4fcfd8a7f0ee312814361696be6dabc72739",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "additive-all-r02-s4",
+      "rawSha256": "472f0ba718ac86ddc9779ed079c853312b8275e585ba1d0c643d70e6fa6adf59",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "additive-all-r02-s5",
+      "rawSha256": "ecb7d89a0a4cea50294dd47235818d0a5d518a3180516dcf157c4df87935148d",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "additive-all-r06-s5",
+      "rawSha256": "c1be3a90649b3ff712fcf84b2ee2f03313128bdd836b5884f77167ff07ac539d",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "additive-all-r26-s5",
+      "rawSha256": "5da36a016d9fa5d02244ed402d11dfb13e990aaa66f52e2c0985f596fa8d9610",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "auto-all",
+      "rawSha256": "88af716a37de50fd4cb16b368a9de5b471d8635b2fcbcbfb496fe0d63247b0db",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 7150,
+        "settledOrders": 5676,
+        "openOrders": 1474
+      },
+      "uniqueConfigurations": 572,
+      "ordersByKind": {
+        "trailing": 2921,
+        "normal": 4229
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 426,
+      "maxOrdersAtOneOnset": 82,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.5684147003131648,
+      "noLoss": false,
+      "grossProfit": 12.666319817294184,
+      "grossLoss": 22.283589446781985
+    },
+    {
+      "name": "config-active2-r02-s5",
+      "rawSha256": "aefb2021183a29b072f6bb5cfd23b058e4d9e6dc60a854cb240c24c78101a8f6",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "config-r02-s10",
+      "rawSha256": "dd523871928bb4383977b1d33cc67ced23a746d672a1c7bac5eca904d5f4bf3e",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "config-r02-s2",
+      "rawSha256": "16d46a5d56214346540d19ef0f929a1cd09e70aec136ce8167700602ea1b6007",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "config-r02-s3",
+      "rawSha256": "00d749a70da53a92304502b4ee93797b8fcdbdc78383e6dc17f78cbd74cd6ac1",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "config-r02-s4",
+      "rawSha256": "49fb461a9a698f9afa4b6db01ab9b5a4f344d48f5f5707fc38560329fac5806f",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "config-r02-s5",
+      "rawSha256": "2ec504d8f32412ab8358533b1b775d5734d508b90497ca142cbab57bb7369218",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "config-r06-s5",
+      "rawSha256": "ea52b75f768346802ddb2a6aac85c569a3fa3ac5ff6576b179660e5dec8f847a",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "config-r26-s5",
+      "rawSha256": "da26b7942ea58726e15857b30dbd06ebf7afdec44cea8726213201be2458b71a",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "off",
+      "rawSha256": "dbab119b1914b0cf2de8798788c340c195dca24f8ef8d091c544a615fd39cdaa",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "overall-r02-s10",
+      "rawSha256": "754650dfa499a91223253c277a6e16773099a5d9ff9c15c2ab713832a067b0c5",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "overall-r02-s2",
+      "rawSha256": "c6b2a871d77dfe2dce2345971b1695affec2a7b0e75e70dec3cd36cc27ec7b4f",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "overall-r02-s3",
+      "rawSha256": "375355d2a23b62003ef96a8c34f16f76a68a3f08f157d21175f3b1e7b712a767",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "overall-r02-s4",
+      "rawSha256": "0d41c9da022c8bd354b8a27c152ef729f85a83c30e0e6c5078b83b16089fa8a3",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "overall-r02-s5",
+      "rawSha256": "8c317181f323599f48f5a244b3bd970a1cc9a841470662c2501ef2c1a9921b16",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    },
+    {
+      "name": "shared-all-r02-s5",
+      "rawSha256": "47cb561be0d4b9da357b7ac58def4f858bc0fbebb7029c087b665483c6bfc292",
+      "scope": "modeled whole-order records; not exchange fills",
+      "ok": true,
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "uniqueConfigurations": 574,
+      "ordersByKind": {
+        "trailing": 4461,
+        "normal": 5323
+      },
+      "exactEntryDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "canonicalEntryCollisions": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "exactClosedEventDuplicates": {
+        "groups": 0,
+        "extraRows": 0
+      },
+      "simultaneousOnsetGroups": 552,
+      "maxOrdersAtOneOnset": 106,
+      "invalidRecords": 0,
+      "unknownSettledReturns": 0,
+      "settledReturnPf": 0.7526954688453649,
+      "noLoss": false,
+      "grossProfit": 19.197983421449337,
+      "grossLoss": 25.50564499996134
+    }
+  ]
+}

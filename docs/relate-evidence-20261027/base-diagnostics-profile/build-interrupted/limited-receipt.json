@@ -1,0 +1,9 @@
+{
+  "sourceCommit": "02ad0ae",
+  "startedAt": "2026-10-27T17:52:23.370Z",
+  "endedAt": "2026-10-27T17:52:34.394Z",
+  "code": null,
+  "signal": "SIGTERM",
+  "reason": "stopped to preserve demo-control memory headroom",
+  "peakCgroupBytes": 5807542272
+}

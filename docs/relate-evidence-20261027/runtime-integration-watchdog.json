@@ -1,0 +1,13 @@
+{
+  "sourceCommit": "11451de",
+  "files": [
+    "src/core/server/fast-entries.test.ts",
+    "src/core/server/cycle-incremental.test.ts"
+  ],
+  "startedAt": "2026-10-27T17:07:18.151Z",
+  "endedAt": "2026-10-27T17:07:49.427Z",
+  "code": 0,
+  "signal": null,
+  "reason": null,
+  "peakCgroupBytes": 4646703104
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "id": "unlimited",
+    "file": "unlimited.json.gz",
+    "bytes": 445262,
+    "sha256": "90f605cc04d55ca9cbf9835cb1274d7c20820899072bdc440fa3373bebaaed31"
+  },
+  {
+    "id": "last-15",
+    "file": "last-15.json.gz",
+    "bytes": 445244,
+    "sha256": "e42ebae036e6b0387fd48a4a2b0bca919270143fff76fbd94a3df460fcc8a452"
+  },
+  {
+    "id": "last-25",
+    "file": "last-25.json.gz",
+    "bytes": 442058,
+    "sha256": "20d15f645edde2966aefc8403c1b849d862b56320ba4ad7a053c19f7a302e3ca"
+  },
+  {
+    "id": "per-symbol-5",
+    "file": "per-symbol-5.json.gz",
+    "bytes": 348125,
+    "sha256": "8e69c7168e7d2407d4b3eb7b67c1e99243d99f25bb82fd5030d4baa0b4934c83"
+  },
+  {
+    "id": "per-symbol-20",
+    "file": "per-symbol-20.json.gz",
+    "bytes": 365654,
+    "sha256": "36b14f68bbc8e3cff024d95e02d705c502baa2724dcbe7a958802e890ba519f0"
+  },
+  {
+    "id": "per-symbol-50",
+    "file": "per-symbol-50.json.gz",
+    "bytes": 387302,
+    "sha256": "501321a14b067fe40fcbc0edadde2d2f3c267208197a8813122bdeb1de7f9778"
+  },
+  {
+    "id": "last-15-per-symbol-20",
+    "file": "last-15-per-symbol-20.json.gz",
+    "bytes": 365666,
+    "sha256": "c568de3b5da6afcb9db5cb18f2c9b4da4289d47656db40f8f6eedf4c2eac1407"
+  }
+]

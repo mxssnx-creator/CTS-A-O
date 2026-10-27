@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { studySha256, studyExactJson, validateFrozenSessionRuntime, validateFrozenSessionResult, validateFrozenSessionBook } from "./session-study.mjs";
+import { studySha256, studyExactJson, studyWithRequestedWindow, validateFrozenSessionRuntime, validateFrozenSessionResult, validateFrozenSessionBook } from "./session-study.mjs";
 
 function fixture(fn) {
   const root = mkdtempSync(join(tmpdir(), "cts-frozen-session-"));
@@ -20,6 +20,10 @@ function fixture(fn) {
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 describe("frozen full-engine session study", () => {
+  it("keeps requested replay hours when desk snapshots contain stale windows", () => {
+    const wf = studyWithRequestedWindow({ preH: 24, simH: 12, longH: 100, causalBase: true }, 150, 24);
+    assert.deepEqual(wf, { preH: 150, simH: 24, longH: 100, causalBase: true });
+  });
   it("rejects report sizing at preflight instead of wasting a complete history calculation", () => {
     const account = { balance: 10, leverage: 10, sizing: { mode: "equityPct", pct: .001 } };
     assert.doesNotThrow(() => validateFrozenSessionBook({ ...account, notional: 5 }, account));
@@ -42,6 +46,12 @@ describe("frozen full-engine session study", () => {
     rt.settings.cost=0.002; assert.throws(()=>validateFrozenSessionRuntime(rt,file,feed,0,p.window.endT,root),/settings differ/); rt.settings.cost=0.0015;
     assert.throws(()=>validateFrozenSessionRuntime(rt,file,feed,1,p.window.endT,root),/time boundary/);
     writeFileSync(feed,"different candles"); assert.throws(()=>validateFrozenSessionRuntime(rt,file,feed,0,p.window.endT,root),/feed differs/);
+  }));
+  it("rejects a protocol whose walk-forward hours do not match its sealed timestamps", () => fixture(({root,file,p,rt,feed}) => {
+    p.actualWf.simH = 12; writeFileSync(file, JSON.stringify(p));
+    assert.throws(() => validateFrozenSessionRuntime(rt,file,feed,p.window.evaluationFromT,p.window.endT,root), /walk-forward window differs/);
+    p.actualWf.simH = p.window.runH; p.actualWf.preH = 5; writeFileSync(file, JSON.stringify(p));
+    assert.throws(() => validateFrozenSessionRuntime(rt,file,feed,p.window.evaluationFromT,p.window.endT,root), /walk-forward window differs/);
   }));
   it("rejects an incomplete symbol universe and memory fallback rather than calling them a full test", () => fixture(({root,file,raw}) => {
     raw.engine.universe.pop(); assert.throws(()=>validateFrozenSessionResult(raw,file,root),/exact frozen symbol/); raw.engine.universe=["A-USDT","B-USDT"];

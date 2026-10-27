@@ -1,0 +1,21 @@
+[profile-clock] {"pid":13,"threadId":0,"isMainThread":true,"epochOffsetMs":1793103987831.031}
+[profile-clock] {"pid":20,"threadId":0,"isMainThread":true,"epochOffsetMs":1793103987831.0112}
+
+Interrupted while running:
+
+⚠ src/core/processing.test.ts (src/core/processing.test.ts:1:1)
+✖ src/core/processing.test.ts (94507.975311ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 0
+ℹ cancelled 1
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 94515.294128
+
+✖ failing tests:
+
+test at src/core/processing.test.ts:1:1
+✖ src/core/processing.test.ts (94507.975311ms)
+  'Promise resolution is still pending but the event loop has already resolved'

@@ -6,6 +6,7 @@ import { BaseConfigCounts } from "../base-config-counts";
 import { unitStatsPfText } from "../accounting";
 import { pooledBasePfText } from "../progression";
 import { PromotionEvidence } from "../promotion-evidence";
+import { StrategyCoverageTable } from "../strategy-coverage";
 import {
   Empty,
   ErrorNote,
@@ -105,6 +106,10 @@ export function StagesPage() {
       </Panel>
 
       <PromotionEvidence status={d.status?.livePromotion} />
+
+      <Panel title="Strategy tape coverage" sub="Last completed research cohort, independent of the stage currently displayed">
+        <StrategyCoverageTable coverage={d.status?.strategyCoverage} />
+      </Panel>
 
       <Panel
         title="Historic Exit sets"

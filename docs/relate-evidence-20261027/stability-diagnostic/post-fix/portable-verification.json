@@ -1,0 +1,20 @@
+{
+  "scope": "modeled whole orders, price paths, recorded hourly selections and reported returns; not venue fills or per-entry Last-N proof",
+  "results": [
+    {
+      "id": "unlimited",
+      "sha256": "00b27ecd0890abb53084dc6de63ef5dd3d853dcf149a2dac6a22e7ae80e0d54b",
+      "counts": {
+        "openedPositions": 71,
+        "closedPositions": 59,
+        "openPositions": 12,
+        "openedOrders": 9784,
+        "settledOrders": 7785,
+        "openOrders": 1999
+      },
+      "settledPf": 0.7526954688453649,
+      "priceAndSelectionAudit": true,
+      "maxReturnError": 1.0231815376210429e-7
+    }
+  ]
+}

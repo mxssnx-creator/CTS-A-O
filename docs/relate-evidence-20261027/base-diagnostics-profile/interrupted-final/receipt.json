@@ -1,0 +1,10 @@
+{
+  "sourceCommit": "02ad0ae",
+  "runtimePatch": "isolated 500ms probe threshold; test log includes three phase timers",
+  "startedAt": "2026-10-27T17:46:07.629Z",
+  "endedAt": "2026-10-27T17:47:47.776Z",
+  "code": 1,
+  "signal": null,
+  "reason": "stopped to preserve demo-control memory headroom",
+  "peakCgroupBytes": 5847375872
+}

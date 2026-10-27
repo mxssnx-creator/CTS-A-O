@@ -1,0 +1,9 @@
+{
+  "startedAt": "2026-10-27T17:30:01.278Z",
+  "endedAt": "2026-10-27T17:32:37.376Z",
+  "sourceCommit": "38c9c7d with isolated 500ms probe threshold",
+  "code": 0,
+  "signal": null,
+  "reason": null,
+  "peakCgroupBytes": 5336719360
+}

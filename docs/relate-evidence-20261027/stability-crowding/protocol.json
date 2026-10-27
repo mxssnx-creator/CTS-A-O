@@ -1,0 +1,24 @@
+{
+  "createdAt": "2026-10-27T16:40:00Z",
+  "classification": "Post-hoc causal replay on an already examined window; not a fresh holdout, venue result, or candidate promotion",
+  "sourceCommit": "704fcf8b08644f98986d47e318abc26b8a20dc12",
+  "feed": "docs/relate-evidence-20261027/reproduction-feed.json.gz",
+  "feedSha256": "e0a687b8f1799201cfa8a062ef54555271bbfb9248c34b5d1814273222a7b3bb",
+  "desk": "docs/relate-evidence-20261027/desk-reduced.json",
+  "deskSha256": "0514856b61d1e8362b4d8fc38d0042756953699d512498fd1d4ad98adc609ecf",
+  "symbols": 12,
+  "evaluationFrom": "2026-10-25T13:00:00Z",
+  "start": "2026-10-26T13:00:00Z",
+  "end": "2026-10-27T13:00:00Z",
+  "prehistoryHours": 24,
+  "selectionHours": 24,
+  "mode": "existing causal Real admission; account funding caps off; normal and trailing only; Relate off",
+  "cases": [
+    { "id": "unlimited", "wf": { "lastN": 0 } },
+    { "id": "crowd-5", "wf": { "lastN": 0, "entryCrowd": { "mc": 5, "mn": 5 } } },
+    { "id": "crowd-10", "wf": { "lastN": 0, "entryCrowd": { "mc": 10, "mn": 10 } } },
+    { "id": "crowd-20", "wf": { "lastN": 0, "entryCrowd": { "mc": 20, "mn": 20 } } },
+    { "id": "crowd-10-last-25", "wf": { "lastN": 25, "entryCrowd": { "mc": 10, "mn": 10 } } }
+  ],
+  "comparisons": "Entry crowding caps same-range, symbol, side and onset; different times remain independent. Report every case, losses and skipped counts. No saved/live settings change."
+}

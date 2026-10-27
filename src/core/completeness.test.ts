@@ -365,6 +365,14 @@ const CASES: Record<string, Case> = {
   "signals.sideAccept.minPf": num(1, 5),
   "signals.sideAccept.hours": num(6, 336, { int: true }),
   "signals.sideAccept.minTrades": num(1, 1000, { int: true }),
+  "relate.mode": oneOf(["shared", "additive"]),
+  "relate.ratio": { ...num(0.2, 6, { also: [0.4, 2.6, 5.8], bad: [0.3, 1.1] }) },
+  "relate.steps": num(2, 15, { int: true }),
+  "relate.activeStep": { ...num(0, 6, { int: true }), with: [["relate.steps", 15]] },
+  "relate.minPf": num(0, 100),
+  "relate.lastN": num(60, 250, { int: true }),
+  "relate.minTrades": num(60, 250, { int: true }),
+  "relate.maxStack": num(1, 250, { int: true }),
 };
 
 /**

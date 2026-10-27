@@ -140,7 +140,7 @@ describe("Signal history, bounded trailing and exact-context progression", () =>
         });
 });
 
-for (const hours of [100, 336]) for (const worker of [false, true])
+for (const hours of [100, 150, 336]) for (const worker of [false, true])
 it(`${worker ? "worker" : "local"} runtime Signal tapes retain their independent ${hours}h history beside the 24h engine`, async () => {
   const { CoreRuntime } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");

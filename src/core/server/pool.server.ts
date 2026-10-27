@@ -339,6 +339,11 @@ export function isWorkersAbort(err: unknown): boolean {
   return (err as { workersAborted?: unknown } | null)?.workersAborted === true;
 }
 
+/** A timed-out worker must not be confused with a compute completed in-process. */
+export function isWorkerTimeout(err: unknown): boolean {
+  return (err as { code?: unknown } | null)?.code === "CTS_WORKER_TIMEOUT";
+}
+
 /** Release every worker now (tests, shutdown). */
 export async function closePool() {
   const p = pool();
@@ -374,13 +379,19 @@ export async function runOnWorkers<R>(
   owner?: object,
   /** Consume each completed reply before retaining it or requesting another part (bounded history storage). */
   consume?: (reply: R, index: number, signal: AbortSignal) => R | Promise<R>,
+  /** Optional per-part hard deadline; advancing progress refreshes the ordinary inactivity timeout only. */
+  progressDeadlineMs?: number,
 ): Promise<R[]> {
   signal?.throwIfAborted();
   if (owner !== undefined) validateOwner(owner);
+  if (progressDeadlineMs !== undefined &&
+      !(Number.isFinite(timeoutMs) && timeoutMs > 0 && Number.isFinite(progressDeadlineMs) &&
+        progressDeadlineMs > timeoutMs && progressDeadlineMs <= 2_147_483_647))
+    throw new RangeError("Worker progress deadline must be finite and longer than its positive timeout");
   activity.inFlight++;
   activity.at = Date.now();
   try {
-    return await runOnWorkersNow<R>(messages, size, timeoutMs, onProgress, priority, signal, owner, consume);
+    return await runOnWorkersNow<R>(messages, size, timeoutMs, onProgress, priority, signal, owner, consume, progressDeadlineMs);
   } finally {
     activity.inFlight--;
     activity.at = Date.now();
@@ -402,6 +413,7 @@ async function runOnWorkersNow<R>(
   signal?: AbortSignal,
   owner: object = {},
   consume?: (reply: R, index: number, signal: AbortSignal) => R | Promise<R>,
+  progressDeadlineMs?: number,
 ): Promise<R[]> {
   signal?.throwIfAborted();
   const p = pool();
@@ -448,11 +460,13 @@ async function runOnWorkersNow<R>(
         const activeSlot = slot;
         const w = activeSlot.w;
         const reply = await new Promise<R>((resolve, reject) => {
-          const timer = setTimeout(() => {
+          const timeout = () => {
             cleanup();
             stopOwned(activeSlot);
-            reject(new Error("worker timed out"));
-          }, timeoutMs);
+            reject(Object.assign(new Error("worker timed out"), { code: "CTS_WORKER_TIMEOUT" }));
+          };
+          const timer = setTimeout(timeout, timeoutMs);
+          const hardTimer = progressDeadlineMs === undefined ? undefined : setTimeout(timeout, progressDeadlineMs);
           const onMsg = (
             m: {
               ok?: boolean;
@@ -465,13 +479,16 @@ async function runOnWorkersNow<R>(
             if (failed) return cancel(failed);
             // progress posts keep the watchdog alive and move the desk bar; they are not the reply
             if (m.ok == null && typeof m.progress === "number") {
+              if (typeof m.id === "number" && m.id !== i) return;
               activity.at = Date.now();
               const id = typeof m.id === "number" ? m.id : i;
-              // never backwards for one message (a late post after its reply, or a smaller count)
-              frac.set(
-                id,
-                Math.max(frac.get(id) ?? 0, m.total ? Math.min(1, m.progress / m.total) : 0),
-              );
+              // A finite hard deadline still applies even when progress keeps increasing. Repeated or invalid
+              // heartbeats do not extend the inactivity deadline.
+              const previous = frac.get(id) ?? 0;
+              const next = m.total && Number.isFinite(m.total) && m.total > 0 && Number.isFinite(m.progress)
+                ? Math.max(0, Math.min(1, m.progress / m.total)) : 0;
+              if (progressDeadlineMs !== undefined && id === i && next > previous) timer.refresh();
+              frac.set(id, Math.max(previous, next));
               if (messages.length) progress(sumOf(frac) / messages.length);
               return;
             }
@@ -498,6 +515,7 @@ async function runOnWorkersNow<R>(
           };
           const cleanup = () => {
             clearTimeout(timer);
+            if (hardTimer) clearTimeout(hardTimer);
             w.off("message", onMsg);
             w.off("error", onErr);
             w.off("exit", onExit);

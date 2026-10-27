@@ -1,0 +1,32 @@
+[
+  {
+    "id": "unlimited",
+    "file": "unlimited.json.gz",
+    "bytes": 445254,
+    "sha256": "ce3355d8928a07f6953f4639100179c299c937193bcb5944ed79cf7e8f5b8d6a"
+  },
+  {
+    "id": "crowd-5",
+    "file": "crowd-5.json.gz",
+    "bytes": 400127,
+    "sha256": "71ad410152289d371d8599db48c1afe60c0c53bf847991465683e71e6071cd39"
+  },
+  {
+    "id": "crowd-10",
+    "file": "crowd-10.json.gz",
+    "bytes": 420697,
+    "sha256": "bc0cf25a0644ef41b79eef69f6e404b714415948c673c2a3968f6322198ef6c9"
+  },
+  {
+    "id": "crowd-20",
+    "file": "crowd-20.json.gz",
+    "bytes": 438014,
+    "sha256": "162da7324ebe413ecb05686fd932838e67ecab566b169c651f78a94f23913169"
+  },
+  {
+    "id": "crowd-10-last-25",
+    "file": "crowd-10-last-25.json.gz",
+    "bytes": 418842,
+    "sha256": "1a1dc20e68b15a7323c6ce8b2d075f9e66c315637d274ba6dc287057dfa06082"
+  }
+]

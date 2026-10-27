@@ -15,6 +15,10 @@ export function studyCanonical(value) {
   return value;
 }
 export const studyExactJson = (value) => JSON.stringify(studyCanonical(value));
+/** The run's requested boundaries always win over a desk snapshot's stale WF hours. */
+export function studyWithRequestedWindow(wf, preH, simH) {
+  return { ...wf, preH, simH };
+}
 
 /** Seal economic source and the common report instrumentation separately for each arm. */
 export function sessionStudySourceFiles(root = defaultRoot) {
@@ -30,6 +34,8 @@ export function readSessionStudy(protocolPath, root = defaultRoot) {
     throw new Error("Invalid frozen session study windows");
   if (!p.feed?.sha256 || !p.actualSettings || !p.actualWf || !Array.isArray(p.source?.files) || !p.source.files.length || studySha256(studyExactJson(p.source.files)) !== p.source.sha256)
     throw new Error("Missing frozen session settings/feed/source seal");
+  if (p.actualWf.preH !== p.window.preH || p.actualWf.simH !== p.window.runH)
+    throw new Error("Frozen session walk-forward window differs from protocol window");
   for (const f of p.source.files) {
     const file = resolve(root, f.path);
     if (!file.startsWith(root + sep) || studySha256(readFileSync(file)) !== f.sha256)

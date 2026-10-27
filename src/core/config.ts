@@ -8,6 +8,7 @@ import type {
   Gates,
   Protect,
   ProtectGridSpec,
+  RelateAdjustmentConfig,
   StrategyToggles,
   Tactics,
 } from "./domain/types.ts";
@@ -170,6 +171,29 @@ export const GRID_VARIANTS_MAX = 100_000;
 
 /** Two additions at 1% and 2% from original entry; a requested default, not a proven optimum. */
 export const DEFAULT_DCA: DcaConfig = { levels: 2, addRatio: 2.5, step: 0.01, maxDistance: 0.02, stopGap: 0.5, slOfTp: 1 };
+/** Post-Base volume adjustment. Auto evaluation is ready by default; execution stays explicitly off. */
+export const DEFAULT_RELATE_ADJUSTMENT: RelateAdjustmentConfig = {
+  enabled: false,
+  mode: "additive",
+  auto: true,
+  ratio: 2.6,
+  steps: 5,
+  activeStep: 0,
+  minPf: 1.5,
+  lastN: 250,
+  minTrades: 60,
+  maxStack: 250,
+  sources: {
+    config: true,
+    overall: true,
+    symbol: true,
+    direction: true,
+    indication: true,
+    strategy: true,
+    coordination: true,
+    range: true,
+  },
+};
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
 export const DEFAULT_AXIS: AxisConfig = {
   volumeFactor: 1,
@@ -315,6 +339,7 @@ export interface CoreSettings {
   disabledKinds: string[];
   block: BlockConfig;
   dca: DcaConfig;
+  relate: RelateAdjustmentConfig;
   axis: AxisConfig;
   /** independent protect variants computed in Base */
   grid: ProtectGridSpec;
@@ -748,6 +773,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   disabledKinds: [],
   block: DEFAULT_BLOCK,
   dca: DEFAULT_DCA,
+  relate: DEFAULT_RELATE_ADJUSTMENT,
   axis: DEFAULT_AXIS,
   // Evidence (docs/research-*.md, 90 days, holdout): wider targets and SL 2–2.5 × TP scored best; min SL / min trail
   // distances were neutral; trailing slightly worse than none, so it stays one variant among others.

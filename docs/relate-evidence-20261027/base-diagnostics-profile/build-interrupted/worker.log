@@ -1,0 +1,6 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> build:core-worker
+> node scripts/build-core-worker.mjs
+
+[core-worker] No built Nitro Node server entry found; build the application before packaging its core worker.

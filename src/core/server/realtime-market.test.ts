@@ -107,6 +107,132 @@ describe("realtime market loop", () => {
     rt.stop();
   });
 
+  it("keeps an incomplete live batch current during its compute, but never advances a replay", async () => {
+    for (const replay of [false, true]) {
+      const now = Math.floor(Date.now() / M) * M;
+      let calls = 0;
+      const feed: Partial<MarketFeed> = {
+        tickers: async () => [{ sym: "AAA-USDT", last: 1, quoteVol: 1e9, changePct: 0 }],
+        klines: async (_sym, _tf, o) => {
+          calls++;
+          await new Promise((r) => setTimeout(r, 25));
+          const out = [];
+          for (let t = (o?.startT ?? 0) - 1 + M; t <= now - 2 * M; t += M)
+            out.push({ t, o: 1, h: 1, l: 1, c: 1, v: 1 });
+          return out;
+        },
+      };
+      const db = new CoreDb(":memory:");
+      const rt = new CoreRuntime(db, { symbols: 5, cycleMs: 250 } as never,
+        { market: "bingx", replay, priceStream: null, feed });
+      const R = rt as unknown as {
+        busy: boolean; backfillKey: string; prehistPending: boolean; barsPending: boolean; resetUniverse: boolean;
+        candles: Map<string, CandleSeries>;
+      };
+      const before = CandleSeries.fromCandles(Array.from({ length: 50 }, (_, i) =>
+        ({ t: now - (56 - i) * M, o: 1, h: 1, l: 1, c: 1, v: 1 })), 50, 64);
+      R.candles.set("AAA-USDT", before);
+      rt.status.source = "bingx"; rt.status.state = "computing"; R.busy = true;
+      R.backfillKey = replay ? "complete" : "";
+      R.prehistPending = !replay;
+      try {
+        R.resetUniverse = true;
+        await rt.tick();
+        assert.equal(calls, 0, "a changing universe cannot start a pull");
+        R.resetUniverse = false;
+        rt.status.state = "backfill";
+        await rt.tick();
+        assert.equal(calls, 0, "backfill itself cannot start a realtime pull");
+        rt.status.state = "computing";
+        await rt.tick(); await rt.tick();
+        await new Promise((r) => setTimeout(r, 120));
+        if (replay) {
+          assert.equal(calls, 0, "a historical replay cannot poll newer wall-clock bars");
+          assert.equal(R.candles.get("AAA-USDT"), before);
+        } else {
+          assert.equal(calls, 1, "an unfinished live batch pulls once while computing");
+          assert.equal(R.candles.get("AAA-USDT")!.lastT(), now - 2 * M);
+          assert.equal(before.lastT(), now - 7 * M, "the in-flight snapshot remains unchanged");
+          assert.equal(R.barsPending, true, "new bars are processed on the next cycle");
+        }
+      } finally { rt.dispose(); db.db.close(); }
+    }
+  });
+
+  it("discards an in-flight pull when its universe is reset or its symbol series is replaced", async () => {
+    for (const changed of ["resetting", "replaced"] as const) {
+      const now = Math.floor(Date.now() / M) * M;
+      let release: ((rows: Array<{ t: number; o: number; h: number; l: number; c: number; v: number }>) => void) | undefined;
+      const db = new CoreDb(":memory:");
+      const rt = new CoreRuntime(db, { symbols: 1, tfMin: 1 } as never, {
+        market: "bingx", priceStream: null,
+        feed: { klines: async () => new Promise((resolve) => { release = resolve; }), tickers: async () => [] },
+      });
+      const R = rt as unknown as { gen: number; resetUniverse: boolean; candles: Map<string, CandleSeries>;
+        pullNewBars(gen: number): Promise<number> };
+      const make = (step: number) => CandleSeries.fromCandles(Array.from({ length: 50 }, (_, i) =>
+        ({ t: now - (7 + (49 - i) * step) * M, o: 1, h: 1, l: 1, c: 1, v: 1 })));
+      const old = make(1);
+      R.candles.set("AAA-USDT", old);
+      try {
+        const pending = R.pullNewBars(R.gen);
+        assert.ok(release, "the original request started");
+        let expected = old;
+        if (changed === "resetting") R.resetUniverse = true;
+        else {
+          rt.updateSettings({ tfMin: 5 });
+          expected = make(5);
+          R.candles.set("AAA-USDT", expected);
+          R.resetUniverse = false;
+        }
+        release([{ t: now - 6 * M, o: 1, h: 1, l: 1, c: 1, v: 1 }]);
+        assert.equal(await pending, 0, changed);
+        assert.equal(R.candles.get("AAA-USDT"), expected, "old reply cannot change the current series");
+        assert.equal(expected.lastT(), now - 7 * M);
+      } finally { rt.dispose(); db.db.close(); }
+    }
+  });
+
+  it("refreshes 50 loaded symbols with bounded, nonoverlapping requests during a partial-batch compute", async () => {
+    const now = Math.floor(Date.now() / M) * M;
+    const syms = Array.from({ length: 50 }, (_, i) => `TEST${i}-USDT`);
+    const seen = new Map<string, number>();
+    let active = 0, maxActive = 0;
+    const db = new CoreDb(":memory:");
+    const rt = new CoreRuntime(db, { symbols: 50, cycleMs: 250 } as never, {
+      market: "bingx", priceStream: null,
+      feed: {
+        tickers: async () => [],
+        klines: async (sym) => {
+          seen.set(sym, (seen.get(sym) ?? 0) + 1);
+          active++; maxActive = Math.max(maxActive, active);
+          try {
+            await new Promise((r) => setTimeout(r, 1));
+            return [{ t: now - 6 * M, o: 1, h: 1, l: 1, c: 1, v: 1 }];
+          } finally { active--; }
+        },
+      },
+    });
+    const R = rt as unknown as { busy: boolean; backfillKey: string; prehistPending: boolean;
+      barsPending: boolean; pulling: Promise<number> | null; candles: Map<string, CandleSeries> };
+    for (const sym of syms) R.candles.set(sym, CandleSeries.fromCandles(Array.from({ length: 50 }, (_, i) =>
+      ({ t: now - (56 - i) * M, o: 1, h: 1, l: 1, c: 1, v: 1 }))));
+    rt.status.source = "bingx"; rt.status.state = "computing";
+    R.busy = true; R.backfillKey = ""; R.prehistPending = true;
+    try {
+      await rt.tick(); await rt.tick();
+      const pending = R.pulling;
+      assert.ok(pending, "the batch pull started");
+      assert.equal(await pending, 50);
+      await new Promise((r) => setImmediate(r));
+      assert.equal(seen.size, 50);
+      assert.ok([...seen.values()].every((n) => n === 1), "overlapping ticks did not duplicate requests");
+      assert.ok(maxActive <= 2, `at most two requests at once, got ${maxActive}`);
+      assert.ok(syms.every((sym) => R.candles.get(sym)?.lastT() === now - 6 * M));
+      assert.equal(R.barsPending, true);
+    } finally { rt.dispose(); db.db.close(); }
+  });
+
   it("a klines ban is held to the klines endpoint: the pull waits it out, the live step goes on", async () => {
     // x01, 14 Oct: the klines endpoint answered 100410 "请稍后重试" (no end, no endpoint) 7–13 times an hour; noted as
     // "*", every ban paused the whole live step for ~2 min

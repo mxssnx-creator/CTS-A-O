@@ -51,6 +51,21 @@ describe("stall probe", { skip: !linux && "Linux /proc only" }, () => {
     assert.equal(r!.verdict, "js");
   });
 
+  it("counts main-thread CPU from the heartbeat, not only after the probe threshold", async () => {
+    let consumed = 0;
+    const r = await probeOf(() => {
+      const start = process.threadCpuUsage(), t = Date.now();
+      let x = 0;
+      while (Date.now() - t < 1600) x += Math.sqrt(x + 1);
+      const used = process.threadCpuUsage(start);
+      consumed = (used.user + used.system) / 1000;
+      if (x < 0) console.log(x);
+    }, 1000);
+    assert.ok(r, "a record");
+    assert.ok(r!.mainCpuMs >= consumed * .65 - 50,
+      `probe measured ${r!.mainCpuMs} ms of ${Math.round(consumed)} ms main-thread CPU`);
+  });
+
   it("a main thread asleep on a lock: sleeping in futex, verdict blocked", async () => {
     const r = await probeOf(() => {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1200);
@@ -113,6 +128,8 @@ describe("stall probe", { skip: !linux && "Linux /proc only" }, () => {
   it("the verdict rule", () => {
     assert.equal(stallVerdict({ ms: 1000, states: { R: 18, S: 2 }, mainCpuMs: 950, gc: [{ kind: "major", ms: 800 }] }), "gc");
     assert.equal(stallVerdict({ ms: 1000, states: { R: 18, S: 2 }, mainCpuMs: 950, gc: [] }), "js");
+    assert.equal(stallVerdict({ ms: 1185, states: { R: 4 }, mainCpuMs: 150, gc: [] }), "unknown",
+      "runnable samples alone do not show that the main thread consumed the stall");
     assert.equal(stallVerdict({ ms: 1000, states: { S: 19, R: 1 }, mainCpuMs: 10, gc: [] }), "blocked");
     assert.equal(stallVerdict({ ms: 1000, states: { D: 15, R: 5 }, mainCpuMs: 10, gc: [] }), "blocked");
     assert.equal(stallVerdict({ ms: 1000, states: {}, mainCpuMs: 0, gc: [] }), "unknown");

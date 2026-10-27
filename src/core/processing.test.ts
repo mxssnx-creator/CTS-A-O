@@ -276,6 +276,9 @@ describe("processing through the stages, every strategy type, every toggle combi
   });
 
   it("Base evaluates every combo of every lane; Main keeps lanes; tapes carry every strategy type and range", async () => {
+    if (process.env.CTS_CORE_TAPE_DIAGNOSTICS === "1")
+      console.log(JSON.stringify({ tapePhase: rt.status.phases.Tapes, mergePhase: rt.status.phases["Tape merge"],
+        history: rt.status.phases["History storage"], stallProbes: rt.status.stallProbes }));
     const s1 = new Set(rt.pipeline!.s1.map((r) => `${r.bot}|${r.ind}`));
     const want = allCombos(rt.settings.focus, rt.settings.disabledKinds, rt.settings.tfs);
     const notRun = want.filter((c) => !s1.has(`${c.bot}|${c.ind}`)).map((c) => `${c.bot}|${c.ind}`);
@@ -298,6 +301,12 @@ describe("processing through the stages, every strategy type, every toggle combi
     const families = new Set([...kindsByPair.values()].flatMap((ks) => [...ks]));
     for (const kind of ["normal", "trailing", "dca", "dca-active", "axis"])
       assert.ok(families.has(kind), `no validated ${kind} tapes`);
+    const coverage = rt.status.strategyCoverage;
+    assert.ok(coverage, "the completed cohort publishes its per-strategy coverage");
+    assert.equal(coverage.total, rt.tapes.length);
+    for (const kind of ["normal", "trailing", "dca", "dca-active", "axis"])
+      assert.equal(coverage.byKind[kind]?.engine, rt.tapes.filter((t) => !isSignalInd(t.ind) && t.kind === kind).length,
+        `${kind}: displayed engine coverage matches the actual published tapes`);
     const { GATED_RANGES } = await import("./minimal-coord.ts");
     assert.deepEqual([...GATED_RANGES].sort(), ["mc", "mn", "mp", "sh"]);
     const gl = rt.tapes.filter((t) => t.protect.tag === "gn" || t.protect.tag === "lg");

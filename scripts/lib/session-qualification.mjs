@@ -27,9 +27,9 @@ export function sessionReturnEvidence(raw) {
   const state = unknownReturns ? "unavailable" : recorded || rows.length > 0 && verifiedUnitRows === rows.length ? "recorded" : "legacy-unverified";
   return {
     state, missingMultRows, unknownReturns, verifiedUnitRows,
-    executionMultiplier: "recorded Block × coordination only",
+    executionMultiplier: "recorded combined external execution multiplier",
     ladderTapeLegs: "retained",
-    note: "Direct walk-forward order returns exclude each recorded Block/coordination execution multiple; ladder/tape leg semantics remain. Cash, equity and sizing retain the stored weighted results." +
+    note: "Direct walk-forward unit returns exclude the recorded combined external execution multiplier, including any Block, Relate, coordination, range and strategy factors; ladder/tape leg semantics remain. Cash, equity and sizing retain the stored weighted results." +
       (missingMultRows ? ` ${missingMultRows} of ${rows.length} closed orders lack a valid execution multiplier; they require explicit verified unit returns or remain unknown.` : "") +
       (unknownReturns ? ` ${unknownReturns} returns are explicitly unknown or invalid; primary PF is unavailable for any sample containing them.` : "") +
       (!recorded ? " Historical source encoding was not recorded. Archived coverage, variant and preset aggregates are retained, not recomputed or certified as unit returns." : ""),

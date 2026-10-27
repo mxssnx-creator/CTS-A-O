@@ -25,9 +25,9 @@ export type StallProbe = {
   /** main-thread system call per sample ("running" while it ran user code) */
   syscalls: Record<string, number>;
   wchans: Record<string, number>;
-  /** the main thread's CPU time over the stall, ms */
+  /** Approximate main-thread CPU since the first sample after the last heartbeat, ms; a late sample can undercount. */
   mainCpuMs: number;
-  /** the other threads' CPU time over the stall, ms, by thread name */
+  /** Other threads' CPU after the probe threshold, ms, by thread name (not the entire stall). */
   threadsCpuMs: Record<string, number>;
   /** steal ticks of the host over the stall (a hypervisor taking the CPU) */
   stealTicks: number;
@@ -62,15 +62,18 @@ const threads = () => {
   return out;
 };
 const steal = () => { const l = (read("/proc/stat") || "").split("\\n")[0].trim().split(/\\s+/); return Number(l[8]) || 0; };
-let cur = null;
+let cur = null, heartbeat = 0, heartbeatCpu = null;
 setInterval(() => {
   const last = Number(Atomics.load(hb, 0));
   if (!last) return;
+  const main = statOf(read("/proc/" + pid + "/task/" + pid + "/stat"));
+  if (!main || !Number.isFinite(main.cpu)) return;
+  // Save a CPU baseline near every heartbeat, before waiting for probeAfterMs. Taking cpu0 only when
+  // the threshold is reached loses the first part of every stall and can misidentify a runnable thread.
+  if (last !== heartbeat && !cur) { heartbeat = last; heartbeatCpu = main.cpu; }
   const late = Date.now() - last;
   if (late >= probeAfterMs) {
-    const main = statOf(read("/proc/" + pid + "/task/" + pid + "/stat"));
-    if (!main) return;
-    if (!cur) cur = { startedAt: last, samples: 0, states: {}, syscalls: {}, wchans: {}, cpu0: main.cpu, th0: threads(), steal0: steal() };
+    if (!cur) cur = { startedAt: last, samples: 0, states: {}, syscalls: {}, wchans: {}, cpu0: heartbeatCpu ?? main.cpu, th0: threads(), steal0: steal() };
     cur.samples++;
     cur.states[main.state] = (cur.states[main.state] || 0) + 1;
     const sc = (read("/proc/" + pid + "/task/" + pid + "/syscall") || "?").trim().split(" ")[0];
@@ -90,6 +93,8 @@ setInterval(() => {
       wchans: cur.wchans, mainCpuMs: (cur.cpu1 ?? cur.cpu0) - cur.cpu0, threadsCpuMs: by, stealTicks: steal() - cur.steal0,
     });
     cur = null;
+    heartbeat = last;
+    heartbeatCpu = main.cpu;
   }
 }, everyMs);
 `;
@@ -97,11 +102,12 @@ setInterval(() => {
 /** the verdict from the samples (exported for the tests) */
 export function stallVerdict(p: Pick<StallProbe, "ms" | "states" | "mainCpuMs" | "gc">): StallProbe["verdict"] {
   const n = Object.values(p.states).reduce((a, x) => a + x, 0);
-  if (!n) return "unknown";
+  if (!n || !Number.isFinite(p.ms) || p.ms <= 0) return "unknown";
   const running = (p.states.R ?? 0) / n;
   const gcMs = p.gc.reduce((a, x) => a + x.ms, 0);
   if (running >= 0.5 && gcMs >= 0.5 * p.ms) return "gc";
-  if (running >= 0.5) return "js";
+  // R means runnable, not necessarily scheduled. Missing or low CPU evidence stays unknown.
+  if (running >= 0.5 && Number.isFinite(p.mainCpuMs) && p.mainCpuMs >= 0.5 * p.ms) return "js";
   if (((p.states.S ?? 0) + (p.states.D ?? 0)) / n >= 0.5) return "blocked";
   return "unknown";
 }

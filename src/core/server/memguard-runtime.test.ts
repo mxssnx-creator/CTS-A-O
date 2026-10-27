@@ -114,6 +114,9 @@ describe("memory guard in the runtime", { timeout: 300_000 }, () => {
     assert.throws(() => rt.workersFailed(new Error("memory pressure: test"), "Base"), /memory pressure: test/);
     assert.equal(rt.workersBroken, false, "a memory abort is not a broken worker");
     rt.memPressured = false;
+    const timeout = Object.assign(new Error("worker timed out"), { code: "CTS_WORKER_TIMEOUT" });
+    assert.throws(() => rt.workersFailed(timeout, "Base"), /worker timed out/);
+    assert.equal(rt.workersBroken, false, "a Base timeout never moves the full compute onto the live event loop");
     rt.workersFailed(new Error("worker exited"), "Base");
     assert.equal(rt.workersBroken, true, "a real failure: in-process for now");
     rt.workersRetry();

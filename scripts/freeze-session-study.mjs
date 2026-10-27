@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Freeze the complete production-normalized settings before scoring a public-candle session.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
-import { sessionStudySourceFiles, studyCanonical, studyExactJson, studySha256 } from "./lib/session-study.mjs";
+import { sessionStudySourceFiles, studyCanonical, studyExactJson, studySha256, studyWithRequestedWindow } from "./lib/session-study.mjs";
 
 const args = process.argv.slice(2), arg = (k, d) => { const i = args.indexOf(`--${k}`); return i < 0 ? d : args[i + 1]; };
 if (args.includes("--help")) {
@@ -36,7 +36,9 @@ const make = (settings, wf = {}) => {
   const rt = new CoreRuntime(db, { symbols: symbols.length, signals: { enabled: true } }, { market: "bingx", replay: true, priceStream: null, evaluationFromT, feed: { history: async () => [], klines: async () => [], tickers: async () => [] } });
   rt.db.kvSet("liveSince", tradeStartT);
   rt.updateSettings(settings); rt.updateSettings({ symbols: symbols.length });
-  rt.updateSettings({}, { preH, simH: runH, ...wf, causalBase: true });
+  // The requested study window is authoritative. Supplied desk files may contain
+  // stale preH/simH values from a shorter run and must not silently override it.
+  rt.updateSettings({}, { ...studyWithRequestedWindow(wf, preH, runH), causalBase: true });
   rt.wf = { ...rt.wf, longH: preH };
   return { rt, db };
 };
@@ -45,6 +47,8 @@ const first = make(seed, supplied?.wf);
 // Freeze the fully materialized reload, then require its next reload to be identical.
 const second = make(studyCanonical(first.rt.settings), studyCanonical(first.rt.wf));
 const actualSettings = studyCanonical(second.rt.settings), actualWf = studyCanonical(second.rt.wf);
+if (actualWf.preH !== preH || actualWf.simH !== runH)
+  throw new Error(`Normalized walk-forward window does not match requested ${preH}h prehistory/${runH}h simulation: got ${actualWf.preH}h/${actualWf.simH}h`);
 const third = make(actualSettings, actualWf);
 const changedPaths = (a, b, prefix = "") => studyExactJson(a) === studyExactJson(b) ? [] :
   a && b && typeof a === "object" && typeof b === "object" && !Array.isArray(a) && !Array.isArray(b)

@@ -1,0 +1,139 @@
+{
+  "createdAt": "2026-10-27T16:27:43.216Z",
+  "scope": "Synthetic 50-symbol, eight-source Relate Auto microbenchmark on a shared host; excludes market feed, native execution, full-grid compute, and warm live-cycle latency. Before and after runs alternate.",
+  "beforeSourceCommit": "9b78b29",
+  "behavior": "Identical existing unit-return PF and tie-break semantics. This does not establish independent causal funded optimization of ratio/step candidates.",
+  "exactParity": {
+    "cases": 1000,
+    "nonNullChoices": 517,
+    "comparison": "complete decisions against the prior implementation, varied sample lengths, relations, modes, caps, thresholds, invalid and extreme returns"
+  },
+  "runs": [
+    {
+      "name": "before",
+      "benchmark": "synthetic Relate eight-source Auto",
+      "symbols": 50,
+      "acceptedBootstrapCloses": 12500,
+      "updateAndDecisionCount": 500,
+      "bootstrapMs": 52.578,
+      "coldDecisionsMs": 43.771,
+      "cachedDecisionsMs": 2.315,
+      "updatesAndDecisionsMs": 1057.35,
+      "updateAndDecisionMedianMs": 2.254,
+      "updateAndDecisionP95Ms": 2.503,
+      "maxRssMiB": 91.8,
+      "summary": {
+        "relations": 106,
+        "qualified": 106,
+        "closes": 26500,
+        "maxSample": 250,
+        "shadowCloses": 0
+      }
+    },
+    {
+      "name": "after",
+      "benchmark": "synthetic Relate eight-source Auto",
+      "symbols": 50,
+      "acceptedBootstrapCloses": 12500,
+      "updateAndDecisionCount": 500,
+      "bootstrapMs": 48.799,
+      "coldDecisionsMs": 15.153,
+      "cachedDecisionsMs": 2.912,
+      "updatesAndDecisionsMs": 112.883,
+      "updateAndDecisionMedianMs": 0.167,
+      "updateAndDecisionP95Ms": 0.424,
+      "maxRssMiB": 83.1,
+      "summary": {
+        "relations": 106,
+        "qualified": 106,
+        "closes": 26500,
+        "maxSample": 250,
+        "shadowCloses": 0
+      }
+    },
+    {
+      "name": "before",
+      "benchmark": "synthetic Relate eight-source Auto",
+      "symbols": 50,
+      "acceptedBootstrapCloses": 12500,
+      "updateAndDecisionCount": 500,
+      "bootstrapMs": 54.422,
+      "coldDecisionsMs": 52.857,
+      "cachedDecisionsMs": 2.144,
+      "updatesAndDecisionsMs": 970.034,
+      "updateAndDecisionMedianMs": 2.038,
+      "updateAndDecisionP95Ms": 2.384,
+      "maxRssMiB": 92.3,
+      "summary": {
+        "relations": 106,
+        "qualified": 106,
+        "closes": 26500,
+        "maxSample": 250,
+        "shadowCloses": 0
+      }
+    },
+    {
+      "name": "after",
+      "benchmark": "synthetic Relate eight-source Auto",
+      "symbols": 50,
+      "acceptedBootstrapCloses": 12500,
+      "updateAndDecisionCount": 500,
+      "bootstrapMs": 57.257,
+      "coldDecisionsMs": 13.077,
+      "cachedDecisionsMs": 2.387,
+      "updatesAndDecisionsMs": 141.545,
+      "updateAndDecisionMedianMs": 0.157,
+      "updateAndDecisionP95Ms": 1.035,
+      "maxRssMiB": 84.2,
+      "summary": {
+        "relations": 106,
+        "qualified": 106,
+        "closes": 26500,
+        "maxSample": 250,
+        "shadowCloses": 0
+      }
+    },
+    {
+      "name": "before",
+      "benchmark": "synthetic Relate eight-source Auto",
+      "symbols": 50,
+      "acceptedBootstrapCloses": 12500,
+      "updateAndDecisionCount": 500,
+      "bootstrapMs": 58.512,
+      "coldDecisionsMs": 67.537,
+      "cachedDecisionsMs": 2.995,
+      "updatesAndDecisionsMs": 1129.92,
+      "updateAndDecisionMedianMs": 2.28,
+      "updateAndDecisionP95Ms": 2.644,
+      "maxRssMiB": 92.5,
+      "summary": {
+        "relations": 106,
+        "qualified": 106,
+        "closes": 26500,
+        "maxSample": 250,
+        "shadowCloses": 0
+      }
+    },
+    {
+      "name": "after",
+      "benchmark": "synthetic Relate eight-source Auto",
+      "symbols": 50,
+      "acceptedBootstrapCloses": 12500,
+      "updateAndDecisionCount": 500,
+      "bootstrapMs": 56.997,
+      "coldDecisionsMs": 13.153,
+      "cachedDecisionsMs": 2.303,
+      "updatesAndDecisionsMs": 104.897,
+      "updateAndDecisionMedianMs": 0.165,
+      "updateAndDecisionP95Ms": 0.403,
+      "maxRssMiB": 82.8,
+      "summary": {
+        "relations": 106,
+        "qualified": 106,
+        "closes": 26500,
+        "maxSample": 250,
+        "shadowCloses": 0
+      }
+    }
+  ]
+}

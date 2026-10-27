@@ -1,0 +1,41 @@
+{
+  "sourceCommit": "11451de6afe3639b23859abc4eaaea7cd23f0220",
+  "scope": "one synthetic four-symbol test; not live performance",
+  "tapePhase": {
+    "ms": 4125.620429999995,
+    "maxSliceMs": 3.037140000000363,
+    "slowest": "1 cores · 12 replies · longest history retain 0 ms",
+    "mainMs": 81.18167099985294
+  },
+  "mergePhase": {
+    "ms": 1.3129070000140928,
+    "maxSliceMs": 1.3129070000140928,
+    "slowest": " (0 ms)"
+  },
+  "stallProbes": [
+    {
+      "startedAt": 1793121756466,
+      "ms": 1185,
+      "samples": 4,
+      "states": {
+        "R": 4
+      },
+      "syscalls": {
+        "running": 4
+      },
+      "wchans": {
+        "0": 4
+      },
+      "mainCpuMs": 150,
+      "threadsCpuMs": {
+        "V8Worker": 280,
+        "WorkerThread": 80
+      },
+      "stealTicks": 3,
+      "gc": [],
+      "verdict": "js",
+      "where": "Tapes"
+    }
+  ],
+  "interpretation": "The old probe measured main-thread CPU only after its 1000 ms sampling threshold and classified runnable state as JS without sufficient CPU evidence. The 150 ms measurement and JS verdict do not establish the cause of the 1185 ms pause. The subsequent fix samples from near the last heartbeat and requires sufficient CPU before assigning JS."
+}
