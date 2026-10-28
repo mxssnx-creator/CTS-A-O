@@ -58,6 +58,8 @@ export interface ProcessedOpen {
   identity: ProcessedSetIdentity;
   entryId: string;
   entryT: number;
+  /** Admission policy frozen at entry, so restored decisions can be checked against the actual windows and floor. */
+  policy: ProcessedPolicy;
   validation: ProcessedVerdict;
   real: ProcessedVerdict | null;
   stage: ProcessedStage;
@@ -65,7 +67,7 @@ export interface ProcessedOpen {
   slices: string[];
 }
 export interface ProcessedSetSnapshot {
-  version: 1;
+  version: 2;
   basis: ProcessedBasis;
   capacity: number;
   clock: number;
@@ -90,6 +92,19 @@ export function processedSetKey(i: ProcessedSetIdentity): string {
 }
 const entryKey = (i: ProcessedSetIdentity, id: string, entryT: number) =>
   JSON.stringify([processedSetKey(i), id, entryT]);
+function validPolicy(p: ProcessedPolicy | undefined, capacity: number): p is ProcessedPolicy {
+  return !!p && Number.isSafeInteger(p.validationN) && p.validationN >= 9 && p.validationN <= capacity &&
+    Number.isSafeInteger(p.realN) && p.realN >= 9 && p.realN <= capacity &&
+    Number.isFinite(p.minPf) && p.minPf > 1;
+}
+function validVerdict(v: ProcessedVerdict | null | undefined, n: number, minPf: number): v is ProcessedVerdict {
+  if (!v || !Number.isSafeInteger(v.n) || v.n < 0 || v.n > n) return false;
+  if (v.state === "insufficient") return v.n < n && v.pf === null;
+  if (v.state === "unknown") return v.n > 0 && v.pf === null;
+  if (v.state === "failed") return v.n === n && typeof v.pf === "number" && Number.isFinite(v.pf) && v.pf >= 0 && v.pf < minPf;
+  if (v.state === "qualified") return v.n === n && typeof v.pf === "number" && Number.isFinite(v.pf) && v.pf >= minPf;
+  return false;
+}
 
 /**
  * Causal, separate records for Base-processed, Validation-processed and Active orders. The caller may
@@ -187,7 +202,7 @@ export class ProcessedSetBook {
     rows.evaluations.validation[validation.state]++;
     if (real) rows.evaluations.real[real.state]++;
     for (let i = 0; i <= stages.indexOf(stage); i++) rows.counts[stages[i]].openedOrders++;
-    const opened: ProcessedOpen = { identity: { ...identity }, entryId, entryT, validation, real, stage, slices: [] };
+    const opened: ProcessedOpen = { identity: { ...identity }, entryId, entryT, policy: { ...policy }, validation, real, stage, slices: [] };
     this.open.set(key, opened);
     this.seenAtClock.add(key);
     return structuredClone(opened);
@@ -263,13 +278,13 @@ export class ProcessedSetBook {
   }
 
   snapshot(): ProcessedSetSnapshot {
-    return structuredClone({ version: 1 as const, basis: this.basis, capacity: this.capacity, clock: this.clock,
+    return structuredClone({ version: 2 as const, basis: this.basis, capacity: this.capacity, clock: this.clock,
       sets: [...this.sets.values()], open: [...this.open.values()], seenAtClock: [...this.seenAtClock] });
   }
 
   /** Restore only structurally consistent books; corrupted state is not turned into qualification evidence. */
   static restore(snapshot: ProcessedSetSnapshot): ProcessedSetBook {
-    if (!snapshot || snapshot.version !== 1 || !Number.isFinite(snapshot.clock) || snapshot.clock < -1 ||
+    if (!snapshot || snapshot.version !== 2 || !Number.isFinite(snapshot.clock) || snapshot.clock < -1 ||
       !Array.isArray(snapshot.sets) || !Array.isArray(snapshot.open) || !Array.isArray(snapshot.seenAtClock))
       throw new TypeError("invalid processed-set snapshot");
     const book = new ProcessedSetBook(snapshot.basis, snapshot.capacity);
@@ -322,11 +337,16 @@ export class ProcessedSetBook {
     }
     for (const item of snapshot.open) {
       const key = entryKey(item.identity, item.entryId, item.entryT);
+      const p = item.policy;
+      const decisionValid = validPolicy(p, snapshot.capacity) && validVerdict(item.validation, p.validationN, p.minPf) &&
+        (item.validation.state === "qualified"
+          ? validVerdict(item.real, p.realN, p.minPf) &&
+            (item.real.state === "qualified" ? item.stage === "active" : item.stage === "validated")
+          : item.real === null && item.stage === "postBase");
       if (!nonempty(item.entryId) || !Number.isFinite(item.entryT) || item.entryT < 0 || item.entryT > snapshot.clock ||
         !stages.includes(item.stage) || !Array.isArray(item.slices) || item.slices.some((s) => !nonempty(s)) ||
         new Set(item.slices).size !== item.slices.length || !book.sets.has(processedSetKey(item.identity)) ||
-        book.open.has(key) || !item.validation || (item.stage === "active" && item.real?.state !== "qualified") ||
-        (item.stage !== "postBase" && item.validation.state !== "qualified"))
+        book.open.has(key) || !decisionValid)
         throw new TypeError("invalid processed open entry");
       book.open.set(key, structuredClone(item));
     }
