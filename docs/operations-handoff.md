@@ -1,3 +1,22 @@
+## 2026-10-28 — Causal processed-set primitives (not wired to production)
+
+Added a tested stage-book primitive for independent Base-linked post-Base, Validation and Active histories, and an
+optional causal simulator admission hook that keeps a rejected hypothetical entry from occupying its position
+slot. Neither primitive changes production selection or Live mirroring by itself. Their caller must preserve the
+Base admission, causal event order, economic revision and actual return provenance. Systemwide integration,
+durable paper positions, exchange reconciliation and multi-leg owned returns remain unfinished in draft PR #219.
+
+In the 20-symbol isolated Short Normal/Trailing model for 2026-10-10 00:00–12:00 UTC, with 84h of preceding market
+data and 4800 exact contexts, 97 passed Base and 15/97 (15.46%) passed Validation Last-12 at historical return PF
+1.649925. Subsequent Validation had 250 modeled closes at PF 0.470553 (positions 85/82/3, orders 257/250/7 opened /
+closed / held). Real Last-12 admitted three Active modeled orders, all stop losses; Active PF was 0 (positions and
+orders each 3/3/0). No venue-fill PF was measured. The study excludes portfolio allocation, Block/Relate, actual
+paper funding and other strategy ranges/types. Details and individual rows: https://chatgpt.com/library?file_id=libfile_b83f3dcf3b688191830596a6dbedf2aa&account_id=personal
+
+The older-source full-grid 20-symbol job exited 134 at the JavaScript heap limit before producing results. The
+focused primitive, simulator and resume tests, typecheck, lint and independent study-accounting checks passed.
+No live orders, settings or deployment were changed; a high forward PF is not established.
+
 ## 2026-10-28 — Validation defaults and preserved prior evidence
 
 Fresh Signal and Exit defaults use Last-12, the partial-sample floor is nine and Base defaults to Last-40. A one-time
