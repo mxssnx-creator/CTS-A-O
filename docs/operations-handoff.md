@@ -16,6 +16,10 @@ from these results; per-step automatic optimization and production integration r
 
 Independent accounting checked all 43,200 contexts, 17,836 Post-Base entries, 225 Validation/Real combinations
 and 146,845 individual decision windows. Repeated cases match the first run; Short 60 matches the earlier study.
+An additional independent audit checked all 17,370 settled Post-Base orders: modeled return matches entry/exit
+price less cost once, TP and SL fills match their own configured distances, no duration exceeds its cap and all
+time exits occur at the cap. This is not a native trailing, paper allocation or venue-fill verification; the audit
+is on research-only branch commit a4d1f3f349ec1c10cdf7b54aca3dab7f90d87605.
 The research-only source is f1bfcbc1e9caa3bd5c01661ade0457a24c6163b3, which lowers Last-8 only for comparison
 and must not be merged. Per-case context and order listings, group outcomes and hashes:
 https://chatgpt.com/library?file_id=libfile_58912b63d1ac8191b4166dd8dd5d7bd7&account_id=personal .
