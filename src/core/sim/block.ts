@@ -29,6 +29,7 @@
 // closes (then its level is recalculated); 0 = no pause.
 import type { BlockAttribution, BlockConfig } from "../domain/types.ts";
 import { MAX_EXTERNAL_STACK } from "../config.ts";
+import { exitScopeSuffix } from "../exit-scope.ts";
 
 export type BlockSource = "config" | "overall" | "symbol" | "direction" | "indication" | "type";
 export const BLOCK_SOURCES: readonly BlockSource[] = [
@@ -128,20 +129,21 @@ export function sourceKey(
   // block.sideKeys: accepted for its callers; the exact config key is per direction (and symbol) in every case
   _sideKeys = false,
 ): string {
+  const scope = exitScopeSuffix(t.cfg, t.type);
   switch (s) {
     case "config":
-      return `c:${t.cfg ?? ""}|${t.sym}|${t.side > 0 ? 1 : -1}`;
+      return `c:${t.cfg ?? ""}|${t.sym}|${t.side > 0 ? 1 : -1}${scope}`;
     case "overall":
-      return "all";
+      return `all${scope}`;
     // Long and short run independently. A different indication or lane never raises or pauses its sibling.
     case "symbol":
-      return `s:${t.sym}|${t.side > 0 ? 1 : -1}`;
+      return `s:${t.sym}|${t.side > 0 ? 1 : -1}${scope}`;
     case "direction":
-      return `d:${t.side}`;
+      return `d:${t.side}${scope}`;
     case "indication":
-      return `i:${t.ind ?? t.kind}|${t.side > 0 ? 1 : -1}`;
+      return `i:${t.ind ?? t.kind}|${t.side > 0 ? 1 : -1}${scope}`;
     case "type":
-      return `t:${t.type ?? "normal"}`;
+      return `t:${t.type ?? "normal"}${scope}`;
   }
 }
 
@@ -192,7 +194,7 @@ export class BlockBook {
   protected pooledClose(t: BlockBookEntry, signal: boolean): boolean {
     if (signal && !this.poolSignals) return false;
     if (!this.poolDedupe) return true;
-    const k = `${t.sym}|${t.side > 0 ? 1 : -1}|${t.entryT ?? ""}|${t.exitT ?? ""}|${t.r}`;
+    const k = `${t.sym}|${t.side > 0 ? 1 : -1}|${t.entryT ?? ""}|${t.exitT ?? ""}|${t.r}${exitScopeSuffix(t.cfg, t.type)}`;
     if (this.seenCloses.has(k)) return false;
     // bounded: the closes of a run's recent past (a duplicate closes with its twin)
     if (this.seenCloses.size >= 200_000) this.seenCloses.clear();
@@ -331,16 +333,16 @@ export function sourcesOf(b: BlockConfig): Record<BlockSource, boolean> {
 
 export function bookLevels(
   book: BlockBook | null | undefined,
-  t: { sym: string; side: number; kind: string; ind?: string; type?: string },
+  t: { sym: string; side: number; kind: string; ind?: string; type?: string; cfg?: string },
   maxLevel: number,
 ): Omit<BlockLevels, "config"> {
   if (!book) return { overall: 0, symbol: 0, direction: 0, indication: 0, type: 0 };
   return {
-    overall: book.level("all", maxLevel),
+    overall: book.level(sourceKey("overall", t), maxLevel),
     symbol: book.level(sourceKey("symbol", t), maxLevel),
-    direction: book.level(`d:${t.side}`, maxLevel),
+    direction: book.level(sourceKey("direction", t), maxLevel),
     indication: book.level(sourceKey("indication", t), maxLevel),
-    type: book.level(`t:${t.type ?? "normal"}`, maxLevel),
+    type: book.level(sourceKey("type", t), maxLevel),
   };
 }
 
@@ -526,6 +528,8 @@ export class AutoBlockBook extends BlockBook {
   private books: BlockBook[];
   private recent: number[][];
   private cur: number;
+  private readonly exitStates = new Map<string, { recent: number[][]; cur: number }>();
+  private readonly initial: number;
   private readonly lookback: number;
   private readonly config: BlockConfig;
   private readonly active: boolean;
@@ -541,6 +545,7 @@ export class AutoBlockBook extends BlockBook {
     this.books = ws.map((w) => new BlockBook(b.pause ?? 0, w, { ...bookOpts(b), holdUntilNet: false }));
     this.recent = ws.map(() => []);
     this.cur = ws.indexOf(fallback);
+    this.initial = this.cur;
     this.lookback = Math.max(30, Math.floor(b.windowLookback ?? 300));
     // The accepted config record is available in every candidate book; legacy raw config tapes are not.
     const sources = sourcesOf(b);
@@ -576,12 +581,14 @@ export class AutoBlockBook extends BlockBook {
   override add(t: BlockBookEntry, signal = false, pooledIn?: boolean) {
     if (this.acceptedOnly && t.accepted !== true) return;
     const pooled = pooledIn ?? this.pooledClose(t, signal);
+    const scope = exitScopeSuffix(t.cfg, t.type);
+    const recent = this.recentFor(scope);
     // Recovery is tied to actual entry attribution, not rewritten when an automatic window changes.
     if (this.holdUntilNet) super.add(t, signal, pooled);
     for (let i = 0; i < this.books.length; i++) {
       // stamped at its entry (a run's feed); unstamped, judged on the closes before this one
       if (pooled && (t.autoRaise !== undefined ? (t.autoRaise >> i) & 1 : this.decide(i, t).adjusted)) {
-        const r = this.recent[i];
+        const r = recent[i];
         r.push(t.r);
         if (r.length > 2 * this.lookback) r.splice(0, r.length - this.lookback);
       }
@@ -591,12 +598,26 @@ export class AutoBlockBook extends BlockBook {
         bsrc: BLOCK_SOURCES.filter((_, source) => !!(mask & (1 << source))),
       }, signal, pooled);
     }
-    this.choose();
+    this.choose(scope);
+  }
+  private state(scope: string) {
+    let state = this.exitStates.get(scope);
+    if (!state) {
+      state = { recent: this.windows.map(() => []), cur: this.initial };
+      this.exitStates.set(scope, state);
+    }
+    return state;
+  }
+  private recentFor(scope: string): number[][] { return scope ? this.state(scope).recent : this.recent; }
+  private curForKey(key: string): number {
+    const at = key.lastIndexOf("|#exit:");
+    return at < 0 ? this.cur : this.state(key.slice(at)).cur;
   }
   /** PF of each candidate's last `lookback` raised closes (null below 30). */
-  scores(): Array<{ window: number; n: number; pf: number | null }> {
+  scores(scope = ""): Array<{ window: number; n: number; pf: number | null }> {
+    const recent = this.recentFor(scope);
     return this.windows.map((w, i) => {
-      const xs = this.recent[i].slice(-this.lookback);
+      const xs = recent[i].slice(-this.lookback);
       if (xs.length < 30 || xs.some((x) => !Number.isFinite(x))) return { window: w, n: xs.length, pf: null };
       let gp = 0;
       let gl = 0;
@@ -608,29 +629,29 @@ export class AutoBlockBook extends BlockBook {
       return { window: w, n: xs.length, pf: gl > 0 ? gp / gl : gp > 0 ? Infinity : 0 };
     });
   }
-  private choose() {
-    const sc = this.scores();
+  private choose(scope: string) {
+    const sc = this.scores(scope);
     if (sc.some((x) => x.pf === null)) return;
-    let best = this.cur;
+    let best = scope ? this.state(scope).cur : this.cur;
     for (let i = 0; i < sc.length; i++) if ((sc[i].pf as number) > (sc[best].pf as number)) best = i;
-    this.cur = best;
-    this.window = this.windows[best];
+    if (scope) this.state(scope).cur = best;
+    else { this.cur = best; this.window = this.windows[best]; }
   }
   override windowOf(key: string, maxLevel: number): number {
-    return this.books[this.cur].windowOf(key, maxLevel);
+    return this.books[this.curForKey(key)].windowOf(key, maxLevel);
   }
   override level(key: string, maxLevel: number): number {
     if (this.recoveryUnknown(key)) return 0;
-    return Math.max(this.recoveryLevel(key, maxLevel), this.books[this.cur].level(key, maxLevel));
+    return Math.max(this.recoveryLevel(key, maxLevel), this.books[this.curForKey(key)].level(key, maxLevel));
   }
   override paused(key: string): boolean {
-    return this.recoveryLevel(key, 12) === 0 && this.books[this.cur].paused(key);
+    return this.recoveryLevel(key, 12) === 0 && this.books[this.curForKey(key)].paused(key);
   }
   override sampleCount(key: string, maxLevel: number): number {
-    return this.books[this.cur].sampleCount(key, maxLevel);
+    return this.books[this.curForKey(key)].sampleCount(key, maxLevel);
   }
   override tailSum(key: string, n: number): { n: number; sum: number } {
-    return this.books[this.cur].tailSum(key, n);
+    return this.books[this.curForKey(key)].tailSum(key, n);
   }
 }
 

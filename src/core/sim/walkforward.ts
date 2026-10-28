@@ -1,4 +1,5 @@
 import { DerivedCache } from "./derived-cache.ts";
+import { exitScopeSuffix, isHistoricExitConfig } from "../exit-scope.ts";
 import { isLowRangeInd, lowRangeGridProtects } from "../indications/low-range.ts";
 import {
   coordVariants,
@@ -342,17 +343,19 @@ export function coordBlock(
 ): string | null {
   if (!c?.enabled) return null;
   const hk = Math.floor(tr.entryT / H);
-  const signal = sigCfg(tr.cfg);
+  const exit = isHistoricExitConfig(tr.cfg);
+  const signal = sigCfg(tr.cfg) && !exit;
   if (c.hourLock > 0 && (hourNet.get(hk) ?? 0) >= c.hourLock) return "hourLock";
   if (c.cooldown !== "off" && (hourNet.get(hk - 1) ?? 0) < 0 && (c.cooldown === "all" || signal))
     return "cooldown";
-  if (c.conflict && open.some((x) => x.sym === tr.sym && x.side !== tr.side)) return "conflict";
+  if (c.conflict && open.some((x) => x.sym === tr.sym && x.side !== tr.side &&
+      (exit ? x.cfg === tr.cfg : !isHistoricExitConfig(x.cfg)))) return "conflict";
   if (
     c.confirm &&
     signal &&
     !(confirmPool
       ? confirmPool.confirms(tr.sym, tr.side, tr.entryT)
-      : open.some((x) => x.sym === tr.sym && x.side === tr.side && !sigCfg(x.cfg)))
+      : open.some((x) => x.sym === tr.sym && x.side === tr.side && !sigCfg(x.cfg) && !isHistoricExitConfig(x.cfg)))
   )
     return "confirm";
   return null;
@@ -3047,6 +3050,8 @@ export interface WalkForwardResult {
   };
   /** Stable-02 coordination state at the end of the run (paper / live: relation factor, held-back symbols) */
   s2?: { factor: number; paused: string[] };
+  /** Independent Stable-02 state for each Historic Exit config. */
+  exitS2?: Record<string, { factor: number; paused: string[] }>;
   /** Bounded Relate history diagnostics; closes count relation-key observations, not unique exchange fills. */
   relate?: { relations: number; qualified: number; closes: number; maxSample: number; shadowCloses: number };
   /** negative-hour hedge signals at the end of the run (paper / live) */
@@ -3171,17 +3176,18 @@ export function signalGuardFor(
 
 /** The raw Real-candidate direction record: separate from accepted-order Block sizing evidence. */
 export class CandidateDirectionBook {
-  private tails = new Map<number, number[]>();
-  add(e: Pick<BlockFeedEntry, "side" | "r" | "open">) {
+  private tails = new Map<string, number[]>();
+  add(e: Pick<BlockFeedEntry, "side" | "r" | "open" | "cfg" | "type">) {
     if (e.open || (e.side !== 1 && e.side !== -1)) return;
-    let tail = this.tails.get(e.side);
-    if (!tail) this.tails.set(e.side, (tail = []));
+    const key = `${e.side}${exitScopeSuffix(e.cfg, e.type)}`;
+    let tail = this.tails.get(key);
+    if (!tail) this.tails.set(key, (tail = []));
     // The configured direction gate is limited to 64 closes. Keep each side's full supported last-N history.
     tail.push(Number.isFinite(e.r) ? e.r : NaN);
     if (tail.length > 64) tail.splice(0, tail.length - 64);
   }
-  tailSum(side: number, n: number): { n: number; sum: number } {
-    const tail = this.tails.get(side) ?? [];
+  tailSum(side: number, n: number, identity?: { cfg?: string; type?: string }): { n: number; sum: number } {
+    const tail = this.tails.get(`${side}${exitScopeSuffix(identity?.cfg, identity?.type)}`) ?? [];
     const k = Math.min(Math.max(0, Math.floor(n)), tail.length);
     let sum = 0;
     for (let i = tail.length - k; i < tail.length; i++) sum += tail[i];
@@ -3250,7 +3256,7 @@ export function feedBooks(
       e.side,
       onset,
       population,
-      e.accepted === true,
+      e.accepted === true && !isHistoricExitConfig(e.cfg, e.type),
     );
     guard.addAccept(
       acceptKey(e.ind, e.sym, e.side, e.type ?? "normal", e.cfg),
@@ -3258,7 +3264,8 @@ export function feedBooks(
       e.exitT,
       onset,
     );
-    if (e.accepted === true) guard.addAccept(sideAcceptKey(e.side, coordination), e.r, e.exitT, onset);
+    if (e.accepted === true && !isHistoricExitConfig(e.cfg, e.type))
+      guard.addAccept(sideAcceptKey(e.side, coordination), e.r, e.exitT, onset);
   }
 }
 
@@ -5437,11 +5444,11 @@ export function rangeVolumeFactorFor(
 
 /** The crowding group of a config: its range tag, "wide" without one, "sig" for a signal. */
 export const crowdRangeOf = (cfg: string): string =>
-  isSignalInd(cfg.split("|")[1] ?? "")
+  isHistoricExitConfig(cfg)
+    ? "exit"
+    : isSignalInd(cfg.split("|")[1] ?? "")
     ? "sig"
-    : kindOfId(cfg) === "exit"
-      ? "exit"
-      : rangeOfId(cfg) || "wide";
+    : rangeOfId(cfg) || "wide";
 /** The crowding key of an entry: strategy group × symbol × side × entry time. */
 export const crowdKey = (cfg: string, sym: string, side: number, entryT: number) =>
   `${crowdRangeOf(cfg)}|${sym}|${side}|${entryT}`;
@@ -5571,7 +5578,7 @@ export function execDecision(
     // the loss cluster of this direction only (a cluster of losing shorts never pauses the longs)
     const coordination = isSignalCoordinationInd(tp.ind);
     if (
-      !o.gates?.lastNOnly && o.signalCluster?.enabled &&
+      !o.gates?.lastNOnly && tp.kind !== "exit" && o.signalCluster?.enabled &&
       ctx.guard?.clustered(
         entryT,
         o.signalCluster,
@@ -5593,7 +5600,7 @@ export function execDecision(
       return { ok: false, why: "signalPf" };
     // Direction acceptance: this side's settled accepted orders, pooled over source and symbol, must clear the PF.
     if (
-      !o.gates?.lastNOnly && o.signalSideAccept?.enabled &&
+      !o.gates?.lastNOnly && tp.kind !== "exit" && o.signalSideAccept?.enabled &&
       ctx.guard &&
       !o.probe?.perRange &&
       !o.probe?.perCell &&
@@ -5702,7 +5709,7 @@ export function execDecision(
         o.engineSideAccept.perInd,
         tp.protect.exitSet,
       ),
-      engineSideKey(tp.kind, tp.protect.tag, ctx.side, undefined, tp.protect.exitSet),
+      engineSideKey(tp.kind, tp.protect.tag, ctx.side, tp.kind === "exit" ? tp.ind : undefined, tp.protect.exitSet),
       entryT,
       o.engineSideAccept,
       ctx.guard.exchange,
@@ -5715,15 +5722,15 @@ export function execDecision(
     if (!ctx?.direction || (ctx.side !== 1 && ctx.side !== -1))
       return { ok: false, why: "sideGateUnavailable" };
     const n = o.sideGateN as number;
-    const s = ctx.direction.tailSum(ctx.side, n);
+    const s = ctx.direction.tailSum(ctx.side, n, { cfg: tp.id, type: tp.kind });
     if (s.n >= n && !(Number.isFinite(s.sum) && s.sum > 0)) return { ok: false, why: "sideGate" };
   }
   // Normal off: Normal / Trailing execute only Block-raised. Historic Exit has its own independent switch.
   const plain = isPlainKind(tp.kind);
-  const sigBase = plain && !!o.signalOwnBase && isSignalInd(tp.ind);
+  const sigBase = plain && tp.kind !== "exit" && !!o.signalOwnBase && isSignalInd(tp.ind);
   const kindBaseOn = tp.kind === "exit" ? tg.exit !== false : tg.normal;
   // The enabled plain type's unraised base trades on the config's own recent record.
-  const gatedBase = plain && kindBaseOn && !sigBase && (o.normalBaseMinPf ?? 0) > 0;
+  const gatedBase = plain && tp.kind !== "exit" && kindBaseOn && !sigBase && (o.normalBaseMinPf ?? 0) > 0;
   const baseOk = () =>
     lastNSideOk(
       tp,
@@ -6733,6 +6740,7 @@ export function* walkForwardGen(
   const open = new ExitHeap<Trade>(); // taken, by exit
   const counts = new OpenCounts(); // the caps' counts of the taken orders still open
   const hourNet = new Map<number, number>();
+  const exitHourNet = new Map<string, Map<number, number>>();
   const skips: Record<string, number> = {};
   // per direction as well ("why|1" / "why|-1"): long and short run independently, and their skips are read apart;
   // and per range of the candidate ("sig" = signals): Micro's skips apart from Minimal's
@@ -6753,7 +6761,7 @@ export function* walkForwardGen(
       skipsBySide[k] = (skipsBySide[k] ?? 0) + 1;
     }
     if (cfg !== undefined) {
-      const group = sigCfg(cfg) ? "sig" : kindOfId(cfg) === "exit" ? "exit" : rangeOfId(cfg);
+      const group = isHistoricExitConfig(cfg) ? "exit" : sigCfg(cfg) ? "sig" : rangeOfId(cfg);
       const m = (skipsByRange[group] ??= {});
       m[why] = (m[why] ?? 0) + 1;
     }
@@ -6785,9 +6793,9 @@ export function* walkForwardGen(
     sigFunnel.inactiveBySide[side > 0 ? "1" : "-1"]++;
   };
   // Stable-02 Block coordination on every closed candidate (the Block feed)
-  const s2 =
+  const s2Options =
     o.coord?.enabled && (o.coord.s2Windows || o.coord.s2RelVolume)
-      ? new S2Coord({
+      ? {
           windows: !!o.coord.s2Windows,
           windowN: o.coord.s2Steps ?? 6,
           pauseN: o.coord.s2Pause ?? o.coord.s2Steps ?? 6,
@@ -6796,26 +6804,40 @@ export function* walkForwardGen(
           minPf: 1.25,
           maxMult: 1.8,
           evalH: 2,
-        })
+        }
       : null;
+  const s2 = s2Options ? new S2Coord(s2Options) : null;
+  const exitS2 = new Map<string, S2Coord>();
+  const s2For = (cfg: string, type?: string, create = false): S2Coord | null => {
+    if (!s2Options) return null;
+    if (!isHistoricExitConfig(cfg, type)) return s2;
+    let own = exitS2.get(cfg);
+    if (!own && create) exitS2.set(cfg, (own = new S2Coord(s2Options)));
+    return own ?? null;
+  };
   // executed signal orders per source, in exit order (source stability gate)
   const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
   const settle = function* (t: number): Generator<number, void> {
     let settled = 0;
     while (vopen.size && vopen.peekT() <= t) {
       const fx = vopen.pop()!;
-      if (fx.cfg && !sigCfg(fx.cfg)) engineOpen.add(fx.sym, fx.side, -1);
+      if (fx.cfg && !sigCfg(fx.cfg) && !isHistoricExitConfig(fx.cfg, fx.type)) engineOpen.add(fx.sym, fx.side, -1);
       feed.push(fx);
       feedBooks(fx, book, guard, direction, relateBook);
-      if (!fx.open) s2?.close(fx);
+      if (!fx.open) s2For(fx.cfg ?? "", fx.type, true)?.close(fx);
       if (++settled % 32 === 0) yield -2;
     }
     while (open.size && open.peekT() <= t) {
       const x = open.pop()!;
       counts.add(x, -1);
       const k = Math.floor(x.exitT / H);
-      hourNet.set(k, (hourNet.get(k) ?? 0) + x.r * 100);
-      if (sigCfg(x.cfg)) {
+      let hours = hourNet;
+      if (isHistoricExitConfig(x.cfg, x.kind)) {
+        hours = exitHourNet.get(x.cfg) ?? new Map<number, number>();
+        exitHourNet.set(x.cfg, hours);
+      }
+      hours.set(k, (hours.get(k) ?? 0) + x.r * 100);
+      if (sigCfg(x.cfg) && !isHistoricExitConfig(x.cfg, x.kind)) {
         const src = signalSourceOf(x.cfg.split("|")[1]);
         let l = srcClosed.get(src);
         if (!l) srcClosed.set(src, (l = []));
@@ -6869,11 +6891,12 @@ export function* walkForwardGen(
   };
   // every step's record per group: ranges, signals, and the independent Historic Exit strategy.
   const stepRange = (cfg: string) =>
-    sigCfg(cfg) ? "sig" : kindOfId(cfg) === "exit" ? "exit" : rangeOfId(cfg);
+    isHistoricExitConfig(cfg) ? "exit" : sigCfg(cfg) ? "sig" : rangeOfId(cfg);
   const tapesByRange: Record<string, number> = {};
   for (const tp of allEngine)
     tapesByRange[stepRange(tp.id)] = (tapesByRange[stepRange(tp.id)] ?? 0) + 1;
-  if (sigTapes.length) tapesByRange.sig = sigTapes.length;
+  for (const tp of sigTapes)
+    tapesByRange[stepRange(tp.id)] = (tapesByRange[stepRange(tp.id)] ?? 0) + 1;
   // the step's hedge-only signals (negative-hour hedge; outside the ranked set)
   let hedgeKeys = new Set<string>();
   // per-range selection modes (wf.rangeOpts[tag].mode); null = one selection over every engine tape, as without them
@@ -6941,8 +6964,15 @@ export function* walkForwardGen(
       (byRange[k] ??= { tapes: tapesByRange[k] ?? 0, validated: 0, candidates: 0, taken: 0 });
     for (const k of Object.keys(tapesByRange)) rangeRow(k);
     for (const p of picks) rangeRow(stepRange(p.id)).validated++;
-    if (o.signalRank && sigTapes.length)
-      rangeRow("sig").validated = stepOpts.signalActive?.size ?? 0;
+    if (o.signalRank && sigTapes.length) {
+      let signals = 0, exits = 0;
+      for (const key of stepOpts.signalActive ?? []) {
+        if (key.split("|", 6)[4] === "exit") exits++;
+        else signals++;
+      }
+      rangeRow("sig").validated = signals;
+      if (exits) rangeRow("exit").validated += exits;
+    }
     const stepEnd = Math.min(stopT, t + stepH * H);
     // Reporting/selection cadence does not determine candle precision or candidate memory. Process one minute
     // at a time, with the same stable entry ordering, and release the completed batch before assembling the next.
@@ -7036,7 +7066,7 @@ export function* walkForwardGen(
           book?.stampEntry(fx);
           seen.set(fk, fx);
           vopen.push(fx.exitT, fx);
-          if (!sigCfg(tr.cfg)) engineOpen.add(tr.sym, tr.side, 1);
+          if (!sigCfg(tr.cfg) && !isHistoricExitConfig(tr.cfg, tr.kind)) engineOpen.add(tr.sym, tr.side, 1);
         }
         // signal skips are named apart from the engine's ("sig:why"): the same reason means different gates
         const skipName = (why: string) => (sigCfg(tr.cfg) ? `sig:${why}` : why);
@@ -7061,18 +7091,21 @@ export function* walkForwardGen(
         let why = "";
         // engine orders and signal orders are capped each on their own (same class only)
         const cls = sigCfg(tr.cfg);
+        const isExit = isHistoricExitConfig(tr.cfg, tr.kind);
+        const ownHours = isExit ? (exitHourNet.get(tr.cfg) ?? new Map<number, number>()) : hourNet;
+        const ownS2 = s2For(tr.cfg, tr.kind);
         const caps = capsOf(o, cls);
-        const gateOn = cls && !o.gates?.lastNOnly && o.signalSourceGate?.enabled;
+        const gateOn = cls && !isExit && !o.gates?.lastNOnly && o.signalSourceGate?.enabled;
         // hedge-only signal: trades while the book is losing (this or the previous hour), without confirmation
         const hedging =
-          cls && !o.gates?.lastNOnly &&
+          cls && !isExit && !o.gates?.lastNOnly &&
           hedgeKeys.size > 0 &&
           hedgeKeys.has(sigActiveKey(tp.bot, tp.ind, tr.sym, tr.side, tp.kind, tp.id));
         const bookLosing =
           (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
           (hourNet.get(hourKey - 1) ?? 0) < 0;
         const coord = o.gates?.lastNOnly && o.coord ? { ...o.coord, hourLock: 0, cooldown: "off" as const } : o.coord;
-        const coordRaw = coordBlock(coord, tr, hourNet, open.items, engineOpen);
+        const coordRaw = coordBlock(coord, tr, ownHours, open.items, engineOpen);
         const coordWhy =
           (hedging
             ? bookLosing
@@ -7081,7 +7114,7 @@ export function* walkForwardGen(
                 : coordRaw
               : "hedgeIdle"
             : coordRaw) ??
-          s2?.blocked(tr.sym, tr.side) ??
+          ownS2?.blocked(tr.sym, tr.side) ??
           (gateOn &&
           sourceUnstable(
             srcClosed.get(signalSourceOf(tr.cfg.split("|")[1])),
@@ -7090,7 +7123,7 @@ export function* walkForwardGen(
           )
             ? "sourceUnstable"
             : null);
-        if (!o.gates?.lastNOnly && o.guardPct > 0 && (hourNet.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
+        if (!o.gates?.lastNOnly && o.guardPct > 0 && (ownHours.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
         else if (coordWhy) why = coordWhy;
         else if (counts.dupe(tr.sym, tr.cfg, tr.side)) why = "dupe";
         else if (counts.perSymbol(tr.sym, cls) >= caps.perSymbol) why = "perSymbol";
@@ -7143,7 +7176,7 @@ export function* walkForwardGen(
         if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
         // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
         const stackCap = blockStackCap(o.block);
-        const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
+        const cv = ownS2 ? Math.min(ownS2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
         const baseExecutionMult = dec.vol * cv * vf * hedgeVol * rangeVol;
         const relationCap = relateExternalStackCap(o.relate?.maxStack ?? MAX_EXTERNAL_STACK, tp.kind, tp.protect);
         const combined = combineRelateStack(baseExecutionMult, o.relate?.enabled ? (dec.relateVol ?? 1) : 1, relationCap);
@@ -7325,6 +7358,7 @@ export function* walkForwardGen(
     stable,
     feed,
     ...(s2 ? { s2: s2.snapshot(stopT) } : {}),
+    ...(exitS2.size ? { exitS2: Object.fromEntries([...exitS2].map(([cfg, own]) => [cfg, own.snapshot(stopT)])) } : {}),
     ...(relateBook ? { relate: relateBook.summary() } : {}),
     ...(hasHedgeEnd ? { hedgeEnd: hedgeEndKeys ?? [] } : {}),
     ...(o.signalRank

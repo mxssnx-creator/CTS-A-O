@@ -416,7 +416,7 @@ export function exchangeAcceptIndex(
       const onset =
         x.entryT === undefined ? undefined : `${ind}|${x.sym}|${x.side > 0 ? 1 : -1}|${x.entryT}`;
       add(acceptKey(ind, x.sym, x.side, kind, x.cfg), x.exitT, x.r, onset);
-      add(sideAcceptKey(x.side, coordination), x.exitT, x.r, onset);
+      if (kind !== "exit") add(sideAcceptKey(x.side, coordination), x.exitT, x.r, onset);
     } else {
       const tag = rangeOfId(x.cfg) || undefined;
       const code = /\|hx(?:[LS])?([0-4])?$/.exec(x.cfg)?.[1];

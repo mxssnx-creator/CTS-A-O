@@ -853,7 +853,7 @@ export function engineSideKeyFor(
     kind,
     tag,
     side,
-    kind !== "exit" && perInd?.includes(tag ?? "wide") ? ind : undefined,
+    kind === "exit" || perInd?.includes(tag ?? "wide") ? ind : undefined,
     exitSet,
   );
 }

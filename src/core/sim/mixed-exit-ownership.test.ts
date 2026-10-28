@@ -73,6 +73,9 @@ for (const side of [1, -1] as const) test(`mixed Exit and ordinary same-side par
   assert.deepEqual(withoutExit.trades, both.trades.filter((trade) => trade.cfg === f.normalId));
   const withoutOrdinary = walkForward(universe, [f.a.tape, f.b.tape], { ...f.opts, basePassed: new Set<string>() });
   assert.deepEqual(withoutOrdinary.trades, both.trades.filter((trade) => trade.cfg === f.exitId));
+  const strictNormal = walkForward(universe, [f.a.tape, f.b.tape], { ...f.opts, normalBaseMinPf: 1e9 });
+  assert.deepEqual(strictNormal.trades, both.trades.filter((trade) => trade.cfg === f.exitId),
+    "a Normal-only base floor cannot suppress the independently qualified Exit");
   const losingExit = fixture(side, .01, -.02);
   const qualified = walkForward(universe, [losingExit.a.tape, losingExit.b.tape], losingExit.opts);
   assert.deepEqual(qualified.trades, both.trades.filter((trade) => trade.cfg === f.normalId), "a failing Exit history cannot alter the ordinary parent");
