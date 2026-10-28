@@ -5,6 +5,32 @@ import {ownedPromotionIdentities,ownedPromotionRecord,type OwnedPaperRow} from "
 import {executionRecordKey,ownedPaperExecutionRecords} from "../live-record.ts";
 import {liveGate,promotionGate} from "../live-validation.ts";
 
+test("strict entry windows exclude same-time persisted, pending and ambiguous closes without stale cache",()=>{
+  const lane={cfg:"follow|test@m1|tp1|sl2|tr0|h15|mc",sym:"AAA-USDT",side:1};
+  const row=(entry:number,exitT:number,r:number):OwnedPaperRow=>({...lane,entry_t:entry,exit_t:exitT,
+    held_at:entry,held_px:100,entry:100,exit:100*(1+r+.0015),vol:1,unit_r:r,owned_notional_usd:100});
+  for(const [prior,later] of [[.02,-.03],[-.03,.02]] as const){
+    const db=new CoreDb(":memory:");
+    try{
+      const insert=(x:OwnedPaperRow)=>db.run("INSERT INTO paper_book_trades(cfg,sym,side,entry_t,exit_t,unit_r,owned_notional_usd,held_at,held_px,entry,exit,vol,reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'exit')",
+        x.cfg,x.sym,x.side,x.entry_t,x.exit_t,x.unit_r,x.owned_notional_usd,x.held_at,x.held_px,x.entry,x.exit,x.vol);
+      for(let i=0;i<12;i++)insert(row(i+1,100+i,prior));
+      const same=Array.from({length:12},(_,i)=>row(i+20,200,later));
+      const gate=(at:number,pending:OwnedPaperRow[]=[],strict=true)=>liveGate(
+        ownedPromotionRecord(db,lane,12,at,"effective",pending,strict)!,0,at,12,1.1);
+      assert.equal(gate(200,same).ok,prior>0,"same-time pending closes cannot qualify or veto");
+      for(const x of same)insert(x);
+      assert.equal(gate(199).ok,prior>0);
+      assert.equal(gate(200).ok,prior>0,"same-time persisted closes cannot qualify or veto");
+      assert.equal(gate(200,[],false).ok,later>0,"inclusive post-close reporting remains separate");
+      assert.equal(gate(201).ok,later>0,"the next decision must not reuse a cached prior-only window");
+      db.run("INSERT INTO paper_book_trades(cfg,sym,side,entry_t,exit_t,reason) VALUES(?,?,0,1,201,'exit')",lane.cfg,lane.sym);
+      assert.equal(gate(201).ok,later>0,"same-time ambiguous close is not yet evidence");
+      assert.ok((gate(202).unknown??0)>0,"an earlier ambiguous close cannot be skipped");
+    } finally { db.db.close(); }
+  }
+});
+
 test("same-step owned closes join only their own causal Last-N window and never duplicate a persisted close",()=>{
   const db=new CoreDb(":memory:"),lane={cfg:"follow|test@m1|tp1|sl2|tr0|h15|mc",sym:"AAA-USDT",side:1};
   const row=(entry:number,exitT:number,r:number):OwnedPaperRow=>({...lane,entry_t:entry,exit_t:exitT,

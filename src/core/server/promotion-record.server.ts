@@ -49,11 +49,14 @@ export function effectivePaperPnl(row: Row): number | null {
   return Number.isFinite(modeledCost) && modeledCost >= -1e-12 && Number.isFinite(pnl) ? pnl : null;
 }
 
-/** Read only this lane's chronological Last-N. An unrelated book never needs to be materialized for admission. */
+/**
+ * Read only this lane's chronological Last-N. Strict entry decisions exclude closes at the decision timestamp;
+ * the inclusive default remains useful for reporting a record after that timestamp has completed.
+ */
 export function ownedPromotionRecord(db: CoreDb, lane: {cfg: string; sym: string; side: number}, n: number, now: number,
-  basis: "unit" | "effective" | "cash" = "unit", pending: readonly OwnedPaperRow[] = []) {
+  basis: "unit" | "effective" | "cash" = "unit", pending: readonly OwnedPaperRow[] = [], strictBefore = false) {
   if (!Number.isInteger(n) || n < 1 || !Number.isFinite(now)) return undefined;
-  const version = db.version("paper_book_trades"), key = JSON.stringify([lane.cfg,lane.sym,lane.side,n]);
+  const version = db.version("paper_book_trades"), key = JSON.stringify([lane.cfg,lane.sym,lane.side,n,strictBefore]);
   let cached = memo.get(db);
   if (!cached || cached.version !== version) {
     cached = {version,records:new Map()}; memo.set(db,cached);
@@ -61,7 +64,7 @@ export function ownedPromotionRecord(db: CoreDb, lane: {cfg: string; sym: string
   const hit = cached.records.get(key);
   if (!pending.length && hit && now >= hit.at && now < hit.until) return hit[basis];
   const rows = db.all<Row>(
-    `SELECT ${columns} FROM paper_book_trades WHERE reason != 'dropped' AND cfg=? AND sym=? AND side=? AND exit_t>=0 AND exit_t<=? ORDER BY exit_t DESC,entry_t DESC LIMIT ?`,
+    `SELECT ${columns} FROM paper_book_trades WHERE reason != 'dropped' AND cfg=? AND sym=? AND side=? AND exit_t>=0 AND exit_t${strictBefore ? "<" : "<="}? ORDER BY exit_t DESC,entry_t DESC LIMIT ?`,
     lane.cfg, lane.sym, lane.side, now, n,
   ).reverse();
   // A held order can close earlier in this paper step than a new entry, before its row is flushed below. Merge
@@ -72,7 +75,7 @@ export function ownedPromotionRecord(db: CoreDb, lane: {cfg: string; sym: string
     if (row.cfg !== lane.cfg || row.sym !== lane.sym || row.side !== lane.side) continue;
     if (!Number.isFinite(row.entry_t) || !Number.isFinite(row.exit_t) || row.exit_t < row.entry_t)
       throw new Error("invalid pending paper close");
-    if (row.exit_t > now) continue;
+    if (strictBefore ? row.exit_t >= now : row.exit_t > now) continue;
     const prior = db.get<Row & { reason: string }>(`SELECT ${columns},reason FROM paper_book_trades WHERE cfg=? AND sym=? AND side=? AND entry_t=?`,
       lane.cfg, lane.sym, lane.side, row.entry_t);
     const duplicate = pendingIds.has(row.entry_t);
@@ -98,15 +101,15 @@ export function ownedPromotionRecord(db: CoreDb, lane: {cfg: string; sym: string
   }
   let marker: number | undefined;
   let until = db.get<{at:number|null}>(
-    "SELECT MIN(exit_t) AS at FROM paper_book_trades WHERE reason != 'dropped' AND cfg=? AND sym=? AND side=? AND exit_t>?",
+    `SELECT MIN(exit_t) AS at FROM paper_book_trades WHERE reason != 'dropped' AND cfg=? AND sym=? AND side=? AND exit_t${strictBefore ? ">=" : ">"}?`,
     lane.cfg,lane.sym,lane.side,now,
   )?.at ?? Infinity;
   for (const row of bad.rows) {
     if ((row.cfg.trim() && row.cfg !== lane.cfg) || (row.sym.trim() && row.sym !== lane.sym) ||
       ((row.side === -1 || row.side === 1) && row.side !== lane.side)) continue;
     if (!Number.isFinite(row.exit_t)) { marker = NaN; break; }
-    if (row.exit_t > now) until = Math.min(until,row.exit_t);
-    if (row.exit_t <= now && (marker === undefined || row.exit_t > marker)) marker = row.exit_t;
+    if (strictBefore ? row.exit_t >= now : row.exit_t > now) until = Math.min(until,row.exit_t);
+    else if (marker === undefined || row.exit_t > marker) marker = row.exit_t;
   }
   // SQLite can retain infinities or non-numeric legacy timestamps. They are unknown evidence, not ignorable.
   const invalid = db.get<{n:number}>(

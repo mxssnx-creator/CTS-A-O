@@ -134,11 +134,28 @@ export class ProcessedSetBook {
     return rows;
   }
 
-  /** No empty, partial, or unknown window is promoted to a passing PF. */
-  verdict(identity: ProcessedSetIdentity, source: ProcessedStage, n: number, minPf: number): ProcessedVerdict {
+  /**
+   * No empty, partial, or unknown window is promoted to a passing PF. A decision at beforeT can
+   * use only closes strictly earlier than that time, including when same-time closes arrived first.
+   * Without beforeT this reports the latest completed record, including closes at the book's clock.
+   */
+  verdict(identity: ProcessedSetIdentity, source: ProcessedStage, n: number, minPf: number,
+    beforeT?: number): ProcessedVerdict {
     if (!stages.includes(source) || !Number.isSafeInteger(n) || n < 9 || n > this.capacity ||
-      !Number.isFinite(minPf) || minPf <= 1) throw new RangeError("invalid processed-set policy");
-    const values = this.sets.get(processedSetKey(identity))?.[source].slice(-n) ?? [];
+      !Number.isFinite(minPf) || minPf <= 1 ||
+      (beforeT !== undefined && (!Number.isFinite(beforeT) || beforeT < 0 || beforeT < this.clock)))
+      throw new RangeError("invalid processed-set policy or decision time");
+    const history = this.sets.get(processedSetKey(identity))?.[source] ?? [];
+    let end = history.length;
+    if (beforeT !== undefined) {
+      let lo = 0, hi = end;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (history[mid].exitT < beforeT) lo = mid + 1; else hi = mid;
+      }
+      end = lo;
+    }
+    const values = history.slice(Math.max(0, end - n), end);
     if (values.some((x) => x.unitReturn === null || !Number.isFinite(x.unitReturn)))
       return { state: "unknown", n: values.length, pf: null };
     if (values.length < n) return { state: "insufficient", n: values.length, pf: null };
@@ -156,12 +173,12 @@ export class ProcessedSetBook {
   /** Record one actually processed, Base-qualified entry and freeze its stage at admission. */
   acceptPostBase(identity: ProcessedSetIdentity, entryId: string, entryT: number, policy: ProcessedPolicy): ProcessedOpen {
     if (!identityValid(identity) || !nonempty(entryId)) throw new TypeError("invalid processed entry");
+    if (!Number.isFinite(entryT) || entryT < 0 || entryT < this.clock) throw new RangeError("processed events must be chronological");
     // Validate both windows before mutating the clock or records.
-    const validation = this.verdict(identity, "postBase", policy.validationN, policy.minPf);
-    const real = validation.state === "qualified" ? this.verdict(identity, "validated", policy.realN, policy.minPf) : null;
+    const validation = this.verdict(identity, "postBase", policy.validationN, policy.minPf, entryT);
+    const real = validation.state === "qualified" ? this.verdict(identity, "validated", policy.realN, policy.minPf, entryT) : null;
     if (real === null && (!Number.isSafeInteger(policy.realN) || policy.realN < 9 || policy.realN > this.capacity))
       throw new RangeError("invalid processed-set policy");
-    if (!Number.isFinite(entryT) || entryT < 0 || entryT < this.clock) throw new RangeError("processed events must be chronological");
     const key = entryKey(identity, entryId, entryT);
     if (this.open.has(key) || (entryT === this.clock && this.seenAtClock.has(key))) throw new Error("duplicate processed entry");
     this.advance(entryT);
@@ -192,7 +209,21 @@ export class ProcessedSetBook {
     for (let i = 0; i <= lastStage; i++) {
       const history = rows[stages[i]];
       history.push(row);
-      if (history.length > this.capacity) history.splice(0, history.length - this.capacity);
+      // Preserve the latest full prior window separately from this timestamp's closes. A batch of
+      // same-time closes may arrive before an entry, but must not evict the entry's prior evidence.
+      let lo = 0, hi = history.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (history[mid].exitT < exitT) lo = mid + 1; else hi = mid;
+      }
+      let currentStart = lo;
+      if (currentStart > this.capacity) {
+        const remove = currentStart - this.capacity;
+        history.splice(0, remove);
+        currentStart -= remove;
+      }
+      const currentCount = history.length - currentStart;
+      if (currentCount > this.capacity) history.splice(currentStart, currentCount - this.capacity);
       const stats = rows.counts[stages[i]];
       stats.settledSlices++;
       if (final) stats.closedOrders++;
@@ -248,7 +279,7 @@ export class ProcessedSetBook {
       if (book.sets.has(key)) throw new Error("duplicate processed set");
       for (const stage of stages) {
         const rows = set[stage];
-        if (!Array.isArray(rows) || rows.length > snapshot.capacity) throw new TypeError("invalid processed history");
+        if (!Array.isArray(rows) || rows.length > 2 * snapshot.capacity) throw new TypeError("invalid processed history");
         const c = set.counts?.[stage];
         if (!c || ![c.openedOrders, c.closedOrders, c.settledSlices, c.unknownReturns].every(Number.isSafeInteger) ||
           c.openedOrders < 0 || c.closedOrders < 0 || c.closedOrders > c.openedOrders ||
@@ -268,6 +299,10 @@ export class ProcessedSetBook {
           seenSlices.add(slice);
           prior = row.exitT;
         }
+        const latestT = rows.at(-1)?.exitT;
+        const latestCount = rows.filter((row) => row.exitT === latestT).length;
+        if (latestCount > snapshot.capacity || rows.length - latestCount > snapshot.capacity)
+          throw new TypeError("invalid processed history boundary");
         if (rows.filter((row) => row.unitReturn === null).length > c.unknownReturns)
           throw new TypeError("invalid unknown-return total");
       }

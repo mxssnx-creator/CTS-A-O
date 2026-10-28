@@ -461,6 +461,37 @@ describe("native live boundary preserves held protection without unproven growth
 });
 
 describe("paper entry allocation provenance", () => {
+  for (const [previous, closing, expected] of [[.02, -.30, true], [-.02, .30, false]] as const) {
+    it(`does not use a same-time ${closing > 0 ? "win to qualify" : "loss to reject"} a paper entry`, () => {
+      const t = Math.floor(Date.now() / H) * H;
+      const r = install(fixture(":memory:", 12));
+      r.wf.gates = { ...r.wf.gates, lastNOnly: true, baseLastN: 12, minTrades: 9 };
+      r.wf.validLastN = 12; r.wf.lastN = 0; r.wf.rangeGate = undefined; r.wf.symGate = "off";
+      const raw = Array.from({ length: 30 }, (_, i) => close(.10, i, {
+        entryT: t - 3 * H + i * 60_000, exitT: t - 2 * H + i * 60_000,
+      }));
+      const heldClose = close(closing, 0, { entryT: t - H, exitT: t,
+        entry: 100, exit: 100 * (1 + closing), mult: 1, vol: 1 });
+      const held = { cfg: CFG, sym: SYM, side: 1, entryI: 0, entryT: heldClose.entryT, entry: 100,
+        stop: 96, target: 103, peak: 100, trailOn: false, mtm: 0, vol: 1, level: 0,
+        heldAt: heldClose.entryT + 1, heldPx: 100 } as OpenPosition & { vol: number; heldAt: number; heldPx: number };
+      const open = { cfg: CFG, sym: SYM, side: 1, entryI: 0, entryT: t, entry: 100,
+        stop: 96, target: 103, peak: 100, trailOn: false, mtm: 0 } as OpenPosition;
+      r.tapes = [makeTape(CFG, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal", [SYM], [...raw, heldClose], [open], [])];
+      r.sim!.validated = [CFG]; r.sim!.trades = [heldClose]; r.paper.positions = [held];
+      (r as unknown as { paperOwnedAllocations: Map<string,{unitUsd:number;vol:number}> }).paperOwnedAllocations =
+        new Map([[orderKey(held), { unitUsd: 100, vol: 1 }]]);
+      for (let i = 0; i < 12; i++) {
+        const at = t - 10 * 60_000 + i * 1000, entered = t - 3 * H + i * 1000;
+        r.db.run("INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,held_at,at,unit_r,owned_notional_usd,entry,held_px,exit) VALUES (?,?,1,?,?,?,1,'time',?,?,?,?,100,100,?)",
+          CFG, SYM, entered, at, previous, entered, at, previous, 20, 100 * (1 + previous));
+      }
+      (r as unknown as { stepPaper(): void }).stepPaper();
+      assert.equal(r.paper.positions.some((p) => p.entryT === t), expected,
+        `previous ${previous}, same-time close ${closing}: ${JSON.stringify(r.status.paperSkips)}`);
+    });
+  }
+
   it("uses a same-step held close before judging a later entry of the same exact lane", () => {
     const t = Math.floor(Date.now() / H) * H;
     for (const [previous, closing, expected] of [[.02,-.30,false], [-.02,.30,true]] as const) {

@@ -1,3 +1,42 @@
+## 2026-10-28 — Offline Validation/Real Last-N comparison including experimental 8
+
+The isolated 20-symbol Short Low-Range Normal/Trailing model for 10 October 00:00–12:00 UTC used 84h of prior
+market data, 1/5/15m, protection step 3, 60m hold and modeled 0.15% round-trip cost. Its 97/4800 exact Base
+contexts passed Last-40. At the window start, Validation Last-8/12/15/20/25 passed respectively 23/97 (23.71%),
+15/97 (15.46%), 11/97 (11.34%), 2/97 (2.06%) and 1/97 (1.03%), historical PF 1.953401/1.649925/1.394317/
+1.254707/1.132080. The Last-8 policy is research-only; the released minimum remains nine.
+
+With Real Last-12 in that same study, Validation Last-8 produced 407/390/17 opened/closed/held orders at later
+modeled PF 0.653364 and 94/89/5 positions; 21/407 passed Real, producing 21/21/0 Active orders and 19/19/0
+positions, PF 0.284285. Last-12 produced 257/250/7 Validation orders at PF 0.470553, positions 85/82/3; Real
+passed 3/257, and Active orders and positions were each 3/3/0 at PF 0. Last-15/20/25 produced no Active closes,
+so their Active PF is unavailable. Across all 25 tested Validation/Real combinations, eight had Active closes
+and none reached PF 1. These are isolated model results, not funded paper or exchange fills. The test does not
+include other ranges, types, portfolio allocation or Block/Relate. A separate scalar/accounting verifier checked
+all 4800 contexts, 1808 entries, 25 cases and stored Last-12 evidence; the 16 cases shared with the earlier study
+match exactly. Source was the research-only local commit 6634df1, based on draft 44b2455. Its deliberately lowered
+research minimum must not be merged into production. Full listings and protocol hashes:
+https://chatgpt.com/library?file_id=libfile_214219a88e008191a2895242d617a542&account_id=personal .
+
+## 2026-10-28 — Processed-set same-time boundary correction
+
+Entries now assess Validation and Real using closes strictly earlier than their decision timestamp, even if a
+close at the same timestamp is delivered first. The book retains one bounded prior and one bounded current
+timestamp window so a large simultaneous close batch cannot evict evidence needed at that boundary. Restart
+restores both windows. A regression reproduced wrong decisions in both directions on the previous source; focused
+tests also cover both gates, batches larger than Last-N and restore. This primitive is not wired into production;
+it does not establish production stage parity, live fills or a profitable forward PF. CI and release status are
+recorded on the exact GitHub PR head; no deployment or account settings changed.
+
+## 2026-10-28 — Equal-time paper admission boundary (draft)
+
+The draft Last-N-only paper gate previously included a held close at the very same timestamp as a new entry.
+Actual `stepPaper` regressions independently reproduced both a losing close wrongly rejecting an otherwise
+qualified entry and a winning close wrongly qualifying an otherwise losing entry. The draft now reads strictly
+earlier owned closes at entry; pending, persisted and ambiguous rows follow the same boundary, and cached windows
+advance correctly at the next timestamp. Inclusive post-close reporting remains separate. This corrects an
+ordering defect in the incomplete draft, not the still-unwired Base-linked stage chain or Active-to-Live mirror.
+
 ## 2026-10-28 — Causal staged-set prototype and source-slot investigation
 
 PR #227 merged the separately tested causal stage-book and optional source-admission primitives into main at

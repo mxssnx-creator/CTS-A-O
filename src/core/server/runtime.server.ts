@@ -9840,7 +9840,7 @@ export class CoreRuntime {
         const pending = releasedRows.get(key) ?? [];
         const model = lvOwned
           ? (lvOwnedIdentities!.ambiguous || lvOwnedIdentities!.keys.has(key) || pending.length
-              ? ownedPromotionRecord(this.db, { cfg: x.id, sym, side }, lvN, at, "effective", pending) : undefined)
+              ? ownedPromotionRecord(this.db, { cfg: x.id, sym, side }, lvN, at, "effective", pending, true) : undefined)
           : lvExact.get(key);
         g = {
           ...(model ? liveGate(model, lvOwned ? 0 : lvSince, at, lvN, minPf) : { ok: true, n: 0, pf: null }),
