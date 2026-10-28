@@ -1,3 +1,25 @@
+## 2026-10-28 — Exploratory hold-time comparison
+
+For 10 October 00:00–12:00 UTC and 84h prior market data, nine isolated Low-Range Normal/Trailing cases compare
+Micro, Minimal and Short at max holds 15/30/60 minutes. Each uses 20 symbols, 1/5/15m, step 3 and 0.15% modeled
+round-trip cost; Micro/Minimal Base Last-30 and Short Last-40; Validation/Real Last-12. Micro and Minimal use the
+same protection distances and Base N in this narrow study, producing identical numeric results on separate IDs.
+This is a previously examined period, not a fresh holdout, funded paper or exchange execution.
+
+Micro and Minimal, respectively for 15/30/60 minutes: initial Validation passed 8/62 (12.90%, historical PF
+1.679245), 15/106 (14.15%, PF 1.470579), 18/162 (11.11%, PF 1.569612). Later Validation settled 313/365/455
+orders at PF 0.663583/0.547707/0.609401. Active orders were 26/26/0, 19/19/0, 23/23/0 opened/closed/held at PF
+0.371178/0.087017/0.235294; Active positions 17/17/0, 15/15/0, 18/18/0. The 15-minute case has eight time exits,
+twelve stops and six TP closes. Short 15 produced no Active closes, Short 30 one stop loss (PF 0), and Short 60
+the three stop losses below (PF 0). No case with settled Active orders achieved PF 1. Do not promote a hold default
+from these results; per-step automatic optimization and production integration remain unfinished.
+
+Independent accounting checked all 43,200 contexts, 17,836 Post-Base entries, 225 Validation/Real combinations
+and 146,845 individual decision windows. Repeated cases match the first run; Short 60 matches the earlier study.
+The research-only source is f1bfcbc1e9caa3bd5c01661ade0457a24c6163b3, which lowers Last-8 only for comparison
+and must not be merged. Per-case context and order listings, group outcomes and hashes:
+https://chatgpt.com/library?file_id=libfile_58912b63d1ac8191b4166dd8dd5d7bd7&account_id=personal .
+
 ## 2026-10-28 — Draft processed-set restore evidence hardening
 
 The stage-book prototype's old restore accepted an Active open entry with missing, zero or malformed PF/sample
