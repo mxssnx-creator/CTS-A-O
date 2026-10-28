@@ -1,3 +1,23 @@
+## 2026-10-28 — Bybit cooldown and shared-budget hardening
+
+Bybit rate-limit responses now publish a unique atomic cooldown marker in
+addition to the SQLite record. A locked SQLite writer can no longer silently
+discard a cooldown: other local clients see the longest marker deadline, even
+after a restart, and recheck it before dispatch. The client honors the longest
+valid venue reset or Retry-After deadline. If cooldown persistence is entirely
+unavailable, the reporting client remains locally blocked and reports failure;
+sharing cannot be guaranteed when both local storage mechanisms fail. This
+budget covers cooperating processes using the same host and budget path, not
+other applications or hosts sharing an IP. Bounded reads retain per-item errors;
+uncertain writes are not automatically resubmitted.
+
+The Bybit mocked suite passes 25 tests, including four real worker processes,
+SQLite lock contention, restart, cooldown ordering and un-retried writes. The
+full Exit Verification workflow for merged PR #217 passed its quality, four
+core partitions, slow-runtime and final verification jobs. No exchange account,
+venue fill or running deployment was tested or changed. Bybit remains an
+unconnected foundation, as described below.
+
 ## 2026-10-28 — Bybit V5 foundation, not connected to execution
 
 Added Bybit linear-USDT REST primitives with network-scoped HMAC signing,

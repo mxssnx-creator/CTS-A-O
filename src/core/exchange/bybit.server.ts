@@ -72,6 +72,21 @@ function numberOf(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Honor either Retry-After form and the venue's absolute reset timestamp without accepting invalid deadlines. */
+function retryDeadline(headers: Headers, now: number): number {
+  const reset = numberOf(headers.get("X-Bapi-Limit-Reset-Timestamp"));
+  const value = headers.get("Retry-After")?.trim();
+  let retry = 0;
+  if (value) {
+    if (/^\d+(?:\.\d+)?$/.test(value)) retry = now + Math.ceil(Number(value) * 1_000);
+    else retry = Date.parse(value);
+  }
+  return Math.max(
+    reset !== null && Number.isSafeInteger(Math.ceil(reset)) && reset > now ? Math.ceil(reset) : 0,
+    Number.isSafeInteger(retry) && retry > now ? retry : 0,
+  );
+}
+
 export function bybitSymbol(input: string): string {
   const symbol = input.trim().toUpperCase().replace(/-/g, "");
   if (!/^[A-Z0-9]+USDT$/.test(symbol) || symbol === "USDT") throw new Error("Bybit requires a linear USDT symbol");
@@ -228,24 +243,25 @@ export class BybitRest {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let response: Response;
     let raw: unknown;
+    let resetDeadline = 0;
     try {
       const read = (async () => {
         const res = await this.fetcher(`${this.host}${path}${query ? `?${query}` : ""}`, {
           method, headers, signal: controller.signal, ...(method === "POST" ? { body: payload } : {}),
         });
         const now = Date.now();
+        const reset = retryDeadline(res.headers, now);
         // 403 has several possible causes, including the IP ban. Conservatively stop all HTTP traffic for 10 min.
-        if (res.status === 403) this.budget.pause("*", now + 10 * 60_000);
-        if (res.status === 429) this.budget.pause(endpoint, now + 1_100);
+        if (res.status === 403) this.budget.pause("*", Math.max(now + 10 * 60_000, reset));
+        if (res.status === 429) this.budget.pause(endpoint, Math.max(now + 1_100, reset));
         const remaining = numberOf(res.headers.get("X-Bapi-Limit-Status"));
-        const reset = numberOf(res.headers.get("X-Bapi-Limit-Reset-Timestamp"));
-        if (remaining === 0 && reset !== null && reset > now) this.budget.pause(endpoint, Math.ceil(reset));
-        return { response: res, raw: await res.json() };
+        if (remaining === 0 && reset > now) this.budget.pause(endpoint, reset);
+        return { response: res, raw: await res.json(), resetDeadline: reset };
       })();
       const deadline = new Promise<never>((_, reject) => {
         timer = setTimeout(() => { controller.abort(); reject(new Error("timeout")); }, this.timeoutMs);
       });
-      ({ response, raw } = await Promise.race([read, deadline]));
+      ({ response, raw, resetDeadline } = await Promise.race([read, deadline]));
     } catch {
       if (method === "POST") throw new BybitOutcomeUnknown(method, path);
       throw new Error(`Bybit ${method} ${path}: read failed`);
@@ -259,7 +275,7 @@ export class BybitRest {
       throw new Error(`Bybit ${method} ${path}: invalid response`);
     }
     const code = numberOf(body.retCode);
-    if (code === 10006) this.budget.pause(endpoint, Date.now() + 1_100);
+    if (code === 10006) this.budget.pause(endpoint, Math.max(Date.now() + 1_100, resetDeadline));
     // Duplicate client ids may name an earlier successful submission. Timeout/processing codes cannot prove no fill.
     const ambiguous = code === null || response.status >= 500 || response.status === 429 ||
       [429, 10000, 10014, 10016, 110072, 110079, 170141, 170146, 170147].includes(code);

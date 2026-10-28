@@ -1,9 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
+import { execFile } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
+import { DatabaseSync } from "node:sqlite";
 import { BybitNotSent, BybitOutcomeUnknown, BybitRejected, BybitRest, batchBybitReads, bybitSignature, bybitSymbol, snapBybitDecimal, summarizeBybitExecutions } from "./bybit.server.ts";
 import { BybitBudget, type BybitRequestBudget } from "./bybit-budget.server.ts";
 
@@ -265,6 +268,61 @@ describe("Bybit V5 primitives (mocked transport only)", () => {
       b.pause("*", now + 600_000);
       assert.equal(a.take("POST /v5/order/cancel", now, false).until, now + 600_000);
     } finally { a.close(); b.close(); rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("shares a cooldown even when SQLite is locked, and preserves the longest concurrent deadline", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-bybit-locked-")), file = join(dir, "budget.sqlite");
+    const writer = new BybitBudget(file), observer = new BybitBudget(file), now = 500_000;
+    writer.take("init", now - 5_000, false);
+    const lock = new DatabaseSync(file);
+    try {
+      lock.exec("BEGIN IMMEDIATE");
+      writer.pause("*", now + 600_000);
+      observer.pause("*", now + 1_000);
+      assert.equal(observer.take("POST /v5/order/cancel", now, false).until, now + 600_000);
+      lock.exec("ROLLBACK");
+      writer.close(); observer.close();
+      const restarted = new BybitBudget(file);
+      try {
+        assert.equal(restarted.take("GET /v5/position/list", now, false).until, now + 600_000);
+        assert.equal(restarted.take("GET /v5/position/list", now + 600_000, false).until, 0);
+      } finally { restarted.close(); }
+    } finally { lock.close(); writer.close(); observer.close(); rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("limits actual concurrent processes to one shared rolling endpoint budget", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-bybit-process-")), file = join(dir, "budget.sqlite");
+    const budget = new BybitBudget(file), now = Date.now() + 100;
+    budget.take("init", now - 5_000, false);
+    const module = new URL("./bybit-budget.server.ts", import.meta.url).href;
+    const code = `import {BybitBudget} from ${JSON.stringify(module)};
+      const b=new BybitBudget(process.argv[1]);let n=0;
+      for(let i=0;i<30;i++)if(!b.take('GET /v5/position/list',Number(process.argv[2]),false).until)n++;
+      b.close();process.stdout.write(String(n));`;
+    try {
+      const replies = await Promise.all(Array.from({ length: 4 }, () => promisify(execFile)(process.execPath,
+        ["--experimental-strip-types", "--no-warnings", "--input-type=module", "-e", code, file, String(now)])));
+      const accepted = replies.reduce((n, reply) => n + Number(reply.stdout), 0);
+      assert.ok(accepted > 0 && accepted <= 5, `${accepted} accepted across processes`);
+      for (let n = accepted; n < 5; n++) assert.equal(budget.take("GET /v5/position/list", now, false).until, 0);
+      assert.ok(budget.take("GET /v5/position/list", now, false).until > now);
+    } finally { budget.close(); rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("honors the longest server reset or Retry-After and does not retry writes", async () => {
+    const pauses: Array<[string, number]> = [];
+    const budget: BybitRequestBudget = { take: () => ({ until: 0 }), pause: (key, until) => pauses.push([key, until]) };
+    const before = Date.now(), reset = before + 15_000;
+    let calls = 0;
+    const client = new BybitRest("testnet", { ...creds, budget, fetcher: (async () => {
+      calls++;
+      return new Response(JSON.stringify({ retCode: 10006, retMsg: "rate", result: {} }),
+        { headers: { "X-Bapi-Limit-Reset-Timestamp": String(reset), "Retry-After": "20" } });
+    }) as typeof fetch });
+    await assert.rejects(client.placeMarket({ symbol: "BTCUSDT", side: "Buy", positionIdx: 0, qty: "1", orderLinkId: "CTS_LIMIT", reduceOnly: false }), BybitRejected);
+    assert.equal(calls, 1);
+    assert.equal(pauses[0][0], "POST /v5/order/create");
+    assert.ok(pauses[0][1] >= before + 20_000);
   });
 
   it("bounds read batches and preserves successes and errors in input order", async () => {
