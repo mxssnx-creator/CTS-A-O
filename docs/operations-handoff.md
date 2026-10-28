@@ -1,3 +1,13 @@
+## 2026-10-28 — Processed-set same-time boundary correction
+
+Entries now assess Validation and Real using closes strictly earlier than their decision timestamp, even if a
+close at the same timestamp is delivered first. The book retains one bounded prior and one bounded current
+timestamp window so a large simultaneous close batch cannot evict evidence needed at that boundary. Restart
+restores both windows. A regression reproduced wrong decisions in both directions on the previous source; focused
+tests also cover both gates, batches larger than Last-N and restore. This primitive is not wired into production;
+it does not establish production stage parity, live fills or a profitable forward PF. CI and release status are
+recorded on the exact GitHub PR head; no deployment or account settings changed.
+
 ## 2026-10-28 — Causal processed-set primitives (not wired to production)
 
 Added a tested stage-book primitive for independent Base-linked post-Base, Validation and Active histories, and an
