@@ -8082,7 +8082,10 @@ export class CoreRuntime {
                     pauseMs: 0,
                     nowT: first ?? endT,
                   })
-                  .catch(() => [] as Candle[]),
+                  .catch((error: unknown) => {
+                    const reason = error instanceof Error ? error.message : String(error);
+                    throw new Error(`preset market history ${sym}: ${reason}`);
+                  }),
               );
               this.checkBacktest(job);
               cs =
@@ -11771,9 +11774,13 @@ async function mapLimit<T>(
   alive: () => boolean = () => true,
 ) {
   let i = 0;
+  let failed = false;
   // abandoned work (stop / newer generation) stops taking new items
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (i < items.length && alive()) await fn(items[i++]);
+    while (!failed && i < items.length && alive()) {
+      try { await fn(items[i++]); }
+      catch (error) { failed = true; throw error; }
+    }
   });
   await Promise.all(workers);
 }
