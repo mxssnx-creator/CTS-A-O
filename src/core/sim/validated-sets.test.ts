@@ -7,7 +7,7 @@ import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { baseRangeProtects, baseRuns, makeUniverse, protectCellKey, REF_TF } from "../pipeline/pipeline.ts";
 import { basePass } from "../server/runtime.server.ts";
 import { buildTapes, protectGrid } from "./walkforward.ts";
-import type { Protect } from "../domain/types.ts";
+import type { Protect, Trade } from "../domain/types.ts";
 
 const T_END = Date.UTC(2026, 9, 1);
 const u = makeUniverse([
@@ -81,7 +81,7 @@ describe("B1: Base cells", () => {
   });
 });
 
-import { defaultWalkForward, selectFixed, selectFixedGen, validatedSetGen, walkForward, type ConfigTape } from "./walkforward.ts";
+import { configDirectionEval, defaultWalkForward, makeTape, selectFixed, selectFixedGen, validatedSetGen, walkForward, type ConfigTape } from "./walkforward.ts";
 
 const H = 3_600_000;
 describe("B2: the validated set V", () => {
@@ -157,6 +157,36 @@ describe("B2: the validated set V", () => {
     let r = g.next();
     while (!r.done) r = g.next();
     assert.equal(JSON.stringify(r.value.picks), JSON.stringify(full.picks));
+  });
+
+  it("rechecks membership when the same validated set changes between selections", () => {
+    const t = u2.nowT - 10 * H, ind = "ema-21-55@m15";
+    const protect: Protect = { tp: .03, sl: .02, trail: 0, hold: 16 };
+    const cfg = `follow|${ind}|tp3|sl2|tr0|h16`;
+    const rows: Trade[] = ([1, -1] as const).flatMap((side) =>
+      Array.from({ length: 40 }, (_, i) => {
+        const r = i % 5 === 4 ? -.002 : .01, exitT = t - (40 - i) * H;
+        return { cfg, sym: "A-USDT", side, entryT: exitT - 60_000, exitT, entry: 100,
+          exit: 100 * (1 + side * r), r, mult: 1, reason: r > 0 ? "tp" : "sl", bars: 1, mfe: 0, mae: 0 };
+      }));
+    const tape = makeTape(cfg, "follow", ind, protect, "normal", ["A-USDT"], rows, [], []);
+    const validated = new Set([cfg]);
+    const options = { ...base, seatSet: "validated" as const, validated, validLastN: 0, preGate: false,
+      rangeGate: undefined, gates: { ...base.gates, minTrades: 3, minPf: 1, minGreen: 0,
+        stableBlocks: 0, lossPrior: false, maxDdr: 0, maxDdtH: 1000 } };
+    assert.ok(configDirectionEval(tape, t, options, 1).ok && configDirectionEval(tape, t, options, -1).ok,
+      "both directions pass, so selection reuses the same source tape");
+    const list = [tape];
+    const before = selectFixed(list, t, options).picks.map((p) => p.id);
+    assert.ok(before.length > 0, "the initial validated set has a selectable config");
+    const removed = before[0];
+    validated.delete(removed);
+    const after = selectFixed(list, t, options).picks.map((p) => p.id);
+    assert.ok(!after.includes(removed), "a removed config must not survive the cached selector");
+    assert.ok(after.every((id) => validated.has(id)), "every remaining selection is still in V");
+    validated.add(removed);
+    assert.ok(selectFixed(list, t, options).picks.some((p) => p.id === removed),
+      "restoring the membership restores the eligible config");
   });
 });
 

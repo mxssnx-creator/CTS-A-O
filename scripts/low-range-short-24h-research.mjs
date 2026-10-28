@@ -16,6 +16,7 @@ import { minPfOf } from "../src/core/minimal-coord.ts";
 
 const output = process.argv[2] ?? "runs/low-range-24h-20261027";
 const windowScreen = process.argv.includes("--window-screen");
+const recordOrders = process.argv.includes("--orders");
 const integerOption = (name, fallback) => {
   const raw = process.argv.find((x) => x.startsWith(`--${name}=`))?.slice(name.length + 3);
   if (raw === undefined) return fallback;
@@ -49,10 +50,12 @@ const protocol = {
   scope: windowScreen
     ? "unallocated all-window candidate screen with matched 60m Normal TP and trailing reference cells, not production or venue execution"
     : "unallocated independent candidate tapes, not production or venue execution",
-  windowScreen,
+  windowScreen, recordOrders,
   frozenAt: new Date().toISOString(),
   hashes: { source: sha(readFileSync("src/core/indications/low-range-research.ts")), tests: sha(readFileSync("src/core/indications/low-range-research.test.ts")),
-    runner: sha(readFileSync("scripts/low-range-short-24h-research.mjs")), description: sha(readFileSync("docs/low-range-research-20261027/PROTOCOL-SHORT.md")), feed: sha(feedBytes) },
+    runner: sha(readFileSync("scripts/low-range-short-24h-research.mjs")), description: sha(readFileSync("docs/low-range-research-20261027/PROTOCOL-SHORT.md")), feed: sha(feedBytes),
+    backtest: sha(readFileSync("src/core/sim/backtest.ts")), walkforward: sha(readFileSync("src/core/sim/walkforward.ts")),
+    pipeline: sha(readFileSync("src/core/pipeline/pipeline.ts")), config: sha(readFileSync("src/core/config.ts")) },
   feed: { path: feedPath, provider: "Previously examined cached Binance USD-M minute candles; retrospective, not a fresh holdout" },
   symbols, warm, evalFrom, start, end, tfs, policy, methods: LOW_RANGE_METHODS, relations: LOW_RANGE_RELATIONS, windows: LOW_RANGE_WINDOWS,
   requestedPerSignalLane: policy.steps.length * policy.slRatios.length * policy.trailRatios.length * policy.tags.length,
@@ -75,15 +78,22 @@ for (const sym of symbols) {
 }
 const blank = () => ({ cells: 0, basePassed: 0, activeConfigs: 0, contexts: 0, validated: 0, historicalGp: 0, historicalGl: 0,
   forwardCandidates: 0, forwardGatePassed: 0, forwardGateRejected: 0, forwardGateFailures: {},
-  settled: 0, long: 0, short: 0, openAtEnd: 0, wins: 0, losses: 0, flat: 0, gp: 0, gl: 0, failureReasons: {} });
+  settled: 0, long: 0, short: 0, openAtEnd: 0, wins: 0, losses: 0, flat: 0, gp: 0, gl: 0, exitReasons: {}, failureReasons: {} });
 const total = blank(), byStep = {}, byStepTf = {}, byStepRange = {}, byStepMethod = {}, byStepHour = {}, byStrategy = {}, byStrategyTf = {};
 const group = (obj, key) => obj[key] ??= blank();
 const hourGroup = (step, time) => group(byStepHour, `${step}|${time}`);
 const ledgerFile = `${output}/cells.jsonl.gz`, ledger = openSync(ledgerFile, "wx");
+const ordersFile = `${output}/orders.jsonl.gz`, orders = recordOrders ? openSync(ordersFile, "wx") : null;
+let ledgerOpen = true, ordersOpen = orders !== null, orderCount = 0;
+if (orders !== null) writeSync(orders, gzipSync(Buffer.alloc(0), { level: 1 }));
 const begun = performance.now();
 let peakRss = process.memoryUsage().rss, peakCgroup = 0;
 const pf = (gp, gl, n) => !n ? null : gl > 0 ? gp / gl : gp > 0 ? "no-loss" : null;
 const bump = (groups, key, amount = 1) => { for (const b of groups) b[key] += amount; };
+const addExit = (counts, reason, gain, loss) => {
+  const row = counts[reason] ??= { n: 0, gp: 0, gl: 0 };
+  row.n++; row.gp += gain; row.gl += loss;
+};
 try {
   for (const tf of tfs) for (const window of LOW_RANGE_WINDOWS) for (const method of LOW_RANGE_METHODS) for (const relation of LOW_RANGE_RELATIONS) {
     const ind = `low-range-${window}-${method}-${relation}@m${tf}`;
@@ -93,7 +103,7 @@ try {
       for (let i = 1; i < bars.n; i++) if (bars.t[i] + tf * M >= evalFrom && state[i] && state[i] !== state[i - 1]) onset[i] = state[i];
       return [sideSignal(onset, 1), sideSignal(onset, -1)];
     });
-    const lineBuffer = [];
+    const lineBuffer = [], orderBuffer = [];
     const holdBars = Math.max(1, Math.floor(candidateHoldMin / tf));
     for (const ref of protects) {
       const heldRef = { ...ref, hold: holdBars, maxHoldMin: candidateHoldMin };
@@ -164,6 +174,7 @@ try {
             ? opens.filter((t) => t.side === side && t.entryT >= start && qualifies(t.entryT).ok) : [];
           bump(groups, "openAtEnd", held.length);
           let gp = 0, gl = 0;
+          const exitReasons = {};
           for (const t of selected) {
             const gain = Math.max(0, t.r), loss = Math.max(0, -t.r);
             gp += gain; gl += loss;
@@ -172,15 +183,23 @@ try {
             const all = [...groups, hourGroup(step, time)];
             bump(all, "settled"); bump(all, side === 1 ? "long" : "short");
             bump(all, t.r > 0 ? "wins" : t.r < 0 ? "losses" : "flat"); bump(all, "gp", gain); bump(all, "gl", loss);
+            addExit(exitReasons, t.reason, gain, loss);
+            for (const g of all) addExit(g.exitReasons, t.reason, gain, loss);
+            if (orders !== null) {
+              orderBuffer.push(JSON.stringify({ ...t, ind, tf, window, method, relation, strategy }));
+              orderCount++;
+            }
           }
           row.directions.push({ side, initial: ev.ok ? { passed: true, n: ev.n, pf: ev.pf, gp: ev.gp, gl: ev.gl } : { passed: false, n: ev.n, fail: ev.fail },
             forwardGate: { candidates: entryCandidates.length, passed: gatePassed, rejectedBy: gateRejectedBy },
-            forward: { settled: selected.length, gp, gl, openAtEnd: held.length } });
+            forward: { settled: selected.length, gp, gl, openAtEnd: held.length, exitReasons } });
         }
       }
       lineBuffer.push(JSON.stringify(row));
     }
     writeSync(ledger, gzipSync(Buffer.from(lineBuffer.join("\n") + "\n"), { level: 1 }));
+    if (orders !== null && orderBuffer.length)
+      writeSync(orders, gzipSync(Buffer.from(orderBuffer.join("\n") + "\n"), { level: 1 }));
     peakRss = Math.max(peakRss, process.memoryUsage().rss);
     try { peakCgroup = Math.max(peakCgroup, Number(readFileSync("/sys/fs/cgroup/memory.current", "utf8"))); } catch { /* host has no cgroup counter */ }
     if (peakRss > 6_100_000_000 || (memoryLimit > 0 && peakCgroup > memoryLimit * 0.9))
@@ -195,15 +214,22 @@ try {
     b.historicalPf = pf(b.historicalGp, b.historicalGl, b.validated);
     b.validatedPct = b.contexts ? 100 * b.validated / b.contexts : null;
     b.forwardPf = pf(b.gp, b.gl, b.settled);
+    for (const exit of Object.values(b.exitReasons)) exit.pf = pf(exit.gp, exit.gl, exit.n);
   }
   const results = { schema: protocol.schema, status: "completed", scope: protocol.scope, total, byStep, byStepTf, byStepRange, byStepMethod, byStepHour, byStrategy, byStrategyTf,
     elapsedMs: performance.now() - begun, peakRss, peakCgroup };
-  closeSync(ledger);
+  closeSync(ledger); ledgerOpen = false;
+  if (orders !== null) {
+    closeSync(orders); ordersOpen = false;
+    if (orderCount !== total.settled) throw new Error(`order ledger has ${orderCount} rows for ${total.settled} settled closes`);
+    results.ordersSha256 = sha(readFileSync(ordersFile));
+  }
   results.ledgerSha256 = sha(readFileSync(ledgerFile));
   writeFileSync(`${output}/results.json`, JSON.stringify(results, null, 2) + "\n", { flag: "wx" });
   console.log(JSON.stringify({ status: results.status, total, byStep, elapsedMs: results.elapsedMs, peakRss, peakCgroup, ledgerSha256: results.ledgerSha256 }));
 } catch (e) {
-  closeSync(ledger);
+  if (ledgerOpen) closeSync(ledger);
+  if (orders !== null && ordersOpen) closeSync(orders);
   writeFileSync(`${output}/failure.json`, JSON.stringify({ status: "incomplete", error: String(e), completedCells: total.cells,
     totalCells: protocol.totalCells, elapsedMs: performance.now() - begun, peakRss, peakCgroup }) + "\n", { flag: "wx" });
   throw e;

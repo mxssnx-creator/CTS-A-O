@@ -79,6 +79,26 @@ describe("Signals PF 1.5, own Strategy Base and independent TP/SL", () => {
       assert.equal(activeSignals([row(1.5)], s).size, 2);
     }
   });
+  it("requires the validated Signal config in every selector", () => {
+    const ind = "sig-ema-cross-s@m15";
+    const protect = { tp: 0.03, sl: 0.02, trail: 0, hold: 192 };
+    const cfg = configId("follow", ind, protect, "normal");
+    const tape = makeTape(cfg, "follow", ind, protect, "normal", ["A"], own(cfg, "A", 1, 1.6), [], []);
+    const base = { ...options, signalActive: new Set([sigActiveKey("follow", ind, "A", 1, "normal", cfg)]) };
+    assert.equal(configEval(tape, NOW, base).ok, true, "the fixture independently passes its own Signal evaluation");
+    const selectors = [
+      (o: typeof base) => selectAt([tape], NOW, o).picks,
+      (o: typeof base) => selectFixed([tape], NOW, o).picks,
+      (o: typeof base) => selectDurable([tape], NOW, o, new Set([cfg])).picks,
+    ];
+    for (const select of selectors) {
+      assert.deepEqual(select({ ...base, validated: new Set([cfg]) }).map((x) => x.id), [cfg]);
+      assert.deepEqual(select({ ...base, validated: new Set<string>() }).map((x) => x.id), [],
+        "a passing Signal outside the explicit validated set must not take a seat");
+      assert.deepEqual(select({ ...base, seatSet: "pool", validated: new Set<string>() }).map((x) => x.id), [cfg],
+        "explicit pool mode still evaluates the eligible Signal");
+    }
+  });
   for (const range of ["s", "m"]) for (const tf of [1, 5, 15, 30])
     for (const kind of ["normal", "trailing", "trailing-only", "dca", "dca-active", "axis"] as StratKind[])
       it(`${range}/${tf}m/${kind}: own PF floor and Last-25 survive Base, selectors and admission`, () => {
