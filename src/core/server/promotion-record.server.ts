@@ -73,13 +73,13 @@ export function ownedPromotionRecord(db: CoreDb, lane: {cfg: string; sym: string
     if (!Number.isFinite(row.entry_t) || !Number.isFinite(row.exit_t) || row.exit_t < row.entry_t)
       throw new Error("invalid pending paper close");
     if (row.exit_t > now) continue;
-    const prior = db.get<Row>(`SELECT ${columns} FROM paper_book_trades WHERE cfg=? AND sym=? AND side=? AND entry_t=?`,
+    const prior = db.get<Row & { reason: string }>(`SELECT ${columns},reason FROM paper_book_trades WHERE cfg=? AND sym=? AND side=? AND entry_t=?`,
       lane.cfg, lane.sym, lane.side, row.entry_t);
     const duplicate = pendingIds.has(row.entry_t);
     pendingIds.add(row.entry_t);
     if (prior || duplicate) {
       const fields = ["cfg", "sym", "side", "entry_t", "exit_t", "unit_r", "owned_notional_usd", "held_at", "held_px", "entry", "exit", "vol"] as const;
-      if (!duplicate && prior && fields.every((field) => Object.is(row[field], prior[field]))) continue;
+      if (!duplicate && prior && prior.reason !== "dropped" && fields.every((field) => Object.is(row[field], prior[field]))) continue;
       for (let i = rows.length - 1; i >= 0; i--) if (rows[i].entry_t === row.entry_t) rows.splice(i, 1);
       rows.push({ ...row, unit_r: null, owned_notional_usd: null });
     } else rows.push(row);

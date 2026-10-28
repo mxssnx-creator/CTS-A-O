@@ -23,6 +23,9 @@ test("same-step owned closes join only their own causal Last-N window and never 
     assert.equal(afterFlush.n,3);assert.equal(afterFlush.ok,false);assert.ok(Math.abs(afterFlush.pf!-.8)<1e-12);
     const conflict=gate(300,[{...last,unit_r:.05}]);
     assert.equal(conflict.ok,false);assert.ok((conflict.unknown??0)>0,"conflicting duplicate cannot borrow older wins");
+    db.run("UPDATE paper_book_trades SET reason='dropped' WHERE cfg=? AND sym=? AND side=? AND entry_t=?",lane.cfg,lane.sym,lane.side,last.entry_t);
+    const dropped=gate(300,[last]);
+    assert.equal(dropped.ok,false);assert.ok((dropped.unknown??0)>0,"an earlier dropped row is not a proven close");
     assert.throws(()=>gate(300,[{...last,exit_t:NaN}]),/invalid pending paper close/);
   } finally { db.db.close(); }
 });
