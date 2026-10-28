@@ -1038,7 +1038,7 @@ export class CoreRuntime {
    */
   private memDeferred = false;
   /** the paper step's live validation for new entries (null = off) */
-  private liveEntryGate: ((tp: ConfigTape, side?: number) => boolean) | null = null;
+  private liveEntryGate: ((tp: ConfigTape, side?: number, sym?: string) => boolean) | null = null;
   /** the last compute's strategy-set completeness (tape builder record: grid cells built / kept / skipped and why) */
   buildStats: TapeBuildStat[] = [];
   /** loop generation: a cycle from an older generation never reschedules or publishes */
@@ -9732,27 +9732,28 @@ export class CoreRuntime {
     const lvMemo = new Map<string, LiveGate>();
     // Paper keeps learning. Its deactivation record is the settled AFTER-Base execution simulation, never the
     // independent raw candidate tape. Strict funded proof is checked separately at native live admission.
-    // Forward deactivation must follow the exact config and direction even when legacy pooled proof is selected.
+    // Forward deactivation must follow the exact config, symbol and direction even when legacy pooled proof is selected.
     const lvBySide = true;
     // Both independent sides are included in the diagnostic count, including insufficient ones.
     const lvSides = lvBySide ? LV_SIDES_APART : LV_SIDES_POOLED;
     const lvModel = this.modeledGateRecords(lvBySide) ?? new Map<string, LiveRecord>();
+    const lvExact = this.modeledExecutionRecords()?.records ?? new Map<string, LiveRecord>();
     // judged as of `at`: a paper entry as of its entry time (the closes after it are not known when it enters — with
     // now, up to a step of later closes decided it), the entries planner as of now
-    const lvOf = (x: ConfigTape, at = lvNow, side?: 1 | -1): LiveGate => {
-      // Missing side provenance cannot borrow either side's record.
-      if (lvBySide && side === undefined) return { ok: false, n: 0, pf: null, unknown: 1 };
-      const mk = `${x.id}|${at}${side === undefined ? "" : `|${side}`}`;
-      let g = lvMemo.get(mk);
+    const lvOf = (x: ConfigTape, at = lvNow, side?: 1 | -1, sym?: string, cache = true): LiveGate => {
+      // Missing identity provenance cannot borrow another symbol or side's record.
+      if (side === undefined || !sym?.trim()) return { ok: false, n: 0, pf: null, unknown: 1 };
+      const mk = JSON.stringify([x.id, sym, side, at]);
+      let g = cache ? lvMemo.get(mk) : undefined;
       // A Live floor can tighten the matching stage floor, never relax it.
       const minPf = liveMinPfOf(this.settings, x.protect.tag, x.ind, x.kind);
       if (!g) {
-        const model = lvModel.get(recordKeyOf(x.id, side));
+        const model = lvExact.get(executionRecordKey(x.id, sym, side));
         g = {
           ...(model ? liveGate(model, lvSince, at, lvN, minPf) : { ok: true, n: 0, pf: null }),
           source: "post-base-accepted",
         };
-        lvMemo.set(mk, g);
+        if (cache) lvMemo.set(mk, g);
       }
       return g;
     };
@@ -9793,12 +9794,12 @@ export class CoreRuntime {
     };
     const lvGroups = groupsAt(lvNow);
     if (lvGroupN > 0) yield 0;
-    // The entries planner checks the entry's own config and side.
+    // The entries planner checks the entry's own config, symbol and side.
     this.liveEntryGate =
       lvN > 0
-        ? (tp, s) => {
+        ? (tp, s, sym) => {
             const side = lvSideOfEntry(lvBySide, s);
-            return liveEntryOk(lvOf(tp, lvNow, side));
+            return liveEntryOk(lvOf(tp, lvNow, side, sym));
           }
         : null;
     let lvSkipped = 0;
@@ -9878,7 +9879,7 @@ export class CoreRuntime {
         // simulation gave it (judged first, its seat went to a config the simulation had crowded out)
         if (
           lvN > 0 &&
-          !liveEntryOk(lvOf(tp, op.entryT, lvSide))
+          !liveEntryOk(lvOf(tp, op.entryT, lvSide, op.sym))
         ) {
           lvSkipped++;
           pSkip("liveValidation");
@@ -10295,14 +10296,19 @@ export class CoreRuntime {
       for (const id of sel) {
         const x = byId.get(id);
         if (!x) { evaluated += lvSides.length; unknown += lvSides.length; continue; }
-        for (const side of lvSides) {
+        // The status has the same independent identities as admission, including both unjudged sides.
+        // Do not retain these potentially large diagnostic-only lookups in the entry memo.
+        for (const sym of x.syms) for (const side of lvSides) {
           evaluated++;
-          const g = lvOf(x, lvNow, side);
-          if ((g.unknown ?? 0) > 0) { unknown++; continue; }
-          if (g.pf === null) { unjudged++; continue; }
-          judged++;
-          if (g.ok) passing++;
-          if (g.source === "exchange") onExchange++;
+          const g = lvOf(x, lvNow, side, sym, false);
+          if ((g.unknown ?? 0) > 0) unknown++;
+          else if (g.pf === null) unjudged++;
+          else {
+            judged++;
+            if (g.ok) passing++;
+            if (g.source === "exchange") onExchange++;
+          }
+          if (evaluated % 128 === 0) yield 0;
         }
       }
       this.status.liveValidation = {
@@ -10533,7 +10539,7 @@ export class CoreRuntime {
         // and the live validation of the paper book (a config losing on its own record opens nothing), and native live
         // entries require both settled model and measured owned-paper execution proof for this side
         if (
-          (this.liveEntryGate && !this.liveEntryGate(tp, p.side)) ||
+          (this.liveEntryGate && !this.liveEntryGate(tp, p.side, p.sym)) ||
           !this.livePromotionGate({ cfg: tp.id, sym: p.sym, side: p.side }).ok
         ) {
           skip(tp, "liveValidation");

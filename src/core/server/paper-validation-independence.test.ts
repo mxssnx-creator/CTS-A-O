@@ -14,10 +14,10 @@ const SYM = "AAA-USDT";
 const CFG = "follow|rsi-mom-14-25@m15|tp2.6|sl3.9|tr0|h32|sh";
 const OTHER = "follow|ema-9-21@m15|tp2.6|sl3.9|tr0|h32|sh";
 
-type Sample = { cfg: string; side: 1 | -1; r: number; unknown?: boolean };
+type Sample = { cfg: string; side: 1 | -1; r: number; sym?: string; unknown?: boolean };
 
 /** Run the actual paper-step path with a passing historical tape and declared post-Base accepted closes. */
-function paperEntry(samples: Sample[], groupN = 0, direction: 1 | -1 = 1, disableAfter = false) {
+function paperEntry(samples: Sample[], groupN = 0, direction: 1 | -1 = 1, disableAfter = false, checkPending = false) {
   const rt = new CoreRuntime(new CoreDb(":memory:"),
     { gates: { minTrades: 1 }, live: { liveLastN: 3, liveGroupLastN: groupN, sideGates: false } },
     { market: "synthetic", priceStream: null });
@@ -33,39 +33,74 @@ function paperEntry(samples: Sample[], groupN = 0, direction: 1 | -1 = 1, disabl
     const open: OpenPosition = { cfg: CFG, sym: SYM, side: direction, entryI: 0, entryT: T, entry: 100,
       stop: 100 * (1 - direction * .039), target: 100 * (1 + direction * .026), peak: 100, trailOn: false, mtm: 0 };
     const protect = { ...DEFAULT_PROTECT, tag: "sh" as const };
+    const ownSymbols = [...new Set([SYM, ...samples.filter((s) => s.cfg === CFG).map((s) => s.sym ?? SYM)])];
     rt.tapes = [
-      makeTape(CFG, "follow", "rsi-mom-14-25@m15", protect, "normal", [SYM], raw(CFG), [open], []),
+      makeTape(CFG, "follow", "rsi-mom-14-25@m15", protect, "normal", ownSymbols, raw(CFG), [open], []),
       makeTape(OTHER, "follow", "ema-9-21@m15", protect, "normal", [SYM], raw(OTHER), [], []),
     ];
     const u = { bars: [], caches: [], startT: T - 24 * H, endT: T, splitT: T - 12 * H, nowT: T, baseTf: 15 } as never;
     rt.sim = walkForward(u, [], { ...rt.wf, simH: 24 });
     rt.sim.validated = rt.tapes.map((t) => t.id);
     rt.sim.trades = samples.map((s, i): Trade => ({
-      cfg: s.cfg, sym: SYM, side: s.side, entryT: T - H + i * 1_000,
+      cfg: s.cfg, sym: s.sym ?? SYM, side: s.side, entryT: T - H + i * 1_000,
       exitT: T - 10 * 60_000 + i * 1_000, entry: 100, exit: 100 * (1 + s.side * s.r),
       r: s.r, ...(s.unknown ? {} : { unitR: s.r, mult: 1 }), vol: 1,
       kind: "normal", reason: "time", bars: 1, mfe: 0, mae: 0,
     }));
     (rt as unknown as { stepPaper(): void }).stepPaper();
     const validation = rt.status.liveValidation;
+    const opened = rt.paper.positions.some((p) => p.cfg === CFG && p.side === direction);
+    let pending: string[] | undefined;
+    if (checkPending) {
+      rt.tapes[0].pending = ownSymbols.map((sym) => ({ sym, side: direction }));
+      rt.paper.positions = [];
+      rt.wf.symGate = "off";
+      rt.status.lastBarT = T - 60_000;
+      const inner = rt as unknown as { candles: Map<string, { lastT(): number }>;
+        livePromotionGate(): { ok: boolean }; coordOf(): null };
+      inner.candles = new Map(ownSymbols.map((sym) => [sym, { lastT: () => T - 60_000 }]));
+      // Isolate the paper admission path; strict owned execution proof has separate integration tests.
+      inner.livePromotionGate = () => ({ ok: true });
+      inner.coordOf = () => null;
+      pending = rt.pendingEntries().map((p) => p.sym);
+    }
     if (disableAfter) {
       rt.settings.live.liveLastN = 0;
       (rt as unknown as { stepPaper(): void }).stepPaper();
     }
     return {
-      opened: rt.paper.positions.some((p) => p.cfg === CFG && p.side === direction),
+      opened: disableAfter ? rt.paper.positions.some((p) => p.cfg === CFG && p.side === direction) : opened,
       selected: rt.paper.selected.includes(CFG),
       siblingSelected: rt.paper.selected.includes(OTHER),
       skips: { ...rt.status.paperSkips },
       validation,
       cleared: rt.status.liveValidation === undefined,
       promotion: rt.livePromotionGate({ cfg: CFG, sym: SYM, side: direction }, T),
+      pending,
     };
   } finally {
     rt.dispose();
     rt.db.db.close();
   }
 }
+
+test("paper admission cannot borrow another symbol's accepted outcomes for the same config", () => {
+  const hereWins = record(CFG, 1, [.02, -.01, .02]);
+  const hereLosses = record(CFG, 1, [-.01, -.01, -.01]);
+  const otherWins = record(CFG, 1, [.1, .1, .1]).map((r) => ({ ...r, sym: "BBB-USDT" }));
+  const otherLosses = record(CFG, 1, [-.1, -.1, -.1]).map((r) => ({ ...r, sym: "BBB-USDT" }));
+  const losing = paperEntry([...hereLosses, ...otherWins], 0, 1, false, true);
+  assert.equal(losing.opened, false, "a winning sibling symbol cannot rescue a loser");
+  assert.deepEqual(losing.pending, ["BBB-USDT"], `pending entries use each symbol's own gate: ${JSON.stringify(losing.skips)}`);
+  assert.equal(losing.validation?.evaluated, 6, "both sides of every selected config-symbol context are counted");
+  assert.equal(losing.validation?.judged, 2);
+  assert.equal(losing.validation?.passing, 1);
+  assert.equal(losing.validation?.paused, 1);
+  assert.equal(losing.validation?.unjudged, 4);
+  const winning = paperEntry([...hereWins, ...otherLosses], 0, 1, false, true);
+  assert.equal(winning.opened, true, "a losing sibling symbol cannot veto a winner");
+  assert.deepEqual(winning.pending, [SYM]);
+});
 
 const record = (cfg: string, side: 1 | -1, values: number[]): Sample[] =>
   values.map((r) => ({ cfg, side, r }));

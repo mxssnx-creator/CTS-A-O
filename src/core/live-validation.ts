@@ -491,7 +491,7 @@ export interface LiveValidationStatus {
   /** Latest snapshot time; these are accepted post-Base modeled outcomes, not venue fills. */
   at: number;
   basis: "post-base-accepted";
-  /** Selected config × direction contexts, including unjudged and unknown contexts. */
+  /** Selected config × symbol × direction contexts, including unjudged and unknown contexts. */
   evaluated: number;
   /** Fewer than N known own closes: unproven paper warm-up. */
   unjudged: number;
@@ -510,6 +510,6 @@ export interface LiveValidationStatus {
   /** group last N (0 = off) and its diagnostic statistics; these do not qualify or veto a config */
   groupLastN?: number;
   groups?: LiveGroupStatus[];
-  /** Each config is judged per side (the counts are per config and side). */
+  /** Each config and symbol is judged per side. */
   bySide?: true;
 }
