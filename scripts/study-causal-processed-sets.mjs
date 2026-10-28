@@ -142,20 +142,23 @@ for (const history of histories) {
                 contexts.push(check);
               } else if (event.type === "entry") {
                 if (!baseAt(event.t).ok) throw new Error("post-Base lane admitted an unqualified entry");
-                const id = String(event.tr.entryT), validation = {};
+                const id = String(event.tr.entryT), validation = {}, evidenceAll = {};
                 let evidence;
                 for (const val of samples) {
                   const book = books.get(val), verdict = book.verdict(identity, "postBase", val, minPf), real = {};
                   for (const n of samples) real[n] = verdict.state === "qualified" ? book.verdict(identity, "validated", n, minPf) : null;
-                  if (val === 12 && event.t >= start && event.t < end) {
+                  if (event.t >= start && event.t < end) {
                     const prior = book.snapshot().sets[0];
-                    evidence = { validationSource: prior?.postBase.slice(-12) ?? [], realSource: prior?.validated.slice(-12) ?? [] };
+                    evidenceAll[val] = { validationSource: prior?.postBase.slice(-val) ?? [],
+                      realSource: prior?.validated.slice(-Math.max(...samples)) ?? [] };
+                    if (val === 12) evidence = { validationSource: evidenceAll[val].validationSource,
+                      realSource: evidenceAll[val].realSource.slice(-12) };
                   }
                   const admission = book.acceptPostBase(identity, id, event.t, { validationN: val, realN: 12, minPf });
                   if (admission.validation.state !== verdict.state) throw new Error("stage decision mismatch");
                   validation[val] = { verdict, real };
                 }
-                const record = { cfg, sym, side, kind, tf, relation, trade: event.tr, validation, evidence, closed: false };
+                const record = { cfg, sym, side, kind, tf, relation, trade: event.tr, validation, evidence, evidenceAll, closed: false };
                 open.set(id, record);
                 if (event.t >= start && event.t < end) entries.push(record);
               } else {

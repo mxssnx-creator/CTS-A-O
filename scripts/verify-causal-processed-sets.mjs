@@ -72,7 +72,7 @@ for (const history of protocol.histories) {
     const k = JSON.stringify([c.cfg, c.sym, c.side, c.kind, c.relation]); assert.ok(!keys.has(k)); keys.add(k);
     assert.ok(c.base.n <= protocol.baseN && (c.side === 1 || c.side === -1));
   }
-  const orderKeys = new Set();
+  const orderKeys = new Set(); let independentlyVerifiedWindows = 0;
   for (const e of entries) {
     const t = e.trade.entryT, k = JSON.stringify([e.cfg, e.sym, e.side, t]);
     assert.ok(!orderKeys.has(k)); orderKeys.add(k);
@@ -84,6 +84,21 @@ for (const history of protocol.histories) {
     }
     compareVerdict(e.validation[12].verdict, windowVerdict(e.evidence.validationSource, 12));
     if (e.validation[12].real[12]) compareVerdict(e.validation[12].real[12], windowVerdict(e.evidence.realSource, 12));
+    for (const val of samples) {
+      const evidence = e.evidenceAll[val];
+      assert.ok(evidence && evidence.validationSource.length <= val && evidence.realSource.length <= Math.max(...samples));
+      for (const row of [...evidence.validationSource, ...evidence.realSource])
+        assert.ok(row.exitT < t && row.entryT <= row.exitT && String(row.entryT) === row.entryId && Number.isFinite(row.unitReturn));
+      compareVerdict(e.validation[val].verdict, windowVerdict(evidence.validationSource, val));
+      independentlyVerifiedWindows++;
+      for (const real of samples) {
+        const verdict = e.validation[val].real[real];
+        if (!verdict) { assert.notEqual(e.validation[val].verdict.state, "qualified"); continue; }
+        assert.equal(e.validation[val].verdict.state, "qualified");
+        compareVerdict(verdict, windowVerdict(evidence.realSource.slice(-real), real));
+        independentlyVerifiedWindows++;
+      }
+    }
   }
   for (const c of results.cases) {
     const val = c.validationN, real = c.realN;
@@ -119,5 +134,5 @@ for (const history of protocol.histories) {
     }
   }
   console.log(JSON.stringify({ historyHours: history, contexts: contexts.length, postBaseEntries: entries.length,
-    validationRealCases: results.cases.length, evidenceWindowsVerified: entries.length * 2 }));
+    validationRealCases: results.cases.length, evidenceWindowsVerified: independentlyVerifiedWindows }));
 }
