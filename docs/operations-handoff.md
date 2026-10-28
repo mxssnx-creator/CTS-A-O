@@ -1,3 +1,13 @@
+## 2026-10-28 — Draft processed-set restore evidence hardening
+
+The stage-book prototype's old restore accepted an Active open entry with missing, zero or malformed PF/sample
+evidence. Four independent regressions reproduced that defect. Draft snapshots now freeze each entry's actual
+Validation N, Real N and PF floor, check those against both saved verdicts and their resulting stage on restore,
+and reject inconsistent evidence. Snapshots are version 2; version 1 lacks frozen admission policy and is rejected
+instead of silently certifying legacy opens. This primitive is not connected to the production position book;
+before any real integration, design an explicit protected recovery/migration path that retains actual held
+positions and pending orders without treating unknown legacy admission as a new Active proof.
+
 ## 2026-10-28 — Offline Validation/Real Last-N comparison including experimental 8
 
 The isolated 20-symbol Short Low-Range Normal/Trailing model for 10 October 00:00–12:00 UTC used 84h of prior
@@ -13,9 +23,10 @@ passed 3/257, and Active orders and positions were each 3/3/0 at PF 0. Last-15/2
 so their Active PF is unavailable. Across all 25 tested Validation/Real combinations, eight had Active closes
 and none reached PF 1. These are isolated model results, not funded paper or exchange fills. The test does not
 include other ranges, types, portfolio allocation or Block/Relate. A separate scalar/accounting verifier checked
-all 4800 contexts, 1808 entries, 25 cases and stored Last-12 evidence; the 16 cases shared with the earlier study
-match exactly. Source was the research-only local commit 6634df1, based on draft 44b2455. Its deliberately lowered
-research minimum must not be merged into production. Full listings and protocol hashes:
+all 4800 contexts, 1808 entries, 25 cases and 13,945 individual prior-decision windows; all 25 cases match the
+first comparison, and the 16 cases shared with the earlier study match exactly. The evidence-rich source is
+research-only commit 707602bd8d2f969d1eab03600790d91323d1767a. Its deliberately lowered research minimum must not
+be merged into production. Full listings, per-decision source windows and protocol hashes:
 https://chatgpt.com/library?file_id=libfile_214219a88e008191a2895242d617a542&account_id=personal .
 
 ## 2026-10-28 — Processed-set same-time boundary correction
