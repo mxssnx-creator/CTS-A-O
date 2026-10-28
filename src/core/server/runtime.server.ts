@@ -37,6 +37,7 @@ import { checkLowRangeComplete, checkRangeReplacementsComplete, checkSettings } 
 import { BoundedHistory, HistoryStorageError, historyOf, withHistoryMetadata, HISTORY_CACHE_BYTES, transferHistoriesGen, type HistoryTransfer } from "./history-store.server.ts";
 import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "../model-cost.ts";
 import { evaluationHistorySettings } from "../market/history-requirements.ts";
+import { baseLastNForRange } from "../pipeline/base-lastn.ts";
 import {
   microIndRule,
   minPfOf,
@@ -1215,6 +1216,7 @@ export class CoreRuntime {
     // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
     const savedWf = migrateValidationLast12(db,
       migrateSignalHistory150(db, migrateSignalLast4Policy(db, migrateSignalEvaluationPolicy(db, migrateWfCaps(db)))));
+    migrateMicroMinimalBase30(db);
     migrateExpandedSignalDefaults(db);
     migrateNeutralVolumeRatios(db);
     migrateDcaTwoSteps(db);
@@ -11322,6 +11324,54 @@ function migrateValidationLast12(db: CoreDb, saved: Partial<WalkForwardOptions>)
     db.kvSet("validationLast12V1", true);
   });
   return out;
+}
+
+/** Prior cached preset PFs are not proof under the new per-range Base windows; keep a transactional backup. */
+function migrateMicroMinimalBase30(db: CoreDb): void {
+  if (db.kvGet("microMinimalBase30V1")) return;
+  const settings = db.kvGet<SettingsPatch>("settings");
+  const presets = db.kvGet<Preset[]>("presets");
+  const backtests = db.kvGet<Record<string, unknown>>("presetBacktests");
+  const series = db.kvGet<Record<string, unknown>>("presetSeries");
+  const backup = structuredClone({ presets, presetBacktests: backtests, presetSeries: series });
+  const oldDefaults: CoreSettings = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, baseRangeLastN: undefined } };
+  const oldDesk = mergeSettings(oldDefaults, settings);
+  const newDesk = mergeSettings(DEFAULT_SETTINGS, settings);
+  const byId = new Map([...(presets ?? []), ...ALL_RESEARCH_PRESETS].map((p) => [p.id, p]));
+  const changed = (preset: Preset | undefined) => {
+    if (!preset) return true;
+    try {
+      const before = mergeSettings(oldDesk, presetSettings(preset.settings));
+      const after = mergeSettings(newDesk, presetSettings(preset.settings));
+      return (["mc", "mn"] as const).some((tag) => {
+        const range = tag === "mc" ? after.grid.micro : after.grid.minimal;
+        return !!range && baseLastNForRange(before.gates, tag) !== baseLastNForRange(after.gates, tag);
+      });
+    } catch { return true; }
+  };
+  const invalid = new Set<string>();
+  for (const preset of presets ?? []) {
+    if (!changed(preset)) continue;
+    invalid.add(preset.id);
+    if (preset.metrics) {
+      const { gp: _gp, gl: _gl, ...metrics } = preset.metrics;
+      preset.metrics = { ...metrics, pf: null, pfBasis: "unavailable", noLoss: null, pfConvention: "unavailable",
+        source: `${metrics.source ?? "Previous result"} — Micro/Minimal Base Last-N changed; re-evaluate for current results` };
+    }
+  }
+  for (const id of new Set([...Object.keys(backtests ?? {}), ...Object.keys(series ?? {})]))
+    if (changed(byId.get(id))) invalid.add(id);
+  db.tx(() => {
+    if (invalid.size) {
+      db.kvSet("microMinimalBase30BackupV1", { ...backup, invalidPresetIds: [...invalid] });
+      if (presets) db.kvSet("presets", presets);
+      const keepBacktests = { ...backtests }, keepSeries = { ...series };
+      for (const id of invalid) { delete keepBacktests[id]; delete keepSeries[id]; }
+      if (backtests) db.kvSet("presetBacktests", keepBacktests);
+      if (series) db.kvSet("presetSeries", keepSeries);
+    }
+    db.kvSet("microMinimalBase30V1", true);
+  });
 }
 
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {

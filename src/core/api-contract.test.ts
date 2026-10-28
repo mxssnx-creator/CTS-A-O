@@ -536,6 +536,8 @@ const FIELDS: Record<Fn, string[]> = {
       "maxDdr",
       "quorum",
       "lastNFloor",
+      "baseLastN",
+      "baseRangeLastN",
       "rangeMinPf",
       "baseSetsMinPf",
       "warmup",

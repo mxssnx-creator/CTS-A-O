@@ -98,6 +98,14 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       num(s.gates.baseLastN, 0, 500, "Base last-N (closes)");
       int(s.gates.baseLastN, "Base last-N");
     }
+    if (s.gates.baseRangeLastN !== undefined) {
+      if (!s.gates.baseRangeLastN || typeof s.gates.baseRangeLastN !== "object" || Array.isArray(s.gates.baseRangeLastN))
+        throw new Error("Base range last-N: an object for Micro and Minimal");
+      for (const [key, value] of Object.entries(s.gates.baseRangeLastN)) {
+        if (key !== "micro" && key !== "minimal") throw new Error(`Base range last-N: unknown range ${key}`);
+        if (value !== undefined) { num(value, 0, 500, `${key} Base last-N`); int(value, `${key} Base last-N`); }
+      }
+    }
     if (s.gates.warmup !== undefined && typeof s.gates.warmup !== "boolean")
       throw new Error("sample warm-up (gates.warmup): true or false");
     if (s.gates.minGreen !== undefined)

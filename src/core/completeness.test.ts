@@ -178,6 +178,8 @@ const CASES: Record<string, Case> = {
   "gates.quorum": num(0, 1),
   "gates.baseSetsMinPf": num(0.5, 1.5),
   "gates.baseLastN": num(0, 500, { int: true }),
+  "gates.baseRangeLastN.micro": num(0, 500, { int: true }),
+  "gates.baseRangeLastN.minimal": num(0, 500, { int: true }),
   "gates.lastNFloor": num(0, 100, { int: true }),
   refineTop: num(1, 100, { int: true }),
   mainTop: num(0, 100_000, { int: true }),

@@ -2827,6 +2827,16 @@ export function SettingsPage() {
               <Num int min={0} max={500} value={s.gates.baseLastN ?? 40}
                 onChange={(v) => set(["gates", "baseLastN"], v)} />
             </Field>
+            <Field label="Micro Base last-N"
+              hint="each Micro Base cell uses its own latest closes; the overall Base last-N switch can turn this off · default 30 · 0 – 500">
+              <Num int min={0} max={500} value={s.gates.baseRangeLastN?.micro ?? s.gates.baseLastN ?? 40}
+                onChange={(v) => set(["gates", "baseRangeLastN"], { ...s.gates.baseRangeLastN, micro: v })} />
+            </Field>
+            <Field label="Minimal Base last-N"
+              hint="each Minimal Base cell uses its own latest closes; the overall Base last-N switch can turn this off · default 30 · 0 – 500">
+              <Num int min={0} max={500} value={s.gates.baseRangeLastN?.minimal ?? s.gates.baseLastN ?? 40}
+                onChange={(v) => set(["gates", "baseRangeLastN"], { ...s.gates.baseRangeLastN, minimal: v })} />
+            </Field>
             <Field
               label="Sample warm-up"
               hint="a check that cannot be computed yet counts as valid until the closes are there, then is judged normally: the drawdown of a last-N window shorter than N, a symbol with no close of this config yet, fewer than two stability blocks. The result itself is always judged on the closes there are · off = strict (a short sample fails)"

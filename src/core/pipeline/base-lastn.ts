@@ -1,5 +1,12 @@
 import { profitFactor, type TradeLike } from "../metrics/stats.ts";
-import type { BaseLastNStats } from "../domain/types.ts";
+import type { BaseLastNStats, Gates } from "../domain/types.ts";
+
+/** A range cell's own sample setting; the global off switch also disables its range overrides. */
+export function baseLastNForRange(gates: Pick<Gates, "baseLastN" | "baseRangeLastN">, tag: string): number {
+  const base = gates.baseLastN ?? 0;
+  if (base === 0) return 0;
+  return (tag === "mc" ? gates.baseRangeLastN?.micro : tag === "mn" ? gates.baseRangeLastN?.minimal : undefined) ?? base;
+}
 
 /** Call with closes in stable exit/entry order and no observations after the Base cut. */
 export function baseLastNOf(trades: readonly TradeLike[], requested: number, stop: number): BaseLastNStats | undefined {

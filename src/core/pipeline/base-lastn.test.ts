@@ -1,19 +1,62 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { baseLastNOf, passesBaseLastN } from "./base-lastn.ts";
+import { baseLastNForRange, baseLastNOf, passesBaseLastN } from "./base-lastn.ts";
 import { BaseCellAccumulator } from "./base-cell-stats.ts";
-import { cellStats, makeUniverse, passesBase, runCombo } from "./pipeline.ts";
+import { basePassTags, baseRangeCounts, baseRangeWhy, cellStats, makeUniverse, passesBase, rangeBaseStats, rangeCellPass, runCombo } from "./pipeline.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { lastNOk, makeTape } from "../sim/walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { checkSettings } from "../settings-check.ts";
+import { statsOf } from "../metrics/stats.ts";
 const gates = { minPf: 1.1, minTrades: 5, baseLastN: 40, lastNFloor: 5 };
 const trade = (i: number, r: number) => ({ entryT: i * 2, exitT: i * 2 + 1, r });
 
 test("Base last-N defaults to 40 and rejects malformed settings", () => {
   assert.equal(DEFAULT_SETTINGS.gates.baseLastN, 40);
+  assert.deepEqual(DEFAULT_SETTINGS.gates.baseRangeLastN, { micro: 30, minimal: 30 });
   for (const n of [0, 1, 40, 500]) assert.doesNotThrow(() => checkSettings({ gates: { ...DEFAULT_SETTINGS.gates, baseLastN: n } }));
   for (const n of [-1, 1.5, 501, NaN, Infinity]) assert.throws(() => checkSettings({ gates: { ...DEFAULT_SETTINGS.gates, baseLastN: n } }));
+});
+
+test("Micro and Minimal own Last-30 Base results are used for admission and rejection counts", () => {
+  const own = { ...DEFAULT_SETTINGS.gates, minTrades: 9, maxDdr: 0, lastNFloor: 9 };
+  assert.equal(baseLastNForRange(own, "mc"), 30);
+  assert.equal(baseLastNForRange(own, "mn"), 30);
+  assert.equal(baseLastNForRange(own, "sh"), 40);
+  assert.equal(baseLastNForRange({ ...own, baseLastN: 0 }, "mc"), 0);
+  const rows = [...Array.from({ length: 10 }, (_, i) => trade(i, .03)),
+    ...Array.from({ length: 30 }, (_, i) => trade(i + 10, -.005))];
+  const stats = statsOf(rows);
+  const at = (n: number) => ({ ...stats, baseLast: baseLastNOf(rows, n, 1) });
+  const run = { full: at(40), ranges: { mc: at(30), mn: at(30), sh: at(40) }, ind: "ema-9-21@m1" };
+  assert.deepEqual(basePassTags(run, own), ["", "sh"]);
+  for (const tag of ["mc", "mn"]) {
+    assert.equal(rangeCellPass(own, run.ind)(tag, run.ranges[tag as "mc" | "mn"]), false);
+    const count = baseRangeCounts([run], own, [tag]).find((x) => x.tag === tag)!;
+    const why = baseRangeWhy([run], own, [tag]).find((x) => x.tag === tag)!;
+    assert.equal(count.passed, 0);
+    assert.equal(why.passed, 0);
+    assert.equal(why.first.lastN, 1, "recent rejection must not be reported as a Base pass");
+  }
+  assert.throws(() => checkSettings({ gates: { ...own, baseRangeLastN: { micro: 30.5 } } }), /last-N/);
+  assert.throws(() => checkSettings({ gates: { ...own, baseRangeLastN: { micro: -1 } } }), /last-N/);
+});
+
+test("actual range Base cells calculate their own requested windows", () => {
+  const bars = Array.from({ length: 2 }, (_, i) => barsFromCandles(`R${i}`, 1,
+    syntheticCandles(`R${i}`, 1, 2500, Date.UTC(2026, 9, 17), 28 + i)));
+  const u = makeUniverse(bars), ind = "ema-9-21@m1";
+  const protects = ["mc", "mn", "sh"].map((tag) => ({ tp: .01, sl: .01, trail: 0, hold: 20,
+    tag: tag as "mc" | "mn" | "sh" }));
+  const tactics = { ...DEFAULT_SETTINGS.tactics, session: false, volRegime: false, trendStrength: false, cooldown: false };
+  const g = DEFAULT_SETTINGS.gates;
+  const out = rangeBaseStats(u, "follow", ind, protects, DEFAULT_SETTINGS.cost, tactics, undefined, false,
+    rangeCellPass(g, ind), 1, undefined, undefined, undefined, g.baseLastN, g.baseRangeLastN)!;
+  for (const p of protects) {
+    const n = p.tag === "sh" ? 40 : 30;
+    assert.equal(out[p.tag].baseLast?.requested, n);
+    assert.deepEqual(out[p.tag].baseLast, cellStats(u, "follow", ind, p, DEFAULT_SETTINGS.cost, tactics, undefined, n)!.baseLast);
+  }
 });
 
 test("Base last-40 rejects recent losses despite a profitable full history", () => {

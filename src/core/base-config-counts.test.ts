@@ -29,6 +29,21 @@ describe("full Base configured-cell counts", () => {
     assert.equal(row.passed, 1, "only the config with its own passing recent closes qualifies");
   });
 
+  it("counts Micro and Minimal using their own Base window, including their Last-N failures", () => {
+    const count = new BaseConfigCounter(options({ cutT: 1000,
+      gates: { minPf: 1.1, minTrades: 9, maxDdr: 0, baseLastN: 40, lastNFloor: 9,
+        baseRangeLastN: { micro: 30, minimal: 30 } } }));
+    const xs = trades([...Array(10).fill(.03), ...Array(30).fill(-.005)]);
+    for (const tag of ["mc", "mn", "sh"] as const)
+      count.record("follow", "ema-9-21@m1", { ...P, tag }, "normal", xs);
+    const rows = Object.fromEntries(count.rows().map((r) => [r.tag, r]));
+    for (const tag of ["mc", "mn"]) {
+      assert.equal(rows[tag].evaluated, 1);
+      assert.equal(rows[tag].passed, 0);
+    }
+    assert.equal(rows.sh.passed, 1, "Short uses the passing Last-40 instead of the losing Last-30");
+  });
+
   it("starts empty and counts every raw configured cell independently rather than one pair's best protect", () => {
     const count = new BaseConfigCounter(options());
     assert.deepEqual(count.rows(), []);

@@ -4,11 +4,11 @@ import type { Gates, Protect } from "./domain/types.ts";
 import { statsOf, type TradeLike } from "./metrics/stats.ts";
 import { minPfOf } from "./minimal-coord.ts";
 import { passesBase } from "./pipeline/pipeline.ts";
-import { baseLastNOf } from "./pipeline/base-lastn.ts";
+import { baseLastNForRange, baseLastNOf } from "./pipeline/base-lastn.ts";
 import { SIGNAL_MIN_PF, SIGNAL_VALID_LAST_N } from "./signal-policy.ts";
 
 export type BaseConfigCountOptions = {
-  gates: Pick<Gates, "minPf" | "minTrades" | "maxDdr" | "rangeMinPf" | "baseLastN" | "lastNFloor" | "lossPrior">;
+  gates: Pick<Gates, "minPf" | "minTrades" | "maxDdr" | "rangeMinPf" | "baseLastN" | "baseRangeLastN" | "lastNFloor" | "lossPrior">;
   cost: number;
   cutT: number;
   fromT: number;
@@ -46,7 +46,8 @@ export class BaseConfigCounter {
   constructor(options: BaseConfigCountOptions) {
     this.options = {
       ...options,
-      gates: { ...options.gates, rangeMinPf: { ...options.gates.rangeMinPf } },
+      gates: { ...options.gates, rangeMinPf: { ...options.gates.rangeMinPf },
+        ...(options.gates.baseRangeLastN ? { baseRangeLastN: { ...options.gates.baseRangeLastN } } : {}) },
     };
   }
 
@@ -60,6 +61,7 @@ export class BaseConfigCounter {
   ): void {
     const o = this.options;
     const tag = protect.tag ?? "";
+    const gates = { ...o.gates, baseLastN: baseLastNForRange(o.gates, tag) };
     const key = JSON.stringify([bot, ind, tag, kind]);
     let row = this.counts.get(key);
     if (!row) {
@@ -115,7 +117,7 @@ export class BaseConfigCounter {
     }
     closed.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);
     const stats = statsOf(closed, o.cutT);
-    stats.baseLast = baseLastNOf(closed, o.gates.baseLastN ?? 0, Math.max(0, protect.sl) * 100);
+    stats.baseLast = baseLastNOf(closed, gates.baseLastN, Math.max(0, protect.sl) * 100);
     row.evaluated++;
     // The floor is a return ratio from actual gross gains/losses. In particular, a no-loss sample's finite display
     // sentinel is not used to decide whether that sample clears the PF floor.
@@ -132,15 +134,15 @@ export class BaseConfigCounter {
       const required = o.signalLastN ?? SIGNAL_VALID_LAST_N;
       const contexts = [...groups.values()].map((xs) => {
         const history = statsOf(xs, o.cutT);
-        history.baseLast = baseLastNOf(xs, o.gates.baseLastN ?? 0, Math.max(0, protect.sl) * 100);
+        history.baseLast = baseLastNOf(xs, gates.baseLastN, Math.max(0, protect.sl) * 100);
         return { history, last: statsOf(required > 0 ? xs.slice(-required) : xs, o.cutT) };
       });
       if (contexts.some(({ history, last }) => history.n >= o.gates.minTrades && last.n >= required && history.pf >= row.floorPf && last.pf >= row.floorPf)) row.pfPassed++;
-      if (contexts.some(({ history, last }) => last.n >= required && passesBase(history, { ...o.gates, minPf: row.minPf }) && passesBase(last, { ...o.gates, baseLastN: 0, minTrades: required > 0 ? required : o.gates.minTrades, minPf: row.minPf }))) row.passed++;
+      if (contexts.some(({ history, last }) => last.n >= required && passesBase(history, { ...gates, minPf: row.minPf }) && passesBase(last, { ...o.gates, baseLastN: 0, minTrades: required > 0 ? required : o.gates.minTrades, minPf: row.minPf }))) row.passed++;
     } else {
       if (returnPf >= row.floorPf) row.pfPassed++;
     // The complete gate matches the running engine, including its disclosed no-loss score convention.
-      if (passesBase(stats, { ...o.gates, minPf: row.minPf })) row.passed++;
+      if (passesBase(stats, { ...gates, minPf: row.minPf })) row.passed++;
     }
     row.closes += stats.n;
     row.gp += stats.gp;
