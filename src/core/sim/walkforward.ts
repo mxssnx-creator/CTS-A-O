@@ -3393,7 +3393,10 @@ const seatFamily = (pair: string, familySeats: boolean | undefined) => {
   if (r === "mc") return "micro";
   if (r) return r;
   const family = famOfKey(pair);
-  if (family.startsWith("exit-")) return family;
+  if (family.startsWith("exit-")) {
+    const lane = laneOf(pair.split("|")[1] ?? "");
+    return `${family}@${lane.tf === null ? "plain" : `${lane.tf}${lane.combined ? "c" : ""}`}`;
+  }
   return pair.endsWith("|tr") ? "trailing" : familySeats ? family : "base";
 };
 const famOfKey = (pair: string) => {
@@ -3477,15 +3480,15 @@ function pickSeats(
     (p) => !exitFamily(p.pair ?? "") && !(p.pair ?? "").endsWith("|tr"),
   );
   const trailOut = pickByLane(trail, seats, trailHeld, pairs, ls);
-  // Historic Exit set × direction seats remain independent even when the general family-seat switch is off.
-  const exitFamilies = [...new Set(exits.map((c) => famOfKey(c.pair)))];
+  // Historic Exit set × direction × lane seats remain independent even when family seats are off.
+  const exitFamilies = [...new Set(exits.map((c) => seatFamily(c.pair, o.familySeats)))];
   const exitOut: Selection[] = [];
   for (const f of exitFamilies) {
     exitOut.push(
       ...pickByLane(
-        exits.filter((c) => famOfKey(c.pair) === f),
+        exits.filter((c) => seatFamily(c.pair, o.familySeats) === f),
         seats,
-        exitHeld.filter((p) => famOfKey(p.pair ?? "") === f),
+        exitHeld.filter((p) => seatFamily(p.pair ?? "", o.familySeats) === f),
         pairs,
         ls,
       ),
