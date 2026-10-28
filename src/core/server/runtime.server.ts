@@ -224,6 +224,7 @@ import {
   tapeBytes,
   capsOf,
   sigCfg,
+  orderCapScope,
   openDupKey,
   checkGridVariantBudget,
   type ConfigTape,
@@ -9687,7 +9688,7 @@ export class CoreRuntime {
       if (representedHeld.has(k)) continue;
       provisionalHeld.add(k);
       positions.push({ ...p, vol: p.vol ?? 1, level: p.level ?? 0 });
-      const cls = sigCfg(p.cfg) ? "s" : "e";
+      const cls = orderCapScope(p.cfg);
       perSym.set(`${cls}|${p.sym}`, (perSym.get(`${cls}|${p.sym}`) ?? 0) + 1);
       perSide.set(`${cls}|${p.side}`, (perSide.get(`${cls}|${p.side}`) ?? 0) + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
@@ -9815,12 +9816,12 @@ export class CoreRuntime {
       for (const p of positions) if (!keys.has(orderKey(p))) positions[write++] = p;
       positions.length = write;
       for (const { p } of due) {
-        const cls = sigCfg(p.cfg) ? "s" : "e";
+        const cls = orderCapScope(p.cfg);
         const sym = `${cls}|${p.sym}`, side = `${cls}|${p.side}`, pos = `${cls}|${p.sym}|${p.side}`;
         perSym.set(sym, (perSym.get(sym) ?? 1) - 1);
         perSide.set(side, (perSide.get(side) ?? 1) - 1);
         openBy.set(cls, (openBy.get(cls) ?? 1) - 1);
-        if (!positions.some((x) => `${sigCfg(x.cfg) ? "s" : "e"}|${x.sym}|${x.side}` === pos)) openPos.delete(pos);
+        if (!positions.some((x) => `${orderCapScope(x.cfg)}|${x.sym}|${x.side}` === pos)) openPos.delete(pos);
         openKeys.delete(openDupKey(p));
       }
     };
@@ -9909,10 +9910,11 @@ export class CoreRuntime {
             side: op.side,
             relateBase: () => 1,
           });
-      // engine and signal orders are capped each on their own
-      const cls = sigCfg(op.cfg) ? "s" : "e";
-      const pre = cls === "s" ? "sig:" : "";
-      const caps = capsOf(this.wf, cls === "s");
+      // Exit keeps its own cap counts, while inheriting the configured caps of its source class.
+      const cls = orderCapScope(op.cfg);
+      const signalClass = sigCfg(op.cfg);
+      const pre = isHistoricExitConfig(op.cfg) ? "exit:" : signalClass ? "sig:" : "";
+      const caps = capsOf(this.wf, signalClass);
       const c = perSym.get(`${cls}|${op.sym}`) ?? 0;
       const sd = perSide.get(`${cls}|${op.side}`) ?? 0;
       const posKey = `${op.sym}|${op.side}`;
@@ -9925,14 +9927,14 @@ export class CoreRuntime {
             : (openBy.get(cls) ?? 0) >= caps.maxOpen
               ? "maxOpen"
               : (() => {
-                    const cap = cls === "s" ? this.wf.signalMaxPositions : this.wf.maxPositions;
+                    const cap = signalClass ? this.wf.signalMaxPositions : this.wf.maxPositions;
                     if (!cap || cap <= 0 || openPos.has(`${cls}|${posKey}`)) return false;
                     // signals: the cap counts each direction apart (long and short run independently); engine: both
                     const sideOf = (k: string) => k.slice(k.lastIndexOf("|") + 1);
                     const mySide = String(op.side);
                     let n = 0;
                     for (const k of openPos)
-                      if (k.startsWith(`${cls}|`) && (cls !== "s" || sideOf(k) === mySide)) n++;
+                      if (k.startsWith(`${cls}|`) && (!signalClass || sideOf(k) === mySide)) n++;
                     return n >= cap;
                   })()
                 ? "maxPositions"
@@ -10386,7 +10388,7 @@ export class CoreRuntime {
     });
     // signal positions (symbol × direction) and orders open now, shown apart
     if (this.status.signals) {
-      const sp = positions.filter((p) => sigCfg(p.cfg));
+      const sp = positions.filter((p) => sigCfg(p.cfg) && !isHistoricExitConfig(p.cfg));
       this.status.signals.openOrders = sp.length;
       this.status.signals.openPositions = new Set(sp.map((p) => `${p.sym}|${p.side}`)).size;
     }
@@ -10551,10 +10553,11 @@ export class CoreRuntime {
         }
         // the signal orders' own cap per symbol (open paper signal positions on the symbol + entries sent now)
         if (sigCfg(tp.id)) {
+          const scope = orderCapScope(tp.id);
           const cap = capsOf(this.wf, true).perSymbol;
           const openOn =
-            this.paper.positions.filter((x) => x.sym === p.sym && sigCfg(x.cfg)).length +
-            out.filter((x) => x.sym === p.sym && sigCfg(x.cfg)).length;
+            this.paper.positions.filter((x) => x.sym === p.sym && orderCapScope(x.cfg) === scope).length +
+            out.filter((x) => x.sym === p.sym && orderCapScope(x.cfg) === scope).length;
           if (openOn >= cap) {
             skip(tp, "cap:perSymbol");
             continue;
@@ -10564,11 +10567,11 @@ export class CoreRuntime {
           const pcap = this.wf.signalMaxPositions;
           if (pcap && pcap > 0) {
             const same = (x: { sym: string; side: number; cfg: string }) =>
-              x.sym === p.sym && x.side === p.side && sigCfg(x.cfg);
+              x.sym === p.sym && x.side === p.side && orderCapScope(x.cfg) === scope;
             if (!this.paper.positions.some(same) && !out.some(same)) {
               const set = new Set(
                 [...this.paper.positions, ...out]
-                  .filter((x) => sigCfg(x.cfg) && x.side === p.side)
+                  .filter((x) => orderCapScope(x.cfg) === scope && x.side === p.side)
                   .map((x) => `${x.sym}|${x.side}`),
               );
               if (set.size >= pcap) {
