@@ -4487,6 +4487,7 @@ export class CoreRuntime {
               combos,
               cost: s.cost,
               tactics: s.tactics,
+              gates: s.gates,
             })),
             poolSize(),
             15 * 60_000,
@@ -4512,7 +4513,8 @@ export class CoreRuntime {
           const runs: ComboRun[] = [];
           for (let i = 0; i < signalExitCombos.length; i++) {
             const combo = signalExitCombos[i];
-            const steps = runComboSteps(signalStageU, combo.bot as import("../domain/types.ts").BotType, combo.ind, DEFAULT_PROTECT, s.cost, 1, s.tactics);
+            const steps = runComboSteps(signalStageU, combo.bot as import("../domain/types.ts").BotType,
+              combo.ind, DEFAULT_PROTECT, s.cost, 1, s.tactics, false, s.gates.baseLastN ?? 0);
             for (;;) {
               const step = steps.next();
               if (step.done) {
@@ -8543,7 +8545,7 @@ export class CoreRuntime {
       function* sigBase() {
         for (let i = 0; i < sigCombos.length; i++) {
           const c = sigCombos[i];
-          const r = runCombo(look, c.bot, c.ind, DEFAULT_PROTECT, s.cost, 1, s.tactics);
+          const r = runCombo(look, c.bot, c.ind, DEFAULT_PROTECT, s.cost, 1, s.tactics, false, s.gates.baseLastN ?? 0);
           // (slim: the active signals and the candidates read the stats per symbol, not the trades)
           if (r) runs.push(slim(r));
           forgetCombo(look, c.bot, c.ind);
@@ -12070,7 +12072,7 @@ export const LIVE_STEP_LIMIT_MS = 180_000;
 
 /** Mainnet (x01) validation floors: last N closes at entry and for a seat. */
 export const MAINNET_LAST_N = 25;
-export const MAINNET_VALID_LAST_N = 50;
+export const MAINNET_VALID_LAST_N = 12;
 /** Signals share the operator's Last-4 floor on every execution path. */
 export const MAINNET_SIGNAL_VALID_LAST_N = SIGNAL_VALID_LAST_N;
 

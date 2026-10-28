@@ -101,7 +101,7 @@ type Msg = { evaluationFromT?: number } & (
       combos: Array<{ bot: string; ind: string }>;
       cost: number;
       tactics: unknown;
-      gates?: { minPf: number; minTrades: number };
+      gates?: { minPf: number; minTrades: number; baseLastN?: number; lastNFloor?: number; lossPrior?: boolean };
     }
   | {
       id: number;
@@ -418,6 +418,8 @@ parentPort!.on("message", (m: Msg) => {
           m.cost,
           1,
           m.tactics as never,
+          false,
+          m.gates?.baseLastN ?? 0,
         );
         if (r && (!m.gates || passesBase(r.full, m.gates)))
           scores.push({ pair: `${c.bot}|${c.ind}`, score: r.score });

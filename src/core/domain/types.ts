@@ -640,6 +640,16 @@ export interface OpenPosition {
   blockSampleCounts?: Partial<Record<string, number>>;
 }
 
+/** Net-return evidence from the last requested closes of one Base cell, in percentage points. */
+export interface BaseLastNStats {
+  requested: number;
+  n: number;
+  gp: number;
+  gl: number;
+  stop: number;
+  invalid?: true;
+}
+
 export interface Stats {
   n: number;
   wins: number;
@@ -675,6 +685,8 @@ export interface Stats {
   worstHour: number;
   /** Base's default cell against Gates.baseWindows (set only while it is) */
   bw?: BaseWindowsResult;
+  /** Exact recent closes when the optional Base Last-N gate is enabled. */
+  baseLast?: BaseLastNStats;
 }
 
 export interface LastNRow {
@@ -743,6 +755,8 @@ export interface Gates {
    * targets close rarely (Long). 0 / unset = strict: fewer than N closes fails.
    */
   lastNFloor?: number;
+  /** Base cell's most recent closed trades must clear its own PF floor. 0 = off; defaults to 40. */
+  baseLastN?: number;
   /**
    * Loss prior (measurement, default off): every evaluation PF (window gates, every last-N gate, the range gate)
    * counts one virtual stop-out at the config's own stop beside its closes — a sample without a loss no longer

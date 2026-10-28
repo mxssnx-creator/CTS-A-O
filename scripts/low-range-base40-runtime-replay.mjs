@@ -31,6 +31,9 @@ const screens = dirs.map((dir) => {
     feed: protocol.feed.path, backtest: "src/core/sim/backtest.ts", walkforward: "src/core/sim/walkforward.ts",
     pipeline: "src/core/pipeline/pipeline.ts", config: "src/core/config.ts" }))
     requireValue(hash(path) === protocol.hashes[key], `source hash differs: ${key}`);
+  if (protocol.productionBase) for (const [key, path] of Object.entries({
+    trailing: "src/core/sim/trailing.ts", baseLastN: "src/core/pipeline/base-lastn.ts",
+  })) requireValue(hash(path) === protocol.hashes[key], `source hash differs: ${key}`);
   return { dir, protocol, result, cells };
 });
 for (let i = 0; i < screens.length; i++)
@@ -89,7 +92,8 @@ for (const tape of tapes) for (const trade of tapeTrades(tape)) {
   const key = keyOf(trade); requireValue(!tapeRows.has(key), `duplicate tape close: ${key}`); tapeRows.set(key, trade);
 }
 const defaults = defaultWalkForward(DEFAULT_SETTINGS);
-requireValue(JSON.stringify(defaults.gates) === JSON.stringify(p.gates), "runtime gate settings differ from screen");
+requireValue(JSON.stringify({ ...defaults.gates, baseLastN: p.gates.baseLastN ?? 0 }) === JSON.stringify(p.gates),
+  "runtime gate settings differ from screen");
 const baseOptions = { ...defaults, startT: p.start, simH: 24, preH: 24, longH: 24, stepH: 1,
   rangeGate: p.rangeGate, basePassed: new Set(Object.keys(pairCells)), basePassedCells: passedCellsOf(pairCells),
   basePassedRanges: pairRanges, seatSet: "validated", recordValidation: true,
@@ -112,7 +116,9 @@ const summarize = (trades) => {
     reasons, byKind, byTf, bySide };
 };
 mkdirSync(out, { recursive: true });
-const manifest = { scope: "retrospective unallocated walk-forward; Base-40 is a counterfactual screen, not a production Base setting",
+const manifest = { scope: p.productionBase
+  ? "retrospective unallocated walk-forward; production Base-40 gate applied to the research screen's candidate histories"
+  : "retrospective unallocated walk-forward; Base-40 is a counterfactual screen, not a production Base setting",
   feedSha256: p.hashes.feed, baseCells: baseIds.size, evaluatedCells: p.totalCells, start: p.start, end: p.end, evalFrom: p.evalFrom,
   rangeGate: p.rangeGate, cost: p.policy.cost, scripts: { runner: hash("scripts/low-range-base40-runtime-replay.mjs"),
     backtest: hash("src/core/sim/backtest.ts"), walkforward: hash("src/core/sim/walkforward.ts") } };

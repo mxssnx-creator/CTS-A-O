@@ -12,6 +12,7 @@ import { DEFAULT_PROTECT, PROTECT_GRID, type CoreSettings } from "../config.ts";
 import { RT_COST } from "../model-cost.ts";
 import type {
   Bars,
+  BaseLastNStats,
   BaseWindowsResult,
   BotType,
   EvalResult,
@@ -78,6 +79,7 @@ import {
 import { buildPortfolio, type Portfolio } from "./portfolio.ts";
 import { baseWindowsPlan, judgeBaseWindows, type BaseWindowsPlan } from "./base-windows.ts";
 import { baseCellAccumulator } from "./base-cell-stats.ts";
+import { baseLastNOf, passesBaseLastN } from "./base-lastn.ts";
 import { trailingOnlyProtects } from "../sim/trailing.ts";
 
 export interface Universe {
@@ -290,8 +292,8 @@ export interface Combo {
 
 /** Base gate: a config set is evaluated and promoted to Main only with PF ≥ min PF, positive net and enough trades. */
 export function passesBase(
-  st: { n: number; pf: number; net: number; mdd?: number; bw?: BaseWindowsResult },
-  g: { minPf: number; minTrades: number; maxDdr?: number },
+  st: { n: number; pf: number; net: number; mdd?: number; bw?: BaseWindowsResult; baseLast?: BaseLastNStats },
+  g: { minPf: number; minTrades: number; maxDdr?: number; baseLastN?: number; lastNFloor?: number; lossPrior?: boolean },
 ): boolean {
   // Fail closed on invalid source/aggregate returns even when the optional drawdown ratio is disabled.
   // A nonfinite numerator or gross-loss underflow must not turn into a high-PF winning Base pass.
@@ -303,7 +305,7 @@ export function passesBase(
   // the two-window Base gate (Gates.baseWindows.gate): the cell failed its windows (judged only while the gate is set)
   if (st.bw?.gate === false) return false;
   // max drawdown ratio: drawdown ÷ net of the Base window (off at 0); unknown evidence cannot pass an active gate.
-  return !ddrFails(st.mdd, st.net, g.maxDdr);
+  return !ddrFails(st.mdd, st.net, g.maxDdr) && passesBaseLastN(st.n, st.baseLast, g);
 }
 
 /** Every bot × indication combo; `focus` ("bot|indication" pairs) narrows it when non-empty. */
@@ -628,6 +630,7 @@ export interface RangeBaseStat {
   gl?: number;
   /** the cell against Gates.baseWindows (set only while it is) */
   bw?: BaseWindowsResult;
+  baseLast?: BaseLastNStats;
 }
 
 /**
@@ -678,7 +681,7 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
       p.trailStep = g.trailStep ?? 1;
       p.trailFree = g.trailFree ?? false;
     }
-    const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.tag ?? ""}`;
+    const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.maxHoldMin ?? ""}|${p.tag ?? ""}`;
     if (!seen.has(key)) {
       seen.add(key);
       out.push(p);
@@ -787,7 +790,7 @@ export function baseRangeProtects(
           const trailStop = tag === "mc" ? 0 : ((r as { trailSlOfTp?: number }).trailSlOfTp ?? 2);
           const seen = new Set<string>();
           const add = (p: Protect) => {
-            const key = protectCellKey(p);
+            const key = `${protectCellKey(p)}|${p.maxHoldMin ?? ""}`;
             if (!seen.has(key)) {
               seen.add(key);
               out.push(p);
@@ -927,7 +930,8 @@ export function microBaseSl(ladder: readonly number[]): number[] {
  */
 export function basePassTags(
   r: Pick<ComboRun, "full" | "ranges"> & Partial<Pick<ComboRun, "ind">>,
-  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"]; baseLastN?: number;
+    lastNFloor?: number; lossPrior?: boolean },
   /** every range tag of the grid; one without its own Base cell passes with the default protect */
   allTags: readonly string[] = [],
 ): string[] {
@@ -1532,6 +1536,7 @@ export function rangeBaseStats(
   windows?: { plan: BaseWindowsPlan; ruleTpsOut?: Array<Record<string, number[]>> },
   /** grid.baseCells: filled with the key (protectCellKey) of every range cell that passed */
   cellsOut?: string[],
+  baseLastN = 0,
 ): Record<string, RangeBaseStat> | undefined {
   if (!protects.length) return undefined;
   // a lane-less indication (a research tool, a legacy preset) trades the base timeframe: the same expression
@@ -1546,7 +1551,7 @@ export function rangeBaseStats(
     if (p.tag && laneTf < (minTf?.[p.tag] ?? 0)) continue;
     if (!microIndFits(microOwnInds, p.tag, microInd, isMicroFamilyInd(ind))) continue;
     // the cell's whole-history stats only (cellStats = runCombo(…).full, without its per-symbol and in-sample work)
-    const cand = cellStats(u, bot, ind, p, cost, tactics, bw);
+    const cand = cellStats(u, bot, ind, p, cost, tactics, bw, baseLastN);
     if (!cand) continue;
     // several cells of one range (Base at every config): a passing cell first, then the higher net
     const k = p.tag ?? "";
@@ -1591,6 +1596,7 @@ export function cellStats(
   tactics?: Tactics | null,
   /** Gates.baseWindows: the cell is also judged on its windows from the lane's first bar (laneFromT) to u.nowT */
   bw?: { plan: BaseWindowsPlan; fromT: number },
+  baseLastN = 0,
 ): RangeBaseStat | null {
   // Historic Exit is a standalone indication source; engine Bot tactics/cooldown do not thin its entry history.
   const cooldown = bot === "exit" ? 0 : tacticCooldown(tactics);
@@ -1631,7 +1637,7 @@ export function cellStats(
       });
     }
   }
-  const st: RangeBaseStat = cell.stats();
+  const st: RangeBaseStat = cell.stats(baseLastN, Math.max(0, p.sl) * 100);
   if (bw) {
     // the closes in exit order (statsOf's order: exit, then entry; stable), for the windows
     const n = wRr.length;
@@ -1694,8 +1700,9 @@ export function runCombo(
   tactics?: Tactics | null,
   /** the protect is already the lane's (e.g. parsed from a config id): do not scale it again */
   laneScaled = false,
+  baseLastN = 0,
 ): ComboRun | null {
-  const gen = runComboSteps(u, bot, ind, protect, cost, stage, tactics, laneScaled);
+  const gen = runComboSteps(u, bot, ind, protect, cost, stage, tactics, laneScaled, baseLastN);
   for (;;) {
     const r = gen.next();
     if (r.done) return r.value;
@@ -1715,6 +1722,7 @@ export function* runComboSteps(
   stage: 1 | 2,
   tactics?: Tactics | null,
   laneScaled = false,
+  baseLastN = 0,
 ): Generator<void, ComboRun | null> {
   // Historic Exit is a standalone indication source; engine Bot tactics/cooldown do not thin its entry history.
   const cooldown = bot === "exit" ? 0 : tacticCooldown(tactics);
@@ -1770,6 +1778,9 @@ export function* runComboSteps(
   // in-sample = closed before the split (a trade straddling the split is not in-sample)
   const isTrades = trades.filter((t) => t.exitT <= u.splitT);
   const is = statsOf(isTrades, u.splitT);
+  const full = statsOf(trades, u.nowT);
+  const baseLast = baseLastNOf(trades, baseLastN, Math.max(0, protect.sl) * 100);
+  if (baseLast) full.baseLast = baseLast;
   return {
     id,
     bot,
@@ -1777,7 +1788,7 @@ export function* runComboSteps(
     protect,
     stage,
     trades,
-    full: statsOf(trades, u.nowT),
+    full,
     is,
     score: scoreStats(is, 8),
     bySym,
@@ -1899,7 +1910,7 @@ export function baseRuns(
   for (const g of groups.values()) {
     for (const c of g) {
       const pass = gates ? rangeCellPass(gates, c.ind) : undefined;
-      const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics);
+      const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics, false, gates?.baseLastN ?? 0);
       if (r) {
         // signal pairs never use range cells (they take their own configs): no range runs for them
         const tps: Record<string, number[]> = {};
@@ -1924,6 +1935,7 @@ export function baseRuns(
               tps,
               plan ? { plan, ruleTpsOut: ruleTps } : undefined,
               cellKeys,
+              gates?.baseLastN ?? 0,
             );
         if (ranges) r.ranges = ranges;
         if (Object.keys(tps).length) r.rangeTps = tps;
@@ -1972,7 +1984,7 @@ export function* runPipeline(
   for (let i = 0; i < combos.length; i++) {
     const c = combos[i];
     const source = isSignalInd(c.ind) ? signalUniverse : u;
-    const steps = runComboSteps(source, c.bot, c.ind, DEFAULT_PROTECT, cost, 1, s.tactics);
+    const steps = runComboSteps(source, c.bot, c.ind, DEFAULT_PROTECT, cost, 1, s.tactics, false, s.gates.baseLastN ?? 0);
     let r: ComboRun | null = null;
     for (;;) {
       const x = steps.next();
@@ -2005,6 +2017,7 @@ export function* runPipeline(
         tps,
         plan ? { plan, ruleTpsOut: ruleTps } : undefined,
         cellKeys,
+        s.gates.baseLastN ?? 0,
       );
       if (ranges) r.ranges = ranges;
       if (Object.keys(tps).length) r.rangeTps = tps;

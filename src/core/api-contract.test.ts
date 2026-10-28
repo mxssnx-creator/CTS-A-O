@@ -1335,7 +1335,8 @@ const small = {
     cooldown: false,
     cooldownBars: 4,
   },
-  gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
+  // This API paging fixture requires a nonempty synthetic cohort; Base Last-N has its own parity tests.
+  gates: { minPf: 1.05, minTrades: 3, maxDdr: 0, baseLastN: 0 },
   signals: {
     ...signalSettings({
       exits: "pct",

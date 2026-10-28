@@ -15,8 +15,8 @@ const NOW = Date.UTC(2026, 9, 17, 12);
 const IND = "ema-21-55@m15";
 const BAD = "ema-9-21@m15";
 const pair = (ind: string) => `follow|${ind}`;
-const good = { n: 20, pf: 2, net: 5, mdd: 1 };
-const bad = { n: 20, pf: 0.5, net: -1, mdd: 1 };
+const good = { n: 20, pf: 2, net: 5, mdd: 1, baseLast: { requested: 40, n: 20, gp: 2, gl: 1, stop: 1 } };
+const bad = { n: 20, pf: 0.5, net: -1, mdd: 1, baseLast: { requested: 40, n: 20, gp: .5, gl: 1, stop: 1 } };
 const run = (ind: string, ranges: object) => ({ bot: "follow", ind, full: bad, ranges, score: 1 }) as unknown as ComboRun;
 const s = {
   ...DEFAULT_SETTINGS,

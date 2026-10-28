@@ -1,0 +1,43 @@
+[
+  {
+    "directory": "docs/trailing-audit-20261028/screen",
+    "validationLastN": 12,
+    "baseLastN": 40,
+    "cells": 3900,
+    "basePassed": 45,
+    "active": 25,
+    "contexts": 90,
+    "validated": 25,
+    "candidates": 782,
+    "gatePassed": 74,
+    "gateRejected": 708,
+    "settled": 74,
+    "openAtEnd": 0,
+    "gp": 0.125767125828238,
+    "gl": 0.15612462254676185,
+    "exitReasons": {
+      "sl": {
+        "n": 11,
+        "gp": 0,
+        "gl": 0.09899999999999962
+      },
+      "time": {
+        "n": 43,
+        "gp": 0.017352037041814917,
+        "gl": 0.05607689849573058
+      },
+      "tp": {
+        "n": 18,
+        "gp": 0.108000000000001,
+        "gl": 0
+      },
+      "trail": {
+        "n": 2,
+        "gp": 0.0004150887864221031,
+        "gl": 0.001047724051031637
+      }
+    },
+    "scope": "model closes; entry-time gate verdicts are those recorded by the replay",
+    "pricePathsChecked": 74
+  }
+]

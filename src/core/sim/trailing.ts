@@ -38,7 +38,9 @@ export function trailingOnlyProtects(protects: readonly Protect[]): Protect[] {
   for (const p of protects) {
     if (!(p.trail > 0) || p.trailOnly) continue;
     const q = capTrailingOnlyProtect({ ...p, tp: 0, trailOnly: true, trailFree: false, trailMax: SIGNAL_STOP_LIMIT });
-    const key = `${q.sl}|${q.trail}|${q.trailStep}|${q.hold}|${q.tag ?? ""}`;
+    // Reference-bar holds can coincide while their minute caps produce different faster-lane holds. Keep both
+    // until laneProtect resolves each actual hold; only identical economic caps may share this candidate.
+    const key = `${q.sl}|${q.trail}|${q.trailStep}|${q.hold}|${q.maxHoldMin ?? ""}|${q.tag ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(q);

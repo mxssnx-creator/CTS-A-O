@@ -118,7 +118,8 @@ describe("preset backtest Base", { timeout: 300_000 }, () => {
 });
 
 describe("Base pass (the compute's and the preset backtest's rule)", () => {
-  const stat = (pf: number, net: number) => ({ n: 20, pf, net, mdd: 1 });
+  const stat = (pf: number, net: number) => ({ n: 20, pf, net, mdd: 1,
+    baseLast: { requested: 40, n: 20, gp: pf, gl: 1, stop: 1 } });
   const run = (ind: string, full: ReturnType<typeof stat>, ranges: Record<string, ReturnType<typeof stat>>, tps = {}) =>
     ({ bot: "follow", ind, full, ranges, rangeTps: tps, score: 1 }) as unknown as ComboRun;
 
