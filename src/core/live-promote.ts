@@ -115,7 +115,7 @@ export interface PromotedLaneProof extends PromoteIdentity {
   modelNoLoss: boolean;
   executionNoLoss: boolean;
   /** Exact judged settled owned-execution sample; admission recomputes its current last-N from these returns. */
-  executionCloses: Array<{ id: string; exitT: number; unitR: number }>;
+  executionCloses: Array<{ id: string; exitT: number; unitR: number; netPnl?: number; entryNotional?: number }>;
 }
 export interface PromoteDecision {
   /** Summary only: an ON group never grants permission to an unlisted config/symbol/direction. */
@@ -208,6 +208,10 @@ export function validPromotedLaneProof(v: unknown, nowT = Date.now()): v is Prom
       (c.exitT === lastT && c.id.localeCompare(lastId) < 0)
     )
       return false;
+    if (c.netPnl !== undefined || c.entryNotional !== undefined) {
+      if (!finite(c.netPnl) || !finite(c.entryNotional) || c.entryNotional <= OWNED_NOTIONAL_EPS_USD ||
+        !near(c.netPnl, c.unitR * c.entryNotional) || Math.sign(c.netPnl) !== Math.sign(c.unitR)) return false;
+    }
     seen.add(c.id);
     lastT = c.exitT;
     lastId = c.id;
@@ -316,6 +320,7 @@ function sample(
   const closes: PromotedLaneProof["executionCloses"] = [];
   for (const c of xs) {
     let r: unknown = c.unitR;
+    let realized: { netPnl: number; entryNotional: number } | undefined;
     if (basis === "owned-net-returns") {
       if (
         !finite(c.ownedQty) ||
@@ -343,9 +348,10 @@ function sample(
         return null;
       // Tolerance reconciles floating arithmetic; it never becomes a declared gain or changes the scored return.
       r = netReturn;
+      realized = { netPnl, entryNotional: c.entryNotional };
     }
     if (!finite(r)) return null;
-    closes.push({ id: String(c.id), exitT: c.exitT, unitR: r });
+    closes.push({ id: String(c.id), exitT: c.exitT, unitR: r, ...realized });
     if (r > 0) gp += r;
     else gl -= r;
   }

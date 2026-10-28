@@ -98,6 +98,14 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       num(s.gates.baseLastN, 0, 500, "Base last-N (closes)");
       int(s.gates.baseLastN, "Base last-N");
     }
+    if (s.gates.baseRangeLastN !== undefined) {
+      if (!s.gates.baseRangeLastN || typeof s.gates.baseRangeLastN !== "object" || Array.isArray(s.gates.baseRangeLastN))
+        throw new Error("Base range last-N: an object for Micro and Minimal");
+      for (const [key, value] of Object.entries(s.gates.baseRangeLastN)) {
+        if (key !== "micro" && key !== "minimal") throw new Error(`Base range last-N: unknown range ${key}`);
+        if (value !== undefined) { num(value, 0, 500, `${key} Base last-N`); int(value, `${key} Base last-N`); }
+      }
+    }
     if (s.gates.lastNOnly !== undefined && typeof s.gates.lastNOnly !== "boolean")
       throw new Error("Last-N-only validation (gates.lastNOnly): true or false");
     if (s.gates.warmup !== undefined && typeof s.gates.warmup !== "boolean")
@@ -154,6 +162,10 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       throw new Error("live mode must be overall or entries");
     num(s.live.ratio, 0.1, 500, "control ratio"); // the caps (per position, exposure, risk budget) bound the size
     if (s.live.liveLastN !== undefined) num(s.live.liveLastN, 0, 200, "live last N");
+    if (s.live.realLastN !== undefined) {
+      num(s.live.realLastN, 9, 200, "Real last N");
+      int(s.live.realLastN, "Real last N");
+    }
     if (s.live.liveMinPf !== undefined) num(s.live.liveMinPf, 0, 10, "live min PF");
     if (s.live.engineProofN !== undefined) {
       num(s.live.engineProofN, 0, 1000, "engine proof closes");

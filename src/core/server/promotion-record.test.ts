@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
 import {CoreDb} from "./db.server.ts";
-import {ownedPromotionRecord} from "./promotion-record.server.ts";
+import {ownedPromotionIdentities,ownedPromotionRecord} from "./promotion-record.server.ts";
 import {executionRecordKey,ownedPaperExecutionRecords} from "../live-record.ts";
 import {promotionGate} from "../live-validation.ts";
 
@@ -40,4 +40,18 @@ test("ambiguous ownership and invalid clocks remain unknown; unrelated rows cann
   insert(lane.cfg,lane.sym,1,12,Infinity,.02);
   assert.equal(promotionGate(model,read(),0,now,4,1.1).state,"unknown");
   db.db.close();
+});
+
+test("the empty-identity fast path refreshes on writes and never hides ambiguous closes",()=>{
+  const db=new CoreDb(":memory:");
+  try {
+    const key=executionRecordKey("cfg","A",1);
+    assert.equal(ownedPromotionIdentities(db).keys.has(key),false);
+    db.run("INSERT INTO paper_book_trades(cfg,sym,side,entry_t,exit_t,reason) VALUES('cfg','A',1,1,2,'exit')");
+    assert.equal(ownedPromotionIdentities(db).keys.has(key),true);
+    db.run("INSERT INTO paper_book_trades(cfg,sym,side,entry_t,exit_t,reason) VALUES('cfg','A',0,3,4,'exit')");
+    assert.equal(ownedPromotionIdentities(db).ambiguous,true);
+    db.run("DELETE FROM paper_book_trades WHERE side=0");
+    assert.equal(ownedPromotionIdentities(db).ambiguous,false);
+  } finally { db.db.close(); }
 });

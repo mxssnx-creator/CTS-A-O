@@ -202,6 +202,8 @@ test("regression: a planted micro edge passes Base at Micro's own cell and build
     undefined,
     undefined,
     40,
+    undefined,
+    gates0.baseRangeLastN,
   )!;
   assert.ok(ranges.mc, "judged at Micro's own cell");
   // the targets whose cells passed: the tape stage builds only these (pairTps)
@@ -366,7 +368,8 @@ test("a Micro indication that passed only on its Minimal cells is a Minimal surv
   const { basePairRows } = await import("./pipeline/pipeline.ts");
   // Micro on, Minimal's micro indications on (the default rule "minimal": a Micro indication takes Micro and Minimal
   // cells); the sets gates (PF ≥ 1, 12 closes, DDR ≤ 1)
-  const s = { ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, micro: MICRO_RANGE } } as CoreSettings;
+  const s = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, baseRangeLastN: { micro: 40, minimal: 40 } },
+    grid: { ...DEFAULT_SETTINGS.grid, micro: MICRO_RANGE } } as CoreSettings;
   const st = (pf: number, net: number) => ({ n: 20, pf, net, mdd: 1,
     baseLast: { requested: 40, n: 20, gp: pf, gl: 1, stop: 1 } });
   const s1 = [

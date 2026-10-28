@@ -37,6 +37,7 @@ import { checkLowRangeComplete, checkRangeReplacementsComplete, checkSettings } 
 import { BoundedHistory, HistoryStorageError, historyOf, withHistoryMetadata, HISTORY_CACHE_BYTES, transferHistoriesGen, type HistoryTransfer } from "./history-store.server.ts";
 import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "../model-cost.ts";
 import { evaluationHistorySettings } from "../market/history-requirements.ts";
+import { baseLastNForRange } from "../pipeline/base-lastn.ts";
 import {
   microIndRule,
   minPfOf,
@@ -271,6 +272,7 @@ import {
   liveGroupKeyOf,
   liveGroupOf,
   promotionGate,
+  realExecutionGate,
   sideTapeOf,
   type LiveGate,
   type LiveValidationStatus,
@@ -289,7 +291,7 @@ import {
   type LiveRecord,
 } from "../live-record.ts";
 import { OWN_CLOSE_SQL } from "../relation.ts";
-import { ownedPromotionRecord } from "./promotion-record.server.ts";
+import { ownedPromotionIdentities, ownedPromotionRecord } from "./promotion-record.server.ts";
 import { signalActiveHas, type ExchangeAccept, type SignalActivationEnd } from "../signals.ts";
 import {
   isSignalCoordinationInd,
@@ -1038,7 +1040,7 @@ export class CoreRuntime {
    */
   private memDeferred = false;
   /** the paper step's live validation for new entries (null = off) */
-  private liveEntryGate: ((tp: ConfigTape, side?: number) => boolean) | null = null;
+  private liveEntryGate: ((tp: ConfigTape, side?: number, sym?: string) => boolean) | null = null;
   /** the last compute's strategy-set completeness (tape builder record: grid cells built / kept / skipped and why) */
   buildStats: TapeBuildStat[] = [];
   /** loop generation: a cycle from an older generation never reschedules or publishes */
@@ -1215,6 +1217,7 @@ export class CoreRuntime {
     // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
     const savedWf = migrateValidationLast12(db,
       migrateSignalHistory150(db, migrateSignalLast4Policy(db, migrateSignalEvaluationPolicy(db, migrateWfCaps(db)))));
+    migrateMicroMinimalBase30(db);
     migrateExpandedSignalDefaults(db);
     migrateNeutralVolumeRatios(db);
     migrateDcaTwoSteps(db);
@@ -2843,6 +2846,7 @@ export class CoreRuntime {
       signalMaxPositions: this.wf.signalMaxPositions,
       // the Base gates of the last compute: without them every pair took seats until the next compute finished
       basePassed: this.wf.basePassed,
+      baseQualificationT: this.wf.baseQualificationT,
       basePassedCells: this.wf.basePassedCells,
       exitBasePassed: this.wf.exitBasePassed,
       basePassedRanges: this.wf.basePassedRanges,
@@ -5726,6 +5730,7 @@ export class CoreRuntime {
     this.resetRealtime("qualified research cohort replaced");
     Object.assign(this.wf, {
       basePassed: wf.basePassed,
+      baseQualificationT: wf.gates?.lastNOnly ? sim.startT : undefined,
       basePassedCells: wf.basePassedCells,
       exitBasePassed: wf.exitBasePassed,
       basePassedRanges: wf.basePassedRanges,
@@ -7353,6 +7358,8 @@ export class CoreRuntime {
     lanes: NonNullable<CoreSettings["live"]["promotedLanes"]>;
     byKey: Map<string, NonNullable<CoreSettings["live"]["promotedLanes"]>[number]>;
     records: Map<string, LiveRecord>;
+    realRecords: Map<string, LiveRecord>;
+    realCashRecords: Map<string, LiveRecord>;
   } | null = null;
   private modeledExecutionRecords() {
     const sim = this.sim;
@@ -7410,7 +7417,12 @@ export class CoreRuntime {
     );
     const sim = this.sim;
     const model = this.modeledExecutionRecords();
-    const owned = ownedPromotionRecord(this.db, lane, n, now);
+    // The Real gate has its own N; loading the larger window once lets both indexed records share one read.
+    const realN = this.settings.live.realLastN ?? 12;
+    const historyN = Math.max(n, realN);
+    const owned = ownedPromotionRecord(this.db, lane, historyN, now);
+    const effective = ownedPromotionRecord(this.db, lane, historyN, now, "effective");
+    const cash = ownedPromotionRecord(this.db, lane, historyN, now, "cash");
     const key = executionRecordKey(lane.cfg, lane.sym, lane.side);
     const lanes = this.settings.live.promotedLanes;
     if (lanes && this.promotionReferenceMemo?.lanes !== lanes) {
@@ -7421,10 +7433,19 @@ export class CoreRuntime {
             p.executionCloses.map((c) => ({ cfg: promoteLaneKey(p), exitT: c.exitT, r: c.unitR })),
           ),
       );
+      const realCloses = lanes
+        .filter((p) => validPromotedLaneProof(p, now) && p.executionSource === "verified-venue" &&
+          p.executionCloses.every((c) => typeof c.netPnl === "number" && typeof c.entryNotional === "number"))
+        .flatMap((p) => p.executionCloses.map((c) => ({ cfg: promoteLaneKey(p), exitT: c.exitT,
+          netPnl: c.netPnl!, entryNotional: c.entryNotional! })));
+      const realRecords = liveRecords(realCloses.map((c) => ({ ...c, r: c.netPnl / c.entryNotional })));
+      const realCashRecords = liveRecords(realCloses.map((c) => ({ ...c, r: c.netPnl })));
       this.promotionReferenceMemo = {
         lanes,
         byKey: new Map(lanes.map((p) => [promoteLaneKey(p), p])),
         records,
+        realRecords,
+        realCashRecords,
       };
     }
     const ref =
@@ -7460,6 +7481,53 @@ export class CoreRuntime {
           }
         : undefined,
     );
+    const referenceReal = reference ? this.promotionReferenceMemo?.realRecords.get(key) : undefined;
+    const realRefGate = referenceReal && reference
+      ? liveGate(referenceReal, reference.fromT, now, realN, minPf) : undefined;
+    const rb = referenceReal ? lowerBound(referenceReal.exitT, now + 1) : 0;
+    const ra = Math.max(0, rb - realN);
+    const realGp = referenceReal ? referenceReal.gp[rb] - referenceReal.gp[ra] : 0;
+    const realGl = referenceReal ? referenceReal.gl[rb] - referenceReal.gl[ra] : 0;
+    const realNoLoss = realGp > 0 && realGl === 0;
+    const real = realExecutionGate(effective, now, realN, minPf,
+      reference && referenceReal && realRefGate ? {
+        source: "verified-venue", n: realRefGate.n, pf: realRefGate.pf, unknown: realRefGate.unknown ?? 0,
+        fromT: rb > ra ? referenceReal.exitT[ra] : null, toT: rb > ra ? referenceReal.exitT[rb - 1] : null,
+        noLoss: realNoLoss, pfConvention: realNoLoss ? "no-loss-score" : "ratio", validUntilT: reference.validUntilT,
+      } : undefined);
+    const pb = referenceReal ? lowerBound(referenceReal.exitT, now + 1) : 0, pa = Math.max(0, pb - n);
+    const processedGp = referenceReal ? referenceReal.gp[pb] - referenceReal.gp[pa] : 0;
+    const processedGl = referenceReal ? referenceReal.gl[pb] - referenceReal.gl[pa] : 0;
+    const processedNoLoss = processedGp > 0 && processedGl === 0;
+    const processedRefGate = referenceReal && reference ? liveGate(referenceReal, reference.fromT, now, n, minPf) : undefined;
+    const processed = realExecutionGate(effective, now, n, minPf,
+      reference && referenceReal && processedRefGate ? {
+        source: "verified-venue", n: processedRefGate.n, pf: processedRefGate.pf, unknown: processedRefGate.unknown ?? 0,
+        fromT: pb > pa ? referenceReal.exitT[pa] : null, toT: pb > pa ? referenceReal.exitT[pb - 1] : null,
+        noLoss: processedNoLoss, pfConvention: processedNoLoss ? "no-loss-score" : "ratio", validUntilT: reference.validUntilT,
+      } : undefined);
+    const referenceCash = reference ? this.promotionReferenceMemo?.realCashRecords.get(key) : undefined;
+    const cashRefGate = referenceCash && reference ? liveGate(referenceCash, reference.fromT, now, realN, minPf) : undefined;
+    const cb = referenceCash ? lowerBound(referenceCash.exitT, now + 1) : 0, ca = Math.max(0, cb - realN);
+    const cashGp = referenceCash ? referenceCash.gp[cb] - referenceCash.gp[ca] : 0;
+    const cashGl = referenceCash ? referenceCash.gl[cb] - referenceCash.gl[ca] : 0;
+    const cashNoLoss = cashGp > 0 && cashGl === 0;
+    const realCash = realExecutionGate(cash, now, realN, minPf,
+      reference && referenceCash && cashRefGate ? {
+        source: "verified-venue", n: cashRefGate.n, pf: cashRefGate.pf, unknown: cashRefGate.unknown ?? 0,
+        fromT: cb > ca ? referenceCash.exitT[ca] : null, toT: cb > ca ? referenceCash.exitT[cb - 1] : null,
+        noLoss: cashNoLoss, pfConvention: cashNoLoss ? "no-loss-score" : "ratio", validUntilT: reference.validUntilT,
+      } : undefined);
+    const useProcessed = this.wf.gates?.lastNOnly === true;
+    const initialOk = useProcessed ? processed.ok : gate.ok;
+    const processedState = processed.state === "real-insufficient" ? "execution-insufficient"
+      : processed.state === "real-failed" ? "execution-failed" : processed.state;
+    const gated: LiveGate = { ...gate, ...(useProcessed ? { processed: processed.window, modelRequired: false,
+      execution: processed.window, n: processed.window.n, pf: processed.window.pf, source: processed.window.source } : {}),
+      real: real.window, realCash: realCash.window, realLastN: realN, realState: real.state,
+      realBasis: real.window.source === "verified-venue" ? "verified-venue-return" : "paper-effective-return", ok: initialOk && real.ok,
+      state: initialOk ? real.state : useProcessed ? processedState : gate.state,
+      unknown: Math.max(useProcessed ? processed.window.unknown : (gate.unknown ?? 0), real.window.unknown) };
     const tp = this.tapeIndex().get(lane.cfg);
     const selected = this.paper.selected;
     if (selected && this.promotionSelectedMemo?.selected !== selected)
@@ -7472,7 +7540,7 @@ export class CoreRuntime {
       (isSignalInd(ind) ||
         (baseAllowsTape(tp, this.wf) &&
           (!this.wf.basePassed || configEval(tp, now, this.wf).ok) &&
-          configDirectionEval(tp, now, this.wf, lane.side).ok &&
+          (this.wf.gates.lastNOnly || configDirectionEval(tp, now, this.wf, lane.side).ok) &&
           engineContextValid(tp, now, this.wf, lane.sym, lane.side))) &&
       (!isSignalInd(ind) ||
         (signalValidationOk(tp, now, this.wf, lane.sym, lane.side) &&
@@ -7487,7 +7555,7 @@ export class CoreRuntime {
               tp.kind,
               tp.id,
             ))));
-    return eligible ? gate : { ...gate, ok: false, state: "ineligible" };
+    return eligible ? gated : { ...gated, ok: false, state: "ineligible" };
   }
   /**
    * Pooled per-config OWNED PAPER diagnostic (null when off). Strict native admission uses livePromotionGate's
@@ -9731,29 +9799,36 @@ export class CoreRuntime {
     const lvSince = this.liveSince();
     const lvNow = Date.now();
     const lvMemo = new Map<string, LiveGate>();
-    // Paper keeps learning. Its deactivation record is the settled AFTER-Base execution simulation, never the
-    // independent raw candidate tape. Strict funded proof is checked separately at native live admission.
-    // Forward deactivation must follow the exact config and direction even when legacy pooled proof is selected.
+    // In Last-N-only mode the continuous paper gate follows the book's own handled closes. The legacy mode
+    // retains its modeled post-Base record until the new policy has completed integration and migration.
+    // Forward deactivation must follow the exact config, symbol and direction even when legacy pooled proof is selected.
     const lvBySide = true;
     // Both independent sides are included in the diagnostic count, including insufficient ones.
     const lvSides = lvBySide ? LV_SIDES_APART : LV_SIDES_POOLED;
     const lvModel = this.modeledGateRecords(lvBySide) ?? new Map<string, LiveRecord>();
+    const lvExact = this.modeledExecutionRecords()?.records ?? new Map<string, LiveRecord>();
+    const lvOwned = this.wf.gates?.lastNOnly === true;
+    const lvOwnedIdentities = lvOwned ? ownedPromotionIdentities(this.db) : undefined;
     // judged as of `at`: a paper entry as of its entry time (the closes after it are not known when it enters — with
     // now, up to a step of later closes decided it), the entries planner as of now
-    const lvOf = (x: ConfigTape, at = lvNow, side?: 1 | -1): LiveGate => {
-      // Missing side provenance cannot borrow either side's record.
-      if (lvBySide && side === undefined) return { ok: false, n: 0, pf: null, unknown: 1 };
-      const mk = `${x.id}|${at}${side === undefined ? "" : `|${side}`}`;
-      let g = lvMemo.get(mk);
+    const lvOf = (x: ConfigTape, at = lvNow, side?: 1 | -1, sym?: string, cache = true): LiveGate => {
+      // Missing identity provenance cannot borrow another symbol or side's record.
+      if (side === undefined || !sym?.trim()) return { ok: false, n: 0, pf: null, unknown: 1 };
+      const mk = JSON.stringify([x.id, sym, side, at]);
+      let g = cache ? lvMemo.get(mk) : undefined;
       // A Live floor can tighten the matching stage floor, never relax it.
       const minPf = liveMinPfOf(this.settings, x.protect.tag, x.ind, x.kind);
       if (!g) {
-        const model = lvModel.get(recordKeyOf(x.id, side));
+        const key = executionRecordKey(x.id, sym, side);
+        const model = lvOwned
+          ? (lvOwnedIdentities!.ambiguous || lvOwnedIdentities!.keys.has(key)
+              ? ownedPromotionRecord(this.db, { cfg: x.id, sym, side }, lvN, at, "effective") : undefined)
+          : lvExact.get(key);
         g = {
-          ...(model ? liveGate(model, lvSince, at, lvN, minPf) : { ok: true, n: 0, pf: null }),
-          source: "post-base-accepted",
+          ...(model ? liveGate(model, lvOwned ? 0 : lvSince, at, lvN, minPf) : { ok: true, n: 0, pf: null }),
+          source: lvOwned ? "owned-paper" : "post-base-accepted",
         };
-        lvMemo.set(mk, g);
+        if (cache) lvMemo.set(mk, g);
       }
       return g;
     };
@@ -9794,12 +9869,12 @@ export class CoreRuntime {
     };
     const lvGroups = groupsAt(lvNow);
     if (lvGroupN > 0) yield 0;
-    // The entries planner checks the entry's own config and side.
+    // The entries planner checks the entry's own config, symbol and side.
     this.liveEntryGate =
       lvN > 0
-        ? (tp, s) => {
+        ? (tp, s, sym) => {
             const side = lvSideOfEntry(lvBySide, s);
-            return liveEntryOk(lvOf(tp, lvNow, side));
+            return liveEntryOk(lvOf(tp, lvNow, side, sym));
           }
         : null;
     let lvSkipped = 0;
@@ -9879,7 +9954,7 @@ export class CoreRuntime {
         // simulation gave it (judged first, its seat went to a config the simulation had crowded out)
         if (
           lvN > 0 &&
-          !liveEntryOk(lvOf(tp, op.entryT, lvSide))
+          !liveEntryOk(lvOf(tp, op.entryT, lvSide, op.sym))
         ) {
           lvSkipped++;
           pSkip("liveValidation");
@@ -10296,22 +10371,27 @@ export class CoreRuntime {
       for (const id of sel) {
         const x = byId.get(id);
         if (!x) { evaluated += lvSides.length; unknown += lvSides.length; continue; }
-        for (const side of lvSides) {
+        // The status has the same independent identities as admission, including both unjudged sides.
+        // Do not retain these potentially large diagnostic-only lookups in the entry memo.
+        for (const sym of x.syms) for (const side of lvSides) {
           evaluated++;
-          const g = lvOf(x, lvNow, side);
-          if ((g.unknown ?? 0) > 0) { unknown++; continue; }
-          if (g.pf === null) { unjudged++; continue; }
-          judged++;
-          if (g.ok) passing++;
-          if (g.source === "exchange") onExchange++;
+          const g = lvOf(x, lvNow, side, sym, false);
+          if ((g.unknown ?? 0) > 0) unknown++;
+          else if (g.pf === null) unjudged++;
+          else {
+            judged++;
+            if (g.ok) passing++;
+            if (g.source === "exchange") onExchange++;
+          }
+          if (evaluated % 128 === 0) yield 0;
         }
       }
       this.status.liveValidation = {
         lastN: lvN,
         minPf: lvMinPf,
-        since: lvSince,
+        since: lvOwned ? 0 : lvSince,
         at: lvNow,
-        basis: "post-base-accepted",
+        basis: lvOwned ? "owned-paper" : "post-base-accepted",
         evaluated,
         unjudged,
         unknown,
@@ -10534,7 +10614,7 @@ export class CoreRuntime {
         // and the live validation of the paper book (a config losing on its own record opens nothing), and native live
         // entries require both settled model and measured owned-paper execution proof for this side
         if (
-          (this.liveEntryGate && !this.liveEntryGate(tp, p.side)) ||
+          (this.liveEntryGate && !this.liveEntryGate(tp, p.side, p.sym)) ||
           !this.livePromotionGate({ cfg: tp.id, sym: p.sym, side: p.side }).ok
         ) {
           skip(tp, "liveValidation");
@@ -11317,6 +11397,54 @@ function migrateValidationLast12(db: CoreDb, saved: Partial<WalkForwardOptions>)
     db.kvSet("validationLast12V1", true);
   });
   return out;
+}
+
+/** Prior cached preset PFs are not proof under the new per-range Base windows; keep a transactional backup. */
+function migrateMicroMinimalBase30(db: CoreDb): void {
+  if (db.kvGet("microMinimalBase30V1")) return;
+  const settings = db.kvGet<SettingsPatch>("settings");
+  const presets = db.kvGet<Preset[]>("presets");
+  const backtests = db.kvGet<Record<string, unknown>>("presetBacktests");
+  const series = db.kvGet<Record<string, unknown>>("presetSeries");
+  const backup = structuredClone({ presets, presetBacktests: backtests, presetSeries: series });
+  const oldDefaults: CoreSettings = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, baseRangeLastN: undefined } };
+  const oldDesk = mergeSettings(oldDefaults, settings);
+  const newDesk = mergeSettings(DEFAULT_SETTINGS, settings);
+  const byId = new Map([...(presets ?? []), ...ALL_RESEARCH_PRESETS].map((p) => [p.id, p]));
+  const changed = (preset: Preset | undefined) => {
+    if (!preset) return true;
+    try {
+      const before = mergeSettings(oldDesk, presetSettings(preset.settings));
+      const after = mergeSettings(newDesk, presetSettings(preset.settings));
+      return (["mc", "mn"] as const).some((tag) => {
+        const range = tag === "mc" ? after.grid.micro : after.grid.minimal;
+        return !!range && baseLastNForRange(before.gates, tag) !== baseLastNForRange(after.gates, tag);
+      });
+    } catch { return true; }
+  };
+  const invalid = new Set<string>();
+  for (const preset of presets ?? []) {
+    if (!changed(preset)) continue;
+    invalid.add(preset.id);
+    if (preset.metrics) {
+      const { gp: _gp, gl: _gl, ...metrics } = preset.metrics;
+      preset.metrics = { ...metrics, pf: null, pfBasis: "unavailable", noLoss: null, pfConvention: "unavailable",
+        source: `${metrics.source ?? "Previous result"} — Micro/Minimal Base Last-N changed; re-evaluate for current results` };
+    }
+  }
+  for (const id of new Set([...Object.keys(backtests ?? {}), ...Object.keys(series ?? {})]))
+    if (changed(byId.get(id))) invalid.add(id);
+  db.tx(() => {
+    if (invalid.size) {
+      db.kvSet("microMinimalBase30BackupV1", { ...backup, invalidPresetIds: [...invalid] });
+      if (presets) db.kvSet("presets", presets);
+      const keepBacktests = { ...backtests }, keepSeries = { ...series };
+      for (const id of invalid) { delete keepBacktests[id]; delete keepSeries[id]; }
+      if (backtests) db.kvSet("presetBacktests", keepBacktests);
+      if (series) db.kvSet("presetSeries", keepSeries);
+    }
+    db.kvSet("microMinimalBase30V1", true);
+  });
 }
 
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {

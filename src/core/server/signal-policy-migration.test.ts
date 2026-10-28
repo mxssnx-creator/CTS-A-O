@@ -117,8 +117,10 @@ it("migrates undersized validation samples and preserves stricter samples across
   assert.match(presets[0].metrics.source, /validation policy changed/);
   assert.deepEqual(db.kvGet<any>("validationLast12BackupV1")?.presets[0].metrics, formerMetrics);
   assert.deepEqual(db.kvGet<any>("validationLast12BackupV1")?.wf, wf);
-  assert.deepEqual(db.kvGet("presetBacktests"), { custom: backtests.custom });
-  assert.deepEqual(db.kvGet("presetSeries"), { custom: series.custom });
+  // The later Micro/Minimal Base-30 migration also retires the custom preset's old Base-60 results.
+  assert.deepEqual(db.kvGet("presetBacktests"), {});
+  assert.deepEqual(db.kvGet("presetSeries"), {});
+  assert.deepEqual(db.kvGet<any>("microMinimalBase30BackupV1")?.presetBacktests, { custom: backtests.custom });
   assert.deepEqual(db.kvGet<any>("validationLast12BackupV1")?.presetBacktests, backtests);
   assert.deepEqual(new Set(db.kvGet<any>("validationLast12BackupV1")?.invalidPresetIds), new Set(["former", "unidentified"]));
   assert.equal(db.kvGet("validationLast12V1"), true);

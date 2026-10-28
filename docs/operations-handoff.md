@@ -1,3 +1,50 @@
+## 2026-10-28 — Processed-order qualification checkpoint (draft, not deployed)
+
+The latest operator instruction places all Last-N admission checks before a position becomes Active. The exchange
+must mirror that final accepted Active position without applying an additional Last-N gate. The present draft still
+applies the Real window during native promotion and therefore contradicts this instruction; it is not ready to
+merge. Move that check to Active admission, persist exact Base-linked acceptance provenance, and reconcile existing
+pending orders and held positions without treating unknown legacy provenance as a new validated entry.
+
+The operator clarified that after Base, continuous validation must follow each exact configuration's processed
+orders, not rejected or raw candidate results. A controlled simulation reproduced both directions of the bug:
+rejected wins kept a context open after 12 processed losses; rejected losses vetoed a context whose 12 processed
+orders won. The Last-N-only draft now freezes each context's initial Base/validation proof at the simulation
+generation cut and feeds a bounded cfg × symbol × side × kind processed book only as accepted modeled orders close.
+Open marks do not count. A context with fewer than its requested processed closes remains explicitly in warm-up;
+a complete losing or unknown own sample blocks new orders, while held orders continue to their own exits.
+Selection and Real integration, persistent incremental state, every strategy and UI reporting still need a full
+audit. The policy remains OFF in the released runtime and must not be described as a systemwide fix yet.
+The simulator's processed book is currently per-run and bootstraps from the generation's initial Base proof; it
+does not yet restore each actual paper lane's settled validation record across recomputes. The paper gate does
+read its persistent book, but same-step close/admission ordering and a complete paginated processed-set UI need
+verification. The native Real producer for genuine Bybit fills remains unintegrated.
+
+The draft's paper Last-N path reads its own settled paper-book rows, not simulated orders the paper book never held.
+The exact lane, side, adoption price, known allocation and original cost are required; missing evidence stays
+unknown. Real Last-12 separately compares executable return PF (paper-price estimate or externally validated venue
+evidence); dollar-weighted PF is shown only as a separate reconciliation. Multi-leg DCA/Axis paper results remain
+unknown because the existing book does not preserve leg prices and quantities. In the draft Last-N-only path,
+native promotion judges the handled return window and the separate Real window; model-only outcomes remain a
+clearly labeled diagnostic. Historical Exit fitting/holdout remains time-partitioned, source construction can
+still be based on representative Base cells, and automatic sufficient-history backfill is not implemented.
+
+Latest bounded 20-symbol Short Low-Range research probe: 120 Normal/Trailing configurations × 20 symbols × two
+directions = 4,800 contexts, 1/5/15m candles, 0.15% modeled round-trip cost. With 60 hours of available prior data
+(2026-10-07 12:00–10-10 00:00 UTC), 77/4,800 passed their own Base Last-40; 56/77 (72.73%) passed Validation
+Last-12, historical return PF 1.770927. On the subsequent 2026-10-10 00:00–12:00 UTC modeled window there were
+618 closes at PF 0.732385, positions 139/133/6 and orders 630/618/12 opened/closed/held. All closes matched their
+own source tape and entry context. Last-10, 15, 20, 25, 30 and 35 all had forward PF below 1; 5 and 8 are currently
+unsupported by the minimum-nine policy. At 12 hours of prior input, 0/4,800 contexts passed Base. The Real gate,
+actual paper funding and exchange fills were not replayed or measured. The partial-study HTML is stored in the
+Library as `libfile_e7d76e766b808191b13bc944938da982`; its source protocol and detailed rows are also locally in
+`/workspace/scratch/b69c1e5067d8/cts-frozen-processed-study-20261028`. The full-grid baseline is a separate,
+still-running older-source computation, not proof of these changes.
+
+PRs #220–#226 were merged after their CI checks. PR #226 carries Micro/Minimal Base Last-30, its settings, migration
+and cache invalidation. The combined processing work remains a draft; do not enable,
+merge or claim persistent high PF until the unfinished integrations and real execution checks have passed.
+
 ## 2026-10-28 — Exit isolation and Last-12 checkpoint
 
 CTS-A-O PR #220 isolates Historic Exit coordination by config and was merged after GitHub's complete Exit

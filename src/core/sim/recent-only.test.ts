@@ -12,7 +12,7 @@ import { sigActiveKey, type SignalUnitReport } from "../signals.ts";
 const H = 3_600_000, T = Date.UTC(2026, 9, 28), P: Protect = { tp: 0.01, sl: 0.01, trail: 0, hold: 1 };
 const opts = () => ({ ...defaultWalkForward(DEFAULT_SETTINGS), seatSet: "pool" as const, validLastN: 12, signalValidLastN: 12,
   exitMinTrades: 12, lastN: 0, rangeGate: undefined, symGate: "off" as const, bots: [],
-  gates: { ...DEFAULT_SETTINGS.gates, minTrades: 9, minPf: 1.1, maxDdtH: 1, minGreen: 1, stableBlocks: 12, lastNOnly: true },
+  gates: { ...DEFAULT_SETTINGS.gates, minTrades: 9, minPf: 1.1, baseLastN: 12, baseRangeLastN: {}, maxDdtH: 1, minGreen: 1, stableBlocks: 12, lastNOnly: true },
   preGate: true, longH: 24, preH: 6, signalLongH: 24, robustFrac: 0, portfolio: 0, seatPer: "config" as const });
 
 function tape(ind: string, old: number[], recent: number[], side: 1 | -1 = 1) {
@@ -150,6 +150,27 @@ describe("Last-N-only qualification (not yet enabled in CoreRuntime)", () => {
     assert.equal(configContextEval(good, T, o, "A-USDT", 1).ok, true);
     assert.equal(configContextEval(good, T, o, "A-USDT", -1).ok, false);
     assert.equal(configContextEval(good, T, o, "B-USDT", 1).ok, false);
+  });
+
+  it("requires the exact symbol and direction even when the optional legacy symbol gate is off", () => {
+    const good = tape("rsi-mom-14-20@m15", [], Array(12).fill(0.01));
+    const o = { ...opts(), symGate: "off" as const };
+    assert.equal(configContextEval(good, T, o, "A-USDT", 1).ok, true);
+    assert.equal(configContextEval(good, T, o, "A-USDT", -1).ok, false);
+    assert.equal(configContextEval(good, T, o, "B-USDT", 1).ok, false);
+    assert.equal(execDecision(good, T, o, { sym: "B-USDT", side: 1 }).ok, false);
+    assert.equal(execDecision(good, T, o).ok, false, "missing entry identity cannot qualify");
+  });
+
+  it("applies each configured Last-N window to the exact symbol, including cache changes", () => {
+    const own = tape("rsi-mom-14-20@m15", Array(12).fill(-0.01), Array(12).fill(0.01));
+    const o = { ...opts(), lastN: 24, symGate: "off" as const };
+    assert.equal(configContextEval(own, T, o, "A-USDT", 1).ok, false, "entry Last-24 fails despite winning Last-12");
+    assert.equal(configContextEval(own, T, { ...o, lastN: 12 }, "A-USDT", 1).ok, true);
+    own.protect = { ...own.protect, tag: "mn" };
+    const r = { ...o, lastN: 0, rangeGate: { lastN: 24, minPf: 1.1, ranges: ["mn" as const] } };
+    assert.equal(configContextEval(own, T, r, "A-USDT", 1).ok, false, "the range Last-24 also uses the exact context");
+    assert.equal(configContextEval(own, T, { ...r, rangeGate: { ...r.rangeGate, lastN: 12 } }, "A-USDT", 1).ok, true);
   });
 
   it("never seats or admits an unvalidated probe in Last-N-only mode", () => {

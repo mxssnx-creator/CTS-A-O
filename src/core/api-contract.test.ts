@@ -536,6 +536,8 @@ const FIELDS: Record<Fn, string[]> = {
       "maxDdr",
       "quorum",
       "lastNFloor",
+      "baseLastN",
+      "baseRangeLastN",
       "rangeMinPf",
       "baseSetsMinPf",
       "warmup",
@@ -608,6 +610,7 @@ const FIELDS: Record<Fn, string[]> = {
       "maxPositions",
       "rebalancePct",
       "liveLastN",
+      "realLastN",
     ]),
     ...under("wf", [
       "mode",

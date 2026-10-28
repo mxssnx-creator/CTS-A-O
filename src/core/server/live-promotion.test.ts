@@ -33,6 +33,8 @@ const close = (r: number, i: number, opts: Partial<Trade> = {}): Trade => ({
 });
 function fixture(path = ":memory:", n = 3) {
   const r = new CoreRuntime(new CoreDb(path), { gates: { minTrades: 1 }, live: { liveLastN: n, engineProofN: 0 } }, { market: "synthetic", priceStream: null });
+  // Historical small-sample fixtures exercise the same logic with a reduced internal test threshold.
+  r.settings.live.realLastN = n;
   r.stop(); runtimes.push(r); return r;
 }
 function install(r: CoreRuntime, trades = [.02, -.01, .02].map((v, i) => close(v, i))) {
@@ -48,9 +50,10 @@ function install(r: CoreRuntime, trades = [.02, -.01, .02].map((v, i) => close(v
 }
 function owned(r: CoreRuntime, values: Array<number | null>, opts: { cfg?: string; sym?: string; side?: number; notional?: number | null; offset?: number; at?: number } = {}) {
   values.forEach((value, i) => r.db.run(
-    "INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,held_at,at,unit_r,owned_notional_usd) VALUES (?,?,?,?,?,?,1,'time',?,?,?,?)",
+    "INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,held_at,at,unit_r,owned_notional_usd,entry,held_px,exit) VALUES (?,?,?,?,?,?,1,'time',?,?,?,?,100,100,?)",
     opts.cfg ?? CFG, opts.sym ?? SYM, opts.side ?? 1, (opts.offset ?? 0) + i, (opts.at ?? NOW - 100_000) + i * 1000,
     value ?? -.1, NOW - H, NOW, value, opts.notional === undefined ? 20 : opts.notional,
+    value === null ? null : 100 * (1 + (opts.side ?? 1) * value),
   ));
 }
 const lane = { cfg: CFG, sym: SYM, side: 1 };
@@ -83,6 +86,63 @@ it("a losing pooled run cannot veto a qualified native lane; its losing owned si
 });
 
 describe("strict live promotion uses two settled independent evidence axes", () => {
+  it("a separate Real Last-12 gate judges exact executable paper P&L after model and unit proof", () => {
+    const r = install(fixture());
+    r.settings.live.realLastN = 12;
+    assert.throws(() => checkSettings({ live: { ...r.settings.live, realLastN: 8 } } as never), /Real last N/);
+    owned(r, [.02, -.01, .02]);
+    owned(r, Array(12).fill(.1), { sym: "BBB-USDT", offset: 100 });
+    let g = r.livePromotionGate(lane, NOW);
+    assert.equal(g.model?.pf, 4); assert.equal(g.execution?.pf, 4);
+    assert.equal(g.real?.n, 3); assert.equal(g.realState, "real-insufficient");
+    assert.equal(g.state, "real-insufficient", "another symbol cannot fill this lane's Real sample");
+    owned(r, Array(9).fill(.02), { offset: 3, at: NOW - 90_000 });
+    g = r.livePromotionGate(lane, NOW);
+    assert.equal(g.real?.n, 12); assert.equal(g.realBasis, "paper-effective-return");
+    assert.equal(g.realState, "qualified"); assert.equal(g.ok, true);
+    r.db.run("UPDATE paper_book_trades SET held_px=105 WHERE cfg=? AND sym=? AND side=1", CFG, SYM);
+    g = r.livePromotionGate(lane, NOW);
+    assert.ok(g.model!.pf! > 1 && g.execution!.pf! > 1);
+    assert.equal(g.real?.pf, 0, "late adoption turns the supposed model wins into actual paper losses");
+    assert.equal(g.realState, "real-failed"); assert.equal(g.ok, false);
+    r.db.run("UPDATE paper_book_trades SET held_px=NULL WHERE cfg=? AND sym=? AND entry_t=11", CFG, SYM);
+    g = r.livePromotionGate(lane, NOW);
+    assert.equal(g.realState, "unknown"); assert.equal(g.real?.unknown, 1); assert.equal(g.ok, false);
+  });
+
+  it("Real uses separately verified venue net P&L when exact quantity, fees and funding are available", () => {
+    const r = install(fixture());
+    r.settings.live.realLastN = 12;
+    const proof: PromotedLaneProof = { ...lane, side: 1, modelPf: 4, executionPf: 4, modelN: 3, executionN: 12,
+      asOf: NOW - 1000, toT: NOW - 1000, fromT: NOW - H, validUntilT: NOW + H,
+      minN: 3, minPf: 1.1, proofId: "a".repeat(64), referenceId: "exact-venue",
+      modelBasis: "unit-net-returns", executionBasis: "owned-net-returns", executionSource: "verified-venue",
+      afterBase: true, modelNoLoss: false, executionNoLoss: false,
+      executionCloses: Array.from({ length: 12 }, (_, i) => {
+        const unitR = i % 3 === 1 ? -.01 : .02, entryNotional = unitR < 0 ? 100 : 1;
+        return { id: `verified-${i}`, exitT: NOW - 20_000 + i * 1000, unitR, entryNotional, netPnl: unitR * entryNotional };
+      }) };
+    r.settings.live.promotedLanes = [proof];
+    let g = r.livePromotionGate(lane, NOW);
+    assert.equal(g.execution?.source, "verified-venue"); assert.ok(Math.abs(g.execution!.pf! - 4) < 1e-10);
+    assert.equal(g.real?.source, "verified-venue"); assert.equal(g.realBasis, "verified-venue-return");
+    assert.ok(Math.abs(g.real!.pf! - 4) < 1e-10); assert.equal(g.state, "qualified");
+    assert.ok(g.realCash!.pf! < 1, "larger dollar losses remain separately visible, not substituted for return PF");
+    r.settings.live.promotedLanes = [{ ...proof, executionCloses: proof.executionCloses.map((c) =>
+      ({ ...c, entryNotional: 1, netPnl: c.unitR })) }];
+    g = r.livePromotionGate(lane, NOW);
+    assert.ok(Math.abs(g.real!.pf! - 4) < 1e-10); assert.equal(g.ok, true);
+    owned(r, [-.01], { offset: 100, at: NOW - 500 });
+    g = r.livePromotionGate(lane, NOW);
+    assert.equal(g.real?.source, "owned-paper");
+    assert.equal(g.realState, "real-insufficient", "a newer local close cannot be hidden by an older reference");
+    r.db.run("DELETE FROM paper_book_trades WHERE cfg=? AND sym=? AND entry_t=100", CFG, SYM);
+    r.settings.live.promotedLanes = [{ ...proof, executionCloses: proof.executionCloses.map(({ id, exitT, unitR }) =>
+      ({ id, exitT, unitR })) }];
+    g = r.livePromotionGate(lane, NOW);
+    assert.equal(g.real?.n, 0); assert.equal(g.realState, "real-insufficient", "legacy unit returns do not invent venue dollar P&L");
+  });
+
   it("rejects winning raw candidate tapes when post-Base accepted returns lose; removes external volume once", () => {
     const r = install(fixture(":memory:", 2), [close(.016, 0, { mult: 2 }), close(-.01, 1)]);
     owned(r, [.02, -.01]);
@@ -112,6 +172,30 @@ describe("strict live promotion uses two settled independent evidence axes", () 
       assert.equal(r.livePromotionGate(sibling, NOW).ok, false);
     r.paper.selected = [];
     assert.equal(r.livePromotionGate(lane, NOW).state, "ineligible", "historic winners cannot override current selection");
+  });
+
+  it("Last-N-only native promotion does not veto an independently passing symbol with a losing sibling", () => {
+    const r = install(fixture());
+    const winners = Array.from({ length: 40 }, (_, i) => close(.03, i));
+    const losers = Array.from({ length: 40 }, (_, i) => close(-.03, 50 + i, { sym: "BBB-USDT" }));
+    r.tapes = [makeTape(CFG, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal",
+      [SYM, "BBB-USDT"], [...winners, ...losers], [], [])];
+    r.wf.gates = { ...r.wf.gates, lastNOnly: true, baseLastN: 12, minTrades: 9 };
+    r.wf.validLastN = 12; r.wf.lastN = 0; r.wf.rangeGate = undefined;
+    owned(r, [.02, -.01, .02]);
+    assert.equal(r.livePromotionGate(lane, NOW).ok, true);
+    assert.equal(r.livePromotionGate({ ...lane, sym: "BBB-USDT" }, NOW).ok, false);
+  });
+
+  it("Last-N-only native promotion follows handled paper outcomes when the model-only cohort differs", () => {
+    const r = install(fixture(), Array.from({ length: 3 }, (_, i) => close(-.01, i)));
+    r.wf.gates = { ...r.wf.gates, lastNOnly: true, baseLastN: 12, minTrades: 9 };
+    r.wf.validLastN = 12; r.wf.lastN = 0; r.wf.rangeGate = undefined;
+    owned(r, [.02, -.01, .02]);
+    const gate = r.livePromotionGate(lane, NOW);
+    assert.equal(gate.model?.pf, 0, "the different model-only result remains diagnostic");
+    assert.equal(gate.processed?.pf, 4);
+    assert.equal(gate.ok, true, "the processed and Real windows both pass");
   });
 
   it("a stale selected measurement config cannot promote outside its current Base-qualified pair/range", () => {
@@ -150,7 +234,7 @@ describe("strict live promotion uses two settled independent evidence axes", () 
 
   it("native promotion preserves explicit independent untagged ladder admission without qualifying plain Wide or failed pairs", () => {
     for (const kind of ["dca", "dca-active", "axis"] as const) {
-      const cfg = `${CFG}|${kind}`, identity = { ...lane, cfg }, pair = "follow|rsi-mom-14-25@m15";
+      const cfg = `${CFG}|${kind === "dca-active" ? "dcaA" : kind}`, identity = { ...lane, cfg }, pair = "follow|rsi-mom-14-25@m15";
       const trades = [.02, -.01, .02].map((v, i) => close(v, i, { cfg, kind }));
       const r = install(fixture(), trades);
       owned(r, [.02, -.01, .02], { cfg });
@@ -160,7 +244,9 @@ describe("strict live promotion uses two settled independent evidence axes", () 
       r.wf.basePassed = new Set([pair]);
       r.wf.basePassedRanges = { [pair]: ["mn"] };
       r.wf.baseWideLadderPairs = new Set([pair]);
-      assert.equal(r.livePromotionGate(identity, NOW).ok, true, kind);
+      const admitted = r.livePromotionGate(identity, NOW);
+      assert.equal(admitted.state, "unknown", `${kind}: missing leg-level paper evidence remains unknown`);
+      assert.equal(admitted.ok, false, "missing multi-leg P&L cannot qualify Real execution");
       r.updateSettings({ axis: { perRange: true } });
       assert.equal(r.livePromotionGate(identity, NOW).state, "ineligible", "a stricter perRange toggle immediately tightens carried ladder eligibility");
       r.updateSettings({ axis: { perRange: false } });
@@ -375,6 +461,29 @@ describe("native live boundary preserves held protection without unproven growth
 });
 
 describe("paper entry allocation provenance", () => {
+  it("Last-N-only paper admission judges handled closes rather than modeled orders never held", () => {
+    const t = Math.floor(Date.now() / H) * H;
+    for (const [modeled, handled, expected] of [[.02, -.01, false], [-.01, .02, true]] as const) {
+      const r = install(fixture(), Array.from({ length: 3 }, (_, i) => close(modeled, i, {
+        entryT: t - 2 * H + i * 1000, exitT: t - H + i * 1000,
+      })));
+      r.wf.gates = { ...r.wf.gates, lastNOnly: true, baseLastN: 12, minTrades: 9 };
+      r.wf.validLastN = 12; r.wf.lastN = 0; r.wf.rangeGate = undefined; r.wf.symGate = "off";
+      const raw = Array.from({ length: 30 }, (_, i) => close(.02, i, {
+        entryT: t - 3 * H + i * 60_000, exitT: t - 2 * H + i * 60_000,
+      }));
+      const open = { cfg: CFG, sym: SYM, side: 1, entryI: 0, entryT: t, entry: 100,
+        stop: 96.1, target: 102.6, peak: 100, trailOn: false, mtm: 0 } as OpenPosition;
+      r.tapes = [makeTape(CFG, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal", [SYM], raw, [open], [])];
+      r.sim!.validated = [CFG];
+      owned(r, Array(3).fill(handled), { at: t - 10 * 60_000 });
+      owned(r, Array(3).fill(-handled), { sym: "BBB-USDT", at: t - 10 * 60_000, offset: 100 });
+      (r as unknown as { stepPaper(): void }).stepPaper();
+      assert.equal(r.paper.positions.length > 0, expected, `modeled ${modeled}, handled ${handled}: ${JSON.stringify(r.status.paperSkips)}`);
+      assert.equal(r.status.liveValidation?.basis, "owned-paper");
+    }
+  });
+
   it("a lower explicit Live PF cannot relax the post-Base range floor for paper entries", () => {
     const t = Math.floor(Date.now() / H) * H, cfg = `${CFG}|mn`;
     const r = install(fixture(), [.006, -.01, .006].map((v, i) => close(v, i, {

@@ -89,6 +89,7 @@ export const DEFAULT_GATES: Gates = {
   rangeMinPf: { micro: 1.05, minimal: 1.1, short: 1.1, general: 1.2, long: 1.3 },
   minTrades: 12,
   baseLastN: 40,
+  baseRangeLastN: { micro: 30, minimal: 30 },
   quorum: 0.6,
   // Base keeps the wide/default set prefilter at PF 1.0. Configured per-range PF floors still apply at Base to each
   // tagged cell and again at config evaluation; this widens only the untagged prefilter, never a range gate.
@@ -529,6 +530,8 @@ export interface LiveSettings {
    * Zero disables paper deactivation, not strict live evidence (minTrades still applies). Held exits stay managed.
    */
   liveLastN?: number;
+  /** Independent Real gate for each config, symbol and direction's own executable-price paper P&L. */
+  realLastN?: number;
   /** minimum PF over the live last N (default: the stage min PF) */
   liveMinPf?: number;
   /**
@@ -857,6 +860,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     positionMode: "hedge",
     leverage: "max",
     liveLastN: 25,
+    realLastN: 12,
     liveGroupLastN: 0,
   },
   signals: DEFAULT_SIGNALS,

@@ -178,6 +178,8 @@ const CASES: Record<string, Case> = {
   "gates.quorum": num(0, 1),
   "gates.baseSetsMinPf": num(0.5, 1.5),
   "gates.baseLastN": num(0, 500, { int: true }),
+  "gates.baseRangeLastN.micro": num(0, 500, { int: true }),
+  "gates.baseRangeLastN.minimal": num(0, 500, { int: true }),
   "gates.lastNFloor": num(0, 100, { int: true }),
   refineTop: num(1, 100, { int: true }),
   mainTop: num(0, 100_000, { int: true }),
@@ -293,6 +295,7 @@ const CASES: Record<string, Case> = {
   "live.positionMode": oneOf(["hedge", "oneway"]),
   "live.leverage": oneOf(["max", 1, 150], ["bogus", 0.5, 151]),
   "live.liveLastN": num(0, 200),
+  "live.realLastN": num(9, 200, { int: true }),
   "live.liveGroupLastN": num(0, 2000),
   // 0 = no cap; else 10 … 10,000 in steps of 10
   "signals.count": num(10, 10_000, { int: true, also: [0, 100], bad: [15] }),

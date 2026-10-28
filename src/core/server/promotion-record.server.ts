@@ -1,14 +1,56 @@
 import type { CoreDb } from "./db.server.ts";
 import { executionRecordKey, ownedPaperExecutionRecords, type LiveRecord } from "../live-record.ts";
+import { executableR } from "../relation.ts";
+import { kindOfId } from "../pipeline/pipeline.ts";
 
-type Row = { cfg: string; sym: string; side: number; exit_t: number; unit_r: number | null; owned_notional_usd: number | null };
-const columns = "cfg,sym,side,exit_t,unit_r,owned_notional_usd";
+type Row = { cfg: string; sym: string; side: number; entry_t: number; exit_t: number; unit_r: number | null;
+  owned_notional_usd: number | null; held_at: number | null; held_px: number | null; entry: number | null;
+  exit: number | null; vol: number | null };
+const columns = "cfg,sym,side,entry_t,exit_t,unit_r,owned_notional_usd,held_at,held_px,entry,exit,vol";
 const invalidIdentity = "(trim(cfg)='' OR trim(sym)='' OR coalesce(side,0) NOT IN (-1,1))";
 const ambiguous = new WeakMap<CoreDb, { version: number; rows: Row[] }>();
-const memo = new WeakMap<CoreDb, {version: number; records: Map<string, {at:number; until:number; record:LiveRecord|undefined}>}>();
+const identities = new WeakMap<CoreDb, { version: number; keys: Set<string>; ambiguous: boolean }>();
+type Records = { at: number; until: number; unit: LiveRecord | undefined; effective: LiveRecord | undefined; cash: LiveRecord | undefined };
+const memo = new WeakMap<CoreDb, {version: number; records: Map<string, Records>}>();
+
+/** Skip per-lane SQL for known empty identities, unless an ambiguous row could belong to that lane. */
+export function ownedPromotionIdentities(db: CoreDb): { keys: ReadonlySet<string>; ambiguous: boolean } {
+  const version = db.version("paper_book_trades"), old = identities.get(db);
+  if (old?.version === version) return old;
+  const rows = db.all<{ cfg: string; sym: string; side: number }>(
+    `SELECT DISTINCT cfg,sym,side FROM paper_book_trades WHERE reason != 'dropped' AND exit_t IS NOT NULL AND NOT ${invalidIdentity}`,
+  );
+  const bad = !!db.get<{n:number}>(`SELECT 1 AS n FROM paper_book_trades INDEXED BY paper_book_trades_ambiguous WHERE reason != 'dropped' AND exit_t IS NOT NULL AND ${invalidIdentity} LIMIT 1`);
+  const next = { version, keys: new Set(rows.map((x) => executionRecordKey(x.cfg, x.sym, x.side))), ambiguous: bad };
+  identities.set(db, next);
+  return next;
+}
+
+/**
+ * Dollar P&L of a simple paper close using the adopted price and frozen owned notional. This is a paper-price
+ * approximation with the original modeled cost, never an exchange fill. A ladder, late/unknown adoption,
+ * ambiguous allocation or missing price remains unknown rather than inheriting the simulated entry's return.
+ */
+export function effectivePaperPnl(row: Row): number | null {
+  if (row.side !== 1 && row.side !== -1) return null;
+  if (![row.entry_t, row.exit_t, row.held_at, row.held_px, row.entry, row.exit, row.vol,
+    row.unit_r, row.owned_notional_usd].every((v) => typeof v === "number" && Number.isFinite(v))) return null;
+  // Block/Relate can scale a single-entry order's owned notional; ladder entries need leg-level prices and sizes.
+  const kind = kindOfId(row.cfg);
+  if (kind === "dca" || kind === "dca-active" || kind === "axis") return null;
+  if (row.held_at! < row.entry_t || row.held_at! > row.exit_t || row.vol! <= 0 || row.owned_notional_usd! <= 1e-9)
+    return null;
+  const unit = executableR({ side: row.side, r: row.unit_r, vol: 1,
+    held_px: row.held_px, entry: row.entry, exit: row.exit });
+  if (unit === null) return null;
+  const modeledCost = row.side * (row.exit! / row.entry! - 1) - row.unit_r!;
+  const pnl = unit * row.owned_notional_usd!;
+  return Number.isFinite(modeledCost) && modeledCost >= -1e-12 && Number.isFinite(pnl) ? pnl : null;
+}
 
 /** Read only this lane's chronological Last-N. An unrelated book never needs to be materialized for admission. */
-export function ownedPromotionRecord(db: CoreDb, lane: {cfg: string; sym: string; side: number}, n: number, now: number) {
+export function ownedPromotionRecord(db: CoreDb, lane: {cfg: string; sym: string; side: number}, n: number, now: number,
+  basis: "unit" | "effective" | "cash" = "unit") {
   if (!Number.isInteger(n) || n < 1 || !Number.isFinite(now)) return undefined;
   const version = db.version("paper_book_trades"), key = JSON.stringify([lane.cfg,lane.sym,lane.side,n]);
   let cached = memo.get(db);
@@ -16,7 +58,7 @@ export function ownedPromotionRecord(db: CoreDb, lane: {cfg: string; sym: string
     cached = {version,records:new Map()}; memo.set(db,cached);
   }
   const hit = cached.records.get(key);
-  if (hit && now >= hit.at && now < hit.until) return hit.record;
+  if (hit && now >= hit.at && now < hit.until) return hit[basis];
   const rows = db.all<Row>(
     `SELECT ${columns} FROM paper_book_trades WHERE reason != 'dropped' AND cfg=? AND sym=? AND side=? AND exit_t>=0 AND exit_t<=? ORDER BY exit_t DESC,entry_t DESC LIMIT ?`,
     lane.cfg, lane.sym, lane.side, now, n,
@@ -49,11 +91,18 @@ export function ownedPromotionRecord(db: CoreDb, lane: {cfg: string; sym: string
     lane.cfg, lane.sym, lane.side,
   );
   if (invalid) marker = NaN;
-  if (marker !== undefined) rows.push({...lane, exit_t:marker, unit_r:null, owned_notional_usd:null});
-  const record = ownedPaperExecutionRecords(rows.map(row => ({cfg:row.cfg,sym:row.sym,side:row.side,
-    exitT:row.exit_t,unitR:row.unit_r,ownedNotionalUsd:row.owned_notional_usd})))
+  if (marker !== undefined) rows.push({...lane, entry_t:0, exit_t:marker, unit_r:null, owned_notional_usd:null,
+    held_at:null,held_px:null,entry:null,exit:null,vol:null});
+  const toRecord = (basis: "unit" | "effective" | "cash") => ownedPaperExecutionRecords(rows.map(row => {
+    const pnl = basis === "unit" ? null : effectivePaperPnl(row);
+    const r = basis === "unit" ? row.unit_r : pnl === null ? null
+      : basis === "cash" ? pnl : pnl / row.owned_notional_usd!;
+    return {cfg:row.cfg,sym:row.sym,side:row.side,
+      exitT:row.exit_t,unitR:r,ownedNotionalUsd:row.owned_notional_usd};
+  }))
     .get(executionRecordKey(lane.cfg,lane.sym,lane.side));
+  const records = { at:now, until, unit:toRecord("unit"), effective:toRecord("effective"), cash:toRecord("cash") };
   if (cached.records.size >= 4096) cached.records.clear();
-  cached.records.set(key,{at:now,until,record});
-  return record;
+  cached.records.set(key,records);
+  return records[basis];
 }
