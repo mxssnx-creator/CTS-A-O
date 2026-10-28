@@ -11,8 +11,10 @@ Micro and Minimal, respectively for 15/30/60 minutes: initial Validation passed 
 orders at PF 0.663583/0.547707/0.609401. Active orders were 26/26/0, 19/19/0, 23/23/0 opened/closed/held at PF
 0.371178/0.087017/0.235294; Active positions 17/17/0, 15/15/0, 18/18/0. The 15-minute case has eight time exits,
 twelve stops and six TP closes. Short 15 produced no Active closes, Short 30 one stop loss (PF 0), and Short 60
-the three stop losses below (PF 0). No case with settled Active orders achieved PF 1. Do not promote a hold default
-from these results; per-step automatic optimization and production integration remain unfinished.
+the three stop losses below (PF 0). No Last-12/Last-12 hold case with settled Active orders achieved PF 1. Across
+all 225 gate combinations, eight cases were above PF 1 or had no losses, with only one to six closes each;
+Micro/Minimal results duplicate the same economics. Do not promote a hold default from these exploratory results;
+per-step automatic optimization and production integration remain unfinished.
 
 Independent accounting checked all 43,200 contexts, 17,836 Post-Base entries, 225 Validation/Real combinations
 and 146,845 individual decision windows. Repeated cases match the first run; Short 60 matches the earlier study.
@@ -20,9 +22,13 @@ An additional independent audit checked all 17,370 settled Post-Base orders: mod
 price less cost once, TP and SL fills match their own configured distances, no duration exceeds its cap and all
 time exits occur at the cap. This is not a native trailing, paper allocation or venue-fill verification; the audit
 is on research-only branch commit a4d1f3f349ec1c10cdf7b54aca3dab7f90d87605.
+Another 56 focused offline tests passed for independent Exit, paper exit ownership, Signal trailing-only,
+trail floors, modeled costs and tick/bar trailing ratchets; these fixtures are not live exchange evidence.
 The research-only source is f1bfcbc1e9caa3bd5c01661ade0457a24c6163b3, which lowers Last-8 only for comparison
 and must not be merged. Per-case context and order listings, group outcomes and hashes:
 https://chatgpt.com/library?file_id=libfile_58912b63d1ac8191b4166dd8dd5d7bd7&account_id=personal .
+Complete per-case JSONL and all 225 gate cases, including individual decision-window evidence:
+https://chatgpt.com/library?file_id=libfile_ff701491a514819189e45a1c58050581&account_id=personal .
 
 ## 2026-10-28 — Draft processed-set restore evidence hardening
 
