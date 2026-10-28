@@ -48,7 +48,9 @@ const fixture = () => {
     }
     tapes.push(makeTape(id, "follow", ind, { tp: 0.01 + k / 10000, sl: 0.01, trail: 0, hold: 32 }, "normal", syms, trades, [], []));
   }
-  const o = { ...defaultWalkForward(DEFAULT_SETTINGS),
+  // The historical lifecycle snapshot predates Base Last-N; omit that option so its serialized input is stable.
+  const { baseLastN: _baseLastN, ...archivedGates } = DEFAULT_SETTINGS.gates;
+  const o = { ...defaultWalkForward(DEFAULT_SETTINGS), gates: archivedGates,
     // Freeze the archived fixture's inputs (9c037e2); production defaults and independent Exit options changed later.
     // A direct baseline comparison confirms every non-options output field remains identical.
     // The Inverse catalogue adds volume metadata to current defaults. Keep the archived Signal-only fixture's

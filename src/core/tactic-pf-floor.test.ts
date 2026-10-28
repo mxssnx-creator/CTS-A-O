@@ -29,6 +29,8 @@ const OTHER = "rsi-mom-14-20@m15";
 const P: Protect = { tp: 0.01, sl: 0.01, trail: 0, hold: 32 };
 const G = {
   ...DEFAULT_GATES,
+  // Two synthetic closes isolate the independent floor; Base Last-N has its own evidence tests.
+  baseLastN: 0,
   minPf: 1.05,
   minTrades: 2,
   maxDdr: 0,

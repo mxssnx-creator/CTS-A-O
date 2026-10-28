@@ -1,3 +1,23 @@
+## 2026-10-28 — CI and new rolling-validation instruction
+
+PR #215 merged Base Last-40 and the hold-cell fix. Its CI exposed archived
+study and synthetic aggregate fixtures that did not supply Base-40 proof, plus
+one lifecycle snapshot whose serialized options predate the new gate. Isolate
+the synthetic floor fixtures, retain Base-40 with an explicit two-close sample
+in the cell-topology fixture, and freeze the archived Last-15 study and
+lifecycle settings; dedicated chronological Base proof tests remain enabled.
+These are fixture/protocol corrections, not changed live admission rules. The
+latest user instruction is to remove hour/day-based performance qualification
+and use the preceding completed Last-N closes for each set. That runtime change
+and the requested minimum nine validation closes have not yet been completed.
+Historical candles remain necessary for indicators; an offline subsequent replay
+was measurement only and is not a live rule.
+
+The post-Base research cohort at 2026-10-09 12:00 UTC was 25/90 contexts
+(27.78%) at historical PF 2.891881; its separate modeled 37 closes were PF
+0.963800. No venue-fill PF is available. Bybit integration is under development
+and is not yet wired to the running executor or proven against an exchange.
+
 ## 2026-10-28 — Base Last-40, Validation Last-12 and trailing audit
 
 Base Last-N is now a selectable gate (default 40, 0 off) using each computed
