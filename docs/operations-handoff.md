@@ -8,7 +8,9 @@ both changes; it remains a draft and its policy flag remains off.
 PR #222 additionally isolates the model and paper order/position cap counters by exact Exit config and lane,
 including Signal-sourced Exit, and keeps Exit out of ordinary Signal open counts. The affected Exit inherits the
 source class's configured cap values; shared account and venue safety controls remain unchanged. Full and fast
-paper tests and a complete capped walk-forward test pass. PR #222 is awaiting release verification.
+paper tests and a complete capped walk-forward test passed. It was merged after complete GitHub verification.
+PR #224 separates finite Exit seats by tactic, direction and standalone/combined lane and tests pending-entry
+capacity; PR #223 separately proposes the saved Last-12 migration. Both are awaiting their full verification.
 
 The draft now defaults Signal and Exit validation to Last-12 and the partial-sample floor to nine, with Base Last-40.
 A once-only SQLite transaction backs up saved settings, walk-forward options, presets and their cached reports,
