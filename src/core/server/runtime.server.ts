@@ -1,4 +1,5 @@
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
+import { isHistoricExitConfig } from "../exit-scope.ts";
 import { lstatSync } from "node:fs";
 import { mergeWorkerTapesGen } from "./tape-merge.ts";
 import { strategyCoverageGen, type StrategyCoverage } from "./strategy-coverage.ts";
@@ -8974,8 +8975,13 @@ export class CoreRuntime {
       for (const trade of accepted) {
         coord.closedBy.push(trade);
         const hour = Math.floor(trade.exitT / H);
-        coord.hourNet.set(hour, (coord.hourNet.get(hour) ?? 0) + trade.r * 100);
-        if (sigCfg(trade.cfg)) {
+        let hours = coord.hourNet;
+        if (isHistoricExitConfig(trade.cfg, trade.kind)) {
+          hours = coord.exitHourNet.get(trade.cfg) ?? new Map<number, number>();
+          coord.exitHourNet.set(trade.cfg, hours);
+        }
+        hours.set(hour, (hours.get(hour) ?? 0) + trade.r * 100);
+        if (sigCfg(trade.cfg) && !isHistoricExitConfig(trade.cfg, trade.kind)) {
           const source = signalSourceOf(trade.cfg.split("|")[1] ?? "");
           let rows = coord.srcClosed.get(source);
           if (!rows) coord.srcClosed.set(source, (rows = []));
@@ -9175,6 +9181,7 @@ export class CoreRuntime {
     sim: WalkForwardResult;
     closedBy: Trade[];
     hourNet: Map<number, number>;
+    exitHourNet: Map<string, Map<number, number>>;
     srcClosed: Map<string, Array<{ exitT: number; r: number }>>;
     /**
      * the simulation's engine candidates (taken or not) per symbol × direction: entries ascending with the running
@@ -9187,11 +9194,17 @@ export class CoreRuntime {
     const continued = this.realtimeLearning?.sim === sim ? this.realtimeLearning.accepted : [];
     const closedBy = [...sim.trades, ...continued].sort((a, b) => a.exitT - b.exitT);
     const hourNet = new Map<number, number>();
+    const exitHourNet = new Map<string, Map<number, number>>();
     const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
     for (const x of closedBy) {
       const k = Math.floor(x.exitT / H);
-      hourNet.set(k, (hourNet.get(k) ?? 0) + x.r * 100);
-      if (sigCfg(x.cfg)) {
+      let hours = hourNet;
+      if (isHistoricExitConfig(x.cfg, x.kind)) {
+        hours = exitHourNet.get(x.cfg) ?? new Map<number, number>();
+        exitHourNet.set(x.cfg, hours);
+      }
+      hours.set(k, (hours.get(k) ?? 0) + x.r * 100);
+      if (sigCfg(x.cfg) && !isHistoricExitConfig(x.cfg, x.kind)) {
         const src = signalSourceOf(x.cfg.split("|")[1] ?? "");
         let l = srcClosed.get(src);
         if (!l) srcClosed.set(src, (l = []));
@@ -9201,7 +9214,7 @@ export class CoreRuntime {
     // the engine candidates of the run (the feed holds every candidate, executed or not, with its entry and exit)
     const iv = new Map<string, Array<[number, number]>>();
     for (const f of sim.feed ?? []) {
-      if (f.entryT === undefined || !f.cfg || sigCfg(f.cfg)) continue;
+      if (f.entryT === undefined || !f.cfg || sigCfg(f.cfg) || isHistoricExitConfig(f.cfg, f.type)) continue;
       const k = `${f.sym}|${f.side > 0 ? 1 : -1}`;
       let l = iv.get(k);
       if (!l) iv.set(k, (l = []));
@@ -9219,7 +9232,7 @@ export class CoreRuntime {
       });
       engineIv.set(k, { e, mx });
     }
-    this.coordCache = { sim, closedBy, hourNet, srcClosed, engineIv };
+    this.coordCache = { sim, closedBy, hourNet, exitHourNet, srcClosed, engineIv };
     return this.coordCache;
   }
 
@@ -9259,7 +9272,7 @@ export class CoreRuntime {
           if (lo > 0 && g.mx[lo - 1] > t) return true;
         }
         return positions.some(
-          (x) => x.sym === sym && x.side === side && x.entryT <= t && !x.stopHit && !sigCfg(x.cfg),
+          (x) => x.sym === sym && x.side === side && x.entryT <= t && !x.stopHit && !sigCfg(x.cfg) && !isHistoricExitConfig(x.cfg),
         );
       },
     };
@@ -9272,7 +9285,7 @@ export class CoreRuntime {
   ): Map<string, number> {
     const out = new Map<string, number>();
     for (const id of ids) {
-      if (sigCfg(id)) continue;
+      if (sigCfg(id) || isHistoricExitConfig(id)) continue;
       const tp = byId.get(id);
       if (!tp) continue;
       for (const op of tp.open) {
@@ -9338,11 +9351,12 @@ export class CoreRuntime {
     // Stable-02 coordination: symbols the simulation ended holding back take no new entries. The paused keys are
     // sym|±1 (S2Coord): with coord.s2Side the entry's own symbol × direction is the key; off, the bare symbol
     // (as before)
-    const s2End = this.wf.coord?.enabled ? this.sim?.s2 : undefined;
+    const s2End = this.wf.coord?.enabled
+      ? (isHistoricExitConfig(op.cfg) ? this.sim?.exitS2?.[op.cfg] : this.sim?.s2) : undefined;
     const s2Key = this.wf.coord?.s2Side ? `${op.sym}|${op.side > 0 ? 1 : -1}` : op.sym;
     if (s2End?.paused.includes(s2Key)) return "s2Window";
     const sg = this.wf.signalSourceGate;
-    if (sg?.enabled && sigCfg(op.cfg)) {
+    if (sg?.enabled && sigCfg(op.cfg) && !isHistoricExitConfig(op.cfg)) {
       const src = signalSourceOf(op.cfg.split("|")[1] ?? "");
       if (sourceUnstable(srcClosed.get(src), op.entryT, sg)) return "sourceUnstable";
     }
@@ -9351,7 +9365,7 @@ export class CoreRuntime {
 
   private isHedgeEntry(op: { cfg: string; sym: string; side: number }): boolean {
     return (
-      sigCfg(op.cfg) &&
+      sigCfg(op.cfg) && !isHistoricExitConfig(op.cfg) &&
       this.hedgeKeys.has(
         sigActiveKey(
           op.cfg.split("|")[0],
@@ -9366,8 +9380,9 @@ export class CoreRuntime {
   }
 
   /** Stable-02 adds volume to the current Block size but cannot exceed its configured stack ceiling. */
-  private s2EntryVolume(blockVol: number): number {
-    const factor = this.wf.coord?.enabled ? this.sim?.s2?.factor : undefined;
+  private s2EntryVolume(blockVol: number, cfg: string): number {
+    const factor = this.wf.coord?.enabled
+      ? (isHistoricExitConfig(cfg) ? this.sim?.exitS2?.[cfg]?.factor : this.sim?.s2?.factor) : undefined;
     return factor && factor > 0
       ? Math.min(1 + factor, Math.max(1, blockStackCap(this.wf.block) / blockVol))
       : 1;
@@ -9700,8 +9715,8 @@ export class CoreRuntime {
       positions,
     );
     yield 0;
-    const s2End = this.wf.coord?.enabled ? this.sim.s2 : undefined;
     const hourNet = new Map<number, number>();
+    const exitHourNet = new Map<string, Map<number, number>>();
     let ci = 0;
     const tCands = performance.now() - tp0 - tSelect;
     // live validation: each config on its own last N closes since the desk went live (new entries only)
@@ -9833,11 +9848,16 @@ export class CoreRuntime {
         while (ci < closedBy.length && closedBy[ci].exitT <= op.entryT) {
           const x = closedBy[ci++];
           const k = Math.floor(x.exitT / H);
-          hourNet.set(k, (hourNet.get(k) ?? 0) + x.r * 100);
+          let hours = hourNet;
+          if (isHistoricExitConfig(x.cfg, x.kind)) {
+            hours = exitHourNet.get(x.cfg) ?? new Map<number, number>();
+            exitHourNet.set(x.cfg, hours);
+          }
+          hours.set(k, (hours.get(k) ?? 0) + x.r * 100);
         }
         const back = this.entryHeldBack(
           { cfg: op.cfg, sym: op.sym, side: op.side, entryT: op.entryT },
-          hourNet,
+          isHistoricExitConfig(op.cfg) ? (exitHourNet.get(op.cfg) ?? new Map()) : hourNet,
           positions,
           srcClosed,
           confirmPool,
@@ -9943,7 +9963,7 @@ export class CoreRuntime {
       // new entries take the relation volume the simulation ended with (within the Block maximum)
       const vf = held ? 1 : volumeFactorForStrategy(tp, this.wf);
       const positionVf = held ? (prev?.volFactor ?? 1) : vf;
-      const cv = !held && s2End?.factor ? this.s2EntryVolume(d.vol) : 1;
+      const cv = !held ? this.s2EntryVolume(d.vol, op.cfg) : 1;
       const hedge = !held && this.isHedgeEntry(op);
       const appliedHedgeVol = hedge ? (this.wf.coord?.hedgeVolumeFactor ?? 1) : 1;
       const recordedHedgeVol = held ? (prev?.hedgeVol ?? 1) : appliedHedgeVol;
@@ -10516,7 +10536,7 @@ export class CoreRuntime {
         const back = coord
           ? this.entryHeldBack(
               { cfg: tp.id, sym: p.sym, side: p.side, entryT },
-              coord.hourNet,
+              isHistoricExitConfig(tp.id) ? (coord.exitHourNet.get(tp.id) ?? new Map()) : coord.hourNet,
               this.paper.positions,
               coord.srcClosed,
               confirmPool,
@@ -10565,7 +10585,7 @@ export class CoreRuntime {
           continue;
         }
         const hedge = this.isHedgeEntry({ cfg: tp.id, sym: p.sym, side: p.side });
-        const coordVol = this.s2EntryVolume(d.vol);
+        const coordVol = this.s2EntryVolume(d.vol, tp.id);
         const volFactor = volumeFactorForStrategy(tp, this.wf);
         const rangeVol = rangeVolumeFactorFor(tp, this.wf);
         const hedgeVol = hedge ? (this.wf.coord?.hedgeVolumeFactor ?? 1) : 1;

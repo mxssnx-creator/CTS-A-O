@@ -1,5 +1,6 @@
 import type { Protect, RelateAdjustmentConfig, RelateParts, RelateSource, StratKind } from "../domain/types.ts";
 import { MAX_EXTERNAL_STACK } from "../config.ts";
+import { exitScopeSuffix } from "../exit-scope.ts";
 
 /** Validated Axis settings bound its deepest ladder to eight legs of at most five base units each. */
 export const AXIS_MAX_LEVELS = 8;
@@ -126,7 +127,8 @@ const sideId = (side: number) => (side > 0 ? 1 : -1);
 
 function sourceKeys(x: RelateIdentity): Partial<Record<RelateSource, string>> {
   const side = sideId(x.side);
-  return {
+  const scope = exitScopeSuffix(x.cfg, x.strategy);
+  const keys: Partial<Record<RelateSource, string>> = {
     config: `c:${x.cfg}|${x.sym}|${side}`,
     overall: "o:all",
     symbol: `s:${x.sym}|${side}`,
@@ -136,6 +138,8 @@ function sourceKeys(x: RelateIdentity): Partial<Record<RelateSource, string>> {
     coordination: `co:${x.coordination}|${side}`,
     range: `r:${x.range || "wide"}|${side}`,
   };
+  if (scope) for (const source of RELATE_SOURCES) if (keys[source]) keys[source] += scope;
+  return keys;
 }
 
 export function relateStats(rows: readonly number[]): RelateSourceStats {
