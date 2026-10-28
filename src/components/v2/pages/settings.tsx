@@ -4987,7 +4987,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Live last N"
-              hint="uses each config and direction's last N accepted post-Base modeled closes; a short sample is unjudged paper warm-up, not promotion proof. Held positions are never cut · 0 = off · default 25 · 0 – 200"
+              hint="uses each config, symbol and direction's last N accepted post-Base modeled closes; a short sample is unjudged paper warm-up, not promotion proof. Held positions are never cut · 0 = off · default 25 · 0 – 200"
             >
               <Num
                 int
