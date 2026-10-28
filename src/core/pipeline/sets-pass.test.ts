@@ -7,7 +7,8 @@ import { baseSetsGates, setsPassTags } from "./pipeline.ts";
 import { baseRangeRules } from "../server/runtime.server.ts";
 
 const ALL = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
-const gates = baseSetsGates(DEFAULT_SETTINGS.gates);
+// These synthetic samples explicitly carry Last-40 evidence; range-default tests cover Last-30 separately.
+const gates = baseSetsGates({ ...DEFAULT_SETTINGS.gates, baseRangeLastN: { micro: 40, minimal: 40 } });
 const applies = baseRangeRules(DEFAULT_SETTINGS).applies;
 const recent = (pf: number) => ({ requested: 40, n: 40, gp: pf, gl: 1, stop: 1 });
 const good = { n: 200, pf: 1.5, net: 5, mdd: 1, baseLast: recent(1.5) };

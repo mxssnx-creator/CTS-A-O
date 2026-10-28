@@ -125,7 +125,8 @@ describe("Base pass (the compute's and the preset backtest's rule)", () => {
 
   it("a pair builds the ranges and targets it passed, and Micro only on its own indications", () => {
     // Micro on, Minimal's micro indications on (the "minimal" rule); the sets gates: PF ≥ 1, 12 closes, DDR ≤ 1
-    const s = { ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, micro: MICRO_RANGE } };
+    const s = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, baseRangeLastN: { micro: 40, minimal: 40 } },
+      grid: { ...DEFAULT_SETTINGS.grid, micro: MICRO_RANGE } };
     const out = basePass(
       [
         // fails at the default protect (net −1), passes Minimal (PF 1.4, net 3, DDR 1/3), fails General (PF 0.9)

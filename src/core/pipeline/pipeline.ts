@@ -79,7 +79,7 @@ import {
 import { buildPortfolio, type Portfolio } from "./portfolio.ts";
 import { baseWindowsPlan, judgeBaseWindows, type BaseWindowsPlan } from "./base-windows.ts";
 import { baseCellAccumulator } from "./base-cell-stats.ts";
-import { baseLastNOf, passesBaseLastN } from "./base-lastn.ts";
+import { baseLastNForRange, baseLastNOf, passesBaseLastN } from "./base-lastn.ts";
 import { trailingOnlyProtects } from "../sim/trailing.ts";
 
 export interface Universe {
@@ -930,7 +930,7 @@ export function microBaseSl(ladder: readonly number[]): number[] {
  */
 export function basePassTags(
   r: Pick<ComboRun, "full" | "ranges"> & Partial<Pick<ComboRun, "ind">>,
-  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"]; baseLastN?: number;
+  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"]; baseLastN?: number; baseRangeLastN?: Gates["baseRangeLastN"];
     lastNFloor?: number; lossPrior?: boolean },
   /** every range tag of the grid; one without its own Base cell passes with the default protect */
   allTags: readonly string[] = [],
@@ -949,7 +949,7 @@ export function basePassTags(
         out.push(t);
   }
   for (const [tag, st] of Object.entries(r.ranges ?? {}))
-    if (passesBase(st, { ...g, minPf: minPfOf(g, tag, r.ind) })) out.push(tag);
+    if (passesBase(st, { ...g, baseLastN: baseLastNForRange(g, tag), minPf: minPfOf(g, tag, r.ind) })) out.push(tag);
   return out;
 }
 
@@ -963,7 +963,7 @@ export function rangeCellPass(
   ind?: string,
 ): (tag: string, st: RangeBaseStat) => boolean {
   const g = baseSetsGates(gates);
-  return (tag, st) => passesBase(st, { ...g, minPf: minPfOf(g, tag, ind) });
+  return (tag, st) => passesBase(st, { ...g, baseLastN: baseLastNForRange(g, tag), minPf: minPfOf(g, tag, ind) });
 }
 
 export function baseSetsGates<G extends Gates>(g: G): G {
@@ -1138,6 +1138,9 @@ export interface BaseRangeCount {
 }
 
 const BASE_DIAGNOSTIC_BATCH = 128;
+type BaseReportingGates = { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"];
+  baseLastN?: number; baseRangeLastN?: Gates["baseRangeLastN"]; lastNFloor?: number; lossPrior?: boolean;
+  baseWindows?: Gates["baseWindows"] };
 
 /** Keep the synchronous public helpers available to reports and other non-interactive callers. */
 function finishBaseDiagnostics<R>(work: Generator<number, R>): R {
@@ -1156,7 +1159,7 @@ function finishBaseDiagnostics<R>(work: Generator<number, R>): R {
  */
 export function baseRangeCounts(
   runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
-  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  g: BaseReportingGates,
   allTags: readonly string[],
   eligible: (ind: string, tag: string) => boolean = () => true,
 ): BaseRangeCount[] {
@@ -1166,7 +1169,7 @@ export function baseRangeCounts(
 /** Incremental form for the runtime, with the same rows and arithmetic as the synchronous helper. */
 export function* baseRangeCountsGen(
   runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
-  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  g: BaseReportingGates,
   allTags: readonly string[],
   eligible: (ind: string, tag: string) => boolean = () => true,
 ): Generator<number, BaseRangeCount[]> {
@@ -1194,12 +1197,13 @@ export function* baseRangeCountsGen(
       // range's. ownCells records how many rows carry the range's own distances, so a report can say which it is.
       if (own) ownCells++;
       const st = own ?? r.full;
+      const ownGates = own ? { ...g, baseLastN: baseLastNForRange(g, tag) } : g;
       // EMPTY_STATS carries pf: 0 for gate arithmetic, but an empty close sample has no measured PF.
       if (st.n > 0) pf.push(st.pf);
       const ownMin = minPfOf(g, tag, r.ind);
       appliedMin = Math.min(appliedMin, ownMin);
       const ok = own
-        ? passesBase(own, { ...g, minPf: ownMin })
+        ? passesBase(own, { ...ownGates, minPf: ownMin })
         : passesBase(r.full, { ...g, minPf: minPfOf(g, "", r.ind) }) &&
           (!tag || passesBase(r.full, { ...g, minPf: ownMin }));
       if (ok) {
@@ -1249,7 +1253,7 @@ export interface BaseGateRow {
  */
 export function baseGateSensitivity(
   runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
-  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  g: BaseReportingGates,
   allTags: readonly string[],
   variants: ReadonlyArray<{
     change: string;
@@ -1264,7 +1268,7 @@ export function baseGateSensitivity(
 
 export function* baseGateSensitivityGen(
   runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
-  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  g: BaseReportingGates,
   allTags: readonly string[],
   variants: ReadonlyArray<{
     change: string;
@@ -1310,7 +1314,7 @@ export function* baseGateSensitivityGen(
           )) ||
         Object.entries(r.ranges ?? {}).some(
           ([t, st]) =>
-            eligible(r.ind, t) && passesBase(st, { ...gg, minPf: minPfOf(gg, t, r.ind) }),
+            eligible(r.ind, t) && passesBase(st, { ...gg, baseLastN: baseLastNForRange(gg, t), minPf: minPfOf(gg, t, r.ind) }),
         );
       if (inAny) anyRange++;
     }
@@ -1329,13 +1333,13 @@ export function* baseGateSensitivityGen(
 }
 
 /** "windows": the two-window gate (Gates.baseWindows.gate), counted only while it is set */
-export type BaseGate = "closes" | "net" | "pf" | "ddr" | "windows";
-type BaseGateCounts = Record<Exclude<BaseGate, "windows">, number> & { windows?: number };
+export type BaseGate = "closes" | "net" | "pf" | "ddr" | "windows" | "lastN";
+type BaseGateCounts = Record<Exclude<BaseGate, "windows" | "lastN">, number> & { windows?: number; lastN?: number };
 export interface BaseWhyRow {
   tag: string;
   evaluated: number;
   passed: number;
-  /** the first gate each failing pair misses, in the order closes → net → PF → drawdown ratio → windows */
+  /** the first gate each failing pair misses, in the order closes → net → PF → drawdown ratio → windows → Last-N */
   first: BaseGateCounts;
   /** pairs that miss exactly this one gate: removing it alone admits them */
   only: BaseGateCounts;
@@ -1349,13 +1353,7 @@ export interface BaseWhyRow {
  */
 export function baseRangeWhy(
   runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
-  g: {
-    minPf: number;
-    minTrades: number;
-    maxDdr?: number;
-    rangeMinPf?: Gates["rangeMinPf"];
-    baseWindows?: Gates["baseWindows"];
-  },
+  g: BaseReportingGates,
   allTags: readonly string[],
   eligible: (ind: string, tag: string) => boolean = () => true,
 ): BaseWhyRow[] {
@@ -1364,19 +1362,14 @@ export function baseRangeWhy(
 
 export function* baseRangeWhyGen(
   runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
-  g: {
-    minPf: number;
-    minTrades: number;
-    maxDdr?: number;
-    rangeMinPf?: Gates["rangeMinPf"];
-    baseWindows?: Gates["baseWindows"];
-  },
+  g: BaseReportingGates,
   allTags: readonly string[],
   eligible: (ind: string, tag: string) => boolean = () => true,
 ): Generator<number, BaseWhyRow[]> {
   // the two-window gate is a reason of its own only while it is set (the rows are unchanged otherwise)
   const win = !!g.baseWindows?.gate;
-  const zero = (): BaseGateCounts => (win ? { closes: 0, net: 0, pf: 0, ddr: 0, windows: 0 } : { closes: 0, net: 0, pf: 0, ddr: 0 });
+  const zero = (): BaseGateCounts => ({ closes: 0, net: 0, pf: 0, ddr: 0,
+    ...(win ? { windows: 0 } : {}), ...((g.baseLastN ?? 0) > 0 ? { lastN: 0 } : {}) });
   const rows: BaseWhyRow[] = [];
   let processed = 0;
   for (const tag of ["", ...allTags]) {
@@ -1396,6 +1389,7 @@ export function* baseRangeWhyGen(
       row.evaluated++;
       const own = tag ? r.ranges?.[tag] : undefined;
       const st = own ?? r.full;
+      const ownGates = own ? { ...g, baseLastN: baseLastNForRange(g, tag) } : g;
       // no own cell: judged at the default protect against both minimums (as baseRangeCounts)
       const minPf = minPfOf(g, tag, r.ind);
       const need = own || !tag ? minPf : Math.max(minPfOf(g, "", r.ind), minPf);
@@ -1407,6 +1401,7 @@ export function* baseRangeWhyGen(
       if ((st.mdd !== undefined && !(Number.isFinite(st.mdd) && st.mdd >= 0)) ||
           ddrFails(st.mdd, st.net, g.maxDdr)) miss.push("ddr");
       if (win && st.bw?.gate === false) miss.push("windows");
+      if (!passesBaseLastN(st.n, st.baseLast, { ...ownGates, minPf: need })) miss.push("lastN");
       if (!miss.length) {
         row.passed++;
         continue;
@@ -1537,6 +1532,7 @@ export function rangeBaseStats(
   /** grid.baseCells: filled with the key (protectCellKey) of every range cell that passed */
   cellsOut?: string[],
   baseLastN = 0,
+  baseRangeLastN?: Gates["baseRangeLastN"],
 ): Record<string, RangeBaseStat> | undefined {
   if (!protects.length) return undefined;
   // a lane-less indication (a research tool, a legacy preset) trades the base timeframe: the same expression
@@ -1551,7 +1547,7 @@ export function rangeBaseStats(
     if (p.tag && laneTf < (minTf?.[p.tag] ?? 0)) continue;
     if (!microIndFits(microOwnInds, p.tag, microInd, isMicroFamilyInd(ind))) continue;
     // the cell's whole-history stats only (cellStats = runCombo(…).full, without its per-symbol and in-sample work)
-    const cand = cellStats(u, bot, ind, p, cost, tactics, bw, baseLastN);
+    const cand = cellStats(u, bot, ind, p, cost, tactics, bw, baseLastNForRange({ baseLastN, baseRangeLastN }, p.tag ?? ""));
     if (!cand) continue;
     // several cells of one range (Base at every config): a passing cell first, then the higher net
     const k = p.tag ?? "";
@@ -1936,6 +1932,7 @@ export function baseRuns(
               plan ? { plan, ruleTpsOut: ruleTps } : undefined,
               cellKeys,
               gates?.baseLastN ?? 0,
+              gates?.baseRangeLastN,
             );
         if (ranges) r.ranges = ranges;
         if (Object.keys(tps).length) r.rangeTps = tps;
@@ -2018,6 +2015,7 @@ export function* runPipeline(
         plan ? { plan, ruleTpsOut: ruleTps } : undefined,
         cellKeys,
         s.gates.baseLastN ?? 0,
+        s.gates.baseRangeLastN,
       );
       if (ranges) r.ranges = ranges;
       if (Object.keys(tps).length) r.rangeTps = tps;

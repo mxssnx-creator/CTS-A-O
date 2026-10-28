@@ -89,6 +89,7 @@ export const DEFAULT_GATES: Gates = {
   rangeMinPf: { micro: 1.05, minimal: 1.1, short: 1.1, general: 1.2, long: 1.3 },
   minTrades: 12,
   baseLastN: 40,
+  baseRangeLastN: { micro: 30, minimal: 30 },
   quorum: 0.6,
   // Base keeps the wide/default set prefilter at PF 1.0. Configured per-range PF floors still apply at Base to each
   // tagged cell and again at config evaluation; this widens only the untagged prefilter, never a range gate.

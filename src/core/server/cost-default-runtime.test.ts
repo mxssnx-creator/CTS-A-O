@@ -95,7 +95,7 @@ describe("modeled position cost defaults and migration", () => {
     assert.deepEqual(presets[0], {
       id: "factory", settings: { cost: RT_COST, fees: DEFAULT_SETTINGS.fees }, wf: { lastN: 25 },
       metrics: { pf: null, pfBasis: "unavailable", noLoss: null, pfConvention: "unavailable",
-        source: "Previous result — validation policy changed; re-evaluate for current results" },
+        source: "Previous result — validation policy changed; re-evaluate for current results — Micro/Minimal Base Last-N changed; re-evaluate for current results" },
     });
     assert.deepEqual(db.kvGet<{ presets: Array<{ metrics: unknown }> }>("validationLast12BackupV1")!.presets[0].metrics,
       { pf: 1.3 }, "the old PF is retained in the migration backup, but is not current evidence");

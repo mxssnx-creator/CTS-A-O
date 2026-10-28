@@ -757,6 +757,8 @@ export interface Gates {
   lastNFloor?: number;
   /** Base cell's most recent closed trades must clear its own PF floor. 0 = off; defaults to 40. */
   baseLastN?: number;
+  /** Independent Base close windows for the Micro and Minimal range cells. */
+  baseRangeLastN?: Partial<Record<"micro" | "minimal", number>>;
   /**
    * Loss prior (measurement, default off): every evaluation PF (window gates, every last-N gate, the range gate)
    * counts one virtual stop-out at the config's own stop beside its closes — a sample without a loss no longer
