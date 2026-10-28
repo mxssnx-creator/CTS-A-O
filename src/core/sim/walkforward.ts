@@ -6649,7 +6649,7 @@ export function* walkForwardGen(
       skipsBySide[k] = (skipsBySide[k] ?? 0) + 1;
     }
     if (cfg !== undefined) {
-      const group = sigCfg(cfg) ? "sig" : kindOfId(cfg) === "exit" ? "exit" : rangeOfId(cfg);
+      const group = isHistoricExitConfig(cfg) ? "exit" : sigCfg(cfg) ? "sig" : rangeOfId(cfg);
       const m = (skipsByRange[group] ??= {});
       m[why] = (m[why] ?? 0) + 1;
     }
@@ -6779,11 +6779,12 @@ export function* walkForwardGen(
   };
   // every step's record per group: ranges, signals, and the independent Historic Exit strategy.
   const stepRange = (cfg: string) =>
-    sigCfg(cfg) ? "sig" : kindOfId(cfg) === "exit" ? "exit" : rangeOfId(cfg);
+    isHistoricExitConfig(cfg) ? "exit" : sigCfg(cfg) ? "sig" : rangeOfId(cfg);
   const tapesByRange: Record<string, number> = {};
   for (const tp of allEngine)
     tapesByRange[stepRange(tp.id)] = (tapesByRange[stepRange(tp.id)] ?? 0) + 1;
-  if (sigTapes.length) tapesByRange.sig = sigTapes.length;
+  for (const tp of sigTapes)
+    tapesByRange[stepRange(tp.id)] = (tapesByRange[stepRange(tp.id)] ?? 0) + 1;
   // the step's hedge-only signals (negative-hour hedge; outside the ranked set)
   let hedgeKeys = new Set<string>();
   // per-range selection modes (wf.rangeOpts[tag].mode); null = one selection over every engine tape, as without them
@@ -6851,8 +6852,15 @@ export function* walkForwardGen(
       (byRange[k] ??= { tapes: tapesByRange[k] ?? 0, validated: 0, candidates: 0, taken: 0 });
     for (const k of Object.keys(tapesByRange)) rangeRow(k);
     for (const p of picks) rangeRow(stepRange(p.id)).validated++;
-    if (o.signalRank && sigTapes.length)
-      rangeRow("sig").validated = stepOpts.signalActive?.size ?? 0;
+    if (o.signalRank && sigTapes.length) {
+      let signals = 0, exits = 0;
+      for (const key of stepOpts.signalActive ?? []) {
+        if (key.split("|", 6)[4] === "exit") exits++;
+        else signals++;
+      }
+      rangeRow("sig").validated = signals;
+      if (exits) rangeRow("exit").validated += exits;
+    }
     const stepEnd = Math.min(stopT, t + stepH * H);
     // Reporting/selection cadence does not determine candle precision or candidate memory. Process one minute
     // at a time, with the same stable entry ordering, and release the completed batch before assembling the next.

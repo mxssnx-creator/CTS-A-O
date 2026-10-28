@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_BLOCK, DEFAULT_RELATE_ADJUSTMENT, DEFAULT_SETTINGS } from "../config.ts";
 import type { Protect, Trade } from "../domain/types.ts";
-import { exitScopeSuffix } from "../exit-scope.ts";
+import { exitScopeSuffix, isHistoricExitConfig } from "../exit-scope.ts";
 import { exchangeAcceptIndex } from "../live-record.ts";
 import { configId } from "../pipeline/pipeline.ts";
-import { EngineSideIndex, SignalGuard, acceptKey, engineSideKey, engineSideKeyFor, guardKey, sideAcceptKey } from "../signals.ts";
+import { EngineSideIndex, SignalGuard, acceptKey, engineSideKey, engineSideKeyFor, guardKey, sideAcceptKey, sigActiveKey } from "../signals.ts";
+import { signalSettings } from "../signal-config.ts";
 import { AutoBlockBook, blockBookOf, bookLevels, sourceKey } from "./block.ts";
 import { RelateBook } from "./relate-volume.ts";
 import { CandidateDirectionBook, coordBlock, defaultWalkForward, feedBooks, makeTape, walkForward } from "./walkforward.ts";
@@ -19,6 +20,34 @@ const exitB = configId("exit", "ema-9-21@m5", exitProtect);
 const exitSignal = configId("exit", sig, exitProtect);
 const row = (cfg: string, type: string, r: number) => ({ cfg, type, sym, side: 1, kind: "trend", ind,
   entryT: START, exitT: START + M, r, accepted: true });
+
+test("legacy Exit source IDs and Signal-sourced Exit retain the independent category", () => {
+  assert.equal(isHistoricExitConfig(`exit|${sig}|tp1|sl1|tr0|h4`), true);
+  const records: Trade[] = Array.from({ length: 30 }, (_, i) => ({ cfg: exitSignal, sym, side: 1,
+    entryT: START - (80 - i) * H, exitT: START - (80 - i) * H + M, entry: 100, exit: 102,
+    r: .02, mult: 1, reason: "tp", bars: 1, mfe: 0, mae: 0, kind: "exit" }));
+  records.push({ ...records[0], entryT: START + H + M, exitT: START + H + 2 * M });
+  const tape = makeTape(exitSignal, "exit", sig, exitProtect, "exit", [sym], records, [], []);
+  const base = defaultWalkForward(DEFAULT_SETTINGS);
+  const options = { ...base, simH: 6, preH: 336, longH: 336, signalLongH: 336, stepH: 1,
+    validLastN: 0, signalValidLastN: 0, lastN: 0, exitMinTrades: 12, robustFrac: 0, portfolio: 0,
+    symGate: "off" as const, rangeGate: undefined, signalGuardN: 0,
+    gates: { ...base.gates, minTrades: 12, minDdtH: 0, maxDdtH: 1000, maxDdr: 0 },
+    toggles: { ...base.toggles, exit: true, block: false },
+    coord: { enabled: false, confirm: false, conflict: false, hourLock: 0, cooldown: "off" as const },
+    signalRank: signalSettings({ enabled: true, validate: false, count: 0 }),
+    signalActive: new Set([sigActiveKey("exit", sig, sym, 1, "exit", exitSignal)]),
+    exitBasePassed: new Set([`exit|${sig}`]) };
+  const u = { bars: [], caches: [], startT: NOW - 200 * H, endT: NOW, splitT: NOW - 200 * H, nowT: NOW, baseTf: 15 } as never;
+  const run = walkForward(u, [tape], options);
+  const row = run.steps.find((step) => step.byRange?.exit?.taken === 1)?.byRange;
+  assert.ok(row, "the Signal-sourced Exit has an actual modeled execution");
+  assert.equal(row.exit.tapes, 1);
+  assert.equal(row.exit.validated, 1);
+  assert.equal(row.exit.candidates, 1);
+  assert.equal(row.sig?.tapes ?? 0, 0);
+  assert.equal(row.sig?.validated ?? 0, 0);
+});
 
 for (const auto of [false, true]) test(`Block keeps each Exit's pooled sources, deduplication and auto scores independent: auto=${auto}`, () => {
   const book = blockBookOf({ ...DEFAULT_BLOCK, windowAuto: auto, window: 1, windowCandidates: [1, 2],
