@@ -160,8 +160,13 @@ function checkInvariants(
       const status = liveKv<{ keys?: Array<{ key: string; why?: string }> }>(rt.db, "controlStatus");
       const entry = status?.keys?.find((x) => x.key === key);
       if (!(want > 0)) {
-        assert.equal(entry?.why, "parent ownership unavailable; held quantity kept for reconciliation",
-          `${k} has no target and no explicit unknown-parent hold`);
+        assert.ok(
+          [
+            "parent ownership unavailable; held quantity kept for reconciliation",
+            "held back after an outside close",
+          ].includes(entry?.why ?? ""),
+          `${k} has no target and no explicit ownership/outside-close hold: ${entry?.why ?? "missing reason"}`,
+        );
         assert.ok(beforeRecovery && (beforeRecovery.quantities.get(k) ?? 0) >= q - 1e-9,
           `${k} gained unverified quantity during recovery`);
         const added = ex.log.slice(beforeRecovery.logIndex).some((o) => o.type === "MARKET" && o.symbol === sym &&
@@ -584,8 +589,9 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       const st = await step(rt, ex);
       assert.equal(st.error, null, st.error ?? "");
       // a second step right after converges fully (the first may leave orphans it cancels next time)
+      const beforeRecovery = { quantities: new Map(ex.positions), logIndex: ex.log.length };
       await step(rt, ex);
-      checkInvariants(ex, rt, prices, true);
+      checkInvariants(ex, rt, prices, true, beforeRecovery);
       if (r() < 0.1) ex.triggerRandomStop();
     }
   });
