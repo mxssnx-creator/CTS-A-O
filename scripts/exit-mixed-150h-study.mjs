@@ -56,7 +56,7 @@ if (mode === "prepare") {
   // Narrow the *inventory*, not the gates or protection arrays, so the coexistence test is bounded.
   settings.grid = { ...settings.grid, tp: [], micro: false, general: false, long: false, minimalPlus: false,
     lowRange: { ...settings.grid.lowRange, enabled: false } };
-  settings.exitStrategy = { ...settings.exitStrategy, includeTactics: false, includeRelations: false, includeMicro: false };
+  settings.exitStrategy = { ...settings.exitStrategy, enabled: true, includeTactics: false, includeRelations: false, includeMicro: false };
   assert.equal(settings.exitStrategy.lookbackH, 150, "default Exit fit must use the full requested 150h");
   const make = (seed, wf = {}) => {
     const db = new CoreDb(":memory:"), rt = new CoreRuntime(db, { symbols: 12, signals: { enabled: false } },
@@ -74,6 +74,7 @@ if (mode === "prepare") {
   const first = make(settings), actual = make(first.settings, first.wf), reload = make(actual.settings, actual.wf);
   assert.equal(studyExactJson(actual), studyExactJson(reload), "materialized settings must normalize identically twice");
   assert.equal(actual.settings.exitStrategy.lookbackH, preH);
+  assert.equal(actual.settings.exitStrategy.enabled, true, "the mixed Exit study must explicitly enable its opt-in category");
   assert.equal(actual.wf.exitMinTrades, DEFAULT_SETTINGS.exitStrategy.minValidationTrades);
   assert.equal(studyExactJson(actual.settings.gates), studyExactJson(DEFAULT_SETTINGS.gates), "default qualification gates changed");
   assert.equal(studyExactJson(actual.settings.tactics), studyExactJson(DEFAULT_SETTINGS.tactics), "default entry filters changed");

@@ -372,6 +372,9 @@ describe("independent Exit preset backtests", { timeout: 180_000 }, () => {
   it("fetches enough new candles for the default Exit lookback and longer configured native lanes", async () =>
     withWorkers(false, async () => {
       const { rt, p } = fixture();
+      // Both histories must be observed through configured and Base-qualified sources.
+      p.settings.focus = ["follow|ema-9-21", "follow|rsi-mid", "follow|rsi-extreme", "follow|trend-ema", "revert|ema-9-21"];
+      rt.db.kvSet("presets", [p]);
       inner(rt).btCandles.clear(); // force the production synthetic loader to honor wantBars instead of reusing richer data
       const native = new Map<number, number>();
       const clear = SeriesCache.prototype.clear;
@@ -410,6 +413,8 @@ describe("independent Exit preset backtests", { timeout: 180_000 }, () => {
         try {
           const fixtureData = fixture(0.0002, cut);
           rt = fixtureData.rt;
+          fixtureData.p.settings.focus = ["follow|ema-9-21", "follow|rsi-mid", "follow|rsi-extreme", "follow|trend-ema", "revert|ema-9-21"];
+          rt.db.kvSet("presets", [fixtureData.p]);
           if (cachedTail) {
             for (const entry of inner(rt).btCandles.values())
               for (const [sym, cs] of entry.candles) {

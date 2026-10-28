@@ -156,7 +156,7 @@ describe("independent historic exit strategy", () => {
         [
           { ind: "ema-9-21@m15" },
           { ind: "ema-9-21@m15" },
-          { ind: "rsi-9-21@m15" },
+          { ind: "rsi-mid@m15" },
           { ind: "sig-ema-cross-s@m15" },
           { ind: "ema-9-21@m30" },
         ],
@@ -168,7 +168,7 @@ describe("independent historic exit strategy", () => {
           includeCombined: false,
         },
       ),
-      ["exit|ema-9-21@m15", "exit|rsi-9-21@m15"],
+      ["exit|ema-9-21@m15", "exit|rsi-mid@m15"],
       "Exit sources are deduplicated across Bots, signal-only inputs and unavailable lanes are excluded",
     );
   });
@@ -194,74 +194,41 @@ describe("independent historic exit strategy", () => {
     );
   });
 
-  it("expands single, combined, Tactic, Relate, Break-relation and activity-profile sources on 1/5/15m", () => {
+  it("uses only configured, eligible lanes and keeps every category independently scoped", () => {
     const oneMinute = syntheticCandles("A-USDT", 1, 60 * 60, Date.UTC(2026, 8, 1), 12);
-    const bars = [1, 5, 15].map((tf) => ({
-      ...barsFromCandles("A-USDT", tf, resample(oneMinute, 1, tf)),
-      lanes: [1, 5, 15],
-    }));
-    const u = makeUniverse(bars);
-    const settings = {
-      timeframes: [1, 5, 15],
-      includeTactics: true,
-      includeRelations: true,
-      includeCombined: true,
-    };
-    const pairs = exitStrategyPairs([{ ind: "ema-9-21@m15" }], u, settings);
-    const ids = new Set(pairs);
-    assert.ok(pairs.every((pair) => pair.startsWith(`${EXIT_BOT}|`)));
-    for (const suffix of [
-      "ema-9-21@m1",
-      "ema-9-21@m5",
-      "ema-9-21@m15",
-      "ema-9-21@m1c",
-      "ema-9-21@m5c",
-    ])
-      assert.ok(ids.has(`${EXIT_BOT}|${suffix}`), `independent source lane ${suffix}`);
-    const tacticBases = INDICATIONS.filter((x) => x.kind === "tactic").map((x) => x.id);
-    assert.ok(tacticBases.length > 0);
-    for (const base of tacticBases)
-      for (const suffix of [`@m1`, `@m5`, `@m15`, `@m1c`, `@m5c`])
-        assert.ok(ids.has(`${EXIT_BOT}|${base}${suffix}`), `independent Tactic ${base}${suffix}`);
-    const relationBases = INDICATIONS.filter(
-      (x) =>
-        x.kind === "relate" || x.id.startsWith("break-rel-") || x.id.startsWith("break-mc-rel-"),
-    );
-    assert.ok(relationBases.length > 0);
-    for (const relation of relationBases) {
-      const lane = relation.id.startsWith("relate-")
-        ? relateAnchorTf(relation.id)
-        : breakAnchorTf(relation.id);
-      assert.ok(lane, `relation ${relation.id} has an explicit anchor lane`);
-      assert.ok(ids.has(`${EXIT_BOT}|${relation.id}@m${lane}`), `anchored relation ${relation.id}`);
-      assert.equal(
-        ids.has(`${EXIT_BOT}|${relation.id}@m${lane}c`),
-        false,
-        "relations keep their explicit relation subsets instead of a duplicate MTF alias",
-      );
-    }
-    assert.ok(relationBases.some((x) => x.id.includes("balanced")));
-    assert.ok(
-      relationBases.some((x) => x.id.includes("guarded")),
-      "activity-part / last-activity profile variants retain distinct IDs",
-    );
-    const singlesOnly = exitStrategyPairs([{ ind: "ema-9-21@m15" }], u, {
-      ...settings,
-      includeCombined: false,
-      includeTactics: false,
-      includeRelations: false,
-    });
-    assert.equal(
-      singlesOnly.some((pair) => pair.endsWith("c")),
-      false,
-    );
-    assert.equal(
-      singlesOnly.some(
-        (pair) =>
-          pair.includes("tactic-") || pair.includes("relate-") || pair.includes("break-rel-"),
-      ),
-      false,
-    );
+    const u = makeUniverse([1, 5, 15].map((tf) => ({
+      ...barsFromCandles("A-USDT", tf, resample(oneMinute, 1, tf)), lanes: [1, 5, 15],
+    })));
+    const tactic = INDICATIONS.find((x) => x.kind === "tactic")!.id;
+    const relation = INDICATIONS.find((x) => x.kind === "relate" && relateAnchorTf(x.id) === 1)!.id;
+    const breaker = INDICATIONS.find((x) => x.id.startsWith("break-rel-") && breakAnchorTf(x.id) === 5)!.id;
+    const micro = INDICATIONS.find((x) => x.kind === "micro" && x.id.startsWith("micro-1-"))!.id;
+    const settings = { timeframes: [1, 5, 15], includeTactics: true, includeRelations: true,
+      includeMicro: true, includeCombined: true };
+    const source = ["ema-9-21@m15", "ema-9-21@m1c", `${tactic}@m5`, `${relation}@m1`,
+      `${breaker}@m5`, `${micro}@m1`].map((ind) => ({ ind }));
+    const wanted = source.map(({ ind }) => `exit|${ind}`).sort();
+    assert.deepEqual(exitStrategyPairs([...source, source[0]], u, settings), wanted);
+    assert.deepEqual(exitStrategyPairs([], u, settings), [], "no unfocused family is synthesized");
+    assert.deepEqual(exitStrategyPairs([{ ind: "ema-9-21" }, { ind: `${micro}@m5` },
+      { ind: `${relation}@m5` }, { ind: `${breaker}@m5c` }, { ind: "unknown@m1" }], u, settings), [],
+      "unknown, lane-less, wrongly anchored and duplicate combined sources do not create entries");
+    const only15 = exitStrategyPairs(source, u, { ...settings, timeframes: [15] });
+    assert.deepEqual(only15, ["exit|ema-9-21@m15"]);
+    assert.deepEqual(exitStrategyPairs(source, u, { ...settings, includeTactics: false,
+      includeRelations: false, includeMicro: false, includeCombined: false }), ["exit|ema-9-21@m15"]);
+    assert.ok(!exitStrategyPairs(source, u, settings, ["tactic"]).includes(`exit|${tactic}@m5`));
+  });
+
+  it("filters configured Signal Exit sources by allowed lane and combined switch", () => {
+    const candles = syntheticCandles("A-USDT", 1, 600, Date.UTC(2026, 8, 1), 12);
+    const u = makeUniverse([1, 5, 15].map((tf) => ({
+      ...barsFromCandles("A-USDT", tf, resample(candles, 1, tf)), lanes: [1, 5, 15],
+    })));
+    const runs = [{ ind: "sig-ema-cross-s@m1" }, { ind: "sig-ema-cross-s@m5" },
+      { ind: "sig-ema-cross-s@m1c" }];
+    assert.deepEqual(exitSignalStrategyPairs(runs, u, { timeframes: [1], includeCombined: false }),
+      ["exit|sig-ema-cross-s@m1"]);
   });
 
   it("applies the Normal Base PF, sample and drawdown gate to standalone Exit sources", () => {
@@ -456,6 +423,7 @@ describe("independent historic exit strategy", () => {
     );
     const settings = {
       ...DEFAULT_SETTINGS.exitStrategy,
+      enabled: true,
       minEntries: 2,
       minValidationTrades: 2,
       maxDdr: 0,
@@ -668,6 +636,7 @@ describe("independent historic exit strategy", () => {
     assert.equal(pairs.length, EXIT_HISTORY_MAX_PAIRS + 1);
     const settings = {
       ...DEFAULT_SETTINGS.exitStrategy,
+      enabled: true,
       lookbackH: 72,
       minEntries: 2,
       minValidationTrades: 2,
@@ -1002,6 +971,7 @@ describe("independent historic exit strategy", () => {
     const pair = `${EXIT_BOT}|ema-9-21@m15`;
     const settings = {
       ...DEFAULT_SETTINGS.exitStrategy,
+      enabled: true,
       lookbackH: 240,
       trainFraction: 0.6,
       minEntries: 5,

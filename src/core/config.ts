@@ -743,7 +743,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   adjust: DEFAULT_ADJUST,
   exitStrategy: {
     volumeFactor: 1,
-    enabled: true,
+    enabled: false,
     timeframes: [1, 5, 15],
     includeTactics: true,
     includeRelations: true,

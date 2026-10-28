@@ -746,6 +746,7 @@ describe("worker pool", { timeout: 300_000 }, () => {
     ];
     const settings = {
       ...DEFAULT_SETTINGS.exitStrategy,
+      enabled: true,
       lookbackH: 360,
       minEntries: 4,
       minValidationTrades: 2,

@@ -1,3 +1,37 @@
+## 2026-10-28 — Historic Exit opt-in, exact lanes and held recovery
+
+Historic Exit is disabled by default. A one-time, transactional migration backs
+up existing saved settings and disables the running setting; an explicit later
+opt-in remains enabled. Saved presets are not rewritten. When enabled, its
+source inventory is limited to configured, available entry lanes and their
+allowed type/timeframe switches. Each Historic Exit source and config must
+still pass its own Base and holdout gates. A held Signal Exit is not used as a
+new source merely because it remains held. Normal/Trailing TP, SL and stops
+are unchanged.
+
+Two position-retention defects were found. First, Signal-sourced Historic Exit
+pairs were moved to the ordinary Signal group before held Exit tapes were built;
+the exact Exit tape could disappear when discovery was disabled. Keep those
+pairs on the Exit path and rebuild only their held configuration. Second, the
+runtime explicitly removed old paper positions with no timeframe suffix. They
+now remain in the paper book with their original protection and a reconciliation
+warning, while no timeframe, tape, new entry or close is invented. Their original
+timeframe and actual venue status remain unknown: retention is not proof of a
+venue stop or close. Verify and reconcile those legacy positions before making a
+live-execution claim. Full and incremental exact-owner close logic remains in
+force for identifiable lanes.
+
+Retrospective Base-40/Validation-12 research, at the 2026-10-09 12:00 UTC
+cut using the previous 24h, passed 25/86 direction contexts (29.07%) at
+historical PF 2.891881. The separate next-24h walk-forward recorded 37 modeled
+closes at PF 0.963800, with positions 17/17/0 and orders 37/37/0
+opened/closed/held. This study excludes Historic Exit, is not a live venue
+measurement, and does not establish that the source-scope or retention fixes
+cause or cure the forward decline. PR #211's Exit verification and Exact Signal
+study have both completed successfully. Base Last-N 40, Validation Last-N 12,
+per-step hold controls and independent automatic hold optimization remain open.
+No running instance, exchange, or saved host settings were modified here.
+
 ## 2026-10-28 — Micro hold and exact Base proof checkpoint
 
 A 20-symbol retrospective Micro hold comparison covered 429 scoped Follow

@@ -1016,6 +1016,8 @@ export class CoreRuntime {
   private lastAuditKey = "";
   /** held positions carried without their tape at the last paper step (event on change) */
   private carriedMissing = 0;
+  /** Lane-less legacy positions need reconciliation; do not infer a timeframe or delete their ownership. */
+  private unknownLaneHeld = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private busy = false;
   private dirty = true;
@@ -1215,6 +1217,7 @@ export class CoreRuntime {
     migrateDcaTwoSteps(db);
     migrateMicroBreakoutFocus(db);
     migrateMicroContextFocus(db);
+    migrateHistoricExitOptIn(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
     if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {
@@ -4299,10 +4302,6 @@ export class CoreRuntime {
       : signalU;
     const sig = signalSettings(s.signals);
     const configuredSignalCombos = signalCombos(sig, s.tfs);
-    const heldSignalExitPairs = this.paper.positions.flatMap((pos) => {
-      const heldExit = heldExitProtect(pos.cfg);
-      return heldExit && isSignalInd(heldExit.pair.split("|")[1] ?? "") ? [{ ind: heldExit.pair.split("|")[1] }] : [];
-    });
     const sharedSignalStage = workersAvailable() && !this.workersBroken
       ? shareBars(signalStageU.series) : signalStageU.series;
     if (this.baseConfigs && this.baseConfigs.summary.cutT !== (wf.causalBase ? runStartT : u.nowT))
@@ -4317,7 +4316,7 @@ export class CoreRuntime {
       ? exitStrategyPairs(computeCombos, uStage, s.exitStrategy, s.disabledKinds)
       : [];
     const signalExitPairs = s.exitStrategy.enabled
-      ? exitSignalStrategyPairs([...(sig.enabled ? configuredSignalCombos : []), ...heldSignalExitPairs], signalStageU)
+      ? exitSignalStrategyPairs(sig.enabled ? configuredSignalCombos : [], signalStageU, s.exitStrategy)
       : [];
     const exitPairs = [...engineExitPairs, ...signalExitPairs].sort();
     const exitCombos: Combo[] = engineExitPairs.map((pair) => {
@@ -4603,24 +4602,18 @@ export class CoreRuntime {
     for (const k of mainByLane(passed, s.mainTop)) main.add(k);
     // Diagnostic pairs may rank ahead of qualified ones; they cannot displace the normal Main cohort.
     for (const k of mainByLane(qualified, s.mainTop)) main.add(k);
-    // positions from before the timeframe lanes (plain ids, another base timeframe) cannot be continued on the
-    // 1m-based lanes: they are retired, not carried on unscaled tapes over every series
-    if (s.tfs?.length) {
-      const plain = (cfg: string) => laneOf(cfg.split("|")[1] ?? "").tf === null;
-      const retired = this.paper.positions.filter((p) => plain(p.cfg));
-      if (retired.length) {
-        this.paper.positions = this.paper.positions.filter((p) => !plain(p.cfg));
-        this.paper.selected = this.paper.selected.filter((id) => !plain(id));
-        this.db.event(
-          "info",
-          `retired ${retired.length} paper position(s) from before the timeframe lanes (base timeframe changed)`,
-        );
-      }
-    }
+    // An old position without a timeframe cannot be reconstructed on every current lane: its original timeframe
+    // and a corresponding close are unknown. Preserve its owned position and protection, but do not promote it to
+    // Main, build an invented tape, or admit new entries. Paper's missing-close path carries it until reconciled.
+    const knownLane = (cfg: string) => !s.tfs?.length || laneOf(cfg.split("|")[1] ?? "").tf !== null;
+    const unknownLaneHeld = this.paper.positions.filter((p) => !knownLane(p.cfg)).length;
+    if (unknownLaneHeld && unknownLaneHeld !== this.unknownLaneHeld)
+      this.db.event("warn", `paper: ${unknownLaneHeld} legacy position(s) retained; original timeframe and exact close are unavailable`);
+    this.unknownLaneHeld = unknownLaneHeld;
     const held = new Set<string>();
-    for (const id of this.paper.selected) held.add(id.split("|").slice(0, 2).join("|"));
+    for (const id of this.paper.selected) if (knownLane(id)) held.add(id.split("|").slice(0, 2).join("|"));
     // sets with open positions stay in the continuous stages until the position is closed
-    for (const p of this.paper.positions) held.add(p.cfg.split("|").slice(0, 2).join("|"));
+    for (const p of this.paper.positions) if (knownLane(p.cfg)) held.add(p.cfg.split("|").slice(0, 2).join("|"));
     for (const k of held) main.add(k);
     restrictHeldBasePairs(pairTags, held);
     // a held config keeps its tape: a held pair that passed Base only in other ranges computes only those ranges'
@@ -4629,8 +4622,8 @@ export class CoreRuntime {
     // range: adding the range to the pair's tags built them all and let the pair take new seats in a range it had
     // not passed Base in.
     const heldIds = new Set<string>([
-      ...this.paper.selected,
-      ...this.paper.positions.map((p) => p.cfg),
+      ...this.paper.selected.filter(knownLane),
+      ...this.paper.positions.map((p) => p.cfg).filter(knownLane),
     ]);
     // pinned pairs are evaluated in Base like every other pair (baseFocus): they reach Main only when they pass
     const passedKeys = new Set(qualified.map((r) => `${r.bot}|${r.ind}`));
@@ -4719,7 +4712,9 @@ export class CoreRuntime {
     // a held signal pair keeps its tapes to manage its open positions; new entries still need Base + validation
     wf.signalBasePassed = new Set(sigPairs);
     for (const k of [...main])
-      if (isSignalInd(k.split("|")[1] ?? "")) {
+      // Signal-sourced Historic Exit positions belong to the separate Exit builder. Moving them into the
+      // ordinary Signal set here made their held-only protection disappear when Exit discovery was disabled.
+      if (!k.startsWith(`${EXIT_BOT}|`) && isSignalInd(k.split("|")[1] ?? "")) {
         main.delete(k);
         sigPairs.add(k);
       }
@@ -8141,7 +8136,7 @@ export class CoreRuntime {
       return { bot: EXIT_BOT, ind };
     });
     const signalExitPairs = s.exitStrategy.enabled && sig.enabled
-      ? exitSignalStrategyPairs(configuredSignalCombos, signalU)
+      ? exitSignalStrategyPairs(configuredSignalCombos, signalU, s.exitStrategy)
       : [];
     const signalExitCombos: Combo[] = signalExitPairs.map((pair) => {
       const [, ind] = pair.split("|");
@@ -10968,6 +10963,21 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.bots !== undefined)
     p.bots = Array.isArray(p.bots) ? (p.bots as unknown[]).map(String).slice(0, 20) : [];
   return p as Partial<WalkForwardOptions>;
+}
+
+/** Disable new Historic Exit work once while preserving a restorable settings snapshot. */
+function migrateHistoricExitOptIn(db: CoreDb): void {
+  if (db.kvGet("historicExitOptInV1")) return;
+  const saved = db.kvGet<SettingsPatch>("settings");
+  const backup = structuredClone(saved);
+  // The operator requested disabling new Historic Exit entries. Keep saved presets unchanged so they remain
+  // reviewable; an explicit subsequent enable is an opt-in and survives the one-time migration.
+  if (saved?.exitStrategy?.enabled === true) saved.exitStrategy.enabled = false;
+  db.tx(() => {
+    db.kvSet("historicExitOptInBackupV1", backup ?? null);
+    if (saved) db.kvSet("settings", saved);
+    db.kvSet("historicExitOptInV1", true);
+  });
 }
 
 /** Add context children once for the exact former factory selection; preserve custom/off Focus. */

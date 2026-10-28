@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { Protect, RangeTag, StratKind, Trade } from "../domain/types.ts";
-import { defaultWalkForward, makeTape, modeGroups, selectAt, selectDurable, selectFixed } from "./walkforward.ts";
+import { configId } from "../pipeline/pipeline.ts";
+import { defaultWalkForward, makeTape, modeGroups, selectAt, selectDurable, selectFixed, tapeTrades, walkForward } from "./walkforward.ts";
 
 const H = 3_600_000, now = 400 * H, ind = "ema-21-55@m15";
 function tape(k: number, kind: StratKind, tag?: RangeTag, lose = false) {
@@ -58,4 +59,31 @@ test("opt-in family comparison only uses a Normal base from the same economic ra
     assert.ok(select([shortBase, minimalBase, minimalAxis]).picks.some((p) => p.id === minimalAxis.id),
       `${name}: a matching Minimal base satisfies the comparison`);
   }
+});
+
+test("a separately admitted Historic Exit cannot alter a Normal order's close or return", () => {
+  const normal = tape(1, "normal", "sh");
+  const p: Protect = { tp: .02, sl: .01, trail: 0, hold: 32,
+    exitType: "historic", exitSide: 1, exitSet: "static-sl" };
+  const id = configId("exit", ind, p);
+  const historical = tapeTrades(normal).map((row) => ({ ...row, cfg: id, kind: "exit" as const }));
+  const future = (cfg: string, kind: StratKind, r: number): Trade => ({
+    cfg, sym: "A", side: 1, entryT: now - 2 * H, exitT: now - H,
+    entry: 100, exit: 100 * (1 + r), r, mult: 1,
+    kind, reason: r > 0 ? "tp" : "sl", bars: 1, mfe: 0, mae: 0,
+  });
+  const own = makeTape(normal.id, normal.bot, ind, normal.protect, "normal", ["A"],
+    [...tapeTrades(normal), future(normal.id, "normal", .01)], [], []);
+  const exit = makeTape(id, "exit", ind, p, "exit", ["A"],
+    [...historical, future(id, "exit", -.01)], [], []);
+  const wf = { ...options, simH: 6, preH: 336, exitMinTrades: 0, symGate: "off" as const,
+    coord: { enabled: false, hourLock: 0, cooldown: "off" as const, conflict: false, confirm: false },
+    seatPer: "config" as const };
+  const u = { bars: [], caches: [], startT: 0, endT: now, splitT: 0, nowT: now, baseTf: 15 } as never;
+  const alone = walkForward(u, [own], wf);
+  const both = walkForward(u, [own, exit], wf);
+  assert.ok(alone.trades.some((row) => row.cfg === own.id), "the Normal order is actually executed");
+  assert.ok(both.trades.some((row) => row.cfg === id), "the Exit has a separate executed order");
+  assert.deepEqual(both.trades.filter((row) => row.cfg === own.id), alone.trades,
+    "Exit entry and losing close cannot close or rewrite the Normal position");
 });

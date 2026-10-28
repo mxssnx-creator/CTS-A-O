@@ -386,7 +386,7 @@ describe("first-class Micro", () => {
     assert.deepEqual([...new Set(tapes.map((t) => t.kind))].sort(), ["normal", "trailing"]);
     assert.ok(tapes.every((t) => t.n > 0));
   });
-  it("adds Bot-free Exit sources independently and respects the type switch", () => {
+  it("only uses configured Micro entry lanes for Bot-free Exit and respects the type switch", () => {
     const u = makeUniverse(fixture());
     const settings = {
       ...DEFAULT_SETTINGS.exitStrategy,
@@ -394,11 +394,13 @@ describe("first-class Micro", () => {
       includeRelations: false,
       includeMicro: true,
     };
-    const pairs = exitStrategyPairs([], u, settings);
+    const combos = allCombos(MICRO_CONFIG_IDS.map((id) => `follow|${id}`), [], [1, 5, 15]);
+    const pairs = exitStrategyPairs(combos, u, settings);
     assert.equal(pairs.length, 490);
     assert.ok(pairs.every((pair) => pair.startsWith("exit|micro-") && !pair.endsWith("c")));
-    assert.equal(exitStrategyPairs([], u, settings, ["micro"]).length, 0);
-    assert.equal(exitStrategyPairs([], u, { ...settings, includeMicro: false }).length, 0);
+    assert.equal(exitStrategyPairs([], u, settings).length, 0);
+    assert.equal(exitStrategyPairs(combos, u, settings, ["micro"]).length, 0);
+    assert.equal(exitStrategyPairs(combos, u, { ...settings, includeMicro: false }).length, 0);
   });
   it(
     "keeps parallel-worker Base results identical to local computation",

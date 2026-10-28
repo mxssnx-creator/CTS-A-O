@@ -159,7 +159,7 @@ describe("Low-Range Short integration", () => {
     const good = { ...statsOf([], 0), n: 10, pf: 2, net: 1, mdd: 0 };
     assert.deepEqual(basePassTags({ ind: IND, full: good }, { minPf: 1.1, minTrades: 1 }, ["sh"]), []);
     assert.deepEqual(basePassTags({ ind: IND, full: good, ranges: { sh: good } }, { minPf: 1.1, minTrades: 1 }, ["sh"]), ["sh"]);
-    const exitPairs = exitStrategyPairs([{ ind: IND }, { ind: "ema-9-21" }] as never, u,
+    const exitPairs = exitStrategyPairs([{ ind: IND }, { ind: "ema-9-21@m1" }] as never, u,
       { timeframes: [1], includeMicro: false, includeTactics: false, includeRelations: false } as never);
     assert.ok(exitPairs.some((p) => p.includes("ema-9-21")));
     assert.ok(exitPairs.every((p) => !p.includes("low-range-")));
