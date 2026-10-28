@@ -1,3 +1,47 @@
+## 2026-10-28 — Causal staged-set prototype and source-slot investigation
+
+The current operator requires a separately tracked set of actually processed positions for each exact Base
+configuration, with each later gate reading its immediately preceding stage; final Active positions are mirrored
+without another exchange Last-N validation. The existing draft below does not yet meet that contract: its initial
+Validation still consults the original tape, its warm-up can enter the existing paper book, and native Live applies
+another promotion gate. Do not enable or merge it as a completed fix.
+
+`ProcessedSetBook` is a separately tested prototype, not yet wired into the production pipeline. It keys Base config,
+symbol, side, kind, coordination lane and economic revision; it records separate post-Base, Validation and Active
+closes, requires full known Last-N windows, preserves partial slices and held admissions through snapshot/restore,
+and separates return-based statistics from open marks. It needs integration with real paper ownership, same-step
+close ordering, persistent revisions, source construction and the existing live-mode reconciliation. DCA/Axis need
+leg-level owned return evidence. Actual Live mirroring and all-strategy behavior remain unverified.
+
+The unconditional source simulator holds its one position slot even when a downstream gate would reject that
+hypothetical entry, hiding later signals. The new optional `admitEntry` hook rejects before occupying the slot;
+four focused tests cover long/short, explicit invalid decisions and resume. It is used only by the research script
+so far, not the production tape builders. With 84h history in this bounded Short study, the reprocessed sample
+has 43 new exact entry identities and nine absent identities versus the old source-tape sample (1808 vs 1774
+post-Base entries); these are modeled comparisons, not venue orders.
+
+Latest causal, isolated 20-symbol Short Low-Range Normal/Trailing study: 1/5/15m, 0.15% modeled round-trip
+cost, configured hold 60 minutes, 4800 exact contexts, market history from 2026-10-06 12:00 UTC, evaluated at
+2026-10-10 00:00 UTC, later window through 12:00 UTC. Last-40 Base passed 97/4800; Last-12 Validation passed
+15/97 (15.46%) at historical return PF 1.649925. Of 1808 later post-Base modeled orders, Validation passed
+257/1808 (14.21%); the 250 closed Validation orders had return PF 0.470553 (positions 85/82/3 and orders
+257/250/7 opened/closed/held). Real Last-12 passed 3/257 (1.17%); those three Active modeled orders closed at
+PF 0 (positions 3/3/0 and orders 3/3/0). All three were FIL-USDT long Trailing stop losses at 6, 14 and 24
+minutes, each -0.9% after cost. These were not exchange fills or funded paper executions. The Base-processed
+model was 123/112/11 positions and 1808/1748/60 orders, return PF 0.636643. At only 12h prior input,
+0/4800 passed Base at the window start; no Active order was modeled. Percentages have different denominators.
+The study includes standalone/trend source relations only, not portfolio allocation, Block/Relate, every strategy,
+or a production replay. A separate independent verifier checked all 98 Validation/Real combinations, every source
+context and the stored Last-12 evidence. Both history files retain line-by-line entries and gate verdicts in
+`/workspace/scratch/b69c1e5067d8/cts-causal-processed-sets-20261028-final/`.
+
+The separate older-source 20-symbol full-grid job did not finish: after 3,969 seconds and 16% of the strategy-tape
+phase, Node reached its approximately 4 GiB heap limit while deserializing a worker message and exited 134. Its
+log is `/workspace/scratch/b69c1e5067d8/cts-12h-20-symbols-20261028/adjust-on.log`; no full-grid PF or adjusted-off
+comparison exists. Investigate bounded worker responses and heap-aware admission before another full-grid attempt.
+The focused simulator/book suite passed 66 tests, the study-accounting verifier passed, typecheck passed and
+scoped lint passed. No running deployment, exchange account or live order was changed.
+
 ## 2026-10-28 — Processed-order qualification checkpoint (draft, not deployed)
 
 The latest operator instruction places all Last-N admission checks before a position becomes Active. The exchange
