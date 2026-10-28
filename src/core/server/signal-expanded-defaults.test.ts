@@ -30,11 +30,11 @@ const former = () => ({ signals: { ...structuredClone(DEFAULT_SIGNALS),
   exitStrategy: { minValidationTrades: 8 },
 });
 
-it("fresh Expanded defaults match the verified source/grid catalog with own Last-4", () => {
+it("fresh Expanded defaults match the verified source/grid catalog with own Last-12", () => {
   const rt = open();
   const recorded = JSON.parse(readFileSync(new URL("../../../docs/signals-coverage-20261023/receipts/final/all-sources/protocol.json", import.meta.url), "utf8"));
   const expected = recorded.actualSettings.signals;
-  expected.guard.lastN = 4;
+  expected.guard.lastN = 12;
   expected.hist.lookbackH = 150;
   expected.coordination.volumeFactor = 1; // Operator neutral-sizing default; archived receipt stays immutable.
   assert.equal(Object.hasOwn(expected.combinedVolumeFactors, "low-range"), false, "archived receipt predates Low-Range");
@@ -45,9 +45,9 @@ it("fresh Expanded defaults match the verified source/grid catalog with own Last
   assert.deepEqual(normalized, expected);
   assert.deepEqual(signalCombos(rt.settings.signals, rt.settings.tfs), signalCombos(expected, recorded.actualSettings.tfs));
   assert.deepEqual(signalProtects(rt.settings.signals), signalProtects(expected));
-  assert.equal(rt.wf.signalValidLastN, 4);
-  assert.equal(rt.wf.exitMinTrades, 4);
-  assert.equal(rt.settings.exitStrategy.minValidationTrades, 4);
+  assert.equal(rt.wf.signalValidLastN, 12);
+  assert.equal(rt.wf.exitMinTrades, 12);
+  assert.equal(rt.settings.exitStrategy.minValidationTrades, 12);
   assert.equal(rt.wf.signalLongH, 150);
   assert.equal(rt.settings.signals.hist.minN, 30);
   assert.equal(rt.settings.gates.minTrades, recorded.actualSettings.gates.minTrades);
@@ -77,13 +77,13 @@ it("backs up former saved defaults and presets, migrates Last-8 once, and preser
   assert.deepEqual(rt.settings.signals.trailRatios, [0.5, 1, 1.5]);
   assert.equal(rt.settings.signals.exits, "both");
   assert.equal(rt.settings.signals.coordination.count, 0);
-  assert.equal(rt.wf.rangeOpts?.sig?.validLastN, 4);
-  assert.equal(rt.wf.rangeOpts?.sig?.lastN, 4);
-  assert.equal(rt.settings.signals.guard.lastN, 4);
+  assert.equal(rt.wf.rangeOpts?.sig?.validLastN, 12);
+  assert.equal(rt.wf.rangeOpts?.sig?.lastN, 12);
+  assert.equal(rt.settings.signals.guard.lastN, 12);
   const presets = db.kvGet<Array<{ settings: typeof settings; wf: typeof wf }>>("presets")!;
   assert.deepEqual(presets[1], custom);
   assert.deepEqual(presets[0].settings.signals.lanes, [1, 5, 15, 30]);
-  assert.equal(presets[0].wf.signalValidLastN, 4);
+  assert.equal(presets[0].wf.signalValidLastN, 12);
   assert.deepEqual(db.kvGet<{ wf: unknown }>("signalLast4BackupV1")!.wf, wf);
   assert.deepEqual(db.kvGet<{ settings: typeof settings }>("signalExpandedDefaultsBackupV1")!.settings.signals.sources, PRE_EXPANDED_SIGNAL_SOURCES);
   rt.dispose(); runtimes.splice(runtimes.indexOf(rt), 1);
@@ -113,5 +113,5 @@ it("rolls back an incomplete Last-4 settings migration including its backup and 
   assert.deepEqual(db.kvGet("wf"), wf);
   assert.equal(db.kvGet("signalLast4V1"), undefined);
   assert.equal(db.kvGet("signalLast4BackupV1"), undefined);
-  assert.equal(open(db).wf.signalValidLastN, 4);
+  assert.equal(open(db).wf.signalValidLastN, 12);
 });
