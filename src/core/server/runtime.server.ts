@@ -11066,11 +11066,12 @@ function migrateSignalEvaluationPolicy(db: CoreDb, saved: Partial<WalkForwardOpt
     if (s?.signals?.hist?.lookbackH === 0) { s.signals.hist.lookbackH = SIGNAL_HISTORY_H; changed = true; }
     if (wf) {
       if (wf.signalLongH === 336) { wf.signalLongH = SIGNAL_HISTORY_H; changed = true; }
-      if (wf.signalValidLastN === 25 || wf.signalValidLastN === 12) { wf.signalValidLastN = 4; changed = true; }
+      // The retired Last-4 policy must not lower an explicit stricter Last-25 choice on a very old database.
+      if (wf.signalValidLastN === 12) { wf.signalValidLastN = 4; changed = true; }
       if (wf.exitMinTrades === 12) { wf.exitMinTrades = 4; changed = true; }
       const range = wf.rangeOpts?.sig;
       for (const key of ["validLastN", "lastN"] as const)
-        if (range?.[key] === 25 || range?.[key] === 12) { range[key] = 4; changed = true; }
+        if (range?.[key] === 12) { range[key] = 4; changed = true; }
     }
     return changed;
   };
