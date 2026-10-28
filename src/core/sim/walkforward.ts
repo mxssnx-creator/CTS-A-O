@@ -891,7 +891,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // Operator-requested default: the last 12 closes must clear the seat's PF and drawdown gates.
     // Saved stricter choices and independent Signal/Exit/range overrides retain their own values.
     validLastN: 12,
-    // Operator, 24 Oct: evaluate Signals and Exit with their own last 4 closed results.
+    // Signal and Exit contexts default to their own last 12 completed results.
     signalValidLastN: SIGNAL_VALID_LAST_N,
     exitMinTrades: s.exitStrategy.minValidationTrades,
     exitMinPf: s.exitStrategy.minPf,
@@ -5451,7 +5451,7 @@ export const crowdRangeOf = (cfg: string): string =>
     : rangeOfId(cfg) || "wide";
 /** The crowding key of an entry: strategy group × symbol × side × entry time. */
 export const crowdKey = (cfg: string, sym: string, side: number, entryT: number) =>
-  `${crowdRangeOf(cfg)}|${sym}|${side}|${entryT}`;
+  `${crowdRangeOf(cfg)}|${sym}|${side}|${entryT}${exitScopeSuffix(cfg)}`;
 /** The cap of a config's range under `entryCrowd` (Infinity = none). */
 export const crowdCapOf = (o: Pick<WalkForwardOptions, "entryCrowd">, cfg: string): number => {
   const k = o.entryCrowd?.[crowdRangeOf(cfg)];
@@ -5847,6 +5847,11 @@ export function sigCfg(cfg: string): boolean {
   return first >= 0 && cfg.startsWith("sig-", first + 1);
 }
 
+/** Strategy caps do not let an Exit consume another category's or another Exit lane's capacity. */
+export function orderCapScope(cfg: string): string {
+  return isHistoricExitConfig(cfg) ? `x:${encodeURIComponent(cfg)}` : sigCfg(cfg) ? "s" : "e";
+}
+
 /**
  * True when opening `sym` × `side` would exceed the cap on POSITIONS (distinct symbol × direction, long and short
  * independent; every order or partial on a position counts once). Engine and signal positions are capped apart
@@ -5860,11 +5865,12 @@ export function positionsFull(
   side: number,
   signal: boolean,
   cap: number | undefined,
+  scope = signal ? "s" : "e",
 ): boolean {
   if (!cap || cap <= 0) return false;
   const seen = new Set<string>();
   for (const x of open) {
-    if (sigCfg(x.cfg) !== signal) continue;
+    if (orderCapScope(x.cfg) !== scope) continue;
     if (x.sym === sym && x.side === side) return false;
     if (signal && x.side !== side) continue;
     seen.add(`${x.sym}|${x.side}`);
@@ -6552,22 +6558,18 @@ const bump = (m: Map<string, number>, k: string, d: number) => {
 /**
  * Counts of the executed open orders the caps read, kept as orders open and close: O(1) per candidate instead of
  * four scans of every open order (dupe, per symbol, total, per side) and a fifth for the position cap.
- * Engine and signal orders are counted apart (each class has its own caps).
+ * Engine and signal orders are counted apart; each Historic Exit config has a separate cap scope.
  */
 export class OpenCounts {
   private keys = new Map<string, number>();
   private sym = new Map<string, number>();
   private side = new Map<string, number>();
   private pos = new Map<string, number>();
-  private all = [0, 0];
-  private positions = [0, 0];
-  /** distinct positions per class and direction ([class][0 short, 1 long]) */
-  private positionsSide = [
-    [0, 0],
-    [0, 0],
-  ];
+  private all = new Map<string, number>();
+  private positions = new Map<string, number>();
+  private positionsSide = new Map<string, number>();
   add(x: { cfg: string; sym: string; side: number }, d: 1 | -1) {
-    const c = sigCfg(x.cfg) ? 1 : 0;
+    const c = orderCapScope(x.cfg);
     bump(this.keys, `${x.sym}|${x.cfg}|${x.side > 0 ? 1 : -1}`, d);
     bump(this.sym, `${c}|${x.sym}`, d);
     bump(this.side, `${c}|${x.side}`, d);
@@ -6576,13 +6578,13 @@ export class OpenCounts {
     bump(this.pos, pk, d);
     const si = x.side > 0 ? 1 : 0;
     if (d > 0 && before === 0) {
-      this.positions[c]++;
-      this.positionsSide[c][si]++;
+      bump(this.positions, c, 1);
+      bump(this.positionsSide, `${c}|${si}`, 1);
     } else if (d < 0 && before === 1) {
-      this.positions[c]--;
-      this.positionsSide[c][si]--;
+      bump(this.positions, c, -1);
+      bump(this.positionsSide, `${c}|${si}`, -1);
     }
-    this.all[c] += d;
+    bump(this.all, c, d);
   }
   /**
    * the same config already holds an order on the symbol in this direction (long and short of one config run
@@ -6593,24 +6595,24 @@ export class OpenCounts {
       return this.keys.has(`${sym}|${cfg}|1`) || this.keys.has(`${sym}|${cfg}|-1`);
     return this.keys.has(`${sym}|${cfg}|${side > 0 ? 1 : -1}`);
   }
-  perSymbol(sym: string, signal: boolean) {
-    return this.sym.get(`${signal ? 1 : 0}|${sym}`) ?? 0;
+  perSymbol(sym: string, signal: boolean, scope = signal ? "s" : "e") {
+    return this.sym.get(`${scope}|${sym}`) ?? 0;
   }
-  open(signal: boolean) {
-    return this.all[signal ? 1 : 0];
+  open(signal: boolean, scope = signal ? "s" : "e") {
+    return this.all.get(scope) ?? 0;
   }
-  perSide(side: number, signal: boolean) {
-    return this.side.get(`${signal ? 1 : 0}|${side}`) ?? 0;
+  perSide(side: number, signal: boolean, scope = signal ? "s" : "e") {
+    return this.side.get(`${scope}|${side}`) ?? 0;
   }
   /**
    * positionsFull on the counts: opening sym × side would exceed the cap on distinct positions of its class (signals:
    * of its class and direction — each side up to the cap)
    */
-  positionsFull(sym: string, side: number, signal: boolean, cap: number | undefined) {
+  positionsFull(sym: string, side: number, signal: boolean, cap: number | undefined, scope = signal ? "s" : "e") {
     if (!cap || cap <= 0) return false;
-    const c = signal ? 1 : 0;
-    if (this.pos.has(`${c}|${sym}|${side}`)) return false;
-    return (signal ? this.positionsSide[c][side > 0 ? 1 : 0] : this.positions[c]) >= cap;
+    if (this.pos.has(`${scope}|${sym}|${side}`)) return false;
+    return (signal ? this.positionsSide.get(`${scope}|${side > 0 ? 1 : 0}`) ?? 0
+      : this.positions.get(scope) ?? 0) >= cap;
   }
 }
 
@@ -7092,6 +7094,7 @@ export function* walkForwardGen(
         // engine orders and signal orders are capped each on their own (same class only)
         const cls = sigCfg(tr.cfg);
         const isExit = isHistoricExitConfig(tr.cfg, tr.kind);
+        const capScope = orderCapScope(tr.cfg);
         const ownHours = isExit ? (exitHourNet.get(tr.cfg) ?? new Map<number, number>()) : hourNet;
         const ownS2 = s2For(tr.cfg, tr.kind);
         const caps = capsOf(o, cls);
@@ -7126,11 +7129,11 @@ export function* walkForwardGen(
         if (!o.gates?.lastNOnly && o.guardPct > 0 && (ownHours.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
         else if (coordWhy) why = coordWhy;
         else if (counts.dupe(tr.sym, tr.cfg, tr.side)) why = "dupe";
-        else if (counts.perSymbol(tr.sym, cls) >= caps.perSymbol) why = "perSymbol";
-        else if (counts.open(cls) >= caps.maxOpen) why = "maxOpen";
-        else if (counts.perSide(tr.side, cls) >= caps.perSide) why = "perSide";
+        else if (counts.perSymbol(tr.sym, cls, capScope) >= caps.perSymbol) why = "perSymbol";
+        else if (counts.open(cls, capScope) >= caps.maxOpen) why = "maxOpen";
+        else if (counts.perSide(tr.side, cls, capScope) >= caps.perSide) why = "perSide";
         else if (
-          counts.positionsFull(tr.sym, tr.side, cls, cls ? o.signalMaxPositions : o.maxPositions)
+          counts.positionsFull(tr.sym, tr.side, cls, cls ? o.signalMaxPositions : o.maxPositions, capScope)
         )
           why = "maxPositions";
         else if (

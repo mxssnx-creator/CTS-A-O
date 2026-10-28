@@ -1,3 +1,29 @@
+## 2026-10-28 — Exit isolation and Last-12 checkpoint
+
+CTS-A-O PR #220 isolates Historic Exit coordination by config and was merged after GitHub's complete Exit
+verification and Exact Signal workflows passed. PR #221 makes preset market-history errors visible and stops new
+batch dispatch after a failure; it also passed both workflows and was merged. The Last-N-only branch integrates
+both changes; it remains a draft and its policy flag remains off.
+
+PR #222 additionally isolates the model and paper order/position cap counters by exact Exit config and lane,
+including Signal-sourced Exit, and keeps Exit out of ordinary Signal open counts. The affected Exit inherits the
+source class's configured cap values; shared account and venue safety controls remain unchanged. Full and fast
+paper tests and a complete capped walk-forward test pass. PR #222 is awaiting release verification.
+
+The draft now defaults Signal and Exit validation to Last-12 and the partial-sample floor to nine, with Base Last-40.
+A once-only SQLite transaction backs up saved settings, walk-forward options, presets and their cached reports,
+upgrades undersized saved samples, preserves stricter choices, retires affected/unidentifiable preset caches, and
+marks old preset PF unavailable. Tests cover rollback and preservation of an unaffected preset. Explicit optional
+entry gates set to zero remain off; direct later settings changes still require a complete policy audit. The
+Last-N-only path enforces its own full requested sample and rejects samples below nine, but is not yet enabled.
+
+Historic Exit candidate fitting and holdout still use elapsed-time partitions; the current live cut and the causal
+simulation cut are not yet independently rebuilt. History retention, direct settings/preset overrides, live
+promotion, the requested per-step hold controls and all strategy types require further work before enabling the
+new policy. Do not claim a stable positive funded PF. The cached 2026-10-09 12:00 UTC Low-Range Short screen has
+25/90 validated historical contexts at unit PF 2.891881; its separate later model has 37 closes at PF 0.963800,
+with 17/17/0 positions and 37/37/0 orders opened/closed/held. No exchange-fill PF was measured.
+
 ## 2026-10-28 — Last-N-only prototype, not enabled
 
 An optional `gates.lastNOnly` prototype evaluates completed Base and exact

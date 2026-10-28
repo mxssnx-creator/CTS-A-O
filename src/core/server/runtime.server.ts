@@ -224,6 +224,7 @@ import {
   tapeBytes,
   capsOf,
   sigCfg,
+  orderCapScope,
   openDupKey,
   checkGridVariantBudget,
   type ConfigTape,
@@ -1212,7 +1213,8 @@ export class CoreRuntime {
     if (opts.priceStream !== undefined) this.priceStream = opts.priceStream;
     this.db = db;
     // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
-    const savedWf = migrateSignalHistory150(db, migrateSignalLast4Policy(db, migrateSignalEvaluationPolicy(db, migrateWfCaps(db))));
+    const savedWf = migrateValidationLast12(db,
+      migrateSignalHistory150(db, migrateSignalLast4Policy(db, migrateSignalEvaluationPolicy(db, migrateWfCaps(db)))));
     migrateExpandedSignalDefaults(db);
     migrateNeutralVolumeRatios(db);
     migrateDcaTwoSteps(db);
@@ -9688,7 +9690,7 @@ export class CoreRuntime {
       if (representedHeld.has(k)) continue;
       provisionalHeld.add(k);
       positions.push({ ...p, vol: p.vol ?? 1, level: p.level ?? 0 });
-      const cls = sigCfg(p.cfg) ? "s" : "e";
+      const cls = orderCapScope(p.cfg);
       perSym.set(`${cls}|${p.sym}`, (perSym.get(`${cls}|${p.sym}`) ?? 0) + 1);
       perSide.set(`${cls}|${p.side}`, (perSide.get(`${cls}|${p.side}`) ?? 0) + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
@@ -9816,12 +9818,12 @@ export class CoreRuntime {
       for (const p of positions) if (!keys.has(orderKey(p))) positions[write++] = p;
       positions.length = write;
       for (const { p } of due) {
-        const cls = sigCfg(p.cfg) ? "s" : "e";
+        const cls = orderCapScope(p.cfg);
         const sym = `${cls}|${p.sym}`, side = `${cls}|${p.side}`, pos = `${cls}|${p.sym}|${p.side}`;
         perSym.set(sym, (perSym.get(sym) ?? 1) - 1);
         perSide.set(side, (perSide.get(side) ?? 1) - 1);
         openBy.set(cls, (openBy.get(cls) ?? 1) - 1);
-        if (!positions.some((x) => `${sigCfg(x.cfg) ? "s" : "e"}|${x.sym}|${x.side}` === pos)) openPos.delete(pos);
+        if (!positions.some((x) => `${orderCapScope(x.cfg)}|${x.sym}|${x.side}` === pos)) openPos.delete(pos);
         openKeys.delete(openDupKey(p));
       }
     };
@@ -9910,10 +9912,11 @@ export class CoreRuntime {
             side: op.side,
             relateBase: () => 1,
           });
-      // engine and signal orders are capped each on their own
-      const cls = sigCfg(op.cfg) ? "s" : "e";
-      const pre = cls === "s" ? "sig:" : "";
-      const caps = capsOf(this.wf, cls === "s");
+      // Exit keeps its own cap counts, while inheriting the configured caps of its source class.
+      const cls = orderCapScope(op.cfg);
+      const signalClass = sigCfg(op.cfg);
+      const pre = isHistoricExitConfig(op.cfg) ? "exit:" : signalClass ? "sig:" : "";
+      const caps = capsOf(this.wf, signalClass);
       const c = perSym.get(`${cls}|${op.sym}`) ?? 0;
       const sd = perSide.get(`${cls}|${op.side}`) ?? 0;
       const posKey = `${op.sym}|${op.side}`;
@@ -9926,14 +9929,14 @@ export class CoreRuntime {
             : (openBy.get(cls) ?? 0) >= caps.maxOpen
               ? "maxOpen"
               : (() => {
-                    const cap = cls === "s" ? this.wf.signalMaxPositions : this.wf.maxPositions;
+                    const cap = signalClass ? this.wf.signalMaxPositions : this.wf.maxPositions;
                     if (!cap || cap <= 0 || openPos.has(`${cls}|${posKey}`)) return false;
                     // signals: the cap counts each direction apart (long and short run independently); engine: both
                     const sideOf = (k: string) => k.slice(k.lastIndexOf("|") + 1);
                     const mySide = String(op.side);
                     let n = 0;
                     for (const k of openPos)
-                      if (k.startsWith(`${cls}|`) && (cls !== "s" || sideOf(k) === mySide)) n++;
+                      if (k.startsWith(`${cls}|`) && (!signalClass || sideOf(k) === mySide)) n++;
                     return n >= cap;
                   })()
                 ? "maxPositions"
@@ -10387,7 +10390,7 @@ export class CoreRuntime {
     });
     // signal positions (symbol × direction) and orders open now, shown apart
     if (this.status.signals) {
-      const sp = positions.filter((p) => sigCfg(p.cfg));
+      const sp = positions.filter((p) => sigCfg(p.cfg) && !isHistoricExitConfig(p.cfg));
       this.status.signals.openOrders = sp.length;
       this.status.signals.openPositions = new Set(sp.map((p) => `${p.sym}|${p.side}`)).size;
     }
@@ -10552,10 +10555,11 @@ export class CoreRuntime {
         }
         // the signal orders' own cap per symbol (open paper signal positions on the symbol + entries sent now)
         if (sigCfg(tp.id)) {
+          const scope = orderCapScope(tp.id);
           const cap = capsOf(this.wf, true).perSymbol;
           const openOn =
-            this.paper.positions.filter((x) => x.sym === p.sym && sigCfg(x.cfg)).length +
-            out.filter((x) => x.sym === p.sym && sigCfg(x.cfg)).length;
+            this.paper.positions.filter((x) => x.sym === p.sym && orderCapScope(x.cfg) === scope).length +
+            out.filter((x) => x.sym === p.sym && orderCapScope(x.cfg) === scope).length;
           if (openOn >= cap) {
             skip(tp, "cap:perSymbol");
             continue;
@@ -10565,11 +10569,11 @@ export class CoreRuntime {
           const pcap = this.wf.signalMaxPositions;
           if (pcap && pcap > 0) {
             const same = (x: { sym: string; side: number; cfg: string }) =>
-              x.sym === p.sym && x.side === p.side && sigCfg(x.cfg);
+              x.sym === p.sym && x.side === p.side && orderCapScope(x.cfg) === scope;
             if (!this.paper.positions.some(same) && !out.some(same)) {
               const set = new Set(
                 [...this.paper.positions, ...out]
-                  .filter((x) => sigCfg(x.cfg) && x.side === p.side)
+                  .filter((x) => orderCapScope(x.cfg) === scope && x.side === p.side)
                   .map((x) => `${x.sym}|${x.side}`),
               );
               if (set.size >= pcap) {
@@ -11058,15 +11062,15 @@ function migrateSignalEvaluationPolicy(db: CoreDb, saved: Partial<WalkForwardOpt
   const upgrade = (s: SettingsPatch | undefined, wf: Partial<WalkForwardOptions> | undefined) => {
     let changed = false;
     if (s?.exitStrategy?.lookbackH === 168) { s.exitStrategy.lookbackH = SIGNAL_HISTORY_H; changed = true; }
-    if (s?.exitStrategy?.minValidationTrades === 12) { s.exitStrategy.minValidationTrades = SIGNAL_VALID_LAST_N; changed = true; }
+    if (s?.exitStrategy?.minValidationTrades === 12) { s.exitStrategy.minValidationTrades = 4; changed = true; }
     if (s?.signals?.hist?.lookbackH === 0) { s.signals.hist.lookbackH = SIGNAL_HISTORY_H; changed = true; }
     if (wf) {
       if (wf.signalLongH === 336) { wf.signalLongH = SIGNAL_HISTORY_H; changed = true; }
-      if (wf.signalValidLastN === 25 || wf.signalValidLastN === 12) { wf.signalValidLastN = SIGNAL_VALID_LAST_N; changed = true; }
-      if (wf.exitMinTrades === 12) { wf.exitMinTrades = SIGNAL_VALID_LAST_N; changed = true; }
+      if (wf.signalValidLastN === 25 || wf.signalValidLastN === 12) { wf.signalValidLastN = 4; changed = true; }
+      if (wf.exitMinTrades === 12) { wf.exitMinTrades = 4; changed = true; }
       const range = wf.rangeOpts?.sig;
       for (const key of ["validLastN", "lastN"] as const)
-        if (range?.[key] === 25 || range?.[key] === 12) { range[key] = SIGNAL_VALID_LAST_N; changed = true; }
+        if (range?.[key] === 25 || range?.[key] === 12) { range[key] = 4; changed = true; }
     }
     return changed;
   };
@@ -11196,14 +11200,14 @@ function migrateSignalLast4Policy(db: CoreDb, saved: Partial<WalkForwardOptions>
   const out = structuredClone(saved);
   const upgrade = (s: SettingsPatch | undefined, wf: Partial<WalkForwardOptions> | undefined) => {
     let changed = false;
-    if (s?.signals?.guard?.lastN === 8) { s.signals.guard.lastN = SIGNAL_VALID_LAST_N; changed = true; }
-    if (s?.exitStrategy?.minValidationTrades === 8) { s.exitStrategy.minValidationTrades = SIGNAL_VALID_LAST_N; changed = true; }
+    if (s?.signals?.guard?.lastN === 8) { s.signals.guard.lastN = 4; changed = true; }
+    if (s?.exitStrategy?.minValidationTrades === 8) { s.exitStrategy.minValidationTrades = 4; changed = true; }
     if (wf) {
       for (const key of ["signalValidLastN", "signalGuardN", "exitMinTrades"] as const)
-        if (wf[key] === 8) { wf[key] = SIGNAL_VALID_LAST_N; changed = true; }
+        if (wf[key] === 8) { wf[key] = 4; changed = true; }
       const range = wf.rangeOpts?.sig;
       for (const key of ["validLastN", "lastN"] as const)
-        if (range?.[key] === 8) { range[key] = SIGNAL_VALID_LAST_N; changed = true; }
+        if (range?.[key] === 8) { range[key] = 4; changed = true; }
     }
     return changed;
   };
@@ -11217,6 +11221,99 @@ function migrateSignalLast4Policy(db: CoreDb, saved: Partial<WalkForwardOptions>
       if (presets) db.kvSet("presets", presets);
     }
     db.kvSet("signalLast4V1", true);
+  });
+  return out;
+}
+
+/** Upgrade undersized saved validation samples once, preserving stricter settings and a restorable snapshot. */
+function migrateValidationLast12(db: CoreDb, saved: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
+  if (db.kvGet("validationLast12V1")) return saved;
+  const settings = db.kvGet<SettingsPatch>("settings");
+  const presets = db.kvGet<Preset[]>("presets");
+  const backtests = db.kvGet<Record<string, unknown>>("presetBacktests");
+  const series = db.kvGet<Record<string, unknown>>("presetSeries");
+  const backup = structuredClone({ settings, wf: saved, presets, presetBacktests: backtests, presetSeries: series });
+  const out = structuredClone(saved);
+  const low = (n: number | undefined) => typeof n === "number" && Number.isFinite(n) && n >= 0 && n < 9;
+  const upgrade = (s: SettingsPatch | undefined, wf: Partial<WalkForwardOptions> | undefined) => {
+    let changed = false;
+    if (s?.signals?.guard && low(s.signals.guard.lastN)) { s.signals.guard.lastN = 12; changed = true; }
+    if (s?.exitStrategy && low(s.exitStrategy.minValidationTrades)) { s.exitStrategy.minValidationTrades = 12; changed = true; }
+    if (s?.gates) {
+      if (low(s.gates.minTrades)) { s.gates.minTrades = 12; changed = true; }
+      if (low(s.gates.baseLastN)) { s.gates.baseLastN = 40; changed = true; }
+      if (low(s.gates.lastNFloor) && (s.gates.lastNFloor ?? 0) > 0) { s.gates.lastNFloor = 9; changed = true; }
+    }
+    if (wf) {
+      for (const key of ["validLastN", "signalValidLastN", "exitMinTrades"] as const)
+        if (low(wf[key])) { wf[key] = 12; changed = true; }
+      // Zero leaves the optional additional entry/guard filter off; the separate validation gate remains active.
+      for (const key of ["lastN", "signalGuardN"] as const)
+        if (low(wf[key]) && (wf[key] ?? 0) > 0) { wf[key] = 12; changed = true; }
+      for (const range of Object.values(wf.rangeOpts ?? {})) {
+        if (!range) continue;
+        if (low(range.validLastN)) { range.validLastN = 12; changed = true; }
+        if (low(range.lastN) && (range.lastN ?? 0) > 0) { range.lastN = 12; changed = true; }
+      }
+    }
+    return changed;
+  };
+  let changed = upgrade(settings, out);
+  if (Array.isArray(presets)) for (const preset of presets) changed = upgrade(preset.settings, preset.wf) || changed;
+  // A saved report based on the old implicit defaults is not evidence for the new policy. Preserve unrelated
+  // preset results, but retire affected and unidentifiable cache entries with the original data in the backup.
+  const oldDefaults: CoreSettings = { ...DEFAULT_SETTINGS,
+    gates: { ...DEFAULT_SETTINGS.gates, lastNFloor: 5 },
+    signals: { ...DEFAULT_SETTINGS.signals, guard: { ...DEFAULT_SETTINGS.signals.guard, lastN: 4 } },
+    exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, minValidationTrades: 4 } };
+  const oldDesk = mergeSettings(oldDefaults, backup.settings);
+  const newDesk = mergeSettings(DEFAULT_SETTINGS, settings);
+  const signature = (preset: Preset, desk: CoreSettings, old: boolean) => {
+    const s = mergeSettings(desk, presetSettings(preset.settings));
+    const wf = { ...defaultWalkForward(s), ...(old ? { signalValidLastN: 4 } : {}), ...sanitizeWf(preset.wf as never) };
+    return { baseLastN: s.gates.baseLastN, minTrades: s.gates.minTrades, lastNFloor: s.gates.lastNFloor,
+      signalGuard: s.signals.guard, exitMinTrades: s.exitStrategy.minValidationTrades,
+      validLastN: wf.validLastN, signalValidLastN: wf.signalValidLastN, lastN: wf.lastN, rangeOpts: wf.rangeOpts };
+  };
+  const beforeById = new Map([...(backup.presets ?? []), ...ALL_RESEARCH_PRESETS].map((p) => [p.id, p]));
+  const afterById = new Map([...(presets ?? []), ...ALL_RESEARCH_PRESETS].map((p) => [p.id, p]));
+  const policyChanged = (before: Preset | undefined, after: Preset | undefined) => {
+    if (!before || !after) return true;
+    try { return !isDeepStrictEqual(signature(before, oldDesk, true), signature(after, newDesk, false)); }
+    catch { return true; } // invalid legacy settings cannot prove that an old cache remains applicable
+  };
+  const invalid = new Set<string>();
+  for (const preset of presets ?? []) {
+    const before = beforeById.get(preset.id);
+    if (!policyChanged(before, preset)) continue;
+    invalid.add(preset.id);
+    if (preset.metrics) {
+      const { gp: _gp, gl: _gl, ...metrics } = preset.metrics;
+      preset.metrics = { ...metrics, pf: null, pfBasis: "unavailable", noLoss: null, pfConvention: "unavailable",
+        source: `${metrics.source ?? "Previous result"} — validation policy changed; re-evaluate for current results` };
+      changed = true;
+    }
+  }
+  for (const id of new Set([...Object.keys(backtests ?? {}), ...Object.keys(series ?? {})])) {
+    const before = beforeById.get(id), after = afterById.get(id);
+    if (policyChanged(before, after)) invalid.add(id);
+  }
+  db.tx(() => {
+    if (changed || invalid.size) {
+      db.kvSet("validationLast12BackupV1", { ...backup, invalidPresetIds: [...invalid] });
+    }
+    if (changed) {
+      db.kvSet("wf", pickWf(out));
+      if (settings) db.kvSet("settings", settings);
+      if (presets) db.kvSet("presets", presets);
+    }
+    if (invalid.size) {
+      const keptBacktests = { ...backtests }, keptSeries = { ...series };
+      for (const id of invalid) { delete keptBacktests[id]; delete keptSeries[id]; }
+      if (backtests) db.kvSet("presetBacktests", keptBacktests);
+      if (series) db.kvSet("presetSeries", keptSeries);
+    }
+    db.kvSet("validationLast12V1", true);
   });
   return out;
 }
@@ -12101,7 +12198,7 @@ export const LIVE_STEP_LIMIT_MS = 180_000;
 /** Mainnet (x01) validation floors: last N closes at entry and for a seat. */
 export const MAINNET_LAST_N = 25;
 export const MAINNET_VALID_LAST_N = 12;
-/** Signals share the operator's Last-4 floor on every execution path. */
+/** Signals share the operator's Last-12 floor on every execution path. */
 export const MAINNET_SIGNAL_VALID_LAST_N = SIGNAL_VALID_LAST_N;
 
 export function baseFocus(s: CoreSettings): string[] {

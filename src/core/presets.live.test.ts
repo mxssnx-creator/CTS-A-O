@@ -45,7 +45,7 @@ describe("saved live coordinations", () => {
     assert.equal(rt.wf.coord?.hourLock, 0);
     assert.equal(rt.wf.coord?.cooldown, "off");
     assert.equal(rt.wf.coord?.conflict, false);
-    assert.equal(rt.wf.signalValidLastN, 4);
+    assert.equal(rt.wf.signalValidLastN, 12);
     rt.shutdown("test");
   });
 });
