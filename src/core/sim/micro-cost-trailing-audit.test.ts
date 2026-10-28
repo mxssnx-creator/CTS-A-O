@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { it } from "node:test";
 import { simulate } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
-import { ratchetTrail } from "./trailing.ts";
+import { ratchetTrail, trailingOnlyProtects } from "./trailing.ts";
 import { barsFromCandles } from "../market/bars.ts";
-import { configId, completeBaseRangeProtects } from "../pipeline/pipeline.ts";
+import { configId, completeBaseRangeProtects, laneProtect } from "../pipeline/pipeline.ts";
 import { protectGrid } from "./walkforward.ts";
 import {
   DEFAULT_SETTINGS,
@@ -27,6 +27,17 @@ const bars = (rows: number[][]) =>
     1,
     rows.map(([o, h, l, c], i) => ({ t: t0 + i * M, o, h, l, c, v: 1 })),
   );
+it("trailing-only cells retain distinct minute caps until the exact lane hold is known", () => {
+  const base = { tp: .01, sl: .01, trail: .005, hold: 1, tag: "mc" as const };
+  const ten = { ...base, maxHoldMin: 10 }, fifteen = { ...base, maxHoldMin: 15 };
+  const cells = trailingOnlyProtects([ten, fifteen, ten]);
+  assert.deepEqual(cells.map((p) => p.maxHoldMin), [10, 15], "only exact duplicate caps deduplicate");
+  for (const ind of ["ema-9-21@m1", "ema-9-21@m5"]) {
+    const lane = cells.map((p) => laneProtect(p, ind));
+    assert.notEqual(lane[0].hold, lane[1].hold);
+    assert.notEqual(configId("follow", ind, lane[0]), configId("follow", ind, lane[1]));
+  }
+});
 it("charges a flat long or short exactly 0.15% once and caps runtime model overrides", () => {
   assert.equal(MAX_MODEL_RT_COST, 0.0015);
   assert.equal(RT_COST, MAX_MODEL_RT_COST);

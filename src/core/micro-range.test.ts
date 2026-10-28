@@ -184,7 +184,7 @@ test("regression: a planted micro edge passes Base at Micro's own cell and build
   const g = grid({ ownInds: true });
   const cost = 0.002;
   const ind = "mc-rsi2-5@m5";
-  const r = runCombo(u, "follow", ind, DEFAULT_PROTECT, cost, 1)!;
+  const r = runCombo(u, "follow", ind, DEFAULT_PROTECT, cost, 1, null, false, 40)!;
   const gates0 = { ...DEFAULT_SETTINGS.gates, minPf: 1.05 };
   const tps: Record<string, number[]> = {};
   const ranges = rangeBaseStats(
@@ -199,6 +199,9 @@ test("regression: a planted micro edge passes Base at Micro's own cell and build
     rangeCellPass(gates0),
     5,
     tps,
+    undefined,
+    undefined,
+    40,
   )!;
   assert.ok(ranges.mc, "judged at Micro's own cell");
   // the targets whose cells passed: the tape stage builds only these (pairTps)
@@ -364,7 +367,8 @@ test("a Micro indication that passed only on its Minimal cells is a Minimal surv
   // Micro on, Minimal's micro indications on (the default rule "minimal": a Micro indication takes Micro and Minimal
   // cells); the sets gates (PF ≥ 1, 12 closes, DDR ≤ 1)
   const s = { ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, micro: MICRO_RANGE } } as CoreSettings;
-  const st = (pf: number, net: number) => ({ n: 20, pf, net, mdd: 1 });
+  const st = (pf: number, net: number) => ({ n: 20, pf, net, mdd: 1,
+    baseLast: { requested: 40, n: 20, gp: pf, gl: 1, stop: 1 } });
   const s1 = [
     // fails at the default protect and on its Micro cell (PF 0.7), passes its Minimal cell (PF 1.4, net 3, DDR 1/3)
     { bot: "follow", ind: "mc-tpull-13@m15c", full: st(0.8, -1), ranges: { mn: st(1.4, 3), mc: st(0.7, -2) }, score: 2 },

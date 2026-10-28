@@ -628,7 +628,8 @@ test("a held config keeps its own tape, not every cell of its range", () => {
 });
 
 test("Base sets floor: lowering Wide never weakens a configured range floor", () => {
-  const st = (pf: number, net: number) => ({ n: 40, pf, net, mdd: 1 }) as never;
+  const st = (pf: number, net: number) => ({ n: 40, pf, net, mdd: 1,
+    baseLast: { requested: 40, n: 40, gp: pf, gl: 1, stop: 1 } }) as never;
   // the default floor is PF 1 (operator, 5 Oct: Base computes a pair's sets from PF 1 up)
   assert.equal(DEFAULT_SETTINGS.gates.baseSetsMinPf, 1);
   const g = {

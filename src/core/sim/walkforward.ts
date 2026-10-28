@@ -744,7 +744,7 @@ export function protectGrid(
       p.trailStep = g.trailStep ?? 1;
       p.trailFree = g.trailFree ?? false;
     }
-    const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.tag ?? ""}`;
+    const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.maxHoldMin ?? ""}|${p.tag ?? ""}`;
     if (!seen.has(key)) {
       seen.add(key);
       out.push(p);
@@ -885,9 +885,9 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // (MAINNET_LAST_N) unless the host waives it.
     lastN: 0,
     lastNMinPf: PF_NEUTRAL,
-    // best-set validation: the last 15 closes must clear min PF and the DDT gate before a seat — 6 of 6 hours positive,
-    // net +36 % and 42 % more orders than 25, PF 3.43 against 3.62 (50: PF 3.40 at 48 % fewer orders) (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12))
-    validLastN: 15,
+    // Operator-requested default: the last 12 closes must clear the seat's PF and drawdown gates.
+    // Saved stricter choices and independent Signal/Exit/range overrides retain their own values.
+    validLastN: 12,
     // Operator, 24 Oct: evaluate Signals and Exit with their own last 4 closed results.
     signalValidLastN: SIGNAL_VALID_LAST_N,
     exitMinTrades: s.exitStrategy.minValidationTrades,

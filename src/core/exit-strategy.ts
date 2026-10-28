@@ -176,10 +176,10 @@ export function qualifyExitBase(
   runs: Iterable<{
     bot: string;
     ind: string;
-    full: Pick<Stats, "n" | "pf" | "net" | "mdd">;
+    full: Pick<Stats, "n" | "pf" | "net" | "mdd" | "baseLast">;
   }>,
   settings: Pick<ExitStrategySettings, "minPf">,
-  gates: { minPf: number; minTrades: number; maxDdr?: number },
+  gates: { minPf: number; minTrades: number; maxDdr?: number; baseLastN?: number; lastNFloor?: number; lossPrior?: boolean },
 ): { evaluated: Set<string>; passed: Set<string>; rejected: number } {
   const evaluated = new Set<string>();
   const passed = new Set<string>();

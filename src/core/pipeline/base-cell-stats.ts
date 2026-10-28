@@ -1,4 +1,5 @@
 import { profitFactor } from "../metrics/stats.ts";
+import type { BaseLastNStats } from "../domain/types.ts";
 
 export interface BaseCellStat {
   n: number;
@@ -9,6 +10,7 @@ export interface BaseCellStat {
   gl?: number;
   /** Invalid/overflowed executed returns: never qualify the Base cell. */
   invalid?: true;
+  baseLast?: BaseLastNStats;
 }
 
 /**
@@ -27,11 +29,13 @@ export class BaseCellAccumulator {
   private n = 0;
   private runStart = 0;
   private ordered = true;
+  private validTimes = true;
 
   reset(): void {
     this.n = this.runStart = 0;
     this.ends.length = 0;
     this.ordered = true;
+    this.validTimes = true;
   }
 
   beginRun(): void {
@@ -40,6 +44,7 @@ export class BaseCellAccumulator {
   }
 
   readonly push = (r: number, entryT: number, exitT: number): void => {
+    if (!(Number.isFinite(entryT) && Number.isFinite(exitT) && exitT >= entryT)) this.validTimes = false;
     if (this.n === this.rr.length) {
       const capacity = this.rr.length * 2;
       const grow = (a: Float64Array) => {
@@ -66,9 +71,12 @@ export class BaseCellAccumulator {
     this.n++;
   };
 
-  stats(): BaseCellStat {
+  stats(lastN = 0, stop = 0): BaseCellStat {
+    if (!Number.isSafeInteger(lastN) || lastN < 0) throw new RangeError("invalid Base last-N");
     const n = this.n;
-    if (!n) return { n: 0, pf: 0, net: 0, mdd: 0 };
+    const lastCount = Math.min(n, lastN);
+    if (!n) return { n: 0, pf: 0, net: 0, mdd: 0,
+      ...(lastN ? { baseLast: { requested: lastN, n: 0, gp: 0, gl: 0, stop } } : {}) };
     if (n > this.runStart) {
       this.ends.push(n);
       this.runStart = n;
@@ -117,8 +125,14 @@ export class BaseCellAccumulator {
     let cum = 0;
     let peak = 0;
     let mdd = 0;
+    let lastGp = 0;
+    let lastGl = 0;
     for (let j = 0; j < n; j++) {
       const r = this.rr[indices ? indices[j] : j];
+      if (lastN && j >= n - lastCount) {
+        if (r > 0) lastGp += r;
+        else lastGl -= r;
+      }
       if (r > 0) gp += r;
       else gl -= r;
       sum += r;
@@ -134,8 +148,13 @@ export class BaseCellAccumulator {
       Number.isFinite(cum) && Number.isFinite(peak) && Number.isFinite(mdd) && Number.isFinite(pf) &&
       Number.isFinite(sum * 100) && Number.isFinite(mdd * 100) &&
       Number.isFinite(gp * 100) && Number.isFinite(gl * 100)))
-      return { n, pf: 0, net: 0, mdd: 0, gp: 0, gl: 0, invalid: true };
-    return { n, pf, net: sum * 100, mdd: mdd * 100, gp: gp * 100, gl: gl * 100 };
+      return { n, pf: 0, net: 0, mdd: 0, gp: 0, gl: 0, invalid: true,
+        ...(lastN ? { baseLast: { requested: lastN, n: lastCount, gp: 0, gl: 0, stop: 0, invalid: true } } : {}) };
+    const validLast = this.validTimes && Number.isFinite(lastGp * 100) && Number.isFinite(lastGl * 100) && Number.isFinite(stop) && stop >= 0;
+    return { n, pf, net: sum * 100, mdd: mdd * 100, gp: gp * 100, gl: gl * 100,
+      ...(lastN ? { baseLast: validLast
+        ? { requested: lastN, n: lastCount, gp: lastGp * 100, gl: lastGl * 100, stop }
+        : { requested: lastN, n: lastCount, gp: 0, gl: 0, stop: 0, invalid: true as const } } : {}) };
   }
 }
 

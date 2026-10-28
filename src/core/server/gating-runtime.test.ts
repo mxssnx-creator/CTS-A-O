@@ -19,7 +19,7 @@ it("a preset starts from the default validation and gates; mainnet keeps its flo
   demo.applyPreset("desk-default");
   assert.deepEqual(
     [demo.wf.lastN, demo.wf.validLastN, demo.settings.gates.minPf],
-    // the code defaults (entry 15 and validation 15 since 6 Oct), whatever they are
+    // the code defaults, whatever they are
     [defaultWalkForward(DEFAULT_SETTINGS).lastN, defaultWalkForward(DEFAULT_SETTINGS).validLastN, 1.1],
     "the relaxed preset does not carry over",
   );
@@ -89,6 +89,9 @@ it("applies requested Validation 8, 10 and 12 to demo, and the mainnet floor unl
       assert.equal(main.wf.validLastN, MAINNET_VALID_LAST_N);
       assert.equal(main.wf.rangeOpts?.sh?.validLastN, MAINNET_VALID_LAST_N);
     }
+    main.updateSettings({}, { validLastN: 50, rangeOpts: { sh: { validLastN: 50 } } } as never);
+    assert.equal(main.wf.validLastN, 50, "an explicitly stricter validation is retained");
+    assert.equal(main.wf.rangeOpts?.sh?.validLastN, 50);
     process.env.CTS_CORE_MAINNET_WAIVE_FLOORS = "1";
     for (const n of [8, 10, 12]) {
       main.updateSettings({}, { validLastN: n, rangeOpts: { sh: { validLastN: n } } } as never);

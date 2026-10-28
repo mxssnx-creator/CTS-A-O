@@ -6,6 +6,7 @@ const { CoreDb } = await import("./server/db.server.ts");
 const { CoreRuntime, basePass } = await import("./server/runtime.server.ts");
 const { DEFAULT_PROTECT } = await import("./config.ts");
 const { statsOf } = await import("./metrics/stats.ts");
+const { baseLastNOf } = await import("./pipeline/base-lastn.ts");
 const { configId } = await import("./pipeline/pipeline.ts");
 const { coreOverviewData, connInput } = await import("./api-data.ts");
 import type { ComboRun } from "./pipeline/pipeline.ts";
@@ -14,9 +15,12 @@ import type { SettingsPatch } from "./config.ts";
 const G = globalThis as unknown as { __ctsCoreRuntime?: InstanceType<typeof CoreRuntime> };
 let current: InstanceType<typeof CoreRuntime> | null = null;
 afterEach(() => { current?.dispose(); current = null; delete G.__ctsCoreRuntime; });
-const stats = (pf: number) => statsOf(Array.from({ length: 20 }, (_, i) => ({
-  entryT: 1000 + i * 10, exitT: 1001 + i * 10, r: i % 2 ? -0.01 : pf * 0.01,
-})));
+const stats = (pf: number) => {
+  const rows = Array.from({ length: 20 }, (_, i) => ({
+    entryT: 1000 + i * 10, exitT: 1001 + i * 10, r: i % 2 ? -0.01 : pf * 0.01,
+  }));
+  return { ...statsOf(rows), baseLast: baseLastNOf(rows, 40, DEFAULT_PROTECT.sl * 100) };
+};
 const row = (ind: string, pf: number, ranges?: Record<string, ReturnType<typeof stats>>): ComboRun => ({
   id: configId("follow", ind, DEFAULT_PROTECT), bot: "follow", ind, protect: DEFAULT_PROTECT,
   full: stats(pf), ranges, score: 0, bySym: {}, trades: [], open: [],

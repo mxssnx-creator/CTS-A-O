@@ -9,6 +9,7 @@ import { barsFromCandles, resample } from "../src/core/market/bars.ts";
 import { SeriesCache } from "../src/core/indications/cache.ts";
 import { LOW_RANGE_WINDOWS, LOW_RANGE_METHODS, LOW_RANGE_RELATIONS, lowRangeState, lowRangeProtects, DEFAULT_LOW_RANGE_POLICY } from "../src/core/indications/low-range-research.ts";
 import { rangeCellPass, configId, laneProtect } from "../src/core/pipeline/pipeline.ts";
+import { baseLastNOf } from "../src/core/pipeline/base-lastn.ts";
 import { compareTapeTrades, configDirectionEval, defaultWalkForward, lastNOk, makeTape } from "../src/core/sim/walkforward.ts";
 import { sideSignal, simulate } from "../src/core/sim/backtest.ts";
 import { statsOf, settledHourT } from "../src/core/metrics/stats.ts";
@@ -17,6 +18,7 @@ import { minPfOf } from "../src/core/minimal-coord.ts";
 const output = process.argv[2] ?? "runs/low-range-24h-20261027";
 const windowScreen = process.argv.includes("--window-screen");
 const recordOrders = process.argv.includes("--orders");
+const productionBase = process.argv.includes("--production-base");
 const integerOption = (name, fallback) => {
   const raw = process.argv.find((x) => x.startsWith(`--${name}=`))?.slice(name.length + 3);
   if (raw === undefined) return fallback;
@@ -42,7 +44,10 @@ const defaults = defaultWalkForward(DEFAULT_SETTINGS);
 const validLastN = integerOption("valid-last-n", defaults.validLastN ?? 0);
 const rangeLastN = integerOption("range-last-n", defaults.rangeGate?.lastN ?? 0);
 const baseLastN = integerOption("base-last-n", 0);
-const o = { ...defaults, preH: 24, simH: 24, longH: 24, validLastN,
+if (productionBase && baseLastN <= 0) throw new Error("--production-base requires a positive --base-last-n");
+// This sealed research path applies its --base-last-n counterfactual separately below. Do not double-apply a
+// production Base gate to synthetic aggregate stats that do not carry Base recent-close evidence.
+const o = { ...defaults, gates: { ...defaults.gates, baseLastN: 0 }, preH: 24, simH: 24, longH: 24, validLastN,
   rangeGate: defaults.rangeGate ? { ...defaults.rangeGate, lastN: rangeLastN } : undefined };
 const countPerStep = Object.fromEntries(policy.steps.map((step) => [step, protects.filter((p) => Math.round((p.tp - policy.cost) / policy.step) === step).length]));
 const protocol = {
@@ -50,19 +55,20 @@ const protocol = {
   scope: windowScreen
     ? "unallocated all-window candidate screen with matched 60m Normal TP and trailing reference cells, not production or venue execution"
     : "unallocated independent candidate tapes, not production or venue execution",
-  windowScreen, recordOrders,
+  windowScreen, recordOrders, productionBase,
   frozenAt: new Date().toISOString(),
   hashes: { source: sha(readFileSync("src/core/indications/low-range-research.ts")), tests: sha(readFileSync("src/core/indications/low-range-research.test.ts")),
     runner: sha(readFileSync("scripts/low-range-short-24h-research.mjs")), description: sha(readFileSync("docs/low-range-research-20261027/PROTOCOL-SHORT.md")), feed: sha(feedBytes),
     backtest: sha(readFileSync("src/core/sim/backtest.ts")), walkforward: sha(readFileSync("src/core/sim/walkforward.ts")),
-    pipeline: sha(readFileSync("src/core/pipeline/pipeline.ts")), config: sha(readFileSync("src/core/config.ts")) },
+    pipeline: sha(readFileSync("src/core/pipeline/pipeline.ts")), config: sha(readFileSync("src/core/config.ts")),
+    trailing: sha(readFileSync("src/core/sim/trailing.ts")), baseLastN: sha(readFileSync("src/core/pipeline/base-lastn.ts")) },
   feed: { path: feedPath, provider: "Previously examined cached Binance USD-M minute candles; retrospective, not a fresh holdout" },
   symbols, warm, evalFrom, start, end, tfs, policy, methods: LOW_RANGE_METHODS, relations: LOW_RANGE_RELATIONS, windows: LOW_RANGE_WINDOWS,
   requestedPerSignalLane: policy.steps.length * policy.slRatios.length * policy.trailRatios.length * policy.tags.length,
   candidateHoldMin,
   distinctPerSignalLane: protects.length, countPerStep,
   totalCells: protects.length * LOW_RANGE_WINDOWS.length * LOW_RANGE_METHODS.length * LOW_RANGE_RELATIONS.length * tfs.length,
-  gates: o.gates, baseLastN, validLastN: o.validLastN, rangeGate: o.rangeGate, preH: o.preH, longH: o.longH,
+  gates: productionBase ? { ...o.gates, baseLastN } : o.gates, baseLastN, validLastN: o.validLastN, rangeGate: o.rangeGate, preH: o.preH, longH: o.longH,
 };
 mkdirSync(output, { recursive: true });
 writeFileSync(`${output}/protocol.json`, JSON.stringify(protocol, null, 2) + "\n", { flag: "wx" });
@@ -120,14 +126,18 @@ try {
       }
       trades.sort(compareTapeTrades);
       const tape = makeTape(id, "follow", ind, p, p.trail ? "trailing" : "normal", symbols, trades, opens, []);
-      const baseTrades = trades.filter((t) => t.entryT >= evalFrom && t.exitT < start);
+      // Production Base consumes all closes through its cut, including a close exactly at the cut.
+      const baseTrades = trades.filter((t) => t.entryT >= evalFrom && (productionBase ? t.exitT <= start : t.exitT < start));
       const initial = statsOf(baseTrades, start);
       const basePfFloor = minPfOf(o.gates, p.tag, ind);
       const baseLastTrades = baseLastN > 0 ? baseTrades.slice(-baseLastN) : [];
       const baseLastStats = baseLastN > 0 ? statsOf(baseLastTrades, start) : null;
       const baseLastNPass = baseLastN <= 0 || lastNOk(tape, start, baseLastN, basePfFloor,
         0, 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false);
-      const basePassed = rangeCellPass(o.gates, ind)(p.tag, initial) && baseLastNPass;
+      const basePassed = productionBase
+        ? rangeCellPass({ ...o.gates, baseLastN }, ind)(p.tag,
+          { ...initial, baseLast: baseLastNOf(baseTrades, baseLastN, p.sl * 100) })
+        : rangeCellPass(o.gates, ind)(p.tag, initial) && baseLastNPass;
       const row = { ind, tf, step, method, relation, window, tag: p.tag, protect: p,
         base: { n: initial.n, pf: initial.n ? initial.pf : null, noLoss: initial.n > 0 && initial.gl === 0 && initial.gp > 0,
           lastN: baseLastN ? { n: baseLastStats.n, pf: baseLastStats.n ? baseLastStats.pf : null,

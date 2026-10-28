@@ -94,6 +94,10 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       num(s.gates.lastNFloor, 0, 100, "last-N floor (closes)");
       int(s.gates.lastNFloor, "last-N floor");
     }
+    if (s.gates.baseLastN !== undefined) {
+      num(s.gates.baseLastN, 0, 500, "Base last-N (closes)");
+      int(s.gates.baseLastN, "Base last-N");
+    }
     if (s.gates.warmup !== undefined && typeof s.gates.warmup !== "boolean")
       throw new Error("sample warm-up (gates.warmup): true or false");
     if (s.gates.minGreen !== undefined)

@@ -170,7 +170,8 @@ describe("Low-Range Short integration", () => {
     const ps = protectGrid(REF_TF, grid, cost).filter((p) => p.lowRangeOnly);
     assert.ok(ps.length >= 3);
     const accepted = protectCellKey(laneProtect(ps[0], ind));
-    const stat = { n: 10, pf: 2, net: 1, mdd: 0 };
+    const stat = { n: 10, pf: 2, net: 1, mdd: 0,
+      baseLast: { requested: 40, n: 10, gp: 2, gl: 1, stop: .5 } };
     const s = { ...DEFAULT_SETTINGS, grid, gates: { ...DEFAULT_SETTINGS.gates, minTrades: 1 } };
     const row = { bot: "follow", ind, full: stat, ranges: { sh: stat }, rangeTps: { sh: [ps[0].tp] },
       rangeCells: [accepted], score: 1 };

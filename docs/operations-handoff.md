@@ -1,3 +1,44 @@
+## 2026-10-28 — Base Last-40, Validation Last-12 and trailing audit
+
+Base Last-N is now a selectable gate (default 40, 0 off) using each computed
+Base cell's own chronological recent closes, with last-N floor and optional loss
+prior. Missing, stale, invalid or unordered proof fails closed. Worker, local,
+preset and Signal-Exit Base paths receive the proof. Default general seat
+validation is Last-12, and the x01 validation floor is 12; stricter explicitly
+saved values survive. Signal and Exit overrides retain their own policies, and
+this does not establish independent Base-40 evaluation for every ladder or
+Signal config. Recompute prior Base proofs rather than translating stale keys.
+
+Trailing-only candidate deduplication now distinguishes minute caps before
+lane conversion. A constructed 10/15-minute collision lost the second cell
+before the fix and retains both after it; the observed historical PF decline
+has not been attributed to this defect. A 122-case focused trailing audit passed
+long/short ratchet, TP, stop, gap, tick, restart, Signal, DCA, Axis, Historic
+Exit and Paper ownership cases. DCA and managed Axis use their own exits rather
+than inheriting the Normal trailing grid.
+
+The most recent bounded 20-symbol Low-Range Short screen applied the production
+Base-40 gate to 3,900 candidate histories. At 2026-10-09 12:00 UTC, 45 Base
+cells passed and 25/90 direction contexts (27.78%) validated at historical PF
+2.891881 over the preceding 24h. Its separate next-24h walk-forward produced
+37 unallocated modeled closes at PF 0.963800: 23 Normal at 0.852229 and 14
+Trailing at 1.210925. Positions opened/closed/held were 17/17/0 and orders
+37/37/0. Close reasons: 16 time, 6 SL, 13 TP and 2 trail. The 74 candidate
+screen closes at PF 0.805556 are a different cohort. All 37 selected closes
+matched exact validated source tapes; no venue fills or future performance are
+proved. Full per-cell, direction, hourly and order listings and source/feed
+hashes are in `docs/trailing-audit-20261028/report.html` and `README.md`.
+
+Local targeted suites passed after updating fixtures to supply the new evidence;
+the complete inventory run was initiated against intermediate files and exposed
+fixture failures that were subsequently rerun and corrected, so it is not a
+clean final pass. PR #212 merged the Exit routing and retention fixes; PR #213
+merged its worker-fixture correction. Their GitHub checks must be inspected for
+final status. This work has not changed a running instance, exchange or host
+settings. The requested per-step hold controls and per-config automatic hold
+optimization are still outstanding; no tested hold cap demonstrated stable
+high forward PF.
+
 ## 2026-10-28 — Historic Exit opt-in, exact lanes and held recovery
 
 Historic Exit is disabled by default. A one-time, transactional migration backs

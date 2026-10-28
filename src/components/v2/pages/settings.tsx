@@ -228,7 +228,7 @@ const AXIS_RANGES: AxisRange[] = ["atr", "linear", "geo", "fib", "volume"];
 /** Mainnet (bingx-x01) floors the runtime enforces on save (MAINNET_LAST_N / MAINNET_VALID_LAST_N in runtime.server.ts). */
 const MAINNET_CONN = "bingx-x01";
 const MAINNET_LAST_N = 25;
-const MAINNET_VALID_LAST_N = 50;
+const MAINNET_VALID_LAST_N = 12;
 const MAINNET_SIGNAL_VALID_LAST_N = SIGNAL_VALID_LAST_N;
 /** DCA targets the engine uses while none are set (walkforward.ts dcaProtects). */
 const DCA_TP_DEFAULT = [0.008, 0.012, 0.026, 0.035];
@@ -2822,6 +2822,11 @@ export function SettingsPage() {
                 onChange={(v) => set(["gates", "baseSetsMinPf"], v)}
               />
             </Field>
+            <Field label="Base last-N (closes)"
+              hint="the latest completed closes of each exact Base cell must also pass its own PF floor; partial samples use the Last-N floor below · 0 = off · 0 – 500">
+              <Num int min={0} max={500} value={s.gates.baseLastN ?? 40}
+                onChange={(v) => set(["gates", "baseLastN"], v)} />
+            </Field>
             <Field
               label="Sample warm-up"
               hint="a check that cannot be computed yet counts as valid until the closes are there, then is judged normally: the drawdown of a last-N window shorter than N, a symbol with no close of this config yet, fewer than two stability blocks. The result itself is always judged on the closes there are · off = strict (a short sample fails)"
@@ -4346,7 +4351,7 @@ export function SettingsPage() {
               hint={`pre-historic / best set: last closes must clear min PF and DDT · 0 = off · 0 – 200 · mainnet (${MAINNET_CONN}): at least ${MAINNET_VALID_LAST_N} enforced${onMainnet ? " — active now" : ""}`}
             >
               <Num
-                value={wf.validLastN ?? 15}
+                value={wf.validLastN ?? 12}
                 min={0}
                 max={200}
                 onChange={(v) => setW("validLastN", Math.round(v))}

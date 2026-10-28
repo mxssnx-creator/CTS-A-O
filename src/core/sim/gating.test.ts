@@ -90,7 +90,7 @@ describe("gating: nothing unvalidated executes", () => {
     const defaults = defaultWalkForward(DEFAULT_SETTINGS);
     assert.equal(defaults.preH, 6);
     assert.equal(defaults.longH, 24);
-    assert.equal(defaults.validLastN, 15);
+    assert.equal(defaults.validLastN, 12);
     assert.equal(defaults.maxPerSymbol, 0, "orders per symbol remain uncapped");
     assert.equal(defaults.maxPerSide, 0, "orders per symbol and direction remain uncapped");
   });
@@ -546,11 +546,13 @@ describe("sample warm-up (gates.warmup): a check that cannot be computed yet is 
       "range floors remain active at Base",
     );
     // a wide set at PF 1.02 passes the deliberately wider prefilter
-    const st = { n: 40, pf: 1.02, net: 0.5, mdd: 0.1 };
+    const st = { n: 40, pf: 1.02, net: 0.5, mdd: 0.1,
+      baseLast: { requested: 40, n: 40, gp: 1.02, gl: 1, stop: 3.9 } };
     assert.equal(passesBase(st, sets), true, "built and evaluated");
     for (const tag of ["mc", "mn", "sh", "gn", "lg"])
       assert.equal(passesBase(st, { ...sets, minPf: minPfOf(sets, tag) }), false, tag);
-    const middle = { n: 40, pf: 1.15, net: 0.5, mdd: 0.1 };
+    const middle = { n: 40, pf: 1.15, net: 0.5, mdd: 0.1,
+      baseLast: { requested: 40, n: 40, gp: 1.15, gl: 1, stop: 3.9 } };
     assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "mn") }), true, "Minimal 1.10");
     assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "sh") }), true, "Short 1.10");
     assert.equal(

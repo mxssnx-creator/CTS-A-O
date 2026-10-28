@@ -17,6 +17,18 @@ const trades = (returns: readonly number[], offset = 0): TradeLike[] =>
   returns.map((r, i) => ({ r, entryT: offset + i * 10, exitT: offset + i * 10 + 5 }));
 
 describe("full Base configured-cell counts", () => {
+  it("uses each cell's recent Base closes without borrowing an older winning history", () => {
+    const count = new BaseConfigCounter(options({ cutT: 1000,
+      gates: { minPf: 1.1, minTrades: 2, maxDdr: 0, baseLastN: 4, lastNFloor: 2 } }));
+    const oldWinners = [0.1, 0.1, 0.1, 0.1];
+    count.record("follow", "ema-9-21@m15", P, "normal", trades([...oldWinners, -.01, -.01, -.01, -.01]));
+    count.record("follow", "ema-9-21@m15", { ...P, tp: .02 }, "normal", trades([-.01, -.01, .02, .02, .02, .02]));
+    const row = count.rows()[0];
+    assert.equal(row.evaluated, 2);
+    assert.equal(row.pfPassed, 2, "both full samples clear the separate raw PF floor");
+    assert.equal(row.passed, 1, "only the config with its own passing recent closes qualifies");
+  });
+
   it("starts empty and counts every raw configured cell independently rather than one pair's best protect", () => {
     const count = new BaseConfigCounter(options());
     assert.deepEqual(count.rows(), []);
