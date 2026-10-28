@@ -5,7 +5,7 @@ import { liveKv, resetLiveBackoff, stepLive, type LiveStatus } from "./live.serv
 import { liveTag, makeCoid } from "./live.ts";
 import { liveTrades, type LedgerRow } from "../statistics.ts";
 import { authorizeSyntheticLanes, fakeRt, syntheticExecutionRun } from "../test-support.ts";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
@@ -14,9 +14,12 @@ import { REQUEST_WINDOW_MS, takeSignedRequestSlot } from "../exchange/request-bu
 const originalKey = process.env.BINGX_X02_API_KEY;
 const originalSecret = process.env.BINGX_X02_SECRET;
 const originalArmed = process.env.CTS_CORE_LIVE;
+const originalBudgetFile = process.env.CTS_BINGX_RATE_BUDGET_FILE;
 const intent: LiveIntent = { cfg: "combo|ema-9-21@m1|entry", sym: "S0-USDT", side: 1,
   barT: 1, protect: { tp: .1, sl: .05, trail: 0, hold: 1 } };
-type Reply = { order: { orderId?: string; status?: string; executedQty?: number; avgPrice?: number; commission?: number; updateTime?: number } };
+type Reply = { order: { orderId?: string; orderID?: string; clientOrderId?: string; symbol?: string; side?: string; positionSide?: string; type?: string;
+  status?: string; executedQty?: number; executedVolume?: number; cumExecQty?: number; filledQty?: number; origQty?: number;
+  avgPrice?: number; commission?: number; updateTime?: number } };
 function fixture(db = new CoreDb(":memory:")) {
   const rt = fakeRt(db).rt;
   // Settings are mutable runtime state; keep factor edits in each fixture from leaking across the test suite.
@@ -26,10 +29,12 @@ function fixture(db = new CoreDb(":memory:")) {
   const state = {
     equity: 100 as number | null, availableMargin: 100 as number | null,
     extraQty: new Map<string, number>(),
-    qty: 0, entry: { order: { orderId: "entry", status: "FILLED", executedQty: .25, avgPrice: 10.2, commission: -.01 } } as Reply,
+    qty: 0, shortQty: 0, entry: { order: { orderId: "entry", status: "FILLED", executedQty: .25, avgPrice: 10.2, commission: -.01 } } as Reply,
+    entryShort: { order: { orderId: "entry-short", status: "FILLED", executedQty: .25, avgPrice: 10.2, commission: -.01 } } as Reply,
     close: { order: { orderId: "close", status: "FILLED", executedQty: 1, avgPrice: 10.1, commission: -.02 } } as Reply,
     failControls: false, polls: 0,
     sent: [] as Array<Record<string, string>>, orders: [] as Array<Record<string, string>>,
+    beforeMarket: undefined as ((params: Record<string, string>) => void) | undefined,
   };
   mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
     const u = new URL(String(input));
@@ -39,22 +44,26 @@ function fixture(db = new CoreDb(":memory:")) {
       return reply(["S0-USDT", "S1-USDT"].map((symbol) => ({ symbol, quantityPrecision: 3, pricePrecision: 4, tradeMinQuantity: .001, tradeMinUSDT: 2 })));
     if (u.pathname.endsWith("/user/positions"))
       return reply([...(state.qty > 0 ? [{ symbol: "S0-USDT", positionSide: "LONG", positionAmt: state.qty }] : []),
+        ...(state.shortQty > 0 ? [{ symbol: "S0-USDT", positionSide: "SHORT", positionAmt: -state.shortQty }] : []),
         ...[...state.extraQty].filter(([, q]) => q > 0).map(([symbol, positionAmt]) => ({ symbol, positionSide: "LONG", positionAmt }))]);
     if (u.pathname.endsWith("/trade/openOrders")) return reply({ orders: state.orders });
     if (u.pathname.endsWith("/user/balance")) return reply({ balance: { asset: "USDT", equity: state.equity, balance: state.equity, availableMargin: state.availableMargin } });
     assert.ok(u.pathname.endsWith("/trade/order"), `unexpected mocked request ${u.pathname}`);
-    if (init?.method === "GET") { state.polls++; return reply(p.orderId === "close" ? state.close : state.entry); }
+    if (init?.method === "GET") { state.polls++; return reply(p.orderId === "close" ? state.close : p.orderId === "entry-short" ? state.entryShort : state.entry); }
     if (init?.method === "DELETE") { state.orders = state.orders.filter((o) => o.orderId !== p.orderId); return reply({}); }
     state.sent.push(p);
     if (p.type !== "MARKET") {
       if (state.failControls) return reply({}, 101400);
-      state.orders.push({ ...p, orderId: String(state.orders.length + 1) });
+      state.orders.push({ ...p, orderId: String(state.orders.length + 1), origQty: p.quantity, executedQty: "0" });
       return reply({});
     }
-    const response = p.side === "BUY" ? state.entry : state.close;
+    state.beforeMarket?.(p);
+    const into = p.positionSide === "SHORT" ? p.side === "SELL" : p.side === "BUY";
+    const response = into ? p.positionSide === "SHORT" ? state.entryShort : state.entry : state.close;
     const got = Math.min(Number(p.quantity), response.order.executedQty ?? Number(p.quantity));
-    if (p.symbol === "S0-USDT") state.qty = Math.max(0, state.qty + (p.side === "BUY" ? got : -got));
-    else state.extraQty.set(p.symbol, Math.max(0, (state.extraQty.get(p.symbol) ?? 0) + (p.side === "BUY" ? got : -got)));
+    if (p.symbol === "S0-USDT" && p.positionSide === "SHORT") state.shortQty = Math.max(0, state.shortQty + (into ? got : -got));
+    else if (p.symbol === "S0-USDT") state.qty = Math.max(0, state.qty + (into ? got : -got));
+    else state.extraQty.set(p.symbol, Math.max(0, (state.extraQty.get(p.symbol) ?? 0) + (into ? got : -got)));
     return reply(response);
   });
   const step = (intents: LiveIntent[] = [intent]) => {
@@ -71,6 +80,19 @@ function fixture(db = new CoreDb(":memory:")) {
     "SELECT o.*,f.fill_px AS fillPx,f.fee,f.fee_known AS feeKnown FROM live_orders o LEFT JOIN live_fills f USING(coid) ORDER BY o.at,o.rowid",
   ), liveTag(rt.settings.live.connId).length);
   return { rt, state, step, seed, history };
+}
+
+/** Establish the simulated account on an empty store before adding same-account historical rows. */
+async function isolatedBoundFixture() {
+  const first = fixture();
+  await first.step([]);
+  const binding = first.rt.db.kvGet("liveOwnershipAccount");
+  assert.ok(binding, "the empty fixture established its account before seeding history");
+  // The synthetic live-cache flush may still have an unref'd timer; keep this in-memory fixture open until exit.
+  mock.restoreAll();
+  const next = fixture();
+  next.rt.db.kvSet("liveOwnershipAccount", binding);
+  return next;
 }
 
 let fixtureClock = 1_790_000_000_000;
@@ -113,6 +135,8 @@ describe("strict synthetic promotion evidence", () => {
 describe("entries mode: actual MARKET execution quantities", () => {
   beforeEach(() => {
     resetLiveBackoff();
+    // Request budget fixtures must not read or pollute the host's persistent venue budget.
+    process.env.CTS_BINGX_RATE_BUDGET_FILE = ":memory:";
     mock.timers.enable({ apis: ["Date"], now: fixtureClock += 100_000 });
     process.env.CTS_CORE_LIVE = "1";
     process.env.BINGX_X02_API_KEY = "entries-fixture-key";
@@ -125,6 +149,154 @@ describe("entries mode: actual MARKET execution quantities", () => {
     if (originalKey === undefined) delete process.env.BINGX_X02_API_KEY; else process.env.BINGX_X02_API_KEY = originalKey;
     if (originalSecret === undefined) delete process.env.BINGX_X02_SECRET; else process.env.BINGX_X02_SECRET = originalSecret;
     if (originalArmed === undefined) delete process.env.CTS_CORE_LIVE; else process.env.CTS_CORE_LIVE = originalArmed;
+    if (originalBudgetFile === undefined) delete process.env.CTS_BINGX_RATE_BUDGET_FILE;
+    else process.env.CTS_BINGX_RATE_BUDGET_FILE = originalBudgetFile;
+  });
+
+  it("hedge long and short of the same config and bar submit independent entries and native exits", async () => {
+    const { rt, state, step } = fixture();
+    state.entry.order = { orderId: "entry", status: "FILLED", executedQty: 1, avgPrice: 10.2 };
+    state.entryShort.order = { orderId: "entry-short", status: "FILLED", executedQty: 1, avgPrice: 9.8 };
+    const short = { ...intent, side: -1 as const };
+    const result = await step([intent, short]);
+    const entries = state.sent.filter((o) => o.type === "MARKET");
+    assert.deepEqual(entries.map((o) => [o.side, o.positionSide]), [["BUY", "LONG"], ["SELL", "SHORT"]], JSON.stringify(result));
+    const controls = state.sent.filter((o) => o.type !== "MARKET");
+    assert.deepEqual(controls.map((o) => [o.type, o.positionSide]), [
+      ["STOP_MARKET", "LONG"], ["TAKE_PROFIT_MARKET", "LONG"],
+      ["STOP_MARKET", "SHORT"], ["TAKE_PROFIT_MARKET", "SHORT"],
+    ]);
+    const rows = rt.db.all<{ side: number; msg: string }>("SELECT side,msg FROM live_orders WHERE kind='E' ORDER BY side DESC");
+    assert.equal(rows.length, 2);
+    assert.ok(rows[0].msg.endsWith("|side=1"));
+    assert.ok(rows[1].msg.endsWith("|side=-1"));
+    assert.notEqual(rows[0].msg, rows[1].msg);
+    await step([intent, short]);
+    assert.equal(state.sent.filter((o) => o.type === "MARKET").length, 2, "each exact direction remains deduplicated");
+  });
+
+  for (const legacy of ["entry", "pending"] as const) it(`unbound legacy ${legacy} remains held without venue writes or polling`, async () => {
+    const { rt, state, step } = fixture();
+    rt.testOnlyAllowMemoryLive = false;
+    const coid = makeCoid(rt.settings.live.connId, "E"), key = `${intent.cfg}|${intent.sym}|${intent.barT}`;
+    if (legacy === "entry") rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+      coid, intent.cfg, intent.sym, 1, "E", 1, 10, "ok", key, Date.now());
+    else rt.db.kvSet(`entriesPendingExecutions|${rt.settings.live.connId}`, {
+      [coid]: { oid: "unknown-account-order", cfg: intent.cfg, sym: intent.sym, side: 1, kind: "E", sentQty: 1, px: 10, key, at: Date.now() },
+    });
+    const before = rt.db.all("SELECT * FROM live_orders");
+    const status = await step([intent]);
+    assert.match(status.reason, /legacy live ownership has no account fingerprint/i);
+    assert.equal(state.sent.length, 0); assert.equal(state.polls, 0);
+    assert.deepEqual(rt.db.all("SELECT * FROM live_orders"), before);
+    assert.equal(rt.db.kvGet("liveOwnershipAccount"), undefined);
+  });
+
+  it("a legacy row with exact long side blocks only that side without rewriting the row", async () => {
+    const { rt, state, step } = fixture();
+    await step([]); // establish account identity while the ledger is still empty
+    const coid = makeCoid(rt.settings.live.connId, "E"), legacy = `${intent.cfg}|${intent.sym}|${intent.barT}`;
+    rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+      coid, intent.cfg, intent.sym, 1, "E", 0, 10, "error", legacy, Date.now() - 1_000);
+    state.entryShort.order = { orderId: "entry-short", status: "FILLED", executedQty: 1, avgPrice: 9.8 };
+    await step([intent, { ...intent, side: -1 as const }]);
+    const entries = state.sent.filter((o) => o.type === "MARKET");
+    assert.deepEqual(entries.map((o) => [o.side, o.positionSide]), [["SELL", "SHORT"]]);
+    assert.equal(rt.db.get<{ msg: string }>("SELECT msg FROM live_orders WHERE coid=?", coid)?.msg, legacy);
+  });
+
+  for (const legacy of ["missing-side", "conflicting-side", "malformed-key"] as const) {
+    it(`an ${legacy} legacy identity conservatively holds both sides`, async () => {
+      const { rt, state, step } = fixture();
+      await step([]); // establish account identity while the ledger is still empty
+      const coid = makeCoid(rt.settings.live.connId, "E"), key = `${intent.cfg}|${intent.sym}|${intent.barT}`;
+      const msg = legacy === "malformed-key" ? "unparseable-legacy" : legacy === "conflicting-side" ? `${key}|side=-1` : key;
+      rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        coid, intent.cfg, intent.sym, legacy === "missing-side" ? 0 : 1, "E", 0, 10, "error", msg, Date.now() - 1_000);
+      const result = await step([intent, { ...intent, side: -1 as const }]);
+      assert.equal(state.sent.filter((o) => o.type === "MARKET").length, 0);
+      if (legacy === "malformed-key") assert.ok(result.skipped.some((x) => /ambiguous legacy/.test(x.why)));
+      assert.equal(rt.db.get<{ msg: string }>("SELECT msg FROM live_orders WHERE coid=?", coid)?.msg, msg);
+    });
+  }
+
+  it("terminal long and short dedupe survives state-only restart and permits their newer bar", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-entry-side-watermarks-"));
+    const path = join(dir, "state.json"), db = new CoreDb(":memory:", { statePath: path });
+    let restored: CoreDb | undefined;
+    try {
+      const first = fixture(db), short = { ...intent, side: -1 as const };
+      first.state.entry.order = { orderId: "entry", status: "FILLED", executedQty: 1, avgPrice: 10.2 };
+      first.state.entryShort.order = { orderId: "entry-short", status: "FILLED", executedQty: 1, avgPrice: 9.8 };
+      await first.step([intent, short]);
+      await first.step([]); // both terminal orders and correctly sized native stops are visible
+      const snapshot = liveKv<Record<string, unknown>>(db, "entriesPendingExecutions|bingx-vst-02")!;
+      assert.deepEqual(Object.keys(snapshot), ["__sentIntentWatermarks"]);
+      mock.restoreAll();
+      restored = new CoreDb(":memory:", { statePath: path });
+      const next = fixture(restored);
+      next.state.entry.order = { orderId: "entry2", status: "FILLED", executedQty: 1, avgPrice: 10.2 };
+      next.state.entryShort.order = { orderId: "entry-short2", status: "FILLED", executedQty: 1, avgPrice: 9.8 };
+      await next.step([intent, short]);
+      assert.equal(next.state.sent.filter((o) => o.type === "MARKET").length, 0, "both sent identities survive without SQLite or a journal");
+      mock.timers.tick(REQUEST_WINDOW_MS + 1);
+      next.rt.status.lastBarT = 2;
+      const newer = await next.step([{ ...intent, barT: 2 }, { ...short, barT: 2 }]);
+      assert.deepEqual(next.state.sent.filter((o) => o.type === "MARKET").map((o) => o.positionSide), ["LONG", "SHORT"], JSON.stringify(newer));
+    } finally { restored?.db.close(); db.db.close(); rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("a state-only restart can retry a known non-dispatch without retaining a phantom watermark", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-entry-unsent-watermark-"));
+    const path = join(dir, "state.json"), db = new CoreDb(":memory:", { statePath: path });
+    let restored: CoreDb | undefined;
+    try {
+      const first = fixture(db);
+      for (let i = 0; i < 8; i++)
+        assert.equal(takeSignedRequestSlot("POST", "/openApi/swap/v2/trade/order", { type: "STOP_MARKET" }).until, 0);
+      await first.step();
+      assert.equal(first.state.sent.length, 0);
+      mock.restoreAll();
+      restored = new CoreDb(":memory:", { statePath: path });
+      const next = fixture(restored);
+      mock.timers.tick(REQUEST_WINDOW_MS + 1);
+      const retry = await next.step();
+      assert.equal(retry.placed, 1, JSON.stringify(retry));
+      assert.equal(next.state.sent.filter((o) => o.type === "MARKET").length, 1);
+    } finally { restored?.db.close(); db.db.close(); rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("compresses repeated terminal bars to one directional watermark without discarding a pending request", async () => {
+    const { rt, step } = await isolatedBoundFixture();
+    for (let bar = 1; bar <= 100; bar++)
+      rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        `${liveTag(rt.settings.live.connId)}Ehistory${bar}`, intent.cfg, intent.sym, 1, "E", 0, 10, "error",
+        `${intent.cfg}|${intent.sym}|${bar}|side=1`, Date.now() - 1_000);
+    const pendingId = `${liveTag(rt.settings.live.connId)}Eunresolved`;
+    rt.db.kvSet(`entriesPendingExecutions|${rt.settings.live.connId}`, {
+      [pendingId]: { oid: "entry", cfg: intent.cfg, sym: intent.sym, side: -1, kind: "E", sentQty: 1,
+        px: 10, key: `${intent.cfg}|${intent.sym}|1|side=-1`, at: Date.now(), polledAt: Date.now() },
+    });
+    await step([]);
+    const state = liveKv<Record<string, unknown>>(rt.db, `entriesPendingExecutions|${rt.settings.live.connId}`)!;
+    const marks = state.__sentIntentWatermarks as { watermarks: Record<string, number> };
+    assert.deepEqual(Object.values(marks.watermarks), [100]);
+    assert.ok(state[pendingId], "the unresolved opposite-side execution is not compacted");
+  });
+
+  for (const side of [1, -1] as const) it(`a hidden one-way pending side ${side} reserves its symbol against the opposite entry`, async () => {
+    const { rt, state, step } = fixture();
+    rt.settings.live.positionMode = "oneway";
+    const pendingReply = { order: { orderId: "pending-direction", status: "NEW", executedQty: 0 } };
+    if (side === 1) state.entry = pendingReply;
+    else state.close = pendingReply;
+    const first = { ...intent, side }, opposite = { ...intent, cfg: `${intent.cfg}-other`, side: -side as 1 | -1 };
+    await step([first]);
+    assert.equal(state.sent.filter((o) => o.type === "MARKET").length, 1);
+    await step([opposite]);
+    assert.equal(state.sent.filter((o) => o.type === "MARKET").length, 1,
+      "an invisible unresolved order cannot be offset by another config");
+    assert.ok((liveKv<LiveStatus>(rt.db, "liveStatus")?.skipped ?? []).some((x) => /ownership reserved/.test(x.why)));
   });
 
   for (const restart of [false, true]) it(`an unsent request-budget hold retries the same entry ${restart ? "after restart" : "on a fresh step"} without pending ownership`, async () => {
@@ -146,7 +318,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
   });
 
   it("a durable non-dispatch marker wins over stale pre-crash request metadata", async () => {
-    const { rt, state, step } = fixture();
+    const { rt, state, step } = await isolatedBoundFixture();
     const coid = makeCoid(rt.settings.live.connId, "E");
     const key = `${intent.cfg}|${intent.sym}|${intent.barT}`;
     rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -241,8 +413,8 @@ describe("entries mode: actual MARKET execution quantities", () => {
   });
 
   for (const { name, tag, rangeFactor, cfg, expected } of [
-    { name: "Micro", tag: "micro", rangeFactor: 2.5, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc", expected: 27 },
-    { name: "Minimal", tag: "minimal", rangeFactor: 1.7, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mn", expected: 18.36 },
+    { name: "Micro", tag: "micro", rangeFactor: 2.5, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc", expected: 18.5 },
+    { name: "Minimal", tag: "minimal", rangeFactor: 1.7, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mn", expected: 12.74 },
   ] as const) {
     it(`${name} live sizing stacks Block, Relate, coordination, strategy, and range factors before caps`, async () => {
       const { rt, state, step } = fixture();
@@ -264,7 +436,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
       assert.equal(result.placed, 1, `${name} entry reaches the synthetic live exchange: ${JSON.stringify(result)}`);
       const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
       assert.equal(Number(entry.quantity), expected,
-        `$10 × ${rangeFactor} range × 1.2 coordination × 2 Block × 1.5 Relate × 3 strategy ÷ $10 price`);
+        `$10 × ${rangeFactor} range × 1.2 coordination × 2 Block × 3 strategy, plus 0.5 original-base Relate units ÷ $10 price`);
       const stops = state.sent.filter((p) => p.type === "STOP_MARKET");
       assert.equal(stops.length, 1, `${name} partial fills receive native protection`);
       assert.equal(Number(stops[0].quantity), 0.25,
@@ -312,12 +484,12 @@ describe("entries mode: actual MARKET execution quantities", () => {
       assert.ok(rangeGrid && typeof rangeGrid === "object");
       Object.assign(rangeGrid, { volumeFactor: rangeFactor });
       const result = await step([{
-        ...intent, cfg, blockVol: 2, relateVol: 1.5, coordVol: 1.2, volFactor: 3, maxStack: 15,
+        ...intent, cfg, blockVol: 2, relateVol: 1.5, coordVol: 1.2, volFactor: 3, maxStack: 8,
       }]);
       assert.equal(result.placed, 1, JSON.stringify(result));
       const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
-      assert.equal(Number(entry.quantity), 15,
-        `${name} must cap the combined execution multiplier at 15× even if the current factors would exceed it`);
+      assert.equal(Number(entry.quantity), 8,
+        `${name} must cap the combined execution multiplier at the systemwide 8× ceiling`);
     });
   }
 
@@ -332,10 +504,10 @@ describe("entries mode: actual MARKET execution quantities", () => {
       const rangeGrid = rt.settings.grid[tag];
       assert.ok(rangeGrid && typeof rangeGrid === "object");
       Object.assign(rangeGrid, { volumeFactor: 4 });
-      await step([{ ...intent, cfg, rangeVol: captured, blockVol: 1.2, relateVol: 1.44, maxStack: 50 }]);
+      await step([{ ...intent, cfg, rangeVol: captured, blockVol: 1.2, relateVol: 1.44, maxStack: 8 }]);
       const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
       assert.ok(entry, `${name} entry is sent`);
-      assert.ok(Math.abs(Number(entry.quantity) - captured * 1.2 * 1.44) <= 0.001,
+      assert.ok(Math.abs(Number(entry.quantity) - (captured * 1.2 + 0.44)) <= 0.001,
         `${name} keeps the captured Real multiplier rather than repricing it from the edited grid`);
     });
   }
@@ -358,6 +530,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
       const { rt, state, step } = fixture();
       Object.assign(rt.settings.live, { notionalUsd: 1, maxNotionalUsd: 0, maxPositionX: 0,
         maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+      state.entry.order.executedQty = 0.2; // the requested venue minimum, not an oversized fill receipt
       const result = await step([{ ...intent, cfg, maxStack: 2 }]);
       assert.equal(result.placed, 1, JSON.stringify(result));
       assert.equal(Number(state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!.quantity), 0.2);
@@ -380,6 +553,14 @@ describe("entries mode: actual MARKET execution quantities", () => {
       assert.ok(result.skipped.some((x) => x.why.includes("invalid captured execution sizing")));
     });
   }
+
+  it("rejects a legacy captured Max stack above the systemwide 8× ceiling", async () => {
+    const { state, step } = fixture();
+    const result = await step([{ ...intent, maxStack: 250 }]);
+    assert.equal(result.placed, 0);
+    assert.equal(state.sent.length, 0);
+    assert.ok(result.skipped.some((x) => x.why.includes("invalid captured execution sizing")));
+  });
 
   for (const { name, cfg, factor } of [
     { name: "Wide", cfg: intent.cfg, factor: 1.4 },
@@ -519,7 +700,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
       await step();
       state.qty = 0;
       mock.timers.tick(20_000);
-      state.entry.order.status = "FILLED";
+      state.entry.order.status = terminal === "terminal-partial" ? "CANCELED" : "FILLED";
       state.entry.order.executedQty = terminal === "terminal-partial" ? 1 : 5;
       rt.settings.live.notionalUsd = 60;
       const next = { ...intent, sym: "S1-USDT" };
@@ -535,7 +716,12 @@ describe("entries mode: actual MARKET execution quantities", () => {
       state.qty = terminal === "terminal-partial" ? 1 : 5;
       await step([]);
       const saved = liveKv<Record<string, { sym: string }>>(rt.db, `entriesPendingExecutions|${rt.settings.live.connId}`)!;
-      assert.ok(!Object.values(saved).some((p) => p.sym === "S0-USDT"), "actual first visibility clears the ownership marker");
+      if (terminal === "partial-to-full") {
+        assert.ok(Object.values(saved).some((p) => p.sym === "S0-USDT"), "the first partial's stop cannot cover the later additional fill");
+        assert.ok(liveKv<LiveStatus>(rt.db, "liveStatus")!.skipped.some((p) => /coverage incomplete/.test(p.why)));
+      } else {
+        assert.ok(!Object.values(saved).some((p) => p.sym === "S0-USDT"), "actual first visibility and its own stop clear the marker");
+      }
     });
   }
 
@@ -572,6 +758,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
   for (const gate of ["gross", "risk", "backstop"] as const) {
     it(`${gate} still reserves an owned position protected by its resting stop after the24h recent-entry window`, async () => {
       const { rt, state, step, seed } = fixture();
+      await step([]); // establish account identity while the ledger is still empty
       Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
         maxExposureX: gate === "gross" ? 1 : 0, maxRiskPct: gate === "risk" ? .05 : 0,
         maxBackstopLossPct: gate === "backstop" ? .05 : 0, minFreeMargin: 0 });
@@ -699,8 +886,244 @@ describe("entries mode: actual MARKET execution quantities", () => {
     assert.equal(state.sent.filter((p) => p.type === "MARKET" && p.side === "BUY").length, 1);
   });
 
+  for (const venueStatus of ["CANCEL_PENDING", "CANCELLING", "UNKNOWN_FUTURE_STATUS", "FILLED"] as const) {
+    it(`${venueStatus} with a measured incomplete entry keeps the remainder reserved and reports the undersized stop`, async () => {
+      const { rt, state, step } = fixture();
+      state.entry.order = { orderId: "entry", status: "PARTIALLY_FILLED", executedQty: .25, avgPrice: 10.2 };
+      await step();
+      const entry = rt.db.get<{ coid: string }>("SELECT coid FROM live_orders WHERE kind='E'")!;
+      const stop = state.sent.find((o) => o.type === "STOP_MARKET")!;
+      assert.equal(Number(stop.quantity), .25);
+      mock.timers.tick(1_001);
+      state.entry.order = { orderId: "entry", status: venueStatus, executedQty: .5, avgPrice: 10.3 };
+      state.qty = .5;
+      const competing = { ...intent, cfg: `${intent.cfg}|competing` };
+      const result = await step([competing]);
+      const pending = liveKv<Record<string, { terminal?: boolean; knownQty?: number }>>(rt.db, `entriesPendingExecutions|${rt.settings.live.connId}`)!;
+      assert.equal(pending[entry.coid].terminal, false, "an unknown or inconsistent status is not terminal");
+      assert.equal(pending[entry.coid].knownQty, .5);
+      assert.equal(rt.db.get<{ qty: number }>("SELECT qty FROM live_orders WHERE coid=?", entry.coid)?.qty, .5);
+      assert.ok(result.skipped.some((x) => /coverage incomplete or unverified/.test(x.why)), JSON.stringify(result));
+      assert.equal(state.sent.filter((o) => o.type === "MARKET").length, 1, "no second parent or speculative exit");
+      assert.ok(state.orders.some((o) => o.clientOrderID === stop.clientOrderID), "the original protection is retained");
+    });
+  }
+
+  it("a zero cancel-pending entry stays reserved until an exact terminal cancellation proves zero", async () => {
+    const { rt, state, step } = fixture();
+    state.entry.order = { orderId: "entry", status: "NEW", executedQty: 0 };
+    await step();
+    const entry = rt.db.get<{ coid: string }>("SELECT coid FROM live_orders WHERE kind='E'")!;
+    state.entry.order.status = "CANCEL_PENDING";
+    mock.timers.tick(1_001);
+    await step([{ ...intent, cfg: `${intent.cfg}|competing` }]);
+    assert.ok(liveKv<Record<string, unknown>>(rt.db, `entriesPendingExecutions|${rt.settings.live.connId}`)![entry.coid]);
+    assert.equal(state.sent.filter((o) => o.type === "MARKET").length, 1);
+    state.entry.order.status = "CANCELED";
+    mock.timers.tick(1_001);
+    await step([]);
+    assert.equal(liveKv<Record<string, unknown>>(rt.db, `entriesPendingExecutions|${rt.settings.live.connId}`)![entry.coid], undefined);
+    assert.equal(rt.db.get<{ status: string; qty: number }>("SELECT status,qty FROM live_orders WHERE coid=?", entry.coid)?.status, "error");
+    assert.equal(rt.db.get<{ qty: number }>("SELECT qty FROM live_orders WHERE coid=?", entry.coid)?.qty, 0);
+    assert.equal(rt.db.all("SELECT coid FROM live_fills").length, 0);
+  });
+
+  it("a terminal cancellation with a measured partial releases only the remainder after its own stop is observed", async () => {
+    const { rt, state, step } = fixture();
+    state.entry.order = { orderId: "entry", status: "PARTIALLY_FILLED", executedQty: .25, avgPrice: 10.2 };
+    await step();
+    const entry = rt.db.get<{ coid: string }>("SELECT coid FROM live_orders WHERE kind='E'")!;
+    state.entry.order.status = "CANCELED";
+    mock.timers.tick(1_001);
+    await step([]);
+    assert.equal(liveKv<Record<string, unknown>>(rt.db, `entriesPendingExecutions|${rt.settings.live.connId}`)![entry.coid], undefined);
+    assert.equal(rt.db.get<{ qty: number }>("SELECT qty FROM live_orders WHERE coid=?", entry.coid)?.qty, .25);
+    assert.equal(state.sent.filter((o) => o.type === "MARKET").length, 1);
+  });
+
+  for (const unclear of ["missing", "contradictory", "partially-executed", "whole-position"] as const) {
+    it(`an exact stop with ${unclear} venue quantity cannot certify the confirmed partial`, async () => {
+      const { rt, state, step } = fixture();
+      state.entry.order = { orderId: "entry", status: "PARTIALLY_FILLED", executedQty: .25, avgPrice: 10.2 };
+      await step();
+      const entry = rt.db.get<{ coid: string }>("SELECT coid FROM live_orders WHERE kind='E'")!;
+      const stop = state.orders.find((o) => o.type === "STOP_MARKET")!;
+      if (unclear === "missing") delete stop.executedQty;
+      if (unclear === "contradictory") stop.origQty = "0.5";
+      if (unclear === "partially-executed") stop.executedQty = "0.2";
+      if (unclear === "whole-position") stop.closePosition = "true";
+      state.entry.order.status = "CANCELED";
+      mock.timers.tick(1_001);
+      const result = await step([]);
+      assert.ok(liveKv<Record<string, unknown>>(rt.db, `entriesPendingExecutions|${rt.settings.live.connId}`)![entry.coid]);
+      assert.ok(result.skipped.some((x) => /coverage incomplete or unverified/.test(x.why)), JSON.stringify(result));
+      assert.equal(state.sent.filter((o) => o.type === "MARKET").length, 1);
+      delete stop.closePosition; stop.origQty = stop.quantity; stop.executedQty = "0";
+      mock.timers.tick(1_001);
+      await step([]);
+      assert.equal(liveKv<Record<string, unknown>>(rt.db, `entriesPendingExecutions|${rt.settings.live.connId}`)![entry.coid], undefined);
+    });
+  }
+
+  it("a missing target cannot cancel the stop of an entry with a live remainder", async () => {
+    const { state, step } = fixture();
+    state.entry.order = { orderId: "entry", status: "PARTIALLY_FILLED", executedQty: .25, avgPrice: 10.2 };
+    await step();
+    const stop = state.orders.find((o) => o.type === "STOP_MARKET")!;
+    state.orders = state.orders.filter((o) => o.type !== "TAKE_PROFIT_MARKET");
+    mock.timers.tick(61_000);
+    await step([]);
+    assert.ok(state.orders.some((o) => o.clientOrderID === stop.clientOrderID), "the exact pending parent's stop remains live");
+    assert.equal(state.sent.filter((o) => o.type === "MARKET").length, 1);
+  });
+
+  it("mismatched identity, invalid or contradictory cumulative fields and unmeasured FILLED cannot fabricate ownership", async () => {
+    const { rt, state, step } = fixture();
+    state.entry.order = { orderId: "entry", status: "NEW", executedQty: 0 };
+    await step();
+    const entry = rt.db.get<{ coid: string }>("SELECT coid FROM live_orders WHERE kind='E'")!;
+    const bad: Reply["order"][] = [
+      { orderId: "another-order", status: "FILLED", executedQty: 1 },
+      { orderId: 1.5 as unknown as string, status: "FILLED", executedQty: 1 },
+      { orderId: Number.MAX_SAFE_INTEGER + 2 as unknown as string, status: "FILLED", executedQty: 1 },
+      { orderId: "entry", clientOrderId: "another-client", status: "FILLED", executedQty: 1 },
+      { orderId: "entry", symbol: "S1-USDT", status: "FILLED", executedQty: 1 },
+      { orderId: "entry", side: "SELL", status: "FILLED", executedQty: 1 },
+      { orderId: "entry", positionSide: "SHORT", status: "FILLED", executedQty: 1 },
+      { orderId: "entry", type: "STOP_MARKET", status: "FILLED", executedQty: 1 },
+      { orderId: "entry", status: "FILLED" },
+      { orderId: "entry", status: "FILLED", executedQty: 1.2 },
+      { orderId: "entry", status: "FILLED", executedQty: -1 },
+      { orderId: "entry", status: "CANCELED", executedQty: 0, cumExecQty: .5 },
+      { orderId: "entry", status: "FILLED", executedQty: 1, origQty: 2 },
+    ];
+    for (const order of bad) {
+      state.entry.order = order;
+      mock.timers.tick(1_001);
+      await step([]);
+      assert.equal(rt.db.get<{ qty: number }>("SELECT qty FROM live_orders WHERE coid=?", entry.coid)?.qty, 0, JSON.stringify(order));
+      assert.ok(liveKv<Record<string, unknown>>(rt.db, `entriesPendingExecutions|${rt.settings.live.connId}`)![entry.coid], JSON.stringify(order));
+      assert.equal(rt.db.all("SELECT coid FROM live_fills").length, 0, JSON.stringify(order));
+    }
+    assert.equal(state.sent.filter((o) => o.type === "MARKET").length, 1);
+  });
+
+  it("uses the exact string orderID beside an unsafe numeric alias but never accepts an unsafe ID alone", async () => {
+    const { rt, state, step } = fixture();
+    const exact = "9000000000000000000000000000000";
+    state.entry.order = { orderId: 9e30 as unknown as string, orderID: exact, status: "NEW", executedQty: 0 };
+    await step();
+    const row = rt.db.get<{ coid: string }>("SELECT coid FROM live_orders WHERE kind='E'")!;
+    const key = `entriesPendingExecutions|${rt.settings.live.connId}`;
+    assert.equal(liveKv<Record<string, { oid: string }>>(rt.db, key)![row.coid].oid, exact);
+    state.entry.order = { orderId: 9e30 as unknown as string, orderID: exact, status: "FILLED", executedQty: 1, avgPrice: 10.2 };
+    mock.timers.tick(1_001);
+    await step([]);
+    assert.equal(rt.db.get<{ qty: number }>("SELECT qty FROM live_orders WHERE coid=?", row.coid)?.qty, 1);
+    state.entry.order = { orderId: 9e30 as unknown as string, status: "FILLED", executedQty: 1, avgPrice: 10.2 };
+    const other = { ...intent, cfg: `${intent.cfg}|other`, sym: "S1-USDT" };
+    await step([other]);
+    const held = rt.db.get<{ coid: string; qty: number }>("SELECT coid,qty FROM live_orders WHERE kind='E' AND sym='S1-USDT'")!;
+    assert.equal(held.qty, 0);
+    assert.equal(liveKv<Record<string, { oid: string }>>(rt.db, key)![held.coid].oid, "");
+  });
+
+  it("state-only restart keeps a measured partial, exact request identity and uncovered remainder", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-entries-partial-restart-"));
+    const path = join(dir, "state.json"), key = "entriesPendingExecutions|bingx-vst-02";
+    const db = new CoreDb(":memory:", { statePath: path });
+    let restored: CoreDb | undefined;
+    try {
+      const first = fixture(db);
+      first.state.entry.order = { orderId: "entry", status: "PARTIALLY_FILLED", executedQty: .25, avgPrice: 10.2 };
+      await first.step();
+      const entry = db.get<{ coid: string }>("SELECT coid FROM live_orders WHERE kind='E'")!;
+      first.state.entry.order = { orderId: "entry", status: "CANCEL_PENDING", executedQty: .5, avgPrice: 10.3 };
+      first.state.qty = .5;
+      mock.timers.tick(1_001);
+      await first.step([]);
+      const orders = first.state.orders.map((o) => ({ ...o }));
+      mock.restoreAll();
+      restored = new CoreDb(":memory:", { statePath: path });
+      const next = fixture(restored);
+      next.state.qty = .5;
+      next.state.orders = orders;
+      next.state.entry.order = { orderId: "entry", status: "PARTIALLY_FILLED", executedQty: .25, avgPrice: 10.2 };
+      mock.timers.tick(1_001);
+      const afterRestart = await next.step([{ ...intent, cfg: `${intent.cfg}|competing` }]);
+      assert.equal(restored.get<{ qty: number }>("SELECT qty FROM live_orders WHERE coid=?", entry.coid)?.qty, .5,
+        "a stale cumulative poll cannot roll back the pre-restart measurement");
+      assert.equal(restored.get<{ qty: number; fill_px: number }>("SELECT qty,fill_px FROM live_fills WHERE coid=?", entry.coid)?.fill_px, 10.3);
+      assert.equal(next.state.sent.filter((o) => o.type === "MARKET").length, 0);
+      assert.ok(afterRestart.skipped.some((x) => /coverage incomplete/.test(x.why)), JSON.stringify(afterRestart));
+      next.state.entry.order = { orderId: "entry", status: "CANCELED", executedQty: .5, avgPrice: 10.3 };
+      mock.timers.tick(1_001);
+      await next.step([]);
+      const pending = liveKv<Record<string, { terminal: boolean; knownQty: number }>>(restored, key)!;
+      assert.equal(pending[entry.coid].terminal, true);
+      assert.equal(pending[entry.coid].knownQty, .5, "the parent remains held until the larger fill has verified protection");
+      assert.equal(next.state.sent.filter((o) => o.type === "MARKET").length, 0);
+    } finally {
+      restored?.db.close(); db.db.close(); rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a partially executed protective close is not retried until exact terminal cancellation, then only its remaining quantity", async () => {
+    const { rt, state, step, seed } = fixture();
+    await step([]); // establish account identity while the ledger is still empty
+    seed();
+    state.close.order = { orderId: "close", status: "NEW", executedQty: 0 };
+    await step([]);
+    state.close.order = { orderId: "close", status: "CANCEL_PENDING", executedQty: .4, avgPrice: 10.1 };
+    state.qty = .6;
+    mock.timers.tick(1_001);
+    await step([]);
+    assert.equal(state.sent.filter((o) => o.type === "MARKET").length, 1);
+    const close = rt.db.get<{ coid: string; qty: number }>("SELECT coid,qty FROM live_orders WHERE kind='C'")!;
+    assert.equal(close.qty, .4);
+    assert.ok(liveKv<Record<string, unknown>>(rt.db, `entriesPendingExecutions|${rt.settings.live.connId}`)![close.coid]);
+    state.close.order.status = "CANCELED";
+    mock.timers.tick(1_001);
+    await step([]);
+    const closes = state.sent.filter((o) => o.type === "MARKET");
+    assert.equal(closes.length, 2, "a terminal partial close permits the outstanding protective action");
+    assert.ok(Math.abs(Number(closes[1].quantity) - .6) < 1e-12);
+  });
+
+  it("a delayed partial remains eligible for protective action after both ordinary ten-minute and one-day lookbacks", async () => {
+    const { state, step } = fixture();
+    state.entry.order = { orderId: "entry", status: "NEW", executedQty: 0 };
+    await step();
+    const elapsed = 25 * 3_600_000;
+    fixtureClock += elapsed;
+    mock.timers.tick(elapsed);
+    state.entry.order = { orderId: "entry", status: "PARTIALLY_FILLED", executedQty: .25, avgPrice: 10.2 };
+    state.close.order = { orderId: "close", status: "FILLED", executedQty: .25, avgPrice: 10.1 };
+    state.qty = .25;
+    await step([]);
+    const closes = state.sent.filter((o) => o.type === "MARKET" && o.side === "SELL");
+    assert.equal(closes.length, 1);
+    assert.equal(Number(closes[0].quantity), .25);
+  });
+
+  it("an opposite-side stop row with the same old message cannot suppress a needed protective close", async () => {
+    const { rt, state, step, seed } = fixture();
+    await step([]); // establish account identity while the ledger is still empty
+    seed();
+    const coid = makeCoid(rt.settings.live.connId, "S");
+    rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+      coid, intent.cfg, intent.sym, -1, "S", 1, 10.5, "ok", "seed", Date.now());
+    state.orders.push({ symbol: "S0-USDT", positionSide: "SHORT", orderId: "other-side-stop", clientOrderID: coid, type: "STOP_MARKET" });
+    await step([]);
+    const closes = state.sent.filter((o) => o.type === "MARKET");
+    assert.equal(closes.length, 1);
+    assert.equal(closes[0].side, "SELL");
+    assert.equal(Number(closes[0].quantity), 1);
+  });
+
   it("zero and partial accepted protective closes do not overbook closes or submit duplicates", async () => {
     const { rt, state, step, seed, history } = fixture();
+    await step([]); // establish account identity while the ledger is still empty
     seed();
     state.close.order = { orderId: "close", status: "NEW", executedQty: 0 };
     assert.equal((await step([])).closed, 0);
@@ -727,6 +1150,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
     const { rt, state, step, history } = fixture();
     state.failControls = true;
     state.close.order.executedQty = .1;
+    state.close.order.status = "CANCELED"; // terminal cancellation after a measured partial execution
     const status = await step();
     assert.equal(status.placed, 1);
     assert.equal(status.closed, 0);
@@ -776,9 +1200,14 @@ describe("entries mode: actual MARKET execution quantities", () => {
       first.state.entry.order = { orderId: "entry", status: "NEW", executedQty: 0 };
       await first.step();
       const original = db.get<{ coid: string; at: number }>("SELECT coid,at FROM live_orders WHERE kind='E'")!;
+      const binding = db.kvGet("liveOwnershipAccount");
+      assert.ok(binding);
+      // Only the verified account binding is carried in state; the orders and pending executions must come from
+      // the journal. Without this binding the legacy journal correctly cannot be assigned to the current account.
+      const statePath = join(dir, "binding.json");
+      writeFileSync(statePath, JSON.stringify({ liveOwnershipAccount: binding }));
       mock.restoreAll();
-      // A new database and runtime see the journal only: no snapshot, KV flush or process-local pending map.
-      const restored = new CoreDb(":memory:");
+      const restored = new CoreDb(":memory:", { statePath });
       restored.journalPath = db.journalPath;
       assert.ok(restored.replayJournal() >= 3);
       const pending = restored.kvGet<Record<string, { sentQty: number; oid: string }>>("entriesPendingExecutions|bingx-vst-02")!;
@@ -795,12 +1224,88 @@ describe("entries mode: actual MARKET execution quantities", () => {
       assert.equal(restored.get<{ qty: number }>("SELECT qty FROM live_orders WHERE coid=?", original.coid)?.qty, 1);
       assert.equal(next.history().length, 1);
       assert.equal(next.history()[0].entry, 10.6);
-      const again = new CoreDb(":memory:");
+      writeFileSync(statePath, JSON.stringify({ liveOwnershipAccount: binding }));
+      const again = new CoreDb(":memory:", { statePath });
       again.journalPath = db.journalPath;
       again.replayJournal();
-      assert.deepEqual(again.kvGet("entriesPendingExecutions|bingx-vst-02"), {});
+      const after = again.kvGet<Record<string, unknown>>("entriesPendingExecutions|bingx-vst-02")!;
+      assert.deepEqual(Object.keys(after), ["__sentIntentWatermarks"], "the resolved reservation leaves its durable dedupe watermark");
       assert.equal(again.get<{ qty: number; fee: number }>("SELECT qty,fee FROM live_fills WHERE coid=?", original.coid)?.fee, .03);
     } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  for (const kind of ["E", "C"] as const) it(`state-only restart preserves an ambiguous ${kind === "E" ? "entry" : "protective exit"} before dispatch`, async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-entry-pending-state-"));
+    const path = join(dir, "state.json"), pendingKey = "entriesPendingExecutions|bingx-vst-02";
+    try {
+      const db = new CoreDb(":memory:", { statePath: path });
+      const first = fixture(db);
+      if (kind === "E") first.state.entry.order = { orderId: "entry", status: "NEW", executedQty: 0 };
+      else {
+        await first.step([]); // bind the known account before seeding its existing position
+        first.seed();
+        first.state.close.order = { orderId: "close", status: "NEW", executedQty: 0 };
+      }
+      let sentId = "";
+      first.state.beforeMarket = (p) => {
+        sentId = p.clientOrderID;
+        const beforeSend = new CoreDb(":memory:", { statePath: path });
+        const pending = beforeSend.kvGet<Record<string, { kind: string; sentQty: number }>>(pendingKey);
+        assert.equal(pending?.[sentId]?.kind, kind, "a fresh process sees the reservation before the request");
+        assert.ok((pending?.[sentId]?.sentQty ?? 0) > 0);
+        beforeSend.db.close();
+      };
+      await first.step(kind === "E" ? [intent] : []);
+      assert.ok(sentId);
+      mock.restoreAll();
+      const restored = new CoreDb(":memory:", { statePath: path });
+      const pending = restored.kvGet<Record<string, { kind: string; oid: string }>>(pendingKey);
+      assert.equal(pending?.[sentId]?.kind, kind);
+      assert.equal(pending?.[sentId]?.oid, kind === "E" ? "entry" : "close");
+      const next = fixture(restored);
+      next.state.entry.order = { orderId: "entry", status: "NEW", executedQty: 0 };
+      next.state.close.order = { orderId: "close", status: "NEW", executedQty: 0 };
+      if (kind === "C") next.state.qty = 1;
+      mock.timers.tick(1_001);
+      await next.step(kind === "E" ? [intent] : []);
+      assert.equal(next.state.sent.filter((p) => p.type === "MARKET").length, 0,
+        "the same ambiguous request cannot be submitted twice after a cold restart");
+      assert.equal(liveKv<Record<string, { kind: string }>>(restored, pendingKey)?.[sentId]?.kind, kind);
+      db.db.close(); restored.db.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  for (const failure of ["state", "journal"] as const) it(`failed ${failure} checkpoint blocks new entry exposure before dispatch`, async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-entry-pending-error-"));
+    try {
+      const db = new CoreDb(":memory:", { statePath: failure === "state" ? "/dev/null/state.json" : join(dir, "state.json") });
+      if (failure === "journal") db.journalPath = "/dev/null/order.journal";
+      const f = fixture(db);
+      const status = await f.step();
+      assert.match(status.error ?? "", /checkpoint unavailable/);
+      assert.equal(f.state.sent.filter((p) => p.type === "MARKET").length, 0, "new exposure is never dispatched");
+      const notSent = db.get<{ status: string }>("SELECT status FROM live_orders WHERE kind='E'");
+      if (failure === "state") assert.equal(notSent, undefined, "the account-state preflight fails before entry reservation");
+      else assert.equal(notSent?.status, "not-sent", "the journal failure is recorded before dispatch");
+      db.db.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("a failed ownership checkpoint leaves an existing position and venue exit untouched", async () => {
+    const db = new CoreDb(":memory:", { statePath: "/dev/null/state.json" });
+    const f = fixture(db);
+    f.seed();
+    f.state.orders.push({ symbol: "S0-USDT", positionSide: "LONG", type: "STOP_MARKET", orderId: "existing-stop" });
+    f.state.close.order = { orderId: "close", status: "NEW", executedQty: 0 };
+    const status = await f.step([]);
+    assert.match(status.error ?? "", /checkpoint unavailable/);
+    assert.equal(f.state.sent.length, 0, "no account order changes before ownership can be checkpointed");
+    assert.equal(f.state.qty, 1, "the position remains in place");
+    assert.equal(f.state.orders.length, 1);
+    assert.equal(f.state.orders[0].orderId, "existing-stop", "the venue stop remains untouched");
+    await f.step([]);
+    assert.equal(f.state.sent.length, 0, "a failed checkpoint cannot lead to duplicate or untracked writes");
+    db.db.close();
   });
 
   it("a stopped partial entry followed by later cumulative fills is explicitly unresolved, never merged into fake history", async () => {

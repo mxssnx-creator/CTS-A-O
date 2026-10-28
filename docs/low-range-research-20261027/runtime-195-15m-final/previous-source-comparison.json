@@ -1,0 +1,26 @@
+{
+  "status": "passed",
+  "scope": "Identical original and final-source recorded 15m outcomes, not venue execution.",
+  "comparison": {
+    "trades": {
+      "previous": "ce608c9a39587f8cc7abe694f6b42d925bd808ad38b9cea1d5d86f6176dfb322",
+      "final": "ce608c9a39587f8cc7abe694f6b42d925bd808ad38b9cea1d5d86f6176dfb322",
+      "match": true
+    },
+    "openEnd": {
+      "previous": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "final": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "match": true
+    },
+    "validation": {
+      "previous": "8c09846c71dd511f6a6d3b4e94cf3fb2b329610b511347914f040d343b78527a",
+      "final": "8c09846c71dd511f6a6d3b4e94cf3fb2b329610b511347914f040d343b78527a",
+      "match": true
+    },
+    "basePairs": {
+      "previous": "271ebf30e5b59ecffabc716aea220775f3d1e8ef823087afb53db9e67a8e7b5d",
+      "final": "271ebf30e5b59ecffabc716aea220775f3d1e8ef823087afb53db9e67a8e7b5d",
+      "match": true
+    }
+  }
+}

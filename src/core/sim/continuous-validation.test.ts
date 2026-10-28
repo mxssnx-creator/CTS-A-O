@@ -80,6 +80,32 @@ function fixture(tag?: RangeTag) {
 }
 
 describe("continuous post-Base qualification", () => {
+  it("fixed selection reports only direction-validated history, never the losing opposite candidate pool", () => {
+    const { tp, o, trades } = fixture("sh");
+    const longs = Array.from({ length: 30 }, (_, i) => ({ ...trades[0],
+      entryT: T - (112 - i) * 60_000, exitT: T - (111 - i) * 60_000, r: 0.02 }));
+    const shorts = Array.from({ length: 20 }, (_, i) => ({ ...trades[0], side: -1 as const,
+      entryT: T - (32 - i) * 60_000, exitT: T - (31 - i) * 60_000, r: -0.05 }));
+    const own = makeTape(tp.id, tp.bot, tp.ind, tp.protect, tp.kind, ["A"], [...longs, ...shorts], [], []);
+    const options = { ...o, recordValidation: true as const, rangeGate: undefined };
+    const ev = configEval(own, T, options);
+    assert.equal(ev.ok, true);
+    assert.equal(ev.n, 30);
+    assert.equal(own.n, 50, "opposite candidates remain available as raw research evidence");
+    const selected = selectFixed([own], T, options);
+    assert.equal(selected.picks.length, 1);
+    const picked = selected.picks[0].window;
+    assert.equal(picked.n, ev.n);
+    assert.equal(picked.pf, ev.pf);
+    assert.equal(picked.gp, (ev.gp ?? 0) / 100);
+    assert.equal(picked.gl, (ev.gl ?? 0) / 100);
+    assert.deepEqual(selected.checks?.[0], [own.id, 1, ev.n, ev.pf, (ev.gp ?? 0) / 100, (ev.gl ?? 0) / 100]);
+    const summary = selectFixed([own], T, { ...options, recordValidation: "summary" }).validationSummary!;
+    assert.equal(summary.closes, ev.n);
+    assert.equal(summary.gp, (ev.gp ?? 0) / 100);
+    assert.equal(summary.gl, (ev.gl ?? 0) / 100);
+  });
+
   for (const tag of [undefined, "mc", "mn", "mp", "sh", "gn", "lg"] as const) {
     it(`${tag ?? "wide"}: each direction retains its own full sample and confidence, and rejected directions cannot dilute it`, () => {
       const { tp, o, trades } = fixture(tag);

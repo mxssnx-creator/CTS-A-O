@@ -48,19 +48,25 @@ it("simultaneous Axis configs execute independently after their own prehistory a
   for(const tp of [tapes[0],tapes[25],tapes.at(-1)!])
     assert.deepEqual(all.trades.filter((x)=>x.cfg===tp.id),walkForward(u,[tp],o).trades);
 });
-it("Axis sets use 10% of the matching base sizing while their admission and intrinsic unit returns stay identical",()=>{
+it("Axis sets apply their configured volume factor while admission and intrinsic unit returns stay identical",()=>{
   const tapes=ids.map((id)=>tape(id)),o=options();
   const u={bars:[],caches:[],startT:T-24*H,endT:T,splitT:0,nowT:T,baseTf:1} as never;
+  // Axis reserves 8× for its deepest supported intrinsic ladder (8 rungs × 5 base units). Keep this
+  // proportionality check below that external ceiling, then verify the uncropped default is capped separately.
   const small=walkForward(u,tapes,{...o,axisVolumeFactor:0.1});
-  const base=walkForward(u,tapes,{...o,axisVolumeFactor:1});
+  const base=walkForward(u,tapes,{...o,axisVolumeFactor:0.2});
+  const capped=walkForward(u,tapes,{...o,axisVolumeFactor:1});
   assert.equal(small.trades.length,90);assert.equal(base.trades.length,90);
+  assert.equal(capped.trades.length,90);
   assert.equal(DEFAULT_SETTINGS.axis.volumeFactor,1);
   for(let i=0;i<90;i++) {
     assert.equal(small.trades[i].cfg,base.trades[i].cfg);
     assert.equal(small.trades[i].entryT,base.trades[i].entryT);
-    assert.ok(Math.abs(small.trades[i].vol!-base.trades[i].vol!*0.1)<1e-12);
+    assert.ok(Math.abs(small.trades[i].vol!-base.trades[i].vol!*0.5)<1e-12);
     assert.equal(small.trades[i].volFactor,0.1);
     assert.ok(Math.abs(modeledUnitReturn(small.trades[i])-modeledUnitReturn(base.trades[i]))<1e-12);
+    assert.ok(capped.trades[i].mult! <= 8 / 36 + 1e-12, "intrinsic Axis capacity keeps the external multiplier within 8×");
+    assert.ok(capped.trades[i].vol! <= 8 + 1e-12, "the effective Axis position volume stays within 8×");
   }
   assert.ok(Math.abs(small.stats.pf-base.stats.pf)<1e-12);
   const normal={ind:"trend-ema-12-26@m15c",kind:"normal"};

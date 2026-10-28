@@ -20,6 +20,7 @@ import {
   positionCapFor,
   liveTag,
   ownLedger,
+  ownCoidKind,
   planControl,
   stateHash,
   topConfigLanes,
@@ -55,17 +56,24 @@ const step = (rt: FakeRt, ex: ExchangeClient) => stepLive(rt as unknown as CoreR
 function randomLanes(r: () => number, prices: Array<{ sym: string; last: number }>) {
   const out = [];
   const n = Math.floor(r() * 14);
-  for (let i = 0; i < n; i++) {
+  const keys = new Set<string>();
+  // Overall mode without native lane orders can safely fund only one parent per symbol/side. Preserve the
+  // randomized churn and volume coverage while giving each simulated side one stable parent identity.
+  for (let i = 0, tries = 0; i < n && tries < 100; tries++) {
     const p = prices[Math.floor(r() * 7)]; // S0..S6 (S9 carries a foreign position)
     const side = (r() < 0.5 ? 1 : -1) as 1 | -1;
+    const key = `${p.sym}|${side}`;
+    if (keys.has(key)) continue;
+    keys.add(key);
     out.push({
-      cfg: `lane${i}`,
+      cfg: `lane-${p.sym}-${side}`,
       sym: p.sym,
       side,
       entry: p.last,
       stop: p.last * (1 - side * 0.03),
       vol: [1, 1.2, 1.4, 2][Math.floor(r() * 4)],
     });
+    i++;
   }
   return out;
 }
@@ -117,6 +125,7 @@ function checkInvariants(
   rt: ReturnType<typeof fakeRt>["rt"],
   prices: Array<{ sym: string; last: number }>,
   strict: boolean,
+  beforeRecovery?: { quantities: ReadonlyMap<string, number>; logIndex: number },
 ) {
   // foreign position and order are never touched
   assert.equal(ex.positions.get("S9-USDT|LONG"), 5, "foreign position untouched");
@@ -140,27 +149,55 @@ function checkInvariants(
           (o) =>
             o.venueSymbol === sym &&
             o.positionSide === ps &&
+            o.type === "STOP_MARKET" &&
             o.clientOrderId?.startsWith("CTSBV2_"),
         ),
         `${k} has a stop`,
       );
     if (strict) {
       const want = targets.get(k) ?? 0;
-      assert.ok(want > 0, `${k} held without target`);
-      assert.ok(Math.abs(q - want) / want <= 0.25 + 1e-9, `${k} held ${q} vs target ${want}`);
+      const key = `${sym}|${ps === "LONG" ? 1 : -1}`;
+      const status = liveKv<{ keys?: Array<{ key: string; why?: string }> }>(rt.db, "controlStatus");
+      const entry = status?.keys?.find((x) => x.key === key);
+      if (!(want > 0)) {
+        assert.ok(
+          [
+            "parent ownership unavailable; held quantity kept for reconciliation",
+            "held back after an outside close",
+          ].includes(entry?.why ?? ""),
+          `${k} has no target and no explicit ownership/outside-close hold: ${entry?.why ?? "missing reason"}`,
+        );
+        assert.ok(beforeRecovery && (beforeRecovery.quantities.get(k) ?? 0) >= q - 1e-9,
+          `${k} gained unverified quantity during recovery`);
+        const added = ex.log.slice(beforeRecovery.logIndex).some((o) => o.type === "MARKET" && o.symbol === sym &&
+          o.positionSide === ps && o.side === (ps === "LONG" ? "BUY" : "SELL"));
+        assert.equal(added, false, `${k} was grown without parent ownership proof`);
+        continue;
+      }
+      assert.ok(Math.abs(q - want) / want <= 0.25 + 1e-9,
+        `${k} held ${q} vs target ${want}; logs=${JSON.stringify(ex.log.filter((x) => x.symbol === sym))}; ` +
+        `fills=${JSON.stringify(ex.fills.filter((x) => x.sym === sym))}; ` +
+        `ledger=${JSON.stringify(rt.db.all("SELECT coid,kind,qty,px,status,msg,at FROM live_orders WHERE sym=? ORDER BY rowid", sym))}`);
     }
   }
   if (strict)
-    for (const [k, want] of targets)
-      if (!k.startsWith("S9-"))
-        assert.ok((ex.positions.get(k) ?? 0) > 0 || want * 10 < 2, `${k} target ${want} not held`);
+    for (const [k, want] of targets) {
+      if (k.startsWith("S9-") || (ex.positions.get(k) ?? 0) > 0 || want * 10 < 2) continue;
+      // A fresh flat read cannot prove that a recent/pending old parent is gone. The explicit isolation guard
+      // keeps a new parent out until ownership is resolved; all other missing funded targets remain failures.
+      const [sym, ps] = k.split("|");
+      const status = liveKv<{ keys?: Array<{ key: string; why?: string; notSent?: number; target?: boolean }> }>(rt.db, "controlStatus");
+      const entry = status?.keys?.find((x) => x.key === `${sym}|${ps === "LONG" ? 1 : -1}`);
+      assert.ok(entry?.why?.includes("aggregate position") && (entry.notSent ?? 0) > 0 && entry.target === false,
+        `${k} target ${want} not held without an explicit ownership guard: ${JSON.stringify(entry)}`);
+    }
   // no own order rests on a flat (symbol, side) after a clean step
   if (strict)
     for (const o of ex.orders)
       if (o.clientOrderId?.startsWith("CTSB"))
         assert.ok(
           ex.positions.has(`${o.venueSymbol}|${o.positionSide}`),
-          `orphan ${o.clientOrderId}`,
+          `orphan ${o.clientOrderId}: order=${JSON.stringify(o)} positions=${JSON.stringify([...ex.positions])}`,
         );
 }
 
@@ -534,7 +571,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.notEqual(stateHash(["a"]), stateHash(["b"]));
   });
 
-  it("converges to the targets on every step over 400 random steps and never touches foreign positions", async () => {
+  it("maintains protected targets or explicit ownership holds across 400 random steps without touching foreign positions", async () => {
     const r = rng(7);
     const ex = new SimExchange(r);
     ex.positions.set("S9-USDT|LONG", 5);
@@ -552,13 +589,14 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       const st = await step(rt, ex);
       assert.equal(st.error, null, st.error ?? "");
       // a second step right after converges fully (the first may leave orphans it cancels next time)
+      const beforeRecovery = { quantities: new Map(ex.positions), logIndex: ex.log.length };
       await step(rt, ex);
-      checkInvariants(ex, rt, prices, true);
+      checkInvariants(ex, rt, prices, true, beforeRecovery);
       if (r() < 0.1) ex.triggerRandomStop();
     }
   });
 
-  it("a position closed manually keeps processing, is NOT put back, and a new lane order opens it again", async () => {
+  it("an unexplained flat read holds re-entry while the previous owned stop is still resting", async () => {
     const r = rng(5);
     const ex = new SimExchange(r);
     ex.positions.set("S9-USDT|LONG", 5);
@@ -595,8 +633,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       await step(rt, ex);
       assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "still not put back on the next step");
       assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0, "and the others are still managed");
-      // the two lane orders exit and a NEW one arrives on the same symbol and side: that is a new decision, so it
-      // opens — "no reopen" holds the closed position down, it does not retire the symbol
+      // The test deleted the venue position without a close receipt; the old stop can still fire on a new position.
       rt.paper.positions = [lane("d", "S1-USDT", 11), lane("c", "S2-USDT", 3)];
       const st2 = await step(rt, ex);
       assert.equal(
@@ -605,16 +642,40 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
         "the held-back lane orders are gone with their exit",
       );
       const fresh = ex.positions.get("S1-USDT|LONG") ?? 0;
-      assert.ok(fresh > 0, "the new lane order opens the key again");
+      assert.equal(fresh, 0, "an unresolved old stop cannot attach to a new position");
       assert.ok(
         ex.orders.some((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB")),
-        "and the new position carries its protective stop",
+        "the unresolved owned stop remains visible for reconciliation",
       );
       assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0);
       assert.ok(before > 0);
     } finally {
       mock.timers.reset();
     }
+  });
+
+  it("a recorded manual close with no remaining old stop allows a later parent", async () => {
+    const ex = new SimExchange(rng(5));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    const lane = (cfg: string, entryT: number) =>
+      ({ cfg, sym: "S1-USDT", side: 1 as const, entry: 17, stop: 16.5, vol: 1, entryT }) as never;
+    rt.paper.positions = [lane("a", 1)];
+    await step(rt, ex);
+    assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0);
+    ex.closeByHand("S1-USDT|LONG", 16.8); // recorded external fill and terminal cancellations
+    mock.timers.enable({ apis: ["Date"], now: Date.now() + 20_000 });
+    try {
+      await step(rt, ex);
+      assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0);
+      rt.paper.positions = [lane("b", 2)];
+      for (let i = 0; i < 4 && !(ex.positions.get("S1-USDT|LONG") ?? 0); i++) {
+        mock.timers.tick(20_000);
+        await step(rt, ex);
+      }
+      assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0, "confirmed completed close permits a fresh parent");
+      assert.ok(ex.orders.some((o) => o.venueSymbol === "S1-USDT" && ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "S"),
+        "the fresh position is protected");
+    } finally { mock.timers.reset(); }
   });
 
   it("a position this system closed itself is not treated as closed manually", async () => {
@@ -658,7 +719,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       type: "LIMIT",
     });
     const { rt, prices } = fakeRt(new CoreDb(":memory:"));
-    rt.paper.positions = randomLanes(r, prices).concat([
+    rt.paper.positions = randomLanes(r, prices).filter((p) => p.sym !== "S1-USDT" || p.side !== 1).concat([
       { cfg: "k", sym: "S1-USDT", side: 1, entry: 17, stop: 16.5, vol: 1 },
     ]);
     await step(rt, ex);
@@ -736,7 +797,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.deepEqual(db.kvGet("controlStatus"), JSON.parse(JSON.stringify(mem)));
   });
 
-  it("survives rejects and time-outs after fills, then converges once the exchange is healthy", async () => {
+  it("survives rejects and time-outs, then recovers or explicitly protects unknown ownership", async () => {
     const r = rng(23);
     const ex = new SimExchange(r);
     ex.positions.set("S9-USDT|LONG", 5);
@@ -777,8 +838,9 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     resetLiveBackoff();
     mock.timers.enable({ apis: ["Date"], now: Date.now() + 20_000 });
     try {
+      const beforeRecovery = { quantities: new Map(ex.positions), logIndex: ex.log.length };
       for (let i = 0; i < 3; i++) await step(rt, ex);
-      checkInvariants(ex, rt, prices, true);
+      checkInvariants(ex, rt, prices, true, beforeRecovery);
       assert.ok(
         rejects > 0 && timeouts > 0,
         "both definitive rejects and unknown timeout outcomes were exercised",
@@ -821,13 +883,14 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.ok(unv.skipped.some((x) => /own quantity unverified/.test(x.why)), JSON.stringify(unv.skipped));
     // (the operator settles it by hand; the rest of the run starts from a clean book)
     ex.closeByHand("S2-USDT|SHORT", 24);
-    // connection identity changes → flagged, full re-sync, still consistent
+    // a connection identity change is fenced against the previous account's bound ownership
     b.rt.paper.positions = [{ cfg: "k", sym: "S3-USDT", side: 1, entry: 31, stop: 30, vol: 1 }];
     await step(b.rt, ex);
+    const beforeSwitch = ex.log.length;
     ex.key = "key-B";
     const st = await step(b.rt, ex);
-    assert.equal(st.control?.reconnected, true);
-    checkInvariants(ex, b.rt, b.prices, true);
+    assert.match(st.reason, /ownership account differs/i);
+    assert.equal(ex.log.length, beforeSwitch, "a changed connection cannot reuse the prior account ledger");
   });
 
   it("does nothing while not armed, not ready or disabled", async () => {
@@ -856,11 +919,13 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.equal(ex.sent, 0);
   });
 
-  it("one-way mode: nets long and short lanes into one position per symbol, closes before flipping, reduce-only exits", async () => {
+  it("one-way mode: opposing lanes wait, and an owned side closes before the other opens", async () => {
     const orders: Array<Record<string, string | number>> = [];
     const net = new Map<string, number>(); // sym → signed qty
-    const stops: Array<{ id: string; venueSymbol: string; symbol: string; clientOrderId: string }> =
-      [];
+    const stops: Array<{ id: string; venueSymbol: string; symbol: string; clientOrderId: string; type: string }> = [];
+    const cancelled = new Map<string, { orderId: string; symbol: string; side: string; positionSide: string;
+      type: string; clientOrderId: string; status: string; executedQty: number }>();
+    let receiptsVisible = false;
     let modeCalls = 0;
     let marginCalls = 0;
     const ex: ExchangeClient = {
@@ -898,19 +963,28 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
             assert.ok(Math.abs(cur + q) <= Math.abs(cur) + 1e-9, "reduce-only never increases");
           net.set(sym, +(cur + q).toFixed(6));
           return { order: { status: "FILLED", executedQty: String(p.quantity), avgPrice: "17" } };
-        } else
+        } else {
           stops.push({
             id: `s${stops.length}`,
             venueSymbol: sym,
             symbol: sym,
             clientOrderId: String(p.clientOrderID),
+            type: String(p.type),
           });
+          return { order: { orderId: stops[stops.length - 1].id } };
+        }
       },
       async cancel(_s, id) {
         const i = stops.findIndex((o) => o.id === id);
-        if (i >= 0) stops.splice(i, 1);
+        if (i >= 0) {
+          const [o] = stops.splice(i, 1);
+          const p = orders.find((x) => String(x.clientOrderID) === o.clientOrderId)!;
+          cancelled.set(id, { orderId: id, symbol: o.symbol, side: String(p.side), positionSide: "BOTH",
+            type: o.type, clientOrderId: o.clientOrderId, status: "CANCELLED", executedQty: 0 });
+        }
         return i >= 0;
       },
+      async orderStatus(_sym, id) { return receiptsVisible && cancelled.has(id) ? { order: cancelled.get(id) } : null; },
       async setPositionMode(m) {
         modeCalls++;
         assert.equal(m, "oneway");
@@ -923,23 +997,32 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const { rt } = fakeRt(new CoreDb(":memory:"));
     rt.settings.live.positionMode = "oneway";
     rt.settings.live.marginMode = "isolated";
-    // long 2 volume, short 1 volume on S1 → one net long of volume 1
+    // Opposite fresh parents cannot become independent physical positions in a one-way account.
     rt.paper.positions = [
       { cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16.5, vol: 1 },
       { cfg: "b", sym: "S1-USDT", side: 1, entry: 17, stop: 16.5, vol: 1 },
       { cfg: "c", sym: "S1-USDT", side: -1, entry: 17, stop: 17.5, vol: 1 },
     ];
     await step(rt, ex);
-    assert.ok(Math.abs((net.get("S1-USDT") ?? 0) - 10 / 17) < 0.002, `net ${net.get("S1-USDT")}`);
+    assert.equal(net.get("S1-USDT") ?? 0, 0);
+    rt.paper.positions = rt.paper.positions.slice(0, 2);
+    await step(rt, ex);
+    assert.ok(Math.abs((net.get("S1-USDT") ?? 0) - 10 / 17) < 0.002, `only one parent owns the aggregate side: ${net.get("S1-USDT")}`);
     assert.equal(modeCalls, 1);
     assert.equal(marginCalls, 1);
-    // flip: short lanes dominate → the long is closed (reduce-only) before the short opens
+    // A new short waits for the previously owned long to be fully closed.
     rt.paper.positions = [{ cfg: "c", sym: "S1-USDT", side: -1, entry: 17, stop: 17.5, vol: 2 }];
     const before = orders.length;
     await step(rt, ex);
     const flip = orders.slice(before).filter((o) => o.type === "MARKET");
     assert.equal(flip[0].reduceOnly, "true");
     assert.equal(flip[0].side, "SELL");
+    assert.equal(flip.length, 1);
+    assert.equal(net.get("S1-USDT"), 0);
+    await step(rt, ex);
+    assert.equal(net.get("S1-USDT"), 0, "opposite entry waits while cancellation execution is unknown");
+    receiptsVisible = true;
+    await step(rt, ex);
     assert.ok((net.get("S1-USDT") ?? 0) < 0);
     assert.equal(modeCalls, 1, "position mode applied once per connection");
   });
@@ -994,7 +1077,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.equal(modeCalls, 1, "backoff after a refused mode change");
   });
 
-  it("a lane whose stop was crossed at tick time leaves the control at once (live position reduced / closed)", async () => {
+  it("a crossed paper stop retains the native exit until the venue proves its fill", async () => {
     // the rule: long at or below its stop, short at or above
     assert.equal(crossedStop({ side: 1, stop: 99 }, 99), true);
     assert.equal(crossedStop({ side: 1, stop: 99 }, 99.5), false);
@@ -1003,6 +1086,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.equal(crossedStop({ side: 1, stop: 0 }, 50), false, "no stop, never crossed");
     const ex = new SimExchange(rng(8));
     const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, laneOrders: true };
     rt.paper.positions = [
       { cfg: "follow|sig-a-s@m5|p", sym: "S2-USDT", side: 1, entry: 24, stop: 23.88, vol: 1 },
       { cfg: "follow|sig-b-s@m5|p", sym: "S2-USDT", side: 1, entry: 24, stop: 23.88, vol: 1 },
@@ -1010,19 +1094,27 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     await step(rt, ex);
     const full = ex.positions.get("S2-USDT|LONG")!;
     assert.ok(full > 0);
-    // one lane's stop is crossed: its volume leaves the control position right away
+    const ownStop = ex.orders.find((o) => o.venueSymbol === "S2-USDT" && ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V");
+    assert.ok(ownStop, "the admitted parent has its exact native stop");
+    // Only one of the two candidate parents was admitted to this physical side.
     (rt.paper.positions[0] as { stopHit?: number }).stopHit = Date.now();
     assert.equal(laneContributions(rt as unknown as CoreRuntime).length, 1);
     await step(rt, ex);
-    const half = ex.positions.get("S2-USDT|LONG")!;
-    assert.ok(half < full * 0.75, `reduced ${full} → ${half}`);
-    // both stopped: closed
-    (rt.paper.positions[1] as { stopHit?: number }).stopHit = Date.now();
+    assert.equal(ex.positions.get("S2-USDT|LONG"), full, "no unproven market exit is invented");
+    assert.ok(ex.orders.some((o) => o.id === ownStop.id), "the original stop stays live");
+    // relation: all rows — no close exists before a venue fill.
+    assert.equal(rt.db.all("SELECT cfg FROM live_lane_trades").length, 0);
+    ex.triggerOrder(ownStop.id);
     await step(rt, ex);
-    assert.equal(ex.positions.has("S2-USDT|LONG"), false);
+    // relation: all rows — the only recorded close is the proven native stop.
+    const closed = rt.db.all<{ cfg: string; reason: string; exit: number }>("SELECT cfg,reason,exit FROM live_lane_trades");
+    assert.equal(closed.length, 1);
+    assert.equal(closed[0].cfg, rt.paper.positions[0].cfg);
+    assert.equal(closed[0].reason, "stop");
+    assert.equal(closed[0].exit, ownStop.stopPrice);
   });
 
-  it("the protective stop of an opened position is priced from its fill, not from the reference ticker", async () => {
+  it("prices the backstop from a slipped fill without placing it inside the active lane stop", async () => {
     const ex = new SimExchange(rng(9));
     const stops: number[] = [];
     const base = ex.order.bind(ex);
@@ -1041,10 +1133,12 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     ];
     await step(rt, ex);
     assert.equal(stops.length, 1);
-    // the stop sits below the fill by the planned distance (from 24 it would sit about 1 below this)
-    assert.ok(stops[0] > 24 * 0.98 && stops[0] < 25, `stop ${stops[0]}`);
-    const dist = 1 - stops[0] / 25;
-    assert.ok(dist > 0.01 && dist < 0.05, `distance from the fill ${dist}`);
+    const control = liveKv(rt.db, "controlStatus") as { targets?: Array<{ key: string; stopPx?: number }> } | undefined;
+    const target = control?.targets?.find((x) => x.key === "S2-USDT|1");
+    assert.ok(target?.stopPx && target.stopPx > 0, "the active lane stop is present in the control plan");
+    assert.ok(stops[0] < 25, `stop ${stops[0]} must be below the slipped long fill`);
+    assert.ok(stops[0] <= target.stopPx + 1e-10,
+      `aggregate stop ${stops[0]} must not be tighter than the active lane stop ${target.stopPx}`);
   });
 
   it("the backstop distance of a trailed lane is measured from the current price, not from the entry", () => {
@@ -1080,7 +1174,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const orig = ex.order.bind(ex);
     let opens = 0;
     ex.order = async (p) => {
-      if (p.type === "STOP_MARKET") throw new Error("stop price precision");
+      if (p.type === "STOP_MARKET") throw new ExchangeRejected("stop price precision", 101400);
       if (p.type === "MARKET" && (p.side === "BUY") === (p.positionSide === "LONG")) opens++;
       return orig(p);
     };
@@ -1097,6 +1191,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       ls?.skipped.some(
         (x) => x.sym === "S2-USDT" && x.why.startsWith("open waiting after a failure"),
       ),
+      JSON.stringify(ls),
     );
   });
 
@@ -1316,7 +1411,7 @@ describe("control orders: listed symbols, bans, offline", () => {
     assert.equal(ex.sent, 0);
   });
 
-  it("open orders of an earlier read (rate limited): opening goes on, stop repairs and leftover cancels wait", async () => {
+  it("stale open orders hold new admission; fresh evidence repairs held stops without canceling unknown orders", async () => {
     const ex = new SimExchange(rng(17));
     const { rt } = fakeRt(new CoreDb(":memory:"));
     const stopOf = (o: { clientOrderId?: string }) =>
@@ -1327,6 +1422,8 @@ describe("control orders: listed symbols, bans, offline", () => {
     // from now on the open orders cannot be read: the last read still shows S1's stop, which is gone meanwhile,
     // and an own leftover sits on a flat symbol
     const stale = ex.orders.map((o) => ({ ...o }));
+    for (const o of ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && stopOf(o)))
+      ex.done.set(o.id, { status: "CANCELLED", qty: 0 });
     ex.orders = ex.orders.filter((o) => !(o.venueSymbol === "S1-USDT" && stopOf(o)));
     ex.orders.push({
       id: "left",
@@ -1336,11 +1433,13 @@ describe("control orders: listed symbols, bans, offline", () => {
       positionSide: "LONG",
       type: "STOP_MARKET",
     });
+    const cancel = ex.cancel.bind(ex), canceled: string[] = [];
+    ex.cancel = async (sym, id) => { canceled.push(id); return cancel(sym, id); };
     const fresh = ex.book.bind(ex);
     ex.book = async () => ({ ...(await fresh()), orders: stale, ordersAt: Date.now() - 60_000 });
     rt.paper.positions.push({ cfg: "b", sym: "S2-USDT", side: 1, entry: 17, stop: 16, vol: 1 });
     await step(rt, ex);
-    assert.ok(ex.positions.has("S2-USDT|LONG"), "opening goes on");
+    assert.equal(ex.positions.has("S2-USDT|LONG"), false, "new admission waits for a fresh order book");
     assert.ok(ex.positions.has("S1-USDT|LONG"), "the held position stays ours");
     assert.ok(
       !ex.orders.some((o) => o.venueSymbol === "S1-USDT" && stopOf(o)),
@@ -1350,11 +1449,16 @@ describe("control orders: listed symbols, bans, offline", () => {
       ex.orders.some((o) => o.id === "left"),
       "no cancel from an earlier read",
     );
-    // the open orders are read again: the stop is repaired and the leftover cancelled
+    // The open orders are read again: held protection can be repaired and an independent side can open.
+    // An unjournaled own-tagged leftover is not proof of ownership or zero fill and remains untouched.
     ex.book = fresh;
     await step(rt, ex);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await step(rt, ex);
     assert.ok(ex.orders.some((o) => o.venueSymbol === "S1-USDT" && stopOf(o)));
-    assert.ok(!ex.orders.some((o) => o.id === "left"));
+    assert.ok(ex.positions.has("S2-USDT|LONG"), "fresh evidence releases the unrelated new side");
+    assert.ok(ex.orders.some((o) => o.id === "left"), "the unjournaled conditional remains unresolved");
+    assert.ok(!canceled.includes("left"), "unknown ownership is not inferred from an order tag");
   });
 
   it("a BingX ban pauses the control step before any book read", async () => {
@@ -1389,10 +1493,14 @@ describe("control orders: listed symbols, bans, offline", () => {
     assert.ok(noteRateLimit("BingX 100410: 请稍后重试", now, TICKERS) > now);
     // S2's lane ended; S1's stop vanished
     rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+    for (const o of ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && stopOf(o)))
+      ex.done.set(o.id, { status: "CANCELLED", qty: 0 });
     ex.orders = ex.orders.filter((o) => !(o.venueSymbol === "S1-USDT" && stopOf(o)));
     const st = await step(rt, ex);
     assert.doesNotMatch(st.reason, /rate limit/);
     assert.equal(ex.positions.has("S2-USDT|LONG"), false, "the ended lane is closed during the klines ban");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await step(rt, ex);
     assert.ok(ex.orders.some((o) => o.venueSymbol === "S1-USDT" && stopOf(o)), "the stop is repaired during the klines ban");
     assert.ok(ex.positions.has("S1-USDT|LONG"));
   });
@@ -1927,7 +2035,9 @@ describe("account positions: own and foreign apart", () => {
     // A whole (1) + a quarter of C (0.5); B (−3) is not ours
     assert.ok(Math.abs(r.own.upnl - 1.5) < 1e-9, `own upnl ${r.own.upnl}`);
     assert.ok(Math.abs(r.own.margin - 6) < 1e-9);
-    assert.deepEqual(r.foreign, { n: 1, upnl: -3, margin: 5 });
+    // B in full, plus the three-quarters foreign share of C. Mixed positions count in both owner summaries.
+    assert.deepEqual(r.foreign, { n: 2, upnl: -1.5, margin: 11 });
+    assert.equal(r.ownershipUnknown.n, 0);
   });
 
   it("the live step stamps the account with the own share and the foreign position apart", async () => {

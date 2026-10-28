@@ -29,6 +29,7 @@ it("publishes the actual full paper selection's post-Base validation separately 
     rt.settings.live.liveLastN = 0;
     rt.tapes = [make("good", false), make("bad", true)];
     rt.sim = { startT: t - 24 * H, endT: t, steps: [], feed: [], trades: [] } as unknown as WalkForwardResult;
+    rt.sim.validated = rt.tapes.map((x) => x.id);
     const hook = rt as unknown as { stepPaper(): void };
     hook.stepPaper();
     const progress = rt.status.postBaseValidation;

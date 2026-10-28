@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "symbols": 20,
+  "combos": 195,
+  "basePairs": 28,
+  "exactBaseCells": 2715,
+  "ordersChecked": 2156,
+  "scope": "Independently recalculated Base-cell membership of every modeled settled order; no live execution claim.",
+  "sourceSha256": "edc598b9c7e04b98429a9cfe0a77ea12b3642ade2964079d97af6f3ed76e082d"
+}

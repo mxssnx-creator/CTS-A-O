@@ -21,6 +21,7 @@ function fixture({ n = 3, allLosing = false, unknownUnit = false, missingAllocat
     const unitR = allLosing ? -.01 : i === 0 ? .02 : i === 1 ? -.01 : .005;
     const mult = !allLosing && i === 0 ? 4 : 1;
     raw.trades.push({ cfg: sig ? 'follow|sig-ema-s@m1|trailing-only' : 'follow|test@m1|tp1|mc', kind: sig ? 'trailing-only' : 'trailing',
+      reason: ['tp', 'sl', 'time'][i % 3],
       sym: symbols[i % 3], side: sig ? -1 : 1, entryT, exitT: entryT + 60_000, r: unitR * mult, mult,
       ...(unknownUnit && i === 0 ? { unitR: null } : {}) });
   }
@@ -79,6 +80,17 @@ describe('frozen session independent audit', () => {
     assert.equal(a.pruning.assessmentAllowed, false);
   });
 
+  it('reconciles per-order close reason and strategy kind when the report records them', () => {
+    const { raw, data } = fixture();
+    const a = auditSessionStudy(raw, data);
+    assert.equal(a.checks.find((x) => x.name === 'reported close reasons match the raw tape when present').actual.reportedRows, 3);
+    assert.equal(a.checks.find((x) => x.name === 'reported strategy kinds match the raw tape when present').actual.reportedRows, 3);
+    data.sizedOrders[0].reason = 'time';
+    const mismatch = auditSessionStudy(raw, data);
+    assert.equal(mismatch.checksOk, false);
+    assert.equal(mismatch.checks.find((x) => x.name === 'reported close reasons match the raw tape when present').actual.mismatches, 1);
+  });
+
   it('never treats zero allocations as funded performance or permits duplicate allocation joins', () => {
     const { raw, data } = fixture();
     data.sizedOrders[0].allocatedNotional = 0; data.sizedOrders[0].unitNotional = 0; data.sizedOrders[0].sizedPnl = 0;
@@ -88,6 +100,18 @@ describe('frozen session independent audit', () => {
     assert.equal(a.checksOk, true);
     data.sizedOrders[1].closeIndex = 0;
     assert.throws(() => auditSessionStudy(raw, data), /identity.*mismatched/);
+  });
+
+  it('reconciles an explicitly empty funded cohort while keeping PF unavailable', () => {
+    const { raw, data } = fixture({ n: 0 });
+    data.total.gpR = null; data.total.glR = null;
+    const a = auditSessionStudy(raw, data);
+    assert.equal(a.checksOk, true);
+    assert.equal(a.total.state, 'empty');
+    assert.equal(a.total.exactPf, null);
+    assert.equal(a.total.closes, 0);
+    delete data.total.gpR;
+    assert.equal(auditSessionStudy(raw, data).checksOk, false, 'missing gross data is not an explicit empty sample');
   });
 
   it('preserves missing unit or allocation evidence as unknown and prevents pruning', () => {

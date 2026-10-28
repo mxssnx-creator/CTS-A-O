@@ -62,7 +62,7 @@ describe("background Real worker", () => {
           }
       return makeTape(tp.id, tp.bot, tp.ind, tp.protect, tp.kind, tp.syms, trades, [], []);
     });
-    const wf = { ...defaultWalkForward(DEFAULT_SETTINGS), preH: 6, simH: 6 };
+    const wf = { ...defaultWalkForward(DEFAULT_SETTINGS), preH: 6, longH: 72, simH: 6, validLastN: 0, rangeGate: undefined };
     const expected = walkForward(u, tapes, wf);
     const owner = {};
     try {

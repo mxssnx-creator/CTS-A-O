@@ -19,6 +19,9 @@ const stores = new WeakMap<ConfigTape, Storage>();
 
 /** Append worker deltas without re-materialising historical Trades. Old published prefixes are immutable. */
 export function appendTape(previous: ConfigTape, delta: ConfigTape): ConfigTape {
+  if (previous.open.some((p) => p.entryStopMax !== undefined) ||
+      delta.open.some((p) => p.entryStopMax !== undefined))
+    throw new Error("compact tape cannot retain per-entry stop-limit provenance");
   if (
     previous.id !== delta.id ||
     previous.syms.length !== delta.syms.length ||

@@ -1,5 +1,11 @@
 # Live validation by group — tested, off by default (October 2026)
 
+**27 October update:** The experiment below describes the former group-gating behavior. Group Last-N remains a
+diagnostic only: a sibling group cannot qualify or veto an individual paper entry. Paper forward deactivation now
+uses the exact configuration and direction; a short own sample is explicitly unjudged warm-up, not a funded proof.
+Native promotion independently requires the matching post-Base model and owned-execution evidence. The historical
+measurements below are retained as measurements of the former policy, not evidence of this change's profitability.
+
 The question: should x01 stop opening new entries in a group of configs that is losing live, and keep the earning
 groups trading? The groups are Signals, Minimal, Short, General, Long and Wide (no range tag).
 

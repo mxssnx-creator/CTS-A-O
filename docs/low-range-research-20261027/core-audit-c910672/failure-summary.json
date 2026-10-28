@@ -1,0 +1,303 @@
+{
+  "leafFailureCount": 58,
+  "byFile": {
+    "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/relation-ownership.test.ts": 1,
+    "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/control-audit.test.ts": 3,
+    "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/control-orders.test.ts": 1,
+    "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/control.test.ts": 4,
+    "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts": 48,
+    "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/sim/strategy-sets-independent.test.ts": 1
+  },
+  "failures": [
+    {
+      "tapLine": 8119,
+      "test": "not ok 7 - own quantity 0 beside someone else's: the own orders there are cancelled, the rest untouched",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/relation-ownership.test.ts:262:3"
+    },
+    {
+      "tapLine": 9757,
+      "test": "not ok 9 - a position closed BY HAND is not reopened either: processing continues, a new lane order opens it again",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/control-audit.test.ts:406:3"
+    },
+    {
+      "tapLine": 9887,
+      "test": "not ok 28 - the 100-slot ceiling counts foreign exchange positions, while 1000 strategy orders remain in the lane book",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/control-audit.test.ts:908:3"
+    },
+    {
+      "tapLine": 9956,
+      "test": "not ok 5 - live.excludeConfigs: a left-out family's held position closes at once (its paper lane still running); the rest of the key stays",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/control-audit.test.ts:1118:3"
+    },
+    {
+      "tapLine": 10114,
+      "test": "not ok 8 - closed by its take-profit: booked as target exits at its price; by its stop: stop exits; never reopened",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/control-orders.test.ts:317:3"
+    },
+    {
+      "tapLine": 10417,
+      "test": "not ok 11 - a position closed manually keeps processing, is NOT put back, and a new lane order opens it again",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/control.test.ts:589:3"
+    },
+    {
+      "tapLine": 10477,
+      "test": "not ok 19 - one-way mode: opposing lanes wait, and an owned side closes before the other opens",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/control.test.ts:888:3"
+    },
+    {
+      "tapLine": 10505,
+      "test": "not ok 21 - a lane whose stop was crossed at tick time leaves the control at once (live position reduced / closed)",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/control.test.ts:1032:3"
+    },
+    {
+      "tapLine": 10595,
+      "test": "not ok 3 - open orders of an earlier read (rate limited): opening goes on, stop repairs and leftover cancels wait",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/control.test.ts:1355:3"
+    },
+    {
+      "tapLine": 14351,
+      "test": "not ok 2 - repairs a departed parent's cancelled STOP_MARKET using its saved quantity and level, side 1, durable restart false",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:92:7"
+    },
+    {
+      "tapLine": 14373,
+      "test": "not ok 3 - repairs a departed parent's cancelled STOP_MARKET using its saved quantity and level, side 1, durable restart true",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:92:7"
+    },
+    {
+      "tapLine": 14395,
+      "test": "not ok 4 - repairs a departed parent's cancelled TAKE_PROFIT_MARKET using its saved quantity and level, side 1, durable restart false",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:92:7"
+    },
+    {
+      "tapLine": 14417,
+      "test": "not ok 5 - repairs a departed parent's cancelled TAKE_PROFIT_MARKET using its saved quantity and level, side 1, durable restart true",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:92:7"
+    },
+    {
+      "tapLine": 14457,
+      "test": "not ok 9 - does not replace a missing STOP_MARKET whose cancellation fill is unknown, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:243:5"
+    },
+    {
+      "tapLine": 14479,
+      "test": "not ok 10 - does not replace a STOP_MARKET when cancellation evidence has a mismatched orderId, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14501,
+      "test": "not ok 11 - does not replace a STOP_MARKET when cancellation evidence has a mismatched missingOrderId, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14523,
+      "test": "not ok 12 - does not replace a STOP_MARKET when cancellation evidence has a mismatched symbol, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14545,
+      "test": "not ok 13 - does not replace a STOP_MARKET when cancellation evidence has a mismatched clientOrderId, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14567,
+      "test": "not ok 14 - does not replace a STOP_MARKET when cancellation evidence has a mismatched side, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14589,
+      "test": "not ok 15 - does not replace a STOP_MARKET when cancellation evidence has a mismatched positionSide, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14611,
+      "test": "not ok 16 - does not replace a STOP_MARKET when cancellation evidence has a mismatched type, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14633,
+      "test": "not ok 17 - does not replace a STOP_MARKET when cancellation evidence has a mismatched quantityAlias, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14661,
+      "test": "not ok 19 - does not forget a measured partial STOP_MARKET fill on contradictory zero cancellation, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:326:5"
+    },
+    {
+      "tapLine": 14697,
+      "test": "not ok 23 - does not replace a missing TAKE_PROFIT_MARKET whose cancellation fill is unknown, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:243:5"
+    },
+    {
+      "tapLine": 14719,
+      "test": "not ok 24 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched orderId, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14741,
+      "test": "not ok 25 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched missingOrderId, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14763,
+      "test": "not ok 26 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched symbol, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14785,
+      "test": "not ok 27 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched clientOrderId, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14807,
+      "test": "not ok 28 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched side, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14829,
+      "test": "not ok 29 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched positionSide, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14851,
+      "test": "not ok 30 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched type, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14873,
+      "test": "not ok 31 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched quantityAlias, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 14901,
+      "test": "not ok 33 - does not forget a measured partial TAKE_PROFIT_MARKET fill on contradictory zero cancellation, side 1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:326:5"
+    },
+    {
+      "tapLine": 14925,
+      "test": "not ok 35 - repairs a departed parent's cancelled STOP_MARKET using its saved quantity and level, side -1, durable restart false",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:92:7"
+    },
+    {
+      "tapLine": 14947,
+      "test": "not ok 36 - repairs a departed parent's cancelled STOP_MARKET using its saved quantity and level, side -1, durable restart true",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:92:7"
+    },
+    {
+      "tapLine": 14969,
+      "test": "not ok 37 - repairs a departed parent's cancelled TAKE_PROFIT_MARKET using its saved quantity and level, side -1, durable restart false",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:92:7"
+    },
+    {
+      "tapLine": 14991,
+      "test": "not ok 38 - repairs a departed parent's cancelled TAKE_PROFIT_MARKET using its saved quantity and level, side -1, durable restart true",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:92:7"
+    },
+    {
+      "tapLine": 15031,
+      "test": "not ok 42 - does not replace a missing STOP_MARKET whose cancellation fill is unknown, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:243:5"
+    },
+    {
+      "tapLine": 15053,
+      "test": "not ok 43 - does not replace a STOP_MARKET when cancellation evidence has a mismatched orderId, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15075,
+      "test": "not ok 44 - does not replace a STOP_MARKET when cancellation evidence has a mismatched missingOrderId, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15097,
+      "test": "not ok 45 - does not replace a STOP_MARKET when cancellation evidence has a mismatched symbol, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15119,
+      "test": "not ok 46 - does not replace a STOP_MARKET when cancellation evidence has a mismatched clientOrderId, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15141,
+      "test": "not ok 47 - does not replace a STOP_MARKET when cancellation evidence has a mismatched side, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15163,
+      "test": "not ok 48 - does not replace a STOP_MARKET when cancellation evidence has a mismatched positionSide, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15185,
+      "test": "not ok 49 - does not replace a STOP_MARKET when cancellation evidence has a mismatched type, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15207,
+      "test": "not ok 50 - does not replace a STOP_MARKET when cancellation evidence has a mismatched quantityAlias, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15235,
+      "test": "not ok 52 - does not forget a measured partial STOP_MARKET fill on contradictory zero cancellation, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:326:5"
+    },
+    {
+      "tapLine": 15271,
+      "test": "not ok 56 - does not replace a missing TAKE_PROFIT_MARKET whose cancellation fill is unknown, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:243:5"
+    },
+    {
+      "tapLine": 15293,
+      "test": "not ok 57 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched orderId, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15315,
+      "test": "not ok 58 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched missingOrderId, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15337,
+      "test": "not ok 59 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched symbol, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15359,
+      "test": "not ok 60 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched clientOrderId, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15381,
+      "test": "not ok 61 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched side, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15403,
+      "test": "not ok 62 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched positionSide, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15425,
+      "test": "not ok 63 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched type, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15447,
+      "test": "not ok 64 - does not replace a TAKE_PROFIT_MARKET when cancellation evidence has a mismatched quantityAlias, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:268:7"
+    },
+    {
+      "tapLine": 15475,
+      "test": "not ok 66 - does not forget a measured partial TAKE_PROFIT_MARKET fill on contradictory zero cancellation, side -1",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/server/native-drain-protection.test.ts:326:5"
+    },
+    {
+      "tapLine": 26994,
+      "test": "not ok 1 - native DCA increases each independent set once by 2.5 original units, preserving its sibling and never compounding",
+      "location": "/workspace/scratch/b69c1e5067d8/CTS-full-core-c910672/src/core/sim/strategy-sets-independent.test.ts:18:3"
+    }
+  ]
+}

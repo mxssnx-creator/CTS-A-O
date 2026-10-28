@@ -1,13 +1,14 @@
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
-import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, MAX_FOCUS_PAIRS, type CoreSettings } from "./config.ts";
-import { MAX_MODEL_RT_COST } from "./model-cost.ts";
+import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, MAX_EXTERNAL_STACK, MAX_FOCUS_PAIRS, mergeGridSettings, type CoreSettings, type SettingsPatch } from "./config.ts";
+import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "./model-cost.ts";
+import { checkGridVariantBudget } from "./sim/walkforward.ts";
 import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
 import { validVolumeRatio } from "./volume-ratio.ts";
 import { AXIS_MAX_LEVELS, AXIS_MAX_RUNG_RATIO } from "./sim/relate-volume.ts";
 
 /** Range checks for a settings patch (Settings page and preset dialog alike). */
-export function checkSettings(s: Partial<CoreSettings>) {
+export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
   const num = (v: unknown, lo: number, hi: number, name: string) => {
     if (v === undefined) return;
     if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi)
@@ -399,7 +400,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("block history source: accepted-orders or real-candidates");
     num(s.block.maxLevel, 1, 12, "block max level");
     num(s.block.minActiveLevel, 1, 12, "block active level");
-    num(s.block.maxMult, 1, 8, "block max multiple (stack ≤ 8×)");
+    num(s.block.maxMult, 1, MAX_EXTERNAL_STACK, "block max multiple (stack ≤ 8×)");
     if (
       s.block.mode !== undefined &&
       s.block.mode !== "shared" &&
@@ -605,7 +606,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("Relate minimum trades must not exceed last-N");
     if (s.relate.maxStack !== undefined) {
       int(s.relate.maxStack, "Relate maximum stack");
-      num(s.relate.maxStack, 1, 250, "Relate maximum stack");
+      num(s.relate.maxStack, 1, MAX_EXTERNAL_STACK, "Relate maximum stack (systemwide stack ≤ 8×)");
+    }
+    if (s.relate.maxSl !== undefined) {
+      num(s.relate.maxSl, 0.0025, 0.015, "Relate maximum SL");
+      if (Math.abs(s.relate.maxSl * 400 - Math.round(s.relate.maxSl * 400)) > 1e-8)
+        throw new Error("Relate maximum SL must use 0.25 percentage point increments");
     }
     if (s.relate.sources !== undefined) {
       if (!s.relate.sources || typeof s.relate.sources !== "object" || Array.isArray(s.relate.sources))
@@ -724,6 +730,29 @@ export function checkSettings(s: Partial<CoreSettings>) {
         );
     range(general, "general");
     range(long, "long");
+    const lowRange = s.grid.lowRange;
+    if (lowRange !== undefined) {
+      if (!lowRange || typeof lowRange !== "object" || Array.isArray(lowRange))
+        throw new Error("Low-Range: settings object required");
+      if (lowRange.enabled !== undefined && typeof lowRange.enabled !== "boolean")
+        throw new Error("Low-Range enabled: true or false");
+      num(lowRange.step, 0.000001, 0.008, "Low-Range step");
+      num(lowRange.maxHoldMin, 1, 1440, "Low-Range maximum hold");
+      int(lowRange.maxHoldMin, "Low-Range maximum hold");
+      for (const [xs, lo, hi, label] of [
+        [lowRange.steps, 2, 6, "Low-Range target steps"],
+        [lowRange.slRatios, 0.5, 3.5, "Low-Range stop ratios"],
+        [lowRange.trailRatios, 0, 1, "Low-Range trailing ratios"],
+      ] as const) {
+        if (xs === undefined) continue;
+        if (!Array.isArray(xs) || !xs.length || xs.length > 64) throw new Error(`${label}: 1–64 values`);
+        for (const x of xs) {
+          if (typeof x !== "number") throw new Error(`${label}: each value must be a number`);
+          num(x, lo, hi, label);
+        }
+      }
+      if (lowRange.steps?.some((x) => !Number.isInteger(x))) throw new Error("Low-Range steps must be whole numbers");
+    }
     const micro = s.grid.micro;
     if (micro && typeof micro === "object") {
       const wide = (xs: unknown, lo: number, hi: number, name: string, max: number) => {
@@ -770,7 +799,9 @@ export function checkSettings(s: Partial<CoreSettings>) {
       cells(minimal) +
       cells(general) +
       cells(long) +
-      cells(micro);
+      cells(micro) +
+      (lowRange?.enabled && lowRange.steps && lowRange.slRatios && lowRange.trailRatios
+        ? lowRange.steps.length * lowRange.slRatios.length * lowRange.trailRatios.length * (s.grid.trailingOnly ? 2 : 1) : 0);
     const plus = s.grid.minimalPlus;
     let plusN = 0;
     if (plus) {
@@ -1073,8 +1104,34 @@ function checkBaseWindowRule(r: unknown, name: string) {
  * Cross-field rules against the settings a patch produces (recover PF ≥ trigger PF, axis min < max, a signal
  * range left on): checkSettings alone only sees the fields inside the patch.
  */
-export function checkMerged(cur: CoreSettings, patch: Partial<CoreSettings>) {
+/** A partial patch is valid only after it has produced a complete executable Low-Range object. */
+export function checkLowRangeComplete(grid: CoreSettings["grid"]) {
+  const lr = grid.lowRange;
+  if (lr === undefined) return;
+  if (!lr || typeof lr !== "object" || Array.isArray(lr) || typeof lr.enabled !== "boolean" ||
+      typeof lr.step !== "number" || typeof lr.maxHoldMin !== "number" ||
+      !Array.isArray(lr.steps) || !Array.isArray(lr.slRatios) || !Array.isArray(lr.trailRatios))
+    throw new Error("Low-Range: merged settings must include enabled, step, target/stop/trailing lists and maximum hold");
+}
+
+/** Ordinary range objects replace the prior object; never fill omitted ladders from another configuration. */
+export function checkRangeReplacementsComplete(grid: CoreSettings["grid"]) {
+  for (const key of ["micro", "minimal", "short", "general", "long"] as const) {
+    const range = grid[key];
+    if (range === undefined || range === false) continue;
+    if (!range || typeof range !== "object" || Array.isArray(range) || !Array.isArray(range.tp) ||
+        !Array.isArray(range.slOfTp) || !Array.isArray(range.trailOfTp))
+      throw new Error(`${key} range replaces the previous object: provide complete TP, SL and trailing lists`);
+  }
+}
+
+export function checkMerged(cur: CoreSettings, patch: Partial<CoreSettings> | SettingsPatch) {
   const merged: Partial<CoreSettings> = {};
+  if (patch.grid) {
+    merged.grid = mergeGridSettings(cur.grid, patch.grid);
+    checkLowRangeComplete(merged.grid);
+    checkRangeReplacementsComplete(merged.grid);
+  }
   if (patch.adjust) merged.adjust = { ...cur.adjust, ...patch.adjust } as CoreSettings["adjust"];
   if (patch.axis) merged.axis = { ...cur.axis, ...patch.axis } as CoreSettings["axis"];
   if (patch.relate) merged.relate = {
@@ -1087,4 +1144,12 @@ export function checkMerged(cur: CoreSettings, patch: Partial<CoreSettings>) {
       ranges: { ...cur.signals?.ranges, ...patch.signals.ranges },
     } as CoreSettings["signals"];
   checkSettings(merged);
+  if (patch.grid || patch.cost !== undefined || patch.fees) {
+    // Match updateSettings: explicit cost wins; a fee-only patch derives and
+    // bounds the cost after merging its components with the current settings.
+    const cost = patch.fees && patch.cost === undefined
+      ? boundedModelCost(+roundTripCostFromFees({ ...cur.fees, ...patch.fees }).toFixed(5))
+      : boundedModelCost(patch.cost ?? cur.cost);
+    checkGridVariantBudget(merged.grid ?? cur.grid, cost);
+  }
 }

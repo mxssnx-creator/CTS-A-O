@@ -461,16 +461,14 @@ export function signalProven(
 }
 
 /**
- * Whether a config may open a new entry: its own last N decide once it has them (a config that earns live trades
- * even in a losing group, one that loses is paused even in an earning group); before that its group's last N decide;
- * neither judged yet: its simulated validation alone (always ok here).
+ * Whether a config may open a paper entry: only its own forward record can pause it. Insufficient own history is
+ * unjudged paper warmup, not evidence of a pass or of funded promotion; the caller still applies the exact historical
+ * config gate. A group's pooled status is diagnostic and cannot prove or veto this configuration.
  */
-export function liveEntryOk(own: LiveGate, group: LiveGate | undefined): boolean {
+export function liveEntryOk(own: LiveGate, _group?: LiveGate): boolean {
   if (own.required) return own.ok;
   if ((own.unknown ?? 0) > 0) return false;
   if (own.pf !== null) return own.ok;
-  if ((group?.unknown ?? 0) > 0) return false;
-  if (group && group.pf !== null) return group.ok;
   return true;
 }
 
@@ -490,19 +488,28 @@ export interface LiveValidationStatus {
   lastN: number;
   minPf: number;
   since: number;
-  /** configs with at least N live closes */
+  /** Latest snapshot time; these are accepted post-Base modeled outcomes, not venue fills. */
+  at: number;
+  basis: "post-base-accepted";
+  /** Selected config × direction contexts, including unjudged and unknown contexts. */
+  evaluated: number;
+  /** Fewer than N known own closes: unproven paper warm-up. */
+  unjudged: number;
+  /** Contexts with unknown own return provenance (or a missing selected tape). */
+  unknown: number;
+  /** Contexts with enough known closes to be judged, including failures. */
   judged: number;
   passing: number;
-  /** configs paused by their live closes */
+  /** Judged contexts paused by their own modeled closes. */
   paused: number;
   /** new entries skipped this step */
   skipped: number;
   /** configs judged on their exchange closes (live_lane_trades), and the exchange closes on record since `since` */
   onExchange?: number;
   exchangeCloses?: number;
-  /** group last N (0 = off) and each group's verdict */
+  /** group last N (0 = off) and its diagnostic statistics; these do not qualify or veto a config */
   groupLastN?: number;
   groups?: LiveGroupStatus[];
-  /** live.sideGates on: each config is judged per side (the counts are per config and side) */
+  /** Each config is judged per side (the counts are per config and side). */
   bySide?: true;
 }

@@ -193,7 +193,8 @@ describe("coordination volume factors", () => {
     assert.equal(combined.rangeVol, 1.8);
     assert.ok((combined.coordVol ?? 1) > 1, "settled history supplies the relation multiplier");
     assert.equal(combined.level, 1, "the config's recent settled winner supplies one Block level");
-    assert.ok(Math.abs(combined.mult! - 1.2 * combined.coordVol! * 3 * 1.6 * 1.8) < 1e-12);
+    assert.ok(Math.abs(combined.mult! - Math.min(8, 1.2 * combined.coordVol! * 3 * 1.6 * 1.8)) < 1e-12);
+    assert.ok(combined.mult! <= 8, "the aggregate external sizing ceiling still applies to coordinated Signal entries");
     assert.ok(Math.abs(combined.r / combined.mult! - 0.01) < 1e-12, "unit returns exclude every external sizing factor");
   });
 });

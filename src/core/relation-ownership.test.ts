@@ -277,7 +277,7 @@ describe("R-d: own quantity only from own fills; the desk independent beside man
     assert.equal(rt.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM live_orders WHERE kind = 'H'")?.n, 1);
   });
 
-  it('foreignSides "independent": the desk opens its own beside the operator\'s side and never sets that side\'s leverage', async () => {
+  it('foreignSides "independent": a foreign same-side position blocks a new parent without disturbing the existing own side', async () => {
     const run = async (foreignSides: "avoid" | "independent") => {
       const { rt, ex, step } = desk(26, { foreignSides });
       const lev: string[] = [];
@@ -287,6 +287,8 @@ describe("R-d: own quantity only from own fills; the desk independent beside man
       };
       // the desk's own long on S1 first (sets the symbol's margin mode and leverage), then the operator shorts S1 by hand
       await step();
+      const ownLong = ex.positions.get(K) ?? 0;
+      assert.ok(ownLong > 0, "the existing own long opened");
       const KS = "S1-USDT|SHORT";
       ex.foreignFill(KS, 5);
       lev.length = 0;
@@ -294,27 +296,26 @@ describe("R-d: own quantity only from own fills; the desk independent beside man
       const from = ex.log.length;
       await step();
       await step();
-      return { ex, lev, KS, from };
+      return { ex, lev, KS, from, ownLong };
     };
     const avoid = await run("avoid");
     assert.ok(near(avoid.ex.positions.get(avoid.KS) ?? 0, 5), "avoid: the operator's side frozen");
     assert.deepEqual(sentOn(avoid.ex, avoid.from, avoid.KS), []);
     const ind = await run("independent");
-    const opens = sentOn(ind.ex, ind.from, ind.KS).filter((o) => o.type === "MARKET" && o.side === "SELL");
-    assert.equal(opens.length, 1, "independent: the desk opened its own short beside the operator's");
-    const own = Number(opens[0].quantity);
-    assert.ok(near(ind.ex.positions.get(ind.KS) ?? 0, 5 + own));
+    assert.deepEqual(sentOn(ind.ex, ind.from, ind.KS), [], "independent: no parent shares the manual short");
+    assert.ok(near(ind.ex.positions.get(ind.KS) ?? 0, 5), "the manual short stays untouched");
+    assert.ok(near(ind.ex.positions.get(K) ?? 0, ind.ownLong), "the existing own opposite side remains open");
+    assert.ok(keyOrders(ind.ex, K).some((o) => o.type === "STOP_MARKET" && !o.closePosition && (o.qty ?? Infinity) <= ind.ownLong + 1e-9), "the owned side keeps bounded protection");
     assert.ok(!ind.lev.includes("S1-USDT|SHORT"), `leverage set on the operator's side: ${ind.lev}`);
-    // every desk order there is bounded to its own quantity; all of them trigger: the operator's 5 stay
-    assert.ok(sentOn(ind.ex, ind.from, ind.KS).every((o) => o.closePosition === undefined && Number(o.quantity) <= own + 1e-9));
-    for (const o of keyOrders(ind.ex, ind.KS)) ind.ex.triggerOrder(o.id);
-    assert.ok(near(ind.ex.positions.get(ind.KS) ?? 0, 5), `left ${ind.ex.positions.get(ind.KS)}`);
   });
   it("a timed-out entry counts only with the fill the venue confirms (never a manual position on its side)", () => {
     assert.equal(entryFilledQty({ order: { status: "FILLED", executedQty: "0.6" } }, 0.6), 0.6);
-    assert.equal(entryFilledQty({ order: { status: "FILLED" } }, 0.6), 0.6);
+    assert.equal(entryFilledQty({ order: { status: "FILLED" } }, 0.6), null, "a missing quantity does not prove a fill");
     assert.equal(entryFilledQty({ order: { status: "PARTIALLY_FILLED", executedQty: "0.2" } }, 0.6), 0.2);
     assert.equal(entryFilledQty({ order: { status: "CANCELED", executedQty: "0" } }, 0.6), 0);
+    assert.equal(entryFilledQty({ order: { status: "CANCEL_PENDING", executedQty: "0" } }, 0.6), null);
+    assert.equal(entryFilledQty({ order: { status: "CANCELLING", executedQty: "0.2" } }, 0.6), null);
+    assert.equal(entryFilledQty({ order: { status: "FILLED", executedQty: "0.7" } }, 0.6), null);
     assert.equal(entryFilledQty({ order: { status: "NEW" } }, 0.6), null);
     assert.equal(entryFilledQty(null, 0.6), null);
   });
@@ -369,24 +370,34 @@ describe("R-d: own quantity only from own fills; the desk independent beside man
     assert.ok(beside.stops.some((o) => o.id === beside.first.id), "merged: the first stop still rests, topped up");
   });
 
-  it('"independent" opens on a symbol the desk never set: its margin mode is read (never set), another mode holds', async () => {
-    const run = async (venueMode: "cross" | "isolated") => {
+  it('"independent" fences the foreign side and preserves margin rules for the opposite hedge side', async () => {
+    const run = async (venueMode: "cross" | "isolated", ownSide: 1 | -1) => {
       const { rt, ex, step } = desk(28, { foreignSides: "independent" });
       ex.margins.set("S2-USDT", venueMode);
       const KS = "S2-USDT|SHORT";
       ex.foreignFill(KS, 5);
-      rt.paper.positions = [{ cfg: SIG, sym: "S2-USDT", side: -1, entry: 24, stop: 24 * 1.03, target: 24 * 0.97, entryT: Date.now() - 60_000, vol: 1 }] as never;
+      const ownKey = `S2-USDT|${ownSide === 1 ? "LONG" : "SHORT"}`;
+      rt.paper.positions = [{ cfg: SIG, sym: "S2-USDT", side: ownSide, entry: 24, stop: 24 * (ownSide === 1 ? 0.97 : 1.03), target: 24 * (ownSide === 1 ? 1.03 : 0.97), entryT: Date.now() - 60_000, vol: 1 }] as never;
       await step();
       await step();
-      return { ex, KS };
+      return { ex, KS, ownKey };
     };
-    const cross = await run("cross");
-    assert.equal(sentOn(cross.ex, 0, cross.KS).filter((o) => o.type === "MARKET").length, 1, "opened beside the operator's");
+    const cross = await run("cross", -1);
+    assert.deepEqual(sentOn(cross.ex, 0, cross.KS), [], "same foreign side stays fenced");
+    assert.ok(near(cross.ex.positions.get(cross.KS) ?? 0, 5));
     assert.ok(!cross.ex.marginSet.includes("S2-USDT"), "margin mode never set there");
-    const iso = await run("isolated");
+    const iso = await run("isolated", -1);
     assert.deepEqual(sentOn(iso.ex, 0, iso.KS), [], "another margin mode: not opened");
     assert.ok(!iso.ex.marginSet.includes("S2-USDT"));
     assert.ok(near(iso.ex.positions.get(iso.KS) ?? 0, 5));
+    const opposite = await run("cross", 1);
+    assert.ok((opposite.ex.positions.get(opposite.ownKey) ?? 0) > 0, "a flat opposite hedge side may open");
+    assert.ok(near(opposite.ex.positions.get(opposite.KS) ?? 0, 5), "the foreign short remains intact");
+    assert.ok(keyOrders(opposite.ex, opposite.ownKey).some((o) => o.type === "STOP_MARKET" && !o.closePosition), "the own long receives bounded protection");
+    assert.ok(!opposite.ex.marginSet.includes("S2-USDT"), "foreign symbol margin is only read");
+    const oppositeWrongMargin = await run("isolated", 1);
+    assert.deepEqual(sentOn(oppositeWrongMargin.ex, 0, oppositeWrongMargin.ownKey), [], "mismatched margin still holds the opposite side");
+    assert.ok(near(oppositeWrongMargin.ex.positions.get(oppositeWrongMargin.KS) ?? 0, 5));
   });
   it("a symbol holding someone else's quantity keeps its margin mode and that side its leverage — also when avoided", async () => {
     const { rt, ex, step } = desk(29);

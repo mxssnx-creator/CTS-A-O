@@ -313,10 +313,10 @@ describe("live.sideGates: the engine proof, the simulated fallback and the setti
       perSide.set(liveGroupKeyOf(group, s), liveGroupGates([sideTapeOf(tape, s)], 0, NOW, 3, MIN_PF).get(group)!);
     assert.equal(perSide.get(`${group}|1`)!.ok, true, "the LONG group's own last 3 win");
     assert.equal(perSide.get(`${group}|-1`)!.ok, false, "the SHORT group's own last 3 lose");
-    // an entry whose own gate is not judged takes its side's group gate
+    // Pooled group statistics are diagnostic; they never qualify or veto an unjudged config.
     const unjudged: LiveGate = { ok: true, n: 0, pf: null };
     assert.equal(liveEntryOk(unjudged, perSide.get(liveGroupKeyOf(group, 1))), true, "a LONG entry is admitted");
-    assert.equal(liveEntryOk(unjudged, perSide.get(liveGroupKeyOf(group, -1))), false, "a SHORT entry is refused");
+    assert.equal(liveEntryOk(unjudged, perSide.get(liveGroupKeyOf(group, -1))), true, "a losing sibling group does not veto paper warmup");
   });
 
   it("(d) live.sideGates: a proven key is its config and its side (recordKeyOf read back by splitRecordKey); a config id with a '|' is split at its last '|'", () => {
@@ -350,7 +350,7 @@ describe("live.sideGates: a lane or an entry with no side of its own (g)", () =>
     assert.equal(liveLaneFilter({}, null, null, new Set<string>(), null).sendable(lane(0)), false, "not proven");
   });
 
-  it("(g) live.sideGates: an entry with no side of its own is not judged and is admitted, as no side's group gate applies to it (the entry gate's composition: lvOf's unjudged gate, the group key without a side; the runtime closure itself is not run)", () => {
+  it("(g) a diagnostic side group cannot substitute for a config's own forward gate", () => {
     const unjudged: LiveGate = { ok: true, n: 0, pf: null };
     const group = liveGroupOf(CFG);
     // under the option each group's gate is keyed by its side, so the key of a side-less entry names no gate
@@ -360,7 +360,7 @@ describe("live.sideGates: a lane or an entry with no side of its own (g)", () =>
       [liveGroupKeyOf(group, -1), refused],
     ]);
     assert.equal(liveEntryOk(unjudged, groups.get(liveGroupKeyOf(group, sideOfRow(0)))), true, "an entry with side 0 is admitted");
-    assert.equal(liveEntryOk(unjudged, groups.get(liveGroupKeyOf(group, sideOfRow(-1)))), false, "a SHORT entry takes its side's group gate");
+    assert.equal(liveEntryOk(unjudged, groups.get(liveGroupKeyOf(group, sideOfRow(-1)))), true, "a SHORT entry is not judged by siblings");
   });
 
   // the signal readers: the lane filter's signal proof (live.server.ts signalOk) and the proof's unit of a close

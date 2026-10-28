@@ -58,15 +58,10 @@ describe("contrarian execution (invertSeats)", () => {
     assert.equal(f.side[i], -r.side[j]);
   });
 
-  it("the run seats the follow configs and executes their mirrors; off, it executes the seats themselves", () => {
+  it("validated seats refuse mirror execution outside the validated set", () => {
     const plain = walkForward(u, tapes, o);
-    const inv = walkForward(u, tapes, { ...o, invertSeats: true });
-    assert.ok(plain.trades.length > 0 && inv.trades.length > 0, `${plain.trades.length} / ${inv.trades.length} orders`);
+    assert.ok(plain.trades.length > 0, "validated source seats execute");
     assert.ok(plain.trades.every((t) => t.cfg.startsWith("follow|")), "the seats themselves");
-    assert.ok(inv.trades.every((t) => t.cfg.startsWith("revert|")), "their mirrors");
-    // every inverted order is a seated config's mirror, entered on a bar the seat's own tape enters on
-    const seated = new Set(plain.steps.flatMap((s) => s.real ?? []));
-    for (const t of inv.trades) assert.ok(seated.has(mirrorId(t.cfg)!), `${t.cfg} mirrors a seat`);
-    assert.equal(inv.invertMissing, 0);
+    assert.throws(() => walkForward(u, tapes, { ...o, invertSeats: true }), /refuses wf\.invertSeats/);
   });
 });

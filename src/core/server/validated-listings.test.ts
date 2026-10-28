@@ -5,6 +5,18 @@ import { CoreDb } from "./db.server.ts";
 import { makeTape } from "../sim/walkforward.ts";
 import type { Trade } from "../domain/types.ts";
 
+test("runtime reloads and settings patches cannot re-enable pool seating", () => {
+  const db = new CoreDb(":memory:");
+  db.kvSet("wf", { seatSet: "pool" });
+  const rt = new CoreRuntime(db, {}, { market: "synthetic" });
+  try {
+    assert.equal(rt.wf.seatSet, "validated", "a legacy saved pool cannot re-seat unvalidated candidates");
+    rt.updateSettings({}, { seatSet: "pool" });
+    assert.equal(rt.wf.seatSet, "validated", "an explicit runtime patch cannot bypass validated V");
+    assert.equal(db.kvGet<{ seatSet?: string }>("wf")?.seatSet, "validated");
+  } finally { rt.dispose(); }
+});
+
 test("listing PF and quantities contain only Last-N validated sets, excluding unvalidated probe seats", () => {
   const rt = new CoreRuntime(new CoreDb(":memory:"), {}, { market: "synthetic" });
   const t = Date.UTC(2026, 9, 17, 21);
@@ -33,6 +45,10 @@ test("listing PF and quantities contain only Last-N validated sets, excluding un
     assert.equal(listing.byGroup.Minimal.calculated, 2);
     assert.equal(listing.byGroup.Minimal.rows.length, 1);
     assert.equal(listing.byGroup.Minimal.gl, 0, "a rejected probe loss never enters validated PF");
+    assert.deepEqual(rt.status.listings?.byKind, [{
+      kind: "normal", validated: 1, calculated: 2, validationCloses: 100,
+      gp: 1, gl: 0, pf: null, noLoss: true,
+    }], "Active counts and PF include validated configs only; pool candidates remain separate");
     assert.equal(listing.validation.engineLastN, rt.wf.validLastN);
     assert.equal(listing.validation.rangeLastN, rt.wf.rangeGate!.lastN);
     assert.equal(listing.validation.at, t);

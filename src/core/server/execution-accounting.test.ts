@@ -288,7 +288,10 @@ describe("execution accounting integrity", () => {
         const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
         if (path === "stop-repair") {
           await step();
-          ex.orders = []; // the known own position needs its missing protective order repaired
+          const lost = ex.orders.filter((o) => o.type === "STOP_MARKET");
+          ex.orders = [];
+          for (const order of lost) ex.done.set(order.id, { status: "CANCELLED", qty: 0 });
+          // The missing order is confirmed cancelled with an exact zero-fill receipt before repair.
         }
         let healthy = false, closes = 0;
         ex.order = async (p) => {
@@ -303,6 +306,7 @@ describe("execution accounting integrity", () => {
           return place(p);
         };
         await step();
+        if (path === "stop-repair") await step(); // consume its background exact terminal receipt, then repair
         const owned = ex.positions.get("S0-USDT|LONG")!;
         assert.ok(owned > 0);
         assert.equal(closes, 1);

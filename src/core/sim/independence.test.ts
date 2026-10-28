@@ -147,9 +147,10 @@ describe("independent configs (seatPer config)", () => {
 
   it("DCA / Axis are judged on their own results, not against the pair's base", () => {
     const dca = tape(id(1, "dca"), 5, 0.01, "dca");
-    // the pair's base is far better: pair seats drop the DCA config (it must beat the base)
+    // Pair seats compare the base only when the explicit cross-family coordination switch is on.
     const strongBase = tape(id(2), 2, 0.05);
-    assert.equal(ids(selectFixed([dca, strongBase], t, base)).includes(id(1, "dca")), false);
+    assert.equal(ids(selectFixed([dca, strongBase], t, { ...base, familyNeedsBase: true })).includes(id(1, "dca")), false);
+    assert.ok(ids(selectFixed([dca, strongBase], t, { ...base, familyNeedsBase: false })).includes(id(1, "dca")));
     assert.ok(ids(selectFixed([dca, strongBase], t, indep)).includes(id(1, "dca")));
     // no base at all: still seated on its own
     assert.deepEqual(ids(selectFixed([dca], t, indep)), [id(1, "dca")]);
@@ -360,8 +361,8 @@ describe("orders still open at the end of the run", () => {
   });
 });
 
-describe("the same order from two indications", () => {
-  it("executes once: identical trades at the same protect never double the position; different holds both trade", () => {
+describe("identical onsets from independent indications", () => {
+  it("admits each exact source, while retries of the same source still deduplicate", () => {
     const IND2 = "ema-cross-9-21@m15";
     const cfg2 = `follow|${IND2}|tp1|sl1|tr0|h32`;
     const a = tape(id(1), 5);
@@ -379,19 +380,12 @@ describe("the same order from two indications", () => {
     const alone = walkForward(u, [a], indep);
     const both = walkForward(u, [a, twin], indep);
     assert.ok(alone.trades.length > 0);
-    assert.equal(both.trades.length, alone.trades.length, "the twin's orders are the same orders");
-    assert.ok((both.skips.duplicate ?? 0) > 0);
-    // what the duplicate rule dropped is tallied at the dropped twin's own result: the same orders' gross profit / loss
-    const dup = both.skipPf?.duplicate;
-    assert.ok(dup);
-    assert.equal(dup.n, both.skips.duplicate);
-    let gp = 0;
-    let gl = 0;
-    for (const x of both.trades) {
-      if (x.r > 0) gp += x.r;
-      else gl -= x.r;
-    }
-    assert.ok(Math.abs(dup.gp - gp) < 1e-12 && Math.abs(dup.gl - gl) < 1e-12, `${dup.gp}/${dup.gl} vs ${gp}/${gl}`);
+    assert.equal(both.trades.length, alone.trades.length * 2, "distinct sources own separate orders");
+    assert.equal(both.skips.duplicate ?? 0, 0);
+    assert.deepEqual(both.trades.filter((x) => x.cfg === a.id), alone.trades);
+    const duplicate = walkForward(u, [a, a], indep);
+    assert.equal(duplicate.trades.length, alone.trades.length, "same-config retry cannot double an order");
+    assert.equal(dupKey(alone.trades[0]), dupKey({ ...alone.trades[0] }), "same event still has one dedup key");
     // another hold is another order (it exits elsewhere): both trade
     const h48 = `follow|${IND2}|tp1|sl1|tr0|h48`;
     const other = makeTape(

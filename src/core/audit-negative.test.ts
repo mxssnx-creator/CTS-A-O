@@ -397,9 +397,8 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         const k = i.sim!.trades.findIndex((x) => !sigCfg(x.cfg) && tapeOf(x).kind === "normal" &&
           (x.vol ?? 1) === (x.mult ?? 1) && (x.mult ?? 1) <= 2 && !x.coordVol);
         assert.ok(k >= 0, "a plain cost-verifiable close within the caps exists");
-        return withTrade(i, k, { mult: (i.sim!.trades[k].mult ?? 1) + 1 });
+        return withTrade(i, k, { blockVol: (i.sim!.trades[k].blockVol ?? 1) + 1 });
       },
-      alsoFails: UNIT_AND_COST_MULT_FAILS,
     },
   ],
   "block: base plus all sources within max multiple": [
@@ -435,14 +434,10 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         const k = plainIdx(i.sim!);
         assert.ok(k >= 0, "a plain cost-verifiable close exists");
         const x = i.sim!.trades[k];
-        const rangeVol = rangeVolumeFactorFor(tapeOf(x), i.sim!.opts);
-        const independentFactors = (x.coordVol ?? 1) * (x.hedgeVol ?? 1) * rangeVol;
-        const mult = (i.sim!.opts.block.maxMult + 1) * independentFactors;
-        return withTrade(i, k, { mult });
+        return withTrade(i, k, { blockVol: i.sim!.opts.block.maxMult + 1 });
       },
       alsoFails: {
         [REPLAY]: "the recorded Block multiple now exceeds the cap and no longer matches replay",
-        ...UNIT_AND_COST_MULT_FAILS,
       },
     },
   ],
@@ -450,14 +445,13 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
     {
       run: "blockOff",
       what: "a Block multiple of 2 with Block off",
-      corrupt: (i) => withTrade(i, plainIdx(i.sim!, true), { mult: 2 }),
+      corrupt: (i) => withTrade(i, plainIdx(i.sim!, true), { blockVol: 2 }),
       alsoFails: {
-        [REPLAY]: "both judge mult ÷ coordination volume: with Block off the replayed volume is 1",
-        ...UNIT_AND_COST_MULT_FAILS,
+        [REPLAY]: "with Block off the replayed Block volume must remain 1",
       },
     },
   ],
-  "relate: total external stack within Max stack": [
+  "execution: total external stack within Max stack": [
     {
       run: "relateOn",
       what: "an open Real-stage order above the configured total stack cap",
@@ -506,7 +500,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       },
     },
   ],
-  "relate: modeled volume within Max stack": [
+  "execution: modeled volume within Max stack": [
     {
       run: "relateOn",
       what: "a settled ladder's modeled volume above the captured stack ceiling",
@@ -718,7 +712,7 @@ describe("audit: every check can fail", () => {
   it("the table names every check audit.ts can add", () => {
     const src = readFileSync(new URL("./audit.ts", import.meta.url), "utf8");
     const names = new Set(
-      [...src.matchAll(/"((?:stages|lanes|toggles|numbers|replay|block|relate|caps|paper): [^"]+)"/g)].map(
+      [...src.matchAll(/"((?:stages|lanes|toggles|numbers|replay|block|relate|execution|caps|paper): [^"]+)"/g)].map(
         (m) => m[1],
       ),
     );

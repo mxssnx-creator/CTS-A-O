@@ -310,7 +310,7 @@ describe("session CLI background comparison policy", () => {
     }
   });
 });
-function replay({ signalExitSets = false, postGateRejected, exitOrders = false, endpointOccupancy = false, caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData } = {}) {
+function replay({ signalExitSets = false, postGateRejected, exitOrders = false, endpointOccupancy = false, caps = false, weighted = false, invalidReturn = false, qualification, thresholds, thresholdRange = "Short", variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -395,8 +395,10 @@ function replay({ signalExitSets = false, postGateRejected, exitOrders = false, 
     if (variants) raw.variants = variants;
     if (presets) raw.presets = presets;
     if (thresholds) {
-      raw.engine.baseByRange = [{ tag: "sh", range: "Short", enabled: true, passed: 2, evaluated: 3, pfPassedPooled: 1.2 }];
-      raw.tapeAgg = { evalAfterBase: { "Short|normal": thresholds } };
+      const tag = thresholdRange === "Micro" ? "mc" : "sh";
+      if (thresholdRange === "Micro") raw.settings.gates = { minPf: 1.05, rangeMinPf: { micro: 1.05, short: 1.1 } };
+      raw.engine.baseByRange = [{ tag, range: thresholdRange, enabled: true, passed: 2, evaluated: 3, pfPassedPooled: 1.2 }];
+      raw.tapeAgg = { evalAfterBase: { [`${thresholdRange}|normal`]: thresholds } };
     }
     if (baseNoLoss) {
       raw.settings.ranges.micro = true;
@@ -853,13 +855,16 @@ describe("session qualification matches the runtime's full indication rules", ()
   };
 
   it("matches actual runtime admission, Tactic 1.1, range floors and absent own-cell fallback", () => {
-    for (const ind of [tactic, other]) for (const pf of [1.04, 1.08, 1.1, 1.45]) {
+    for (const ind of [tactic, other]) for (const pf of [1.04, 1.08, 1.099, 1.1, 1.101, 1.45]) {
       const r = run(ind, pf);
       assert.deepEqual(sessionBaseTags(r, gates, applies, ALL_RANGE_TAGS), runtimeTags(r), `${ind} PF ${pf}`);
       assert.equal(sessionOwnRangePassed(r, gates), Object.entries(r.ranges).some(([tag, st]) => rangeCellPass(gates, ind)(tag, st)));
     }
-    assert.deepEqual(runtimeTags(run(tactic, 1.08)), []);
-    assert.ok(runtimeTags(run(other, 1.08)).includes("sh"));
+    for (const ind of [tactic, other]) {
+      assert.ok(!runtimeTags(run(ind, 1.08)).includes("sh"), "Short cannot pass below its 1.1 floor");
+      assert.ok(runtimeTags(run(ind, 1.1)).includes("sh"), "Short admits an exact 1.1 when other gates pass");
+    }
+    assert.deepEqual(runtimeTags(run(tactic, 1.08)), [], "Tactic's independent floor still applies to every range");
     assert.ok(!runtimeTags(run(tactic, 1.1)).includes("gn"), "stricter range minimum stays in force");
     const fallback = { ...run(tactic, 1.45), ranges: undefined };
     assert.deepEqual(sessionBaseTags(fallback, gates, applies, ALL_RANGE_TAGS), runtimeTags(fallback));
@@ -891,9 +896,15 @@ describe("session qualification matches the runtime's full indication rules", ()
     for (const inds of [[tactic, other], [other, tactic]]) {
       const row = {};
       for (const ind of inds) recordSessionMinimum(row, gates, "sh", ind);
-      assert.equal(row.minPf, 1.05);
+      assert.equal(row.minPf, 1.1);
       assert.equal(row.minPfMax, 1.1);
-      assert.deepEqual(row.minPfByInd, { [tactic]: 1.1, [other]: 1.05 });
+      assert.deepEqual(row.minPfByInd, { [tactic]: 1.1, [other]: 1.1 });
+      // Micro still has a lower ordinary floor than Tactic, so both insertion orders exercise mixed minima.
+      const mixed = {};
+      for (const ind of inds) recordSessionMinimum(mixed, gates, "mc", ind);
+      assert.equal(mixed.minPf, 1.05);
+      assert.equal(mixed.minPfMax, 1.1);
+      assert.deepEqual(mixed.minPfByInd, { [tactic]: 1.1, [other]: 1.05 });
       const strict = {};
       for (const ind of inds) recordSessionMinimum(strict, gates, "gn", ind);
       assert.equal(strict.minPf, 1.4);
@@ -902,26 +913,37 @@ describe("session qualification matches the runtime's full indication rules", ()
   });
 
   it("renders mixed current thresholds and marks historical aggregates as unverified without requalifying them", () => {
-    const thresholds = { configs: 7, passed: 3, minPf: 1.05, minPfMax: 1.1, minPfByInd: { [tactic]: 1.1, [other]: 1.05 }, okGp: 0.12, okGl: 0.1 };
+    const thresholds = { configs: 7, passed: 3, minPf: 1.1, minPfMax: 1.1, minPfByInd: { [tactic]: 1.1, [other]: 1.1 }, okGp: 0.12, okGl: 0.1 };
     const current = replay({ qualification: SESSION_QUALIFICATION, thresholds });
     assert.deepEqual(current.report.evalAfterBase["Short|normal"], thresholds);
     assert.equal(current.data.evidence.qualification.state, "recorded");
-    assert.match(current.md, /1\.05–1\.10 \(varies by indication\)/);
+    assert.equal(current.data.evidence.qualification.shortMinPf, 1.1);
     assert.match(current.md, /2 of 3 \(66\.67%\)/);
     assert.match(current.md, /3 of 7 \(42\.86%\)/);
     assert.match(current.md, /post-Base validation PF/);
     assert.match(current.md, /settled execution PF/);
+    assert.ok(Math.abs(current.report.evalAfterBase["Short|normal"].okGp / current.report.evalAfterBase["Short|normal"].okGl - 1.2) < 1e-12);
+    assert.equal(current.data.total.pf, 2.5, "later settled PF stays distinct from the 1.2 post-Base validation PF");
     assert.match(current.writeup, /Tactic minimum return PF 1\.1/);
+    assert.match(current.writeup, /Short minimum return PF 1\.1/);
     assert.match(summaryOf(current.html), /Tactic minimum return PF 1\.1/);
-    const legacy = replay({ thresholds });
-    assert.deepEqual(legacy.report.evalAfterBase["Short|normal"], thresholds);
+    const mixedThresholds = { ...thresholds, minPf: 1.05, minPfByInd: { [tactic]: 1.1, [other]: 1.05 } };
+    const mixed = replay({ qualification: SESSION_QUALIFICATION, thresholds: mixedThresholds, thresholdRange: "Micro" });
+    assert.deepEqual(mixed.report.evalAfterBase["Micro|normal"], mixedThresholds);
+    assert.match(mixed.md, /1\.05–1\.10 \(varies by indication\)/);
+    const oldQualification = { version: 1, rule: "full-indication-runtime-helpers", tacticMinPf: 1.1, noLossGateScore: SESSION_QUALIFICATION.noLossGateScore };
+    const legacy = replay({ qualification: oldQualification, thresholds: mixedThresholds });
+    assert.deepEqual(legacy.report.evalAfterBase["Short|normal"], mixedThresholds, "archived thresholds and counts are preserved");
     assert.equal(legacy.data.evidence.qualification.state, "legacy-unverified");
     assert.match(legacy.md, /Archived qualification counts and thresholds are retained, not recomputed/);
     assert.match(legacy.writeup, /Historical dump/);
     assert.match(summaryOf(legacy.html), /Historical dump/);
     assert.equal(legacy.data.evidence.returns.state, "legacy-unverified");
     assert.match(legacy.md, /Historical source encoding was not recorded/);
+    assert.equal(legacy.data.total.pf, 2.5, "legacy provenance does not recompute later settled PF");
     assert.equal(sessionQualificationEvidence({}).state, "legacy-unverified");
+    assert.equal(sessionQualificationEvidence({ ...SESSION_QUALIFICATION, shortMinPf: 1.05 }).state, "legacy-unverified");
+    assert.equal(sessionQualificationEvidence({ ...SESSION_QUALIFICATION, shortMinPf: undefined }).state, "legacy-unverified");
   });
 
   it("discloses partial return normalization without changing or certifying missing multipliers", () => {

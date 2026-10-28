@@ -4,16 +4,19 @@
 // the lane toward the price; at most 60 orders a step (4 in flight), stops first.
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { CoreDb } from "./db.server.ts";
-import { liveKv, resetLiveBackoff, stepLive, type ControlStatus } from "./live.server.ts";
+import { flushLiveKv, liveKv, resetLiveBackoff, stepLive, type ControlStatus } from "./live.server.ts";
 import { coveredLanes, goneOrderOf, planLaneOrders, swapCount, trimLaneOrders, type LaneOrder, type LaneWant } from "./lane-orders.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { configId } from "../pipeline/pipeline.ts";
-import { pxTick } from "../exchange/bingx.server.ts";
+import { ExchangeRejected, pxTick } from "../exchange/bingx.server.ts";
 import { authorizeSyntheticLanes, SimExchange, syntheticExecutionRun, type SimOrder } from "../test-support.ts";
 import type { LiveGate } from "../live-validation.ts";
-import { ownCoidKind } from "./live.ts";
+import { makeCoid, ownCoidKind } from "./live.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 const H = 3_600_000;
@@ -47,7 +50,7 @@ type Pos = {
   legs?: Record<string, number>;
 };
 
-function rtOf() {
+function rtOf(db = new CoreDb(":memory:")) {
   const prices = [
     { sym: "S1-USDT", last: 10 },
     { sym: "S2-USDT", last: 20 },
@@ -55,7 +58,9 @@ function rtOf() {
   let positions: Pos[] = [];
   const rt = {
     generation: 1,
-    db: new CoreDb(":memory:"),
+    // This fixture injects only a synthetic SimExchange and uses an explicitly memory-backed test runtime.
+    testOnlyAllowMemoryLive: true,
+    db,
     settings: {
       ...DEFAULT_SETTINGS,
       sizing: { mode: "minQty" as const, pct: 0.02 },
@@ -103,7 +108,8 @@ function rtOf() {
     },
   };
   const price = (sym: string, last: number) => {
-    prices.find((p) => p.sym === sym)!.last = last;
+    const existing = prices.find((p) => p.sym === sym);
+    if (existing) existing.last = last; else prices.push({ sym, last });
   };
   return { rt, price };
 }
@@ -121,6 +127,47 @@ const lane = (i: number, sym: string, side: 1 | -1, entry: number, sl: number, t
   ...(tp !== undefined ? { target: entry * (1 + side * tp) } : {}),
 });
 const near = (a: number, b: number, eps = 2.5e-4) => Math.abs(a - b) < eps;
+
+// A snapshot from an earlier version which allowed several parents on a netted side.
+// No current admission is bypassed: the simulated venue and durable records begin
+// with already-held, individually identified exits, as after a real restart.
+async function seedLegacy(rt: ReturnType<typeof rtOf>["rt"], ex: Venue, positions: Pos[], opts: { rawLedgerQty?: boolean } = {}) {
+  rt.paper.positions = positions;
+  const laneMap: Record<string, LaneOrder> = {}, open: Record<string, { cfg: string; sym: string; side: 1 | -1; t: number; px: number }> = {};
+  const groups = new Map<string, { sym: string; side: 1 | -1; qty: number; rawQty: number; stops: number[] }>();
+  const at = Date.now() - 120_000, conn = DEFAULT_SETTINGS.live.connId;
+  const save = (coid: string, sym: string, side: 1 | -1, kind: string, qty: number, px: number, msg = "") =>
+    rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,'ok',?,?)",
+      coid, `control|${sym}|${side}`, sym, side, kind, qty, px, msg, at);
+  for (const p of positions) {
+    const id = `${p.cfg}|${p.sym}|${p.side}|${p.entryT}`, key = `${p.sym}|${p.side}`;
+    const ps = p.side === 1 ? "LONG" : "SHORT", qty = p.vol * (p.sym === "S2-USDT" ? 0.1 : LANE);
+    const group = groups.get(key) ?? { sym: p.sym, side: p.side, qty: 0, rawQty: 0, stops: [] };
+    group.rawQty += qty; group.qty = +(group.qty + qty).toFixed(8); group.stops.push(p.stop); groups.set(key, group);
+    ex.positions.set(`${p.sym}|${ps}`, +(group.qty.toFixed(8)));
+    const lo: LaneOrder = { id, key, sym: p.sym, side: p.side, qty, at,
+      exitQty: 0, exitNotional: 0, weights: { [id]: 1 } };
+    for (const [which, kind, type, price] of [["s", "V", "STOP_MARKET", p.stop], ["t", "Y", "TAKE_PROFIT_MARKET", p.target]] as const) {
+      if (price === undefined) continue;
+      const coid = makeCoid(conn, kind, at), reply = await ex.order({ symbol: p.sym, positionSide: ps,
+        side: p.side === 1 ? "SELL" : "BUY", type, quantity: qty, stopPrice: price, clientOrderID: coid }) as { order: { orderId: string } };
+      lo[which] = { coid, oid: reply.order.orderId, px: price, qty };
+      save(coid, p.sym, p.side, kind, qty, price, id);
+    }
+    laneMap[id] = lo; open[id] = { cfg: p.cfg, sym: p.sym, side: p.side, t: at, px: p.entry };
+  }
+  for (const { sym, side, qty, rawQty, stops } of groups.values()) {
+    const ps = side === 1 ? "LONG" : "SHORT", coid = makeCoid(conn, "S", at);
+    const price = side === 1 ? Math.min(...stops) * .99 : Math.max(...stops) * 1.01;
+    await ex.order({ symbol: sym, positionSide: ps, side: side === 1 ? "SELL" : "BUY", type: "STOP_MARKET",
+      quantity: qty, stopPrice: price, clientOrderID: coid });
+    save(makeCoid(conn, "E", at), sym, side, "O", opts.rawLedgerQty ? rawQty : qty, positions.find((p) => p.sym === sym && p.side === side)!.entry);
+    save(coid, sym, side, "S", qty, price);
+  }
+  rt.db.kvSet("liveLaneOpen", open); rt.db.kvSet("laneOrders", laneMap);
+  rt.db.kvSet("liveBoundedSince", at - 1);
+  ex.log.length = 0;
+}
 
 describe("lane orders: the planner (pure)", () => {
   const w = (id: string, entryT: number, stop = 9.5, target?: number): LaneWant => ({
@@ -208,6 +255,12 @@ describe("lane orders: the planner (pure)", () => {
       { status: "filled", px: 9.8, qty: 1, complete: true });
     assert.deepEqual(goneOrderOf({ order: { status: "CANCELLED", avgPrice: "9.8", executedQty: "0.4" } }),
       { status: "filled", px: 9.8, qty: .4, complete: true });
+    for (const status of ["CANCEL_PENDING", "CANCELLING", "CANCEL_REQUESTED", "CANCEL_REJECTED", "FAILED"]) {
+      assert.deepEqual(goneOrderOf({ order: { status, executedQty: 0, avgPrice: 0 } }), { status: "unknown" }, status);
+      assert.deepEqual(goneOrderOf({ order: { status, executedQty: .4, avgPrice: 9.8 } }), { status: "unknown" }, status);
+    }
+    for (const status of ["CANCELLED", "CANCELED", "EXPIRED", "REJECTED"])
+      assert.deepEqual(goneOrderOf({ order: { status, executedQty: 0 } }), { status: "cancelled" }, status);
   });
 });
 
@@ -219,7 +272,7 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     return (ms: number) => mock.timers.tick(ms);
   };
 
-  it("every lane on the exchange: one minimum each, its own stop and take-profit at its own levels, long and short", async () => {
+  it("new native parents reserve one physical side while an independent short remains eligible", async () => {
     const ex = new Venue();
     const { rt } = rtOf();
     const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
@@ -230,11 +283,11 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
       lane(4, "S2-USDT", -1, 20, 0.02, 0.04),
     ];
     await step();
-    assert.ok(near(ex.positions.get("S1-USDT|LONG")!, 3 * LANE), `three lanes: ${ex.positions.get("S1-USDT|LONG")}`);
+    assert.ok(near(ex.positions.get("S1-USDT|LONG")!, LANE), `one admitted parent: ${ex.positions.get("S1-USDT|LONG")}`);
     const ls = ex.partial("S1-USDT|LONG", "STOP_MARKET").map((o) => o.stopPrice!).sort();
     const lt = ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").map((o) => o.stopPrice!).sort();
-    assert.deepEqual(ls.map((x) => x.toFixed(2)), ["9.60", "9.70", "9.80"], "each lane's own stop");
-    assert.deepEqual(lt.map((x) => x.toFixed(2)), ["10.30", "10.50"], "a take-profit for each lane with a target");
+    assert.deepEqual(ls.map((x) => x.toFixed(2)), ["9.80"], "the admitted parent's own stop");
+    assert.deepEqual(lt.map((x) => x.toFixed(2)), ["10.30"], "the admitted parent's own target");
     assert.ok(ex.partial("S1-USDT|LONG", "STOP_MARKET").every((o) => near(o.qty!, LANE)), "each for one lane");
     // the short mirrored: stop above, take-profit below
     const ss = ex.partial("S2-USDT|SHORT", "STOP_MARKET");
@@ -247,15 +300,15 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     await step();
     assert.equal(ex.log.length, n, "a steady book sends nothing more");
     const c = liveKv<ControlStatus>(rt.db, "controlStatus")!;
-    assert.equal(c.laneOrders?.onExchange, 4);
-    assert.equal(c.protect?.laneStops, 4);
-    assert.equal(c.protect?.laneTps, 3);
+    assert.equal(c.laneOrders?.onExchange, 2);
+    assert.equal(c.protect?.laneStops, 2);
+    assert.equal(c.protect?.laneTps, 2);
   });
 
   // Technical ownership fixture: synthetic admission is explicit, not a profitability claim.
   for (const tf of [1, 5, 15]) for (const source of ["rsi-mom-14-20", "sig-ema-cross-s"]) {
     for (const side of [1, -1] as const) {
-      it(`Exit allocations survive updates and independent closes: ${source}@m${tf}, side ${side}`, async () => {
+      it(`legacy Exit allocations retain protections and exact closes: ${source}@m${tf}, side ${side}`, async () => {
         const tick = clock();
         const ex = new Venue();
         const { rt } = rtOf();
@@ -273,18 +326,21 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
             }),
           };
         });
-        rt.paper.positions = lanes;
+        await seedLegacy(rt, ex, lanes);
         const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
         await step();
         assert.ok(near(ex.positions.get(key)!, 5 * LANE));
         assert.equal(ex.partial(key, "STOP_MARKET").length, 5);
         assert.equal(ex.partial(key, "TAKE_PROFIT_MARKET").length, 4);
-        // Updating a trailing allocation must not replace another configuration's protection.
+        // A netted legacy side cannot safely resize one parent's stop while siblings are live.
+        const oldStop = lanes[2].stop;
         lanes[2].stop = 10 * (1 - side * .005);
         tick(20_000);
         await step();
         assert.equal(ex.partial(key, "STOP_MARKET").length, 5);
-        assert.ok(ex.partial(key, "STOP_MARKET").some((o) => near(o.stopPrice!, lanes[2].stop)));
+        assert.ok(ex.partial(key, "STOP_MARKET").some((o) => near(o.stopPrice!, oldStop)), "the old native stop remains");
+        assert.ok(!ex.partial(key, "STOP_MARKET").some((o) => near(o.stopPrice!, lanes[2].stop)), "no unsafe resize on a shared side");
+        lanes[2].stop = oldStop;
         for (let i = 0; i < lanes.length; i++) {
           const own = lanes[i];
           const takeProfit = i % 2 === 1;
@@ -328,13 +384,13 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     const raised = { ...lane(3, "S2-USDT", -1, 20, 0.02, 0.04), vol: 3, level: 2 };
     rt.paper.positions = [ov, plain, raised];
     await step();
-    assert.ok(near(ex.positions.get("S1-USDT|LONG")!, 5 * LANE), `4 + 1 units: ${ex.positions.get("S1-USDT|LONG")}`);
+    assert.ok(near(ex.positions.get("S1-USDT|LONG")!, 4 * LANE), `only the four-unit parent enters: ${ex.positions.get("S1-USDT|LONG")}`);
     const stops = ex.partial("S1-USDT|LONG", "STOP_MARKET");
-    assert.equal(stops.length, 2, "one lane stop for the Overall position (not one per leg), one for the plain lane");
+    assert.equal(stops.length, 1, "the Overall parent has one stop and the sibling cannot enter");
     const qs = stops.map((o) => o.qty!).sort((x, y) => x - y);
-    assert.ok(near(qs[0], LANE) && near(qs[1], 4 * LANE), `the Overall lane holds its 4 units: ${qs}`);
+    assert.ok(near(qs[0], 4 * LANE), `the Overall lane holds its 4 units: ${qs}`);
     const tps = ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET");
-    assert.equal(tps.length, 2);
+    assert.equal(tps.length, 1);
     // S2 at 20: one minimum 0.1; the raised lane 3 units, one stop for them
     assert.ok(near(ex.positions.get("S2-USDT|SHORT")!, 0.3), `raised lane: ${ex.positions.get("S2-USDT|SHORT")}`);
     assert.equal(ex.partial("S2-USDT|SHORT", "STOP_MARKET").length, 1);
@@ -344,7 +400,7 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     const tracked = new Set(Object.values(map).flatMap((lo) => [lo.s?.coid, lo.t?.coid]).filter(Boolean).map((c) => c!.toUpperCase()));
     for (const o of [...stops, ...tps, ...ex.partial("S2-USDT|SHORT", "STOP_MARKET")])
       assert.ok(tracked.has((o.clientOrderId ?? "").toUpperCase()), `own order ${o.clientOrderId} tracked`);
-    assert.equal(Object.keys(map).length, 3);
+    assert.equal(Object.keys(map).length, 2);
     const n = ex.log.length;
     await step();
     assert.equal(ex.log.length, n, "a steady book sends nothing more");
@@ -357,7 +413,7 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
     const a = lane(1, "S1-USDT", 1, 10, 0.02, 0.05);
     const b = lane(2, "S1-USDT", 1, 10, 0.04, 0.06);
-    rt.paper.positions = [a, b];
+    await seedLegacy(rt, ex, [a, b]);
     await step();
     const stopA = ex.partial("S1-USDT|LONG", "STOP_MARKET").find((o) => near(o.stopPrice!, 9.8))!;
     price("S1-USDT", 9.79);
@@ -376,14 +432,14 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     assert.equal(ex.opens("S1-USDT").length, opens, "lane a is not reopened while the paper book still holds it");
   });
 
-  it("a lane's take-profit fills, then the side is closed by hand: that lane at its fill, the rest at the hand close", async () => {
+  it("a legacy target is booked at its fill; an unallocated hand close stays unreconciled", async () => {
     const tick = clock();
     const ex = new Venue();
     const { rt, price } = rtOf();
     const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
     const a = lane(1, "S1-USDT", 1, 10, 0.02, 0.05);
     const b = lane(2, "S1-USDT", 1, 10, 0.04, 0.06);
-    rt.paper.positions = [a, b];
+    await seedLegacy(rt, ex, [a, b]);
     await step();
     const tpA = ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").find((o) => near(o.stopPrice!, 10.5))!;
     // (both before the desk's next step: it was down)
@@ -399,16 +455,14 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     );
     assert.deepEqual(
       rows.map((r) => [r.cfg, r.reason]),
-      [
-        [a.cfg, "target"],
-        [b.cfg, "hand"],
-      ],
+      [[a.cfg, "target"]],
     );
     assert.equal(rows[0].exit, tpA.stopPrice, "lane a at its take-profit's fill");
-    assert.ok(near(rows[1].exit, 10.3, 1e-9), `lane b at the hand close: ${rows[1].exit}`);
+    const remaining = liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {};
+    assert.ok(Object.values(remaining).some((x) => x.id.startsWith(b.cfg)), "the second parent remains unresolved");
   });
 
-  it("a lane that leaves is cancelled first, then reduced — and a stop that filled meanwhile is never exited twice", async () => {
+  it("a departed legacy lane remains protected while a sibling's stop is booked exactly once", async () => {
     const tick = clock();
     const ex = new Venue();
     const { rt } = rtOf();
@@ -416,15 +470,15 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     const a = lane(1, "S1-USDT", 1, 10, 0.02, 0.05);
     const b = lane(2, "S1-USDT", 1, 10, 0.04, 0.06);
     const c = lane(3, "S1-USDT", 1, 10, 0.03, 0.07);
-    rt.paper.positions = [a, b, c];
+    await seedLegacy(rt, ex, [a, b, c]);
     await step();
-    // lane a exits on paper: its two orders go, the position shrinks by one lane
+    // The paper exit cannot authorize a netted market reduction of a legacy shared side.
     rt.paper.positions = [b, c];
     tick(20_000);
     await step();
-    assert.ok(near(ex.positions.get("S1-USDT|LONG")!, 2 * LANE));
-    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 2);
-    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 2);
+    assert.ok(near(ex.positions.get("S1-USDT|LONG")!, 3 * LANE));
+    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 3);
+    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 3);
     // lane b's stop fills on the venue at the same moment the paper book exits it: one exit, not two
     const stopB = ex.partial("S1-USDT|LONG", "STOP_MARKET").find((o) => near(o.stopPrice!, 9.6))!;
     ex.triggerOrder(stopB.id);
@@ -433,9 +487,12 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     await step();
     tick(20_000);
     await step();
-    assert.ok(near(ex.positions.get("S1-USDT|LONG")!, LANE), `one lane left: ${ex.positions.get("S1-USDT|LONG")}`);
-    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 1);
-    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 1);
+    assert.ok(near(ex.positions.get("S1-USDT|LONG")!, 2 * LANE), `two protected lanes remain: ${ex.positions.get("S1-USDT|LONG")}`);
+    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 2);
+    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 2);
+    // relation: all rows — the measured stop is the sole recorded close.
+    const rows = rt.db.all<{ cfg: string; reason: string }>("SELECT cfg,reason FROM live_lane_trades");
+    assert.deepEqual(rows.map((r) => [r.cfg, r.reason]), [[b.cfg, "stop"]]);
   });
 
   it("a trailed lane's stop follows it toward the price — up for a long, down for a short", async () => {
@@ -470,48 +527,88 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     assert.ok(near(ex.partial("S2-USDT|SHORT", "STOP_MARKET")[0].stopPrice!, 18.36));
   });
 
+  for (const side of [1, -1] as const)
+    it(`a zero-fill cancel request keeps the ${side === 1 ? "long" : "short"} native stop reserved through restart`, async () => {
+      const dir = mkdtempSync(join(tmpdir(), "cts-cancel-pending-"));
+      const statePath = join(dir, "state.json"), journalPath = join(dir, "journal");
+      let db = new CoreDb(":memory:", { statePath }); db.journalPath = journalPath;
+      const ex = new Venue(), book = ex.book.bind(ex), orderStatus = ex.orderStatus.bind(ex);
+      try {
+        let { rt } = rtOf(db);
+        const p = lane(31, "S1-USDT", side, 10, .02, .05);
+        rt.paper.positions = [p];
+        const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+        await step();
+        const key = `S1-USDT|${side === 1 ? "LONG" : "SHORT"}`;
+        const qty = ex.positions.get(key), stop = ex.partial(key, "STOP_MARKET")[0];
+        assert.ok(qty && stop?.id, "the original parent and native stop are real");
+        ex.book = async () => { const b = await book(); return { ...b, orders: b.orders.filter((o) => o.id !== stop.id) }; };
+        let state = "CANCEL_PENDING";
+        ex.orderStatus = async (sym, id) => id === stop.id
+          ? { order: { orderId: id, status: state, executedQty: 0 } }
+          : orderStatus(sym, id);
+        const initialStops = ex.orders.length;
+        await step();
+        assert.equal(ex.orders.length, initialStops, "a pending cancellation neither duplicates nor removes protection");
+        assert.equal(ex.positions.get(key), qty, "no market close for a pending cancellation");
+        flushLiveKv(db); assert.equal(db.flushState(), true); db.db.close();
+        db = new CoreDb(":memory:", { statePath }); db.journalPath = journalPath; db.replayJournal();
+        ({ rt } = rtOf(db)); rt.paper.positions = [p];
+        state = "CANCELLING";
+        await stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+        assert.equal(ex.orders.length, initialStops, "restart keeps the still-live old order");
+        assert.equal(ex.positions.get(key), qty, "restart must not submit a speculative market close");
+        assert.ok(ex.orders.some((o) => o.id === stop.id));
+      } finally { flushLiveKv(db); db.db.close(); rmSync(dir, { recursive: true, force: true }); }
+    });
+
   it("many lanes: at most 60 orders a step, every stop before any take-profit, complete within a few steps", async () => {
     const tick = clock();
     const ex = new Venue();
-    const { rt } = rtOf();
+    ex.symbols = 70;
+    const { rt, price } = rtOf();
+    rt.settings.live = { ...rt.settings.live, maxVenueOrders: 220 };
     const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
-    rt.paper.positions = Array.from({ length: 70 }, (_, i) => lane(i + 1, "S1-USDT", 1, 10, 0.02 + i * 0.0005, 0.05 + i * 0.0005));
+    rt.paper.positions = Array.from({ length: 70 }, (_, i) => {
+      const sym = `S${i}-USDT`; price(sym, 10);
+      return lane(i + 1, sym, 1, 10, 0.02 + i * 0.0005, 0.05 + i * 0.0005);
+    });
+    const native = (type: string) => ex.orders.filter((o) => isLane(o) && o.type === type);
     await step();
-    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 60, "the budget goes to stops first");
-    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 0);
+    assert.equal(native("STOP_MARKET").length, 60, "the budget goes to stops first");
+    assert.equal(native("TAKE_PROFIT_MARKET").length, 0);
     tick(20_000);
     await step();
-    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 70, "every lane's stop by the second step");
-    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 50);
+    assert.equal(native("STOP_MARKET").length, 70, "every lane's stop by the second step");
+    assert.equal(native("TAKE_PROFIT_MARKET").length, 50);
     tick(20_000);
     await step();
-    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 70, "the rest follow");
-    assert.ok(near(ex.positions.get("S1-USDT|LONG")!, 70 * LANE));
+    assert.equal(native("TAKE_PROFIT_MARKET").length, 70, "the rest follow");
+    assert.equal(ex.positions.size, 70);
+    assert.ok([...ex.positions.values()].every((qty) => near(qty, LANE)));
   });
   it("the venue's TP/SL cap: backstops first, lane orders nearest to triggering, no retry storm when it is full", async () => {
     const tick = clock();
     const ex = new Venue();
-    ex.tpslCap = 12;
+    ex.tpslCap = 10;
     const { rt } = rtOf();
-    rt.settings.live = { ...rt.settings.live, maxVenueOrders: 12 };
+    rt.settings.live = { ...rt.settings.live, maxVenueOrders: 10 };
     const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
     rt.paper.positions = [
-      ...Array.from({ length: 6 }, (_, i) => lane(i + 1, "S1-USDT", 1, 10, 0.02 + i * 0.01, 0.05 + i * 0.01)),
-      lane(7, "S2-USDT", -1, 20, 0.02, 0.04),
+      lane(1, "S1-USDT", 1, 10, 0.02, 0.05),
+      lane(2, "S2-USDT", -1, 20, 0.02, 0.04),
     ];
     await step();
-    // 2 backstops, then 12 − 2 − 5 reserved = 5 lane orders: the 5 levels nearest to the price
+    // 2 backstops, then 10 − 2 − 5 reserved = 3 lane orders nearest to the price.
     assert.equal(ex.orders.filter((o) => !isLane(o)).length, 2, "every position's backstop");
     const lanesPlaced = ex.orders.filter((o) => isLane(o));
-    assert.equal(lanesPlaced.length, 5);
+    assert.equal(lanesPlaced.length, 3);
     // These are the five nearest logical levels. Venue-safe outward snapping can put an exact 4 % level one
     // price tick farther out (9.6 → 9.5999), so a raw distance <= 4 % incorrectly rejected the right selection.
     const nearest = [
       { sym: "S1-USDT", type: "STOP_MARKET", px: 9.8 },
       { sym: "S2-USDT", type: "STOP_MARKET", px: 20.4 },
-      { sym: "S1-USDT", type: "STOP_MARKET", px: 9.7 },
       { sym: "S2-USDT", type: "TAKE_PROFIT_MARKET", px: 19.2 },
-      { sym: "S1-USDT", type: "STOP_MARKET", px: 9.6 },
     ];
     const contracts = await ex.contracts();
     for (const want of nearest)
@@ -522,7 +619,7 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
         `nearest ${want.sym} ${want.type} at ${want.px}, within one venue tick`,
       );
     // the venue refuses the next one: lane orders pause, they are not retried every step
-    ex.tpslCap = 7;
+    ex.tpslCap = 5;
     rt.settings.live = { ...rt.settings.live, maxVenueOrders: 40 };
     const sent = () => ex.log.filter((p) => p.type !== "MARKET").length;
     tick(20_000);
@@ -535,22 +632,21 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     assert.equal(sent(), after, "no lane order sent again inside the pause");
     assert.ok(ex.positions.has("S1-USDT|LONG") && ex.positions.has("S2-USDT|SHORT"), "nothing closed for it");
   });
-  it("a count just over the fill line is left alone: no cancel / place churn every step", async () => {
-    // x02, 7 Oct: one order over the line (a new position's backstop) trimmed one lane order every step and the next
-    // step placed it again — a cancel and a place every second
+  it("cap pressure never churns a legacy parent's existing protection", async () => {
     const tick = clock();
     const ex = new Venue();
     const { rt } = rtOf();
     rt.settings.live = { ...rt.settings.live, maxVenueOrders: 12 };
     const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
-    rt.paper.positions = Array.from({ length: 6 }, (_, i) => lane(i + 1, "S1-USDT", 1, 10, 0.02 + i * 0.002, 0.03 + i * 0.002));
+    await seedLegacy(rt, ex, Array.from({ length: 3 }, (_, i) => lane(i + 1, "S1-USDT", 1, 10, 0.02 + i * 0.002, 0.03 + i * 0.002)));
     await step();
     assert.equal(ex.orders.length, 7, "the backstop and 6 lane orders: 12 − 5 reserved");
-    // a second position opens: its backstop takes one of the reserved slots (8 = one over the line)
+    const protectedOrders = ex.orders.filter(isLane).map((o) => ({ id: o.id, qty: o.qty, stop: o.stopPrice }));
+    // A separate short may use the account too; legacy orders must not be trimmed to give it a slot.
     rt.paper.positions.push(lane(7, "S2-USDT", -1, 20, 0.15, 0.2));
     tick(20_000);
     await step();
-    assert.equal(ex.orders.length, 8);
+    assert.ok(ex.positions.has("S2-USDT|SHORT"));
     let cancels = 0;
     const cancel = ex.cancel.bind(ex);
     ex.cancel = async (sym: string, id: string) => {
@@ -562,47 +658,202 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
       await step();
     }
     assert.equal(cancels, 0, "nothing trimmed for one order over the line");
-    assert.equal(ex.orders.length, 8);
+    assert.deepEqual(ex.orders.filter((o) => isLane(o) && o.venueSymbol === "S1-USDT")
+      .map((o) => ({ id: o.id, qty: o.qty, stop: o.stopPrice })), protectedOrders);
   });
-  it("under a full cap the farthest lane stops give their slots to nearer take-profits, four a step", async () => {
+  it("a full cap and moving prices retain every legacy native exit without swapping", async () => {
     const tick = clock();
     const ex = new Venue();
     const { rt, price } = rtOf();
     // room for exactly the backstop and 6 lane orders
     rt.settings.live = { ...rt.settings.live, maxVenueOrders: 12 };
     const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
-    // six lanes with far stops (15 % …) and targets near the price (2 % …)
-    rt.paper.positions = Array.from({ length: 6 }, (_, i) => lane(i + 1, "S1-USDT", 1, 10, 0.15 + i * 0.01, 0.02 + i * 0.002));
+    // A previously opened shared side can predate today's tighter account cap.
+    await seedLegacy(rt, ex, Array.from({ length: 6 }, (_, i) => lane(i + 1, "S1-USDT", 1, 10, 0.15 + i * 0.01, 0.02 + i * 0.002)));
     await step();
-    // first step: the 6 slots go to the 6 nearest levels — the take-profits (2 % …) before the stops (15 % …)
+    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 6);
     assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 6);
-    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 0);
-    // the price moves near the stops, away from the targets: the far take-profits give way to the stops, 4 a step
+    const before = ex.orders.map((o) => ({ id: o.id, qty: o.qty, stop: o.stopPrice }));
+    // Nearer targets/stops cannot justify cancelling another parent's existing stop.
     price("S1-USDT", 8.6);
     tick(20_000);
     await step();
-    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 4, "four swaps this step");
-    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 2);
-    assert.ok(ex.orders.length <= 12, "within the cap");
+    assert.deepEqual(ex.orders.map((o) => ({ id: o.id, qty: o.qty, stop: o.stopPrice })), before,
+      "legacy orders survive unchanged; a tighter cap does not retroactively cancel them");
   });
-  it('switched to control orders "overall": the lane orders are cancelled, the position gets its stop and take-profit', async () => {
+  it("drains native lane protection across an aggregate-mode switch and restart without adding or reallocating parents", async () => {
     const tick = clock();
     const ex = new Venue();
     const { rt } = rtOf();
     const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
-    rt.paper.positions = [lane(1, "S1-USDT", 1, 10, 0.02, 0.05), lane(2, "S1-USDT", 1, 10, 0.04, 0.06)];
+    const first = { ...lane(1, "S1-USDT", 1, 10, 0.02, 0.05), vol: 2, legs: { overall: 1 } };
+    const second = lane(2, "S1-USDT", 1, 10, 0.04, 0.06);
+    const newcomer = lane(3, "S1-USDT", 1, 10, 0.03, 0.07);
+    await seedLegacy(rt, ex, [first, second], { rawLedgerQty: true });
     await step();
-    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 2);
+    const key = "S1-USDT|LONG";
+    const native = () => ex.orders.filter(isLane).map((o) => ({ id: o.id, qty: o.qty, stopPrice: o.stopPrice })).sort((a, b) => a.id.localeCompare(b.id));
+    const original = native();
+    assert.equal(original.length, 4, "both original stops and take-profits exist");
+    assert.deepEqual(original.map((o) => o.qty).sort(), [0.2, 0.2, 0.4, 0.4], "the parents have different confirmed quantities");
     rt.settings.live = { ...rt.settings.live, laneOrders: false };
+    rt.paper.positions = [first, second, newcomer];
     tick(20_000);
     await step();
+    assert.deepEqual(native(), original, "the switch preserves every original order, quantity, and level");
+    assert.ok(near(ex.positions.get(key)!, 0.6), "the newcomer has not been added");
+    const restarted = { ...rt, generation: rt.generation + 1,
+      freshTickers: async () => {
+        const result = await rt.freshTickers();
+        restarted.tickersAt = rt.tickersAt;
+        return result;
+      } };
     tick(20_000);
-    await step();
-    assert.equal(ex.orders.filter((o) => isLane(o)).length, 0, "no lane order left");
-    assert.equal(ex.of("S1-USDT|LONG", "STOP_MARKET").filter((o) => !isLane(o)).length, 1, "the position's stop");
-    const tp = ex.of("S1-USDT|LONG", "TAKE_PROFIT_MARKET").filter((o) => !isLane(o));
-    assert.equal(tp.length, 1, "the position's take-profit, beyond the outer target");
-    assert.ok(tp[0].stopPrice! > 10.6, `${tp[0].stopPrice}`);
-    assert.ok(ex.positions.has("S1-USDT|LONG"), "the position stays");
+    await stepLive(restarted as unknown as CoreRuntime, [], restarted.generation, ex);
+    assert.deepEqual(native(), original, "restart retains the same per-parent orders");
+    const firstTarget = ex.partial(key, "TAKE_PROFIT_MARKET").find((o) => near(o.stopPrice!, first.target!));
+    assert.ok(firstTarget);
+    ex.triggerOrder(firstTarget.id);
+    rt.paper.positions = [second, newcomer];
+    tick(20_000);
+    await stepLive(restarted as unknown as CoreRuntime, [], restarted.generation, ex);
+    assert.ok(near(ex.positions.get(key)!, 0.2), "only the filled parent leaves");
+    assert.deepEqual(native(), original.filter((o) => near(o.stopPrice!, second.stop) || near(o.stopPrice!, second.target!)),
+      `the survivor keeps its original protective identities and quantity: ${JSON.stringify(liveKv(rt.db, "laneOrders"))}`);
+    const secondTarget = ex.partial(key, "TAKE_PROFIT_MARKET").find((o) => near(o.stopPrice!, second.target!));
+    assert.ok(secondTarget);
+    ex.triggerOrder(secondTarget.id);
+    rt.paper.positions = [newcomer];
+    tick(20_000);
+    await stepLive(restarted as unknown as CoreRuntime, [], restarted.generation, ex);
+    assert.equal(ex.positions.get(key) ?? 0, 0, "all old native parents have closed");
+    tick(20_000);
+    await stepLive(restarted as unknown as CoreRuntime, [], restarted.generation, ex);
+    for (let n = 0; n < 3 && !(ex.positions.get(key) ?? 0); n++) {
+      tick(20_000);
+      await stepLive(restarted as unknown as CoreRuntime, [], restarted.generation, ex);
+    }
+    assert.ok((ex.positions.get(key) ?? 0) > 0, `aggregate mode admits the new single parent after the drain: ${JSON.stringify(liveKv(rt.db, "liveStatus"))} ${JSON.stringify(liveKv(rt.db, "laneOrders"))}`);
   });
+
+  for (const side of [1, -1] as const) {
+    it(`retains known native exits across a durable mode-transition restart, side ${side}`, async () => {
+      const tick = clock();
+      const ex = new Venue();
+      const dir = mkdtempSync(join(tmpdir(), "cts-native-resume-"));
+      const path = join(dir, "core.sqlite");
+      const { rt } = rtOf(new CoreDb(path));
+      const first = lane(1, "S1-USDT", side, 10, 0.02, 0.05);
+      const second = lane(2, "S1-USDT", side, 10, 0.04, 0.06);
+      try {
+        await seedLegacy(rt, ex, [first, second]);
+        await stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+        const before = ex.orders.filter(isLane).map((o) => ({ id: o.id, qty: o.qty, stopPrice: o.stopPrice }));
+        assert.equal(before.length, 4);
+        flushLiveKv(rt.db);
+        rt.db.db.close();
+        const { rt: resumed } = rtOf(new CoreDb(path));
+        resumed.settings.live = { ...resumed.settings.live, laneOrders: false };
+        resumed.paper.positions = [first, second];
+        tick(20_000);
+        await stepLive(resumed as unknown as CoreRuntime, [], 1, ex);
+        assert.deepEqual(ex.orders.filter(isLane).map((o) => ({ id: o.id, qty: o.qty, stopPrice: o.stopPrice })), before,
+          "the persisted native stop and target quantities survive a full database reopen");
+        flushLiveKv(resumed.db);
+        resumed.db.db.close();
+      } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
+    it(`keeps a departed native parent's protection without an unsafe reduction attempt, side ${side}`, async () => {
+      const tick = clock();
+      const ex = new Venue();
+      const { rt } = rtOf();
+      const first = lane(1, "S1-USDT", side, 10, 0.02, 0.05);
+      const second = lane(2, "S1-USDT", side, 10, 0.04, 0.06);
+      const key = `S1-USDT|${side === 1 ? "LONG" : "SHORT"}`;
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      await seedLegacy(rt, ex, [first, second]);
+      await step();
+      const original = ex.orders.filter(isLane).map((o) => ({ id: o.id, qty: o.qty, stopPrice: o.stopPrice }));
+      const send = ex.order.bind(ex);
+      ex.order = async (p) => {
+        if (p.type === "MARKET" && p.side === (side === 1 ? "SELL" : "BUY")) throw new ExchangeRejected("refused", 1);
+        return send(p);
+      };
+      rt.settings.live = { ...rt.settings.live, laneOrders: false };
+      rt.paper.positions = [second];
+      tick(20_000);
+      await step();
+      assert.ok(near(ex.positions.get(key)!, 0.4));
+      assert.equal(ex.log.filter((p) => p.type === "MARKET").length, 0, "no market close is submitted after cancelling protection");
+      assert.deepEqual(ex.orders.filter(isLane).map((o) => ({ id: o.id, qty: o.qty, stopPrice: o.stopPrice })), original,
+        "neither parent's existing native protection was cancelled");
+    });
+
+    it(`draining mode waits for a departed parent's own venue exit and preserves its sibling, side ${side}`, async () => {
+      const tick = clock();
+      const ex = new Venue();
+      const { rt } = rtOf();
+      const first = { ...lane(1, "S1-USDT", side, 10, 0.02, 0.05), vol: 2, legs: { overall: 1 } };
+      const second = lane(2, "S1-USDT", side, 10, 0.04, 0.06);
+      const key = `S1-USDT|${side === 1 ? "LONG" : "SHORT"}`;
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      await seedLegacy(rt, ex, [first, second]);
+      await step();
+      const survivor = ex.orders.filter((o) => isLane(o) && (near(o.stopPrice!, second.stop) || near(o.stopPrice!, second.target!)))
+        .map((o) => ({ id: o.id, qty: o.qty, stopPrice: o.stopPrice }));
+      assert.equal(survivor.length, 2);
+      rt.settings.live = { ...rt.settings.live, laneOrders: false };
+      rt.paper.positions = [second];
+      tick(20_000);
+      await step();
+      assert.ok(near(ex.positions.get(key)!, 0.6), "no unprotected market reduction is attempted");
+      // relation: all rows — the still-owned parent must not appear under any close classification.
+      assert.equal(rt.db.all("SELECT id FROM live_lane_trades").length, 0, "the still-owned parent is not booked as closed");
+      const firstTarget = ex.partial(key, "TAKE_PROFIT_MARKET").find((o) => near(o.stopPrice!, first.target!));
+      assert.ok(firstTarget, "the departed parent keeps its own exit order");
+      ex.triggerOrder(firstTarget.id);
+      tick(20_000);
+      await step();
+      assert.ok(near(ex.positions.get(key)!, 0.2), "only the departing parent's own target filled");
+      // relation: all rows — verify this measured parent exit is the only close of any classification.
+      const closed = rt.db.all<{ cfg: string; exit: number }>("SELECT cfg,exit FROM live_lane_trades");
+      assert.equal(closed.length, 1);
+      assert.equal(closed[0].cfg, first.cfg);
+      assert.ok(near(closed[0].exit, first.target!), "the own measured venue target is the only recorded close");
+      assert.deepEqual(ex.orders.filter(isLane).map((o) => ({ id: o.id, qty: o.qty, stopPrice: o.stopPrice })), survivor,
+        "both surviving exit orders retain their original identities and quantities");
+    });
+
+    it(`retains unknown native exits and held exposure after a mode switch, side ${side}`, async () => {
+      const tick = clock();
+      const ex = new Venue();
+      const dir = mkdtempSync(join(tmpdir(), "cts-native-drain-"));
+      const path = join(dir, "core.sqlite");
+      const { rt } = rtOf(new CoreDb(path));
+      const owned = lane(1, "S1-USDT", side, 10, 0.02, 0.05);
+      const key = `S1-USDT|${side === 1 ? "LONG" : "SHORT"}`;
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      try {
+        rt.paper.positions = [owned];
+        await step();
+        const original = ex.orders.filter(isLane).map((o) => ({ id: o.id, qty: o.qty, stopPrice: o.stopPrice }));
+        assert.equal(original.length, 2);
+        flushLiveKv(rt.db);
+        rt.db.db.close();
+        const db = new CoreDb(path);
+        db.kvSet("laneOrders", {}); // lost parent ledger: existing venue orders still provide protection
+        const { rt: resumed } = rtOf(db);
+        resumed.settings.live = { ...resumed.settings.live, laneOrders: false };
+        resumed.paper.positions = [];
+        tick(20_000);
+        await stepLive(resumed as unknown as CoreRuntime, [], 1, ex);
+        assert.ok(near(ex.positions.get(key)!, 0.2));
+        assert.deepEqual(ex.orders.filter(isLane).map((o) => ({ id: o.id, qty: o.qty, stopPrice: o.stopPrice })), original,
+          "unknown ownership cannot authorize cancelling or reallocating existing exits");
+        flushLiveKv(db);
+        db.db.close();
+      } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+  }
 });

@@ -49,7 +49,7 @@ const tradeOf = (
   r: number,
   reason: Trade["reason"],
 ) =>
-  ({ cfg, sym, side, entryT, exitT, entry, exit, r, reason, bars: 2, mfe: 0, mae: 0, kind: "normal", vol: 1, level: 0 }) as unknown as Trade;
+  ({ cfg, sym, side, entryT, exitT, entry, exit, r, unitR: r, mult: 1, reason, bars: 2, mfe: 0, mae: 0, kind: "normal", vol: 1, level: 0 }) as unknown as Trade;
 
 /** an open position of a tape: entered at `entry`, held to its stop and target */
 const openOf = (cfg: string, sym: string, side: 1 | -1, entryT: number, entry: number, stop: number, target: number): OpenPosition => ({
@@ -123,14 +123,14 @@ const until = async (c: () => boolean, ms = 300_000) => {
 interface Book {
   stepPaper(): void;
   tapes: ConfigTape[];
-  sim: { trades: Trade[] } | undefined;
+  sim: { trades: Trade[]; endT: number } | undefined;
   paper: { positions: OpenPosition[]; trades: Trade[]; startedAt: number };
   db: CoreDb;
 }
 const book = () => rt as unknown as Book;
 
-/** the first entry time the book can hold a close at: an hour after its start (every exit is later than its window) */
-const base = () => (Math.floor(book().paper.startedAt / H) + 1) * H;
+/** All fixture entries and closes are inside the pinned simulation's accounting window and causal cutoff. */
+const base = () => Math.floor(book().sim!.endT / H) * H - 3 * H;
 
 /**
  * one paper step over the real book: the given tapes added to it, the simulation's trades replaced, the held positions
@@ -159,6 +159,10 @@ describe("paper book, order sides, on the real runtime (items 1 and a, d)", { ti
       rt.start();
       await until(() => rt.status.computes >= 1 && rt.status.state === "running" && (rt.status.paperSteps ?? 0) >= 1);
       rt.stop();
+      // The pinned synthetic replay ends in September; its book must use that same clock, not today's wall clock.
+      // Leave enough room after start for both the earlier and later side's close to settle before sim.endT.
+      assert.ok(rt.sim);
+      rt.paper.startedAt = Math.floor(rt.sim.endT / H) * H - 4 * H;
     },
     { timeout: 600_000 },
   );
@@ -174,6 +178,7 @@ describe("paper book, order sides, on the real runtime (items 1 and a, d)", { ti
     const E = base();
     const long = tradeOf(cfg, sym, 1, E, E + H, 100, 98, -0.02, "sl");
     const short = tradeOf(cfg, sym, -1, E, E + 2 * H, 100, 98, 0.02, "tp");
+    assert.ok(E >= book().paper.startedAt && short.exitT <= book().sim!.endT, "both closes belong to the replay's causal window");
     paperStep([tapeOf(cfg, sym, [long, short], [])], [{ ...long }], [openOf(cfg, sym, -1, E, 100, 102, 98)]);
     const b = book();
     const mine = b.paper.trades.filter((x) => x.cfg === cfg && x.sym === sym && x.entryT === E);
@@ -221,6 +226,7 @@ describe("paper book, order sides, on the real runtime (items 1 and a, d)", { ti
     const E = base();
     const short = tradeOf(cfg, sym, -1, E, E + H, 100, 102, -0.02, "sl");
     const long = tradeOf(cfg, sym, 1, E, E + 2 * H, 100, 102, 0.02, "tp");
+    assert.ok(E >= book().paper.startedAt && long.exitT <= book().sim!.endT, "both closes belong to the replay's causal window");
     paperStep([tapeOf(cfg, sym, [short, long], [])], [{ ...short }], [openOf(cfg, sym, 1, E, 100, 98, 102)]);
     const b = book();
     const mine = b.paper.trades.filter((x) => x.cfg === cfg && x.sym === sym && x.entryT === E);
@@ -261,6 +267,19 @@ describe("paper book, order sides, on the real runtime (items 1 and a, d)", { ti
     assert.equal(row!.exit_t, long.exitT, "the row's exit time");
     assert.ok(Math.abs(row!.r - long.r) < 1e-12, `the row's r ${row!.r}, the LONG's own ${long.r}`);
   });
+
+  for (const side of [1, -1] as const) {
+    it(`a future ${side === 1 ? "LONG" : "SHORT"} close stays held and is not booked before the replay cutoff`, () => {
+      const cfg = `${ENG}-future-${side}`, sym = `F${side === 1 ? "L" : "S"}-USDT`, E = base();
+      const stop = side === 1 ? 98 : 102, target = side === 1 ? 102 : 98;
+      const future = tradeOf(cfg, sym, side, E, book().sim!.endT + 1, 100, target, 0.02, "tp");
+      paperStep([tapeOf(cfg, sym, [future], [])], [future], [openOf(cfg, sym, side, E, 100, stop, target)]);
+      assert.ok(book().paper.positions.some((p) => keyOf(p) === `${cfg}|${sym}|${side}|${E}`));
+      assert.ok(!book().paper.trades.some((x) => x.cfg === cfg), "future simulated closes are not booked");
+      assert.equal(book().db.get("SELECT r FROM paper_book_trades WHERE cfg = ? AND sym = ? AND side = ? AND entry_t = ?",
+        cfg, sym, side, E), undefined, "future held closes are not reported as settled");
+    });
+  }
 
   // a: a LONG and a SHORT of one config, symbol and entry, both held from the tape: each keeps its side, prices and key
   const ADOPT = memo(() => {

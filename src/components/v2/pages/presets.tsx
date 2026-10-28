@@ -128,7 +128,7 @@ function Backtests(props: {
                 <th>run</th>
                 <th className="num">days</th>
                 <th className="num">Return PF (with endpoint marks)</th>
-                <th className="num">Settled return PF</th>
+                <th className="num">Executed close PF</th>
                 <th className="num">success hours</th>
                 <th className="num">DDT</th>
                 <th className="num">outcomes</th>
@@ -253,7 +253,7 @@ function PresetDiagrams(props: { id: string; at: number | null }) {
           <span>DDT overall <b>{fmt.h(i.ddtH)}</b></span>
           <span>max DD <b>{fmt.num(i.maxDdPct, 1)} %</b></span>
           <span>DDR <b>{i.ddr === null || i.ddr === undefined ? "–" : fmt.num(i.ddr, 2)}</b></span>
-          <span>Settled return PF <b className={pfTone(i.pf)}>{unitStatsPfText(i)}</b> · {fmt.num(i.n)} closes</span>
+          <span>Executed close PF <b className={pfTone(i.pf)}>{unitStatsPfText(i)}</b> · {fmt.num(i.n)} closes</span>
           <span>Cash PF ($, diagnostic) <b>{returnPfText(i.cash)}</b> · account net {fmt.num(i.netPct, 1)} %</span>
           {!hasUnitReturnBasis(i) && <span>Unit-return evidence unavailable; recompute this archived backtest.</span>}
         </div>
@@ -497,7 +497,7 @@ export function PresetsPage() {
           title="Save the current settings as a preset"
           sub={
             cur
-              ? `latest simulated run: return PF ${unitStatsPfText(cur)} with ${fmt.num(cur.endpointMarks)} endpoint marks · ${cur.n} outcomes · settled PF ${unitStatsPfText(cur.settledStats)} · green hours ${fmt.ratio(cur.gh)} · WR ${fmt.ratio(cur.wr)} · ${cur.stable ? "stable" : "not stable"}`
+              ? `latest simulated run: return PF ${unitStatsPfText(cur)} with ${fmt.num(cur.endpointMarks)} endpoint marks · ${cur.n} outcomes · executed-close PF ${unitStatsPfText(cur.settledStats)} · green hours ${fmt.ratio(cur.gh)} · WR ${fmt.ratio(cur.wr)} · ${cur.stable ? "stable" : "not stable"}`
               : "available after the first compute"
           }
           right={note ? <Pill kind="ok">{note}</Pill> : undefined}

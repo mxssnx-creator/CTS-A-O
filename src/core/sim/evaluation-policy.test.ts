@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { RangeTag, StratKind, Trade } from "../domain/types.ts";
 import {
-  configEval, defaultWalkForward, execDecision, makeTape, signalConfigEval, validatedSetGen,
+  cellAllowed, configEval, defaultWalkForward, execDecision, makeTape, rangeOptsOf, selectAt, selectFixed, signalConfigEval, validatedSetGen,
+  type WalkForwardOptions,
 } from "./walkforward.ts";
+import { liveMinPfOf } from "../server/runtime.server.ts";
 
 const H = 3_600_000, NOW = Date.UTC(2026, 9, 17, 9);
 const defaults = defaultWalkForward(DEFAULT_SETTINGS);
@@ -29,7 +31,7 @@ function tape(ind: string, trades: Trade[], kind: StratKind = "normal", tag?: Ra
   return makeTape(`follow|${ind}|${kind}`, "follow", ind,
     { tp: 0.02, sl: 0.02, trail: 0, hold: 60, tag }, kind, ["A", "B"], trades, [], []);
 }
-function validated(tp: ReturnType<typeof tape>, o = options) {
+function validated(tp: ReturnType<typeof tape>, o: WalkForwardOptions = options) {
   const gen = validatedSetGen([tp], NOW, o);
   let r = gen.next();
   while (!r.done) r = gen.next();
@@ -37,6 +39,37 @@ function validated(tp: ReturnType<typeof tape>, o = options) {
 }
 
 describe("independent validation policy at every selection stage", () => {
+  it("legacy tagged Exit retains its own Base, PF and Last-N instead of borrowing a Short cell or range gate", () => {
+    const ind = "rsi-mom-14-20@m15";
+    const history = Array.from({ length: 120 }, (_, i) => i % 3 === 0 ? -0.01 : 0.01);
+    const exit = tape(ind, rows("A", 1, history), "exit", "sh");
+    const pair = `follow|${ind}`;
+    const own = { ...options,
+      exitBasePassed: new Set([pair]), basePassed: new Set<string>(),
+      basePassedCells: { [pair]: { tags: new Set(["sh"]), keys: new Set<string>() } },
+      rangeGate: { lastN: 200, minPf: 3, ranges: ["sh"] },
+      rangeOpts: { sh: { lastN: 200, validLastN: 200, seatQuietH: 500, stableBlocks: 100 } },
+      gates: { ...options.gates, minPf: 1.1, rangeMinPf: { short: 3 } },
+      toggles: { ...options.toggles, normal: true, exit: true, block: false, blockActive: false },
+      coord: { ...options.coord!, enabled: false }, symGate: "off" as const, seatPer: "config" as const,
+    };
+    assert.equal(rangeOptsOf(own, exit), undefined);
+    assert.equal(cellAllowed(exit, own), true, "ordinary Short cells cannot veto Exit");
+    assert.equal(configEval(exit, NOW, own).ok, true);
+    assert.equal(validated(exit, own), true);
+    assert.ok(selectFixed([exit], NOW, own).picks.some((p) => p.id === exit.id));
+    assert.ok(selectAt([exit], NOW, own).picks.some((p) => p.id === exit.id));
+    assert.equal(execDecision(exit, NOW, own, { sym: "A", side: 1 }).ok, true);
+    assert.equal(configEval(exit, NOW, { ...own, exitMinPf: 3 }).ok, false,
+      "the Exit's own stricter PF still applies");
+    assert.equal(execDecision(exit, NOW, { ...own, exitMinPf: 3 }, { sym: "A", side: 1 }).ok, false);
+    assert.equal(execDecision(exit, NOW, { ...own, exitBasePassed: new Set<string>() }, { sym: "A", side: 1 }).ok, false,
+      "an ordinary Base pass cannot supply the Exit proof");
+    assert.equal(liveMinPfOf({ ...DEFAULT_SETTINGS, gates: own.gates,
+      live: { ...DEFAULT_SETTINGS.live, liveMinPf: 1.1 }, exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, minPf: 1.5 } },
+    "sh", ind, "exit"), 1.5);
+  });
+
   for (const tag of [undefined, "mc", "mn", "mp", "sh", "gn", "lg"] as const)
     for (const tf of [1, 5, 15])
       for (const kind of ["normal", "trailing", "trailing-only", "exit", "dca", "dca-active", "axis"] as StratKind[]) {

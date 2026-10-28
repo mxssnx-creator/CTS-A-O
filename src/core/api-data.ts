@@ -1,13 +1,38 @@
 // What the Core v2 server functions return: each page's data as a plain async function of its input (api.ts wraps
 // them as server functions; tests call them directly against a runtime). Server modules load on demand.
-import { MAX_BACKTEST_DAYS, type CoreSettings } from "./config.ts";
+import { MAX_BACKTEST_DAYS, type SettingsPatch } from "./config.ts";
 import { checkMerged, checkSettings } from "./settings-check.ts";
 import { positionOrderCounts, openBook } from "./positions.ts";
 import { statsOf, modeledUnitStatsOf as unitStatsOf } from "./metrics/stats.ts";
 import { returnGroup, modeledReturnReport as unitReturnReport, unitStatsReport, type ReturnStatsReport } from "./reporting-stats.ts";
 import { runBlocks, runStable, type WalkForwardResult } from "./sim/walkforward.ts";
+import { hasCompleteAccountMark, hasCompleteOwnership } from "./account-mark.ts";
 
 type ReturnGroup = ReturnType<typeof returnGroup>;
+type EffectiveReturnReport = {
+  n: number;
+  pf: number | null;
+  net: number | null;
+  gp: number | null;
+  gl: number | null;
+  wr: number | null;
+  noLoss: boolean | null;
+  unknownReturns: number;
+  pfBasis: "effective-model-returns" | "unavailable";
+};
+function effectiveReturnReport(trades: readonly WalkForwardResult["trades"][number][], nowT?: number): EffectiveReturnReport {
+  const unknownReturns = trades.filter((t) => !Number.isFinite(t.r)).length;
+  if (unknownReturns) return { n: trades.length, pf: null, net: null, gp: null, gl: null, wr: null,
+    noLoss: null, unknownReturns, pfBasis: "unavailable" };
+  const stats = statsOf(trades, nowT);
+  if (!trades.length) return { n: 0, pf: null, net: null, gp: null, gl: null, wr: null,
+    noLoss: null, unknownReturns: 0, pfBasis: "unavailable" };
+  if (![stats.pf, stats.net, stats.gp, stats.gl, stats.wr].every(Number.isFinite))
+    return { n: trades.length, pf: null, net: null, gp: null, gl: null, wr: null,
+      noLoss: null, unknownReturns: 0, pfBasis: "unavailable" };
+  return { n: trades.length, pf: stats.pf, net: stats.net, gp: stats.gp, gl: stats.gl, wr: stats.wr,
+    noLoss: stats.gp > 0 && stats.gl === 0, unknownReturns: 0, pfBasis: "effective-model-returns" };
+}
 type PrimarySimSummary = {
   orderCounts: ReturnType<typeof positionOrderCounts>;
   stats: ReturnStatsReport;
@@ -16,6 +41,7 @@ type PrimarySimSummary = {
   blocks: Array<ReturnGroup & { t: number }>;
   byConfig: Array<ReturnGroup & { id: string }>;
   byKind: Record<string, ReturnGroup>;
+  effectiveByKind: Record<string, EffectiveReturnReport>;
   bySide: { long: ReturnGroup; short: ReturnGroup };
   stable: boolean | null;
 };
@@ -38,13 +64,15 @@ function primarySimSummary(sim: WalkForwardResult): PrimarySimSummary {
   const rawBlocks = runBlocks(sim.trades ?? [], sim.startT, sim.endT);
   const blocks = rawBlocks.map((b, i) => ({ t: b.t, ...returnGroup(unitReturnReport((sim.trades ?? []).filter((t) => t.exitT > b.t && t.exitT <= (rawBlocks[i + 1]?.t ?? sim.endT)), sim.endT)) }));
   const byKind = Object.fromEntries(group((t) => t.kind ?? "normal").map(({ key, ...s }) => [key, s]));
+  const effectiveByKind = Object.fromEntries([...new Set((sim.trades ?? []).map((t) => t.kind ?? "normal"))]
+    .map((kind) => [kind, effectiveReturnReport((sim.trades ?? []).filter((t) => (t.kind ?? "normal") === kind), sim.endT)]));
   const side = (n: number) => returnGroup(unitReturnReport((sim.trades ?? []).filter((t) => t.side === n), sim.endT));
   const summary: PrimarySimSummary = {
     orderCounts: positionOrderCounts(sim.trades ?? [], sim.openAtEnd),
     stats: unitStatsReport(stats, Array.isArray(sim.trades) ? outcomes.length : sim.stats.n), sizedStats: sim.sizedStats ?? (Array.isArray(sim.trades) ? statsOf(outcomes, sim.endT) : sim.stats),
     hourly: group((t) => String(Math.floor((t.exitT - 1) / 3_600_000) * 3_600_000))
       .map(({ key, ...s }) => ({ t: Number(key), ...s })).sort((a, b) => a.t - b.t),
-    blocks, byKind, bySide: { long: side(1), short: side(-1) },
+    blocks, byKind, effectiveByKind, bySide: { long: side(1), short: side(-1) },
     byConfig: group((t) => t.cfg).map(({ key, ...s }) => ({ id: key, ...s })).sort((a, b) => (b.net ?? -Infinity) - (a.net ?? -Infinity)),
     stable: stats.pfBasis === "unavailable" ? null : runStable(stats, rawBlocks, sim.opts?.gates?.minPf ?? 1.05),
   };
@@ -85,6 +113,8 @@ const ser = (x: unknown): Json => JSON.parse(JSON.stringify(x ?? null)) as Json;
 export const coreListingInput = (d?: {
   conn?: string;
   kind?: string;
+  lane?: string;
+  strategy?: string;
   range?: string;
   group?: string;
   q?: string;
@@ -93,12 +123,17 @@ export const coreListingInput = (d?: {
 }) => {
   const kind = d?.kind ?? "validated";
   if (!["validated", "active", "proven", "baseConfigs"].includes(kind)) throw new Error("kind: validated, active, proven or baseConfigs");
+  if (d?.lane !== undefined && !["1m", "1m+", "5m", "5m+", "15m", "15m+", "30m", "plain"].includes(d.lane))
+    throw new Error("lane: 1m, 1m+, 5m, 5m+, 15m, 15m+, 30m or plain");
+  if (d?.strategy !== undefined && !["normal", "trailing", "trailing-only", "dca", "dca-active", "axis", "exit"].includes(d.strategy))
+    throw new Error("strategy: normal, trailing, trailing-only, dca, dca-active, axis or exit");
   if (d?.range !== undefined && (typeof d.range !== "string" || d.range.length > 20)) throw new Error("bad range");
   if (d?.group !== undefined && (typeof d.group !== "string" || d.group.length > 32)) throw new Error("bad group");
   if (d?.q !== undefined && (typeof d.q !== "string" || d.q.length > 80)) throw new Error("bad filter");
   const offset = Math.max(0, Math.floor(Number(d?.offset ?? 0)) || 0);
   const limit = Math.min(500, Math.max(1, Math.floor(Number(d?.limit ?? 100)) || 100));
-  return { ...connInput(d), kind: kind as "validated" | "active" | "proven" | "baseConfigs", range: d?.range, group: d?.group, q: d?.q?.toLowerCase(), offset, limit };
+  return { ...connInput(d), kind: kind as "validated" | "active" | "proven" | "baseConfigs", lane: d?.lane,
+    strategy: d?.strategy, range: d?.range, group: d?.group, q: d?.q?.toLowerCase(), offset, limit };
 };
 
 /**
@@ -108,10 +143,14 @@ export const coreListingInput = (d?: {
  */
 export async function coreListingData(data: ReturnType<typeof coreListingInput>) {
   const r = await rt(data.conn);
+  const { laneLabel } = await import("./indications/registry.ts");
+  const matchesLane = (id: string) => !data.lane || (laneLabel(id.split("|")[1] ?? "") || "plain") === data.lane;
   if (data.kind === "baseConfigs") {
     const snapshot = r.baseConfigs;
     const { RANGE_LABEL } = await import("./minimal-coord.ts");
     const rows = (snapshot?.rows ?? []).filter((x) =>
+      matchesLane(`${x.bot}|${x.ind}`) &&
+      (!data.strategy || x.kind === data.strategy) &&
       (!data.range || x.tag === data.range || (RANGE_LABEL[x.tag as keyof typeof RANGE_LABEL] ?? x.tag) === data.range) &&
       (!data.q || `${x.bot}|${x.ind}|${x.tag}|${x.kind}`.toLowerCase().includes(data.q)),
     );
@@ -119,18 +158,36 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
       offset: data.offset, limit: data.limit, rows: rows.slice(data.offset, data.offset + data.limit), byRange: [], byGroup: [] });
   }
   const L = r.listings;
-  if (!L) return ser({ ready: false, kind: data.kind, total: 0, rows: [], byRange: [], byGroup: [] });
+  if (!L) return ser({ ready: false, kind: data.kind, lane: data.lane ?? null, total: 0, rows: [], byRange: [], byGroup: [], byKind: [] });
   const q = data.q;
+  const executedByConfig = new Map<string, WalkForwardResult["trades"]>();
+  for (const trade of r.sim?.trades ?? []) {
+    const rows = executedByConfig.get(trade.cfg) ?? [];
+    rows.push(trade);
+    executedByConfig.set(trade.cfg, rows);
+  }
+  const executedSummary = (id: string) => {
+    const trades = executedByConfig.get(id) ?? [];
+    const summary = unitReturnReport(trades, r.sim?.endT);
+    return {
+      n: summary.n, pf: summary.pf, net: summary.net, wr: summary.wr,
+      gp: summary.gp, gl: summary.gl, noLoss: summary.noLoss,
+      pfBasis: summary.pfBasis, unknownReturns: summary.unknownReturns,
+      effective: effectiveReturnReport(trades, r.sim?.endT),
+    };
+  };
   let rows: unknown[];
   if (data.kind === "validated") {
     const selectedGroup = data.group ?? data.range;
     const idx = selectedGroup ? (L.byGroup[selectedGroup]?.rows ?? []) : null;
     const all = idx ? idx.map((i) => L.validated[i]) : L.validated;
-    rows = q ? all.filter((x) => x.id.toLowerCase().includes(q)) : all;
+    rows = all.filter((x) => matchesLane(x.id) && (!data.strategy || x.kind === data.strategy) && (!q || x.id.toLowerCase().includes(q)))
+      .map((x) => ({ ...x, executed: executedSummary(x.id) }));
   } else if (data.kind === "active") {
-    rows = q ? L.active.filter((x) => `${x.bot}|${x.ind}|${x.sym}|${x.side}|${x.kind ?? "discovery"}|${x.cfg ?? ""}`.toLowerCase().includes(q)) : L.active;
+    rows = L.active.filter((x) => matchesLane(`${x.bot}|${x.ind}`) &&
+      (!q || `${x.bot}|${x.ind}|${x.sym}|${x.side}|${x.kind ?? "discovery"}|${x.cfg ?? ""}`.toLowerCase().includes(q)));
   } else {
-    const proven = (L.proven ?? []).filter((k) => !q || k.toLowerCase().includes(q));
+    const proven = (L.proven ?? []).filter((k) => matchesLane(k) && (!q || k.toLowerCase().includes(q)));
     // live.sideGates: a proven key is a config and its side (recordKeyOf), listed as a row with a side column; the
     // split is loaded only on that path (this module loads the live modules on demand)
     if (L.provenBySide) {
@@ -141,19 +198,57 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
       });
     } else rows = proven.map((id) => ({ id }));
   }
+  const laneValidated = L.validated.filter((x) => matchesLane(x.id));
+  const laneCandidates = L.candidates.filter((x) => matchesLane(x.id));
+  const strategyValidated = laneValidated.filter((x) => !data.strategy || x.kind === data.strategy);
+  const strategyCandidates = laneCandidates.filter((x) => !data.strategy || x.kind === data.strategy);
+  const { RANGE_LABEL, rangeOfId } = await import("./minimal-coord.ts");
+  const summaries = (
+    keyOf: (x: (typeof laneValidated)[number]) => string,
+    candidateKey: (x: (typeof laneCandidates)[number]) => string,
+    include: (key: string) => boolean = () => true,
+    validatedRows = strategyValidated,
+    candidateRows = strategyCandidates,
+  ) => {
+    const grouped = new Map<string, { validated: number; calculated: number; gp: number; gl: number }>();
+    const get = (key: string) => {
+      let v = grouped.get(key);
+      if (!v) grouped.set(key, (v = { validated: 0, calculated: 0, gp: 0, gl: 0 }));
+      return v;
+    };
+    for (const x of validatedRows) {
+      const key = keyOf(x);
+      if (!key || !include(key)) continue;
+      const v = get(key); v.validated++; v.gp += x.gp; v.gl += x.gl;
+    }
+    for (const x of candidateRows) {
+      const key = candidateKey(x);
+      if (key && include(key)) get(key).calculated++;
+    }
+    return [...grouped].map(([key, v]) => ({ key, ...v, pf: v.gl > 1e-12 ? v.gp / v.gl : null, noLoss: v.gp > 0 && v.gl <= 1e-12 }));
+  };
+  const byGroup = summaries((x) => x.group, (x) => x.group).map(({ key: group, ...x }) => ({ group, ...x }));
+  const byKind = summaries((x) => x.kind, (x) => x.kind, () => true, laneValidated, laneCandidates)
+    .map(({ key: kind, ...x }) => ({ kind, ...x }));
+  const byRange = summaries((x) => x.range, (x) => {
+    const tag = rangeOfId(x.id);
+    return tag ? RANGE_LABEL[tag] : "";
+  }).map(({ key: range, ...x }) => ({ range, ...x }));
   return ser({
     ready: true,
     kind: data.kind,
+    lane: data.lane ?? null,
     paperStep: L.paperStep,
     at: L.at,
     total: rows.length,
-    calculated: data.kind === "validated" ? L.candidates.filter((x) =>
+    calculated: data.kind === "validated" ? strategyCandidates.filter((x) =>
       (!(data.group ?? data.range) || x.group === (data.group ?? data.range)) && (!q || x.id.toLowerCase().includes(q))).length : null,
     validation: data.kind === "validated" ? L.validation : null,
     offset: data.offset,
     rows: rows.slice(data.offset, data.offset + data.limit),
-    byRange: Object.entries(L.byRange).map(([range, x]) => ({ range, validated: x.rows.length, calculated: x.calculated, pf: x.pf, noLoss: x.gp > 0 && x.gl === 0 })),
-    byGroup: Object.entries(L.byGroup).map(([group, x]) => ({ group, validated: x.rows.length, calculated: x.calculated, pf: x.pf, noLoss: x.gp > 0 && x.gl === 0 })),
+    byRange,
+    byGroup,
+    byKind,
     proofOn: L.proven !== null,
     ...(L.provenBySide ? { provenBySide: true as const } : {}),
   });
@@ -229,6 +324,7 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
     wf: {
       preH: r.wf.preH,
       simH: r.wf.simH,
+      seatSet: r.wf.seatSet ?? "validated",
       portfolio: r.wf.portfolio,
       lastN: r.wf.lastN,
       // the seat validation's last N closes (engine configs / signal configs; 0 = off)
@@ -245,6 +341,11 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
           startT: sim.startT,
           endT: sim.endT,
           stats: primary!.stats,
+          // Open-at-end orders are reported separately; this is the PF of model orders that completed execution.
+          executed: sim.trades ? unitReturnReport(sim.trades, sim.endT) : null,
+          effective: sim.trades ? effectiveReturnReport(sim.trades, sim.endT) : null,
+          effectiveByKind: primary!.effectiveByKind,
+          openAtEnd: sim.openAtEnd?.length ?? 0,
           sizedStats: primary!.sizedStats ?? null,
           positions: primary!.orderCounts.closedPositions,
           orderCounts: primary!.orderCounts,
@@ -294,14 +395,19 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
       base: number;
       passed: number;
       tapes: number;
-      trades: Array<{ r: number; exitT: number; entryT: number; sym: string; side: number }>;
+      activeSets: number;
+      activeCloses: number;
+      activeGp: number;
+      activeGl: number;
+      trades: WalkForwardResult["trades"];
       open: Array<{ sym: string; side: number }>;
       simOpen: Array<{ sym: string; side: number; entryT: number }>;
     }
   >();
   const row = (lane: string) => {
     let x = rows.get(lane);
-    if (!x) rows.set(lane, (x = { lane, base: 0, passed: 0, tapes: 0, trades: [], open: [], simOpen: [] }));
+    if (!x) rows.set(lane, (x = { lane, base: 0, passed: 0, tapes: 0, activeSets: 0, activeCloses: 0,
+      activeGp: 0, activeGl: 0, trades: [], open: [], simOpen: [] }));
     return x;
   };
   for (const c of r.pipeline?.s1 ?? []) {
@@ -315,6 +421,13 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
     if (passed) x.passed++;
   }
   for (const t of r.tapes) row(lab(t.ind)).tapes++;
+  for (const t of r.listings?.validated ?? []) {
+    const x = row(lab(t.id.split("|")[1] ?? ""));
+    x.activeSets++;
+    x.activeCloses += t.n;
+    x.activeGp += t.gp;
+    x.activeGl += t.gl;
+  }
   const indOf = (cfg: string) => cfg.split("|")[1] ?? "";
   for (const t of r.sim?.trades ?? []) row(lab(indOf(t.cfg))).trades.push(t);
   for (const p of r.sim?.openAtEnd ?? []) row(lab(indOf(p.cfg))).simOpen.push(p);
@@ -324,13 +437,19 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
     .sort((a, b) => order.indexOf(a.lane) - order.indexOf(b.lane))
     .map((x) => {
       const st = unitReturnReport([...x.trades].sort((a, b) => a.exitT - b.exitT) as never);
+      const effective = effectiveReturnReport([...x.trades].sort((a, b) => a.exitT - b.exitT));
       const counts = positionOrderCounts(x.trades, x.simOpen);
       return {
         lane: x.lane,
         base: x.base,
         passed: x.passed,
         tapes: x.tapes,
+        activeSets: x.activeSets,
+        activeCloses: x.activeCloses,
+        activePf: x.activeGl > 1e-12 ? x.activeGp / x.activeGl : null,
+        activeNoLoss: x.activeGp > 0 && x.activeGl <= 1e-12,
         ...returnGroup(st),
+        effective,
         positions: counts.closedPositions,
         orderCounts: counts,
         open: openBook(x.open),
@@ -835,7 +954,7 @@ export async function coreSettingsData(data: ReturnType<typeof connInput>) {
 
 /** Input of saveCoreSettings. */
 export const saveCoreSettingsInput = (d: {
-  settings?: Partial<CoreSettings>;
+  settings?: SettingsPatch;
   wf?: Record<string, unknown>;
   conn?: string;
 }) => {
@@ -927,7 +1046,7 @@ export const presetActionInput = (d: {
   label?: string;
   info?: string;
   days?: number;
-  settings?: Partial<CoreSettings>;
+  settings?: SettingsPatch;
   wf?: Record<string, unknown>;
   conn?: string;
 }) => {
@@ -1152,9 +1271,9 @@ async function liveOrdersView(r: Awaited<ReturnType<typeof rt>>) {
  * reader): own realized closes in USD (hand-ended positions apart), the own open uPnL of the last account read (own
  * quantity only), and their sum. Every page shows this one object.
  */
-async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
+export async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
   const since = r.db.kvGet<number>("liveSince") ?? null;
-  const st = await liveState<{ account?: { own?: { upnl: number; n: number }; readAt?: number | null } }>(
+  const st = await liveState<{ account?: { own?: { upnl: number; n: number }; ownershipUnknown?: { n: number; pendingKeys?: number }; markUnknown?: { own: number }; readAt?: number | null } }>(
     r.db,
     "liveStatus",
   );
@@ -1181,16 +1300,26 @@ async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
     n++;
     realized += usd;
   }
+  // Keep the actual exchange-fill return sample beside, but separate from, the replay and paper books. Hand closes and
+  // flat markers have no proven strategy exit; missing fill-price/fee evidence makes the whole PF unavailable.
+  const exchangeCloses = trades.filter(
+    (x) => (since === null || x.exitT >= since) && x.reason !== "hand" && x.reason !== "flat",
+  );
+  const exchangeReturns = unitReturnReport(exchangeCloses, Date.now());
   const own = st?.account?.own ?? null;
+  // The known-position subtotal is useful separately, but it is not the complete open or session P&L while
+  // a physical position's own share is unresolved. Do not silently treat that missing contribution as zero.
+  const incomplete = !hasCompleteAccountMark(st?.account, "own");
   return {
     since,
     closes: n,
     realized,
+    exchangeReturns,
     hand,
     flat,
-    openUpnl: own ? own.upnl : null,
-    openPositions: own ? own.n : null,
-    net: realized + (own?.upnl ?? 0),
+    openUpnl: own && !incomplete ? own.upnl : null,
+    openPositions: own && !incomplete ? own.n : null,
+    net: own && !incomplete ? realized + own.upnl : null,
     accountAt: st?.account?.readAt ?? null,
     feesModelled,
     unknownNetReturns,
@@ -1296,9 +1425,11 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     // the margin line at the desk's actual leverage: fixed in the settings, or ("max") what the own positions hold now
     // (own notional / own margin of the last account read); unknown → 1× (margin = notional, labelled)
     const lev = r.settings.live.leverage;
-    const own = (
-      await liveState<{ account?: { own?: { notional: number; margin: number } } }>(r.db, "liveStatus")
-    )?.account?.own;
+    const liveAccount = (
+      await liveState<{ account?: { own?: { notional: number; margin: number }; ownershipUnknown?: { n: number; pendingKeys?: number } } }>(r.db, "liveStatus")
+    )?.account;
+    const incomplete = !hasCompleteOwnership(liveAccount);
+    const own = incomplete ? undefined : liveAccount?.own;
     if (typeof lev === "number" && lev > 0) {
       leverage = lev;
       leverageFrom = `${lev}× (settings)`;

@@ -15,22 +15,46 @@ import { stepLive, resetLiveBackoff } from "../server/live.server.ts";
 import { dcaSnapshot } from "./dca.ts";
 
 describe("Independent strategy config sets", () => {
-  it("native DCA increases each independent set once by 2.5 original units, preserving its sibling and never compounding", async () => {
+  it("native DCA increases each independent symbol once by 2.5 original units, preserving its sibling and never compounding", async () => {
+    const old=process.env.CTS_CORE_LIVE;process.env.CTS_CORE_LIVE="1";
+    try{
+      const {rt,prices}=fakeRt();const ex=new SimExchange().withEquity(100);prices[1].last=10;
+      Object.assign(rt.settings.live,{notionalUsd:10,rebalancePct:0,maxChase:0,minFreeMargin:0,maxPositions:0,top:0});
+      const cfg=(step:number)=>configId("follow","ema-9-21@m15",{tp:.02,sl:.02,trail:0,hold:32,dca:dcaSnapshot({...DEFAULT_SETTINGS.dca,step})},"dca");
+      const a={...lane(cfg(.01),"S0-USDT",1,10,1,.02),w:1};
+      const b={...lane(cfg(.02),"S1-USDT",1,10,1,.02),w:1};
+      const step=()=>stepLive(rt as never,[],1,ex);
+      rt.paper.positions=[a,b];await step();assert.equal(ex.positions.get("S0-USDT|LONG"),1);assert.equal(ex.positions.get("S1-USDT|LONG"),1);
+      rt.paper.positions=[{...a,vol:3.5,w:3.5},b];await step();assert.equal(ex.positions.get("S0-USDT|LONG"),3.5);assert.equal(ex.positions.get("S1-USDT|LONG"),1);
+      const before=ex.log.filter(o=>o.type==="MARKET").length;
+      for(let i=0;i<3;i++)await step();assert.equal(ex.log.filter(o=>o.type==="MARKET").length,before);
+      rt.paper.positions=[{...a,vol:3.5,w:3.5},{...b,vol:3.5,w:3.5}];await step();
+      assert.equal(ex.positions.get("S0-USDT|LONG"),3.5);assert.equal(ex.positions.get("S1-USDT|LONG"),3.5);
+      for(const sym of ["S0-USDT","S1-USDT"]){
+        const opens=ex.log.filter(o=>o.type==="MARKET"&&o.side==="BUY"&&o.symbol===sym);
+        assert.deepEqual(opens.map(o=>Number(o.quantity)),[1,2.5]);
+      }
+      rt.paper.positions=[];await step();assert.equal(ex.positions.size,0);
+    }finally{resetLiveBackoff();if(old===undefined)delete process.env.CTS_CORE_LIVE;else process.env.CTS_CORE_LIVE=old;}
+  });
+  for(const side of [1,-1] as const)it(`native DCA holds a second same-side parent behind the isolation fence, side ${side}`,async()=>{
     const old=process.env.CTS_CORE_LIVE;process.env.CTS_CORE_LIVE="1";
     try{
       const {rt}=fakeRt();const ex=new SimExchange().withEquity(100);
       Object.assign(rt.settings.live,{notionalUsd:10,rebalancePct:0,maxChase:0,minFreeMargin:0,maxPositions:0,top:0});
       const cfg=(step:number)=>configId("follow","ema-9-21@m15",{tp:.02,sl:.02,trail:0,hold:32,dca:dcaSnapshot({...DEFAULT_SETTINGS.dca,step})},"dca");
-      const a={...lane(cfg(.01),"S0-USDT",1,10,1,.02),w:1};
-      const b={...lane(cfg(.02),"S0-USDT",1,10,1,.02),w:1};
-      const step=()=>stepLive(rt as never,[],1,ex);
-      rt.paper.positions=[a,b];await step();assert.equal(ex.positions.get("S0-USDT|LONG"),2);
-      rt.paper.positions=[{...a,vol:3.5,w:3.5},b];await step();assert.equal(ex.positions.get("S0-USDT|LONG"),4.5);
-      const before=ex.log.filter(o=>o.type==="MARKET").length;
-      for(let i=0;i<3;i++)await step();assert.equal(ex.log.filter(o=>o.type==="MARKET").length,before);
-      rt.paper.positions=[{...a,vol:3.5,w:3.5},{...b,vol:3.5,w:3.5}];await step();assert.equal(ex.positions.get("S0-USDT|LONG"),7);
-      for(const order of ex.log.filter(o=>o.type==="MARKET"&&o.side==="BUY").slice(1))assert.equal(Number(order.quantity),2.5);
-      rt.paper.positions=[];await step();assert.equal(ex.positions.size,0);
+      const a={...lane(cfg(.01),"S0-USDT",side,10,1,.02),w:1};
+      const b={...lane(cfg(.02),"S0-USDT",side,10,1,.02),w:1};
+      const step=()=>stepLive(rt as never,[],1,ex),key=`S0-USDT|${side===1?"LONG":"SHORT"}`;
+      rt.paper.positions=[a,b];const start=await step();
+      assert.equal(ex.positions.get(key),1);
+      assert.ok(start.skipped.some(x=>x.why.includes("aggregate position reserved for another parent")));
+      rt.paper.positions=[{...a,vol:3.5,w:3.5},b];await step();assert.equal(ex.positions.get(key),3.5);
+      rt.paper.positions=[{...a,vol:3.5,w:3.5},{...b,vol:3.5,w:3.5}];const held=await step();
+      assert.equal(ex.positions.get(key),3.5,"the excluded parent cannot add to the first parent's physical position");
+      assert.ok(held.skipped.some(x=>x.why.includes("aggregate position has held or pending ownership")));
+      const opens=ex.log.filter(o=>o.type==="MARKET"&&o.side===(side===1?"BUY":"SELL"));
+      assert.deepEqual(opens.map(o=>Number(o.quantity)),[1,2.5]);
     }finally{resetLiveBackoff();if(old===undefined)delete process.env.CTS_CORE_LIVE;else process.env.CTS_CORE_LIVE=old;}
   });
   it("loads the full own 336h strategy window on every lane even with one-day lane preferences", () => {

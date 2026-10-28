@@ -4,7 +4,7 @@ import { DEFAULT_BLOCK } from "../config.ts";
 import { BLOCK_SOURCES, blockBookOf, blockDecide, sourceKey } from "./block.ts";
 
 const levels = { config: 1, overall: 1, symbol: 1, direction: 1, indication: 1, type: 1 };
-const policy = { ...DEFAULT_BLOCK, ratio: .2, steps: 0, holdUntilNet: true,
+const policy = { ...DEFAULT_BLOCK, ratio: .2, steps: 0,
   sourceRatios: { config: 1, overall: 1, symbol: 4, direction: 2, indication: 2, type: 3 } };
 const identity = { cfg: "set-a", sym: "A", side: 1, kind: "trend", ind: "ema@m1", type: "normal" };
 

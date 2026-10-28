@@ -88,6 +88,32 @@ describe("simulate", () => {
     assert.ok(Math.abs(res.trades[0].r - (0.01 - RT_COST)) < 1e-12);
   });
 
+  it("Low-Range Normal targets and stops close their own long/short entries at the configured prices", () => {
+    const cfg = "follow|low-range-24-breakout-breakout-move-follow@m5|tp0.95|sl0.55|tr0|h36|sh";
+    const normal: Protect = { tp: 0.0095, sl: 0.0055, trail: 0, hold: 36, lowRangeOnly: true, tag: "sh" };
+    const run = (side: 1 | -1, exitBar: [number, number, number, number]) => {
+      const b = barsFromCandles("X", 5, mk([
+        [100, 100, 100, 100],
+        [100, 100.1, 99.9, 100],
+        exitBar,
+      ]));
+      return simulate(cfg, b, new Int8Array([side, 0, 0]), normal, { cost: RT_COST }).trades[0];
+    };
+    for (const side of [1, -1] as const) {
+      const tp = run(side, side === 1 ? [100, 101.1, 99.9, 100.9] : [100, 100.1, 98.9, 99]);
+      assert.equal(tp.cfg, cfg);
+      assert.equal(tp.reason, "tp");
+      assert.ok(Math.abs(tp.exit - (side === 1 ? 100.95 : 99.05)) < 1e-10);
+      assert.ok(Math.abs(tp.r - (normal.tp - RT_COST)) < 1e-12);
+
+      const sl = run(side, side === 1 ? [100, 100.1, 99.4, 99.5] : [100, 100.6, 99.9, 100.5]);
+      assert.equal(sl.cfg, cfg);
+      assert.equal(sl.reason, "sl");
+      assert.ok(Math.abs(sl.exit - (side === 1 ? 99.45 : 100.55)) < 1e-10);
+      assert.ok(Math.abs(sl.r - (-normal.sl - RT_COST)) < 1e-12);
+    }
+  });
+
   it("trail tightens from completed-bar peaks only", () => {
     const b = barsFromCandles(
       "X",

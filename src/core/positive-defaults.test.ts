@@ -62,6 +62,7 @@ describe("positive coordinations stay on", () => {
 
   it("every config of every validated pair is its own seat, processed independently", () => {
     assert.equal(defaultWalkForward(DEFAULT_SETTINGS).seatPer, "config");
+    assert.equal(defaultWalkForward(DEFAULT_SETTINGS).seatSet, "validated");
   });
 
   it("the tape stage builds only the range targets Base validated", () => {

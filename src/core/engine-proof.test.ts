@@ -160,12 +160,13 @@ describe("engine proof", () => {
     (rt as unknown as { engineProof: () => unknown }).engineProof = () => ({ proven: new Set<string>(), judged: 1, n: 3, minPf: 1.2 });
     const ex = new SimExchange(rng(1));
     const qty = async () => (await ex.book()).positions.filter((p) => p.symbol === "S1-USDT" && p.qty > 0).reduce((a, p) => a + p.qty, 0);
-    rt.paper.positions = [lane(SIG, 17)] as never;
+    const signalLane = lane(SIG, 17);
+    rt.paper.positions = [signalLane] as never;
     await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);
     const one = await qty();
     assert.ok(one > 0, "the signal opened");
     // the unproven engine config joins the held key on paper: the exchange position stays the signal's
-    rt.paper.positions = [lane(SIG, 17), lane(ENG, 17)] as never;
+    rt.paper.positions = [signalLane, lane(ENG, 17)] as never;
     authorizeSyntheticLanes(rt, [{ cfg: ENG, sym: "S1-USDT", side: 1 }], { ownedReturns: [-.01] });
     await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);
     await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);

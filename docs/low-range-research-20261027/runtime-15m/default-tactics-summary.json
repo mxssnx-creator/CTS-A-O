@@ -1,0 +1,200 @@
+{
+  "checksOk": true,
+  "checks": [
+    {
+      "name": "all virtual closes retain exact allocation rows",
+      "ok": true,
+      "actual": 0,
+      "expected": 0
+    },
+    {
+      "name": "all unit returns agree with exact allocation rows",
+      "ok": true,
+      "actual": 0,
+      "expected": 0
+    },
+    {
+      "name": "cash is weighted exactly once on every funded close",
+      "ok": true,
+      "actual": 0,
+      "expected": 0
+    },
+    {
+      "name": "funded close count reconciles to report",
+      "ok": true,
+      "actual": 0,
+      "expected": 0
+    },
+    {
+      "name": "no unknown/dust funding ownership",
+      "ok": true,
+      "actual": {
+        "zeroAllocations": 0,
+        "unknownAllocations": 0,
+        "dustAllocations": 0
+      },
+      "expected": null
+    },
+    {
+      "name": "all funded returns known",
+      "ok": true,
+      "actual": 0,
+      "expected": 0
+    },
+    {
+      "name": "gross unit gains reconcile to report",
+      "ok": true,
+      "actual": 0,
+      "expected": null
+    },
+    {
+      "name": "gross unit losses reconcile to report",
+      "ok": true,
+      "actual": 0,
+      "expected": null
+    },
+    {
+      "name": "cash net reconciles to report",
+      "ok": true,
+      "actual": 0,
+      "expected": 0
+    },
+    {
+      "name": "funded engine orders belong to recorded Base-passed pairs",
+      "ok": true,
+      "actual": {
+        "tested": 0,
+        "passed": 0,
+        "failed": 0,
+        "missing": 0
+      },
+      "expected": null
+    },
+    {
+      "name": "raw/report frozen study provenance agrees",
+      "ok": true,
+      "actual": null,
+      "expected": null
+    },
+    {
+      "name": "protocol file checksum matches frozen study",
+      "ok": true,
+      "actual": null,
+      "expected": null
+    },
+    {
+      "name": "protocol identity and source match",
+      "ok": true,
+      "actual": null,
+      "expected": null
+    },
+    {
+      "name": "protocol exact symbols match",
+      "ok": true,
+      "actual": null,
+      "expected": null
+    },
+    {
+      "name": "protocol execution window matches",
+      "ok": true,
+      "actual": null,
+      "expected": null
+    },
+    {
+      "name": "hourly funded count reconciles",
+      "ok": true,
+      "actual": null,
+      "expected": null
+    }
+  ],
+  "window": {
+    "startT": 1791547200000,
+    "endT": 1791633600000,
+    "hours": 24,
+    "symbols": [
+      "ADA-USDT",
+      "APT-USDT",
+      "ARB-USDT",
+      "ATOM-USDT",
+      "AVAX-USDT",
+      "BCH-USDT",
+      "BNB-USDT",
+      "BTC-USDT",
+      "DOGE-USDT",
+      "DOT-USDT",
+      "ETC-USDT",
+      "ETH-USDT",
+      "FIL-USDT",
+      "LINK-USDT",
+      "LTC-USDT",
+      "NEAR-USDT",
+      "OP-USDT",
+      "SOL-USDT",
+      "SUI-USDT",
+      "TRX-USDT"
+    ]
+  },
+  "total": {
+    "closes": 0,
+    "symbols": 0,
+    "configs": 0,
+    "unknownReturns": 0,
+    "unknownCash": 0,
+    "state": "empty",
+    "unitGp": 0,
+    "unitGl": 0,
+    "unitNet": 0,
+    "exactPf": null,
+    "noLoss": false,
+    "noLossGateScore": null,
+    "sizedNetUsd": 0,
+    "sizedPfDiagnostic": null,
+    "sizedNoLoss": false
+  },
+  "source": {
+    "id": "low-range-20-symbol-15m-24h",
+    "protocolSha256": "4ff3a0888beaef6760dd0eb3a54979e61d00e3f78032db7eaee35544ef1a1e12",
+    "feedSha256": "fef309d7198410774175c58e06b5146468ae8d4059a496273b5b48254f44e63a",
+    "sourceSha256": "207927deaedab0a88cb074ee48252928817d7d72cdc2fb8719fc7121c74e2f80",
+    "sourceCheckpoint": "aab28928e4eb1d0936a9531eadacf95948345cc2",
+    "symbols": [
+      "ADA-USDT",
+      "APT-USDT",
+      "ARB-USDT",
+      "ATOM-USDT",
+      "AVAX-USDT",
+      "BCH-USDT",
+      "BNB-USDT",
+      "BTC-USDT",
+      "DOGE-USDT",
+      "DOT-USDT",
+      "ETC-USDT",
+      "ETH-USDT",
+      "FIL-USDT",
+      "LINK-USDT",
+      "LTC-USDT",
+      "NEAR-USDT",
+      "OP-USDT",
+      "SOL-USDT",
+      "SUI-USDT",
+      "TRX-USDT"
+    ],
+    "window": {
+      "indicatorStartT": 1791374400000,
+      "evaluationFromT": 1791460800000,
+      "tradeStartT": 1791547200000,
+      "endT": 1791633600000,
+      "preH": 24,
+      "runH": 24
+    },
+    "scope": "Base-qualified engine execution and separately qualified exact-config Signals; combined funded account reported separately"
+  },
+  "baseEvaluated": 75,
+  "basePassed": 0,
+  "configEval": {
+    "phase": "run-start",
+    "t": 1791547200000,
+    "evaluated": 0,
+    "passed": 0
+  }
+}

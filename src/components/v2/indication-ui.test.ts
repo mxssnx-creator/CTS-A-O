@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { breakFocusCoverage, configStrategyLabel, indicationKindLabel, indicationOptionLabel, includeBreakInFocus, includeRelateInFocus, includeTacticInFocus, relateFocusCoverage, tacticFocusCoverage } from "./indication-ui.ts";
+import { breakFocusCoverage, configStrategyLabel, indicationFocusCoverage, indicationKindLabel, indicationOptionLabel, includeBreakInFocus, includeRelateInFocus, includeTacticInFocus, relateFocusCoverage, tacticFocusCoverage } from "./indication-ui.ts";
 
 test("registered first-class indication kinds have named UI labels without changing other identities", () => {
   assert.equal(indicationKindLabel("tactic"), "Tactic");
@@ -52,6 +52,19 @@ test("empty Focus keeps its all-indications meaning and coverage distinguishes l
   assert.deepEqual(tacticFocusCoverage(["revert|tactic-trend-s@m15"], tacticIds), { all: false, covered: 1, full: 0, total: 10 });
   assert.deepEqual(tacticFocusCoverage(["revert|rsi-mom-14-20"], tacticIds, ["follow|tactic-trend-s"]), { all: false, covered: 1, full: 1, total: 10 });
   assert.deepEqual(tacticFocusCoverage(["follow|tactic-trend-s"], tacticIds), { all: false, covered: 1, full: 1, total: 10 });
+});
+
+test("focus coverage preserves exact and lane-prefix matches across a large inventory", () => {
+  const ids = [...Array.from({ length: 200 }, (_, i) => `method-${i}`), "method-1@m5", "missing"];
+  const focus = [...Array.from({ length: 900 }, (_, i) => `follow|unrelated-${i}@m5`),
+    "revert|method-1@m5@m15", "follow|method-20", "malformed"];
+  const pinned = ["follow|method-3@m15", "revert|method-2@m5"];
+  const expected = ids.filter((id) => [...focus, ...pinned].some((pair) => {
+    const ind = pair.split("|")[1];
+    return ind === id || ind?.startsWith(`${id}@m`);
+  })).length;
+  assert.deepEqual(indicationFocusCoverage(focus, ids, pinned),
+    { all: false, covered: expected, full: 1, total: ids.length });
 });
 
 test("Relate focus includes its exact IDs additively and reports lane coverage", () => {

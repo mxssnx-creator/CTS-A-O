@@ -1,6 +1,7 @@
 // BingX rate-limit bans: nothing is sent while banned, and with CTS_BINGX_BAN_FILE a ban one process receives
 // pauses every process on the account (desks of a live test share one key).
 import { afterEach, describe, it } from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,6 +18,11 @@ import {
   TICKERS,
 } from "./bingx.server.ts";
 import { fetchKlines, fetchTickers } from "../market/bingx.ts";
+
+const scopedBookFile = (base: string) => {
+  const scope = createHash("sha256").update("testnet").update("\0").update("bingx-vst-02").update("\0").update("k").digest("hex");
+  return `${base}.bingx-vst-02.${scope}`;
+};
 
 describe("rate-limit bans", () => {
   afterEach(() => {
@@ -179,7 +185,7 @@ describe("rate-limit bans", () => {
     try {
       const now = Date.now();
       const book = { positions: [], orders: [{ id: "1", symbol: "SOLUSDT", venueSymbol: "SOL-USDT" }] };
-      writeFileSync(`${base}.bingx-vst-02`, JSON.stringify({ startedAt: now - 1_000, book }));
+      writeFileSync(scopedBookFile(base), JSON.stringify({ startedAt: now - 1_000, book }));
       // read by another desk 1 s ago, after this desk's last order: reused, nothing sent
       assert.deepEqual(await fetchBook("testnet", "bingx-vst-02", { notBefore: now - 5_000, maxAgeMs: 5_000 }), book);
       assert.equal(calls, 0);
@@ -212,7 +218,7 @@ describe("rate-limit bans", () => {
     try {
       const now = Date.now();
       const orders = [{ id: "9", symbol: "SOLUSDT", venueSymbol: "SOL-USDT", clientOrderId: "CTSBV2_Sx" }];
-      writeFileSync(`${base}.bingx-vst-02`, JSON.stringify({ startedAt: now - 300_000, book: { positions: [], orders } }));
+      writeFileSync(scopedBookFile(base), JSON.stringify({ startedAt: now - 300_000, book: { positions: [], orders } }));
       noteRateLimit(`code:100410 disabled period, unblocked after ${now + 120_000} [GET /openApi/swap/v2/trade/openOrders]`, now);
       const book = await fetchBook("testnet", "bingx-vst-02", { notBefore: now, maxAgeMs: 5_000 });
       assert.deepEqual(paths, ["/openApi/swap/v2/user/positions"], "the open orders are not asked");
@@ -220,7 +226,7 @@ describe("rate-limit bans", () => {
       assert.deepEqual(book.orders, orders);
       assert.equal(book.ordersAt, now - 300_000);
       // the positions read is shared with the other desks, still marked with the open orders' time
-      const shared = JSON.parse(readFileSync(`${base}.bingx-vst-02`, "utf8"));
+      const shared = JSON.parse(readFileSync(scopedBookFile(base), "utf8"));
       assert.equal(shared.book.ordersAt, now - 300_000);
       assert.ok(shared.startedAt >= now);
       paths.length = 0;

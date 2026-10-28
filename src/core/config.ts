@@ -1,4 +1,5 @@
 import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "./indications/micro-family.ts";
+import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "./indications/low-range.ts";
 import { PROVEN_WIDE_TRAIL_PAIRS } from "./proven-wide-trail.ts";
 // CTS-A Core v2 — authoritative defaults. Every number the engine uses lives here.
 import type {
@@ -6,6 +7,7 @@ import type {
   BlockConfig,
   DcaConfig,
   Gates,
+  LowRangeGrid,
   Protect,
   ProtectGridSpec,
   RelateAdjustmentConfig,
@@ -23,6 +25,8 @@ export { RT_COST } from "./model-cost.ts";
 
 /** Hard ceiling for unique positions on the exchange. Strategy/config orders do not consume extra slots. */
 export const MAX_EXCHANGE_POSITIONS = 100;
+/** One systemwide ceiling for Block, Relate, coordination, and other external sizing groups. */
+export const MAX_EXTERNAL_STACK = 8;
 /** Bounded settings payload, including every independent Micro/Inverse source and the ordinary catalog. */
 export const MAX_FOCUS_PAIRS = 2000;
 
@@ -142,10 +146,12 @@ export const DEFAULT_BLOCK: BlockConfig = {
   },
   mode: "overall",
   historySource: "accepted-orders",
+  // Each raised Block group keeps its last applied extra volume until that group's realized extra net is recovered.
+  holdUntilNet: true,
   ratio: 0.5,
   maxLevel: 8,
   minActiveLevel: 2,
-  maxMult: 8,
+  maxMult: MAX_EXTERNAL_STACK,
   /** closes a source waits after a positive raised position (0 = none) */
   pause: 0,
   /** volume steps up to maxMult (0 = continuous) */
@@ -182,7 +188,8 @@ export const DEFAULT_RELATE_ADJUSTMENT: RelateAdjustmentConfig = {
   minPf: 1.5,
   lastN: 250,
   minTrades: 60,
-  maxStack: 250,
+  maxStack: MAX_EXTERNAL_STACK,
+  maxSl: 0.0075,
   sources: {
     config: true,
     overall: true,
@@ -399,10 +406,27 @@ export interface ExitStrategySettings {
   stopMultiples: number[];
 }
 
+/** A grid patch preserves complete Low-Range siblings; other nested range objects retain their replacement semantics. */
+export type GridSettingsPatch = Omit<Partial<ProtectGridSpec>, "lowRange"> & { lowRange?: Partial<LowRangeGrid> };
+
+/** Merge one grid level and the independently configurable Low-Range leaves; lists replace rather than concatenate. */
+export function mergeGridSettings(base: ProtectGridSpec, patch?: GridSettingsPatch): ProtectGridSpec {
+  if (!patch) return { ...base };
+  const out = { ...base, ...patch } as ProtectGridSpec;
+  if (patch.lowRange !== undefined) {
+    if (!patch.lowRange || typeof patch.lowRange !== "object" || Array.isArray(patch.lowRange))
+      throw new Error("Low-Range: settings object required");
+    out.lowRange = { ...DEFAULT_LOW_RANGE_GRID, ...base.lowRange, ...patch.lowRange };
+  }
+  return out;
+}
+
 /** A settings patch: every group (grid, gates, live, block …) may be partial — it is merged into the current values. */
 export type SettingsPatch = {
   [K in keyof CoreSettings]?: K extends "tfDays"
     ? CoreSettings[K]
+    : K extends "grid"
+      ? GridSettingsPatch
     : CoreSettings[K] extends readonly unknown[]
       ? CoreSettings[K]
       : CoreSettings[K] extends object
@@ -568,22 +592,11 @@ export interface LiveSettings {
    * Signal configs have no family here (live.source narrows them). Unset / empty = none.
    */
   excludeConfigs?: readonly string[];
-  /**
-   * group live validation: until a config has its own `liveLastN` closes, its live group (Signals, or its target
-   * range: Minimal, Short, General, Long, Wide …) decides — the group's last `liveGroupLastN` live closes pooled over
-   * its selected configs must hold PF ≥ liveMinPf for the group's configs to open new entries. Held positions are
-   * never cut. 0 = off (default): replayed at entry time on x01's forward record (4,452 closes over 4.5 h,
-   * PF 1.11), every window cut the PF (last 50: 0.93, 100: 0.98, 200: 1.02, 400: 0.96, the whole record: 0.95) —
-   * a group's losing streaks were followed by its winners (docs/live-group-validation.md).
-   */
+  /** Last-N pooled group statistics for diagnostics only; they never qualify or veto another config. 0 = off. */
   liveGroupLastN?: number;
   /**
-   * live validation per side (plan item 13; default off, and a causal eval decides it): a config's LONG and SHORT
-   * closes are judged on their own record, not on one pooled record. The exchange record, the simulated forward
-   * closes, the engine proof and the group gates key by config and side, and an entry is judged on its own side
-   * (a SHORT is not refused by the LONG closes of its config, nor a LONG by the SHORT ones). Unset / false: one record
-   * per config for both sides, as before. True changes entry decisions, so it is not a default until a causal
-   * comparison on the paper or live book says so (docs/positive-coordinations.md).
+   * Optional per-side engine/signal proof and listings. Paper forward deactivation and native promotion always use
+   * the exact entry side independently; this legacy option continues to control the additional proof/listing scope.
    */
   sideGates?: boolean;
   /**
@@ -768,7 +781,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   tactics: DEFAULT_TACTICS,
   focus: [...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_FOCUS_20OCT,
     ...MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
-    ...INVERSE_MICRO_CONFIG_IDS.map((id) => `follow|${id}`)],
+    ...INVERSE_MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
+    ...LOW_RANGE_IDS.map((id) => `follow|${id}`)],
   pinned: [...PROVEN_WIDE_TRAIL_PAIRS],
   disabledKinds: [],
   block: DEFAULT_BLOCK,
@@ -794,6 +808,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     trailFree: false,
     minimal: MINIMAL_RANGE,
     short: SHORT_RANGE,
+    lowRange: DEFAULT_LOW_RANGE_GRID,
     general: GENERAL_RANGE,
     long: LONG_RANGE,
     // Micro on (operator, 13 Oct: "include and enable also range Micro for processing completely"): its own Micro

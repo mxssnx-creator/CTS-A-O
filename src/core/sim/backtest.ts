@@ -4,7 +4,7 @@
 // - The trailing stop tightens from the peak of completed bars only; the new level applies from the next bar.
 // - Every closed trade pays the round-trip cost on notional.
 // - ATR protects (Protect.atr) are resolved into distances at every entry from ATR(14) of the signal bar.
-import type { AtrProtect, Bars, OpenPosition, Protect, Side, Trade } from "../domain/types.ts";
+import type { AtrProtect, Bars, ExitProtectionState, OpenPosition, Protect, Side, Trade } from "../domain/types.ts";
 import { capSignalProtect, capTrailingOnlyProtect, isSignalConfig, ratchetTrail } from "./trailing.ts";
 import { atrEma } from "../math/indicators.ts";
 import { RT_COST, modeledPriceReturn } from "../model-cost.ts";
@@ -30,6 +30,21 @@ export interface SimOptions {
   fixedPathScope?: object;
   /** Realtime only: continue a private append-only simulation, emitting only newly settled closes. */
   cursor?: SimulationCursor;
+  /**
+   * Optional entry-time ceiling on the initial stop distance from that entry, expressed as a fraction.
+   * Decisions supplied here must already be causal: only a caller coordinating all relevant settled orders
+   * can decide a Relate raise. Undefined leaves this entry's own stop unchanged. Held positions retain the
+   * captured stop when a simulation is resumed, even when later settings or callbacks differ.
+   */
+  entryStopLimit?: (entry: {
+    readonly cfg: string;
+    readonly sym: string;
+    readonly side: Side;
+    readonly signalCloseT: number;
+    readonly entryT: number;
+    readonly entry: number;
+    readonly stopDistance: number;
+  }) => number | undefined;
 }
 
 export interface SimResult {
@@ -197,12 +212,25 @@ export interface SimState {
   nextAllowed: number;
   /** the resolved trail of the position in force (an ATR protect resolves it per entry) */
   trail: number;
+  /** Entry-time maximum initial stop distance, when an explicit policy supplied one. */
+  entryStopMax?: number;
+  /** Exact owner of a captured stop; never move a held stop into another config, symbol or direction. */
+  entryStopOwner?: { cfg: string; sym: string; side: Side; entryT: number };
   /** the protect in force (an ATR protect's resolved distances) */
   q: Protect;
   dist: number;
   exitProtection?: OpenPosition["exitProtection"];
   exitPosition?: ExitProtectionPosition & { target: number; trail: number; trailDist: number };
   trailPosition?: OpenPosition;
+}
+
+/** JSON persistence removes object aliases, so prove both saved copies before linking them again. */
+function sameExitProtection(a: ExitProtectionState, b: ExitProtectionState): boolean {
+  if (a === b) return true;
+  const ak = Object.keys(a), bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  const av = a as unknown as Record<string, unknown>, bv = b as unknown as Record<string, unknown>;
+  return ak.every((key) => Object.hasOwn(bv, key) && Object.is(av[key], bv[key]));
 }
 
 export function simulate(
@@ -266,6 +294,8 @@ function simCore(
     target: 0,
     peak: 0,
     trailOn: false,
+    entryStopMax: undefined as number | undefined,
+    entryStopOwner: undefined as SimState["entryStopOwner"],
     mfe: 0,
     mae: 0,
     nextAllowed: 0,
@@ -286,6 +316,8 @@ function simCore(
     target,
     peak,
     trailOn,
+    entryStopMax,
+    entryStopOwner,
     mfe,
     mae,
     nextAllowed,
@@ -305,6 +337,8 @@ function simCore(
     target,
     peak,
     trailOn,
+    entryStopMax,
+    entryStopOwner,
     mfe,
     mae,
     nextAllowed,
@@ -316,18 +350,43 @@ function simCore(
     trailPosition,
   });
   const exitBar = { t: 0, high: 0, low: 0, close: 0 };
+  const checkCapturedStop = () => {
+    if (!inPos || entryStopMax === undefined) return;
+    if (!(Number.isFinite(entryStopMax) && entryStopMax > 0 && entryStopMax < 1 &&
+        Number.isFinite(entry) && entry > 0 && Number.isFinite(stop) && stop > 0 &&
+        (side === 1 || side === -1) && side * (entry - stop) / entry <= entryStopMax + 1e-12))
+      throw new Error("simulateFrom: the held entry's captured stop limit or stop is invalid");
+    if (!entryStopOwner || entryStopOwner.cfg !== cfg || entryStopOwner.sym !== sym ||
+        entryStopOwner.side !== side || !Number.isInteger(entryI) || entryI < 0 || entryI >= n ||
+        entryStopOwner.entryT !== t[entryI])
+      throw new Error("simulateFrom: the held entry's captured stop owner is invalid");
+  };
   if (from) {
     if (from.i0 > n)
       throw new RangeError("simulateFrom: the series is shorter than the stored state");
-    ({ inPos, side, entryI, entry, stop, target, peak, trailOn, mfe, mae, nextAllowed, q, dist, trail, exitProtection, exitPosition, trailPosition } =
+    ({ inPos, side, entryI, entry, stop, target, peak, trailOn, entryStopMax, entryStopOwner, mfe, mae, nextAllowed, q, dist, trail, exitProtection, exitPosition, trailPosition } =
       structuredClone(from));
+    checkCapturedStop();
     if (inPos && q.exitType === "historic" && q.exitSet) {
       if (!exitProtection) throw new Error("simulateFrom: historic position is missing its protection state");
-      exitPosition ??= { side, entry, stop, target, peak, trailOn, trail, trailDist: dist, exitProtection };
+      if (exitProtection.set !== q.exitSet)
+        throw new Error("simulateFrom: historic position and protection state disagree");
+      if (exitPosition) {
+        if (!exitPosition.exitProtection || !sameExitProtection(exitProtection, exitPosition.exitProtection) ||
+            exitPosition.side !== side || exitPosition.entry !== entry || exitPosition.stop !== stop ||
+            exitPosition.target !== target || exitPosition.peak !== peak || exitPosition.trailOn !== trailOn ||
+            exitPosition.trail !== trail || exitPosition.trailDist !== dist)
+          throw new Error("simulateFrom: historic position and protection state disagree");
+        exitPosition.exitProtection = exitProtection;
+      } else exitPosition = { side, entry, stop, target, peak, trailOn, trail, trailDist: dist, exitProtection };
     }
+    if (inPos && entryStopMax !== undefined && trailPosition &&
+        (trailPosition.side !== side || trailPosition.entry !== entry || trailPosition.stop !== stop ||
+          trailPosition.peak !== peak || trailPosition.trailOn !== trailOn))
+      throw new Error("simulateFrom: held trailing position and captured stop disagree");
     if (inPos && trail > 0 && !exitPosition && !trailPosition)
       trailPosition = { cfg, sym, side, entryT: t[entryI], entryI, entry, stop, target, peak, trailOn, mtm: 0 };
-  }
+  } else if (cursor) checkCapturedStop();
   const atr = p.atr ? (opt.atr ?? atrEma(h, l, c, ATR_PERIOD)) : null;
   const resolve = (i: number) => {
     const resolved = resolveAtrProtect(p, atr![i] / c[i], bars.tfMin);
@@ -374,6 +433,7 @@ function simCore(
       bars: i - entryI + 1,
       mfe,
       mae,
+      ...(entryStopMax !== undefined ? { entryStopMax } : {}),
     });
     inPos = false;
     nextAllowed = i + cooldown;
@@ -457,7 +517,28 @@ function simCore(
           q = resolve(i);
           dist = q.trail * (q.trailStep ?? 1);
         }
-        stop = side === 1 ? entry * (1 - q.sl) : entry * (1 + q.sl);
+        let initialStop = q.sl;
+        entryStopMax = undefined;
+        entryStopOwner = undefined;
+        if (opt.entryStopLimit) {
+          const limit = opt.entryStopLimit({ cfg, sym, side, signalCloseT: t[i] + bars.tfMin * 60_000,
+            entryT: t[entryI], entry, stopDistance: initialStop });
+          if (limit !== undefined) {
+            if (!(Number.isFinite(limit) && limit > 0 && limit < 1))
+              throw new RangeError("entry stop limit must be a finite fraction between zero and one");
+            if (!(Number.isFinite(initialStop) && initialStop >= 0))
+              throw new RangeError("entry stop distance must be finite and nonnegative");
+            if (!(Number.isFinite(entry) && entry > 0))
+              throw new RangeError("entry price must be finite and positive for a captured stop limit");
+            if (!(Number.isFinite(t[i]) && Number.isFinite(t[entryI]) && Number.isFinite(bars.tfMin) &&
+                bars.tfMin > 0 && t[entryI] >= t[i] + bars.tfMin * 60_000))
+              throw new RangeError("captured stop entry must follow the completed signal bar");
+            entryStopMax = limit;
+            entryStopOwner = { cfg, sym, side, entryT: t[entryI] };
+            initialStop = Math.min(initialStop, limit);
+          }
+        }
+        stop = side === 1 ? entry * (1 - initialStop) : entry * (1 + initialStop);
         target = q.trailOnly ? 0 : side === 1 ? entry * (1 + q.tp) : entry * (1 - q.tp);
         trail = q.trail;
         exitProtection = createExitProtection(q, entry, cost);
@@ -491,6 +572,7 @@ function simCore(
       target,
       peak,
       trailOn,
+      ...(entryStopMax !== undefined ? { entryStopMax } : {}),
       mtm: modeledPriceReturn(side, entry, last, cost),
       // the trail in force (an ATR protect resolved it at the entry): the live tick advances it bar by bar
       ...(exitProtection ? { exitProtection } : {}),

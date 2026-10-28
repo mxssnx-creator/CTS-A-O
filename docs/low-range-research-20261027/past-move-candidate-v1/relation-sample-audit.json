@@ -1,0 +1,23 @@
+{
+  "status": "passed",
+  "cellsRecomputed": 62,
+  "categories": {
+    "base-failed": 24,
+    "validated": 19,
+    "base-only": 19
+  },
+  "relations": {
+    "move-follow": 9,
+    "move-reverse": 5,
+    "trend-move-follow": 9,
+    "trend-move-reverse": 7,
+    "breakout-move-follow": 9,
+    "breakout-move-reverse": 7,
+    "trend-breakout-move-follow": 9,
+    "trend-breakout-move-reverse": 7
+  },
+  "selectionBarsOnly": true,
+  "stratification": "first recorded cell per relation, timeframe and decision category",
+  "symbols": 20,
+  "limitations": "Sample check of qualification, not full runtime or funded execution."
+}

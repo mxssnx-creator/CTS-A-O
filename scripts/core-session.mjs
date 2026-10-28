@@ -216,7 +216,9 @@ async function coverageOf(rt, s) {
   const rangesApplies = baseRangeRules(s).applies;
   const { INDICATIONS } = await import("../src/core/indications/registry.ts");
   // the same Micro lane floor the runtime applies (a Micro pair below it can pass nothing)
-  const engineComboList = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid));
+  const { rangeMinTfOf } = await import("../src/core/minimal-coord.ts");
+  const engineComboList = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid),
+    s.grid.lowRange?.enabled === true && !!s.grid.short, rangeMinTfOf(s.grid).sh ?? 0);
   const engineCombos = engineComboList.length;
   const sigCombos = signalCombos(signalSettings(s.signals), s.tfs).length;
   // Engine Exit rows are in S1; Signal Exit rows have their own worker pass and must be added here once.
@@ -3998,8 +4000,8 @@ const maxDdtH = ER.maxDdtH ?? raw.settings.gates?.maxDdtH;
 const ddtRule = `drawdown time ≤ min(${f2(ER.ddtMaxH)} h, ${maxDdtH} h × span ÷ 72 h), span = the tape's own history inside the ${ER.preH} h window (ddtLimitH: a 1m tape with 72 h of history → ${maxDdtH} h; a full window → ${f2(ER.ddtMaxH)} h)`;
 const indFloorRule =
   report.evidence.qualification.state === "recorded"
-    ? `; full indication-aware Tactic floor ${report.evidence.qualification.tacticMinPf}, retaining stricter settings; mixed indication groups can have different minima`
-    : "; historical full-indication gate provenance is unrecorded";
+    ? `; full indication-aware Tactic floor ${report.evidence.qualification.tacticMinPf}, Short floor ${report.evidence.qualification.shortMinPf}, retaining stricter settings; mixed indication groups can have different minima`
+    : "; historical qualification provenance does not establish the Short 1.1 floor";
 const seatRule = `Each engine config on its own closes at the run start (configEval: the gates the seat selection applies — not the Base stage, which ranks bot × indication pairs): over the selection window (${ER.preH} h) ≥ max(3, ${ER.minTrades}) closes, positive net, PF ≥ its full indication's range minimum (stage ${ER.minPf}${
   Object.keys(ER.rangeMinPf ?? {}).length
     ? `; ${Object.entries(ER.rangeMinPf)
@@ -4368,6 +4370,8 @@ if (flag("signal-progress") || flag("chunk-allocations"))
       closeIndex,
       cfg: x.cfg,
       sym: x.sym,
+      kind: x.kind,
+      reason: x.reason,
       side: x.side,
       entryT: x.entryT,
       exitT: x.exitT,

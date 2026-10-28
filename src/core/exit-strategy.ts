@@ -13,6 +13,7 @@ import {
   laneOf,
 } from "./indications/registry.ts";
 import { isMicroCalculationInd as isMicroFamilyInd, microAnchorTf } from "./indications/micro-family.ts";
+import { isLowRangeInd } from "./indications/low-range.ts";
 import { isRelateInd, relateAnchorTf } from "./indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { ddrFails, statsOf } from "./metrics/stats.ts";
@@ -30,7 +31,8 @@ import { quantileSorted } from "./signal-hist.ts";
 import { simulate } from "./sim/backtest.ts";
 import { filterEntries, type EntryFilter } from "./sim/walkforward.ts";
 import { adjustProtect } from "./adjust.ts";
-import { capSignalProtect } from "./sim/trailing.ts";
+import { distanceAtFloor } from "./minimal-coord.ts";
+import { capSignalProtect, capTrailingOnlyProtect } from "./sim/trailing.ts";
 
 const H = 3_600_000;
 /** The shared runtime/worker contract bounds per-message indicator-cache lifetime. */
@@ -137,7 +139,8 @@ export function exitStrategyPairs(
   const disabled = new Set(disabledKinds);
   const addBase = (id: string) => {
     const base = laneOf(id).base;
-    if (!base || base === "none" || isSignalInd(base)) return;
+    // Low-Range currently owns only its exact Short cells; Historic Exit uses different fitted economics.
+    if (!base || base === "none" || isSignalInd(base) || isLowRangeInd(base)) return;
     const kind = INDICATIONS.find((x) => x.id === base)?.kind;
     if (kind && disabled.has(kind)) return;
     bases.add(base);
@@ -357,6 +360,10 @@ export function exitProtectCandidates(
   settings: ExitStrategySettings,
   validation: ExitStrategyValidation,
 ): Record<ExitConfigSet, Protect[]> {
+  if (!(Number.isFinite(validation.minTrail) && validation.minTrail >= 0))
+    throw new RangeError("Exit trailing floor must be finite and nonnegative");
+  // Config IDs retain six decimal places. Round upward so the captured entry floor cannot be understated.
+  const exitTrailFloor = validation.minTrail > 0 ? distanceAtFloor(validation.minTrail, validation.minTrail, 6) : 0;
   const bySet: Record<ExitConfigSet, Protect[]> = {
     "static-sl": [],
     "adaptive-sl": [],
@@ -379,6 +386,7 @@ export function exitProtectCandidates(
       exitType: "historic",
       exitSide: side,
       exitSet,
+      ...(trail > 0 && exitTrailFloor > 0 ? { exitTrailFloor } : {}),
     };
     const key = `${exitSet}|${p.tp}|${p.sl}|${p.trail}|${p.trailStep ?? 1}|${p.hold}|${sideKey(side)}`;
     if (seen.has(key)) return;
@@ -426,6 +434,7 @@ export function exitProtectCandidates(
           exitType: "historic",
           exitSide: side,
           exitSet: "trailing-only",
+          ...(exitTrailFloor > 0 ? { exitTrailFloor } : {}),
         };
         const key = `trailing-only|${p.sl}|${p.trail}|${p.trailStep}|${p.hold}|${sideKey(side)}`;
         if (!seen.has(key)) {
@@ -574,6 +583,14 @@ export function* exitStrategyProtectsGen(
       const actual = entryFilter
         ? capSignalProtect({ ...adjusted, trailMax: validation.signalTrailMax ?? qualifiedProtect.trailMax })
         : adjusted;
+      // Signal and no-TP ceilings can conflict with the candidate's own floor. Never qualify a protection that
+      // the executable simulator would cap below it; report the conflict instead of silently changing the contract.
+      const capped = isSignalInd(ind) ? capSignalProtect(actual) : capTrailingOnlyProtect(actual);
+      if (capped.exitTrailFloor !== undefined &&
+          capped.trail * (capped.trailStep ?? 1) + 1e-12 < capped.exitTrailFloor) {
+        diagnostics.trailTooShort++;
+        continue;
+      }
       const side = p.exitSide!;
       const trades: import("./domain/types.ts").Trade[] = [];
       yield;

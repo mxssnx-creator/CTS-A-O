@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { isOwnCoid, makeCoid, ownSymbols, planLive, type LiveIntentLite } from "./live.ts";
+import { entryIntentKey, isOwnCoid, makeCoid, ownSymbols, planLive, type LiveIntentLite } from "./live.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 
 const S = { ...DEFAULT_SETTINGS.live, enabled: true, maxPositions: 2 };
@@ -75,6 +75,16 @@ describe("live planner", () => {
     const again = planLive({ ...base, sent: new Set(["c|BTC-USDT|1"]) });
     assert.equal(again.entries.length, 0);
     assert.ok(makeCoid("bingx-x01", "E").length <= 40);
+  });
+
+  it("deduplicates the exact hedge direction, while an unqualified legacy key holds both", () => {
+    const long = intent("BTC-USDT"), short = { ...long, side: -1 as const };
+    assert.deepEqual(planLive({ ...base, intents: [long, short], sent: new Set([entryIntentKey(long)]) }).entries, [short]);
+    assert.deepEqual(planLive({ ...base, intents: [long, short], sent: new Set(["c|BTC-USDT|1"]) }).entries, []);
+    const invalid = { ...long, side: 0 as 1 };
+    const rejected = planLive({ ...base, intents: [invalid] });
+    assert.deepEqual(rejected.entries, []);
+    assert.match(rejected.skipped[0].why, /invalid entry direction/);
   });
 
   it("drops a signal from a symbol whose newest bar lags the universe", () => {

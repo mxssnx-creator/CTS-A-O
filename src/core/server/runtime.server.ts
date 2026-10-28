@@ -1,4 +1,5 @@
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
+import { lstatSync } from "node:fs";
 import { mergeWorkerTapesGen } from "./tape-merge.ts";
 import { strategyCoverageGen, type StrategyCoverage } from "./strategy-coverage.ts";
 import { validationProgressOf, type ValidationProgress } from "../validation-progress.ts";
@@ -20,7 +21,8 @@ import {
   PREVIOUS_MICRO_FOCUS_21OCT,
   GENERAL_RANGE,
   MAX_BACKTEST_DAYS,
-  GRID_VARIANTS_MAX,
+  MAX_EXTERNAL_STACK,
+  mergeGridSettings,
   exchangePositionLimit,
   LONG_RANGE,
   MINIMAL_RANGE,
@@ -30,6 +32,7 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
+import { checkLowRangeComplete, checkRangeReplacementsComplete, checkSettings } from "../settings-check.ts";
 import { BoundedHistory, HistoryStorageError, historyOf, withHistoryMetadata, HISTORY_CACHE_BYTES, transferHistoriesGen, type HistoryTransfer } from "./history-store.server.ts";
 import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "../model-cost.ts";
 import { evaluationHistorySettings } from "../market/history-requirements.ts";
@@ -47,6 +50,7 @@ import {
   WIDE_TARGET_SL,
 } from "../minimal-coord.ts";
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
+import { isLowRangeInd } from "../indications/low-range.ts";
 import { PRE_CONTEXT_FOCUS_21OCT } from "../indications/context-default-focus.ts";
 import { isBreakRelInd } from "../indications/break-config.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
@@ -107,7 +111,7 @@ import {
   upsertPreset,
   type Preset,
 } from "../presets.ts";
-import type { Bars, BlockConfig, Candle, OpenPosition, Protect, RelateParts, Trade } from "../domain/types.ts";
+import type { Bars, BlockConfig, Candle, OpenPosition, Protect, RelateAdjustmentConfig, RelateParts, Trade } from "../domain/types.ts";
 import { syntheticCandles, tailBars, headBars } from "../market/bars.ts";
 import {
   CandleSeries,
@@ -220,7 +224,7 @@ import {
   capsOf,
   sigCfg,
   openDupKey,
-  gridVariants,
+  checkGridVariantBudget,
   type ConfigTape,
   type EntryFloors,
   type TapeBuildStat,
@@ -297,7 +301,7 @@ import { volumeRatio } from "../volume-ratio.ts";
 import os from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import { type BlockBook, type BlockSource, blockBookOf, blockStackCap } from "../sim/block.ts";
-import { capRelateParts, relateExternalStackCap, type RelateBook } from "../sim/relate-volume.ts";
+import { capRelateParts, combineRelateStack, relateExternalStackCap, type RelateBook } from "../sim/relate-volume.ts";
 import { carryTrail, TickMathBook, type TickMathResult } from "./tick-math.ts";
 import { enforceSignalPosition } from "../sim/trailing.ts";
 import { createExitProtection } from "../sim/exit-protection.ts";
@@ -694,6 +698,16 @@ export interface RuntimeStatus {
     byRange: Array<{ range: string; validated: number; pf: number | null }>;
     provenBySide?: true;
     byGroup: Array<{ group: string; validated: number; pf: number | null }>;
+    byKind: Array<{
+      kind: string;
+      validated: number;
+      calculated: number;
+      validationCloses: number;
+      gp: number;
+      gl: number;
+      pf: number | null;
+      noLoss: boolean;
+    }>;
   };
   /** the preset comparison after the paper step (comparePresets): running, presets done / total, when it last finished */
   compare?: {
@@ -1223,7 +1237,10 @@ export class CoreRuntime {
     this.wf = {
       ...defaultWalkForward(this.settings),
       ...pickWf(savedWf),
+      // Production/runtime execution always consumes the validated set V, including after loading a saved legacy pool.
+      seatSet: "validated",
     };
+    if (this.wf.relate) this.wf.relate.maxStack = Math.floor(Math.min(MAX_EXTERNAL_STACK, Math.max(1, this.wf.relate.maxStack)));
     const now = Date.now();
     this.status = {
       state: "idle",
@@ -1401,20 +1418,31 @@ export class CoreRuntime {
     if (this.disposed) throw new Error("runtime disposed");
     if (!this.stopped && this.status.state !== "idle" && this.status.state !== "error") return;
     if (this.snapshotPath) this.db.journalPath = `${this.snapshotPath}.journal`;
-    if (this.status.state === "idle" && this.snapshotPath && this.db.restore(this.snapshotPath)) {
-      // the ledger writes since that snapshot (a crash between snapshots loses none of them)
-      const n = this.db.replayJournal();
-      this.baseConfigRunner.restore(this.db.kvGet<BaseConfigSnapshot>("baseConfigCounts"));
-      this.db.event(
-        "info",
-        `restored snapshot ${this.snapshotPath}${n ? ` + ${n} journaled write(s)` : ""}`,
-      );
-      // the paper book the snapshot carries (an empty book here held nothing: every unselected config's position
-      // was closed on the exchange after the first compute)
-      if (!this.paper.positions.length && !this.paper.selected.length) {
-        const p = this.restorePaperBook();
-        if (p)
-          this.db.event("info", `paper book continued from the snapshot: ${p} open position(s)`);
+    if (this.status.state === "idle" && this.snapshotPath) {
+      if (this.db.restore(this.snapshotPath)) {
+        // Do not accept a partial replay of a malformed or unreadable journal as the live ownership ledger.
+        const replay = this.db.replayJournalChecked();
+        this.baseConfigRunner.restore(this.db.kvGet<BaseConfigSnapshot>("baseConfigCounts"));
+        if (replay.ok) this.db.event("info", `restored snapshot ${this.snapshotPath}${replay.writes ? ` + ${replay.writes} journaled write(s)` : ""}`);
+        else this.db.event("error", `live journal replay unavailable — reconciliation required: ${replay.error}`);
+        // Paper can still continue from the snapshot; live execution is fenced when journal proof is incomplete.
+        if (!this.paper.positions.length && !this.paper.selected.length) {
+          const p = this.restorePaperBook();
+          if (p) this.db.event("info", `paper book continued from the snapshot: ${p} open position(s)`);
+        }
+      } else {
+        try {
+          const artifacts = [this.snapshotPath, `${this.snapshotPath}.tmp`, `${this.snapshotPath}.tmp.old`,
+            `${this.snapshotPath}.journal`, `${this.snapshotPath}.journal.prev`];
+          const present = artifacts.some((path) => {
+            try { lstatSync(path); return true; }
+            catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return false; throw err; }
+          });
+          if (present) this.db.lastJournalError ||= "snapshot unavailable while recovery artifacts exist — live ownership requires reconciliation";
+        } catch (err) {
+          this.db.lastJournalError ||= `recovery artifacts unavailable — live ownership requires reconciliation: ${err instanceof Error ? err.message : String(err)}`;
+        }
+        if (this.db.lastJournalError) this.db.event("error", this.db.lastJournalError);
       }
     }
     this.stopped = false;
@@ -2587,10 +2615,11 @@ export class CoreRuntime {
     // (db.snapshot) and leaves the previous snapshot in place
     this.db.event(
       "info",
-      `${reason}: state saved${this.snapshotPath ? ", writing the snapshot" : ""}`,
+      `${reason}: state saved${this.snapshotPath && !this.db.lastJournalError ? ", writing the snapshot" : ""}`,
     );
     let snapshot = false;
-    if (this.snapshotPath) snapshot = this.db.snapshot(this.snapshotPath);
+    if (this.snapshotPath && !this.db.lastJournalError) snapshot = this.db.snapshot(this.snapshotPath);
+    else if (this.snapshotPath) this.db.event("error", "snapshot skipped: live journal recovery requires reconciliation");
     this.db.flushState();
     return { snapshot };
   }
@@ -2763,17 +2792,20 @@ export class CoreRuntime {
     const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${evaluationHistorySettings(this.settings, this.wf).historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`;
     const prevCompute = computeKey(this.settings, this.wf);
     const next = mergeSettings(this.settings, patch);
+    if (patch.grid) {
+      checkLowRangeComplete(next.grid);
+      checkRangeReplacementsComplete(next.grid);
+      checkSettings({ grid: next.grid });
+    }
     // a connection's runtime always trades its own connection (switching is done by selecting another runtime)
     if (this.conn) next.live = { ...next.live, connId: this.conn };
     // limits on the MERGED settings (a patch alone could bypass them across several saves)
     // position cost follows its components when they are edited (taker fee + slippage per side, × 2)
     if (patch.fees && patch.cost === undefined)
       next.cost = boundedModelCost(+roundTripCostFromFees(next.fees).toFixed(5));
-    const variants = gridVariants(next.grid);
     // a high ceiling, not a working limit (operator: process freely): it only catches a grid that would not fit in
     // memory at all
-    if (variants > GRID_VARIANTS_MAX)
-      throw new Error(`protect grid too large (${variants} variants, max ${GRID_VARIANTS_MAX})`);
+    checkGridVariantBudget(next.grid, next.cost);
     // the two acceptance gates keep their operator-set ranges (the Settings choices): PF 1.05-1.5, drawdown max
     // 2-35 h. Everything else the sanitiser touches is taken as asked.
     next.gates.minPf = Math.min(1.5, Math.max(1.05, next.gates.minPf));
@@ -2821,12 +2853,14 @@ export class CoreRuntime {
       ...pickWf(this.wf),
       ...sanitizeWf(wfPatch ?? {}),
       ...carry,
+      // A settings patch or restored in-memory value cannot switch runtime execution back to the candidate pool.
+      seatSet: "validated",
       gates: this.settings.gates,
       cost: this.settings.cost,
       toggles: this.settings.toggles,
       block: this.settings.block,
       dca: this.settings.dca,
-      relate: this.settings.relate,
+      relate: { ...this.settings.relate, maxStack: Math.floor(Math.min(MAX_EXTERNAL_STACK, Math.max(1, this.settings.relate.maxStack))) },
       rangeGate: rangeGateOf(this.settings.grid),
       rangeSeats: this.settings.grid.rangeSeats === true,
     };
@@ -3230,7 +3264,7 @@ export class CoreRuntime {
         (computed || (this.compareInput && Date.now() >= this.compareRetryAt))
       )
         compareGen = gen;
-      if (this.snapshotPath && Date.now() - this.lastSnapshot > 10 * 60_000) {
+      if (this.snapshotPath && !this.db.lastJournalError && Date.now() - this.lastSnapshot > 10 * 60_000) {
         this.lastSnapshot = Date.now();
         // in the background: the loop (and the live tick) keeps running while the pages are copied
         void this.db.snapshotAsync(this.snapshotPath);
@@ -4277,7 +4311,8 @@ export class CoreRuntime {
     // Base (S1) → Main (S2 refine, S3 evaluate, S5 ranking) on the full history (stage names: pipelineStage)
     // Base on every CPU core: the lane combos are dealt round-robin over the worker pool (each worker a mix of
     // 1m … 30m work); the main thread only waits, so the server stays responsive. In-process fallback.
-    const computeCombos = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid));
+    const computeCombos = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid),
+      s.grid.lowRange?.enabled === true && !!s.grid.short, rangeMinTfOf(s.grid).sh ?? 0);
     const engineExitPairs = s.exitStrategy.enabled
       ? exitStrategyPairs(computeCombos, uStage, s.exitStrategy, s.disabledKinds)
       : [];
@@ -4552,6 +4587,7 @@ export class CoreRuntime {
       qualified,
       qualifiedTags,
       qualifiedTps,
+      qualifiedCells,
       wideLadderPairs,
       pairTags,
       pairTps,
@@ -4610,6 +4646,7 @@ export class CoreRuntime {
     // mirror that did not pass Base itself never takes a seat (wf.basePassed)
     if (wf.invertSeats)
       for (const k of [...main]) {
+        if (isLowRangeInd(k.split("|")[1] ?? "")) continue;
         const m = mirrorId(k);
         if (!m || isSignalInd(k.split("|")[1] ?? "")) continue;
         main.add(m);
@@ -4628,7 +4665,8 @@ export class CoreRuntime {
     wf.basePassedTargets = qualifiedTps;
     wf.baseWideLadderPairs = wideLadderPairs;
     // Cell qualification publishes with the rest of the economic cohort below.
-    wf.basePassedCells = s.grid?.baseCells === true ? passedCellsOf(pairCells) : undefined;
+    wf.basePassedCells = s.grid?.baseCells === true || s.grid?.lowRange?.enabled === true
+      ? passedCellsOf(qualifiedCells) : undefined;
     wf.family = evalFams && !famNarrow ? evalFams.map((f) => f.label) : undefined;
     // Signals processing: the active signals and every signal pair still holding a position take the signal
     // configs, never the engine's protect grid
@@ -5364,13 +5402,20 @@ export class CoreRuntime {
     // DCA / Axis set while its toggle is off (Block on keeps them: its feed reads every tape)
     const validatedOnly = wf.seatSet === "validated" && !wf.toggles.block;
     const engineMain = new Set([...main].filter((pair) => !pair.startsWith(`${EXIT_BOT}|`)));
+    // grid.allSets pairs are diagnostic measurement cohorts, not held-only pairs. They still need their tapes
+    // built for comparison even though validated-seat admission deliberately removes them from passedKeys.
+    const heldUnpassedPairs = new Set(
+      [...main].filter((pair) =>
+        !passedKeys.has(pair) && !addedKeys.has(pair) && !isSignalInd(pair.split("|")[1] ?? ""),
+      ),
+    );
     const built = await tapesFor(engineMain, wf.protects, dcaOpt, "strategy tapes", {
       ...protectFloors(s, rangeFitCutT),
       pairTags,
       pairTps,
       pairCells,
       ...(wf.seatSet === "validated"
-        ? { heldPairsOnly: new Set([...main].filter((k) => !passedKeys.has(k) && !isSignalInd(k.split("|")[1] ?? ""))) }
+        ? { heldPairsOnly: heldUnpassedPairs }
         : {}),
       ...(validatedOnly ? { skipDca: !wf.toggles.dca, skipAxis: wf.toggles.axis === false } : {}),
       heldIds,
@@ -5722,7 +5767,7 @@ export class CoreRuntime {
       enabled: this.wf.relate?.enabled === true,
       auto: this.wf.relate?.auto !== false,
       mode: this.wf.relate?.mode ?? "additive",
-      maxStack: this.wf.relate?.maxStack ?? 250,
+      maxStack: this.wf.relate?.maxStack ?? MAX_EXTERNAL_STACK,
       relations: sim.relate?.relations ?? 0,
       qualified: sim.relate?.qualified ?? 0,
       closes: sim.relate?.closes ?? 0,
@@ -5884,11 +5929,13 @@ export class CoreRuntime {
           base.startsWith("break-rel-") ||
           base.startsWith("break-mc-rel-") ||
           base.startsWith("micro-") ||
+          base.startsWith("low-range-") ||
           base.startsWith("inverse-")
         );
       };
       const measuredRuns = pipeline.s1.filter((r) => isMeasuredIndication(r.ind));
-      const countPairs = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid))
+      const countPairs = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid),
+        s.grid.lowRange?.enabled === true && !!s.grid.short, rangeMinTfOf(s.grid).sh ?? 0)
         .filter((r) => isMeasuredIndication(r.ind))
         .map((r) => `${r.bot}|${r.ind}`);
       const admittedPairKeys = passed
@@ -5901,7 +5948,7 @@ export class CoreRuntime {
       const kinds = (["normal", "trailing", "trailing-only", "dca", "dca-active", "axis"] as const).filter((kind) =>
         kindExecutable(kind, wf.toggles),
       );
-      const enabled = ["tactic", "relate", "break", "micro", "inverse"].some(
+      const enabled = ["tactic", "relate", "break", "micro", "inverse", ...(s.grid.lowRange?.enabled ? ["low-range"] : [])].some(
         (kind) => !s.disabledKinds?.includes(kind),
       );
       const reason = !enabled
@@ -7160,10 +7207,11 @@ export class CoreRuntime {
           kindExecutable(tp.kind, this.wf.toggles) &&
           (!this.wf.bots?.length || this.wf.bots.includes(tp.bot)),
       )
-      .map((tp) => ({ id: tp.id, group: liveGroupOf(tp.id) }));
+      .map((tp) => ({ id: tp.id, group: liveGroupOf(tp.id), kind: kindOfId(tp.id) }));
     const validated: SetListings["validated"] = [];
     const byRange: SetListings["byRange"] = {};
     const byGroup: SetListings["byGroup"] = {};
+    const byKind: SetListings["byKind"] = {};
     for (const p of picks) {
       // (the selection's window carries its gross profit / loss as well)
       const w = p.window as {
@@ -7187,11 +7235,17 @@ export class CoreRuntime {
         n: w.n,
         net: w.net,
         ddt: w.ddt,
+        gp: w.gp ?? 0,
+        gl: w.gl ?? 0,
       });
       const g = (byGroup[group] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
       g.rows.push(row);
       g.gp += w.gp ?? 0;
       g.gl += w.gl ?? 0;
+      const k = (byKind[kindOfId(p.id)] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
+      k.rows.push(row);
+      k.gp += w.gp ?? 0;
+      k.gl += w.gl ?? 0;
       if (range) {
         const r = (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
         r.rows.push(row);
@@ -7202,12 +7256,14 @@ export class CoreRuntime {
     for (const c of candidates) {
       const g = (byGroup[c.group] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
       g.calculated++;
+      (byKind[c.kind] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 }).calculated++;
       const range = kindOfId(c.id) === "exit" ? "" : RANGE_LABEL[rangeOfId(c.id)];
       if (range)
         (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 }).calculated++;
     }
     for (const r of Object.values(byRange)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
     for (const r of Object.values(byGroup)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
+    for (const r of Object.values(byKind)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
     const active: SetListings["active"] = [];
     for (const k of this.wf.signalActive ?? []) {
       const [bot, ind, sym, side, kind, config] = k.split("|");
@@ -7246,6 +7302,7 @@ export class CoreRuntime {
       },
       byRange,
       byGroup,
+      byKind,
       active,
       proven: proof ? [...proof.proven].sort() : null,
       ...(provenBySide ? { provenBySide: true as const } : {}),
@@ -7258,6 +7315,16 @@ export class CoreRuntime {
       proven: this.listings.proven ? this.listings.proven.length : null,
       byRange: Object.entries(byRange).map(([range, r]) => ({ range, validated: r.rows.length, pf: r.pf })),
       byGroup: Object.entries(byGroup).map(([group, r]) => ({ group, validated: r.rows.length, pf: r.pf })),
+      byKind: Object.entries(byKind).map(([kind, r]) => ({
+        kind,
+        validated: r.rows.length,
+        calculated: r.calculated,
+        validationCloses: r.rows.reduce((n, i) => n + validated[i].n, 0),
+        gp: r.gp,
+        gl: r.gl,
+        pf: r.pf,
+        noLoss: r.gp > 0 && r.gl <= 1e-12,
+      })),
       ...(provenBySide ? { provenBySide: true as const } : {}),
     };
   }
@@ -7336,7 +7403,7 @@ export class CoreRuntime {
     );
     const ind = lane.cfg.split("|")[1] ?? "";
     const minPf = Math.max(
-      liveMinPfOf(this.settings, rangeOfId(lane.cfg), ind),
+      liveMinPfOf(this.settings, rangeOfId(lane.cfg), ind, kindOfId(lane.cfg)),
       (this.settings.live.engineProofN ?? 0) > 0 && !isSignalInd(ind)
         ? (this.settings.live.engineProofPf ?? ENGINE_PROOF_PF)
         : 0,
@@ -7766,6 +7833,7 @@ export class CoreRuntime {
     exitBasePassed: Set<string>;
     exitBaseEvaluated: number;
     pairCells: Record<string, readonly string[]>;
+    qualifiedCells: Record<string, readonly string[]>;
   }> {
     const rangeProtects = baseRangeProtects(s.grid, s.cost);
     const completeRangeProtects = completeBaseRangeProtects(s.grid, s.cost);
@@ -7848,7 +7916,7 @@ export class CoreRuntime {
     // in combo order (as the engine's S1), whichever path computed them
     const runs = [...combos, ...exitCombos, ...signalExitCombos].flatMap((c) => byPair.get(`${c.bot}|${c.ind}`) ?? []);
     const engineRuns = runs.filter((r) => r.bot !== EXIT_BOT);
-    const { passed, qualified, qualifiedTags, qualifiedTps, wideLadderPairs, pairTags, pairTps, pairCells } = basePass(
+    const { passed, qualified, qualifiedTags, qualifiedTps, qualifiedCells, wideLadderPairs, pairTags, pairTps, pairCells } = basePass(
       engineRuns,
       s,
     );
@@ -7862,6 +7930,7 @@ export class CoreRuntime {
       qualified: new Set(qualified.map((r) => `${r.bot}|${r.ind}`)),
       qualifiedTags,
       qualifiedTps,
+      qualifiedCells,
       wideLadderPairs,
       pairTags,
       pairTps,
@@ -7883,6 +7952,7 @@ export class CoreRuntime {
       tactics: { ...DEFAULT_SETTINGS.tactics, ...(patch.tactics ?? {}) },
       focus: patch.focus ?? [],
     });
+    checkGridVariantBudget(s.grid, s.cost);
     const wf: WalkForwardOptions = {
       ...defaultWalkForward(s),
       ...sanitizeWf(p.wf as never),
@@ -8059,7 +8129,8 @@ export class CoreRuntime {
       : null;
     const exitPairs = exitU
       ? exitStrategyPairs(
-          allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid)),
+          allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid),
+            s.grid.lowRange?.enabled === true && !!s.grid.short, rangeMinTfOf(s.grid).sh ?? 0),
           exitU,
           s.exitStrategy,
           s.disabledKinds,
@@ -8101,7 +8172,8 @@ export class CoreRuntime {
     // The ranges and targets each pair passed in Base.
     // the engine's Micro lane floor (Micro's own was applied under both rules: with Minimal on Micro's indications a
     // Micro pair on a faster lane never reached its Minimal cells)
-    const combos = allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid));
+    const combos = allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid),
+      s.grid.lowRange?.enabled === true && !!s.grid.short, rangeMinTfOf(s.grid).sh ?? 0);
     const beforeT = (b: Bars) => {
       let z = 0;
       while (z < b.n && b.t[z] < startT) z++;
@@ -8125,6 +8197,8 @@ export class CoreRuntime {
     wf.exitBasePassed = base.exitBasePassed;
     wf.basePassedRanges = base.qualifiedTags;
     wf.basePassedTargets = base.qualifiedTps;
+    wf.basePassedCells = s.grid.baseCells === true || s.grid.lowRange?.enabled === true
+      ? passedCellsOf(base.qualifiedCells) : undefined;
     wf.baseWideLadderPairs = base.wideLadderPairs;
     this.checkBacktest(job);
     job.stage = "Tapes";
@@ -8766,10 +8840,21 @@ export class CoreRuntime {
   ): Preset {
     const p = this.findPreset(id);
     if (!p) throw new Error("unknown preset");
-    const merged = presetSettings({ ...p.settings, ...settings });
+    const gridPatch = settings.grid?.lowRange !== undefined
+      ? { ...p.settings.grid, ...settings.grid,
+          lowRange: mergeGridSettings(mergeGridSettings(DEFAULT_SETTINGS.grid, p.settings.grid), settings.grid).lowRange }
+      : settings.grid;
+    const merged = presetSettings({ ...p.settings, ...settings, ...(gridPatch ? { grid: gridPatch } : {}) });
     const g = merged.grid;
-    if (g && gridVariants({ ...DEFAULT_SETTINGS.grid, ...g }) > GRID_VARIANTS_MAX)
-      throw new Error(`protect grid too large (max ${GRID_VARIANTS_MAX} variants)`);
+    if (g) {
+      // Presets do not carry cost and are applied on the current desk, so
+      // validate the same merged grid and cost that application will use.
+      const materialized = mergeGridSettings(this.settings.grid, g);
+      checkLowRangeComplete(materialized);
+      checkRangeReplacementsComplete(materialized);
+      checkSettings({ grid: materialized });
+      checkGridVariantBudget(materialized, this.settings.cost);
+    }
     const next: Preset = {
       ...p,
       id:
@@ -9316,6 +9401,9 @@ export class CoreRuntime {
     const tp0 = performance.now();
     const nowT = Math.floor(Date.now() / H) * H;
     const t = fast ? fast.t : Math.min(nowT, this.sim.endT);
+    // Selection uses hour boundaries, but a completed market snapshot can contain later closed bars in that hour.
+    // Keep the close cutoff on the actual snapshot clock (or incremental clock), not the earlier selection clock.
+    const closeT = fast ? fast.t : this.sim.endT;
     // A long market compute may finish hours after its candle snapshot. Keep selection and replay on the
     // snapshot's causal clock, but judge *new* live-market paper entries against the current step too. Otherwise
     // an old tape position can be adopted as fresh and passed toward Live after a delayed startup or recompute.
@@ -9504,6 +9592,97 @@ export class CoreRuntime {
         (a.op.cfg < b.op.cfg ? -1 : a.op.cfg > b.op.cfg ? 1 : 0) ||
         (a.op.sym < b.op.sym ? -1 : a.op.sym > b.op.sym ? 1 : 0),
     );
+    const since = this.paper.startedAt - this.wf.simH * H;
+    const validClose = (x: Trade) => (x.side === 1 || x.side === -1) &&
+      typeof x.cfg === "string" && typeof x.sym === "string" && Number.isFinite(x.entryT) && Number.isFinite(x.exitT) &&
+      x.exitT >= x.entryT && x.exitT <= closeT && Number.isFinite(x.r) &&
+      Number.isFinite(x.entry) && x.entry > 0 && Number.isFinite(x.exit) && x.exit > 0 && !x.markedOpen;
+    let trades = (fast ? this.paper.trades : this.sim.trades).filter((x) => x.exitT >= since && x.exitT <= closeT);
+    const inSim = new Set(trades.map(orderKey));
+    const heldTradeIndices = new Map<string, number[]>();
+    for (let i = 0; i < trades.length; i++) {
+      const k = orderKey(trades[i]);
+      if (!prevByKey.has(k)) continue;
+      const indices = heldTradeIndices.get(k) ?? [];
+      indices.push(i);
+      heldTradeIndices.set(k, indices);
+    }
+    const excludeHeldCloses = new Set<string>();
+    const heldCloses = new Map<string, Trade>();
+    const samePrice = (a: number, b: number) => Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(a), Math.abs(b));
+    // One causal, unambiguous close of the exact held config × symbol × side × entry. Retain the position's own
+    // entry-time multiplier and attribution, not a newer simulation's potentially different sizing policy.
+    const heldCloseOf = (p: PaperBook["positions"][number]): Trade | undefined => {
+      const indices = heldTradeIndices.get(orderKey(p)) ?? [];
+      if (indices.length > 1) return undefined;
+      const simulated = indices.length === 1 ? trades[indices[0]] : undefined;
+      if (simulated && (!validClose(simulated) || simulated.cfg !== p.cfg || simulated.sym !== p.sym ||
+        simulated.side !== p.side || simulated.entryT !== p.entryT)) return undefined;
+      const tp = byId.get(p.cfg);
+      let exact: Trade | undefined;
+      for (let i = tp ? lowerBound(tp.exitT, p.entryT) : 0; tp && i < tp.n; i++) {
+        if (tp.exitT[i] > closeT) break;
+        if (tp.entryT[i] !== p.entryT || tp.syms[tp.symI[i]] !== p.sym || tp.side[i] !== (p.side > 0 ? 1 : -1)) continue;
+        const row = tradeAt(tp, i);
+        // A malformed row for this exact entry is conflicting evidence, not a reason to cherry-pick another row.
+        if (!validClose(row)) return undefined;
+        if (exact) return undefined;
+        exact = row;
+      }
+      const simMult = simulated?.mult;
+      const simUnit = simulated ? unitReturn(simulated) : NaN;
+      if (simulated && typeof simMult === "number" && Number.isFinite(simMult) && simMult > 0 &&
+        Number.isFinite(simUnit) && Math.abs(simUnit - simulated.r / simMult) > 1e-10 * Math.max(1, Math.abs(simUnit)))
+        return undefined;
+      if (exact && simulated && (exact.exitT !== simulated.exitT || !samePrice(exact.entry, simulated.entry) ||
+        !samePrice(exact.exit, simulated.exit) || exact.reason !== simulated.reason ||
+        (Number.isFinite(simUnit) && Math.abs(exact.r - simUnit) > 1e-10 * Math.max(1, Math.abs(exact.r))))) return undefined;
+      if (!exact && simulated && typeof simMult === "number" && Number.isFinite(simMult) && simMult > 0 &&
+        Number.isFinite(simulated.vol) && simulated.vol! > 0)
+        exact = { ...simulated, r: simulated.r / simMult, vol: simulated.vol! / simMult };
+      if (!exact) return undefined;
+      const v = positionMult(p);
+      if (!(Number.isFinite(v) && v > 0)) return undefined;
+      const { blockVol: _bv, coordVol: _c, relateVol: _r, relateMeasured: _rm, relateBase: _rb, relateParts: _rp,
+        volFactor: _vf, hedgeVol: _hv, rangeVol: _rv, legs: _l, blockAttribution: _ba,
+        blockLevels: _bl, blockEffectiveLevels: _be, blockSampleCounts: _bc, ...source } = exact;
+      return { ...source, r: exact.r * v, vol: (exact.vol ?? 1) * v, mult: v,
+        ...(p.blockVol !== undefined ? { blockVol: p.blockVol } : {}),
+        ...(p.coordVol !== undefined ? { coordVol: p.coordVol } : {}),
+        ...(p.relateVol !== undefined ? { relateVol: p.relateVol } : {}),
+        ...(p.relateMeasured ? { relateMeasured: true } : {}),
+        ...(p.relateBase !== undefined ? { relateBase: p.relateBase } : {}),
+        ...(p.relateParts ? { relateParts: p.relateParts } : {}),
+        ...(p.volFactor !== undefined ? { volFactor: p.volFactor } : {}),
+        ...(p.hedgeVol !== undefined ? { hedgeVol: p.hedgeVol } : {}),
+        ...(p.rangeVol !== undefined ? { rangeVol: p.rangeVol } : {}),
+        ...(p.legs ? { legs: p.legs } : {}),
+        ...(p.blockAttribution ? { blockAttribution: p.blockAttribution } : {}),
+        ...(p.blockLevels ? { blockLevels: p.blockLevels } : {}),
+        ...(p.blockEffectiveLevels ? { blockEffectiveLevels: p.blockEffectiveLevels } : {}),
+        ...(p.blockSampleCounts ? { blockSampleCounts: p.blockSampleCounts } : {}) };
+    };
+    // A held entry omitted by a rebuilt tape still owns exposure until its exact close is reconciled below. Reserve
+    // it before evaluating any new candidates, including caps, crowd and coordination. Proven closes release that
+    // capacity only for entries at or after their own exit time; unknown/future closes keep it reserved.
+    const representedHeld = new Set(cands.filter((x) => x.held).map(({ op }) => orderKey(op)));
+    const provisionalHeld = new Set<string>();
+    for (const p of prevByKey.values()) {
+      const k = orderKey(p);
+      if (representedHeld.has(k)) continue;
+      provisionalHeld.add(k);
+      positions.push({ ...p, vol: p.vol ?? 1, level: p.level ?? 0 });
+      const cls = sigCfg(p.cfg) ? "s" : "e";
+      perSym.set(`${cls}|${p.sym}`, (perSym.get(`${cls}|${p.sym}`) ?? 0) + 1);
+      perSide.set(`${cls}|${p.side}`, (perSide.get(`${cls}|${p.side}`) ?? 0) + 1);
+      openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
+      openPos.add(`${cls}|${p.sym}|${p.side}`);
+    }
+    const releases = [...provisionalHeld].flatMap((key) => {
+      const p = prevByKey.get(key)!;
+      const close = heldCloseOf(p);
+      return close ? [{ key, p, at: close.exitT }] : [];
+    }).sort((a, b) => a.at - b.at);
     yield 0;
     // Block sources (overall / symbol / direction / indication) judge executed positions closed before each entry
     const booksAt = fast
@@ -9536,22 +9715,20 @@ export class CoreRuntime {
     const lvMemo = new Map<string, LiveGate>();
     // Paper keeps learning. Its deactivation record is the settled AFTER-Base execution simulation, never the
     // independent raw candidate tape. Strict funded proof is checked separately at native live admission.
-    // live.sideGates: each side is judged on its own record (one per config and side, recordKeyOf)
-    const lvBySide = this.settings.live.sideGates === true;
-    // the sides a count runs over (live.sideGates: each side apart; the pooled record otherwise)
+    // Forward deactivation must follow the exact config and direction even when legacy pooled proof is selected.
+    const lvBySide = true;
+    // Both independent sides are included in the diagnostic count, including insufficient ones.
     const lvSides = lvBySide ? LV_SIDES_APART : LV_SIDES_POOLED;
     const lvModel = this.modeledGateRecords(lvBySide) ?? new Map<string, LiveRecord>();
     // judged as of `at`: a paper entry as of its entry time (the closes after it are not known when it enters — with
     // now, up to a step of later closes decided it), the entries planner as of now
     const lvOf = (x: ConfigTape, at = lvNow, side?: 1 | -1): LiveGate => {
-      // an entry with no side of its own (live.sideGates) belongs to neither side: liveRecords leaves its closes out of
-      // both records, so it has no closes of its own to judge it by. Not judged, as a config with fewer than N closes is
-      // not; its group gate is keyed group|side and no such key is set for it, so the entry gate admits it
-      if (lvBySide && side === undefined) return { ok: true, n: 0, pf: null };
+      // Missing side provenance cannot borrow either side's record.
+      if (lvBySide && side === undefined) return { ok: false, n: 0, pf: null, unknown: 1 };
       const mk = `${x.id}|${at}${side === undefined ? "" : `|${side}`}`;
       let g = lvMemo.get(mk);
       // A Live floor can tighten the matching stage floor, never relax it.
-      const minPf = liveMinPfOf(this.settings, x.protect.tag, x.ind);
+      const minPf = liveMinPfOf(this.settings, x.protect.tag, x.ind, x.kind);
       if (!g) {
         const model = lvModel.get(recordKeyOf(x.id, side));
         g = {
@@ -9562,7 +9739,7 @@ export class CoreRuntime {
       }
       return g;
     };
-    // until a config has its own N live closes, its group (range or signals) decides on its pooled last closes
+    // Optional pooled group summaries are diagnostic only; they never decide another config's admission.
     const lvGroupN = lvN > 0 ? (this.settings.live.liveGroupLastN ?? 0) : 0;
     // Groups retain their range floor too, including independent Signal Coordination ranges.
     const lvGroupMin = (g: string) => {
@@ -9599,24 +9776,52 @@ export class CoreRuntime {
     };
     const lvGroups = groupsAt(lvNow);
     if (lvGroupN > 0) yield 0;
-    // the same gate for the entries planner (entries mode sends the pending entries of the selected configs), judged
-    // on the entry's own side when live.sideGates is on
+    // The entries planner checks the entry's own config and side.
     this.liveEntryGate =
       lvN > 0
         ? (tp, s) => {
             const side = lvSideOfEntry(lvBySide, s);
-            return liveEntryOk(lvOf(tp, lvNow, side), lvGroups.get(liveGroupKeyOf(liveGroupOf(tp.id), side)));
+            return liveEntryOk(lvOf(tp, lvNow, side));
           }
         : null;
     let lvSkipped = 0;
     let slice = 0;
-    // the same open order from two indications (identical signal, same protect) or two Axis depths is held once, as
-    // the simulation executes it once (dupKey)
+    // Only retries of an identical config and open event deduplicate; sibling sources and strategy cells stay separate.
     const openKeys = new Set<string>();
     for (const { op, held } of cands) if (held) openKeys.add(openDupKey(op));
+    for (const p of positions) if (provisionalHeld.has(orderKey(p))) openKeys.add(openDupKey(p));
+    let releaseIndex = 0;
+    const releaseDue = (at: number) => {
+      const due: Array<(typeof releases)[number]> = [];
+      while (releaseIndex < releases.length && releases[releaseIndex].at <= at) due.push(releases[releaseIndex++]);
+      if (!due.length) return;
+      const keys = new Set(due.map((x) => x.key));
+      let write = 0;
+      for (const p of positions) if (!keys.has(orderKey(p))) positions[write++] = p;
+      positions.length = write;
+      for (const { p } of due) {
+        const cls = sigCfg(p.cfg) ? "s" : "e";
+        const sym = `${cls}|${p.sym}`, side = `${cls}|${p.side}`, pos = `${cls}|${p.sym}|${p.side}`;
+        perSym.set(sym, (perSym.get(sym) ?? 1) - 1);
+        perSide.set(side, (perSide.get(side) ?? 1) - 1);
+        openBy.set(cls, (openBy.get(cls) ?? 1) - 1);
+        if (!positions.some((x) => `${sigCfg(x.cfg) ? "s" : "e"}|${x.sym}|${x.side}` === pos)) openPos.delete(pos);
+        openKeys.delete(openDupKey(p));
+      }
+    };
+    // A legacy hit key has no side. Never copy that ambiguous hit to both sides of an otherwise identical entry.
+    const legacySides = new Map<string, number>();
+    for (const p of [...prevByKey.values(), ...cands.map(({ op }) => op)]) {
+      const key = posIdLegacy(p);
+      legacySides.set(key, (legacySides.get(key) ?? 0) | (p.side > 0 ? 1 : 2));
+    }
+    const ambiguousLegacyHits = [...legacySides].filter(([key, mask]) => mask === 3 && stopHits[key]);
+    if (ambiguousLegacyHits.length)
+      this.db.event("warn", `paper: ${ambiguousLegacyHits.length} legacy stop hit(s) have ambiguous sides; exact hits are kept independent`);
     const crowdSeats: OpenPosition[] = [];
     for (const { tp, op, held } of cands) {
       if (++slice % 32 === 0) yield slice;
+      if (!held) releaseDue(op.entryT);
       // Candidate collection, sorting and book preparation are also sliced. A position can age out while they run.
       if (!held && !freshEntry(op.entryT, freshnessT(), this.wf.stepH)) {
         stale++;
@@ -9645,18 +9850,13 @@ export class CoreRuntime {
           pSkip(`${sigCfg(op.cfg) ? "sig:" : ""}heldBack:${back}`);
           continue;
         }
-        // the entry's own side (live.sideGates; undefined = the pooled record, as before)
+        // The entry's own side; missing side provenance cannot qualify.
         const lvSide = lvSideOfEntry(lvBySide, op.side);
         // the live validation after the simulation's own rules: a config it pauses keeps the crowd seat the
         // simulation gave it (judged first, its seat went to a config the simulation had crowded out)
         if (
           lvN > 0 &&
-          !liveEntryOk(
-            lvOf(tp, op.entryT, lvSide),
-            (lvGroupsAt.has(op.entryT) ? lvGroupsAt.get(op.entryT)! : groupsAt(op.entryT)).get(
-              liveGroupKeyOf(liveGroupOf(tp.id), lvSide),
-            ),
-          )
+          !liveEntryOk(lvOf(tp, op.entryT, lvSide))
         ) {
           lvSkipped++;
           pSkip("liveValidation");
@@ -9687,9 +9887,7 @@ export class CoreRuntime {
             ...booksAt(op.entryT),
             sym: op.sym,
             side: op.side,
-            relateBase: (blockVol) => blockVol * (s2End?.factor ? this.s2EntryVolume(blockVol) : 1) *
-              volumeFactorForStrategy(tp, this.wf) * rangeVolumeFactorFor(tp, this.wf) *
-              (this.isHedgeEntry(op) ? (this.wf.coord?.hedgeVolumeFactor ?? 1) : 1),
+            relateBase: () => 1,
           });
       // engine and signal orders are capped each on their own
       const cls = sigCfg(op.cfg) ? "s" : "e";
@@ -9730,7 +9928,7 @@ export class CoreRuntime {
           this.relateShadowPending.set(orderKey(op), {
             entryT: op.entryT,
             base: Math.min(base, cap),
-            parts: capRelateParts(d.relateParts ?? {}, Math.min(1, cap / base), cap / base, base),
+            parts: capRelateParts(d.relateParts ?? {}, Math.min(1, cap), cap, 1),
           });
         }
         pSkip(`${pre}exec:${d.why}`);
@@ -9759,20 +9957,20 @@ export class CoreRuntime {
         : rangeVolumeFactorFor(tp, this.wf);
       const recordedRangeVol = held ? (prev?.rangeVol ?? 1) : rangeVol;
       const baseExternalMult = d.vol * cv * vf * appliedHedgeVol * rangeVol;
-      const relationCap = relateExternalStackCap(this.wf.relate?.maxStack ?? 250, tp.kind, tp.protect);
-      const relateVol = !held && this.wf.relate?.enabled
-        ? Math.min(d.relateVol ?? 1, relationCap / Math.max(Number.MIN_VALUE, baseExternalMult))
-        : 1;
+      const relationCap = relateExternalStackCap(this.wf.relate?.maxStack ?? MAX_EXTERNAL_STACK, tp.kind, tp.protect);
+      const combined = !held
+        ? combineRelateStack(baseExternalMult, this.wf.relate?.enabled ? (d.relateVol ?? 1) : 1, relationCap)
+        : { volume: baseExternalMult, relation: 1 };
+      const relateVol = this.wf.relate?.enabled ? combined.relation : 1;
       const recordedRelateVol = held ? (prev?.relateVol ?? 1) : relateVol;
       const recordedRelateMeasured = held ? prev?.relateMeasured === true : this.wf.relate?.enabled === true;
       const recordedRelateBase = held
         ? prev?.relateBase
-        : this.wf.relate?.enabled ? Math.min(baseExternalMult, relationCap) : undefined;
+        : this.wf.relate?.enabled ? 1 : undefined;
       const recordedRelateParts = held
         ? prev?.relateParts
         : this.wf.relate?.enabled
-          ? capRelateParts(d.relateParts ?? {}, relateVol,
-              relationCap / Math.max(Number.MIN_VALUE, baseExternalMult), baseExternalMult)
+          ? capRelateParts(d.relateParts ?? {}, relateVol, relationCap, 1)
           : undefined;
       openKeys.add(openDupKey(op));
       // the price at adoption, set once (a position held from before keeps its own, or none)
@@ -9784,7 +9982,8 @@ export class CoreRuntime {
         ...(heldPx ? { heldPx } : {}),
         // execution multiple × ladder weight (Axis: every filled rung is volume, as the simulation books it); the
         // live lane asks for this volume, and paper marks mtm (per unit) × it
-        vol: positionVolume(baseExternalMult * relateVol, op),
+        vol: positionVolume(combined.volume, op),
+        blockVol: held ? prev?.blockVol ?? 1 : d.vol,
         ...(positionVf !== 1 ? { volFactor: positionVf } : {}),
         ...(coordVol !== 1 ? { coordVol } : {}),
         ...(recordedHedgeVol !== 1 ? { hedgeVol: recordedHedgeVol } : {}),
@@ -9811,11 +10010,12 @@ export class CoreRuntime {
           const lid = posIdLegacy(op);
           const fromPrev = !!prev?.stopHit && prev.stop === stopNow;
           const own = stopHitsStop[id] === stopNow;
+          const legacy = legacySides.get(lid) !== 3 && stopHitsStop[lid] === stopNow;
           const hit = fromPrev
             ? prev!.stopHit
             : own
               ? stopHits[id]
-              : stopHitsStop[lid] === stopNow
+              : legacy
                 ? stopHits[lid]
                 : undefined;
           // the price the stop was crossed at travels with the hit (the live exit is priced from it)
@@ -9824,42 +10024,15 @@ export class CoreRuntime {
         })(),
       });
     }
-    // a held position whose tape this compute did not build (the memory fallback dropped its range, an adjusted
-    // config id, a range switched off): carried forward as it was for up to 48 h — dropping it left no close and live
-    // flattened the exchange position
-    {
-      const have = new Set(positions.map(posId));
-      let carriedMissing = 0;
-      for (const p of this.paper.positions) {
-        if (byId.get(p.cfg) || have.has(posId(p))) continue;
-        // (the realtime entry step keeps every held position: closing is the full step's)
-        if (!fast && Date.now() - p.entryT > 48 * H) continue;
-        positions.push({ ...p, vol: p.vol ?? 1, level: p.level ?? 0 });
-        carriedMissing++;
-      }
-      if (carriedMissing && carriedMissing !== this.carriedMissing)
-        this.db.event(
-          "warn",
-          `paper: ${carriedMissing} held position(s) carried without their tape this compute`,
-        );
-      this.carriedMissing = carriedMissing;
+    // Provisional orders have reserved capacity. Remove their temporary copies now so the exact close check decides
+    // whether each should be carried or settled; never remove any other position that joined during the step.
+    if (provisionalHeld.size) {
+      let write = 0;
+      for (const p of positions) if (!provisionalHeld.has(orderKey(p))) positions[write++] = p;
+      positions.length = write;
     }
     // (the blocks below yield between them: in one piece they were the realtime step's ~0.4 s final slice)
     yield 0;
-    // persisted tick-time stops: only those of positions still open
-    const keepHits: Record<string, { at: number; stop: number; px?: number }> = {};
-    for (const p of positions)
-      if (p.stopHit)
-        keepHits[posId(p)] = { at: p.stopHit, stop: p.stop, ...(p.hitPx ? { px: p.hitPx } : {}) };
-    if (
-      Object.keys(keepHits).length !== Object.keys(saved).length ||
-      Object.keys(keepHits).some((k) => !saved[k])
-    )
-      this.db.kvSet("stopHits", keepHits);
-    const since = this.paper.startedAt - this.wf.simH * H;
-    const trades = (fast ? this.paper.trades : this.sim.trades).filter((t) => t.exitT >= since);
-    yield 0;
-    const inSim = new Set(trades.map(orderKey));
     yield 0;
     // a position held from before (entered under earlier settings) that closed on its tape although the current
     // re-simulation no longer takes it (a gate added since): its close is still recorded, at its volume — it left
@@ -9870,42 +10043,59 @@ export class CoreRuntime {
       if (++scanned % 256 === 0) yield scanned;
       const k = orderKey(p);
       // (also a position entered before the window: its close is not in sim.trades and no row holds it yet)
-      if (openNow.has(k) || inSim.has(k)) continue;
-      const tp = byId.get(p.cfg);
-      if (!tp) continue;
-      // the tape is in exit order and an exit is never before its entry: the scan starts at the first exit ≥ it
-      // (the held side's own row only: a LONG and a SHORT of one entry share config, symbol and entry time, and the
-      // other side's row can exit first)
-      const heldSide = p.side > 0 ? 1 : -1;
-      for (let i = lowerBound(tp.exitT, p.entryT); i < tp.n; i++) {
-        if (tp.entryT[i] !== p.entryT || tp.syms[tp.symI[i]] !== p.sym || tp.side[i] !== heldSide) continue;
-        const x = tradeAt(tp, i);
-        if (x.exitT < since) break;
-        // the tape order's r and vol already carry the ladder (Σ legs): scaled by the execution multiple only
-        const v = positionMult(p);
-        trades.push({
-          ...x,
-          r: x.r * v,
-          vol: (x.vol ?? 1) * v,
-          mult: v,
-          ...(p.coordVol !== undefined ? { coordVol: p.coordVol } : {}),
-          ...(p.relateVol !== undefined ? { relateVol: p.relateVol } : {}),
-          ...(p.relateMeasured ? { relateMeasured: true } : {}),
-          ...(p.relateBase !== undefined ? { relateBase: p.relateBase } : {}),
-          ...(p.relateParts ? { relateParts: p.relateParts } : {}),
-          ...(p.volFactor !== undefined ? { volFactor: p.volFactor } : {}),
-          ...(p.hedgeVol !== undefined ? { hedgeVol: p.hedgeVol } : {}),
-          ...(p.rangeVol !== undefined ? { rangeVol: p.rangeVol } : {}),
-        });
-        inSim.add(k);
-        break;
+      if (openNow.has(k)) {
+        // A simultaneously open exact order and settled record conflict; do not count the close while held.
+        if (heldTradeIndices.has(k)) { inSim.delete(k); excludeHeldCloses.add(k); }
+        continue;
       }
+      const indices = heldTradeIndices.get(k) ?? [];
+      const ownClose = heldCloseOf(p);
+      if (!ownClose) {
+        inSim.delete(k);
+        if (indices.length) excludeHeldCloses.add(k);
+        continue;
+      }
+      heldCloses.set(k, ownClose);
+      // A close before this paper book's accounting window can retire the held identity, but its unknown old
+      // allocation must not be invented as a gain in today's equity (nor vanish again on the next step).
+      if (ownClose.exitT >= since) {
+        if (indices.length) trades[indices[0]] = ownClose;
+        else trades.push(ownClose);
+      }
+      inSim.add(k);
     }
+    if (excludeHeldCloses.size) trades = trades.filter((x) => !excludeHeldCloses.has(orderKey(x)));
+    // A tape's existence is not evidence that it still contains this held entry. A changed history, incomplete
+    // rebuild or missing tape can omit the exact order; dropping that position would make Live flatten its share
+    // without its own exit. Keep its own protection and tick-time hit until a matching close is available. An
+    // arbitrary age limit cannot establish a close either. A tick crossing still removes this lane from live control.
+    let carriedMissing = 0;
+    for (const p of prevByKey.values()) {
+      const k = orderKey(p);
+      if (openNow.has(k) || inSim.has(k)) continue;
+      positions.push({ ...p, vol: p.vol ?? 1, level: p.level ?? 0 });
+      openNow.add(k);
+      carriedMissing++;
+    }
+    if (carriedMissing && carriedMissing !== this.carriedMissing)
+      this.db.event("warn", `paper: ${carriedMissing} held position(s) carried; their exact tape close is unavailable`);
+    this.carriedMissing = carriedMissing;
+    // Persist crossings for the recovered positions too, so an unrelated rebuild cannot re-open their live shares.
+    const keepHits: Record<string, { at: number; stop: number; px?: number }> = {};
+    for (const p of positions)
+      if (p.stopHit)
+        keepHits[posId(p)] = { at: p.stopHit, stop: p.stop, ...(p.hitPx ? { px: p.hitPx } : {}) };
+    if (
+      Object.keys(keepHits).length !== Object.keys(saved).length ||
+      Object.keys(keepHits).some((k) => !saved[k] || saved[k].at !== keepHits[k].at ||
+        saved[k].stop !== keepHits[k].stop || saved[k].px !== keepHits[k].px)
+    )
+      this.db.kvSet("stopHits", keepHits);
     // the paper book's own record: every position it held that left it this step, with the close its tape gave it
     // (the order the simulation booked) and when the book first held it — paper_trades is the simulated window's
     // trades, most of which the book never held (closed between two computes); this is what the book really traded
     {
-      const tradeOf = new Map(trades.map((x) => [orderKey(x), x]));
+      const tradeOf = new Map([...trades.map((x) => [orderKey(x), x] as const), ...heldCloses]);
       const now = Date.now();
       const rows: Array<Array<string | number | null>> = [];
       for (const p of prevByKey.values()) {
@@ -10073,15 +10263,20 @@ export class CoreRuntime {
     this.paperTradesWritten = td.next;
     const tExec = performance.now() - tp0 - tSelect - tCands;
     if (lvN > 0) {
+      let evaluated = 0;
+      let unjudged = 0;
+      let unknown = 0;
       let judged = 0;
       let passing = 0;
       let onExchange = 0;
       for (const id of sel) {
         const x = byId.get(id);
-        if (!x) continue;
+        if (!x) { evaluated += lvSides.length; unknown += lvSides.length; continue; }
         for (const side of lvSides) {
+          evaluated++;
           const g = lvOf(x, lvNow, side);
-          if (g.pf === null) continue;
+          if ((g.unknown ?? 0) > 0) { unknown++; continue; }
+          if (g.pf === null) { unjudged++; continue; }
           judged++;
           if (g.ok) passing++;
           if (g.source === "exchange") onExchange++;
@@ -10091,6 +10286,11 @@ export class CoreRuntime {
         lastN: lvN,
         minPf: lvMinPf,
         since: lvSince,
+        at: lvNow,
+        basis: "post-base-accepted",
+        evaluated,
+        unjudged,
+        unknown,
         judged,
         passing,
         paused: judged - passing,
@@ -10112,7 +10312,7 @@ export class CoreRuntime {
           .sort((a, b) => (a.group < b.group ? -1 : a.group > b.group ? 1 : 0)),
         ...(lvBySide ? { bySide: true as const } : {}),
       };
-    }
+    } else delete this.status.liveValidation;
     this.paperTimings = { select: tSelect, cands: tCands, exec: tExec, n: cands.length, stale };
     // the step's reasons replace the previous step's; the pending entries' (pending:…) are kept until their next call
     const pendingKept = Object.fromEntries(
@@ -10301,10 +10501,7 @@ export class CoreRuntime {
         if (++visited % 16 === 0) yield visited;
         // an entry on the next bar passes the same execution and coordination rules as in the simulation
         const d = execDecision(tp, entryT, this.wf, { ...books, sym: p.sym, side: p.side,
-          relateBase: (blockVol) => blockVol * this.s2EntryVolume(blockVol) *
-            volumeFactorForStrategy(tp, this.wf) * rangeVolumeFactorFor(tp, this.wf) *
-            (this.isHedgeEntry({ cfg: tp.id, sym: p.sym, side: p.side })
-              ? (this.wf.coord?.hedgeVolumeFactor ?? 1) : 1),
+          relateBase: () => 1,
         });
         if (!d.ok) {
           skip(tp, `exec:${d.why}`);
@@ -10376,9 +10573,11 @@ export class CoreRuntime {
         const rangeVol = rangeVolumeFactorFor(tp, this.wf);
         const hedgeVol = hedge ? (this.wf.coord?.hedgeVolumeFactor ?? 1) : 1;
         const baseExternalMult = d.vol * coordVol * volFactor * rangeVol * hedgeVol;
-        const relateVol = this.wf.relate?.enabled
-          ? Math.min(d.relateVol ?? 1, Math.max(1, this.wf.relate.maxStack) / Math.max(Number.MIN_VALUE, baseExternalMult))
-          : 1;
+        const relationCap = relateExternalStackCap(this.wf.relate?.maxStack ?? MAX_EXTERNAL_STACK,
+          tp.kind, p.protect ?? tp.protect);
+        const combined = combineRelateStack(baseExternalMult,
+          this.wf.relate?.enabled ? (d.relateVol ?? 1) : 1, relationCap);
+        const relateVol = this.wf.relate?.enabled ? combined.relation : 1;
         out.push({
           cfg: tp.id,
           sym: p.sym,
@@ -10392,7 +10591,7 @@ export class CoreRuntime {
           ...(coordVol !== 1 ? { coordVol } : {}),
           ...(d.vol !== 1 ? { blockVol: d.vol } : {}),
           ...(relateVol !== 1 ? { relateVol } : {}),
-          ...(this.wf.relate?.enabled ? { maxStack: this.wf.relate.maxStack } : {}),
+          maxStack: relationCap,
           ...(hedge ? { hedge: true, hedgeVol: this.wf.coord?.hedgeVolumeFactor ?? 1 } : {}),
         });
       }
@@ -10508,7 +10707,7 @@ export interface LiveIntent {
 export interface SetListings {
   paperStep: number;
   at: number;
-  candidates: Array<{ id: string; group: string }>;
+  candidates: Array<{ id: string; group: string; kind: string }>;
   validation: {
     at: number;
     engineLastN: number;
@@ -10528,6 +10727,8 @@ export interface SetListings {
     n: number;
     net: number;
     ddt: number;
+    gp: number;
+    gl: number;
   }>;
   /** per range: the rows of `validated` (best first) and the range's PF taken together on the validation windows */
   byRange: Record<
@@ -10535,6 +10736,10 @@ export interface SetListings {
     { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }
   >;
   byGroup: Record<
+    string,
+    { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }
+  >;
+  byKind: Record<
     string,
     { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }
   >;
@@ -10703,7 +10908,18 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.familySeats !== undefined) p.familySeats = Boolean(p.familySeats);
   if (p.familyNeedsBase !== undefined) p.familyNeedsBase = Boolean(p.familyNeedsBase);
   if (p.seatPer !== undefined && !["pair", "config"].includes(String(p.seatPer))) delete p.seatPer;
-  if (p.seatSet !== undefined && !["pool", "validated"].includes(String(p.seatSet))) delete p.seatSet;
+  if (p.seatSet !== undefined) {
+    if (!["pool", "validated"].includes(String(p.seatSet))) delete p.seatSet;
+    else p.seatSet = "validated";
+  }
+  if (p.relate !== undefined) {
+    const relate = p.relate as RelateAdjustmentConfig;
+    const maxStack = Number(relate.maxStack);
+    p.relate = {
+      ...relate,
+      maxStack: Math.floor(Number.isFinite(maxStack) ? Math.min(MAX_EXTERNAL_STACK, Math.max(1, maxStack)) : MAX_EXTERNAL_STACK),
+    };
+  }
   // symbol gate: veto (a proven loser on the symbol is skipped) / proven (only proven symbols) / per side / off
   if (
     p.symGate !== undefined &&
@@ -11716,6 +11932,8 @@ export function basePass(
   pairTps: Record<string, Record<string, readonly number[]>>;
   /** grid.baseCells: per pair, the passed cells of the ranges it passed (protectCellKey); absent while the option is off */
   pairCells: Record<string, readonly string[]>;
+  /** Actual passed cells, retained separately when allSets builds extra diagnostic candidates. */
+  qualifiedCells: Record<string, readonly string[]>;
   added: number;
   /** the pairs grid.allSets added for measurement (not Base-passed) */
   addedKeys: Set<string>;
@@ -11747,13 +11965,14 @@ export function basePass(
       if (Object.keys(per).length) pairTps[`${r.bot}|${r.ind}`] = per;
     }
     // cell level: the passed cells of the passed ranges (a range without cells keeps the target / range level)
-    if (cellsOn && r.rangeCells?.length) {
+    if ((cellsOn || isLowRangeInd(r.ind)) && r.rangeCells?.length) {
       const keep = r.rangeCells.filter((k) => tags.includes(k.slice(0, k.indexOf("|"))));
       if (keep.length) pairCells[`${r.bot}|${r.ind}`] = keep;
     }
     return true;
   });
   const qualified = [...passed];
+  const qualifiedCells = Object.fromEntries(Object.entries(pairCells).map(([pair, cells]) => [pair, [...cells]]));
   const qualifiedTags = Object.fromEntries(
     Object.entries(pairTags).map(([k, tags]) => [k, [...tags]]),
   );
@@ -11798,16 +12017,18 @@ export function basePass(
       }
     }
   }
-  return { passed, qualified, qualifiedTags, qualifiedTps, wideLadderPairs, pairTags, pairTps, pairCells, added, addedKeys };
+  return { passed, qualified, qualifiedTags, qualifiedTps, qualifiedCells, wideLadderPairs, pairTags, pairTps, pairCells, added, addedKeys };
 }
 
 /** Paper deactivation and native admission preserve the same indication/range floor. */
 export function liveMinPfOf(
-  s: Pick<CoreSettings, "gates" | "live">,
+  s: Pick<CoreSettings, "gates" | "live"> & Partial<Pick<CoreSettings, "exitStrategy">>,
   tag?: string,
   ind?: string,
+  kind?: string,
 ): number {
-  return Math.max(minPfOf(s.gates, tag, ind), s.live.liveMinPf ?? 0);
+  return Math.max(minPfOf(s.gates, kind === "exit" ? undefined : tag, ind), s.live.liveMinPf ?? 0,
+    kind === "exit" ? (s.exitStrategy?.minPf ?? 0) : 0);
 }
 
 /** A failed pair retained for its open configs has no eligible ranges; an absent entry means unrestricted. */
@@ -11927,7 +12148,7 @@ function mergeSettings(
       relate: { ...out.relate, ...(p.relate ?? {}),
         sources: { ...out.relate.sources, ...(p.relate?.sources ?? {}) } },
       axis: { ...out.axis, ...(p.axis ?? {}) },
-      grid: { ...out.grid, ...(p.grid ?? {}) },
+      grid: mergeGridSettings(out.grid, p.grid),
       protectFloor: { ...out.protectFloor, ...(p.protectFloor ?? {}) },
       fees: { ...out.fees, ...(p.fees ?? {}) },
       adjust: { ...out.adjust, ...(p.adjust ?? {}) },

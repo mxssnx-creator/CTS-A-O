@@ -1,0 +1,25 @@
+{
+  "status": "passed",
+  "fundedSettled": 135811,
+  "knownZeroSettled": 9052,
+  "unknownSettled": 0,
+  "fundedHeld": 7,
+  "knownZeroHeld": 3,
+  "unknownHeld": 0,
+  "unitGp": 159.85339453324727,
+  "unitGl": 581.3607989669829,
+  "unitPf": 0.2749641785570853,
+  "sizedCashNet": -0.28890867814447935,
+  "scalarStepChecks": 352848,
+  "marginExceedanceMinutes": 0,
+  "protocolSha256": "7a7fd423f1402f6a14fd19bf43ff0db487c7503bb28b04656af0548f9093db78",
+  "sourceSha256": "d4847b799025e5309ce575e762e38525e93016350244b8457fcc5e7102e29d42",
+  "inputs": {
+    "audit.json": "60e613f1ccbe5300543dd2f6d909e83cc05e0da03632922f4f5a990fc8a471e2",
+    "progression-audit.json": "3c979a6a02a579faa9858403f213bc29a94f7ac4f4ea5f236638dab6b7da59bc",
+    "runtime-step-detail.json": "8904b912e2edc520c72a0ce366a4c346ea847bce524eeaecafee83e1d3c718d6",
+    "session.json": "e0207c604a7cca6247ac9209e8ed832cbb3c8300b01d9fa9c54cdfdb1ea824a0",
+    "preallocation-comparison.json": "e1516c6741363e1d053a9bc314934fa2bec2604b5a56161a7db0694972b05fea"
+  },
+  "scope": "Offline funded modeled allocations only; no live execution claim."
+}

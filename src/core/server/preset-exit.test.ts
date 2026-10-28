@@ -38,8 +38,10 @@ const finish = <T>(g: Generator<unknown, T>): T => {
   }
 };
 const inner = (rt: CoreRuntime) => rt as unknown as Inner;
-function fixture(stepReturn = 0.0002) {
-  const end = Math.floor(Date.now() / H) * H;
+function fixture(stepReturn = 0.0002, fixtureEnd?: number) {
+  // The test preload pins the synthetic runtime clock. Keep the planted series on that same
+  // clock so the saved-preset job and the direct oracle consume identical candles.
+  const end = fixtureEnd ?? (Number(process.env.CTS_CORE_SYNTHETIC_END) || Math.floor(Date.now() / H) * H);
   const candles: Candle[] = [];
   let price = 100;
   for (let i = 0; i < 16_000; i++) {
@@ -162,7 +164,8 @@ afterEach(async () => {
   await closePool();
 });
 
-describe("independent Exit preset backtests", { timeout: 90_000 }, () => {
+// The two full parity paths and native-history fixtures can exceed 90s together under coverage on a busy runner.
+describe("independent Exit preset backtests", { timeout: 180_000 }, () => {
   for (const workers of [false, true])
     it(
       `matches a direct causal fit and independent WF with workers ${workers ? "on" : "off"}`,
@@ -405,7 +408,7 @@ describe("independent Exit preset backtests", { timeout: 90_000 }, () => {
         const clear = SeriesCache.prototype.clear;
         let rt: CoreRuntime | undefined;
         try {
-          const fixtureData = fixture();
+          const fixtureData = fixture(0.0002, cut);
           rt = fixtureData.rt;
           if (cachedTail) {
             for (const entry of inner(rt).btCandles.values())

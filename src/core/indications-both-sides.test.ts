@@ -15,6 +15,7 @@ import { barsFromCandles, syntheticCandles, resample } from "./market/bars.ts";
 import { makeUniverse } from "./pipeline/pipeline.ts";
 import type { Candle } from "./domain/types.ts";
 import { controlledRetestTrend } from "./indications/test-support.ts";
+import { LOW_RANGE_LEGACY_WINDOWS, LOW_RANGE_METHODS } from "./indications/low-range-research.ts";
 
 const END = Date.UTC(2026, 9, 1);
 
@@ -106,6 +107,29 @@ function channelReclaimCandles(tf: number): Candle[] {
   const c = o * 1.0002;
   out[at] = { ...out[at], o, l: priorLow - o * 0.00025, c, h: c + o * 0.00008 };
   return out;
+}
+
+/** Bounded prior channels, with separate aligned and opposed prior displacement.
+ * This includes rare failed-break + short-breakout conjunctions that a random
+ * market may never generate. Its mirror exercises the opposite side. */
+function* lowRangeCoverageCaches(): Generator<SeriesCache> {
+  for (const window of LOW_RANGE_LEGACY_WINDOWS) for (const method of LOW_RANGE_METHODS) for (const reverse of [false, true]) {
+    const old = Array.from({ length: window }, (_, i) => ({
+      t: END + i * 60_000, o: 100, c: 100, h: 101.5, l: 98.5, v: 100,
+    }));
+    const recent = Array.from({ length: window }, (_, i) => {
+      const lastSix = i >= window - 6;
+      const c = i === 0 ? (reverse ? 100.1 : 99.2) : lastSix ? 99.55 : 99.3;
+      return { t: END + (window + i) * 60_000, o: c, c, h: lastSix ? 99.65 : 100.8,
+        l: lastSix ? 99.4 : 99.2, v: 100 };
+    });
+    const c = method === "breakout" || method === "compression-break" ? 101
+      : method === "mid-reclaim" ? 100.05 : 99.75;
+    const tail = { t: END + 2 * window * 60_000, o: 99.55, c,
+      h: Math.max(99.85, c + 0.05), l: method === "failed-break" ? 99.1 : 99.5, v: 400 };
+    const candles = [...old, ...recent, tail];
+    for (const source of [candles, mirror(candles)]) yield new SeriesCache(barsFromCandles("LR-USDT", 1, source));
+  }
 }
 
 /** Copied from src/core/indications/symmetry.test.ts (`mirror`, not exported there): the price mirror K / price. */
@@ -299,7 +323,8 @@ describe("every indication fires long and short", { timeout: 600_000 }, () => {
   });
 
   it("every engine indication has a long onset and a short onset on the rich market and its mirror", () => {
-    const engine = INDICATIONS.filter((x) => !x.id.startsWith("sig-"));
+    const engine = INDICATIONS.filter((x) => !x.id.startsWith("sig-") &&
+      (x.kind !== "low-range" || LOW_RANGE_LEGACY_WINDOWS.includes(Number(x.params.window) as never)));
     assert.ok(engine.length > 300, `${engine.length} engine indications`);
     const counts = new Map<string, Count>();
     for (const x of engine) for (const k of ks) add(counts, x.id, onsets(indicationState(x.id, k)));
@@ -308,6 +333,8 @@ describe("every indication fires long and short", { timeout: 600_000 }, () => {
     for (const contexts of microContextCaches())
       for (const x of contextual)
         for (const k of contexts) add(counts, x.id, onsets(indicationState(x.id, k)));
+    for (const k of lowRangeCoverageCaches())
+      for (const x of engine.filter((spec) => spec.kind === "low-range")) add(counts, x.id, onsets(indicationState(x.id, k)));
     assert.equal(counts.size, engine.length);
     assert.deepEqual(oneWay(counts, exempt), []);
     // the symmetry exception fires both ways (biased, not one-sided)

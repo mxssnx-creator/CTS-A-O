@@ -12,12 +12,17 @@
 // its title names, and only that.
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { CoreDb } from "./db.server.ts";
-import { entryExitOrder, liveKv, reconcileLaneCloses, resetLiveBackoff, stepLive, type ControlStatus } from "./live.server.ts";
+import { entryExitOrder, flushLiveKv, liveKv, reconcileLaneCloses, resetLiveBackoff, stepLive, type ControlStatus, type ExchangeClient } from "./live.server.ts";
 import {
   closeFillsOf,
   controlOwnership,
   liveTag,
+  makeCoid,
+  ownCoidKind,
   outsideCloseOf,
   planLive,
   type BookView,
@@ -27,6 +32,8 @@ import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { clearRateLimit, ExchangeRejected, stopPxExchange } from "../exchange/bingx.server.ts";
 import { SimExchange, authorizeSyntheticLanes, syntheticExecutionRun } from "../test-support.ts";
+import { laneKeyOf, type LaneOpen } from "../live-record.ts";
+import type { LaneOrder } from "./lane-orders.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 
@@ -58,6 +65,12 @@ class Venue extends SimExchange {
     const [sym, ps] = k.split("|");
     return this.orders.filter((o) => o.venueSymbol === sym && o.positionSide === ps && o.type === type);
   }
+}
+
+function removeStopsWithExactZeroCancel(ex: Venue) {
+  for (const order of ex.orders.filter((o) => o.type === STOP))
+    ex.done.set(order.id, { status: "CANCELLED", qty: 0 });
+  ex.orders = ex.orders.filter((o) => o.type !== STOP);
 }
 
 /**
@@ -231,7 +244,7 @@ type Pos = {
   trailOn?: boolean;
 };
 
-function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: number } = { mode: "fixed", pct: 0.02 }) {
+function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: number } = { mode: "fixed", pct: 0.02 }, db = new CoreDb(":memory:")) {
   let positions: Pos[] = [];
   const prices = [
     { sym: "S1-USDT", last: 10 },
@@ -239,7 +252,9 @@ function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: n
   ];
   const rt = {
     generation: 1,
-    db: new CoreDb(":memory:"),
+    // This fixture is an explicitly synthetic memory-backed runtime and never reaches a real venue.
+    testOnlyAllowMemoryLive: true,
+    db,
     settings: {
       ...DEFAULT_SETTINGS,
       sizing,
@@ -356,20 +371,19 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
       assert.ok(s === 1 ? sp < mark : sp > mark, `stop ${sp} against the mark ${mark}`);
     });
 
-    it(`H-D ${side}: a bounded close of one lane sends its own quantity as a ${exitSide} on ${ps}, never closePosition, and the other side's key is untouched`, async () => {
+    it(`H-D ${side}: a bounded parent close sends its exact quantity as a ${exitSide} on ${ps} and leaves the other side untouched`, async () => {
       const ex = new Venue();
-      const { rt } = rtOf();
+      const { rt } = rtOf({ laneOrders: false });
       const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
       const a = lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02, undefined, 1);
-      const b = lane("combo|ema-9-21@m15|b", sym, s, mark, 0.02, undefined, 2);
       const c = lane("combo|ema-9-21@m15|c", sym, -s as 1 | -1, mark, 0.02, undefined, 3);
-      rt.paper.positions = [a, b, c];
+      rt.paper.positions = [a, c];
       await step();
       const before = ex.positions.get(`${sym}|${ps}`) ?? 0;
       const otherBefore = ex.positions.get(`${sym}|${opp}`) ?? 0;
       assert.ok(before > 0 && otherBefore > 0, "both sides held before the close");
-      // lane b leaves: its share of this side is closed, the other side keeps its lane
-      rt.paper.positions = [a, c];
+      // The sole parent leaves this side; the opposite hedge side keeps its independent parent.
+      rt.paper.positions = [c];
       const n = ex.log.length;
       await step();
       const closes = ex.log.slice(n).filter((p) => p.type === "MARKET");
@@ -377,8 +391,8 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
       assert.equal(closes[0].side, exitSide);
       assert.equal(closes[0].positionSide, ps);
       assert.equal(closes[0].closePosition, undefined, "bounded: never closePosition");
-      assert.ok(near(Number(closes[0].quantity), before / 2, 2e-3), `quantity ${closes[0].quantity} of ${before}`);
-      assert.ok(near(ex.positions.get(`${sym}|${ps}`) ?? 0, before / 2, 2e-3), "half remains");
+      assert.ok(near(Number(closes[0].quantity), before, 2e-3), `quantity ${closes[0].quantity} of ${before}`);
+      assert.equal(ex.positions.has(`${sym}|${ps}`), false, "the departing parent is flat");
       assert.equal(ex.positions.get(`${sym}|${opp}`), otherBefore, "the other side's quantity is unchanged");
       assert.equal(
         ex.log.slice(n).filter((p) => p.positionSide === opp).length,
@@ -387,9 +401,9 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
       );
     });
 
-    it(`H-F ${side}: a manual ${opp} position freezes nothing and closes nothing on ${ps}: the own side still grows, the manual quantity stays`, async () => {
+    it(`H-F ${side}: a manual ${opp} position stays untouched while same-side parents advance separately`, async () => {
       const ex = new Venue();
-      const { rt } = rtOf();
+      const { rt } = rtOf({ laneOrders: false });
       const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
       rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02)];
       await step();
@@ -404,11 +418,17 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
         0,
         "no order on the manual side",
       );
-      // the own side takes a second lane: it opens its own quantity on its own side, the manual side stays as it was
-      rt.paper.positions = [rt.paper.positions[0], lane("combo|ema-9-21@m15|b", sym, s, mark, 0.02, undefined, 2)];
+      // A second parent waits while the first owns this netted side. It can open only after that parent is flat.
+      const second = lane("combo|ema-9-21@m15|b", sym, s, mark, 0.02, undefined, 2);
+      rt.paper.positions = [rt.paper.positions[0], second];
       const before = ex.positions.get(`${sym}|${ps}`) ?? 0;
       await step();
-      assert.ok((ex.positions.get(`${sym}|${ps}`) ?? 0) > before, "the own side grows beside the manual position");
+      assert.equal(ex.positions.get(`${sym}|${ps}`), before, "a sibling never shares the held netted side");
+      rt.paper.positions = [second];
+      await step();
+      assert.equal(ex.positions.has(`${sym}|${ps}`), false, "the first parent closes by its own quantity");
+      await step();
+      assert.ok((ex.positions.get(`${sym}|${ps}`) ?? 0) > 0, "the second parent opens after confirmed flat");
       assert.equal(ex.positions.get(`${sym}|${opp}`), 3, "the manual quantity is still 3");
       assert.equal(
         ex.log.slice(n).filter((p) => p.positionSide === opp).length,
@@ -471,12 +491,13 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
       const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
       rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02)];
       await step();
-      ex.orders = ex.orders.filter((o) => o.type !== STOP);
+      removeStopsWithExactZeroCancel(ex);
       ex.foreignFill(`${sym}|${ps}`, 2, true, mark);
       const n = ex.log.length;
+      let last: unknown;
       for (let i = 0; i < 3; i++) {
         tick(61_000);
-        await step();
+        last = await step();
       }
       assert.ok(ex.log.slice(n).some((p) => p.type === STOP), "the stop is re-placed");
       assert.deepEqual(
@@ -497,7 +518,7 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
       rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02)];
       await step();
       assert.equal(ex.positions.get(`${sym}|${ps}`), 4, "our own quantity on the side");
-      ex.orders = ex.orders.filter((o) => o.type !== STOP);
+      removeStopsWithExactZeroCancel(ex);
       ex.foreignFill(`${sym}|${ps}`, 2, true, mark);
       tick(61_000);
       await step();
@@ -968,38 +989,54 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
     });
   }
 
-  // item 12 (live.server.ts:2479-2480): a lane order (V) of a one-way short that filled while the desk looks — its fill is
-  // booked on the key of the position side it names. BOTH reads as LONG there, so the short's fill is booked on the long
-  // key. The hedge short is the control; the one-way long is not written here (its V order is cancelled as an orphan first,
-  // see OW-12 long, so the fill branch is not reached)
-  const laneCoid = `${liveTag("bingx-vst-02")}V1_order`;
-  for (const mode of ["hedge", "oneway"] as const) {
-    const sym = "S2-USDT";
-    it(`OW-12 short, ${mode}: a lane order of the short that fills is booked on the short's key (${sym}|-1)`, async () => {
+  // A native stop can fill between the decision to close its parent and the cancellation reaching the venue.
+  // Its durable identity, actual quantity, fill price and measured commission must survive in either mode.
+  for (const mode of ["hedge", "oneway"] as const) for (const side of [1, -1] as const) {
+    const sym = side === 1 ? "S1-USDT" : "S2-USDT", mark = side === 1 ? 10 : 20;
+    it(`OW-12 ${side === 1 ? "long" : "short"}, ${mode}: native fill during cancel settles only its own key`, async () => {
       const ex = mode === "hedge" ? new LaneFillVenue() : new OneWayLaneFillVenue();
-      const { rt } = rtOf({ positionMode: mode === "hedge" ? "hedge" : "oneway" });
+      const { rt } = rtOf({ positionMode: mode === "hedge" ? "hedge" : "oneway", laneOrders: true });
       const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
-      const ps = mode === "hedge" ? "SHORT" : "BOTH";
-      if (mode === "hedge") ex.positions.set(`${sym}|SHORT`, 0.5);
-      else (ex as OneWayVenue).net.set(sym, -0.5);
-      ex.orders.push({
-        id: "L1",
-        venueSymbol: sym,
-        symbol: sym,
-        clientOrderId: laneCoid,
-        positionSide: ps as "LONG" | "SHORT",
-        type: STOP,
-        stopPrice: 20.5,
-        qty: 0.5,
-        closePosition: false,
-      });
-      ex.fillId = "L1";
-      rt.paper.positions = [lane("combo|ema-9-21@m15|c", sym, -1, 20, 0.02, 0.05)];
+      rt.paper.positions = [lane("combo|ema-9-21@m15|c", sym, side, mark, 0.02, 0.05)];
+      await step();
+      const stop = ex.orders.find((o) => o.venueSymbol === sym && ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V");
+      assert.ok(stop && stop.clientOrderId, "the parent owns a native stop before it can fill");
+      const status = ex.orderStatus.bind(ex);
+      const client: ExchangeClient = ex;
+      client.orderStatus = async (vsym, id) => {
+        const reply = await status(vsym, id);
+        return id === stop.id && reply && typeof reply === "object" && "order" in reply && reply.order &&
+          typeof reply.order === "object" && "status" in reply.order && reply.order.status === "FILLED"
+          ? { order: { ...reply.order, commission: -0.003, updateTime: Date.now() } } : reply;
+      };
+      ex.fillId = stop.id;
+      // A genuine trailing-stop update cancels/replaces the same parent's stop. The venue fills the old stop
+      // before that cancel arrives; the parent remains in Paper so departure is not used to trigger a cancel.
+      rt.paper.positions = [{ ...rt.paper.positions[0], stop: mark * (1 - side * .01), trailOn: true }];
+      await step();
+      // relation: all rows — a provisional ticker-priced close of any classification would be incorrect.
+      assert.equal(rt.db.all("SELECT id FROM live_lane_trades").length, 0, "pending native reconciliation keeps the parent open");
       await step();
       const booked = rt.db
         .all<{ cfg: string }>("SELECT cfg FROM live_orders WHERE kind = 'R'")
         .map((r) => r.cfg.replace(/^control\|/, ""));
-      assert.ok(booked.includes(`${sym}|-1`), `the lane fill is booked on ${JSON.stringify(booked)}, not on ${sym}|-1`);
+      assert.ok(booked.includes(`${sym}|${side}`), `the fill is booked on ${JSON.stringify(booked)}, not on ${sym}|${side}`);
+      assert.ok(!booked.includes(`${sym}|${-side}`), "the opposite key cannot receive the native fill");
+      // relation: all rows — this fixture checks every recorded classification, including an incorrect close.
+      const closes = rt.db.all<{ reason: string; exit: number }>("SELECT reason,exit FROM live_lane_trades");
+      assert.equal(closes.length, 1, "the owner settles exactly once");
+      assert.equal(closes[0].reason, "stop", "the execution is attributed to the native stop");
+      assert.ok(near(closes[0].exit, stop.stopPrice!), "the owner's actual stop fill is retained");
+      const fill = rt.db.get<{ qty: number; fill_px: number; fee: number; fee_known: number }>(
+        "SELECT qty,fill_px,fee,fee_known FROM live_fills WHERE coid=?", `lanefill-${stop.clientOrderId}`);
+      assert.ok(fill);
+      assert.equal(fill.qty, stop.qty, "the actual fill quantity is retained");
+      assert.equal(fill.fill_px, stop.stopPrice, "the actual fill price is retained");
+      assert.equal(fill.fee, 0.003, "the measured venue commission is retained");
+      assert.equal(fill.fee_known, 1);
+      await step();
+      // relation: all rows — no further classification may duplicate the one confirmed parent close.
+      assert.equal(rt.db.all("SELECT id FROM live_lane_trades").length, 1);
     });
   }
 
@@ -1064,38 +1101,89 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
         lane(`combo|ema-9-21@m15|${String.fromCharCode(97 + i)}`, sym, -1, 20, 0.02 + i * 0.002, undefined, i + 1),
       );
     const venue = () => (mode === "hedge" ? new Venue() : new OneWayVenue());
-    it(`OW-12 short, ${mode}, venue cap: the short's backstop counts on its own key, so its seventh lane gets the slot`, async () => {
+    // These orders and parent records represent a legacy netted holding created before the new admission fence.
+    // Quantities and exact conditional identities are explicit; the new runtime must not create these siblings.
+    const seedLegacy = async (ex: Venue | OneWayVenue, rt: ReturnType<typeof rtOf>["rt"], parents: Pos[]) => {
+      const venueSide = mode === "hedge" ? "SHORT" : "BOTH";
+      const qty = .5, total = parents.length * qty, key = `${sym}|-1`, now = Date.now() - 10_000;
+      if (ex instanceof OneWayVenue) ex.net.set(sym, -total);
+      else ex.positions.set(`${sym}|SHORT`, total);
+      const tracked: Record<string, LaneOpen> = {}, native: Record<string, LaneOrder> = {};
+      const backstopId = makeCoid(rt.settings.live.connId, "S"), openId = makeCoid(rt.settings.live.connId, "E");
+      const backstop = 24;
+      await ex.order({ symbol: sym, positionSide: venueSide, side: "BUY", type: "STOP_MARKET",
+        quantity: total, stopPrice: backstop, clientOrderID: backstopId });
+      rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        openId, `control|${key}`, sym, -1, "O", total, 20, "ok", "legacy opening", now);
+      rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        backstopId, `control|${key}`, sym, -1, "S", total, backstop, "ok", "legacy backstop", now + 1);
+      for (const p of parents) {
+        const id = laneKeyOf({ ...p, id: `${p.cfg}|${p.sym}|${p.entryT}` });
+        const coid = makeCoid(rt.settings.live.connId, "V");
+        const reply = await ex.order({ symbol: sym, positionSide: venueSide, side: "BUY", type: "STOP_MARKET",
+          quantity: qty, stopPrice: p.stop, clientOrderID: coid }) as { order: { orderId: string } };
+        tracked[id] = { cfg: p.cfg, sym, side: -1, t: now, px: 20 };
+        native[id] = { id, key, sym, side: -1, qty, at: now, s: { coid, oid: reply.order.orderId, px: p.stop } };
+      }
+      rt.db.kvSet("liveLaneOpen", tracked);
+      rt.db.kvSet("laneOrders", native);
+      ex.log = [];
+    };
+    it(`OW-12 short, ${mode}, venue cap: a pre-existing backstop and five native parents stay protected; new siblings wait`, async () => {
       const tick = clock();
       const ex = venue();
       const { rt } = rtOf({ positionMode: mode, laneOrders: true, maxVenueOrders: 13 });
       const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
-      rt.paper.positions = shortLanes(5);
+      const original = shortLanes(5);
+      rt.paper.positions = original;
+      await seedLegacy(ex, rt, original);
+      const originalNativeIds = ex.orders.filter((o) => ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V").map((o) => o.id).sort();
       await step();
-      assert.equal(ex.orders.length, 6, `the backstop and five lanes: ${JSON.stringify(ex.orders.map((o) => o.type))}`);
+      assert.equal(ex.orders.length, 6, "one backstop and five native stops survive");
+      assert.deepEqual(ex.orders.filter((o) => ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V").map((o) => o.id).sort(), originalNativeIds);
+      const originalIds = ex.orders.map((o) => o.id).sort();
       rt.paper.positions = shortLanes(7);
       tick(20_000);
       await step();
-      assert.equal(ex.orders.length, 8, `seven lanes and the backstop under 13 − 5 reserved: ${JSON.stringify(ex.orders.map((o) => o.type))}`);
+      assert.deepEqual(ex.orders.map((o) => o.id).sort(), originalIds, "legacy protection identities stay untouched");
+      assert.equal(ex.log.filter((o) => o.type === "MARKET").length, 0, "new siblings do not add to the netted side");
+      const qty = mode === "hedge" ? ex.positions.get(`${sym}|SHORT`) : (ex as OneWayVenue).net.get(sym);
+      assert.equal(Math.abs(qty ?? 0), 2.5, "the five previously verified parent quantities stay intact");
     });
-    it(`OW-12 short, ${mode}, venue cap: a count at the trim line is not trimmed for the short's backstop`, async () => {
+    it(`OW-12 short, ${mode}, venue cap: a restarted shared side keeps its backstop and native stops at the trim line`, async () => {
       const tick = clock();
       const ex = venue();
-      const { rt } = rtOf({ positionMode: mode, laneOrders: true, maxVenueOrders: 20 });
-      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
-      rt.paper.positions = shortLanes(8);
-      await step();
-      assert.equal(ex.orders.length, 9, "the backstop and eight lanes");
-      rt.settings.live = { ...rt.settings.live, maxVenueOrders: 12 };
-      let cancels = 0;
-      const cancel = ex.cancel.bind(ex);
-      ex.cancel = async (s: string, id: string) => {
-        cancels++;
-        return cancel(s, id);
-      };
-      tick(20_000);
-      await step();
-      assert.equal(cancels, 0, "nothing trimmed: nine orders against 12 − 5 reserved, the backstop among them");
-      assert.equal(ex.orders.length, 9);
+      const dir = mkdtempSync(join(tmpdir(), "cts-legacy-native-cap-")), path = join(dir, "core.sqlite");
+      let db = new CoreDb(path);
+      try {
+        const { rt } = rtOf({ positionMode: mode, laneOrders: true, maxVenueOrders: 20 }, undefined, db);
+        const original = shortLanes(8);
+        rt.paper.positions = original;
+        await seedLegacy(ex, rt, original);
+        const originalNativeIds = ex.orders.filter((o) => ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V").map((o) => o.id).sort();
+        await stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+        assert.equal(ex.orders.length, 9, "the backstop and eight existing lane stops");
+        assert.deepEqual(ex.orders.filter((o) => ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V").map((o) => o.id).sort(), originalNativeIds);
+        const originalIds = ex.orders.map((o) => o.id).sort();
+        flushLiveKv(db);
+        db.db.close();
+        db = new CoreDb(path);
+        const resumed = rtOf({ positionMode: mode, laneOrders: true, maxVenueOrders: 12 }, undefined, db).rt;
+        resumed.paper.positions = original;
+        let cancels = 0;
+        const cancel = ex.cancel.bind(ex);
+        ex.cancel = async (s: string, id: string) => { cancels++; return cancel(s, id); };
+        tick(20_000);
+        await stepLive(resumed as unknown as CoreRuntime, [], 1, ex);
+        assert.equal(cancels, 0, "restart keeps the legacy shared side frozen instead of trimming its protection");
+        assert.deepEqual(ex.orders.map((o) => o.id).sort(), originalIds, "every original protection identity remains");
+        const qty = mode === "hedge" ? ex.positions.get(`${sym}|SHORT`) : (ex as OneWayVenue).net.get(sym);
+        assert.equal(Math.abs(qty ?? 0), 4, "legacy parent quantities remain intact");
+      } finally {
+        flushLiveKv(db);
+        db.db.close();
+        rmSync(dir, { recursive: true, force: true });
+      }
     });
   }
 });

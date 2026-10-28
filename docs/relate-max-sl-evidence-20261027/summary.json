@@ -1,0 +1,492 @@
+{
+  "protocolSha256": "1c76edd72cb836acaf8376cf16d16ba16c30eea4998c2c476551ff51f4ee5040",
+  "sourceCommit": "f3d217869829cf0444703d8d0bfe157875c77860",
+  "scope": "Already examined Binance USD-M public candles; reduced 6-pair 1m Micro/Minimal grid; Normal/Trailing only, Signal/Exit/DCA/Axis/Block off; offline modeled execution, not independent holdout or live fills.",
+  "caveats": [
+    "Retrospective model on previously examined data, not a holdout or venue fills.",
+    "Normal and Trailing only. Existing fixed stops are not tightened by Max SL; ATR, DCA and Axis raises do not qualify.",
+    "No balance caps were configured despite caps mode being on; every model row was allocated in this account model.",
+    "Relate histories use accepted modeled closes, not independently proven live or funded-fill feedback.",
+    "Settled profit excludes endpoint marks, which are shown separately."
+  ],
+  "results": [
+    {
+      "id": "relate-off",
+      "validation": {
+        "at": "2026-10-27T01:00:00.000Z",
+        "passed": 489,
+        "evaluated": 1176,
+        "pf": 3.8151230633073223
+      },
+      "base": {
+        "evaluated": 134,
+        "passed": 55
+      },
+      "funding": {
+        "basis": "Exact per-close native report allocation",
+        "virtualCloses": 4976,
+        "fundedCloses": 4976,
+        "zeroAllocatedCloses": 0,
+        "unknownAllocations": 0
+      },
+      "fundedCounts": {
+        "openedPositions": 35,
+        "closedPositions": 23,
+        "openPositions": 12,
+        "openedOrders": 8713,
+        "settledOrders": 4976,
+        "openOrders": 3737,
+        "basis": "funded-modeled-allocations"
+      },
+      "modeledVirtualCounts": {
+        "openedPositions": 35,
+        "closedPositions": 23,
+        "openPositions": 12,
+        "openedOrders": 8713,
+        "settledOrders": 4976,
+        "openOrders": 3737
+      },
+      "settled": {
+        "n": 4976,
+        "wins": 2976,
+        "losses": 2000,
+        "flat": 0,
+        "pf": 1.0730819034251706,
+        "positiveRate": 0.5980707395498392,
+        "gp": 12.986431741205854,
+        "gl": 12.101994917400486
+      },
+      "cashPf": 1.073082,
+      "cashNet": 1.768874,
+      "openMtm": -56.047776,
+      "equityEnd": 9945.721098,
+      "hours": {
+        "positive": 7,
+        "negative": 5,
+        "flat": 0,
+        "detail": [
+          {
+            "at": "2026-10-27T01:00:00.000Z",
+            "n": 132,
+            "wins": 80,
+            "losses": 52,
+            "flat": 0,
+            "pf": 5.01747218472917,
+            "positiveRate": 0.6060606060606061,
+            "gp": 0.15321195077901523,
+            "gl": 0.030535685129520092,
+            "cashNet": 0.245353
+          },
+          {
+            "at": "2026-10-27T02:00:00.000Z",
+            "n": 20,
+            "wins": 11,
+            "losses": 9,
+            "flat": 0,
+            "pf": 1.7764281563194793,
+            "positiveRate": 0.55,
+            "gp": 0.06949999999999971,
+            "gl": 0.039123451040088436,
+            "cashNet": 0.060753
+          },
+          {
+            "at": "2026-10-27T03:00:00.000Z",
+            "n": 45,
+            "wins": 31,
+            "losses": 14,
+            "flat": 0,
+            "pf": 1.1505702634499588,
+            "positiveRate": 0.6888888888888889,
+            "gp": 0.12003208172913019,
+            "gl": 0.10432399093056405,
+            "cashNet": 0.031416
+          },
+          {
+            "at": "2026-10-27T04:00:00.000Z",
+            "n": 46,
+            "wins": 24,
+            "losses": 22,
+            "flat": 0,
+            "pf": 0.2308471009278672,
+            "positiveRate": 0.5217391304347826,
+            "gp": 0.043916269306267235,
+            "gl": 0.19023963969982777,
+            "cashNet": -0.292647
+          },
+          {
+            "at": "2026-10-27T05:00:00.000Z",
+            "n": 426,
+            "wins": 85,
+            "losses": 341,
+            "flat": 0,
+            "pf": 0.23972808723091424,
+            "positiveRate": 0.19953051643192488,
+            "gp": 0.37244716648814474,
+            "gl": 1.5536234022064799,
+            "cashNet": -2.362352
+          },
+          {
+            "at": "2026-10-27T06:00:00.000Z",
+            "n": 349,
+            "wins": 165,
+            "losses": 184,
+            "flat": 0,
+            "pf": 0.6960523630508755,
+            "positiveRate": 0.47277936962750716,
+            "gp": 0.665279044993403,
+            "gl": 0.9557887887592399,
+            "cashNet": -0.581019
+          },
+          {
+            "at": "2026-10-27T07:00:00.000Z",
+            "n": 589,
+            "wins": 373,
+            "losses": 216,
+            "flat": 0,
+            "pf": 1.1484459145224093,
+            "positiveRate": 0.633276740237691,
+            "gp": 0.7163646298266017,
+            "gl": 0.6237687128039529,
+            "cashNet": 0.185192
+          },
+          {
+            "at": "2026-10-27T08:00:00.000Z",
+            "n": 238,
+            "wins": 189,
+            "losses": 49,
+            "flat": 0,
+            "pf": 19.360959003137218,
+            "positiveRate": 0.7941176470588235,
+            "gp": 0.5866715143413948,
+            "gl": 0.030301779692128446,
+            "cashNet": 1.112739
+          },
+          {
+            "at": "2026-10-27T09:00:00.000Z",
+            "n": 1011,
+            "wins": 958,
+            "losses": 53,
+            "flat": 0,
+            "pf": 63.76436674880483,
+            "positiveRate": 0.9475766567754699,
+            "gp": 5.120947243381802,
+            "gl": 0.08031048537744298,
+            "cashNet": 10.081274
+          },
+          {
+            "at": "2026-10-27T10:00:00.000Z",
+            "n": 737,
+            "wins": 548,
+            "losses": 189,
+            "flat": 0,
+            "pf": 2.6278139726956176,
+            "positiveRate": 0.7435549525101763,
+            "gp": 3.1279080885646855,
+            "gl": 1.1903080359056277,
+            "cashNet": 3.8752
+          },
+          {
+            "at": "2026-10-27T11:00:00.000Z",
+            "n": 339,
+            "wins": 107,
+            "losses": 232,
+            "flat": 0,
+            "pf": 0.45936527971487817,
+            "positiveRate": 0.31563421828908556,
+            "gp": 0.31351854235919485,
+            "gl": 0.6825037855577408,
+            "cashNet": -0.73797
+          },
+          {
+            "at": "2026-10-27T12:00:00.000Z",
+            "n": 1044,
+            "wins": 405,
+            "losses": 639,
+            "flat": 0,
+            "pf": 0.2562441286197311,
+            "positiveRate": 0.3879310344827586,
+            "gp": 1.6966352094361248,
+            "gl": 6.621167160297938,
+            "cashNet": -9.849064
+          }
+        ]
+      },
+      "raised": {
+        "settled": {
+          "n": 0,
+          "wins": 0,
+          "losses": 0,
+          "flat": 0,
+          "pf": null,
+          "positiveRate": null,
+          "gp": 0,
+          "gl": 0
+        },
+        "open": 0,
+        "maxOriginalStop": null
+      },
+      "perRange": [
+        {
+          "range": "Micro",
+          "orders": 2443,
+          "pf": 0.780699
+        },
+        {
+          "range": "Minimal",
+          "orders": 2533,
+          "pf": 1.480052
+        }
+      ],
+      "checks": {
+        "report": true,
+        "identities": true,
+        "candlePricesAndSelections": true,
+        "maxReturnError": 1.0231815376210429e-7,
+        "validationSteps": 12
+      },
+      "computeMs": 20941.116009,
+      "rssMaxMb": 498,
+      "maxCgroupBytes": 5499744256,
+      "rawSha256": "515dde12aad113720ac7680d2c523426b073abdd79d604e2dab85601b3df4fd3"
+    },
+    {
+      "id": "relate-on",
+      "validation": {
+        "at": "2026-10-27T01:00:00.000Z",
+        "passed": 489,
+        "evaluated": 1176,
+        "pf": 3.8151230633073223
+      },
+      "base": {
+        "evaluated": 134,
+        "passed": 55
+      },
+      "funding": {
+        "basis": "Exact per-close native report allocation",
+        "virtualCloses": 4816,
+        "fundedCloses": 4816,
+        "zeroAllocatedCloses": 0,
+        "unknownAllocations": 0
+      },
+      "fundedCounts": {
+        "openedPositions": 35,
+        "closedPositions": 23,
+        "openPositions": 12,
+        "openedOrders": 8540,
+        "settledOrders": 4816,
+        "openOrders": 3724,
+        "basis": "funded-modeled-allocations"
+      },
+      "modeledVirtualCounts": {
+        "openedPositions": 35,
+        "closedPositions": 23,
+        "openPositions": 12,
+        "openedOrders": 8540,
+        "settledOrders": 4816,
+        "openOrders": 3724
+      },
+      "settled": {
+        "n": 4816,
+        "wins": 2921,
+        "losses": 1895,
+        "flat": 0,
+        "pf": 1.1273746133068414,
+        "positiveRate": 0.6065199335548173,
+        "gp": 12.811256287837985,
+        "gl": 11.363797034829187
+      },
+      "cashPf": 1.114268,
+      "cashNet": 2.632429,
+      "openMtm": -56.002636,
+      "equityEnd": 9946.629793,
+      "hours": {
+        "positive": 7,
+        "negative": 5,
+        "flat": 0,
+        "detail": [
+          {
+            "at": "2026-10-27T01:00:00.000Z",
+            "n": 132,
+            "wins": 80,
+            "losses": 52,
+            "flat": 0,
+            "pf": 5.01747218472917,
+            "positiveRate": 0.6060606060606061,
+            "gp": 0.15321195077901523,
+            "gl": 0.030535685129520092,
+            "cashNet": 0.245353
+          },
+          {
+            "at": "2026-10-27T02:00:00.000Z",
+            "n": 20,
+            "wins": 11,
+            "losses": 9,
+            "flat": 0,
+            "pf": 1.7764281563194793,
+            "positiveRate": 0.55,
+            "gp": 0.06949999999999971,
+            "gl": 0.039123451040088436,
+            "cashNet": 0.060753
+          },
+          {
+            "at": "2026-10-27T03:00:00.000Z",
+            "n": 44,
+            "wins": 30,
+            "losses": 14,
+            "flat": 0,
+            "pf": 1.1393029283203253,
+            "positiveRate": 0.6818181818181818,
+            "gp": 0.11885662836125468,
+            "gl": 0.10432399093056405,
+            "cashNet": 0.028753
+          },
+          {
+            "at": "2026-10-27T04:00:00.000Z",
+            "n": 46,
+            "wins": 24,
+            "losses": 22,
+            "flat": 0,
+            "pf": 0.2308471009278672,
+            "positiveRate": 0.5217391304347826,
+            "gp": 0.043916269306267235,
+            "gl": 0.19023963969982777,
+            "cashNet": -0.292647
+          },
+          {
+            "at": "2026-10-27T05:00:00.000Z",
+            "n": 424,
+            "wins": 83,
+            "losses": 341,
+            "flat": 0,
+            "pf": 0.23457883420818132,
+            "positiveRate": 0.1957547169811321,
+            "gp": 0.36444716648814446,
+            "gl": 1.5536234022064799,
+            "cashNet": -2.375152
+          },
+          {
+            "at": "2026-10-27T06:00:00.000Z",
+            "n": 344,
+            "wins": 161,
+            "losses": 183,
+            "flat": 0,
+            "pf": 0.6906479637584372,
+            "positiveRate": 0.4680232558139535,
+            "gp": 0.6552790449934031,
+            "gl": 0.9487887887592399,
+            "cashNet": -0.591423
+          },
+          {
+            "at": "2026-10-27T07:00:00.000Z",
+            "n": 586,
+            "wins": 372,
+            "losses": 214,
+            "flat": 0,
+            "pf": 1.1694000185114566,
+            "positiveRate": 0.6348122866894198,
+            "gp": 0.7143646298266016,
+            "gl": 0.610881322488711,
+            "cashNet": 0.2047
+          },
+          {
+            "at": "2026-10-27T08:00:00.000Z",
+            "n": 218,
+            "wins": 171,
+            "losses": 47,
+            "flat": 0,
+            "pf": 18.304949314500977,
+            "positiveRate": 0.7844036697247706,
+            "gp": 0.5346715143413955,
+            "gl": 0.02920912290742235,
+            "cashNet": 1.014925
+          },
+          {
+            "at": "2026-10-27T09:00:00.000Z",
+            "n": 1005,
+            "wins": 952,
+            "losses": 53,
+            "flat": 0,
+            "pf": 63.465526567635415,
+            "positiveRate": 0.9472636815920398,
+            "gp": 5.096947243381803,
+            "gl": 0.08031048537744298,
+            "cashNet": 10.038074
+          },
+          {
+            "at": "2026-10-27T10:00:00.000Z",
+            "n": 694,
+            "wins": 539,
+            "losses": 155,
+            "flat": 0,
+            "pf": 3.272333782750165,
+            "positiveRate": 0.776657060518732,
+            "gp": 3.099908088564686,
+            "gl": 0.947308035905626,
+            "cashNet": 4.08138
+          },
+          {
+            "at": "2026-10-27T11:00:00.000Z",
+            "n": 320,
+            "wins": 98,
+            "losses": 222,
+            "flat": 0,
+            "pf": 0.45339707600194773,
+            "positiveRate": 0.30625,
+            "gp": 0.27951854235919604,
+            "gl": 0.6164983348017782,
+            "cashNet": -0.677959
+          },
+          {
+            "at": "2026-10-27T12:00:00.000Z",
+            "n": 983,
+            "wins": 400,
+            "losses": 583,
+            "flat": 0,
+            "pf": 0.27050498034223175,
+            "positiveRate": 0.4069175991861648,
+            "gp": 1.6806352094361252,
+            "gl": 6.2129547755825225,
+            "cashNet": -9.104326
+          }
+        ]
+      },
+      "raised": {
+        "settled": {
+          "n": 106,
+          "wins": 25,
+          "losses": 81,
+          "flat": 0,
+          "pf": 0.16147923785732354,
+          "positiveRate": 0.2358490566037736,
+          "gp": 0.0879999999999991,
+          "gl": 0.5449617001397561
+        },
+        "open": 0,
+        "maxOriginalStop": 0.007
+      },
+      "perRange": [
+        {
+          "range": "Micro",
+          "orders": 2283,
+          "pf": 0.844329
+        },
+        {
+          "range": "Minimal",
+          "orders": 2533,
+          "pf": 1.480052
+        }
+      ],
+      "checks": {
+        "report": true,
+        "identities": true,
+        "candlePricesAndSelections": true,
+        "maxReturnError": 1.0231815376210429e-7,
+        "validationSteps": 12
+      },
+      "computeMs": 20601.737093,
+      "rssMaxMb": 476,
+      "maxCgroupBytes": 5541650432,
+      "rawSha256": "525b08a74eb92020d75e4385b1a7380a6955f5ac7bcb25445b91d0f180a0d6a3"
+    }
+  ]
+}

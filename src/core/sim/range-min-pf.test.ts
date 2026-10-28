@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { configEval, defaultWalkForward, execDecision, makeTape, selectAt, selectFixed, lastNOk, type WalkForwardOptions } from "./walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { minPfOf } from "../minimal-coord.ts";
+import { basePassTags, rangeCellPass } from "../pipeline/pipeline.ts";
 import { checkSettings } from "../settings-check.ts";
 import type { Trade } from "../domain/types.ts";
 
@@ -90,6 +91,22 @@ describe("per-range stage min PF", () => {
       ["mc", "mn", "mp", "sh", "gn", "lg", undefined].map((tag) => minPfOf(g, tag)),
       [1.05, 1.1, 1.1, 1.1, 1.2, 1.3, g.minPf],
     );
+  });
+
+  it("Short keeps at least 1.1 from Base to entry, including legacy settings below the floor", () => {
+    const gates = { ...DEFAULT_SETTINGS.gates, minPf: 1.05, minTrades: 10, maxDdr: 0, rangeMinPf: { short: 1.05 } };
+    assert.equal(minPfOf(gates, "sh", IND), 1.1);
+    assert.equal(minPfOf({ ...gates, rangeMinPf: undefined }, "sh", IND), 1.1);
+    assert.equal(minPfOf({ ...gates, rangeMinPf: { short: 1.4 } }, "sh", IND), 1.4);
+    assert.equal(minPfOf(gates, "gn", IND), 1.05, "the Short floor does not leak to other ranges");
+    assert.equal(minPfOf({ ...gates, rangeMinPf: { short: 3 } }, "sh", "sig-ema-cross-s@m15"), 1.5,
+      "a Signal using Short distances retains its independent floor");
+    const stat = (pf: number) => ({ n: 40, pf, net: 1, mdd: 0 });
+    assert.deepEqual(basePassTags({ ind: IND, full: stat(1.08) as never, ranges: { sh: stat(1.08) as never } }, gates), [""]);
+    assert.deepEqual(basePassTags({ ind: IND, full: stat(1.08) as never, ranges: { sh: stat(1.1) as never } }, gates), ["", "sh"]);
+    assert.equal(rangeCellPass(gates, IND)("sh", stat(1.08) as never), false);
+    assert.equal(rangeCellPass(gates, IND)("sh", stat(1.1) as never), true);
+    assert.doesNotThrow(() => checkSettings({ gates }), "legacy saved settings remain readable");
   });
 
   for (const [name, select] of Object.entries({ fixed: selectFixed, hourly: selectAt })) {

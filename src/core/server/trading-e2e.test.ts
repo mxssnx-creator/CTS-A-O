@@ -95,6 +95,8 @@ describe(
         market: "synthetic",
         feed: { tickers },
       }));
+      // This runtime exercises live control against SimExchange only; its in-memory state is synthetic.
+      (engineRt as CoreRuntime & { testOnlyAllowMemoryLive?: boolean }).testOnlyAllowMemoryLive = true;
       // every validated config trades (the audit and selection are covered elsewhere): plenty of paper lanes
       engineRt.updateSettings({}, { validLastN: 0, lastN: 0 });
       engineRt.start();
@@ -128,6 +130,8 @@ describe(
       rt = runtimes.track(new CoreRuntime(new CoreDb(":memory:"), small, {
         market: "synthetic", feed: { tickers }, priceStream: null,
       }));
+      // This runtime exercises live control against SimExchange only; its in-memory state is synthetic.
+      (rt as CoreRuntime & { testOnlyAllowMemoryLive?: boolean }).testOnlyAllowMemoryLive = true;
       rt.stop();
       rt.settings.live = { ...engineRt.settings.live };
       const a = configId("follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT);

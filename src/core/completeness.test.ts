@@ -14,7 +14,9 @@ import {
   MAX_FOCUS_PAIRS,
   GATE_PRESETS,
   STRATEGY_PRESETS,
+  mergeGridSettings,
   type CoreSettings,
+  type GridSettingsPatch,
   type SettingsPatch,
 } from "./config.ts";
 import { checkMerged, checkSettings } from "./settings-check.ts";
@@ -246,6 +248,11 @@ const CASES: Record<string, Case> = {
   "grid.trailingOnly": oneOf([true, false], [0, 1, "true", null]),
   ...rangeKeys("minimal"),
   ...rangeKeys("short"),
+  "grid.lowRange.step": num(0.000001, 0.008),
+  "grid.lowRange.steps": list(2, 6, { int: true, max: 64 }),
+  "grid.lowRange.slRatios": list(0.5, 3.5, { max: 64 }),
+  "grid.lowRange.trailRatios": list(0, 1, { max: 64 }),
+  "grid.lowRange.maxHoldMin": num(1, 1440, { int: true }),
   ...rangeKeys("general"),
   ...rangeKeys("long"),
   // Micro (on by default since 13 Oct): its own target / stop / trail bounds, the shared levers as the others
@@ -372,7 +379,8 @@ const CASES: Record<string, Case> = {
   "relate.minPf": num(0, 100),
   "relate.lastN": num(60, 250, { int: true }),
   "relate.minTrades": num(60, 250, { int: true }),
-  "relate.maxStack": num(1, 250, { int: true }),
+  "relate.maxStack": num(1, 8, { int: true }),
+  "relate.maxSl": num(0.0025, 0.015, { also: [0.005, 0.0075, 0.01, 0.0125], bad: [0.003, 0.008] }),
 };
 
 /**
@@ -625,14 +633,15 @@ describe("settings completeness: every leaf is on the Settings page or listed as
 });
 
 // ── presets ──────────────────────────────────────────────────────────────────────────────────────────────────────
-/** A preset applied as the runtime applies it (applyPreset + mergeSettings): groups merged one level deep, signals
- *  through mergeSignals, gates / tactics from the defaults, focus replaced. */
+/** A preset applied as the runtime applies it: one-level groups, Low-Range leaves, and the Signals merger. */
 function applied(patch: SettingsPatch): CoreSettings {
   const p = presetSettings(patch) as Obj;
   const s: Obj = { ...structuredClone(DEFAULT_SETTINGS) };
   for (const [k, v] of Object.entries(p)) {
     if (k === "signals")
       s.signals = mergeSignals(DEFAULT_SETTINGS.signals, v as Partial<SignalSettings>);
+    else if (k === "grid")
+      s.grid = mergeGridSettings(DEFAULT_SETTINGS.grid, v as GridSettingsPatch);
     else if (isObj(v) && isObj(s[k])) s[k] = { ...(s[k] as Obj), ...v };
     else s[k] = structuredClone(v);
   }

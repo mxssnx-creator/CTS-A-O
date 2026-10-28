@@ -25,6 +25,11 @@ export function createExitProtection(p: Protect, entry: number, cost = 0): ExitP
   )
     return;
   if (!(Number.isFinite(cost) && cost >= 0)) throw new RangeError("Exit protection cost must be finite and nonnegative");
+  if (p.exitTrailFloor !== undefined && !(Number.isFinite(p.exitTrailFloor) && p.exitTrailFloor >= 0))
+    throw new RangeError("Exit trailing floor must be finite and nonnegative");
+  if (p.exitTrailFloor !== undefined && p.trail > 0 &&
+      p.trail * (p.trailStep ?? 1) + 1e-12 < p.exitTrailFloor)
+    throw new RangeError("Exit trailing gap is below its captured floor");
   return {
     set: p.exitSet,
     ...(cost > 0 ? { cost } : {}),
@@ -32,6 +37,7 @@ export function createExitProtection(p: Protect, entry: number, cost = 0): ExitP
     baseSl: p.sl,
     baseTrail: p.trail,
     baseTrailDist: p.trail * (p.trailStep ?? 1),
+    ...(p.exitTrailFloor !== undefined ? { trailFloor: p.exitTrailFloor } : {}),
     previousClose: entry,
     rangeEma: p.sl,
     moveEma: 0,
@@ -54,6 +60,7 @@ export function advanceExitProtection(
   if (
     !s ||
     (s.cost !== undefined && !(Number.isFinite(s.cost) && s.cost >= 0)) ||
+    (s.trailFloor !== undefined && !(Number.isFinite(s.trailFloor) && s.trailFloor >= 0)) ||
     !(p.entry > 0) ||
     !Number.isFinite(bar.t) ||
     bar.t <= s.lastBarT ||
@@ -107,7 +114,7 @@ export function advanceExitProtection(
   }
   if ((s.set === "trailing" || s.set === "trailing-only") && s.baseTrail > 0) {
     p.trail = s.baseTrail * clamp(0.9 + 0.1 * volatility, 0.75, 1.25);
-    p.trailDist = s.baseTrailDist * clamp(0.8 + 0.2 * volatility, 0.65, 1.35);
+    p.trailDist = Math.max(s.trailFloor ?? 0, s.baseTrailDist * clamp(0.8 + 0.2 * volatility, 0.65, 1.35));
     if ((p.side * (p.peak - p.entry)) / p.entry >= p.trail) {
       p.trailOn = true;
       const stop = p.peak * (1 - p.side * p.trailDist);

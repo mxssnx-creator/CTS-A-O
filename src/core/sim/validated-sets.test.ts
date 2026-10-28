@@ -92,7 +92,7 @@ describe("B2: the validated set V", () => {
   ]);
   const s = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.0, minTrades: 3, maxDdr: 0 } };
   const tapes: ConfigTape[] = buildTapes(u2, protectGrid(15, { ...DEFAULT_SETTINGS.grid, holdH: [16] }), 0.002, undefined, new Set(["follow|ema-21-55", "follow|rsi-mom-14-20", "revert|z-50-2", "revert|ema-21-55"]));
-  const base = { ...defaultWalkForward(s), longH: 96, preH: 20, simH: 48, stepH: 1 };
+  const base = { ...defaultWalkForward(s), seatSet: "pool" as const, longH: 96, preH: 20, simH: 48, stepH: 1 };
   const vset = (o = base) => {
     const g = validatedSetGen(tapes, u2.nowT - 48 * H, o);
     for (let r = g.next(); ; r = g.next()) if (r.done) return r.value;
@@ -118,7 +118,7 @@ describe("B2: the validated set V", () => {
     assert.ok(compared > 0, "some seats");
   });
 
-  it("a run's executed ids ⊆ result.validated ⊆ the tapes, per side; the default path is unchanged", () => {
+  it("a run's executed ids ⊆ result.validated ⊆ the tapes, per side; pool remains an explicit opt-in", () => {
     const pool = walkForward(u2, tapes, base);
     const pool2 = walkForward(u2, tapes, { ...base, seatSet: "pool" });
     assert.equal(JSON.stringify(pool.trades), JSON.stringify(pool2.trades), '"pool" is today');
@@ -137,6 +137,10 @@ describe("B2: the validated set V", () => {
     assert.ok(sides.size === 2, "both sides executed");
     // the pool executes configs outside V (the restriction is real)
     assert.ok(pool.trades.some((tr) => !v.has(tr.cfg)), "the pool executes outside V");
+  });
+
+  it("defaults to the Base-validated config set", () => {
+    assert.equal(defaultWalkForward(s).seatSet, "validated");
   });
 
   it("probe and invertSeats are refused under seatSet validated", () => {
@@ -266,9 +270,9 @@ describe("B6: skip what cannot seat", () => {
 
 import { sanitizeWf } from "../server/runtime.server.ts";
 describe("wf.seatSet reaches the engine", () => {
-  it("sanitizeWf keeps validated / pool and drops anything else", () => {
+  it("runtime settings pin seating to validated and drop invalid values", () => {
     assert.equal(sanitizeWf({ seatSet: "validated" }).seatSet, "validated");
-    assert.equal(sanitizeWf({ seatSet: "pool" }).seatSet, "pool");
+    assert.equal(sanitizeWf({ seatSet: "pool" }).seatSet, "validated");
     assert.equal(sanitizeWf({ seatSet: "x" as never }).seatSet, undefined);
   });
 });

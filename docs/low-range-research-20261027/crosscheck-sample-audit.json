@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "cellsRecomputed": 2,
+  "categories": {
+    "base-failed": 2
+  },
+  "selectionBarsOnly": true,
+  "stratification": "first recorded cell per step, timeframe and decision category",
+  "symbols": 20,
+  "limitations": "Sample check of qualification, not full runtime or funded execution."
+}

@@ -97,13 +97,15 @@ describe("Real seats", () => {
     const dcaGood = tape("follow", "rsi@m15", "dca-active", 0.02, 4, "d");
     const picks = selectDurable([base, dcaGood], now, fam, new Set()).picks.map((p) => p.id);
     assert.deepEqual(picks.sort(), [base.id, dcaGood.id].sort(), "base and DCA both seated");
-    // one seat per pair without family seats (seats per pair: every config is its own seat by default)
+    // Disabling family portfolio limits never makes different strategy types the same seat.
     const one = selectDurable([base, dcaGood], now, { ...fam, familySeats: false, seatPer: "pair" }, new Set()).picks;
-    assert.equal(one.length, 1);
+    assert.equal(one.length, 2);
     // a DCA tape worse than the base is not seated
     const dcaWorse = tape("follow", "rsi@m15", "dca-active", 0.01, 4, "w", 1.5);
     const p2 = selectDurable([base, dcaWorse], now, fam, new Set()).picks.map((p) => p.id);
     assert.deepEqual(p2, [base.id]);
+    assert.deepEqual(selectDurable([base, dcaWorse], now, { ...fam, familyNeedsBase: false }, new Set()).picks.map((p) => p.id).sort(),
+      [base.id, dcaWorse.id].sort(), "off: a stronger base cannot veto an independently passing ladder");
     // a DCA tape on a pair without any base result to beat is not seated
     const lone = tape("follow", "macd@m15", "dca-active", 0.02, 4, "l");
     assert.deepEqual(selectDurable([lone], now, fam, new Set()).picks, []);

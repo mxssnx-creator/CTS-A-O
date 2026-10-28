@@ -34,7 +34,7 @@ describe("actual execution account budgets across independent Signal sets", () =
   for (const range of ["mp", "mc", "mn", "sh", "gn", "lg", "sig-s", "sig-m"])
     for (const kind of ["normal", "trailing", "trailing-only", "exit", "dca", "dca-active", "axis"] as StratKind[])
       for (const side of [1, -1] as const)
-        it(`${range}/${kind}/${side}: exact partial ownership, sibling protection and complete final closure`, async () => {
+        it(`${range}/${kind}/${side}: one parent per netted side, exact partial ownership and sibling protection`, async () => {
           const { rt, ex, step } = setup();
           Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10 });
           const ind = range.startsWith("sig-") ? `sig-ema-cross-${range.slice(4)}@m5` : "ema-9-21@m5";
@@ -45,32 +45,58 @@ describe("actual execution account budgets across independent Signal sets", () =
             ...(kind === "exit" ? { exitType: "historic" as const } : {}) };
           const cfg = configId("follow", ind, protect, kind);
           const sibling = configId("follow", ind, { ...protect, sl: .021 }, kind);
-          rt.paper.positions = [lane(cfg, "S0-USDT", side, 10), lane(sibling, "S0-USDT", side, 10)];
-          await step();
+          const first = lane(cfg, "S0-USDT", side, 10);
+          const blocked = lane(sibling, "S0-USDT", side, 10);
+          const other = lane(sibling, "S1-USDT", side, 17);
+          rt.paper.positions = [first, blocked, other];
+          const firstStatus = await step();
           const key = `S0-USDT|${side === 1 ? "LONG" : "SHORT"}`;
+          const otherKey = `S1-USDT|${side === 1 ? "LONG" : "SHORT"}`;
           const original = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {}).find(p => p.id.includes(cfg))!;
+          const independent = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {}).find(p => p.sym === "S1-USDT")!;
           assert.ok(original?.s?.oid, `missing owned stop: ${cfg}`);
-          assert.equal(ex.positions.get(key), 2);
-          ex.positions.set(key, 1.6);
+          assert.ok(independent?.s?.oid, "the independently owned symbol has its own stop");
+          assert.equal(ex.positions.get(key), 1, "a second parent is not admitted to the same netted side");
+          assert.ok((ex.positions.get(otherKey) ?? 0) > 0, "a distinct symbol can still open independently");
+          assert.ok(firstStatus.skipped.some(x =>
+            x.sym === "S0-USDT" && /reserved for another parent/.test(x.why)), "the competing parent is explicitly fenced");
+          rt.paper.positions = [first, other];
+          ex.positions.set(key, .6);
           const status = ex.orderStatus.bind(ex);
           const receiptClient: ExchangeClient = ex;
-          receiptClient.orderStatus = async (sym, id) => id === original.s?.oid
-            ? { order: { orderId: id, status: "PARTIALLY_FILLED", executedQty: .4, avgPrice: side === 1 ? 9.8 : 10.2 } }
-            : status(sym, id);
+          const partialPx = side === 1 ? 9.8 : 10.2;
+          const stopPx = original.s!.px;
+          receiptClient.orderStatus = async (sym, id) => {
+            if (id !== original.s?.oid) return status(sym, id);
+            const done = ex.done.get(id);
+            if (done?.status === "FILLED") return { order: { orderId: id, status: "FILLED",
+              executedQty: 1, avgPrice: .4 * partialPx + .6 * stopPx } };
+            return { order: { orderId: id, status: done?.status ?? "PARTIALLY_FILLED", executedQty: .4, avgPrice: partialPx } };
+          };
           const marketCount = ex.log.filter(o => o.type === "MARKET").length;
           for (let i = 0; i < 3; i++) await step();
           assert.equal(ex.log.filter(o => o.type === "MARKET").length, marketCount, "no shadow repurchase after a partial");
           const parents = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
-          assert.deepEqual(parents.map(p => p.qty).sort(), [.6, 1]);
+          const partial = parents.find(p => p.sym === "S0-USDT")!;
+          assert.equal(partial.qty, .6);
+          assert.ok(partial.s?.oid && ex.orders.some((o) => o.id === partial.s!.oid), "the remaining parent has a resting stop");
+          assert.equal(partial.s!.px, original.s!.px, "a replacement preserves the parent's original stop level");
+          if (partial.s!.oid !== original.s!.oid) assert.equal(partial.s!.qty, .6, "a replacement covers only the confirmed remainder");
+          assert.equal(parents.find(p => p.sym === "S1-USDT")?.s?.oid, independent.s!.oid, "the other parent keeps its own stop");
           assert.deepEqual(rt.db.all<{qty:number}>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'").map(r => r.qty), [.4]);
-          for (const parent of parents) { assert.ok(parent.s?.oid);ex.triggerOrder(parent.s.oid); }
+          ex.triggerOrder(partial.s!.oid!);
           for (let i = 0; i < 3; i++) await step();
-          assert.equal(ex.positions.size, 0, "all confirmed owned quantity closes");
+          assert.equal(ex.positions.has(key), false, "the original parent's remaining confirmed quantity closes");
+          assert.ok((ex.positions.get(otherKey) ?? 0) > 0, "its sibling remains held on the other symbol");
+          assert.ok(ex.orders.some(o => o.id === independent.s!.oid), "its sibling's stop remains resting");
+          assert.equal(ex.log.filter(o => o.type === "MARKET").length, marketCount, "held paper rows cannot reopen the closed parent");
+          const filled = rt.db.all<{qty:number}>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'");
+          assert.ok(Math.abs(filled.reduce((sum,r) => sum+r.qty,0)-1)<1e-10, "the cumulative receipt equals the initial parent quantity exactly once");
+          ex.triggerOrder(independent.s!.oid!);
+          for (let i = 0; i < 3; i++) await step();
+          assert.equal(ex.positions.size, 0, "both independently proven parents close");
           assert.equal(ex.orders.length, 0, "no orphan protective orders after closure");
           assert.equal(Object.keys(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {}).length, 0);
-          assert.equal(ex.log.filter(o => o.type === "MARKET").length, marketCount, "held paper rows cannot reopen closed parents");
-          const filled = rt.db.all<{qty:number}>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'");
-          assert.ok(Math.abs(filled.reduce((sum,r) => sum+r.qty,0)-2)<1e-10, "partial plus final slices equal initial owned quantity exactly once");
           // Match runtime shutdown: persist pending live state before closing its SQLite connection.
           flushLiveKv(rt.db);
           assert.deepEqual(rt.db.kvGet("laneOrders"), {});
@@ -132,15 +158,17 @@ describe("actual execution account budgets across independent Signal sets", () =
     assert.equal(ex.positions.size, 0, "50 USD pending stack leaves none of the50 USD gross budget for a sibling");
   });
 
-  it("weighted Block exits do not merge unrelated minimum-sized configs or change their one-unit rule", async () => {
+  it("weighted Block exits do not merge unrelated configs and keep the one-unit rule on independent symbols", async () => {
     const { rt, ex, step } = setup();
     Object.assign(rt.settings.live, { notionalUsd: 25, laneOrders: true });
-    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10, 9), lane(sig("m"), "S0-USDT", 1, 10, 3)];
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10, 9), lane(sig("m"), "S1-USDT", 1, 17, 3),
+      lane(sig("w"), "S0-USDT", 1, 10, 3)];
     await step();
-    assert.equal(ex.positions.get("S0-USDT|LONG"), 5, "two independent ordinary configs keep one25USD unit each");
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 2.5, "the competing same-side parent is fenced");
+    assert.ok(Math.abs((ex.positions.get("S1-USDT|LONG") ?? 0) * 17 - 25) < .02, "the separate parent keeps one 25 USD unit");
     const map = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
     assert.equal(map.length, 2, "different config identities retain separate physical exits");
-    assert.ok(map.every((x) => x.qty === 2.5));
+    assert.deepEqual(map.map((x) => x.sym).sort(), ["S0-USDT", "S1-USDT"]);
   });
 
   it("a partial weighted Block fill reserves its unfilled remainder and cannot fund a new sibling", async () => {
@@ -173,17 +201,20 @@ describe("actual execution account budgets across independent Signal sets", () =
       { ...DEFAULT_BLOCK, mode: "overall", maxMult: 2,
         sources: { config: true, overall: true, symbol: true, direction: true, indication: true, type: true } }, false);
     rt.paper.positions = [{ ...lane(sig("s"), "S0-USDT", 1, 10), vol: d.vol, legs: d.legs },
-      lane(sig("m"), "S0-USDT", 1, 10)];
+      lane(sig("m"), "S1-USDT", 1, 17)];
     await step();
-    assert.equal(ex.positions.get("S0-USDT|LONG"), 7.5);
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 5);
+    const otherQty = ex.positions.get("S1-USDT|LONG")!;
+    assert.ok(Math.abs(otherQty * 17 - 25) < .02);
     const physical = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
     const block = physical.find((p) => Object.keys(p.weights ?? {}).length === 7)!;
     assert.ok(block?.s?.oid, "the exact Block parent has its own physical stop");
     ex.triggerOrder(block.s.oid);
-    assert.equal(ex.positions.get("S0-USDT|LONG"), 2.5, "only the unrelated25USD config remains held");
-    await step();
-    await step();
-    assert.equal(ex.positions.get("S0-USDT|LONG"), 2.5, "no source child reopens its parent after its own stop");
+    assert.equal(ex.positions.has("S0-USDT|LONG"), false);
+    assert.equal(ex.positions.get("S1-USDT|LONG"), otherQty, "the unrelated 25 USD config remains held");
+    for (let i = 0; i < 4; i++) await step();
+    assert.equal(ex.positions.has("S0-USDT|LONG"), false, "no source child reopens its parent after its own stop");
+    assert.equal(ex.positions.get("S1-USDT|LONG"), otherQty);
     const suppressed = liveKv<Record<string, unknown>>(rt.db, "controlSuppressed") ?? {};
     assert.equal(Object.keys(suppressed).length, 7, "all logical Block allocations share the proven stop exit");
     assert.equal(Object.keys(liveKv(rt.db, "laneOrders") ?? {}).length, 1, "the unrelated config retains its separate protection");
@@ -310,6 +341,7 @@ describe("actual execution account budgets across independent Signal sets", () =
   it("adding a narrow-stop sibling on a held key cannot dilute the wider quantity's risk to fund growth", async () => {
     const { rt, ex, step } = setup();
     rt.settings.live.maxRiskPct = .1;
+    rt.settings.live.laneOrders = true;
     // Ordinary engine stops can be 10%; Signals retain their legacy 2% hard ceiling.
     rt.paper.positions = [lane("follow|ema-9-21@m5|tp1|sl10|tr0|h32", "S0-USDT", 1, 10, 1, .1)];
     await step();
@@ -317,7 +349,11 @@ describe("actual execution account budgets across independent Signal sets", () =
     rt.paper.positions.push(lane(sig("m"), "S0-USDT", 1, 10, 1, .001));
     const result = await step();
     assert.equal(ex.positions.get("S0-USDT|LONG"), 10, "the existing100 USD still has a2 USD capped-stop loss");
-    assert.match(result.control!.actions.find((a) => a.kind === "increase")?.msg ?? "", /account risk budget/);
+    assert.ok(result.skipped.some((s) => s.sym === "S0-USDT" && /another or unknown parent/.test(s.why)), "same-side sibling is fenced");
+    rt.paper.positions.push(lane("follow|ema-9-21@m5|tp1|sl10|tr0|h32", "S1-USDT", 1, 17, 1, .1));
+    await step();
+    const notional = 10 * (ex.positions.get("S0-USDT|LONG") ?? 0) + 17 * (ex.positions.get("S1-USDT|LONG") ?? 0);
+    assert.ok(notional * .1 <= 10 + .01, "confirmed reallocation across symbols stays within the account risk budget");
   });
 
   it("unfilled entries also reserve free margin when the configured floor is enabled", async () => {
@@ -458,7 +494,7 @@ describe("actual execution account budgets across independent Signal sets", () =
     assert.equal(ex.positions.get("S0-USDT|LONG"), .75);
   });
 
-  it("native one-way exits divide only the net owned quantity across the surviving independent parents", async () => {
+  it("one-way opposite parents wait, and one same-side parent retains its own exit", async () => {
     const { rt, ex, step } = setup();
     Object.assign(rt.settings.live, { laneOrders: true, positionMode: "oneway", notionalUsd: 20 });
     const place = ex.order.bind(ex);
@@ -472,33 +508,47 @@ describe("actual execution account budgets across independent Signal sets", () =
     rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10), lane(sig("m"), "S0-USDT", 1, 10),
       lane(sig("w"), "S0-USDT", -1, 10)];
     await step();
-    assert.equal(ex.positions.get("S0-USDT|LONG"), 2, "two longs minus one short fund one20USD unit");
+    assert.equal(ex.positions.size, 0, "opposite unfunded parents are not silently netted or arbitrarily picked");
+    rt.paper.positions = rt.paper.positions.slice(0, 2);
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 2, "the same-side competing parent waits");
     const physical = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
-    assert.equal(physical.length, 2, "only the surviving-side parent configs have exits");
-    assert.ok(physical.every((p) => p.side === 1 && p.qty === 1));
+    assert.equal(physical.length, 1, "the one admitted parent has its own exit");
+    assert.ok(physical.every((p) => p.side === 1 && p.qty === 2));
     assert.equal(physical.reduce((sum, p) => sum + p.qty, 0), 2);
-    assert.deepEqual(ex.orders.filter((o) => (ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V") && o.type === "STOP_MARKET").map((o) => o.qty), [1, 1]);
+    assert.deepEqual(ex.orders.filter((o) => (ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V") && o.type === "STOP_MARKET").map((o) => o.qty), [2]);
+    rt.paper.positions.push(lane(sig("w"), "S0-USDT", -1, 10));
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 2, "an opposite candidate cannot net away the held parent");
+    assert.equal(ex.positions.has("S0-USDT|SHORT"), false);
   });
 
   it("a measured conditional partial fill protects the exact remainder without reopening it or diluting siblings", async () => {
     const { rt, ex, step } = setup();
     Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10 });
-    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10), lane(sig("m"), "S0-USDT", 1, 10)];
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10), lane(sig("m"), "S1-USDT", 1, 17)];
     await step();
     const original = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {}).find((p) => p.id.includes(sig("s")))!;
     assert.equal(original.qty, 1);
-    ex.positions.set("S0-USDT|LONG", 1.6);
+    const other = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {}).find((p) => p.sym === "S1-USDT")!;
+    ex.positions.set("S0-USDT|LONG", .6);
     const status = ex.orderStatus.bind(ex);
     const receiptClient: ExchangeClient = ex;
     receiptClient.orderStatus = async (sym, id) => id === original.s?.oid
-      ? { order: { orderId: id, status: "PARTIALLY_FILLED", executedQty: .4, avgPrice: 9.8 } } : status(sym, id);
+      ? { order: { orderId: id, status: ex.orders.some((o) => o.id === id) ? "PARTIALLY_FILLED" : "CANCELLED",
+        executedQty: .4, avgPrice: 9.8 } } : status(sym, id);
     const count = ex.log.filter((o) => o.type === "MARKET").length;
     for (let i = 0; i < 3; i++) await step();
     assert.equal(ex.log.filter((o) => o.type === "MARKET").length, count, "the stopped .4 share is never repurchased");
-    assert.equal(ex.positions.get("S0-USDT|LONG"), 1.6);
+    assert.equal(ex.positions.get("S0-USDT|LONG"), .6);
     const parents = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
-    assert.deepEqual(parents.map((p) => p.qty).sort(), [.6, 1]);
-    assert.deepEqual(ex.orders.filter((o) => o.type === "STOP_MARKET" && (ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V")).map((o) => o.qty).sort(), [.6, 1]);
+    assert.equal(parents.find((p) => p.id === original.id)?.qty, .6);
+    assert.equal(parents.find((p) => p.id === other.id)?.qty, other.qty);
+    const remaining = parents.find((p) => p.id === original.id)!;
+    assert.ok(remaining.s?.oid && ex.orders.some((o) => o.id === remaining.s!.oid), "the remaining exact parent has a resting stop");
+    assert.equal(remaining.s!.px, original.s!.px);
+    if (remaining.s!.oid !== original.s!.oid) assert.equal(remaining.s!.qty, .6);
+    assert.ok(ex.orders.some((o) => o.id === other.s!.oid), "the independent sibling's stop is untouched");
     const rows = rt.db.all<{ qty: number }>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'");
     assert.deepEqual(rows.map((r) => r.qty), [.4], "one measured cumulative slice is booked once");
   });
@@ -507,7 +557,7 @@ describe("actual execution account budgets across independent Signal sets", () =
     const { rt, ex, step } = setup();
     Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10 });
     const first = { ...lane(sig("s"), "S0-USDT", 1, 10), target: 11 };
-    rt.paper.positions = [first, lane(sig("m"), "S0-USDT", 1, 10)];
+    rt.paper.positions = [first, lane(sig("m"), "S1-USDT", 1, 17)];
     await step();
     const original = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {}).find((p) => p.id.includes(sig("s")))!;
     assert.ok(original.t?.oid);
@@ -520,11 +570,14 @@ describe("actual execution account budgets across independent Signal sets", () =
     assert.equal(pending.qty, 0);
     assert.ok(pending.closed);
     assert.equal(pending.t?.oid, original.t?.oid, "a refused sibling never loses its durable identity");
-    assert.equal(ex.positions.get("S0-USDT|LONG"), 1);
+    assert.equal(ex.positions.has("S0-USDT|LONG"), false);
+    assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0, "the independent parent remains held");
     refuse = false;
-    await step();
+    for (let i = 0; i < 4; i++) await step();
     assert.equal(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders")![original.id], undefined);
-    assert.equal(ex.positions.get("S0-USDT|LONG"), 1);
+    assert.ok(!ex.orders.some((o) => o.id === original.t!.oid), "the sibling cancel is confirmed before the parent is released");
+    assert.equal(ex.positions.has("S0-USDT|LONG"), false);
+    assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0);
   });
 
   it("a terminal cancellation without cumulative quantity remains unknown until zero execution is measured", async () => {
@@ -571,10 +624,15 @@ describe("actual execution account budgets across independent Signal sets", () =
     await step();
     assert.equal(ex.log.filter((o) => o.type === "MARKET").length, count, "the already filled .4 is reconciled first");
     await step();
-    assert.equal(ex.positions.get("S0-USDT|LONG"), .4,
-      "after reconciliation, the remaining requested .1 reduction follows the existing .2 venue-minimum rule");
-    assert.equal(ex.log.filter((o) => o.type === "MARKET").at(-1)?.quantity, .2,
-      "the next reduction uses the fresh .6 holding, not the stale original1");
+    assert.equal(ex.positions.get("S0-USDT|LONG"), .6,
+      "the native partial stays held while its exact ownership is reconciled");
+    assert.equal(ex.log.filter((o) => o.type === "MARKET").length, count,
+      "no second reduction is sent against a partly settled parent");
+    await step();
+    assert.ok(ex.orders.some((o) => o.type === "STOP_MARKET"), "the held remainder retains an exchange stop");
+    assert.equal(ex.orders.filter((o) => o.symbol === "S0-USDT" && o.type === "STOP_MARKET" &&
+      ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V").length, 1,
+      "residual repair and ordinary planning submit only one native stop");
     assert.deepEqual(rt.db.all<{ qty: number }>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'").map((r) => r.qty), [.4]);
   });
 

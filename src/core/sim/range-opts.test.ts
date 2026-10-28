@@ -136,10 +136,10 @@ describe("per-range seat and entry options (wf.rangeOpts)", () => {
     assert.deepEqual(traded({ ...base, mode: "durable", rangeOpts: { sh: { mode: "fixed" } } }), tapes.filter((x) => x.protect.tag === "sh").map((x) => x.id).sort());
   });
 
-  it("mode groups only while every config (or every range) has its own seats: the groups never share a seat", () => {
+  it("range modes keep separate seats even under legacy pair and rangeSeats-off settings", () => {
     const ro = { mn: { mode: "durable" as const } };
-    assert.equal(modeGroups(tapes, { ...base, seatPer: "pair", rangeOpts: ro }), null, "pair seats: one selection");
-    assert.equal(modeGroups(tapes, { ...base, seatPer: undefined, rangeOpts: ro }), null);
+    assert.deepEqual(modeGroups(tapes, { ...base, seatPer: "pair", rangeOpts: ro })!.map((x) => x.mode), ["fixed", "durable"]);
+    assert.deepEqual(modeGroups(tapes, { ...base, seatPer: undefined, rangeOpts: ro })!.map((x) => x.mode), ["fixed", "durable"]);
     assert.deepEqual(
       modeGroups(tapes, { ...base, seatPer: "pair", rangeSeats: true, rangeOpts: ro })!.map((x) => x.mode),
       ["fixed", "durable"],

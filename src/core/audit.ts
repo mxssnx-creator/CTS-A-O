@@ -36,8 +36,9 @@ import {
   modeledUnitStatsOf as unitStatsOf,
 } from "./metrics/stats.ts";
 import { orderKey, sizeBookGen, type SizingSettings } from "./sizing.ts";
+import { MAX_EXTERNAL_STACK } from "./config.ts";
 import { blockStackCap } from "./sim/block.ts";
-import { capRelateParts, relateExternalStackCap, RELATE_SOURCES } from "./sim/relate-volume.ts";
+import { capRelateParts, combineRelateStack, relateExternalStackCap, RELATE_SOURCES } from "./sim/relate-volume.ts";
 import type { Trade } from "./domain/types.ts";
 
 export interface AuditCheck {
@@ -82,6 +83,7 @@ export interface AuditInput {
       vol?: number;
       /** ladder weight (Axis): part of vol, not of the Block multiple */
       w?: number;
+      blockVol?: number;
       coordVol?: number;
       relateVol?: number;
       volFactor?: number;
@@ -301,8 +303,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         direction,
         sym: x.sym,
         side: x.side,
-        relateBase: (blockVol) => blockVol * (x.coordVol ?? 1) * (x.hedgeVol ?? 1) *
-          (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol),
+        relateBase: () => 1,
       });
       if (!d.ok) {
         denied++;
@@ -310,26 +311,23 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         continue;
       }
       const relateVol = x.relateVol ?? 1;
-      const mult = (x.mult ?? 1) /
-        ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol) * relateVol);
-      if (!close(d.vol, mult)) {
-        volMismatch++;
-        if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} vol ${mult} ≠ ${d.vol}`);
-      }
       const baseExternal = d.vol * (x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol);
+      const relationCap = relateExternalStackCap(o.relate?.maxStack ?? MAX_EXTERNAL_STACK, tp.kind, tp.protect);
+      const combined = combineRelateStack(baseExternal, o.relate?.enabled ? (d.relateVol ?? 1) : 1, relationCap);
+      if (!close(d.vol, x.blockVol ?? d.vol) || !close(combined.volume, x.mult ?? 1)) {
+        volMismatch++;
+        if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} block / total ${(x.blockVol ?? d.vol)} / ${x.mult ?? 1} ≠ ${d.vol} / ${combined.volume}`);
+      }
       // Match the entry-time reservation used by the simulator; DCA/Axis must leave room for all possible
       // ladder fills without using the number of legs that happened to fill later.
-      const relationCap = o.relate?.enabled ? relateExternalStackCap(o.relate.maxStack, tp.kind, tp.protect) : Infinity;
-      const relateExpected = o.relate?.enabled
-        ? Math.min(d.relateVol ?? 1, relationCap / Math.max(Number.MIN_VALUE, baseExternal))
-        : 1;
+      const relateExpected = o.relate?.enabled ? combined.relation : 1;
       if (!close(relateExpected, relateVol)) {
         volMismatch++;
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} Relate ${relateVol} ≠ ${relateExpected}`);
       }
       if (o.relate?.enabled) {
-        const expectedBase = Math.min(baseExternal, relationCap);
-        const expectedParts = capRelateParts(d.relateParts ?? {}, relateExpected, relationCap / baseExternal, baseExternal);
+        const expectedBase = 1;
+        const expectedParts = capRelateParts(d.relateParts ?? {}, relateExpected, relationCap, 1);
         const partsMismatch = RELATE_SOURCES.some((source) => {
           const expected = expectedParts[source], actual = x.relateParts?.[source];
           return !!expected !== !!actual || (!!expected && !!actual &&
@@ -356,9 +354,9 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       const over = trades.filter((x) => {
         const tp = byId.get(x.cfg);
         const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
-        const m =
+        const m = x.blockVol ??
           (x.mult ?? 1) /
-          ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol) * (x.relateVol ?? 1));
+            ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol) * (x.relateVol ?? 1));
         if (m < 1 - 1e-9) return true;
         // the Block × relation (Stable-02) stack stays within the same total cap (the simulation caps the relation
         // volume at maxMult ÷ the Block volume)
@@ -382,6 +380,10 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       const scaled = trades.filter((x) => {
         const tp = byId.get(x.cfg);
         const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
+        // blockVol is entry-time provenance. A constrained DCA / Axis external ceiling can make the total
+        // execution multiple smaller than one even with Block off, so deriving Block from `mult` would mislabel
+        // that reserved ladder capacity as a Block change.
+        if (typeof x.blockVol === "number" && Number.isFinite(x.blockVol)) return !close(x.blockVol, 1);
         return !close(
           (x.mult ?? 1) /
             ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol) * (x.relateVol ?? 1)),
@@ -577,11 +579,12 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     const blk = sim?.opts.block;
     const maxMult = blk ? blockStackCap(blk) : Infinity;
     // Strip the independently configured range factor and Axis ladder weight before checking the Block stack.
-    const badVol = p.positions.filter(
+      const badVol = p.positions.filter(
       (x) => {
         const tp = ids.has(x.cfg) ? byId.get(x.cfg) : undefined;
         const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
-        const blockVol = positionMult(x) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol) * (x.relateVol ?? 1));
+        const blockVol = x.blockVol ?? positionMult(x) /
+          ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol) * (x.relateVol ?? 1));
         return (
           blockVol < 1 - 1e-9 ||
           blockVol > maxMult + 1e-9 ||
@@ -597,19 +600,21 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     );
   }
 
-  if (sim?.opts.relate?.enabled) {
-    const cap = Math.max(1, sim.opts.relate.maxStack);
+  if (sim) {
+    const cap = Math.min(MAX_EXTERNAL_STACK, Math.max(1, sim.opts.relate?.maxStack ?? MAX_EXTERNAL_STACK));
     const invalid = [...sim.trades, ...(sim.openAtEnd ?? [])].filter((x) => {
       const mult = x.mult ?? 1;
-      return !Number.isFinite(mult) || !(mult > 0) || mult > cap + 1e-9;
+      const tp = byId.get(x.cfg);
+      const effectiveCap = tp ? relateExternalStackCap(cap, tp.kind, tp.protect) : cap;
+      return !Number.isFinite(mult) || !(mult > 0) || mult > effectiveCap + 1e-9;
     }).length;
-    add("relate: total external stack within Max stack", invalid === 0,
+    add("execution: total external stack within Max stack", invalid === 0,
       `${invalid} invalid or outside · total max ${cap}×`);
     const invalidVolume = [...sim.trades, ...(sim.openAtEnd ?? [])].filter((x) => {
       const vol = x.vol;
       return typeof vol !== "number" || !Number.isFinite(vol) || !(vol > 0) || vol > cap + 1e-9;
     }).length;
-    add("relate: modeled volume within Max stack", invalidVolume === 0,
+    add("execution: modeled volume within Max stack", invalidVolume === 0,
       `${invalidVolume} invalid or outside · total max ${cap}× including filled ladder weight`);
   }
 

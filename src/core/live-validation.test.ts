@@ -137,7 +137,7 @@ describe("group live validation (range / signals, pooled last N)", () => {
     assert.equal(liveGroupGates(tapes, T0, now, 0, 1.05).size, 0, "off at 0");
   });
 
-  it("a config's own last N win over its group; before them its group decides", () => {
+  it("only a config's own forward window decides; pooled group evidence is diagnostic", () => {
     const judgedOk = { ok: true, n: 25, pf: 1.4 };
     const judgedBad = { ok: false, n: 25, pf: 0.7 };
     const notJudged = { ok: true, n: 3, pf: null };
@@ -145,10 +145,16 @@ describe("group live validation (range / signals, pooled last N)", () => {
     const groupOk = { ok: true, n: 100, pf: 1.3 };
     assert.equal(liveEntryOk(judgedOk, groupBad), true, "an earning config in a losing group trades");
     assert.equal(liveEntryOk(judgedBad, groupOk), false, "a losing config in an earning group is paused");
-    assert.equal(liveEntryOk(notJudged, groupBad), false, "unjudged config in a losing group: paused");
+    assert.equal(liveEntryOk(notJudged, groupBad), true, "a losing sibling group cannot veto unjudged paper warmup");
     assert.equal(liveEntryOk(notJudged, groupOk), true);
     assert.equal(liveEntryOk(notJudged, { ok: true, n: 40, pf: null }), true, "group not judged yet");
     assert.equal(liveEntryOk(notJudged, undefined), true);
+    assert.equal(liveEntryOk({ ok: false, n: 3, pf: null, unknown: 1 }, groupOk), false,
+      "missing own return provenance cannot be repaired by a winning group");
+    assert.equal(liveEntryOk({ ...notJudged, required: true }, groupOk), true,
+      "strict callers use their own explicit verdict rather than pooled evidence");
+    assert.equal(liveEntryOk({ ...notJudged, ok: false, required: true }, groupOk), false,
+      "unproven native promotion cannot be rescued by the group");
   });
 
   it("keeps Historic Exit samples out of the Wide range group", () => {

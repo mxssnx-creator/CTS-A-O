@@ -601,18 +601,18 @@ export function StatisticsPage() {
         </div>
         <p className="v2-muted">
           Return PF: 1 is breakeven; below 1 is losing. PF edge subtracts 1: zero is breakeven,
-          positive is profitable on the displayed settled sample. No-loss samples have no finite ratio.
+          positive is profitable on the displayed executed-close sample. No-loss samples have no finite ratio.
         </p>
         {r.source === "sim" && (
           <p className="v2-muted">
-            Return PF uses settled post-Base accepted modeled records before account allocation. The
+            Return PF uses post-Base accepted model executions that closed in the replay, before account allocation. The
             reconstructed dollar book is a separate sizing calculation; this return sample does not
             establish funded paper or venue execution PF.
           </p>
         )}
         {r.source === "paper" && (
           <p className="v2-muted">
-            Forward book: {fmt.num(d.paperEvidence?.requested)} settled closes, using held unit returns
+            Forward book: {fmt.num(d.paperEvidence?.requested)} executed paper closes, using held unit returns
             and actual paper allocations. Missing ownership or return evidence stays in the sample
             and makes return PF unavailable. This virtual book does not prove venue fills.
           </p>

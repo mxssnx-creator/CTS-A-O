@@ -138,6 +138,8 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
     let seed = 99;
     const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
     let compared = 0;
+    let expectedCompared = 0;
+    let carriedCompared = 0;
     let decided = 0;
     for (let k = 1; k <= 3; k++) {
       for (const [sym, cs] of R.candles as Map<string, any>) {
@@ -162,6 +164,8 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
       const before = structuredClone(R.paper);
       const seats = structuredClone(R.lastSelection);
       const heavyTapes: ConfigTape[] = R.tapes;
+      const heavyTapeIds = new Set(heavyTapes.map((tp) => tp.id));
+      expectedCompared += [...ids].filter((id) => heavyTapeIds.has(id)).length;
       await rt.cycle();
       assert.equal(
         rt.status.cycleMode?.mode,
@@ -212,17 +216,21 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
       );
       const a = R.fastArgs;
       const ref = new Map<string, ConfigTape>();
-      for (const kind of ["main", "sig", "coord"] as const) {
+      for (const kind of ["main", "sig", "coord", "exit", "exitSig"] as const) {
         const want = new Set<string>();
         const pairs = new Set<string>();
-        for (const tp of A.tapes)
-          if (ids.has(tp.id) && (isSignalCoordinationInd(tp.ind) ? "coord" : isSignalInd(tp.ind) ? "sig" : "main") === kind) {
+        for (const tp of A.tapes) {
+          const family = tp.kind === "exit"
+            ? isSignalInd(tp.ind) ? "exitSig" : "exit"
+            : isSignalCoordinationInd(tp.ind) ? "coord" : isSignalInd(tp.ind) ? "sig" : "main";
+          if (ids.has(tp.id) && family === kind) {
             want.add(tp.id);
             pairs.add(`${tp.bot}|${tp.ind}`);
           }
+        }
         if (!want.size) continue;
         for (const tp of buildTapes(
-          kind === "main" ? u : signalU,
+          kind === "main" || kind === "exit" ? u : signalU,
           a[kind].protects,
           s.cost,
           a[kind].dcaFor,
@@ -234,17 +242,41 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
           ref.set(tp.id, tp);
       }
       const byId = new Map(A.tapes.map((t) => [t.id, t]));
+      let comparedAtT = 0;
       for (const id of ids) {
         const got = byId.get(id);
         const want = ref.get(id);
-        if (!got || !want) continue;
+        if (!heavyTapeIds.has(id)) {
+          // A carried paper position can outlive the exact tape that created it. The book keeps its
+          // own stop/trail for that order; it is not part of this cycle's tape continuation cohort.
+          const old = before.positions.find((p: { cfg: string }) => p.cfg === id);
+          assert.ok(old, `only a held position may lack a source tape: ${id}`);
+          assert.equal(seats.picks.some((p: { id: string }) => p.id === id), false,
+            `a tape-less carried position cannot receive a fresh seat: ${id}`);
+          const retained = A.paper.positions.find((p: {
+            cfg: string; sym: string; side: number; entryT: number; entry: number; stop: number; target: number;
+          }) =>
+            `${p.cfg}|${p.sym}|${p.side}|${p.entryT}|${p.entry}` ===
+            `${old.cfg}|${old.sym}|${old.side}|${old.entryT}|${old.entry}`,
+          );
+          assert.ok(retained, `paper retains tape-less held order @${k}: ${id}`);
+          assert.ok(retained!.stop > 0 && retained!.target > 0,
+            `carried order retains its own stop and target @${k}: ${id}`);
+          carriedCompared++;
+          continue;
+        }
+        assert.ok(got, `selected or held incremental tape ${id} exists @${k}`);
+        assert.ok(want, `full recompute rebuilds selected or held tape ${id} @${k}`);
         sameTape(
-          got,
-          want,
+          got!,
+          want!,
           `${id} @${k} entry=${R.inc.state.entries.has(id)} other=${R.inc.others.has(id)}`,
         );
         compared++;
+        comparedAtT++;
       }
+      assert.equal(comparedAtT, [...ids].filter((id) => heavyTapeIds.has(id)).length,
+        `every selected/held tape with a source tape is compared @${k}`);
 
       // the decisions: the paper step on the recomputed tapes, from the same book, takes the same positions
       const posA = A.paper.positions.map(posKey).sort();
@@ -262,7 +294,8 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
       R.tapeIdx = null;
       void heavyTapes;
     }
-    assert.ok(compared > 500, `compared ${compared} tapes`);
-    console.log(`compared ${compared} tape states, ${decided} open positions`);
+    assert.equal(compared, expectedCompared, `compared every selected/held tape with a source tape (${compared})`);
+    assert.ok(carriedCompared > 0, `fixture exercised carried tape-less positions (${carriedCompared})`);
+    console.log(`compared ${compared} tape states, carried ${carriedCompared} tape-less positions, ${decided} open positions`);
   });
 });
