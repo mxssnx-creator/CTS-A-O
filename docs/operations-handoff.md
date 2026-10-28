@@ -1,5 +1,12 @@
 ## 2026-10-28 — Causal staged-set prototype and source-slot investigation
 
+The Last-N-only paper draft now incorporates a held position's exact known close into a later same-step entry's
+own window before the close is flushed to SQLite. It retains original adoption price/allocation and cost, excludes
+future and sibling closes, deduplicates an already persisted identical row, and treats conflicting duplicates as
+unknown. An actual paper-step regression reproduces both outcomes: an earlier same-step loss vetoes the new entry
+and an earlier same-step win can qualify it; the original source failed the loss case. This fixes one ordering
+defect in the draft, not the pending three-stage paper/Active or Live mirror integration.
+
 The current operator requires a separately tracked set of actually processed positions for each exact Base
 configuration, with each later gate reading its immediately preceding stage; final Active positions are mirrored
 without another exchange Last-N validation. The existing draft below does not yet meet that contract: its initial
@@ -9,8 +16,8 @@ another promotion gate. Do not enable or merge it as a completed fix.
 `ProcessedSetBook` is a separately tested prototype, not yet wired into the production pipeline. It keys Base config,
 symbol, side, kind, coordination lane and economic revision; it records separate post-Base, Validation and Active
 closes, requires full known Last-N windows, preserves partial slices and held admissions through snapshot/restore,
-and separates return-based statistics from open marks. It needs integration with real paper ownership, same-step
-close ordering, persistent revisions, source construction and the existing live-mode reconciliation. DCA/Axis need
+and separates return-based statistics from open marks. It needs integration with real paper ownership, all close
+and admission paths, persistent revisions, source construction and the existing live-mode reconciliation. DCA/Axis need
 leg-level owned return evidence. Actual Live mirroring and all-strategy behavior remain unverified.
 
 The unconditional source simulator holds its one position slot even when a downstream gate would reject that
@@ -33,7 +40,8 @@ model was 123/112/11 positions and 1808/1748/60 orders, return PF 0.636643. At o
 The study includes standalone/trend source relations only, not portfolio allocation, Block/Relate, every strategy,
 or a production replay. A separate independent verifier checked all 98 Validation/Real combinations, every source
 context and the stored Last-12 evidence. Both history files retain line-by-line entries and gate verdicts in
-`/workspace/scratch/b69c1e5067d8/cts-causal-processed-sets-20261028-final/`.
+`/workspace/scratch/b69c1e5067d8/cts-causal-processed-sets-20261028-final/`. The separately saved detailed report is
+https://chatgpt.com/library?file_id=libfile_b83f3dcf3b688191830596a6dbedf2aa&account_id=personal .
 
 The separate older-source 20-symbol full-grid job did not finish: after 3,969 seconds and 16% of the strategy-tape
 phase, Node reached its approximately 4 GiB heap limit while deserializing a worker message and exited 134. Its
@@ -61,8 +69,8 @@ Selection and Real integration, persistent incremental state, every strategy and
 audit. The policy remains OFF in the released runtime and must not be described as a systemwide fix yet.
 The simulator's processed book is currently per-run and bootstraps from the generation's initial Base proof; it
 does not yet restore each actual paper lane's settled validation record across recomputes. The paper gate does
-read its persistent book, but same-step close/admission ordering and a complete paginated processed-set UI need
-verification. The native Real producer for genuine Bybit fills remains unintegrated.
+read its persistent book, and the exact same-step held-close case is fixed above; other close paths and a complete
+paginated processed-set UI need verification. The native Real producer for genuine Bybit fills remains unintegrated.
 
 The draft's paper Last-N path reads its own settled paper-book rows, not simulated orders the paper book never held.
 The exact lane, side, adoption price, known allocation and original cost are required; missing evidence stays

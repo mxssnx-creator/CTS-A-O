@@ -1,9 +1,31 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
 import {CoreDb} from "./db.server.ts";
-import {ownedPromotionIdentities,ownedPromotionRecord} from "./promotion-record.server.ts";
+import {ownedPromotionIdentities,ownedPromotionRecord,type OwnedPaperRow} from "./promotion-record.server.ts";
 import {executionRecordKey,ownedPaperExecutionRecords} from "../live-record.ts";
-import {promotionGate} from "../live-validation.ts";
+import {liveGate,promotionGate} from "../live-validation.ts";
+
+test("same-step owned closes join only their own causal Last-N window and never duplicate a persisted close",()=>{
+  const db=new CoreDb(":memory:"),lane={cfg:"follow|test@m1|tp1|sl2|tr0|h15|mc",sym:"AAA-USDT",side:1};
+  const row=(entry:number,exitT:number,r:number):OwnedPaperRow=>({...lane,entry_t:entry,exit_t:exitT,
+    held_at:entry,held_px:100,entry:100,exit:100*(1+r+.0015),vol:1,unit_r:r,owned_notional_usd:100});
+  const insert=(x:OwnedPaperRow)=>db.run("INSERT INTO paper_book_trades(cfg,sym,side,entry_t,exit_t,unit_r,owned_notional_usd,held_at,held_px,entry,exit,vol,reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'exit')",
+    x.cfg,x.sym,x.side,x.entry_t,x.exit_t,x.unit_r,x.owned_notional_usd,x.held_at,x.held_px,x.entry,x.exit,x.vol);
+  try {
+    insert(row(10,100,.02));insert(row(20,200,.02));
+    const last=row(30,300,-.05), other={...row(40,250,.5),sym:"BBB-USDT"};
+    const gate=(at:number,pending:OwnedPaperRow[])=>liveGate(ownedPromotionRecord(db,lane,3,at,"effective",pending)!,0,at,3,1.1);
+    assert.deepEqual(gate(299,[last,other]),{ok:true,n:2,pf:null},"a later close is not visible at entry");
+    const beforeFlush=gate(300,[last,other]);
+    assert.equal(beforeFlush.n,3);assert.equal(beforeFlush.ok,false);assert.ok(Math.abs(beforeFlush.pf!-.8)<1e-12);
+    insert(last);
+    const afterFlush=gate(300,[last]);
+    assert.equal(afterFlush.n,3);assert.equal(afterFlush.ok,false);assert.ok(Math.abs(afterFlush.pf!-.8)<1e-12);
+    const conflict=gate(300,[{...last,unit_r:.05}]);
+    assert.equal(conflict.ok,false);assert.ok((conflict.unknown??0)>0,"conflicting duplicate cannot borrow older wins");
+    assert.throws(()=>gate(300,[{...last,exit_t:NaN}]),/invalid pending paper close/);
+  } finally { db.db.close(); }
+});
 
 test("bounded native admission preserves exact Last-N PF, ties, unknowns and future-clock boundaries",()=>{
   const db=new CoreDb(":memory:"),now=1_790_000_000_000;

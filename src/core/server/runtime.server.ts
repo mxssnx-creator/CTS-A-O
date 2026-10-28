@@ -291,7 +291,7 @@ import {
   type LiveRecord,
 } from "../live-record.ts";
 import { OWN_CLOSE_SQL } from "../relation.ts";
-import { ownedPromotionIdentities, ownedPromotionRecord } from "./promotion-record.server.ts";
+import { ownedPromotionIdentities, ownedPromotionRecord, type OwnedPaperRow } from "./promotion-record.server.ts";
 import { signalActiveHas, type ExchangeAccept, type SignalActivationEnd } from "../signals.ts";
 import {
   isSignalCoordinationInd,
@@ -9767,8 +9767,25 @@ export class CoreRuntime {
     const releases = [...provisionalHeld].flatMap((key) => {
       const p = prevByKey.get(key)!;
       const close = heldCloseOf(p);
-      return close ? [{ key, p, at: close.exitT }] : [];
+      return close ? [{ key, p, close, at: close.exitT }] : [];
     }).sort((a, b) => a.at - b.at);
+    const ownedNotionalOf = (p: PaperBook["positions"][number], x: Trade): number | null => {
+      const allocation = this.paperOwnedAllocations?.get(orderKey(p));
+      const sameShare = typeof x.vol === "number" && typeof p.vol === "number" &&
+        Math.abs(x.vol - p.vol) <= 1e-9 * Math.max(1, p.vol);
+      const notional = sameShare && allocation && typeof p.vol === "number" && p.vol <= allocation.vol + 1e-12
+        ? allocation.unitUsd * p.vol : NaN;
+      return Number.isFinite(notional) && notional > 1e-9 ? notional : null;
+    };
+    const releasedRows = new Map<string, OwnedPaperRow[]>();
+    for (const { p, close } of this.wf.gates?.lastNOnly ? releases : []) {
+      const key = executionRecordKey(p.cfg, p.sym, p.side), rows = releasedRows.get(key) ?? [];
+      const unit = unitReturn(close);
+      rows.push({ cfg: p.cfg, sym: p.sym, side: p.side, entry_t: p.entryT, exit_t: close.exitT,
+        unit_r: Number.isFinite(unit) ? unit : null, owned_notional_usd: ownedNotionalOf(p, close),
+        held_at: p.heldAt ?? null, held_px: p.heldPx ?? null, entry: close.entry, exit: close.exit, vol: close.vol ?? 1 });
+      releasedRows.set(key, rows);
+    }
     yield 0;
     // Block sources (overall / symbol / direction / indication) judge executed positions closed before each entry
     const booksAt = fast
@@ -9820,9 +9837,10 @@ export class CoreRuntime {
       const minPf = liveMinPfOf(this.settings, x.protect.tag, x.ind, x.kind);
       if (!g) {
         const key = executionRecordKey(x.id, sym, side);
+        const pending = releasedRows.get(key) ?? [];
         const model = lvOwned
-          ? (lvOwnedIdentities!.ambiguous || lvOwnedIdentities!.keys.has(key)
-              ? ownedPromotionRecord(this.db, { cfg: x.id, sym, side }, lvN, at, "effective") : undefined)
+          ? (lvOwnedIdentities!.ambiguous || lvOwnedIdentities!.keys.has(key) || pending.length
+              ? ownedPromotionRecord(this.db, { cfg: x.id, sym, side }, lvN, at, "effective", pending) : undefined)
           : lvExact.get(key);
         g = {
           ...(model ? liveGate(model, lvOwned ? 0 : lvSince, at, lvN, minPf) : { ok: true, n: 0, pf: null }),
@@ -10207,21 +10225,7 @@ export class CoreRuntime {
           x
             ? [p.cfg, p.sym, p.side, p.entryT, x.exitT, x.r, x.vol ?? 1, x.reason ?? "close", p.heldAt ?? null, now, p.heldPx ?? null, x.entry, x.exit, x.mult ?? 1,
                 Number.isFinite(unitReturn(x)) ? unitReturn(x) : null,
-                (() => {
-                  const allocation = this.paperOwnedAllocations?.get(orderKey(p));
-                  const sameShare =
-                    typeof x.vol === "number" &&
-                    typeof p.vol === "number" &&
-                    Math.abs(x.vol - p.vol) <= 1e-9 * Math.max(1, p.vol);
-                  const notional =
-                    sameShare &&
-                    allocation &&
-                    typeof p.vol === "number" &&
-                    p.vol <= allocation.vol + 1e-12
-                      ? allocation.unitUsd * p.vol
-                      : NaN;
-                  return Number.isFinite(notional) && notional > 1e-9 ? notional : null;
-                })(),
+                ownedNotionalOf(p, x),
               ]
             : // left the book without a close on record (retired, dropped from its tape): its last mark, flagged
               [p.cfg, p.sym, p.side, p.entryT, now, (p.mtm ?? 0) * (p.vol ?? 1), p.vol ?? 1, "dropped", p.heldAt ?? null, now, p.heldPx ?? null, p.entry, null, positionMult(p), null, null],

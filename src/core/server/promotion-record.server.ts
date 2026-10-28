@@ -3,9 +3,10 @@ import { executionRecordKey, ownedPaperExecutionRecords, type LiveRecord } from 
 import { executableR } from "../relation.ts";
 import { kindOfId } from "../pipeline/pipeline.ts";
 
-type Row = { cfg: string; sym: string; side: number; entry_t: number; exit_t: number; unit_r: number | null;
+export type OwnedPaperRow = { cfg: string; sym: string; side: number; entry_t: number; exit_t: number; unit_r: number | null;
   owned_notional_usd: number | null; held_at: number | null; held_px: number | null; entry: number | null;
   exit: number | null; vol: number | null };
+type Row = OwnedPaperRow;
 const columns = "cfg,sym,side,entry_t,exit_t,unit_r,owned_notional_usd,held_at,held_px,entry,exit,vol";
 const invalidIdentity = "(trim(cfg)='' OR trim(sym)='' OR coalesce(side,0) NOT IN (-1,1))";
 const ambiguous = new WeakMap<CoreDb, { version: number; rows: Row[] }>();
@@ -50,7 +51,7 @@ export function effectivePaperPnl(row: Row): number | null {
 
 /** Read only this lane's chronological Last-N. An unrelated book never needs to be materialized for admission. */
 export function ownedPromotionRecord(db: CoreDb, lane: {cfg: string; sym: string; side: number}, n: number, now: number,
-  basis: "unit" | "effective" | "cash" = "unit") {
+  basis: "unit" | "effective" | "cash" = "unit", pending: readonly OwnedPaperRow[] = []) {
   if (!Number.isInteger(n) || n < 1 || !Number.isFinite(now)) return undefined;
   const version = db.version("paper_book_trades"), key = JSON.stringify([lane.cfg,lane.sym,lane.side,n]);
   let cached = memo.get(db);
@@ -58,11 +59,33 @@ export function ownedPromotionRecord(db: CoreDb, lane: {cfg: string; sym: string
     cached = {version,records:new Map()}; memo.set(db,cached);
   }
   const hit = cached.records.get(key);
-  if (hit && now >= hit.at && now < hit.until) return hit[basis];
+  if (!pending.length && hit && now >= hit.at && now < hit.until) return hit[basis];
   const rows = db.all<Row>(
     `SELECT ${columns} FROM paper_book_trades WHERE reason != 'dropped' AND cfg=? AND sym=? AND side=? AND exit_t>=0 AND exit_t<=? ORDER BY exit_t DESC,entry_t DESC LIMIT ?`,
     lane.cfg, lane.sym, lane.side, now, n,
   ).reverse();
+  // A held order can close earlier in this paper step than a new entry, before its row is flushed below. Merge
+  // those exact closes only as of their own exit; they never borrow another lane, duplicate a persisted row or
+  // replace conflicting evidence with a more favorable observation.
+  const pendingIds = new Set<number>();
+  for (const row of pending) {
+    if (row.cfg !== lane.cfg || row.sym !== lane.sym || row.side !== lane.side) continue;
+    if (!Number.isFinite(row.entry_t) || !Number.isFinite(row.exit_t) || row.exit_t < row.entry_t)
+      throw new Error("invalid pending paper close");
+    if (row.exit_t > now) continue;
+    const prior = db.get<Row>(`SELECT ${columns} FROM paper_book_trades WHERE cfg=? AND sym=? AND side=? AND entry_t=?`,
+      lane.cfg, lane.sym, lane.side, row.entry_t);
+    const duplicate = pendingIds.has(row.entry_t);
+    pendingIds.add(row.entry_t);
+    if (prior || duplicate) {
+      const fields = ["cfg", "sym", "side", "entry_t", "exit_t", "unit_r", "owned_notional_usd", "held_at", "held_px", "entry", "exit", "vol"] as const;
+      if (!duplicate && prior && fields.every((field) => Object.is(row[field], prior[field]))) continue;
+      for (let i = rows.length - 1; i >= 0; i--) if (rows[i].entry_t === row.entry_t) rows.splice(i, 1);
+      rows.push({ ...row, unit_r: null, owned_notional_usd: null });
+    } else rows.push(row);
+  }
+  rows.sort((a, b) => a.exit_t - b.exit_t || a.entry_t - b.entry_t);
+  if (rows.length > n) rows.splice(0, rows.length - n);
   // Corrupt identities must not disappear in favor of older winning closes. The partial index is empty on a
   // valid book; cache only these exceptional rows, never all configurations' historical executions.
   let bad = ambiguous.get(db);
@@ -102,7 +125,9 @@ export function ownedPromotionRecord(db: CoreDb, lane: {cfg: string; sym: string
   }))
     .get(executionRecordKey(lane.cfg,lane.sym,lane.side));
   const records = { at:now, until, unit:toRecord("unit"), effective:toRecord("effective"), cash:toRecord("cash") };
-  if (cached.records.size >= 4096) cached.records.clear();
-  cached.records.set(key,records);
+  if (!pending.length) {
+    if (cached.records.size >= 4096) cached.records.clear();
+    cached.records.set(key,records);
+  }
   return records[basis];
 }

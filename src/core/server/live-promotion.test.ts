@@ -461,6 +461,33 @@ describe("native live boundary preserves held protection without unproven growth
 });
 
 describe("paper entry allocation provenance", () => {
+  it("uses a same-step held close before judging a later entry of the same exact lane", () => {
+    const t = Math.floor(Date.now() / H) * H;
+    for (const [previous, closing, expected] of [[[.02,.02],-.05,false], [[-.02,-.02],.10,true]] as const) {
+      const r = install(fixture());
+      r.wf.gates = { ...r.wf.gates, lastNOnly: true, baseLastN: 12, minTrades: 9 };
+      r.wf.validLastN = 12; r.wf.lastN = 0; r.wf.rangeGate = undefined; r.wf.symGate = "off";
+      const raw = Array.from({ length: 30 }, (_, i) => close(.03, i, {
+        entryT: t - 3 * H + i * 60_000, exitT: t - 2 * H + i * 60_000,
+      }));
+      const heldClose = close(closing, 0, { entryT: t - H, exitT: t - 5 * 60_000,
+        entry: 100, exit: 100 * (1 + closing), mult: 1, vol: 1 });
+      const held = { cfg: CFG, sym: SYM, side: 1, entryI: 0, entryT: heldClose.entryT, entry: 100,
+        stop: 96, target: 103, peak: 100, trailOn: false, mtm: 0, vol: 1, level: 0,
+        heldAt: heldClose.entryT + 1, heldPx: 100 } as OpenPosition & { vol: number; heldAt: number; heldPx: number };
+      const open = { cfg: CFG, sym: SYM, side: 1, entryI: 0, entryT: t, entry: 100,
+        stop: 96, target: 103, peak: 100, trailOn: false, mtm: 0 } as OpenPosition;
+      r.tapes = [makeTape(CFG, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal", [SYM], [...raw, heldClose], [open], [])];
+      r.sim!.validated = [CFG]; r.sim!.trades = [heldClose]; r.paper.positions = [held];
+      (r as unknown as { paperOwnedAllocations: Map<string,{unitUsd:number;vol:number}> }).paperOwnedAllocations =
+        new Map([[orderKey(held), { unitUsd: 100, vol: 1 }]]);
+      owned(r, [...previous], { at: t - 10 * 60_000 });
+      (r as unknown as { stepPaper(): void }).stepPaper();
+      assert.equal(r.paper.positions.some((p) => p.entryT === t), expected, JSON.stringify(r.status.paperSkips));
+      assert.equal(r.db.get<{n:number}>("SELECT count(*) AS n FROM paper_book_trades WHERE cfg=? AND sym=? AND side=1",CFG,SYM)?.n,3);
+    }
+  });
+
   it("Last-N-only paper admission judges handled closes rather than modeled orders never held", () => {
     const t = Math.floor(Date.now() / H) * H;
     for (const [modeled, handled, expected] of [[.02, -.01, false], [-.01, .02, true]] as const) {
