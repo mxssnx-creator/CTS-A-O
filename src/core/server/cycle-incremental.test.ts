@@ -118,6 +118,15 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
     assert.ok(R.inc, "the heavy compute captured the validated set");
     const ids: Set<string> = R.inc.ids;
     assert.ok(ids.size > 50, `validated ${ids.size}`);
+    // Explicitly exercise a held position whose exact tape is unavailable. Do not rely on an unrelated
+    // enabled strategy or on a particular synthetic market outcome to happen to leave such a position behind.
+    const missingId = "follow|ema-9-21@m15|tp17|sl18|tr0|h32";
+    assert.ok(!rt.tapes.some((t) => t.id === missingId));
+    assert.ok(!R.lastSelection.picks.some((p: { id: string }) => p.id === missingId));
+    rt.paper.positions.push({ cfg: missingId, sym: "SYN0-USDT", side: 1,
+      entryT: Math.floor(Date.now() / 3_600_000) * 3_600_000 - 6 * 3_600_000,
+      entryI: 0, entry: 100, stop: 98, target: 102, peak: 100, trailOn: false, mtm: 0, vol: 1, level: 0 });
+    ids.add(missingId);
     const selectedOrHeld = new Set<string>([
       ...R.lastSelection.picks.map((p: { id: string }) => p.id),
       ...rt.paper.selected,
