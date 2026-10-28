@@ -19,9 +19,12 @@ source tape. Time exits dominated losses; no consistent-high-PF claim is
 supported. `selectAt` and `selectDurable` now honor validated Signal membership,
 and `selectFixedGen` invalidates stale cached eligibility after in-place Set
 membership changes. These fixes were independently reproduced but were not
-shown to cause this particular Low-Range decline. The tested source is based on main `239cbdb700a02fce9c038edd96b8e869806e394f`;
-the exact edited source hashes and frozen inputs are recorded in the evidence
-protocols. No live settings or running instance changed. See `docs/low-range-research-20261027/BASE60-VALIDATION-8-10-12-20261028.md`
+shown to cause this particular Low-Range decline. The tested source commit was `8aa066cc840fb24d574bbd73bf2e770ebd385196`,
+merged by PR #209 as `bd64e1acdf83b05ef3591615e62906b42fa685bf`; their source
+trees are identical. The exact source and feed hashes are in the evidence
+protocols. Local typecheck, build, lint (warnings only) and 146 focused tests
+passed; GitHub Exact Signal study and Exit verification passed. No live settings
+or running instance changed. See `docs/low-range-research-20261027/BASE60-VALIDATION-8-10-12-20261028.md`
 for frozen source hashes, detailed reports, tests, limitations and raw ledgers.
 Known unresolved: active-position modeled cost changes need entry-time cost
 provenance; exchange fees, execution and venue TP/SL were not measured.
