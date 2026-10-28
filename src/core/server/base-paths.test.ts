@@ -117,8 +117,7 @@ describe("engine tapes on the worker cores", { timeout: 600_000 }, () => {
       Worker.prototype.postMessage = post;
     }
     assert.match(rt.status.workers ?? "", /cores/);
-    assert.match(rt.status.phases["Exit history"]?.slowest ?? "", /workers/,
-      "the default Exit phase must keep using workers before range tapes are built");
+    // Historic Exit is opt-in; worker/local fitting parity is covered by pool.test and preset-exit.test.
     const tagged = new Set(sent.flatMap((m) => Object.keys(m.floors.pairTags ?? {})));
     assert.ok(sent.length >= 2 && tagged.size >= 2, `${sent.length} tape messages, ${tagged.size} pairs with Base ranges`);
     for (const m of sent) {
