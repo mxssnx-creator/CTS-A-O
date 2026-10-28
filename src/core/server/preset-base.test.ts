@@ -20,8 +20,8 @@ import type { ConfigTape } from "../sim/walkforward.ts";
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
 
 const END = Date.UTC(2026, 8, 20);
-const BARS = 1500;
-// the pool test's fixture: three synthetic symbols, 15m, the first 60 combos (every one of them has a run)
+const BARS = 4000;
+// Three synthetic symbols, 15m, and the first 60 combos; longer history supplies the nine-close floor.
 const bars = ["A", "B", "C"].map((s) => barsFromCandles(`${s}-USDT`, 15, syntheticCandles(s, 15, BARS, END)));
 const combos = allCombos().slice(0, 60);
 
@@ -74,14 +74,14 @@ describe("preset backtest Base", { timeout: 300_000 }, () => {
   after(() => closePool());
 
   it("a pair that fails the Base gate never enters Main on the workers", async () => {
-    // 3 symbols × 1,500 bars: no pair can close 10,000 trades, so nothing passes — on either path
+    // 3 symbols × 4,000 bars: no pair can close 10,000 trades, so nothing passes — on either path
     const none = { minTrades: 10_000 };
     assert.deepEqual([...(await mainOf(none, false))], []);
     assert.deepEqual([...(await mainOf(none, true))], [], "the worker path gates as the in-process one");
   });
 
   it("the worker path and the in-process path give the same Main", async () => {
-    const lenient = { minPf: 1.05, minTrades: 6, maxDdr: 0 };
+    const lenient = { minPf: 1.05, minTrades: 9, maxDdr: 0 };
     const local = await mainOf(lenient, false);
     const remote = await mainOf(lenient, true);
     assert.ok(local.size > 0 && local.size < combos.length, `${local.size} of ${combos.length} pass`);

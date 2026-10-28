@@ -1,3 +1,17 @@
+## 2026-10-28 — Validation defaults and preserved prior evidence
+
+Fresh Signal and Exit defaults use Last-12, the partial-sample floor is nine and Base defaults to Last-40. A one-time
+transaction backs up saved settings, walk-forward options, presets and cached reports before upgrading undersized
+saved samples. It preserves stricter saved choices, retires affected or unidentifiable preset caches and marks their
+old PF unavailable. Explicit optional entry filters set to zero remain off. Direct later settings and preset changes
+can still select undersized samples; the requested complete Last-N-only policy remains unfinished in draft PR #219.
+Historic Exit candidate fitting and holdout, loaded-history retention, live promotion and per-step hold controls
+still require further work. No sustained funded PF or exchange-fill PF has been demonstrated.
+
+The cached 2026-10-09 12:00 UTC Low-Range Short screen has 25/90 validated historical contexts at unit PF 2.891881.
+Its separate later model has 37 closes at PF 0.963800, with 17/17/0 positions and 37/37/0 orders opened/closed/held.
+Those retrospective results are not live qualification rules or exchange fills.
+
 ## 2026-10-28 — Bybit cooldown and shared-budget hardening
 
 Bybit rate-limit responses now publish a unique atomic cooldown marker in

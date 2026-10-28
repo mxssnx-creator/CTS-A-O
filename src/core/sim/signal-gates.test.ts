@@ -355,6 +355,6 @@ describe("signal defaults (the validated settings, PR #65)", () => {
     assert.deepEqual(DEFAULT_SIGNALS.accept, { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 });
     assert.equal(DEFAULT_BLOCK.signalsOwn, true);
     // Operator, 24 Oct: their own last 4 closed results.
-    assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 4);
+    assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 12);
   });
 });

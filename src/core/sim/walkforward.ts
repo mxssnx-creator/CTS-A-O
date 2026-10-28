@@ -891,7 +891,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // Operator-requested default: the last 12 closes must clear the seat's PF and drawdown gates.
     // Saved stricter choices and independent Signal/Exit/range overrides retain their own values.
     validLastN: 12,
-    // Operator, 24 Oct: evaluate Signals and Exit with their own last 4 closed results.
+    // Signal and Exit contexts default to their own last 12 completed results.
     signalValidLastN: SIGNAL_VALID_LAST_N,
     exitMinTrades: s.exitStrategy.minValidationTrades,
     exitMinPf: s.exitStrategy.minPf,
