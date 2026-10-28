@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Offline research: independent Short Low-Range Normal/Trailing modeled lanes only.
+// Offline research: independent Micro/Minimal/Short Low-Range Normal/Trailing modeled lanes only.
 // No account sizing, Block/Relate, portfolio coordination, actual paper book, venue fills, or next-day heuristic.
 import { createHash } from "node:crypto";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
@@ -14,7 +14,9 @@ import { ProcessedSetBook } from "../src/core/sim/processed-set.ts";
 import { positionOrderCounts } from "../src/core/positions.ts";
 
 const output = process.argv[2];
-if (!output) throw new Error("usage: study-causal-processed-sets.mjs OUTPUT_DIRECTORY");
+const holdMinutes = Number(process.argv[3] ?? 60), range = process.argv[4] ?? "sh";
+if (!output || ![15, 30, 60].includes(holdMinutes) || !["mc", "mn", "sh"].includes(range))
+  throw new Error("usage: study-causal-processed-sets.mjs OUTPUT_DIRECTORY [15|30|60] [mc|mn|sh]");
 mkdirSync(output, { recursive: true });
 const M = 60_000, H = 60 * M, start = Date.parse("2026-10-10T00:00:00Z"), end = start + 12 * H;
 const feedPath = "docs/micro-optimization-2026-10-20/reproduction-feed.json.gz";
@@ -22,18 +24,18 @@ const feedBytes = readFileSync(feedPath), feed = JSON.parse(gunzipSync(feedBytes
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 const symbols = feed.tickers.map((x) => x.sym).sort();
 if (symbols.length !== 20 || new Set(symbols).size !== 20) throw new Error("need exactly 20 symbols");
-const samples = [8, 12, 15, 20, 25], minPf = 1.1, baseN = 40;
+const samples = [8, 12, 15, 20, 25], minPf = 1.1, baseN = range === "sh" ? 40 : 30;
 const tfs = [1, 5, 15], windows = [1, 6], methods = ["edge-turn", "failed-break", "breakout", "mid-reclaim", "compression-break"];
 const relations = ["standalone", "trend"], histories = [84];
-const protection = { ...DEFAULT_LOW_RANGE_POLICY, steps: [3], slRatios: [1], trailRatios: [0, .5], tags: ["sh"] };
+const protection = { ...DEFAULT_LOW_RANGE_POLICY, steps: [3], slRatios: [1], trailRatios: [0, .5], tags: [range] };
 const revision = `modeled-cost-${DEFAULT_SETTINGS.cost}-feed-${sha(feedBytes)}`;
 const sourceFiles = ["scripts/study-causal-processed-sets.mjs", "src/core/sim/processed-set.ts", "src/core/sim/backtest.ts",
   "src/core/indications/low-range-research.ts", "src/core/config.ts"];
-const protocol = { scope: "Isolated causal modeled lanes; no portfolio/account allocation, Block/Relate, paper, exchange or all-strategy coverage.",
+const protocol = { scope: `Isolated Low-Range ${range} modeled lanes at ${holdMinutes}-minute hold; no portfolio/account allocation, Block/Relate, paper, exchange or all-strategy coverage.`,
   feedSha256: sha(feedBytes), sourceSha256: Object.fromEntries(sourceFiles.map((p) => [p, sha(readFileSync(p))])),
   symbols, start, end, histories, tfs, windows, methods, relations, protection, cost: DEFAULT_SETTINGS.cost,
-  baseN, samples, minPf, marketWarmFrom: start - 84 * H,
-  baseRule: "Each entry must pass its own most recent 40 strictly earlier source closes. No elapsed-time performance gate.",
+  baseN, samples, minPf, holdMinutes, range, marketWarmFrom: start - 84 * H,
+  baseRule: `Each entry must pass its own most recent ${baseN} strictly earlier source closes. No elapsed-time performance gate.`,
   processedRule: "Each later gate uses only its own preceding stage's completed modeled closes; no warm-up promotion.",
   sourceSlotRule: "Raw source closes supply Base evidence. Each Base-processed lane is simulated independently, applying the Base verdict before occupying its own slot; rejected source positions cannot suppress its later signals.",
   clockRule: "At equal timestamps evaluate entries before exits; results only observe previously completed bars.",
@@ -85,7 +87,7 @@ for (const history of histories) {
         const state = lowRangeState(cache, window, method, relation), onset = new Int8Array(bars.n);
         for (let i = 1; i < bars.n; i++) if (bars.t[i] + tf * M >= from && state[i] && state[i] !== state[i - 1]) onset[i] = state[i];
         for (const ref of lowRangeProtects(protection)) {
-          const protect = laneProtect({ ...ref, hold: Math.max(1, Math.floor(60 / tf)), maxHoldMin: 60 }, ind);
+          const protect = laneProtect({ ...ref, hold: Math.max(1, Math.floor(holdMinutes / tf)), maxHoldMin: holdMinutes }, ind);
           const kind = protect.trail ? "trailing" : "normal", cfg = configId("follow", ind, protect);
           for (const side of [1, -1]) {
             const sig = sideSignal(onset, side);
