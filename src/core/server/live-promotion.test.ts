@@ -463,11 +463,11 @@ describe("native live boundary preserves held protection without unproven growth
 describe("paper entry allocation provenance", () => {
   it("uses a same-step held close before judging a later entry of the same exact lane", () => {
     const t = Math.floor(Date.now() / H) * H;
-    for (const [previous, closing, expected] of [[[.02,.02],-.05,false], [[-.02,-.02],.10,true]] as const) {
-      const r = install(fixture());
+    for (const [previous, closing, expected] of [[.02,-.30,false], [-.02,.30,true]] as const) {
+      const r = install(fixture(":memory:", 12));
       r.wf.gates = { ...r.wf.gates, lastNOnly: true, baseLastN: 12, minTrades: 9 };
       r.wf.validLastN = 12; r.wf.lastN = 0; r.wf.rangeGate = undefined; r.wf.symGate = "off";
-      const raw = Array.from({ length: 30 }, (_, i) => close(.03, i, {
+      const raw = Array.from({ length: 30 }, (_, i) => close(.10, i, {
         entryT: t - 3 * H + i * 60_000, exitT: t - 2 * H + i * 60_000,
       }));
       const heldClose = close(closing, 0, { entryT: t - H, exitT: t - 5 * 60_000,
@@ -481,10 +481,14 @@ describe("paper entry allocation provenance", () => {
       r.sim!.validated = [CFG]; r.sim!.trades = [heldClose]; r.paper.positions = [held];
       (r as unknown as { paperOwnedAllocations: Map<string,{unitUsd:number;vol:number}> }).paperOwnedAllocations =
         new Map([[orderKey(held), { unitUsd: 100, vol: 1 }]]);
-      owned(r, [...previous], { at: t - 10 * 60_000 });
+      for (let i = 0; i < 11; i++) {
+        const at = t - 10 * 60_000 + i * 1000, entered = t - 3 * H + i * 1000;
+        r.db.run("INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,held_at,at,unit_r,owned_notional_usd,entry,held_px,exit) VALUES (?,?,1,?,?,?,1,'time',?,?,?,?,100,100,?)",
+          CFG, SYM, entered, at, previous, entered, at, previous, 20, 100 * (1 + previous));
+      }
       (r as unknown as { stepPaper(): void }).stepPaper();
       assert.equal(r.paper.positions.some((p) => p.entryT === t), expected, JSON.stringify(r.status.paperSkips));
-      assert.equal(r.db.get<{n:number}>("SELECT count(*) AS n FROM paper_book_trades WHERE cfg=? AND sym=? AND side=1",CFG,SYM)?.n,3);
+      assert.equal(r.db.get<{n:number}>("SELECT count(*) AS n FROM paper_book_trades WHERE cfg=? AND sym=? AND side=1",CFG,SYM)?.n,12);
     }
   });
 
