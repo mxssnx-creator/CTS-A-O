@@ -1,5 +1,9 @@
 ## 2026-10-28 — Causal staged-set prototype and source-slot investigation
 
+PR #227 merged the separately tested causal stage-book and optional source-admission primitives into main at
+`78ac0c2dbd0f1abf7f9787f4718cda3585852aa3`. Both complete GitHub verification workflows passed. They are still not
+wired into the production paper/Live flow; this draft merges the main-branch work without asserting completion.
+
 The Last-N-only paper draft now incorporates a held position's exact known close into a later same-step entry's
 own window before the close is flushed to SQLite. It retains original adoption price/allocation and cost, excludes
 future and sibling closes, deduplicates an already persisted identical row, and treats conflicting duplicates as
