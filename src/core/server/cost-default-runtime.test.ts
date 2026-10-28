@@ -93,8 +93,12 @@ describe("modeled position cost defaults and migration", () => {
     assert.equal(db.kvGet<number>("wfCapsV"), 37);
     const presets = db.kvGet<Array<{ id: string; settings: SettingsPatch; wf: unknown; metrics: unknown }>>("presets")!;
     assert.deepEqual(presets[0], {
-      id: "factory", settings: { cost: RT_COST, fees: DEFAULT_SETTINGS.fees }, wf: { lastN: 25 }, metrics: { pf: 1.3 },
+      id: "factory", settings: { cost: RT_COST, fees: DEFAULT_SETTINGS.fees }, wf: { lastN: 25 },
+      metrics: { pf: null, pfBasis: "unavailable", noLoss: null, pfConvention: "unavailable",
+        source: "Previous result — validation policy changed; re-evaluate for current results" },
     });
+    assert.deepEqual(db.kvGet<{ presets: Array<{ metrics: unknown }> }>("validationLast12BackupV1")!.presets[0].metrics,
+      { pf: 1.3 }, "the old PF is retained in the migration backup, but is not current evidence");
     assert.deepEqual(presets[1].settings, custom);
     assert.deepEqual(presets[2].settings, { symbols: 11 });
   });

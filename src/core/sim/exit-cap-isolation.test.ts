@@ -3,7 +3,8 @@ import { test } from "node:test";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { Protect, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
-import { OpenCounts, crowdKey, defaultWalkForward, makeTape, orderCapScope, positionsFull, walkForward } from "./walkforward.ts";
+import { OpenCounts, crowdKey, defaultWalkForward, makeTape, orderCapScope, positionsFull,
+  selectAt, selectDurable, selectFixed, walkForward } from "./walkforward.ts";
 
 const H = 3_600_000, M = 60_000, NOW = Date.UTC(2026, 9, 20), START = NOW - 6 * H;
 const ind = "ema-9-21@m15", signal = "sig-ema-cross-s@m15", sym = "A-USDT";
@@ -65,3 +66,37 @@ test("the complete modeled walk-forward keeps capped engine and Exit lanes indep
   assert.deepEqual(new Set(result.trades.filter((x) => x.kind === "exit").map((x) => x.cfg)), new Set([exit, siblingExit]));
   assert.equal(result.trades.filter((x) => x.cfg === exit).length, 1, "the same Exit cannot exceed its inherited max-open cap");
 });
+
+for (const familySeats of [false, true]) for (const mode of ["fixed", "hourly", "durable"] as const) {
+  test(`${mode} seats: Exit lanes are independent with familySeats=${familySeats}`, () => {
+    const alt = configId("exit", ind, { ...exitProtect, tp: .02 });
+    const combined = configId("exit", "ema-9-21@m15c", exitProtect);
+    const make = (cfg: string, lane: string, kind: "normal" | "exit", protect: Protect) => {
+      const rows: Trade[] = Array.from({ length: 36 }, (_, i) => ({ cfg, sym, side: 1,
+        entryT: NOW - (72 - 2 * i) * H, exitT: NOW - (72 - 2 * i) * H + M,
+        entry: 100, exit: 102, r: .02, mult: 1, reason: "tp", bars: 1, mfe: 0, mae: 0, kind }));
+      return makeTape(cfg, kind === "exit" ? "exit" : "follow", lane, protect, kind, [sym], rows, [], []);
+    };
+    const tapes = [make(normal, ind, "normal", normalProtect), make(exit, ind, "exit", exitProtect),
+      make(alt, ind, "exit", { ...exitProtect, tp: .02 }), make(siblingExit, "ema-9-21@m5", "exit", exitProtect),
+      make(combined, "ema-9-21@m15c", "exit", exitProtect)];
+    const base = defaultWalkForward(DEFAULT_SETTINGS);
+    const o = { ...base, preH: 96, longH: 96, validLastN: 0, lastN: 0, robustFrac: 0, durableFrac: 0,
+      portfolio: 1, laneSeats: 0, familySeats, seatPer: "config" as const, symGate: "off" as const, rangeGate: undefined,
+      gates: { ...base.gates, minTrades: 12, minDdtH: 0, maxDdtH: 1000, maxDdr: 0 },
+      toggles: { ...base.toggles, normal: true, exit: true, block: false },
+      basePassed: new Set([`follow|${ind}`]), exitBasePassed: new Set([`exit|${ind}`, "exit|ema-9-21@m5", "exit|ema-9-21@m15c"]) };
+    const result = mode === "fixed" ? selectFixed(tapes, NOW, o) : mode === "hourly" ? selectAt(tapes, NOW, o)
+      : selectDurable(tapes, NOW, o, new Set());
+    const selected = new Set(result.picks.map((x) => x.id));
+    assert.ok(selected.has(normal), "ordinary seat remains available");
+    assert.ok(selected.has(siblingExit), "the 5-minute Exit lane has a seat");
+    assert.ok(selected.has(combined), "the combined lane cannot occupy the 15-minute standalone lane's seat");
+    assert.equal(Number(selected.has(exit)) + Number(selected.has(alt)), 1,
+      "the 15-minute Exit lane gets one seat between its own configurations");
+    if (mode === "durable") {
+      const held = new Set(selectDurable(tapes, NOW, o, new Set([exit])).picks.map((x) => x.id));
+      assert.ok(held.has(exit) && held.has(siblingExit) && held.has(combined), "a held seat is counted only in its own lane");
+    }
+  });
+}
