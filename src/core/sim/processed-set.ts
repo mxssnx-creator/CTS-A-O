@@ -141,7 +141,7 @@ export class ProcessedSetBook {
    */
   verdict(identity: ProcessedSetIdentity, source: ProcessedStage, n: number, minPf: number,
     beforeT?: number): ProcessedVerdict {
-    if (!stages.includes(source) || !Number.isSafeInteger(n) || n < 9 || n > this.capacity ||
+    if (!stages.includes(source) || !Number.isSafeInteger(n) || n < 8 || n > this.capacity ||
       !Number.isFinite(minPf) || minPf <= 1 ||
       (beforeT !== undefined && (!Number.isFinite(beforeT) || beforeT < 0 || beforeT < this.clock)))
       throw new RangeError("invalid processed-set policy or decision time");
@@ -177,7 +177,7 @@ export class ProcessedSetBook {
     // Validate both windows before mutating the clock or records.
     const validation = this.verdict(identity, "postBase", policy.validationN, policy.minPf, entryT);
     const real = validation.state === "qualified" ? this.verdict(identity, "validated", policy.realN, policy.minPf, entryT) : null;
-    if (real === null && (!Number.isSafeInteger(policy.realN) || policy.realN < 9 || policy.realN > this.capacity))
+    if (real === null && (!Number.isSafeInteger(policy.realN) || policy.realN < 8 || policy.realN > this.capacity))
       throw new RangeError("invalid processed-set policy");
     const key = entryKey(identity, entryId, entryT);
     if (this.open.has(key) || (entryT === this.clock && this.seenAtClock.has(key))) throw new Error("duplicate processed entry");

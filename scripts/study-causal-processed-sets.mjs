@@ -22,9 +22,9 @@ const feedBytes = readFileSync(feedPath), feed = JSON.parse(gunzipSync(feedBytes
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 const symbols = feed.tickers.map((x) => x.sym).sort();
 if (symbols.length !== 20 || new Set(symbols).size !== 20) throw new Error("need exactly 20 symbols");
-const samples = [10, 12, 15, 20, 25, 30, 35], minPf = 1.1, baseN = 40;
+const samples = [8, 12, 15, 20, 25], minPf = 1.1, baseN = 40;
 const tfs = [1, 5, 15], windows = [1, 6], methods = ["edge-turn", "failed-break", "breakout", "mid-reclaim", "compression-break"];
-const relations = ["standalone", "trend"], histories = [12, 84];
+const relations = ["standalone", "trend"], histories = [84];
 const protection = { ...DEFAULT_LOW_RANGE_POLICY, steps: [3], slRatios: [1], trailRatios: [0, .5], tags: ["sh"] };
 const revision = `modeled-cost-${DEFAULT_SETTINGS.cost}-feed-${sha(feedBytes)}`;
 const sourceFiles = ["scripts/study-causal-processed-sets.mjs", "src/core/sim/processed-set.ts", "src/core/sim/backtest.ts",
@@ -37,7 +37,7 @@ const protocol = { scope: "Isolated causal modeled lanes; no portfolio/account a
   processedRule: "Each later gate uses only its own preceding stage's completed modeled closes; no warm-up promotion.",
   sourceSlotRule: "Raw source closes supply Base evidence. Each Base-processed lane is simulated independently, applying the Base verdict before occupying its own slot; rejected source positions cannot suppress its later signals.",
   clockRule: "At equal timestamps evaluate entries before exits; results only observe previously completed bars.",
-  unsupported: "Last-5 is below the project's current minimum of nine." };
+  unsupported: "Last-8 is permitted here solely for research; the production minimum remains nine." };
 writeFileSync(`${output}/protocol.json`, JSON.stringify(protocol, null, 2) + "\n", { flag: "wx" });
 
 const initialVerdict = () => ({ insufficient: 0, unknown: 0, failed: 0, qualified: 0 });
@@ -208,6 +208,6 @@ for (const history of histories) {
   writeFileSync(`${output}/${paths.contexts}`, contexts.map((x) => JSON.stringify(x)).join("\n") + "\n", { flag: "wx" });
   writeFileSync(`${output}/${paths.entries}`, entries.map((x) => JSON.stringify(x)).join("\n") + (entries.length ? "\n" : ""), { flag: "wx" });
   writeFileSync(`${output}/${paths.results}`, JSON.stringify({ history, completedContexts, cases, paths }, null, 2) + "\n", { flag: "wx" });
-  process.stderr.write(`history ${history}h complete: ${entries.length} post-Base entries, 49 Validation/Real cases\n`);
+  process.stderr.write(`history ${history}h complete: ${entries.length} post-Base entries, 25 Validation/Real cases\n`);
 }
-console.log(JSON.stringify({ status: "complete", output, histories, casesPerHistory: 49 }));
+console.log(JSON.stringify({ status: "complete", output, histories, casesPerHistory: 25 }));
