@@ -1,3 +1,27 @@
+## 2026-10-28 — Bybit V5 foundation, not connected to execution
+
+Added Bybit linear-USDT REST primitives with network-scoped HMAC signing,
+paginated contracts and book reads, closed candles, exact tick/quantity steps,
+order acknowledgements, per-client-id reconciliation, partial executions and
+USDT coin accounting. No acknowledgment is treated as a fill and absent fees
+remain unknown. A host-shared SQLite request budget reserves slots for
+protection, stops on IP/endpoint cooldowns, and rejects stale queued writes;
+bounded read batches retain each error separately. The isolated mocked suite
+passes 22 cases. No Bybit network, account, actual order, or fill was tested.
+
+This is a foundation only. `CoreRuntime` and its live executor remain BingX
+specific; Bybit is not a selectable connection, market feed or live venue. A
+safe completion requires integrating feed/stream, exact owned order journaling,
+partial-fill recovery, per-lane TP/SL/trailing and position reconciliation,
+then testnet verification. Regional hosts, non-USDT products, venue funding and
+full fee accounting are also not implemented. Do not claim Bybit is operational
+or enable live trading based on these primitives alone.
+Relevant venue contracts: https://bybit-exchange.github.io/docs/v5/guide,
+https://bybit-exchange.github.io/docs/v5/rate-limit and
+https://bybit-exchange.github.io/docs/v5/order/create-order. Bybit documents
+partial success and per-order quota use for linear batch writes; this checkpoint
+does not submit batches or assume an all-or-nothing result.
+
 ## 2026-10-28 — CI and new rolling-validation instruction
 
 PR #215 merged Base Last-40 and the hold-cell fix. Its CI exposed archived
