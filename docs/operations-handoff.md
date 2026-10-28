@@ -19,7 +19,10 @@ cells, not necessarily every independent ladder or Signal config. Insufficient
 history must remain insufficient. Venue fills and sustained PF are unmeasured.
 
 Separately, CTS-G PR #110 aligned general entry signals and guarded batch
-errors; that is a different repository and does not change CTS-A-O execution.
+errors; PRs #111 and #112 retained unconfirmed fills as pending and extended
+polling to additions and closes. Those changes are in a different repository
+and do not change CTS-A-O execution. Review CTS-G's provisional execution-price
+fallback before presenting venue returns as fully measured.
 
 ## 2026-10-28 — Bybit cooldown and shared-budget hardening
 

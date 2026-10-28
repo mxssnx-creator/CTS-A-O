@@ -3586,7 +3586,7 @@ export function selectAt(
   t: number,
   o: WalkForwardOptions,
 ): { picks: Selection[]; eligible: number } {
-  if (o.gates.lastNOnly) return selectFixed(tapes, t, o);
+  if (o.gates?.lastNOnly) return selectFixed(tapes, t, o);
   const fromPre = t - o.preH * H;
   const minLong = Math.max(8, o.gates.minTrades);
   const pairTotal = new Map<string, number>();
@@ -3678,7 +3678,7 @@ export function selectDurable(
   o: WalkForwardOptions,
   held: ReadonlySet<string>,
 ): { picks: Selection[]; eligible: number } {
-  if (o.gates.lastNOnly) return selectFixed(tapes, t, o);
+  if (o.gates?.lastNOnly) return selectFixed(tapes, t, o);
   const minLong = Math.max(8, o.gates.minTrades);
   const k = Math.max(2, o.durableSplits);
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
@@ -3946,7 +3946,7 @@ export function configEval(tp: ConfigTape, t: number, o: WalkForwardOptions): Co
 
 /** Full configured evaluator on an already scoped chronological record. */
 function configEvalRaw(tp: ConfigTape, t: number, o: WalkForwardOptions): ConfigEval {
-  if (o.gates.lastNOnly) return recentConfigEval(tp, t, o);
+  if (o.gates?.lastNOnly) return recentConfigEval(tp, t, o);
   const a = lowerBound(tp.exitT, t - tapeHistoryHours(tp, o) * H);
   const b = lowerBound(tp.exitT, t);
   return configEvalAt(
@@ -4025,7 +4025,7 @@ function signalConfigEvalWithKey(
   };
   const source = prepared?.tape ?? tp;
   const indices = prepared?.indices ?? signalContextOf(source, sym, side);
-  if (o.gates.lastNOnly) {
+  if (o.gates?.lastNOnly) {
     if (!indices || tp.heldOnly) return save({ ok: false, fail: "closes", n: 0, pf: 0, net: 0 });
     const end = lowerBound(indices, lowerBound(source.exitT, t));
     const range = o.rangeGate && tapeRangeGateOn(o.rangeGate, tp) ? o.rangeGate.lastN : 0;
@@ -4557,7 +4557,7 @@ export function* selectFixedGen(
   let t0 = performance.now();
   for (let i = 0; i < tapes.length; i++) {
     const original = tapes[i];
-    if (o.gates.lastNOnly) {
+    if (o.gates?.lastNOnly) {
       if (++seen % 32 === 0 && performance.now() - t0 > 8) { yield -1; t0 = performance.now(); }
       const info = selInfoOf(original, o, botOk);
       if (!info.inScope || (!info.canSeat && !(needBase && info.base))) continue;
@@ -4941,7 +4941,7 @@ export function withProbe<T extends { picks: Selection[]; eligible: number }>(
 
 /** Validation and range Last-N belong to the exact config, independently of its symbol-entry gate. */
 function validOk(tp: ConfigTape, t: number, o: WalkForwardOptions): boolean {
-  if (o.gates.lastNOnly) return configEval(tp, t, o).ok;
+  if (o.gates?.lastNOnly) return configEval(tp, t, o).ok;
   const prior = lossPriorOf(tp, o.gates);
   const minPf = minPfForTape(tp, o);
   if (
@@ -5086,7 +5086,7 @@ export function engineValidationLastNOk(
   side = 0,
 ): boolean {
   if (isSignalInd(tp.ind)) return true; // Signals retain their stricter exact-symbol/direction proof.
-  if (o.gates.lastNOnly) return side === 1 || side === -1 ? configDirectionEval(tp, t, o, side).ok
+  if (o.gates?.lastNOnly) return side === 1 || side === -1 ? configDirectionEval(tp, t, o, side).ok
     : side === 0 && (configDirectionEval(tp, t, o, 1).ok || configDirectionEval(tp, t, o, -1).ok);
   const prior = lossPriorOf(tp, o.gates);
   const range = o.rangeGate && tapeRangeGateOn(o.rangeGate, tp) ? o.rangeGate : null;
@@ -5183,10 +5183,10 @@ function directionTape(tp: ConfigTape, t: number, o: WalkForwardOptions, side: n
     }
     return lo;
   };
-  const end = bound(o.gates.lastNOnly ? t : t + 1),
-    from = o.gates.lastNOnly ? end : bound(t - tapeHistoryHours(tp, o) * H);
+  const end = bound(o.gates?.lastNOnly ? t : t + 1),
+    from = o.gates?.lastNOnly ? end : bound(t - tapeHistoryHours(tp, o) * H);
   const range = o.rangeGate && tapeRangeGateOn(o.rangeGate, tp) ? o.rangeGate : null;
-  const required = Math.max(o.gates.lastNOnly ? 9 : 0, validationLastNForTape(tp, o), range?.lastN ?? 0, o.lastN);
+  const required = Math.max(o.gates?.lastNOnly ? 9 : 0, validationLastNForTape(tp, o), range?.lastN ?? 0, o.lastN);
   const start = Math.min(from, Math.max(0, end - required));
   let cached = directionTapes.get(tp);
   if (!cached) directionTapes.set(tp, (cached = new Map()));
@@ -5210,7 +5210,7 @@ export function configDirectionEval(
   side: number,
 ): ConfigEval {
   if (side !== 1 && side !== -1) return { ok: false, fail: "context", n: 0, pf: 0, net: 0 };
-  if (o.gates.lastNOnly) return configEvalRaw(directionTape(tp, t, o, side), t, o);
+  if (o.gates?.lastNOnly) return configEvalRaw(directionTape(tp, t, o, side), t, o);
   // Reject definitely failing window samples before allocating/copying a compact view. Borderline arithmetic
   // falls through to the canonical evaluator, so this is a compute optimization, not a changed PF threshold.
   const idx = directionIndexOf(tp, side);
@@ -5332,7 +5332,7 @@ function signalLastNOk(
 export function signalValidationOk(
   tp: ConfigTape, entryT: number, o: WalkForwardOptions, sym: string, side: number,
 ): boolean {
-  if (o.gates.lastNOnly) {
+  if (o.gates?.lastNOnly) {
     if (!signalConfigEval(tp, entryT, o, sym, side).ok) return false;
     const entryN = signalEntryLastNOf(tp, o);
     return entryN === 0 || (Number.isSafeInteger(entryN) && entryN >= 9 && signalLastNOk(tp, sym, side, entryT - 1,
@@ -5357,7 +5357,7 @@ export function configContextEval(
   sym: string,
   side: number,
 ): ConfigEval {
-  if (o.gates.lastNOnly && o.symGate && o.symGate !== "off" && !isSignalInd(tp.ind)) {
+  if (o.gates?.lastNOnly && o.symGate && o.symGate !== "off" && !isSignalInd(tp.ind)) {
     const requested = validationLastNForTape(tp, o), idx = symTradeIdx(tp, sym);
     let n = 0, gp = 0, gl = 0;
     if (idx && (side === 1 || side === -1)) for (let j = idx.length - 1; j >= 0 && n < requested; j--) {
@@ -5542,7 +5542,7 @@ export function execDecision(
   const quietH = ro?.seatQuietH ?? o.seatQuietH;
   // seat cool-off (wf.seatQuietH): an engine config that closed within the last H hours before the entry waits;
   // wf.seatSideCooloff: only a close in the entry's own direction counts (any symbol, as before)
-  if (!o.gates.lastNOnly && quietH && quietH > 0 && !isSignalInd(tp.ind)) {
+  if (!o.gates?.lastNOnly && quietH && quietH > 0 && !isSignalInd(tp.ind)) {
     const b = lowerBound(tp.exitT, entryT + 1);
     if (o.seatSideCooloff && ctx?.side) {
       const want = ctx.side > 0 ? 1 : -1;
@@ -5563,14 +5563,14 @@ export function execDecision(
       return { ok: false, why: "signalInactive" };
     if (
       o.signalGuardN &&
-      ((o.gates.lastNOnly && o.signalGuardN < 9) ||
+      ((o.gates?.lastNOnly && o.signalGuardN < 9) ||
         ctx.guard?.disabled(guardKey(tp.id, ctx.sym, ctx.side, tp.kind), o.signalGuardN))
     )
       return { ok: false, why: "signalGuard" };
     // the loss cluster of this direction only (a cluster of losing shorts never pauses the longs)
     const coordination = isSignalCoordinationInd(tp.ind);
     if (
-      !o.gates.lastNOnly && o.signalCluster?.enabled &&
+      !o.gates?.lastNOnly && o.signalCluster?.enabled &&
       ctx.guard?.clustered(
         entryT,
         o.signalCluster,
@@ -5580,7 +5580,7 @@ export function execDecision(
     )
       return { ok: false, why: "signalCluster" };
     if (
-      !o.gates.lastNOnly && o.signalAccept?.enabled &&
+      !o.gates?.lastNOnly && o.signalAccept?.enabled &&
       ctx.guard &&
       // Own-config acceptance is separate from the explicit shared side/cluster coordination below.
       !ctx.guard.accepts(
@@ -5592,7 +5592,7 @@ export function execDecision(
       return { ok: false, why: "signalPf" };
     // Direction acceptance: this side's settled accepted orders, pooled over source and symbol, must clear the PF.
     if (
-      !o.gates.lastNOnly && o.signalSideAccept?.enabled &&
+      !o.gates?.lastNOnly && o.signalSideAccept?.enabled &&
       ctx.guard &&
       !o.probe?.perRange &&
       !o.probe?.perCell &&
@@ -5603,7 +5603,7 @@ export function execDecision(
     if (
       !o.probe?.perRange &&
       !o.probe?.perCell &&
-      (!signalConfigEval(tp, entryT, o, ctx.sym, ctx.side).ok || (!o.gates.lastNOnly && !signalLastNOk(
+      (!signalConfigEval(tp, entryT, o, ctx.sym, ctx.side).ok || (!o.gates?.lastNOnly && !signalLastNOk(
         tp,
         ctx.sym,
         ctx.side,
@@ -5652,7 +5652,7 @@ export function execDecision(
   // (an engine range's own lastN: wf.rangeOpts)
   const engineN = ro?.lastN ?? o.lastN;
   const lastN = isSignalInd(tp.ind) ? signalEntryLastNOf(tp, o) : engineN;
-  if (!probed && o.gates.lastNOnly && lastN > 0 && (!Number.isSafeInteger(lastN) || lastN < 9))
+  if (!probed && o.gates?.lastNOnly && lastN > 0 && (!Number.isSafeInteger(lastN) || lastN < 9))
     return { ok: false, why: "lastN" };
   if (
     !probed &&
@@ -5661,24 +5661,24 @@ export function execDecision(
           tp,
           ctx.sym,
           ctx.side,
-          o.gates.lastNOnly ? entryT - 1 : entryT,
+          o.gates?.lastNOnly ? entryT - 1 : entryT,
           lastN,
           Math.max(o.lastNMinPf, minPfForTape(tp, o)),
-          o.gates.lastNOnly ? 0 : o.gates.maxDdtH,
-          o.gates.lastNOnly ? 0 : o.gates.maxDdr ?? 0,
-          o.gates.lastNOnly ? 0 : o.gates.lastNFloor ?? 0,
+          o.gates?.lastNOnly ? 0 : o.gates.maxDdtH,
+          o.gates?.lastNOnly ? 0 : o.gates.maxDdr ?? 0,
+          o.gates?.lastNOnly ? 0 : o.gates.lastNFloor ?? 0,
           o.gates.warmup !== false,
           lossPriorOf(tp, o.gates),
         )
       : lastNSideOk(
           tp,
           ctx?.side ?? 0,
-          o.gates.lastNOnly ? entryT - 1 : entryT,
+          o.gates?.lastNOnly ? entryT - 1 : entryT,
           lastN,
           Math.max(o.lastNMinPf, minPfForTape(tp, o)),
-          o.gates.lastNOnly ? 0 : o.gates.maxDdtH,
-          o.gates.lastNOnly ? 0 : o.gates.maxDdr ?? 0,
-          o.gates.lastNOnly ? 0 : o.gates.lastNFloor ?? 0,
+          o.gates?.lastNOnly ? 0 : o.gates.maxDdtH,
+          o.gates?.lastNOnly ? 0 : o.gates.maxDdr ?? 0,
+          o.gates?.lastNOnly ? 0 : o.gates.lastNFloor ?? 0,
           o.gates.warmup !== false,
           lossPriorOf(tp, o.gates),
         ))
@@ -5691,7 +5691,7 @@ export function execDecision(
   // engine direction acceptance: this type family × range × side must clear its PF on its candidates' last hours
   if (
     !probed &&
-    !o.gates.lastNOnly && o.engineSideAccept?.enabled &&
+    !o.gates?.lastNOnly && o.engineSideAccept?.enabled &&
     ctx?.guard?.engineSide &&
     ctx.side &&
     !isSignalInd(tp.ind) &&
@@ -5712,7 +5712,7 @@ export function execDecision(
   )
     return { ok: false, why: "engineSide" };
   // the direction gate: this side's last N candidates across the universe sum negative → no new entry on it
-  if (!probed && !o.gates.lastNOnly && (o.sideGateN ?? 0) > 0 && !isSignalInd(tp.ind)) {
+  if (!probed && !o.gates?.lastNOnly && (o.sideGateN ?? 0) > 0 && !isSignalInd(tp.ind)) {
     // A known empty candidate record is immature and may trade. Missing evidence is not an empty record.
     if (!ctx?.direction || (ctx.side !== 1 && ctx.side !== -1))
       return { ok: false, why: "sideGateUnavailable" };
@@ -5730,12 +5730,12 @@ export function execDecision(
     lastNSideOk(
       tp,
       ctx?.side ?? 0,
-      o.gates.lastNOnly ? entryT - 1 : entryT,
+      o.gates?.lastNOnly ? entryT - 1 : entryT,
       engineN > 0 ? engineN : 25,
       o.normalBaseMinPf ?? 0,
-      o.gates.lastNOnly ? 0 : o.gates.maxDdtH,
-      o.gates.lastNOnly ? 0 : o.gates.maxDdr ?? 0,
-      o.gates.lastNOnly ? 0 : o.gates.lastNFloor ?? 0,
+      o.gates?.lastNOnly ? 0 : o.gates.maxDdtH,
+      o.gates?.lastNOnly ? 0 : o.gates.maxDdr ?? 0,
+      o.gates?.lastNOnly ? 0 : o.gates.lastNFloor ?? 0,
       o.gates.warmup !== false,
     );
   if (!tg.block) {
@@ -6139,7 +6139,7 @@ export function activeSignalsAt(
     sigTapes.length && "tp" in sigTapes[0]
       ? (sigTapes as SignalIndexRow[])
       : signalIndex(sigTapes as readonly ConfigTape[]);
-  if (options?.gates.lastNOnly) {
+  if (options?.gates?.lastNOnly) {
     const gen = recentSignalsGen(index, t, sig, options, report);
     for (let row = gen.next(); ; row = gen.next()) if (row.done) return row.value;
   }
@@ -6184,7 +6184,7 @@ function* activeSignalsAtGen(
   options?: WalkForwardOptions,
   report?: SignalUnitReport[],
 ): Generator<number, Set<string>> {
-  if (options?.gates.lastNOnly) return yield* recentSignalsGen(index, t, sig, options, report);
+  if (options?.gates?.lastNOnly) return yield* recentSignalsGen(index, t, sig, options, report);
   const gen = activeSignalsGen(signalWindowRows(index, t, windowH, sig.validateH ?? 24, undefined, options), sig, report);
   for (;;) {
     const r = gen.next();
@@ -7064,16 +7064,16 @@ export function* walkForwardGen(
         // engine orders and signal orders are capped each on their own (same class only)
         const cls = sigCfg(tr.cfg);
         const caps = capsOf(o, cls);
-        const gateOn = cls && !o.gates.lastNOnly && o.signalSourceGate?.enabled;
+        const gateOn = cls && !o.gates?.lastNOnly && o.signalSourceGate?.enabled;
         // hedge-only signal: trades while the book is losing (this or the previous hour), without confirmation
         const hedging =
-          cls && !o.gates.lastNOnly &&
+          cls && !o.gates?.lastNOnly &&
           hedgeKeys.size > 0 &&
           hedgeKeys.has(sigActiveKey(tp.bot, tp.ind, tr.sym, tr.side, tp.kind, tp.id));
         const bookLosing =
           (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
           (hourNet.get(hourKey - 1) ?? 0) < 0;
-        const coord = o.gates.lastNOnly && o.coord ? { ...o.coord, hourLock: 0, cooldown: "off" as const } : o.coord;
+        const coord = o.gates?.lastNOnly && o.coord ? { ...o.coord, hourLock: 0, cooldown: "off" as const } : o.coord;
         const coordRaw = coordBlock(coord, tr, hourNet, open.items, engineOpen);
         const coordWhy =
           (hedging
@@ -7092,7 +7092,7 @@ export function* walkForwardGen(
           )
             ? "sourceUnstable"
             : null);
-        if (!o.gates.lastNOnly && o.guardPct > 0 && (hourNet.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
+        if (!o.gates?.lastNOnly && o.guardPct > 0 && (hourNet.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
         else if (coordWhy) why = coordWhy;
         else if (counts.dupe(tr.sym, tr.cfg, tr.side)) why = "dupe";
         else if (counts.perSymbol(tr.sym, cls) >= caps.perSymbol) why = "perSymbol";

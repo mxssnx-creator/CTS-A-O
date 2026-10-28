@@ -9306,7 +9306,7 @@ export class CoreRuntime {
     crowdSeats?: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number }>,
   ): string | null {
     const hk = Math.floor(op.entryT / H);
-    if (!this.wf.gates.lastNOnly && this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
+    if (!this.wf.gates?.lastNOnly && this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
     // (coordination reads only the entry's own symbol: the whole book filtered per candidate was ~340 MB of garbage in
     // 5 min on x02, 8 Oct allocation profile)
     const at = open.filter((x) => x.sym === op.sym && x.entryT <= op.entryT && !x.stopHit);
@@ -9325,10 +9325,10 @@ export class CoreRuntime {
       }
     }
     // confirmation as in the simulation: an engine candidate (taken or not) open at the entry, not only a position
-    const coord = this.wf.gates.lastNOnly && this.wf.coord ? { ...this.wf.coord, hourLock: 0, cooldown: "off" as const } : this.wf.coord;
+    const coord = this.wf.gates?.lastNOnly && this.wf.coord ? { ...this.wf.coord, hourLock: 0, cooldown: "off" as const } : this.wf.coord;
     const coordWhy = coordBlock(coord, op, hourNet, at, confirmPool);
     // a hedge-only signal trades while the book is losing (this or the previous hour), without confirmation
-    const hedging = !this.wf.gates.lastNOnly && this.isHedgeEntry(op);
+    const hedging = !this.wf.gates?.lastNOnly && this.isHedgeEntry(op);
     if (hedging) {
       const losing =
         (!this.wf.coord?.hedgePrevOnly && (hourNet.get(hk) ?? 0) < 0) ||
@@ -9343,7 +9343,7 @@ export class CoreRuntime {
     const s2Key = this.wf.coord?.s2Side ? `${op.sym}|${op.side > 0 ? 1 : -1}` : op.sym;
     if (s2End?.paused.includes(s2Key)) return "s2Window";
     const sg = this.wf.signalSourceGate;
-    if (!this.wf.gates.lastNOnly && sg?.enabled && sigCfg(op.cfg)) {
+    if (!this.wf.gates?.lastNOnly && sg?.enabled && sigCfg(op.cfg)) {
       const src = signalSourceOf(op.cfg.split("|")[1] ?? "");
       if (sourceUnstable(srcClosed.get(src), op.entryT, sg)) return "sourceUnstable";
     }
