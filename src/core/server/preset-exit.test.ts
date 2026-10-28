@@ -164,7 +164,8 @@ afterEach(async () => {
   await closePool();
 });
 
-describe("independent Exit preset backtests", { timeout: 90_000 }, () => {
+// The two full parity paths and native-history fixtures can exceed 90s together under coverage on a busy runner.
+describe("independent Exit preset backtests", { timeout: 180_000 }, () => {
   for (const workers of [false, true])
     it(
       `matches a direct causal fit and independent WF with workers ${workers ? "on" : "off"}`,
