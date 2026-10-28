@@ -9,6 +9,7 @@
 import { BOTS, entrySignal } from "../bots/bots.ts";
 import { tacticCooldown } from "../indications/filters.ts";
 import { DEFAULT_PROTECT, PROTECT_GRID, type CoreSettings } from "../config.ts";
+import { RT_COST } from "../model-cost.ts";
 import type {
   Bars,
   BaseWindowsResult,
@@ -711,6 +712,8 @@ export function baseRangeProtects(
     baseTrailCells?: boolean;
     /** grid.baseCells: every hold of the range, and with baseTrailCells every trail ratio at every stop */
     baseCells?: boolean;
+    /** Independent no-TP trailing-only cells, distinct from capped-trailing Base sampling. */
+    trailingOnly?: boolean;
     /** the grid's trailing step and trail-free switch: a Base trailed cell is the cell the grid builds */
     trailStep?: number;
     trailFree?: boolean;
@@ -797,6 +800,7 @@ export function baseRangeProtects(
                 sl: distanceAtFloor(tp * k, Math.max(floorR, minSlR), digits),
                 trail: 0,
                 hold: h,
+                ...(r.maxHoldMin ? { maxHoldMin: r.maxHoldMin } : {}),
                 tag,
               });
             for (const tr of trs)
@@ -806,6 +810,7 @@ export function baseRangeProtects(
                   sl: distanceAtFloor(tp * Math.max(k, trailStop), Math.max(floorR, minSlR), digits),
                   trail: trailAtFloor(tp * tr, minTrailR, step, digits),
                   hold: h,
+                  ...(r.maxHoldMin ? { maxHoldMin: r.maxHoldMin } : {}),
                   tag,
                   trailStep: step,
                   trailFree: g.trailFree ?? false,
@@ -864,6 +869,20 @@ export function baseRangeProtects(
       ...(r.maxHoldMin ? { maxHoldMin: r.maxHoldMin } : {}),
       tag,
     });
+  }
+  if (g.baseCells && g.trailingOnly) {
+    // Trailing-only is an independent strategy, even when capped-trailing Base sampling is off.
+    // Construct the exact executable siblings, and retain only ranges whose own Base is enabled above.
+    const tags = new Set(out.map((p) => p.tag).filter(Boolean));
+    const fullRange = (r: CoordRangeLike | false | undefined) =>
+      r ? { ...r, trailOfTp: r.trailOfTp ?? [] } : false;
+    const complete = completeBaseRangeProtects({
+      tp: [], slOfTp: [], trailOfTp: [], minSl: g.minSl ?? 0, minTrail: g.minTrail ?? 0,
+      minSlEval: g.minSlEval, holdH: g.holdH ?? [16], trailStep: g.trailStep, trailFree: g.trailFree,
+      micro: fullRange(g.micro), minimal: fullRange(g.minimal), short: fullRange(g.short),
+      general: fullRange(g.general), long: fullRange(g.long), trailingOnly: true,
+    }, cost ?? RT_COST);
+    out.push(...complete.filter((p) => p.trailOnly && p.tag && tags.has(p.tag)));
   }
   return out;
 }
@@ -1532,9 +1551,9 @@ export function rangeBaseStats(
     // several cells of one range (Base at every config): a passing cell first, then the higher net
     const k = p.tag ?? "";
     const prev = out[k];
-    // Low-Range retains its actual lane hold, so post-Base selection compares the same identity the tape trades.
+    // Every range proof must name the lane cell actually simulated, including its converted hold.
     if (cellsOut && k && pass && pass(k, cand))
-      cellsOut.push(protectCellKey(lowRangeInd ? laneProtect(p, ind) : p));
+      cellsOut.push(protectCellKey(laneProtect(p, ind)));
     if (tpsOut && k && pass && pass(k, cand)) {
       const xs = (tpsOut[k] ??= []);
       if (!xs.includes(p.tp)) xs.push(p.tp);

@@ -1,0 +1,114 @@
+#!/usr/bin/env node
+// Frozen retrospective hold-cap comparison on exact Micro Base cells and post-Base walk-forward gates.
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { gunzipSync, gzipSync } from "node:zlib";
+import { DEFAULT_SETTINGS } from "../src/core/config.ts";
+import { barsFromCandles, headBars, resample } from "../src/core/market/bars.ts";
+import { rangeMinTfOf, microIndRule } from "../src/core/minimal-coord.ts";
+import { MICRO_METHODS, MICRO_PROFILES } from "../src/core/indications/micro-family.ts";
+import { baseRangeProtects, baseRuns, completeBaseRangeProtects, makeUniverse, protectCellKey } from "../src/core/pipeline/pipeline.ts";
+import { basePass } from "../src/core/server/runtime.server.ts";
+import { buildTapes, configDirectionEval, defaultWalkForward, passedCellsOf, tapeTrades, walkForward } from "../src/core/sim/walkforward.ts";
+import { modeledUnitReturn } from "../src/core/metrics/stats.ts";
+import { positionOrderCounts } from "../src/core/positions.ts";
+
+const [out] = process.argv.slice(2);
+if (!out || existsSync(out)) throw new Error("usage: study-micro-step-holds.mjs <fresh-output-dir>");
+const hash = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
+const feedPath = "docs/micro-optimization-2026-10-20/reproduction-feed.json.gz";
+const feed = JSON.parse(gunzipSync(readFileSync(feedPath)));
+const symbols = feed.tickers.map((x) => x.sym ?? x.symbol).sort();
+const H = 3_600_000, start = Date.UTC(2026, 9, 9, 12), end = start + 24 * H, evalFrom = start - 24 * H;
+const warm = evalFrom - 24 * H, tfs = [1, 5, 15], caps = [5, 10, 15, 20, 30, 50];
+const combos = [
+  ...["mc-rsi2-5", "mc-bbx-20", "mc-streak-4"].flatMap((ind) => tfs.map((tf) => ({ bot: "follow", ind: `${ind}@m${tf}` }))),
+  ...tfs.flatMap((tf) => ["micro", "inverse-micro"].flatMap((family) => MICRO_METHODS.flatMap((method) =>
+    MICRO_PROFILES.map((profile) => ({ bot: "follow", ind: `${family}-${tf}-${method}-${profile.id}@m${tf}` }))))),
+];
+const sources = ["scripts/study-micro-step-holds.mjs", "src/core/pipeline/pipeline.ts", "src/core/sim/walkforward.ts",
+  "src/core/sim/backtest.ts", "src/core/minimal-coord.ts", "src/core/config.ts"];
+const protocol = { scope: "Exploratory retrospective unallocated Micro model replay; family expansion follows the first zero-pass study, not exchange fills or an untouched holdout",
+  feed: feedPath, feedSha256: hash(feedPath), sourceSha256: Object.fromEntries(sources.map((p) => [p, hash(p)])),
+  symbols, warm, evalFrom, start, end, caps, tfs, combos, steps: [1, 2, 3, 4], slRatios: [1], trailRatios: [0, .5],
+  validLastN: 15, cost: DEFAULT_SETTINGS.cost, toggles: "Normal, capped Trailing and trailing-only; other strategy families disabled",
+  assumptions: "baseCells and exact lane proof on; 1m lane enabled for this research only; all qualifying gates retained; broad family expansion is exploratory after the smaller observed samples" };
+mkdirSync(out, { recursive: true });
+writeFileSync(`${out}/protocol.json`, JSON.stringify(protocol, null, 2) + "\n", { flag: "wx" });
+const bars = symbols.flatMap((sym) => tfs.map((tf) => {
+  const candles = (feed.candles[`${sym}|1`] ?? []).filter((c) => c.t >= warm && c.t < end);
+  if (candles.length !== (end - warm) / 60_000 || candles.some((c, i) => c.t !== warm + i * 60_000))
+    throw new Error(`incomplete minute feed ${sym}`);
+  return barsFromCandles(sym, tf, tf === 1 ? candles : resample(candles, 1, tf));
+}));
+const pre = makeUniverse(bars.map((b) => headBars(b, start)), evalFrom);
+const u = makeUniverse(bars, evalFrom);
+const items = [];
+const empty = () => ({ n: 0, gp: 0, gl: 0 });
+const add = (x, r) => { x.n++; x.gp += Math.max(0, r); x.gl += Math.max(0, -r); };
+const finish = (x) => ({ ...x, pf: x.gl > 0 ? x.gp / x.gl : x.gp > 0 ? "no-loss" : null });
+for (const cap of caps) {
+  const s = structuredClone(DEFAULT_SETTINGS);
+  s.signals.enabled = false; s.exitStrategy.enabled = false;
+  s.grid = { ...s.grid, tp: [], micro: { ...s.grid.micro, tp: [.002, .004, .006, .008], slOfTp: [1],
+    trailOfTp: [0, .5], minTf: 0, maxHoldMin: cap }, minimal: false, short: false, general: false, long: false,
+    minimalPlus: { ...s.grid.minimalPlus, enabled: false }, baseCells: true, baseTrailCells: true, trailingOnly: true };
+  s.focus = combos.map((c) => `${c.bot}|${c.ind}`); s.pinned = []; s.tfs = tfs;
+  const raw = baseRuns(pre, combos, s.cost, s.tactics, false, true, (done, total) => {
+      if (process.memoryUsage().rss > 3 * 1024 ** 3) throw new Error("research memory limit exceeded; incomplete arm");
+      if (done === total || done % 100 === 0) console.error(`cap ${cap}: Base ${done}/${total}`);
+    },
+    baseRangeProtects(s.grid, s.cost), rangeMinTfOf(s.grid), microIndRule(s.grid), s.gates,
+    completeBaseRangeProtects(s.grid, s.cost), true);
+  const base = basePass(raw, s), pairs = new Set(base.passed.map((r) => `${r.bot}|${r.ind}`));
+  const wf = { ...defaultWalkForward(s), startT: start, simH: 24, preH: 24, longH: 24, stepH: 1, validLastN: 15,
+    seatSet: "validated", recordValidation: true, causalBase: true,
+    basePassed: new Set(base.qualified.map((r) => `${r.bot}|${r.ind}`)), basePassedRanges: base.qualifiedTags,
+    basePassedTargets: base.qualifiedTps, basePassedCells: passedCellsOf(base.qualifiedCells),
+    toggles: { ...defaultWalkForward(s).toggles, normal: true, trailing: true, exit: false,
+      block: false, blockActive: false, dca: false, dcaActive: false, axis: false } };
+  const tapes = buildTapes(u, wf.protects, s.cost, undefined, pairs, s.tactics, undefined,
+    { minSl: s.protectFloor.minSl, minTrail: s.protectFloor.minTrail, pairTags: base.pairTags,
+      pairTps: base.pairTps, pairCells: base.pairCells, rangeMinTf: rangeMinTfOf(s.grid), microOwnInds: microIndRule(s.grid) });
+  for (const tape of tapes) {
+    const key = `${tape.bot}|${tape.ind}`;
+    if (!base.qualifiedCells[key]?.includes(protectCellKey(tape.protect))) throw new Error(`unproved cell: ${tape.id}`);
+  }
+  let validated = 0, gp = 0, gl = 0;
+  const directionRows = [];
+  for (const tape of tapes) for (const side of [1, -1]) {
+    const ev = configDirectionEval(tape, start, wf, side);
+    directionRows.push({ cfg: tape.id, kind: tape.kind, side, passed: ev.ok, fail: ev.fail ?? null,
+      n: ev.n, pf: ev.pf, gp: ev.gp ?? 0, gl: ev.gl ?? 0, net: ev.net });
+    if (ev.ok) { validated++; gp += ev.gp ?? 0; gl += ev.gl ?? 0; }
+  }
+  const sim = walkForward(u, tapes, wf), v = new Set(sim.validated ?? []), seen = new Set(), sourceRows = new Map();
+  const tradeKey = (t) => JSON.stringify([t.cfg, t.sym, t.side, t.entryT, t.exitT]);
+  for (const tape of tapes) for (const trade of tapeTrades(tape)) sourceRows.set(tradeKey(trade), trade);
+  const total = empty(), kind = {}, step = {}, reasons = {}, byId = new Map(tapes.map((t) => [t.id, t]));
+  for (const trade of sim.trades) {
+    const k = tradeKey(trade), source = sourceRows.get(k), r = modeledUnitReturn(trade);
+    if (!v.has(trade.cfg) || !source || seen.has(k) || !Number.isFinite(r) || Math.abs(r - source.r) > 1e-7)
+      throw new Error(`unvalidated, duplicate or unmatched modeled close: ${k}`);
+    seen.add(k); add(total, r); add(kind[trade.kind] ??= empty(), r); add(reasons[trade.reason] ??= empty(), r);
+    const tp = byId.get(trade.cfg)?.protect.tp;
+    // Trailing-only has no recoverable TP step in its existing identity; do not invent one.
+    const n = tp > 0 ? String(Math.round((tp - s.cost) / .002)) : "unavailable";
+    add(step[n] ??= empty(), r);
+  }
+  const orderBytes = gzipSync(Buffer.from(sim.trades.map((t) => JSON.stringify(t)).join("\n") + (sim.trades.length ? "\n" : "")), { level: 9 });
+  writeFileSync(`${out}/hold-${cap}-orders.jsonl.gz`, orderBytes, { flag: "wx" });
+  const row = { cap, basePairsPassed: base.qualified.length, basePairsEvaluated: raw.length,
+    microBasePairsPassed: Object.values(base.qualifiedTags).filter((tags) => tags.includes("mc")).length,
+    baseCellsPassed: Object.values(base.qualifiedCells).reduce((n, a) => n + a.length, 0),
+    baseRows: raw.map((r) => ({ pair: `${r.bot}|${r.ind}`, micro: r.ranges?.mc ?? null, cellsPassed: r.rangeCells?.length ?? 0 })),
+    passedCells: base.qualifiedCells, directionRows, tapes: tapes.length,
+    validatedDirections: validated, evaluatedDirections: tapes.length * 2, historicalPf: gl > 0 ? gp / gl : gp > 0 ? "no-loss" : null,
+    initialValidatedIds: v.size, modeled: finish(total), kind: Object.fromEntries(Object.entries(kind).map(([k, x]) => [k, finish(x)])),
+    steps: Object.fromEntries(Object.entries(step).map(([k, x]) => [k, finish(x)])),
+    reasons: Object.fromEntries(Object.entries(reasons).map(([k, x]) => [k, finish(x)])),
+    positionsAndOrders: positionOrderCounts(sim.trades, sim.openAtEnd), openAtEnd: sim.openAtEnd.length, skips: sim.skips,
+    matchedTapes: seen.size, orderSha256: createHash("sha256").update(orderBytes).digest("hex") };
+  items.push(row); writeFileSync(`${out}/results.json`, JSON.stringify({ ...protocol, items }, null, 2) + "\n");
+  console.log(JSON.stringify(row));
+}

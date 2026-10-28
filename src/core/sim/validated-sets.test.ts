@@ -50,8 +50,8 @@ describe("B1: Base cells", () => {
     assert.ok(cells.length > off.length, "more cells measured than the representative ones");
     assert.ok(cells.some((c) => c.trail > 0), "trailed cells measured");
     for (const c of cells) assert.ok(gridKeys.has(protectCellKey(c)), `Base cell ${protectCellKey(c)} is a grid cell`);
-    // without baseTrailCells no trailed cell
-    assert.ok(baseRangeProtects({ ...g, baseTrailCells: false }, 0.002).every((c) => c.trail === 0));
+    // Without capped-trailing Base sampling, the separately enabled trailing-only family remains independent.
+    assert.ok(baseRangeProtects({ ...g, baseTrailCells: false }, 0.002).every((c) => c.trail === 0 || c.trailOnly));
   });
 
   it("passed cells ⊆ Base cells, and the tapes built from them ⊆ passed cells", () => {

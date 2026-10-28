@@ -1,0 +1,131 @@
+{
+  "scope": "Exploratory retrospective unallocated Micro model replay; family expansion follows the first zero-pass study, not exchange fills or an untouched holdout",
+  "feed": "docs/micro-optimization-2026-10-20/reproduction-feed.json.gz",
+  "feedSha256": "a7beade8b9f2da1f5c2d5fda9b8ef32a4ce5bcc045ad10c67cd5678333c4224e",
+  "sourceSha256": {
+    "scripts/study-micro-step-holds.mjs": "456f630ac4541f4f260ea0aab534a31bcbc1c86857ad074d2eadcd900d465bdc",
+    "src/core/pipeline/pipeline.ts": "3f6e8a510b07601e1fc64c6ac092e4c15206aa6d1ccb8291699e0ab083a147c1",
+    "src/core/sim/walkforward.ts": "34f8209bd447ae8b769a178af2b573fe53041873171b1ef9d4799fc9b9043cb7",
+    "src/core/sim/backtest.ts": "30f5310c792e075143f6707ea4e70ba49d0e26ad6c0230fa3b2db0fa831147a9",
+    "src/core/minimal-coord.ts": "00750e9ee485df2010530ac278c7302a1f7ea070148dc8e5713f85d52510e048",
+    "src/core/config.ts": "527d8638872641455af6fdd87cccbc8ae872af24182d38463232bcd68cf44890"
+  },
+  "symbols": [
+    "ADA-USDT",
+    "APT-USDT",
+    "ARB-USDT",
+    "ATOM-USDT",
+    "AVAX-USDT",
+    "BCH-USDT",
+    "BNB-USDT",
+    "BTC-USDT",
+    "DOGE-USDT",
+    "DOT-USDT",
+    "ETC-USDT",
+    "ETH-USDT",
+    "FIL-USDT",
+    "LINK-USDT",
+    "LTC-USDT",
+    "NEAR-USDT",
+    "OP-USDT",
+    "SOL-USDT",
+    "SUI-USDT",
+    "TRX-USDT"
+  ],
+  "warm": 1791374400000,
+  "evalFrom": 1791460800000,
+  "start": 1791547200000,
+  "end": 1791633600000,
+  "caps": [
+    5,
+    10,
+    15,
+    20,
+    30,
+    50
+  ],
+  "tfs": [
+    1,
+    5,
+    15
+  ],
+  "combos": [
+    {
+      "bot": "follow",
+      "ind": "mc-rsi2-5@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-rsi2-5@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-rsi2-5@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-bbx-20@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-bbx-20@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-bbx-20@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-streak-4@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-streak-4@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-streak-4@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-retest-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-retest-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-retest-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-retest-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-retest-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-retest-fast@m15"
+    }
+  ],
+  "steps": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "slRatios": [
+    1
+  ],
+  "trailRatios": [
+    0,
+    0.5
+  ],
+  "validLastN": 15,
+  "cost": 0.0015,
+  "toggles": "Normal, capped Trailing and trailing-only; other strategy families disabled",
+  "assumptions": "baseCells and exact lane proof on; 1m lane enabled for this research only; all qualifying gates retained"
+}

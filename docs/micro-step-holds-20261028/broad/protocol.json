@@ -1,0 +1,1787 @@
+{
+  "scope": "Exploratory retrospective unallocated Micro model replay; family expansion follows the first zero-pass study, not exchange fills or an untouched holdout",
+  "feed": "docs/micro-optimization-2026-10-20/reproduction-feed.json.gz",
+  "feedSha256": "a7beade8b9f2da1f5c2d5fda9b8ef32a4ce5bcc045ad10c67cd5678333c4224e",
+  "sourceSha256": {
+    "scripts/study-micro-step-holds.mjs": "0fc9b74c150f1bfdf7707d4c1de50a1609523485c81eae9100da254353bad6de",
+    "src/core/pipeline/pipeline.ts": "3f6e8a510b07601e1fc64c6ac092e4c15206aa6d1ccb8291699e0ab083a147c1",
+    "src/core/sim/walkforward.ts": "34f8209bd447ae8b769a178af2b573fe53041873171b1ef9d4799fc9b9043cb7",
+    "src/core/sim/backtest.ts": "30f5310c792e075143f6707ea4e70ba49d0e26ad6c0230fa3b2db0fa831147a9",
+    "src/core/minimal-coord.ts": "00750e9ee485df2010530ac278c7302a1f7ea070148dc8e5713f85d52510e048",
+    "src/core/config.ts": "527d8638872641455af6fdd87cccbc8ae872af24182d38463232bcd68cf44890"
+  },
+  "symbols": [
+    "ADA-USDT",
+    "APT-USDT",
+    "ARB-USDT",
+    "ATOM-USDT",
+    "AVAX-USDT",
+    "BCH-USDT",
+    "BNB-USDT",
+    "BTC-USDT",
+    "DOGE-USDT",
+    "DOT-USDT",
+    "ETC-USDT",
+    "ETH-USDT",
+    "FIL-USDT",
+    "LINK-USDT",
+    "LTC-USDT",
+    "NEAR-USDT",
+    "OP-USDT",
+    "SOL-USDT",
+    "SUI-USDT",
+    "TRX-USDT"
+  ],
+  "warm": 1791374400000,
+  "evalFrom": 1791460800000,
+  "start": 1791547200000,
+  "end": 1791633600000,
+  "caps": [
+    5,
+    10,
+    15,
+    20,
+    30,
+    50
+  ],
+  "tfs": [
+    1,
+    5,
+    15
+  ],
+  "combos": [
+    {
+      "bot": "follow",
+      "ind": "mc-rsi2-5@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-rsi2-5@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-rsi2-5@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-bbx-20@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-bbx-20@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-bbx-20@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-streak-4@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-streak-4@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-streak-4@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-drawdown-turn-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-drawdown-turn-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-drawdown-trend-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-drawdown-trend-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-range-reclaim-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-range-reclaim-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-impulse-retest-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-impulse-retest-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-squeeze-break-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-squeeze-break-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-residual-revert-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-residual-revert-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-market-follow-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-market-follow-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-activity-absorb-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-activity-absorb-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-drawdown-residual-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-drawdown-residual-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-drawdown-market-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-drawdown-market-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-pullback-activity-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-pullback-activity-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-adaptive-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-adaptive-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-close-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-close-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-retest-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-retest-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-activity-acceleration-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-activity-acceleration-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-activity-flow-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-activity-flow-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-change-ema-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-change-ema-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-change-roc-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-change-roc-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-activity-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-activity-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-direction-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-direction-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-market-momentum-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-market-momentum-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-relative-trend-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-relative-trend-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-flow-break-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-flow-break-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-trend-reclaim-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-trend-reclaim-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-market-continuation-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-market-continuation-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-direction-persist-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-direction-persist-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-channel-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-channel-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-channel-short-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-channel-short-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-channel-wide-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-channel-wide-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-channel-activity-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-channel-activity-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-channel-failure-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-channel-failure-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-close-tactic-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-close-tactic-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-retest-tactic-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-retest-tactic-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-activity-acceleration-relative-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-activity-acceleration-relative-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-retest-market-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-retest-market-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-drawdown-turn-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-drawdown-turn-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-drawdown-trend-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-drawdown-trend-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-range-reclaim-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-range-reclaim-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-impulse-retest-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-impulse-retest-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-squeeze-break-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-squeeze-break-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-residual-revert-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-residual-revert-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-market-follow-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-market-follow-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-activity-absorb-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-activity-absorb-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-drawdown-residual-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-drawdown-residual-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-drawdown-market-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-drawdown-market-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-pullback-activity-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-pullback-activity-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-adaptive-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-adaptive-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-close-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-close-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-retest-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-retest-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-activity-acceleration-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-activity-acceleration-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-activity-flow-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-activity-flow-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-change-ema-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-change-ema-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-change-roc-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-change-roc-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-activity-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-activity-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-direction-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-direction-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-market-momentum-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-market-momentum-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-relative-trend-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-relative-trend-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-flow-break-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-flow-break-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-trend-reclaim-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-trend-reclaim-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-market-continuation-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-market-continuation-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-direction-persist-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-direction-persist-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-channel-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-channel-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-channel-short-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-channel-short-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-channel-wide-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-channel-wide-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-channel-activity-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-channel-activity-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-channel-failure-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-channel-failure-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-close-tactic-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-close-tactic-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-retest-tactic-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-retest-tactic-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-activity-acceleration-relative-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-activity-acceleration-relative-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-retest-market-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-retest-market-selective@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-drawdown-turn-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-drawdown-turn-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-drawdown-trend-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-drawdown-trend-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-range-reclaim-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-range-reclaim-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-impulse-retest-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-impulse-retest-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-squeeze-break-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-squeeze-break-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-residual-revert-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-residual-revert-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-market-follow-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-market-follow-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-activity-absorb-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-activity-absorb-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-drawdown-residual-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-drawdown-residual-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-drawdown-market-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-drawdown-market-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-pullback-activity-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-pullback-activity-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-adaptive-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-adaptive-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-close-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-close-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-retest-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-retest-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-activity-acceleration-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-activity-acceleration-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-activity-flow-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-activity-flow-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-change-ema-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-change-ema-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-change-roc-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-change-roc-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-activity-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-activity-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-direction-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-direction-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-market-momentum-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-market-momentum-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-relative-trend-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-relative-trend-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-flow-break-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-flow-break-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-trend-reclaim-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-trend-reclaim-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-market-continuation-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-market-continuation-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-direction-persist-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-direction-persist-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-channel-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-channel-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-channel-short-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-channel-short-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-channel-wide-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-channel-wide-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-channel-activity-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-channel-activity-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-channel-failure-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-channel-failure-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-close-tactic-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-close-tactic-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-retest-tactic-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-retest-tactic-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-activity-acceleration-relative-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-activity-acceleration-relative-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-retest-market-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-retest-market-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-drawdown-turn-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-drawdown-turn-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-drawdown-trend-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-drawdown-trend-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-range-reclaim-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-range-reclaim-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-impulse-retest-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-impulse-retest-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-squeeze-break-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-squeeze-break-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-residual-revert-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-residual-revert-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-market-follow-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-market-follow-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-activity-absorb-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-activity-absorb-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-drawdown-residual-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-drawdown-residual-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-drawdown-market-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-drawdown-market-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-pullback-activity-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-pullback-activity-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-adaptive-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-adaptive-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-close-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-close-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-retest-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-retest-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-activity-acceleration-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-activity-acceleration-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-activity-flow-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-activity-flow-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-change-ema-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-change-ema-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-change-roc-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-change-roc-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-activity-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-activity-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-direction-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-direction-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-market-momentum-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-market-momentum-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-relative-trend-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-relative-trend-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-flow-break-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-flow-break-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-trend-reclaim-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-trend-reclaim-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-market-continuation-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-market-continuation-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-direction-persist-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-direction-persist-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-channel-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-channel-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-channel-short-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-channel-short-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-channel-wide-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-channel-wide-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-channel-activity-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-channel-activity-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-channel-failure-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-channel-failure-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-close-tactic-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-close-tactic-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-retest-tactic-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-retest-tactic-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-activity-acceleration-relative-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-activity-acceleration-relative-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-retest-market-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-retest-market-selective@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-drawdown-turn-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-drawdown-turn-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-drawdown-trend-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-drawdown-trend-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-range-reclaim-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-range-reclaim-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-impulse-retest-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-impulse-retest-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-squeeze-break-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-squeeze-break-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-residual-revert-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-residual-revert-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-market-follow-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-market-follow-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-activity-absorb-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-activity-absorb-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-drawdown-residual-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-drawdown-residual-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-drawdown-market-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-drawdown-market-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-pullback-activity-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-pullback-activity-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-adaptive-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-adaptive-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-close-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-close-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-retest-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-retest-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-activity-acceleration-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-activity-acceleration-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-activity-flow-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-activity-flow-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-change-ema-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-change-ema-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-change-roc-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-change-roc-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-activity-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-activity-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-direction-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-direction-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-market-momentum-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-market-momentum-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-relative-trend-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-relative-trend-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-flow-break-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-flow-break-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-trend-reclaim-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-trend-reclaim-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-market-continuation-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-market-continuation-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-direction-persist-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-direction-persist-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-channel-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-channel-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-channel-short-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-channel-short-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-channel-wide-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-channel-wide-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-channel-activity-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-channel-activity-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-channel-failure-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-channel-failure-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-close-tactic-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-close-tactic-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-retest-tactic-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-retest-tactic-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-activity-acceleration-relative-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-activity-acceleration-relative-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-retest-market-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-retest-market-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-drawdown-turn-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-drawdown-turn-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-drawdown-trend-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-drawdown-trend-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-range-reclaim-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-range-reclaim-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-impulse-retest-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-impulse-retest-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-squeeze-break-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-squeeze-break-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-residual-revert-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-residual-revert-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-market-follow-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-market-follow-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-activity-absorb-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-activity-absorb-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-drawdown-residual-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-drawdown-residual-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-drawdown-market-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-drawdown-market-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-pullback-activity-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-pullback-activity-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-adaptive-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-adaptive-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-close-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-close-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-retest-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-retest-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-activity-acceleration-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-activity-acceleration-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-activity-flow-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-activity-flow-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-change-ema-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-change-ema-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-change-roc-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-change-roc-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-activity-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-activity-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-direction-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-direction-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-market-momentum-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-market-momentum-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-relative-trend-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-relative-trend-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-flow-break-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-flow-break-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-trend-reclaim-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-trend-reclaim-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-market-continuation-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-market-continuation-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-direction-persist-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-direction-persist-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-channel-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-channel-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-channel-short-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-channel-short-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-channel-wide-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-channel-wide-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-channel-activity-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-channel-activity-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-channel-failure-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-channel-failure-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-close-tactic-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-close-tactic-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-retest-tactic-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-retest-tactic-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-activity-acceleration-relative-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-activity-acceleration-relative-selective@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-retest-market-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-retest-market-selective@m15"
+    }
+  ],
+  "steps": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "slRatios": [
+    1
+  ],
+  "trailRatios": [
+    0,
+    0.5
+  ],
+  "validLastN": 15,
+  "cost": 0.0015,
+  "toggles": "Normal, capped Trailing and trailing-only; other strategy families disabled",
+  "assumptions": "baseCells and exact lane proof on; 1m lane enabled for this research only; all qualifying gates retained; broad family expansion is exploratory after the smaller observed samples"
+}

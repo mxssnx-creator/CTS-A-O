@@ -144,3 +144,44 @@ test("Base judges a range at its own maximum hold: Micro 15 min is 1 bar, Minima
   const built = new Set(grid.map(key));
   for (const p of cells.filter((c) => c.tag === "mc" || c.tag === "mn")) assert.ok(built.has(key(p)), key(p));
 });
+
+test("exact Base cells preserve minute caps and match executable lane identities", async () => {
+  const { baseRangeProtects, configId, protectCellKey } = await import("./pipeline/pipeline.ts");
+  for (const minutes of [7, 10, 14, 16, 20, 31]) {
+    const g = grid({ baseCells: true, baseTrailCells: true,
+      micro: { ...MICRO_RANGE, maxHoldMin: minutes },
+      minimal: { ...MINIMAL_RANGE, maxHoldMin: minutes },
+      short: { ...DEFAULT_SETTINGS.grid.short, maxHoldMin: minutes },
+    });
+    const base = baseRangeProtects(g, 0.002).filter((p) => ["mc", "mn", "sh"].includes(p.tag ?? ""));
+    const executable = protectGrid(15, g, 0.002);
+    const cells = new Map(executable.map((p) => [protectCellKey(p), p]));
+    assert.ok(base.length > 0);
+    for (const p of base) {
+      assert.equal(p.maxHoldMin, minutes, `Base lost ${minutes} minute cap for ${p.tag}`);
+      const matching = cells.get(protectCellKey(p));
+      assert.ok(matching, `missing executable cell: ${protectCellKey(p)}`);
+      for (const tf of [1, 5, 15, 30]) {
+        const ind = `mc-rsi2-5@m${tf}`;
+        const a = laneProtect(p, ind), b = laneProtect(matching, ind);
+        assert.equal(a.hold, Math.floor(minutes / tf), `Base hold for ${minutes}m on ${tf}m lane`);
+        assert.equal(a.hold, b.hold, `Base and execution disagree on ${tf}m`);
+        assert.equal(configId("follow", ind, a), configId("follow", ind, b), `identity on ${tf}m`);
+      }
+    }
+  }
+});
+
+test("exact Base cells independently evaluate trailing-only sets even when capped-trail Base sampling is off", async () => {
+  const { baseRangeProtects, protectCellKey } = await import("./pipeline/pipeline.ts");
+  const g = grid({ baseCells: true, baseTrailCells: false, trailingOnly: true,
+    micro: { ...MICRO_RANGE, tp: [0.004], slOfTp: [1, 2], trailOfTp: [0, 0.5], maxHoldMin: 15 },
+    minimal: false, short: false, general: false, long: false,
+  });
+  const source = protectGrid(15, g, 0.002).filter((p) => p.tag === "mc" && p.trailOnly);
+  const base = baseRangeProtects(g, 0.002).filter((p) => p.tag === "mc" && p.trailOnly);
+  assert.ok(source.length > 0, "the executable grid includes trailing-only cells");
+  assert.deepEqual(new Set(base.map(protectCellKey)), new Set(source.map(protectCellKey)),
+    "every independent trailing-only cell must be measured at Base");
+  assert.ok(base.every((p) => p.maxHoldMin === 15));
+});

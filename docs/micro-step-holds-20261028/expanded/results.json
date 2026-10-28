@@ -1,0 +1,1307 @@
+{
+  "scope": "Exploratory retrospective unallocated Micro model replay; family expansion follows the first zero-pass study, not exchange fills or an untouched holdout",
+  "feed": "docs/micro-optimization-2026-10-20/reproduction-feed.json.gz",
+  "feedSha256": "a7beade8b9f2da1f5c2d5fda9b8ef32a4ce5bcc045ad10c67cd5678333c4224e",
+  "sourceSha256": {
+    "scripts/study-micro-step-holds.mjs": "456f630ac4541f4f260ea0aab534a31bcbc1c86857ad074d2eadcd900d465bdc",
+    "src/core/pipeline/pipeline.ts": "3f6e8a510b07601e1fc64c6ac092e4c15206aa6d1ccb8291699e0ab083a147c1",
+    "src/core/sim/walkforward.ts": "34f8209bd447ae8b769a178af2b573fe53041873171b1ef9d4799fc9b9043cb7",
+    "src/core/sim/backtest.ts": "30f5310c792e075143f6707ea4e70ba49d0e26ad6c0230fa3b2db0fa831147a9",
+    "src/core/minimal-coord.ts": "00750e9ee485df2010530ac278c7302a1f7ea070148dc8e5713f85d52510e048",
+    "src/core/config.ts": "527d8638872641455af6fdd87cccbc8ae872af24182d38463232bcd68cf44890"
+  },
+  "symbols": [
+    "ADA-USDT",
+    "APT-USDT",
+    "ARB-USDT",
+    "ATOM-USDT",
+    "AVAX-USDT",
+    "BCH-USDT",
+    "BNB-USDT",
+    "BTC-USDT",
+    "DOGE-USDT",
+    "DOT-USDT",
+    "ETC-USDT",
+    "ETH-USDT",
+    "FIL-USDT",
+    "LINK-USDT",
+    "LTC-USDT",
+    "NEAR-USDT",
+    "OP-USDT",
+    "SOL-USDT",
+    "SUI-USDT",
+    "TRX-USDT"
+  ],
+  "warm": 1791374400000,
+  "evalFrom": 1791460800000,
+  "start": 1791547200000,
+  "end": 1791633600000,
+  "caps": [
+    5,
+    10,
+    15,
+    20,
+    30,
+    50
+  ],
+  "tfs": [
+    1,
+    5,
+    15
+  ],
+  "combos": [
+    {
+      "bot": "follow",
+      "ind": "mc-rsi2-5@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-rsi2-5@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-rsi2-5@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-bbx-20@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-bbx-20@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-bbx-20@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-streak-4@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-streak-4@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "mc-streak-4@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-1-break-retest-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-1-break-retest-fast@m1"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-5-break-retest-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-5-break-retest-fast@m5"
+    },
+    {
+      "bot": "follow",
+      "ind": "micro-15-break-retest-fast@m15"
+    },
+    {
+      "bot": "follow",
+      "ind": "inverse-micro-15-break-retest-fast@m15"
+    }
+  ],
+  "steps": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "slRatios": [
+    1
+  ],
+  "trailRatios": [
+    0,
+    0.5
+  ],
+  "validLastN": 15,
+  "cost": 0.0015,
+  "toggles": "Normal, capped Trailing and trailing-only; other strategy families disabled",
+  "assumptions": "baseCells and exact lane proof on; 1m lane enabled for this research only; all qualifying gates retained",
+  "items": [
+    {
+      "cap": 5,
+      "basePairsPassed": 1,
+      "basePairsEvaluated": 15,
+      "baseCellsPassed": 0,
+      "baseRows": [
+        {
+          "pair": "follow|mc-rsi2-5@m1",
+          "micro": {
+            "n": 742,
+            "pf": 0.3752648049860727,
+            "net": -103.13618485256906,
+            "mdd": 108.66370897484342,
+            "gp": 61.951656645251354,
+            "gl": 165.08784149782068
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-rsi2-5@m5",
+          "micro": {
+            "n": 122,
+            "pf": 0.27424481386823474,
+            "net": -17.457433461780287,
+            "mdd": 18.113083461611744,
+            "gp": 6.5967294231278215,
+            "gl": 24.0541628849081
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-rsi2-5@m15",
+          "micro": null,
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m1",
+          "micro": {
+            "n": 582,
+            "pf": 0.2593207718604818,
+            "net": -89.10826669244454,
+            "mdd": 90.85965767501096,
+            "gp": 31.19788380710698,
+            "gl": 120.30615049955149
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m5",
+          "micro": {
+            "n": 92,
+            "pf": 0.2550065578293412,
+            "net": -14.266022288088598,
+            "mdd": 14.398783808676768,
+            "gp": 4.883169477307667,
+            "gl": 19.149191765396264
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m15",
+          "micro": null,
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m1",
+          "micro": {
+            "n": 639,
+            "pf": 0.4445562053885035,
+            "net": -75.26896050664688,
+            "mdd": 75.43563618441007,
+            "gp": 60.24242919083558,
+            "gl": 135.51138969748254
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m5",
+          "micro": {
+            "n": 66,
+            "pf": 0.1772975007383526,
+            "net": -13.931965628055812,
+            "mdd": 14.175974329191792,
+            "gp": 3.002425163949029,
+            "gl": 16.934390792004837
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m15",
+          "micro": null,
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-1-break-retest-fast@m1",
+          "micro": {
+            "n": 689,
+            "pf": 0.29343509790756483,
+            "net": -100.76358961018701,
+            "mdd": 101.05990916696453,
+            "gp": 41.846932525548546,
+            "gl": 142.61052213573572
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-1-break-retest-fast@m1",
+          "micro": {
+            "n": 689,
+            "pf": 0.41799712702200975,
+            "net": -85.85795304824542,
+            "mdd": 88.06296845525624,
+            "gp": 61.66357482485212,
+            "gl": 147.52152787309757
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-5-break-retest-fast@m5",
+          "micro": {
+            "n": 149,
+            "pf": 0.327962082783229,
+            "net": -19.324860205076668,
+            "mdd": 19.90317966050835,
+            "gp": 9.430749724062611,
+            "gl": 28.755609929139254
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-5-break-retest-fast@m5",
+          "micro": {
+            "n": 149,
+            "pf": 0.32131952778642103,
+            "net": -18.7837962966835,
+            "mdd": 21.197050974226112,
+            "gp": 8.893140149444703,
+            "gl": 27.67693644612821
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-15-break-retest-fast@m15",
+          "micro": null,
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-15-break-retest-fast@m15",
+          "micro": null,
+          "cellsPassed": 0
+        }
+      ],
+      "tapes": 0,
+      "validatedDirections": 0,
+      "evaluatedDirections": 0,
+      "historicalPf": null,
+      "initialValidatedIds": 0,
+      "modeled": {
+        "n": 0,
+        "gp": 0,
+        "gl": 0,
+        "pf": null
+      },
+      "kind": {},
+      "steps": {},
+      "reasons": {},
+      "positionsAndOrders": {
+        "openedPositions": 0,
+        "closedPositions": 0,
+        "openPositions": 0,
+        "openedOrders": 0,
+        "settledOrders": 0,
+        "openOrders": 0
+      },
+      "openAtEnd": 0,
+      "skips": {},
+      "matchedTapes": 0,
+      "orderSha256": "f61f27bd17de546264aa58f40f3aafaac7021e0ef69c17f6b1b4cd7664a037ec"
+    },
+    {
+      "cap": 10,
+      "basePairsPassed": 1,
+      "basePairsEvaluated": 15,
+      "baseCellsPassed": 0,
+      "baseRows": [
+        {
+          "pair": "follow|mc-rsi2-5@m1",
+          "micro": {
+            "n": 735,
+            "pf": 0.2944990799203011,
+            "net": -105.30856205351995,
+            "mdd": 109.5913876710705,
+            "gp": 43.95922634514513,
+            "gl": 149.2677883986653
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-rsi2-5@m5",
+          "micro": {
+            "n": 122,
+            "pf": 0.27026845616977063,
+            "net": -19.762402520344132,
+            "mdd": 19.762402520344132,
+            "gp": 7.319341015936126,
+            "gl": 27.081743536280246
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-rsi2-5@m15",
+          "micro": null,
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m1",
+          "micro": {
+            "n": 541,
+            "pf": 0.3615505774771136,
+            "net": -92.12410824592102,
+            "mdd": 95.8017347164197,
+            "gp": 52.1694019304763,
+            "gl": 144.29351017639755
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m5",
+          "micro": {
+            "n": 86,
+            "pf": 0.21254546131094773,
+            "net": -16.628862635464476,
+            "mdd": 16.728862635464502,
+            "gp": 4.488372479019809,
+            "gl": 21.117235114484295
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m15",
+          "micro": null,
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m1",
+          "micro": {
+            "n": 583,
+            "pf": 0.5050044016569237,
+            "net": -70.57923601122609,
+            "mdd": 70.67794729618223,
+            "gp": 72.00634706765287,
+            "gl": 142.58558307887895
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m5",
+          "micro": {
+            "n": 66,
+            "pf": 0.18507629990805616,
+            "net": -14.141662085286487,
+            "mdd": 14.5565376899708,
+            "gp": 3.2116951476556297,
+            "gl": 17.353357232942113
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m15",
+          "micro": null,
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-1-break-retest-fast@m1",
+          "micro": {
+            "n": 635,
+            "pf": 0.3514356762945136,
+            "net": -86.0301622936319,
+            "mdd": 86.66578202852239,
+            "gp": 46.6169154890466,
+            "gl": 132.6470777826786
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-1-break-retest-fast@m1",
+          "micro": {
+            "n": 622,
+            "pf": 0.4756669071436546,
+            "net": -78.66088227805399,
+            "mdd": 83.17902134790626,
+            "gp": 71.35994103016526,
+            "gl": 150.02082330821906
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-5-break-retest-fast@m5",
+          "micro": {
+            "n": 149,
+            "pf": 0.5613593870504815,
+            "net": -11.942049790109522,
+            "mdd": 15.731399590308817,
+            "gp": 15.283084950170188,
+            "gl": 27.22513474027971
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-5-break-retest-fast@m5",
+          "micro": {
+            "n": 149,
+            "pf": 0.34980688917602154,
+            "net": -25.46509297072024,
+            "mdd": 31.714955290380757,
+            "gp": 13.700337340358837,
+            "gl": 39.165430311079085
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-15-break-retest-fast@m15",
+          "micro": null,
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-15-break-retest-fast@m15",
+          "micro": null,
+          "cellsPassed": 0
+        }
+      ],
+      "tapes": 0,
+      "validatedDirections": 0,
+      "evaluatedDirections": 0,
+      "historicalPf": null,
+      "initialValidatedIds": 0,
+      "modeled": {
+        "n": 0,
+        "gp": 0,
+        "gl": 0,
+        "pf": null
+      },
+      "kind": {},
+      "steps": {},
+      "reasons": {},
+      "positionsAndOrders": {
+        "openedPositions": 0,
+        "closedPositions": 0,
+        "openPositions": 0,
+        "openedOrders": 0,
+        "settledOrders": 0,
+        "openOrders": 0
+      },
+      "openAtEnd": 0,
+      "skips": {},
+      "matchedTapes": 0,
+      "orderSha256": "f61f27bd17de546264aa58f40f3aafaac7021e0ef69c17f6b1b4cd7664a037ec"
+    },
+    {
+      "cap": 15,
+      "basePairsPassed": 1,
+      "basePairsEvaluated": 15,
+      "baseCellsPassed": 0,
+      "baseRows": [
+        {
+          "pair": "follow|mc-rsi2-5@m1",
+          "micro": {
+            "n": 659,
+            "pf": 0.43260409508188863,
+            "net": -103.08943487702658,
+            "mdd": 108.564256396013,
+            "gp": 78.599283676388,
+            "gl": 181.68871855341487
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-rsi2-5@m5",
+          "micro": {
+            "n": 121,
+            "pf": 0.2673005633379247,
+            "net": -21.11829841864016,
+            "mdd": 21.11829841864016,
+            "gp": 7.704295624625118,
+            "gl": 28.822594043265266
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-rsi2-5@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m1",
+          "micro": {
+            "n": 555,
+            "pf": 0.3063656434951748,
+            "net": -92.13955534221856,
+            "mdd": 94.03955534221849,
+            "gp": 40.696360984797415,
+            "gl": 132.83591632701587
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m5",
+          "micro": {
+            "n": 86,
+            "pf": 0.20934936604138998,
+            "net": -17.175120238410237,
+            "mdd": 17.27512023841026,
+            "gp": 4.547647695662327,
+            "gl": 21.72276793407257
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m1",
+          "micro": {
+            "n": 544,
+            "pf": 0.513186759781528,
+            "net": -72.38621575721635,
+            "mdd": 72.6528931474718,
+            "gp": 76.30780029857294,
+            "gl": 148.69401605578918
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m5",
+          "micro": {
+            "n": 66,
+            "pf": 0.18628869762788644,
+            "net": -14.852962589179377,
+            "mdd": 15.13795523557613,
+            "gp": 3.4003940323648263,
+            "gl": 18.2533566215442
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-1-break-retest-fast@m1",
+          "micro": {
+            "n": 544,
+            "pf": 0.5242059543429253,
+            "net": -73.88177951031423,
+            "mdd": 90.34988677259011,
+            "gp": 81.39922954116108,
+            "gl": 155.2810090514754
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-1-break-retest-fast@m1",
+          "micro": {
+            "n": 557,
+            "pf": 0.5370171517775574,
+            "net": -80.06582710943209,
+            "mdd": 84.21426283192417,
+            "gp": 92.86893152543647,
+            "gl": 172.9347586348686
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-5-break-retest-fast@m5",
+          "micro": {
+            "n": 149,
+            "pf": 0.7617157468714852,
+            "net": -6.313489076483579,
+            "mdd": 7.982297844603307,
+            "gp": 20.182131148485738,
+            "gl": 26.495620224969326
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-5-break-retest-fast@m5",
+          "micro": {
+            "n": 149,
+            "pf": 0.28063192923118724,
+            "net": -31.061582105374104,
+            "mdd": 31.546004827038377,
+            "gp": 12.117401460267823,
+            "gl": 43.17898356564193
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-15-break-retest-fast@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-15-break-retest-fast@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        }
+      ],
+      "tapes": 0,
+      "validatedDirections": 0,
+      "evaluatedDirections": 0,
+      "historicalPf": null,
+      "initialValidatedIds": 0,
+      "modeled": {
+        "n": 0,
+        "gp": 0,
+        "gl": 0,
+        "pf": null
+      },
+      "kind": {},
+      "steps": {},
+      "reasons": {},
+      "positionsAndOrders": {
+        "openedPositions": 0,
+        "closedPositions": 0,
+        "openPositions": 0,
+        "openedOrders": 0,
+        "settledOrders": 0,
+        "openOrders": 0
+      },
+      "openAtEnd": 0,
+      "skips": {},
+      "matchedTapes": 0,
+      "orderSha256": "f61f27bd17de546264aa58f40f3aafaac7021e0ef69c17f6b1b4cd7664a037ec"
+    },
+    {
+      "cap": 20,
+      "basePairsPassed": 1,
+      "basePairsEvaluated": 15,
+      "baseCellsPassed": 0,
+      "baseRows": [
+        {
+          "pair": "follow|mc-rsi2-5@m1",
+          "micro": {
+            "n": 689,
+            "pf": 0.35547901819169514,
+            "net": -102.06682453550995,
+            "mdd": 105.98678139711511,
+            "gp": 56.293923083823586,
+            "gl": 158.36074761933375
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-rsi2-5@m5",
+          "micro": {
+            "n": 121,
+            "pf": 0.2569349426190317,
+            "net": -20.967850138033477,
+            "mdd": 20.967850138033477,
+            "gp": 7.250204162538065,
+            "gl": 28.21805430057152
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-rsi2-5@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m1",
+          "micro": {
+            "n": 547,
+            "pf": 0.3200565134933226,
+            "net": -89.93935400191965,
+            "mdd": 91.83935400191959,
+            "gp": 42.33539498346737,
+            "gl": 132.274748985387
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m5",
+          "micro": {
+            "n": 85,
+            "pf": 0.20893802003040995,
+            "net": -16.80901670546486,
+            "mdd": 16.909016705464886,
+            "gp": 4.439655498590545,
+            "gl": 21.24867220405541
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m1",
+          "micro": {
+            "n": 519,
+            "pf": 0.5494221024815272,
+            "net": -70.24002755316057,
+            "mdd": 70.99000995836917,
+            "gp": 85.64872762103406,
+            "gl": 155.8887551741946
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m5",
+          "micro": {
+            "n": 66,
+            "pf": 0.19302664488301802,
+            "net": -14.580466283902501,
+            "mdd": 14.793423633003592,
+            "gp": 3.487622571136412,
+            "gl": 18.068088855038912
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-1-break-retest-fast@m1",
+          "micro": {
+            "n": 520,
+            "pf": 0.5525436617193243,
+            "net": -70.18805478988311,
+            "mdd": 79.87061739747851,
+            "gp": 86.67206492498451,
+            "gl": 156.86011971486758
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-1-break-retest-fast@m1",
+          "micro": {
+            "n": 544,
+            "pf": 0.5306440292562871,
+            "net": -77.44225902509251,
+            "mdd": 80.1542019602654,
+            "gp": 87.55459592570766,
+            "gl": 164.99685495079999
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-5-break-retest-fast@m5",
+          "micro": {
+            "n": 135,
+            "pf": 0.9295704909771302,
+            "net": -1.8200603149162335,
+            "mdd": 8.294563639157701,
+            "gp": 24.022237042647767,
+            "gl": 25.842297357564004
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-5-break-retest-fast@m5",
+          "micro": {
+            "n": 133,
+            "pf": 0.3468983100432668,
+            "net": -27.18001767850598,
+            "mdd": 27.646874193605235,
+            "gp": 14.436805699039734,
+            "gl": 41.61682337754573
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-15-break-retest-fast@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-15-break-retest-fast@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        }
+      ],
+      "tapes": 0,
+      "validatedDirections": 0,
+      "evaluatedDirections": 0,
+      "historicalPf": null,
+      "initialValidatedIds": 0,
+      "modeled": {
+        "n": 0,
+        "gp": 0,
+        "gl": 0,
+        "pf": null
+      },
+      "kind": {},
+      "steps": {},
+      "reasons": {},
+      "positionsAndOrders": {
+        "openedPositions": 0,
+        "closedPositions": 0,
+        "openPositions": 0,
+        "openedOrders": 0,
+        "settledOrders": 0,
+        "openOrders": 0
+      },
+      "openAtEnd": 0,
+      "skips": {},
+      "matchedTapes": 0,
+      "orderSha256": "f61f27bd17de546264aa58f40f3aafaac7021e0ef69c17f6b1b4cd7664a037ec"
+    },
+    {
+      "cap": 30,
+      "basePairsPassed": 1,
+      "basePairsEvaluated": 15,
+      "baseCellsPassed": 0,
+      "baseRows": [
+        {
+          "pair": "follow|mc-rsi2-5@m1",
+          "micro": {
+            "n": 607,
+            "pf": 0.4954173489984513,
+            "net": -91.44940286169458,
+            "mdd": 98.95435926523879,
+            "gp": 89.78830453901818,
+            "gl": 181.2377074007129
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-rsi2-5@m5",
+          "micro": {
+            "n": 121,
+            "pf": 0.287744464548353,
+            "net": -20.38214057718205,
+            "mdd": 20.38214057718205,
+            "gp": 8.23419100984811,
+            "gl": 28.616331587030153
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-rsi2-5@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m1",
+          "micro": {
+            "n": 543,
+            "pf": 0.33053743878870967,
+            "net": -89.81898492526649,
+            "mdd": 91.71898492526643,
+            "gp": 44.346822289931225,
+            "gl": 134.16580721519767
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m5",
+          "micro": {
+            "n": 85,
+            "pf": 0.2143813731764237,
+            "net": -16.917366117887525,
+            "mdd": 17.01736611788755,
+            "gp": 4.616448815050161,
+            "gl": 21.53381493293769
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m1",
+          "micro": {
+            "n": 485,
+            "pf": 0.5917810412011978,
+            "net": -60.533967549307945,
+            "mdd": 62.53137154521949,
+            "gp": 87.75401919053188,
+            "gl": 148.2879867398399
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m5",
+          "micro": {
+            "n": 66,
+            "pf": 0.2215837154417622,
+            "net": -14.016353786848363,
+            "mdd": 14.283337608921196,
+            "gp": 3.9898905131444633,
+            "gl": 18.006244299992826
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-1-break-retest-fast@m1",
+          "micro": {
+            "n": 490,
+            "pf": 0.5598005586988181,
+            "net": -71.8395434942672,
+            "mdd": 81.81526343603484,
+            "gp": 91.35817270890936,
+            "gl": 163.19771620317653
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-1-break-retest-fast@m1",
+          "micro": {
+            "n": 516,
+            "pf": 0.615419989780588,
+            "net": -63.2438785470366,
+            "mdd": 72.92626876571613,
+            "gp": 101.20533063301012,
+            "gl": 164.4492091800467
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-5-break-retest-fast@m5",
+          "micro": {
+            "n": 116,
+            "pf": 1.253657015796138,
+            "net": 7.080956144834085,
+            "mdd": 11.45686724157501,
+            "gp": 34.99643138847959,
+            "gl": 27.915475243645503
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-5-break-retest-fast@m5",
+          "micro": {
+            "n": 123,
+            "pf": 0.3530547888691595,
+            "net": -27.85408674934026,
+            "mdd": 28.964837489595535,
+            "gp": 15.200697906461064,
+            "gl": 43.05478465580133
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-15-break-retest-fast@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-15-break-retest-fast@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        }
+      ],
+      "tapes": 0,
+      "validatedDirections": 0,
+      "evaluatedDirections": 0,
+      "historicalPf": null,
+      "initialValidatedIds": 0,
+      "modeled": {
+        "n": 0,
+        "gp": 0,
+        "gl": 0,
+        "pf": null
+      },
+      "kind": {},
+      "steps": {},
+      "reasons": {},
+      "positionsAndOrders": {
+        "openedPositions": 0,
+        "closedPositions": 0,
+        "openPositions": 0,
+        "openedOrders": 0,
+        "settledOrders": 0,
+        "openOrders": 0
+      },
+      "openAtEnd": 0,
+      "skips": {},
+      "matchedTapes": 0,
+      "orderSha256": "f61f27bd17de546264aa58f40f3aafaac7021e0ef69c17f6b1b4cd7664a037ec"
+    },
+    {
+      "cap": 50,
+      "basePairsPassed": 1,
+      "basePairsEvaluated": 15,
+      "baseCellsPassed": 1,
+      "baseRows": [
+        {
+          "pair": "follow|mc-rsi2-5@m1",
+          "micro": {
+            "n": 580,
+            "pf": 0.523814113090221,
+            "net": -87.74516221403135,
+            "mdd": 95.44516221403127,
+            "gp": 96.52145430301005,
+            "gl": 184.26661651704165
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-rsi2-5@m5",
+          "micro": {
+            "n": 121,
+            "pf": 0.2839698123824214,
+            "net": -21.140642521126857,
+            "mdd": 21.140642521126857,
+            "gp": 8.384149710702578,
+            "gl": 29.524792231829434
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-rsi2-5@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m1",
+          "micro": {
+            "n": 402,
+            "pf": 0.5277829730510591,
+            "net": -86.42287334976683,
+            "mdd": 100.50660061144647,
+            "gp": 96.59228370239829,
+            "gl": 183.01515705216522
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m5",
+          "micro": {
+            "n": 85,
+            "pf": 0.210921211904671,
+            "net": -17.2706282283751,
+            "mdd": 17.370628228375125,
+            "gp": 4.616448815050161,
+            "gl": 21.887077043425265
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-bbx-20@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m1",
+          "micro": {
+            "n": 427,
+            "pf": 0.668000722304756,
+            "net": -60.65734902650307,
+            "mdd": 65.5229364097557,
+            "gp": 122.04590697932183,
+            "gl": 182.70325600582495
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m5",
+          "micro": {
+            "n": 66,
+            "pf": 0.22199387175129054,
+            "net": -14.018515414161516,
+            "mdd": 14.468515414161534,
+            "gp": 4.00000000000003,
+            "gl": 18.018515414161545
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|mc-streak-4@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-1-break-retest-fast@m1",
+          "micro": {
+            "n": 457,
+            "pf": 0.5991868969277899,
+            "net": -65.71796941532551,
+            "mdd": 79.12469032861826,
+            "gp": 98.24365986176376,
+            "gl": 163.9616292770892
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-1-break-retest-fast@m1",
+          "micro": {
+            "n": 462,
+            "pf": 0.7077362635452896,
+            "net": -55.45734636241871,
+            "mdd": 69.42516942466605,
+            "gp": 134.29368821731066,
+            "gl": 189.7510345797293
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-5-break-retest-fast@m5",
+          "micro": {
+            "n": 111,
+            "pf": 1.4031461620395065,
+            "net": 10.135804365573334,
+            "mdd": 8.943290454212443,
+            "gp": 35.27756514607177,
+            "gl": 25.14176078049844
+          },
+          "cellsPassed": 1
+        },
+        {
+          "pair": "follow|inverse-micro-5-break-retest-fast@m5",
+          "micro": {
+            "n": 115,
+            "pf": 0.3148135111029752,
+            "net": -31.043044588303253,
+            "mdd": 32.44435762437172,
+            "gp": 14.262934282171305,
+            "gl": 45.305978870474576
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|micro-15-break-retest-fast@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        },
+        {
+          "pair": "follow|inverse-micro-15-break-retest-fast@m15",
+          "micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "mdd": 0
+          },
+          "cellsPassed": 0
+        }
+      ],
+      "tapes": 1,
+      "validatedDirections": 0,
+      "evaluatedDirections": 2,
+      "historicalPf": null,
+      "initialValidatedIds": 0,
+      "modeled": {
+        "n": 0,
+        "gp": 0,
+        "gl": 0,
+        "pf": null
+      },
+      "kind": {},
+      "steps": {},
+      "reasons": {},
+      "positionsAndOrders": {
+        "openedPositions": 0,
+        "closedPositions": 0,
+        "openPositions": 0,
+        "openedOrders": 0,
+        "settledOrders": 0,
+        "openOrders": 0
+      },
+      "openAtEnd": 0,
+      "skips": {},
+      "matchedTapes": 0,
+      "orderSha256": "f61f27bd17de546264aa58f40f3aafaac7021e0ef69c17f6b1b4cd7664a037ec"
+    }
+  ]
+}
