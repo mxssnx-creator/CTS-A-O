@@ -19,7 +19,8 @@ const pair = `follow|${IND}`;
 const grid = { ...DEFAULT_SETTINGS.grid, holdH: [16] };
 const settings = (g: object = {}) => ({
   ...DEFAULT_SETTINGS,
-  gates: { ...DEFAULT_SETTINGS.gates, minPf: 0.5, baseSetsMinPf: 0.5, minTrades: 1, maxDdr: 0 },
+  // The synthetic topology fixture has only two closes; keep the Base-40 proof on and explicitly admit its partial sample.
+  gates: { ...DEFAULT_SETTINGS.gates, minPf: 0.5, baseSetsMinPf: 0.5, minTrades: 1, maxDdr: 0, lastNFloor: 2 },
   grid: { ...grid, ...g },
 });
 

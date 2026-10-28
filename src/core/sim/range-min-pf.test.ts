@@ -94,7 +94,8 @@ describe("per-range stage min PF", () => {
   });
 
   it("Short keeps at least 1.1 from Base to entry, including legacy settings below the floor", () => {
-    const gates = { ...DEFAULT_SETTINGS.gates, minPf: 1.05, minTrades: 10, maxDdr: 0, rangeMinPf: { short: 1.05 } };
+    // This synthetic aggregate isolates the independent range floor; Base Last-N evidence is covered separately.
+    const gates = { ...DEFAULT_SETTINGS.gates, baseLastN: 0, minPf: 1.05, minTrades: 10, maxDdr: 0, rangeMinPf: { short: 1.05 } };
     assert.equal(minPfOf(gates, "sh", IND), 1.1);
     assert.equal(minPfOf({ ...gates, rangeMinPf: undefined }, "sh", IND), 1.1);
     assert.equal(minPfOf({ ...gates, rangeMinPf: { short: 1.4 } }, "sh", IND), 1.4);

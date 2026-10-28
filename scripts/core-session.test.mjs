@@ -845,7 +845,8 @@ describe("session reports: return PF primary, simulated provenance", () => {
 describe("session qualification matches the runtime's full indication rules", () => {
   const tactic = "tactic-trend-s@m15";
   const other = "rsi-mom-14-20@m15";
-  const gates = { ...DEFAULT_GATES, minPf: 1.05, minTrades: 2, maxDdr: 0, baseSetsMinPf: undefined, rangeMinPf: { short: 1.05, general: 1.4 } };
+  // These two-close synthetic samples isolate the independent PF/range gate; recent Base proof is tested separately.
+  const gates = { ...DEFAULT_GATES, baseLastN: 0, minPf: 1.05, minTrades: 2, maxDdr: 0, baseSetsMinPf: undefined, rangeMinPf: { short: 1.05, general: 1.4 } };
   const sample = (pf) => statsOf([{ r: pf * 0.01, entryT: 0, exitT: 1 }, { r: -0.01, entryT: 2, exitT: 3 }], 4);
   const run = (ind, pf) => ({ bot: "follow", ind, full: sample(pf), ranges: { sh: sample(pf), gn: sample(pf) }, score: 1 });
   const applies = { enabled: () => true };

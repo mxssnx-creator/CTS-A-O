@@ -170,7 +170,8 @@ export async function studyRuntimeSettings(symbols, window, laneHistoryDays, { c
   const runtime = new CoreRuntime(new CoreDb(":memory:"), { symbols: symbols.length, signals: { enabled: true } }, { replay: true, replayPreloadAll: true, priceStream: null });
   try {
     runtime.updateSettings(settings);
-    runtime.updateSettings({}, { causalBase: true, recordValidation: true, preH: window.preH, longH: window.longH, simH: window.runH });
+    // This archived study explicitly specifies Last-15; the live factory default may change independently.
+    runtime.updateSettings({}, { causalBase: true, recordValidation: true, preH: window.preH, longH: window.longH, simH: window.runH, validLastN: 15 });
     const actual = { settings: structuredClone(runtime.settings), wf: structuredClone(runtime.wf) };
     if (!same(actual.settings, settings)) throw new Error("Actual runtime settings differ from the complete frozen default/explicit study patch: " + Object.keys(settings).filter((key) => !same(actual.settings[key], settings[key])).join(", "));
     if (!same(actual.settings.gates, DEFAULT_SETTINGS.gates) || !same(actual.settings.grid, DEFAULT_SETTINGS.grid) || !same(actual.settings.sizing, DEFAULT_SETTINGS.sizing)) throw new Error("Study changed production gates/grid/sizing");
