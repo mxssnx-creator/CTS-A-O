@@ -49,7 +49,7 @@ const fixture = () => {
     tapes.push(makeTape(id, "follow", ind, { tp: 0.01 + k / 10000, sl: 0.01, trail: 0, hold: 32 }, "normal", syms, trades, [], []));
   }
   // The historical lifecycle snapshot predates Base Last-N and used a floor of five; freeze both serialized inputs.
-  const { baseLastN: _baseLastN, ...archivedGates } = DEFAULT_SETTINGS.gates;
+  const { baseLastN: _baseLastN, baseRangeLastN: _baseRangeLastN, ...archivedGates } = DEFAULT_SETTINGS.gates;
   const o = { ...defaultWalkForward(DEFAULT_SETTINGS), gates: { ...archivedGates, lastNFloor: 5 },
     // Freeze the archived fixture's inputs (9c037e2); production defaults and independent Exit options changed later.
     // A direct baseline comparison confirms every non-options output field remains identical.

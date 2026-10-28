@@ -20,7 +20,7 @@ const bad = { n: 20, pf: 0.5, net: -1, mdd: 1, baseLast: { requested: 40, n: 20,
 const run = (ind: string, ranges: object) => ({ bot: "follow", ind, full: bad, ranges, score: 1 }) as unknown as ComboRun;
 const s = {
   ...DEFAULT_SETTINGS,
-  gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.1, minTrades: 3, maxDdr: 0 },
+  gates: { ...DEFAULT_SETTINGS.gates, baseRangeLastN: { micro: 40, minimal: 40 }, minPf: 1.1, minTrades: 3, maxDdr: 0 },
   grid: { ...DEFAULT_SETTINGS.grid, allSets: true, baseRanges: true },
 };
 const applies = { enabled: (tag: string) => tag === "mn" || tag === "sh" };
