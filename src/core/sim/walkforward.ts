@@ -3607,7 +3607,7 @@ export function selectAt(
       pairTotal.set(pair, (pairTotal.get(pair) ?? 0) + 1);
       if (ev.ok) {
         pairOk.set(pair, (pairOk.get(pair) ?? 0) + 1);
-        if (!original.heldOnly && tapeExecutable(original, o)) cand.push({ id: original.id, score: ev.lcb * (0.5 + ev.gh), window: { n: ev.n, net: ev.net, pf: ev.pf, gp: (ev.gp ?? 0) / 100, gl: (ev.gl ?? 0) / 100, ddt: ev.ddt }, pair });
+        if (!original.heldOnly && tapeExecutable(original, o) && inValidated(original.id, o)) cand.push({ id: original.id, score: ev.lcb * (0.5 + ev.gh), window: { n: ev.n, net: ev.net, pf: ev.pf, gp: (ev.gp ?? 0) / 100, gl: (ev.gl ?? 0) / 100, ddt: ev.ddt }, pair });
       }
       continue;
     }
@@ -3697,7 +3697,7 @@ export function selectDurable(
     // the pre-calc window, so a lane with too little history is not judged on a sliver)
     if (isSignalInd(tp.ind)) {
       const ev = configEval(tp, t, o);
-      if (ev.ok && !tp.heldOnly && tapeExecutable(tp, o)) cand0.push({ id: tp.id, score: ev.lcb * (0.5 + ev.gh), window: { n: ev.n, net: ev.net, pf: ev.pf, gp: (ev.gp ?? 0) / 100, gl: (ev.gl ?? 0) / 100, ddt: ev.ddt }, pair: seatKey(tp, o) });
+      if (ev.ok && !tp.heldOnly && tapeExecutable(tp, o) && inValidated(tp.id, o)) cand0.push({ id: tp.id, score: ev.lcb * (0.5 + ev.gh), window: { n: ev.n, net: ev.net, pf: ev.pf, gp: (ev.gp ?? 0) / 100, gl: (ev.gl ?? 0) / 100, ddt: ev.ddt }, pair: seatKey(tp, o) });
       continue;
     }
     const from = Math.min(t - o.preH * H, Math.max(from0, tp.fromT ?? from0));
@@ -4550,7 +4550,9 @@ export function* selectFixedGen(
       t0 = performance.now();
     }
     let info = infos[i];
-    if (!info || info.tp.deref() !== tp || info.canSeat !== (!tp.heldOnly && tapeExecutable(tp, o))) {
+    // The validated Set may be updated in place between selections, so its object identity alone is not a version.
+    const canSeat = !tp.heldOnly && tapeExecutable(tp, o) && inValidated(tp.id, o);
+    if (!info || info.tp.deref() !== tp || info.canSeat !== canSeat) {
       info = infos[i] = selInfoOf(tp, o, botOk);
       ca[i] = -1;
       cb[i] = -1;

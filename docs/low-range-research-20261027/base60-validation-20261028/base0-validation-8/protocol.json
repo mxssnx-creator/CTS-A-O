@@ -1,0 +1,137 @@
+{
+  "schema": "cts-low-range-short-24h-research-v1",
+  "scope": "unallocated all-window candidate screen with matched 60m Normal TP and trailing reference cells, not production or venue execution",
+  "windowScreen": true,
+  "recordOrders": true,
+  "frozenAt": "2026-10-28T14:28:06.071Z",
+  "hashes": {
+    "source": "9b6bafecb148c1ff5085830766e62a4a03aa4f90b42161e61cc519330cc456af",
+    "tests": "9fbe8ee19daf3a2d61cbd5efced417223f246593c31aa06ebc29abe50a1747a4",
+    "runner": "0624dc81edafb49b25303b7aa7db79914b820e65cc4e222606063f7c7c2f1056",
+    "description": "35062918766259379f472199014c98e2f9d2f56f4e657b2eeb2341c6b7aaf469",
+    "feed": "a7beade8b9f2da1f5c2d5fda9b8ef32a4ce5bcc045ad10c67cd5678333c4224e",
+    "backtest": "30f5310c792e075143f6707ea4e70ba49d0e26ad6c0230fa3b2db0fa831147a9",
+    "walkforward": "19f70195d3d623bb4c451f37c36ef74d5108b5f5748af2ada63be970efebdd90",
+    "pipeline": "4e05597477d6821d135147af33e25b9c12a543417ea0ab3874502ff6378986c5",
+    "config": "527d8638872641455af6fdd87cccbc8ae872af24182d38463232bcd68cf44890"
+  },
+  "feed": {
+    "path": "docs/micro-optimization-2026-10-20/reproduction-feed.json.gz",
+    "provider": "Previously examined cached Binance USD-M minute candles; retrospective, not a fresh holdout"
+  },
+  "symbols": [
+    "ADA-USDT",
+    "APT-USDT",
+    "ARB-USDT",
+    "ATOM-USDT",
+    "AVAX-USDT",
+    "BCH-USDT",
+    "BNB-USDT",
+    "BTC-USDT",
+    "DOGE-USDT",
+    "DOT-USDT",
+    "ETC-USDT",
+    "ETH-USDT",
+    "FIL-USDT",
+    "LINK-USDT",
+    "LTC-USDT",
+    "NEAR-USDT",
+    "OP-USDT",
+    "SOL-USDT",
+    "SUI-USDT",
+    "TRX-USDT"
+  ],
+  "warm": 1791374400000,
+  "evalFrom": 1791460800000,
+  "start": 1791547200000,
+  "end": 1791633600000,
+  "tfs": [
+    1,
+    5,
+    15
+  ],
+  "policy": {
+    "step": 0.002,
+    "cost": 0.0015,
+    "steps": [
+      3
+    ],
+    "slRatios": [
+      1
+    ],
+    "trailRatios": [
+      0,
+      0.5
+    ],
+    "tags": [
+      "sh"
+    ]
+  },
+  "methods": [
+    "edge-turn",
+    "failed-break",
+    "breakout",
+    "mid-reclaim",
+    "compression-break"
+  ],
+  "relations": [
+    "standalone",
+    "trend",
+    "breakout",
+    "activity",
+    "trend-breakout",
+    "move-follow",
+    "move-reverse",
+    "trend-move-follow",
+    "trend-move-reverse",
+    "breakout-move-follow",
+    "breakout-move-reverse",
+    "trend-breakout-move-follow",
+    "trend-breakout-move-reverse"
+  ],
+  "windows": [
+    1,
+    2,
+    3,
+    6,
+    9,
+    12,
+    18,
+    24,
+    36,
+    48
+  ],
+  "requestedPerSignalLane": 2,
+  "candidateHoldMin": 60,
+  "distinctPerSignalLane": 2,
+  "countPerStep": {
+    "3": 2
+  },
+  "totalCells": 3900,
+  "gates": {
+    "minPf": 1.1,
+    "maxDdtH": 35,
+    "minDdtH": 18,
+    "maxDdr": 1,
+    "rangeMinPf": {
+      "micro": 1.05,
+      "minimal": 1.1,
+      "short": 1.1,
+      "general": 1.2,
+      "long": 1.3
+    },
+    "minTrades": 12,
+    "quorum": 0.6,
+    "baseSetsMinPf": 1,
+    "warmup": true,
+    "lastNFloor": 5
+  },
+  "baseLastN": 0,
+  "validLastN": 8,
+  "rangeGate": {
+    "lastN": 75,
+    "minPf": 1.35
+  },
+  "preH": 24,
+  "longH": 24
+}

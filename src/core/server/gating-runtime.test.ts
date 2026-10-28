@@ -72,3 +72,32 @@ it("only the host operator's explicit waiver lifts the mainnet last-N floors", (
   );
   main.shutdown("test");
 });
+
+it("applies requested Validation 8, 10 and 12 to demo, and the mainnet floor unless explicitly waived", () => {
+  const demo = new CoreRuntime(new CoreDb(":memory:"), { symbols: 3 }, { market: "synthetic", conn: "bingx-vst-02" });
+  const main = new CoreRuntime(new CoreDb(":memory:"), { symbols: 3 }, { market: "synthetic", conn: "bingx-x01" });
+  demo.stop(); main.stop();
+  const oldWaiver = process.env.CTS_CORE_MAINNET_WAIVE_FLOORS;
+  delete process.env.CTS_CORE_MAINNET_WAIVE_FLOORS;
+  try {
+    for (const n of [8, 10, 12]) {
+      const patch = { validLastN: n, rangeOpts: { sh: { validLastN: n } } } as never;
+      demo.updateSettings({}, patch);
+      main.updateSettings({}, patch);
+      assert.equal(demo.wf.validLastN, n);
+      assert.equal(demo.wf.rangeOpts?.sh?.validLastN, n);
+      assert.equal(main.wf.validLastN, MAINNET_VALID_LAST_N);
+      assert.equal(main.wf.rangeOpts?.sh?.validLastN, MAINNET_VALID_LAST_N);
+    }
+    process.env.CTS_CORE_MAINNET_WAIVE_FLOORS = "1";
+    for (const n of [8, 10, 12]) {
+      main.updateSettings({}, { validLastN: n, rangeOpts: { sh: { validLastN: n } } } as never);
+      assert.equal(main.wf.validLastN, n);
+      assert.equal(main.wf.rangeOpts?.sh?.validLastN, n);
+    }
+  } finally {
+    if (oldWaiver === undefined) delete process.env.CTS_CORE_MAINNET_WAIVE_FLOORS;
+    else process.env.CTS_CORE_MAINNET_WAIVE_FLOORS = oldWaiver;
+    demo.shutdown("test"); main.shutdown("test");
+  }
+});

@@ -1,3 +1,31 @@
+## 2026-10-28 — Base 60 / Validation 8, 10, 12 and selector integrity
+
+On the 20-symbol retrospective Low-Range Short 1m/5m/15m cohort, Base passed
+47/3,900 cells. For the 2026-10-08 12:00–2026-10-09 12:00 UTC evaluation,
+Validation Last-N 8/10/12 passed 18/94 (19.15%), 24/94 (25.53%) and 25/94
+(26.60%) direction contexts at historical unit-return PF 2.8663, 3.0102 and
+2.8919 respectively. In the subsequent 24-hour unallocated walk-forward,
+modeled closes were 31/39/37 at PF 1.0592/0.7929/0.9638; position counts
+opened/closed/held were 15/15/0, 18/18/0 and 17/17/0, while order counts were
+31/31/0, 39/39/0 and 37/37/0. They are not actual funded or venue results.
+
+This is a research-only Base-60 prefilter after the aggregate Base gate, not
+an implemented live Base-60 setting; 38 of 47 passing cells had fewer than
+60 closes under warmup. x01 normally floors Validation Last-N to 50 unless the
+host explicitly waives it. Normal TP, stop, trailing and hold paths and modeled
+one-time costs reconciled against independent OHLC replay for all 213 screen
+closes; every 107 walk-forward closes matched an audited screen order and the
+source tape. Time exits dominated losses; no consistent-high-PF claim is
+supported. `selectAt` and `selectDurable` now honor validated Signal membership,
+and `selectFixedGen` invalidates stale cached eligibility after in-place Set
+membership changes. These fixes were independently reproduced but were not
+shown to cause this particular Low-Range decline. The tested source is based on main `239cbdb700a02fce9c038edd96b8e869806e394f`;
+the exact edited source hashes and frozen inputs are recorded in the evidence
+protocols. No live settings or running instance changed. See `docs/low-range-research-20261027/BASE60-VALIDATION-8-10-12-20261028.md`
+for frozen source hashes, detailed reports, tests, limitations and raw ledgers.
+Known unresolved: active-position modeled cost changes need entry-time cost
+provenance; exchange fees, execution and venue TP/SL were not measured.
+
 ## 2026-10-27 — Low-Range progression and independent lanes
 
 The latest audited 20-symbol Short replay on the 5m lane validated

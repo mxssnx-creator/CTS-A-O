@@ -1,0 +1,19 @@
+{
+  "scope": "retrospective unallocated walk-forward; Base-60 is a counterfactual screen, not a production Base setting",
+  "feedSha256": "a7beade8b9f2da1f5c2d5fda9b8ef32a4ce5bcc045ad10c67cd5678333c4224e",
+  "baseCells": 47,
+  "evaluatedCells": 3900,
+  "start": 1791547200000,
+  "end": 1791633600000,
+  "evalFrom": 1791460800000,
+  "rangeGate": {
+    "lastN": 75,
+    "minPf": 1.35
+  },
+  "cost": 0.0015,
+  "scripts": {
+    "runner": "16bb17cef1369743fc163e9fec63ea24541faa2220a7c627f7b22e2e2fe316a8",
+    "backtest": "30f5310c792e075143f6707ea4e70ba49d0e26ad6c0230fa3b2db0fa831147a9",
+    "walkforward": "19f70195d3d623bb4c451f37c36ef74d5108b5f5748af2ada63be970efebdd90"
+  }
+}

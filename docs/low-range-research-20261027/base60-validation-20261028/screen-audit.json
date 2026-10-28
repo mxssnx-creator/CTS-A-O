@@ -1,0 +1,166 @@
+[
+  {
+    "directory": "docs/low-range-research-20261027/base60-validation-20261028/validation-8",
+    "validationLastN": 8,
+    "baseLastN": 60,
+    "cells": 3900,
+    "basePassed": 47,
+    "active": 18,
+    "contexts": 94,
+    "validated": 18,
+    "candidates": 618,
+    "gatePassed": 66,
+    "gateRejected": 552,
+    "settled": 66,
+    "openAtEnd": 0,
+    "gp": 0.11944515528568822,
+    "gl": 0.12953924952184095,
+    "exitReasons": {
+      "time": {
+        "n": 39,
+        "gp": 0.01703006649926525,
+        "gl": 0.05649152547080939
+      },
+      "tp": {
+        "n": 17,
+        "gp": 0.10200000000000088,
+        "gl": 0
+      },
+      "sl": {
+        "n": 8,
+        "gp": 0,
+        "gl": 0.07199999999999993
+      },
+      "trail": {
+        "n": 2,
+        "gp": 0.0004150887864221031,
+        "gl": 0.001047724051031637
+      }
+    },
+    "scope": "model closes; entry-time gate verdicts are those recorded by the replay",
+    "pricePathsChecked": 66
+  },
+  {
+    "directory": "docs/low-range-research-20261027/base60-validation-20261028/validation-10",
+    "validationLastN": 10,
+    "baseLastN": 60,
+    "cells": 3900,
+    "basePassed": 47,
+    "active": 24,
+    "contexts": 94,
+    "validated": 24,
+    "candidates": 712,
+    "gatePassed": 73,
+    "gateRejected": 639,
+    "settled": 73,
+    "openAtEnd": 0,
+    "gp": 0.1241154115347058,
+    "gl": 0.16512462254676186,
+    "exitReasons": {
+      "sl": {
+        "n": 12,
+        "gp": 0,
+        "gl": 0.10799999999999964
+      },
+      "time": {
+        "n": 41,
+        "gp": 0.015700322748282706,
+        "gl": 0.05607689849573058
+      },
+      "tp": {
+        "n": 18,
+        "gp": 0.108000000000001,
+        "gl": 0
+      },
+      "trail": {
+        "n": 2,
+        "gp": 0.0004150887864221031,
+        "gl": 0.001047724051031637
+      }
+    },
+    "scope": "model closes; entry-time gate verdicts are those recorded by the replay",
+    "pricePathsChecked": 73
+  },
+  {
+    "directory": "docs/low-range-research-20261027/base60-validation-20261028/validation-12",
+    "validationLastN": 12,
+    "baseLastN": 60,
+    "cells": 3900,
+    "basePassed": 47,
+    "active": 25,
+    "contexts": 94,
+    "validated": 25,
+    "candidates": 782,
+    "gatePassed": 74,
+    "gateRejected": 708,
+    "settled": 74,
+    "openAtEnd": 0,
+    "gp": 0.125767125828238,
+    "gl": 0.15612462254676185,
+    "exitReasons": {
+      "sl": {
+        "n": 11,
+        "gp": 0,
+        "gl": 0.09899999999999962
+      },
+      "time": {
+        "n": 43,
+        "gp": 0.017352037041814917,
+        "gl": 0.05607689849573058
+      },
+      "tp": {
+        "n": 18,
+        "gp": 0.108000000000001,
+        "gl": 0
+      },
+      "trail": {
+        "n": 2,
+        "gp": 0.0004150887864221031,
+        "gl": 0.001047724051031637
+      }
+    },
+    "scope": "model closes; entry-time gate verdicts are those recorded by the replay",
+    "pricePathsChecked": 74
+  },
+  {
+    "directory": "docs/low-range-research-20261027/base60-validation-20261028/base0-validation-8",
+    "validationLastN": 8,
+    "baseLastN": 0,
+    "cells": 3900,
+    "basePassed": 47,
+    "active": 18,
+    "contexts": 94,
+    "validated": 18,
+    "candidates": 618,
+    "gatePassed": 66,
+    "gateRejected": 552,
+    "settled": 66,
+    "openAtEnd": 0,
+    "gp": 0.11944515528568822,
+    "gl": 0.12953924952184095,
+    "exitReasons": {
+      "time": {
+        "n": 39,
+        "gp": 0.01703006649926525,
+        "gl": 0.05649152547080939
+      },
+      "tp": {
+        "n": 17,
+        "gp": 0.10200000000000088,
+        "gl": 0
+      },
+      "sl": {
+        "n": 8,
+        "gp": 0,
+        "gl": 0.07199999999999993
+      },
+      "trail": {
+        "n": 2,
+        "gp": 0.0004150887864221031,
+        "gl": 0.001047724051031637
+      }
+    },
+    "scope": "model closes; entry-time gate verdicts are those recorded by the replay",
+    "pricePathsChecked": 66
+  }
+]
