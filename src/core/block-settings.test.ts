@@ -6,6 +6,8 @@ import { blockDecide } from "./sim/block.ts";
 
 describe("Block settings preserve independent Shared ratio and accepted-order history", () => {
   it("validates every relation multiplier and the recovery switch", () => {
+    assert.equal(DEFAULT_BLOCK.holdUntilNet, true, "raised source groups retain their volume until their own net recovers");
+    assert.equal(DEFAULT_BLOCK.maxMult, 8, "the default Block stack uses the systemwide 8× ceiling");
     assert.doesNotThrow(() => checkSettings({block:{...DEFAULT_BLOCK,sourceRatios:{symbol:4,direction:2,indication:2,type:3},holdUntilNet:true}}));
     for (const value of [-1,11,NaN,Infinity,"2",null])
       assert.throws(()=>checkSettings({block:{sourceRatios:{symbol:value}}} as never));

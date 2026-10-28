@@ -5,7 +5,10 @@ import { distanceAtFloor } from "../minimal-coord.ts";
 import { POSITION_COST_RT, RT_COST } from "../model-cost.ts";
 import { SeriesCache } from "./cache.ts";
 
-export const LOW_RANGE_WINDOWS = [12, 24, 48] as const;
+/** Candidate lookbacks from the shortest closed-bar window through medium and long intraday context. */
+export const LOW_RANGE_WINDOWS = [1, 2, 3, 6, 9, 12, 18, 24, 36, 48] as const;
+/** Frozen pre-expansion windows, retained only for historical vector and protocol audits. */
+export const LOW_RANGE_LEGACY_WINDOWS = [12, 24, 48] as const;
 export const LOW_RANGE_METHODS = ["edge-turn", "failed-break", "breakout", "mid-reclaim", "compression-break"] as const;
 // The original identities and calculations remain stable. New past-move relations
 // are distinct candidates: none inherits a sibling's validation or execution.
@@ -68,7 +71,12 @@ function features(k: SeriesCache, window: LowRangeWindow): Signals {
             if (olderHigh > olderLow && width / (olderHigh - olderLow) <= 0.65)
               out.compression[i] = out.breakout[i];
           }
-          out.trend[i] = previous > sum / window ? 1 : previous < sum / window ? -1 : 0;
+          if (window < 12 && s.run >= window + 2) {
+            // New short-window candidates use the immediately preceding context as their trend baseline;
+            // comparing a one-bar close to its own one-bar average is identically neutral.
+            const baseline = b.c[i - window - 2];
+            out.trend[i] = previous > baseline ? 1 : previous < baseline ? -1 : 0;
+          } else if (window >= 12) out.trend[i] = previous > sum / window ? 1 : previous < sum / window ? -1 : 0;
           out.shortBreak[i] = close > shortHigh ? 1 : close < shortLow ? -1 : 0;
           out.activity[i] = volume > 0 && b.v[i] >= 1.2 * volume / window ? 1 : 0;
           // Prior closed-bar log displacement, relative to the same prior
@@ -76,10 +84,13 @@ function features(k: SeriesCache, window: LowRangeWindow): Signals {
           // follow/reverse direction symmetric under reciprocal price mirrors;
           // log1p retains small moves. The current bar is excluded. The fixed
           // 20% threshold is exploratory, not an established trading edge.
-          const anchor = b.c[i - window];
-          const displacement = Math.log1p((previous - anchor) / anchor);
-          const threshold = 0.2 * Math.log1p(width / low);
-          out.move[i] = displacement >= threshold ? 1 : displacement <= -threshold ? -1 : 0;
+          const anchorIndex = window === 1 ? i - 2 : i - window;
+          if (anchorIndex >= 0) {
+            const anchor = b.c[anchorIndex];
+            const displacement = Math.log1p((previous - anchor) / anchor);
+            const threshold = 0.2 * Math.log1p(width / low);
+            out.move[i] = displacement >= threshold ? 1 : displacement <= -threshold ? -1 : 0;
+          }
         }
       }
       s.run++;

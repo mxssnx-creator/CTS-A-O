@@ -45,6 +45,8 @@ export interface StatTrade {
   vol?: number;
   level?: number;
   mult?: number;
+  /** Exact Block multiplier before coordination, strategy, range and additive Relate sizing. */
+  blockVol?: number;
   /** Persisted unit net return; explicit null marks a legacy close whose execution weighting is unknown. */
   unitR?: number | null;
   coordVol?: number;
@@ -376,8 +378,9 @@ export const KIND_LABEL: Record<StratKind, string> = {
 
 const indOf = (cfg: string) => cfg.split("|")[1] ?? "";
 export const kindOfTrade = (x: StatTrade): StratKind => x.kind ?? kindOfId(x.cfg);
-/** Block multiple excluding independent coordination, Relate, type, range and hedge sizing factors. */
-export const blockMult = (x: StatTrade) => (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.relateVol ?? 1) * (x.volFactor ?? 1) * (x.hedgeVol ?? 1) * (x.rangeVol ?? 1));
+/** Block multiple before independent coordination, strategy, range, hedge and additive Relate sizing. */
+export const blockMult = (x: StatTrade) => x.blockVol ??
+  (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.relateVol ?? 1) * (x.volFactor ?? 1) * (x.hedgeVol ?? 1) * (x.rangeVol ?? 1));
 
 /** Main type of a trade: Signals, or its sub-strategy. */
 export function typeOf(x: StatTrade): string {
@@ -422,16 +425,20 @@ export function subTypeOf(x: StatTrade, minActiveLevel: number): string[] {
 
 /**
  * The part of a trade a sub-type row carries: a Block Overall source row ("Block overall", "Block symbol" …) its own
- * leg — the leg's share of the Block volume (legs ÷ the Block multiple; a relation volume on top scales every part
- * alike). Every other row the whole trade. Before, each source row carried the whole stacked trade (a trade raised by
- * four sources counted four times in full).
+ * original-base leg. The row's P&L share accounts for fixed factors and any common stack cap; additive Relate volume
+ * is separate and does not inflate the Block leg. Every other row carries the whole trade.
  */
 export function subTypeShare(x: StatTrade, key: string): number {
   if (!key.startsWith("Block ") || !x.legs) return 1;
   const v = (x.legs as Record<string, number | undefined>)[key.slice(6)];
   if (v === undefined) return 1;
-  const m = blockMult(x);
-  return m > 0 ? Math.max(0, v) / m : 0;
+  const fixed = (x.coordVol ?? 1) * (x.volFactor ?? 1) * (x.hedgeVol ?? 1) * (x.rangeVol ?? 1);
+  const blockBase = blockMult(x) * fixed;
+  const total = x.mult ?? (blockBase + Math.max(0, (x.relateVol ?? 1) - 1));
+  if (!(total > 0) || !(blockBase > 0)) return 0;
+  const baseScale = Math.min(1, total / blockBase);
+  const relationScale = (x.relateVol ?? 1) < 1 ? (x.relateVol ?? 1) : 1;
+  return Math.min(1, Math.max(0, v) * fixed * baseScale * relationScale / total);
 }
 
 /** Execution presets compared on the same tapes: [label, with, without]. */

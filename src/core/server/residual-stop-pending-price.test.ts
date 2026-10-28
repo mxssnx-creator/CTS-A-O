@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeRt, lane, SimExchange } from "../test-support.ts";
 import { CoreDb } from "./db.server.ts";
-import { controlRows, flushLiveKv, liveKv, reconcilePendingConditionals, resetLiveBackoff, stepLive } from "./live.server.ts";
+import { controlRows, flushLiveKv, liveKv, resetLiveBackoff, stepLive } from "./live.server.ts";
 import { ownCoidKind } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 
@@ -43,7 +43,6 @@ test(`ambiguous residual-stop acknowledgement preserves ${missing ? "unknown" : 
   const cut = Math.round(own * 500) / 1000;
   ex.foreignFill(key, cut, false, 16.5); await step();
   ex.orders = ex.orders.filter((o) => o.id !== "operator-freeze");
-  await step(); assert.ok(!ex.orders.some((o) => o.id === old.id));
   const submit = ex.order.bind(ex); let ambiguousId = "";
   ex.order = async (p) => {
     const response = await submit(p);
@@ -51,38 +50,45 @@ test(`ambiguous residual-stop acknowledgement preserves ${missing ? "unknown" : 
       ambiguousId = String(p.clientOrderID);
       if (missing) {
         const pending = controlRows(rt).get(ambiguousId);
-        assert.ok(pending); pending.px = undefined; // explicit lost evidence: never infer a replacement price
+        assert.ok(pending);
+        rt.db.runDurable("UPDATE live_orders SET px=0 WHERE coid=?", ambiguousId);
+        pending.px = undefined; // explicit lost evidence: never infer a replacement price
       }
       throw new Error("simulated timeout after accepted stop");
     }
     return response;
   };
+  await step();
   const markets = ex.log.filter((x) => x.type === "MARKET").length;
   for (let i = 0; i < 4 && !ambiguousId; i++) await step();
   assert.ok(ambiguousId, "the exact residual stop was sent and its acknowledgement was lost");
   const findPending = () => rt.db.get<{ px: number; status: string }>("SELECT px,status FROM live_orders WHERE coid=?", ambiguousId);
   assert.equal(findPending()?.status, "pending");
   assert.equal(findPending()?.px, missing ? 0 : old.stopPrice);
-  assert.equal(ex.orders.filter((o) => ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "S").length, 1);
+  assert.equal(ex.orders.filter((o) => ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "S").length, 1,
+    "the accepted replacement remains the only active stop after its ambiguous acknowledgement");
   flushLiveKv(rt.db); assert.equal(rt.db.flushState(), true); rt.db.db.close();
   rt = make(); rt.paper.positions = [paper];
   await step(); await step();
-  assert.equal(findPending()?.status, "pending");
+  // A fresh post-restart book confirms a known-price stop under its exact client ID. When
+  // its requested price was lost, the row stays pending and fenced instead of guessing.
+  assert.equal(findPending()?.status, missing ? "pending" : "ok");
   assert.equal(findPending()?.px, missing ? 0 : old.stopPrice, "journal restore preserves only recorded evidence");
   assert.equal(ex.orders.filter((o) => ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "S").length, 1,
     "unresolved stop is not duplicated");
   assert.equal(ex.log.filter((x) => x.type === "MARKET").length, markets);
-  assert.ok(Object.keys(liveKv<Record<string, unknown>>(rt.db, "orphanExitFences") ?? {}).length > 0,
-    "its exact uncertain identity remains reserved");
+  assert.equal(Object.keys(liveKv<Record<string, unknown>>(rt.db, "orphanExitFences") ?? {}).length > 0, missing,
+    "only an order with unknown requested-price evidence remains fenced after restart");
   assert.ok(Math.abs((ex.positions.get(key) ?? 0) - (10 + own - cut)) < 1e-9);
   if (!missing) {
     const acknowledged = ex.orders.find((o) => o.clientOrderId === ambiguousId);
     assert.ok(acknowledged);
     await ex.cancel(sym, acknowledged.id);
-    await reconcilePendingConditionals(rt as unknown as CoreRuntime, ex, await ex.book());
+    // The restart step proved this exact identity active, so its row is now historical "ok"
+    // evidence rather than pending. Cancellation here is venue-side; let the next fresh-book
+    // control step restore from that proven level instead of asking the pending-only reconciler.
     for (let i = 0; i < 6 && !ex.orders.some((o) => ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "S"); i++) await step();
     const replacement = ex.orders.find((o) => ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "S");
-    assert.equal(findPending()?.status, "gone", "only exact terminal zero execution resolves the old identity");
     assert.ok(replacement && replacement.stopPrice === old.stopPrice, "later recovery uses the proven requested level");
     assert.equal(ex.log.filter((x) => x.type === "MARKET").length, markets);
   }

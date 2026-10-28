@@ -125,12 +125,14 @@ const FIELDS: Record<Fn, string[]> = {
   coreListing: [
     // pages/stages.tsx SetListings (the last paper step's validated sets, per range / strategy group)
     "ready",
+    "lane",
     "total",
     "calculated",
     ...under("validation", ["engineLastN", "rangeLastN", "historyH"]),
     "proofOn",
     ...under("byGroup[]", ["group", "validated", "calculated", "pf", "noLoss"]),
-    ...under("rows[]", ["id", "group", "range", "pf", "n", "net", "ddt", "score"]),
+    ...under("byKind[]", ["kind", "validated", "calculated", "pf", "noLoss"]),
+    ...under("rows[]", ["id", "group", "range", "kind", "pf", "n", "net", "ddt", "score", "executed.n", "executed.pf", "executed.net", "executed.wr", "executed.gp", "executed.gl", "executed.noLoss", "executed.pfBasis", "executed.unknownReturns", "executed.effective.n", "executed.effective.pf", "executed.effective.net", "executed.effective.wr", "executed.effective.gp", "executed.effective.gl", "executed.effective.noLoss", "executed.effective.pfBasis", "executed.effective.unknownReturns"]),
   ],
   coreStatus: [
     // shell.tsx (header: state pill, progressText, liveState, bar time, symbols; a stale progress report)
@@ -181,7 +183,7 @@ const FIELDS: Record<Fn, string[]> = {
   coreOverview: [
     // pages/overview.tsx (the account panel: the server's live tag and the own session from the own ledger)
     "liveTag",
-    ...under("liveSession", ["closes", "realized", "net", "hand.n", "hand.usd", "flat.n", "flat.usd", "feesModelled"]),
+    ...under("liveSession", ["closes", "realized", "net", "hand.n", "hand.usd", "flat.n", "flat.usd", "feesModelled", "exchangeReturns.n", "exchangeReturns.pf", "exchangeReturns.net", "exchangeReturns.wr", ...RETURN_PROVENANCE.map((x) => `exchangeReturns.${x}`)]),
     ...under("settings.gates", ["minPf", "maxDdtH", "baseSetsMinPf"]),
     ...under("settings.live", [
       "enabled",
@@ -196,7 +198,10 @@ const FIELDS: Record<Fn, string[]> = {
     ]),
     ...under("status", PREHISTORIC),
     ...under("status.signals", ["enabled", "configs"]),
-    ...under("sim", ["startT", "endT", "stable", "positions", "skips", "byKind{}.n"]),
+    ...under("sim", ["startT", "endT", "stable", "positions", "skips", "byKind{}.n", "effectiveByKind{}.n", "executed.n", "effective.n", "openAtEnd"]),
+    ...under("sim.executed", ["pf", "net", "wr", ...RETURN_PROVENANCE]),
+    ...under("sim.effective", ["pf", "net", "wr", "gp", "gl", "noLoss", "pfBasis", "unknownReturns"]),
+    ...under("sim.effectiveByKind{}", ["pf", "net", "wr", "gp", "gl", "noLoss", "pfBasis", "unknownReturns"]),
     ...under("sim.stats", [
       "pf",
       "net",
@@ -212,7 +217,9 @@ const FIELDS: Record<Fn, string[]> = {
     ]),
     ...under("sim.hourly[]", ["t", "net", "n", "pf", ...RETURN_PROVENANCE]),
     ...under("sim.byConfig[]", ["id", "n", "pf", "net", ...RETURN_PROVENANCE]),
-    ...under("wf", ["simH", "preH", "tapes"]),
+    ...under("wf", ["simH", "preH", "tapes", "seatSet"]),
+    ...under("status.listings", ["validated"]),
+    ...under("status.listings.byKind[]", ["kind", "validated", "calculated", "validationCloses", "gp", "gl", "pf", "noLoss"]),
     ...under("counts", ["base", "main", "evaluated"]),
     ...under("paper", [
       "selected",
@@ -235,11 +242,24 @@ const FIELDS: Record<Fn, string[]> = {
       "base",
       "passed",
       "tapes",
+      "activeSets",
+      "activeCloses",
+      "activePf",
+      "activeNoLoss",
       "positions",
       "n",
       "pf",
       "net",
       "wr",
+      "effective.n",
+      "effective.pf",
+      "effective.net",
+      "effective.wr",
+      "effective.gp",
+      "effective.gl",
+      "effective.noLoss",
+      "effective.pfBasis",
+      "effective.unknownReturns",
       "open.positions",
       "open.orders",
       ...RETURN_PROVENANCE,
@@ -904,7 +924,6 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
     "live.account.positionsDetail[]": "as live.account.own.upnl",
     "liveSession.since": "null until the desk's first live step on this database",
     "liveSession.openUpnl": "null until an account read with the book",
-    "liveSession.net": "null until a complete own account mark is available",
     "liveSession.accountAt": "as liveSession.openUpnl",
     "status.prehistoric.symbols{}.n": "only a symbol that traded in the run",
     "status.prehistoric.symbols{}.pf": "only a symbol that traded in the run",
@@ -912,6 +931,7 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
     "status.baseByRange[].ownCells":
       "only a range judged at its own Base cells (the page checks typeof)",
     "sim.byKind{}": "empty when the run closed nothing",
+    "sim.effectiveByKind{}": "empty when the run closed nothing",
     ...unset(
       "settings.live",
       ["requireReady"],
@@ -935,6 +955,7 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
     "presets.presets{}.hourly[]": "a preset that closed nothing has no hours",
     "presets.presets{}.byKind{}": "a preset that closed nothing has no kinds",
     "sim.byKind{}": "empty when the run closed nothing",
+    "sim.effectiveByKind{}": "empty when the run closed nothing",
   },
   coreTrading: {
     "live.reason": "the live step's status: null until its first run",
@@ -1431,6 +1452,10 @@ describe(
         rt.settings.paperBalance + p.equity,
         "equity includes open mark to market",
       );
+      assert.equal((d.wf as { seatSet: string }).seatSet, rt.wf.seatSet ?? "validated");
+      const exchangeReturns = (d.liveSession as { exchangeReturns: { n: number; pfBasis: string } }).exchangeReturns;
+      assert.equal(typeof exchangeReturns.n, "number");
+      assert.ok(["unit-net-returns", "unavailable"].includes(exchangeReturns.pfBasis));
     });
 
     it("coreResults (Base, Evaluated by rank, a matrix cell) and coreMatrix", async () => {
@@ -1523,7 +1548,7 @@ describe(
         api.coreListingData(api.coreListingInput({ kind: "validated", limit: 5 })),
       )) as {
         total: number;
-        rows: Array<{ id: string; group: string; range: string; score: number }>;
+        rows: Array<{ id: string; group: string; range: string; kind: string; score: number }>;
         byGroup: Array<{ group: string; validated: number }>;
       };
       assert.ok(all.total > 0 && all.rows.length <= 5, `${all.total} validated`);
@@ -1532,6 +1557,17 @@ describe(
       assert.equal(all.total, rt.listings!.validated.length);
       for (let i = 1; i < all.rows.length; i++)
         assert.ok(all.rows[i - 1].score >= all.rows[i].score);
+      const { laneLabel } = await import("./indications/registry.ts");
+      const first = all.rows[0];
+      const firstLane = laneLabel(first.id.split("|")[1] ?? "") || "plain";
+      const filtered = (await api.coreListingData(api.coreListingInput({
+        kind: "validated", lane: firstLane, strategy: first.kind, limit: 500,
+      }))) as { lane: string; total: number; rows: Array<{ id: string; kind: string }> };
+      assert.equal(filtered.lane, firstLane);
+      assert.ok(filtered.total > 0);
+      assert.ok(filtered.rows.every((x) => x.kind === first.kind && (laneLabel(x.id.split("|")[1] ?? "") || "plain") === firstLane));
+      assert.throws(() => api.coreListingInput({ lane: "2m" }), /lane/);
+      assert.throws(() => api.coreListingInput({ strategy: "other" }), /strategy/);
       // each range or independent strategy group reads its own rows
       const r0 = all.byGroup[0];
       const one = (await api.coreListingData(

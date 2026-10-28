@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { barsFromCandles, resample } from "../src/core/market/bars.ts";
 import { SeriesCache } from "../src/core/indications/cache.ts";
-import { LOW_RANGE_METHODS, LOW_RANGE_WINDOWS, lowRangeState } from "../src/core/indications/low-range-research.ts";
+import { LOW_RANGE_LEGACY_WINDOWS, LOW_RANGE_METHODS, lowRangeState } from "../src/core/indications/low-range-research.ts";
 
 const originalRelations = ["standalone", "trend", "breakout", "activity", "trend-breakout"];
 const feedPath = "docs/micro-optimization-2026-10-20/reproduction-feed.json.gz";
@@ -23,7 +23,7 @@ for (const sym of symbols) {
   for (const tf of [1, 5, 15]) {
     const bars = barsFromCandles(sym, tf, tf === 1 ? minutes : resample(minutes, 1, tf));
     const cache = new SeriesCache(bars);
-    for (const window of LOW_RANGE_WINDOWS) for (const method of LOW_RANGE_METHODS) for (const relation of originalRelations) {
+    for (const window of LOW_RANGE_LEGACY_WINDOWS) for (const method of LOW_RANGE_METHODS) for (const relation of originalRelations) {
       const values = lowRangeState(cache, window, method, relation);
       hash.update(`${sym}|${tf}|${window}|${method}|${relation}|${values.length}\n`);
       hash.update(new Uint8Array(values.buffer, values.byteOffset, values.byteLength));

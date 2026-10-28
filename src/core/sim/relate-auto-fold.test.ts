@@ -46,8 +46,8 @@ test("folded Auto scoring matches every scalar ratio/step/Active candidate on va
     { period: 4, losses: 1, cap: 1, steps: 2 },
     { period: 6, losses: 2, cap: 2, steps: 5 },
     { period: 7, losses: 1, cap: 5, steps: 10 },
-    { period: 9, losses: 2, cap: 250, steps: 15 },
-    { period: 5, losses: 1, cap: 17, steps: 8 },
+    { period: 9, losses: 2, cap: 8, steps: 15 },
+    { period: 5, losses: 1, cap: 8, steps: 8 },
   ];
   for (const scenario of scenarios) {
     const rows = Array.from({ length: 240 }, (_, i) => i % scenario.period < scenario.losses ? -0.0625 : 0.125);
@@ -69,7 +69,7 @@ test("folded Auto scoring matches every scalar ratio/step/Active candidate on va
 });
 
 test("overflow in deeper hypothetical ladders still selects the closest finite candidate", () => {
-  const config = { ...DEFAULT_RELATE_ADJUSTMENT, enabled: true, auto: true, maxStack: 250,
+  const config = { ...DEFAULT_RELATE_ADJUSTMENT, enabled: true, auto: true, maxStack: 8,
     steps: 15, minPf: 1.5, minTrades: 60, lastN: 250,
     sources: { config: true, overall: false, symbol: false, direction: false, indication: false,
       strategy: false, coordination: false, range: false } };

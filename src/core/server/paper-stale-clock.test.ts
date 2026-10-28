@@ -19,14 +19,22 @@ function fixture(replay: boolean, entryT: number, endT: number) {
   const rt = new CoreRuntime(db, { live: { liveLastN: 0 } }, { market: "bingx", replay, priceStream: null });
   rt.stop();
   const op = position(entryT);
+  // The entry-clock cases need a valid direction-qualified tape so the execution
+  // gate reaches freshness handling instead of rejecting an empty history first.
+  const evidence = Array.from({ length: 30 }, (_, i) => {
+    const tradeEntry = entryT - 6 * H + i * 10 * 60_000;
+    return { cfg: CFG, sym: SYM, side: 1 as const, entryT: tradeEntry, exitT: tradeEntry + 60_000,
+      entry: 100, exit: 102, r: .02, mult: 1, vol: 1, kind: "normal" as const, reason: "tp" as const,
+      bars: 1, mfe: .02, mae: 0 };
+  });
   rt.wf = { ...defaultWalkForward(DEFAULT_SETTINGS), lastN: 0, validLastN: 0, basePassed: undefined,
-    rangeOpts: undefined, probe: { perRange: 0, perCell: 1 },
+    rangeOpts: undefined,
     toggles: { ...rt.wf.toggles, normal: true, block: false },
     coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false } };
   rt.sim = { startT: endT - 12 * H, endT, trades: [], feed: [],
-    steps: [{ t: Math.floor(entryT / H) * H, real: [CFG] }] } as unknown as WalkForwardResult;
+    validated: [CFG], steps: [{ t: Math.floor(entryT / H) * H, real: [CFG] }] } as unknown as WalkForwardResult;
   rt.tapes = [makeTape(CFG, "follow", "ema-9-21@m1", { tp: .01, sl: .01, trail: 0, hold: 32, tag: "mc" },
-    "normal", [SYM], [], [op], [])];
+    "normal", [SYM], evidence, [op], [])];
   rt.paper.selected = [CFG];
   const hooks = rt as unknown as {
     lastSelection: unknown;

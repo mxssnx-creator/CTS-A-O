@@ -568,6 +568,7 @@ const DURABLE_KEYS = new Set([
   "positionExitCleanup",
   "orphanExitFences",
   "liveOwnershipAccount",
+  "liveBoundedSince",
   "controlSuppressed",
   "hostSettingsApplied",
   "stopHits",

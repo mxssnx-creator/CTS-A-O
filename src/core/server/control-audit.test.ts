@@ -382,9 +382,8 @@ describe("control orders: audit regressions", () => {
     const opens = () =>
       ex.log.filter((p) => p.type === "MARKET" && p.side === "BUY" && p.symbol === "S1-USDT")
         .length;
-    // the backstop fills: position and its stop gone, lane "a" still active in the simulation
-    ex.positions.delete("S1-USDT|LONG");
-    ex.orders = ex.orders.filter((o) => o.venueSymbol !== "S1-USDT");
+    // the backstop fills: the venue records its exact FILLED receipt and removes sibling exits.
+    ex.triggerStop("S1-USDT|LONG");
     later();
     const st = await step(rt, ex);
     assert.equal(ex.positions.has("S1-USDT|LONG"), false, "not reopened at market");
@@ -458,6 +457,8 @@ describe("control orders: audit regressions", () => {
     assert.ok(cancelled.order && typeof cancelled.order === "object" && "status" in cancelled.order && "executedQty" in cancelled.order);
     assert.equal(cancelled.order.status, "CANCELLED");
     assert.equal(cancelled.order.executedQty, 0);
+    mock.timers.tick(6_000);
+    await step(rt, ex); // the runtime schedules an exact status read against the absent order
     await step(rt, ex);
     assert.ok(ex.positions.has("S1-USDT|LONG"), "a new parent may open after reconciliation");
     assert.equal(opens(), 2, "one second open, for the new position only");
@@ -557,15 +558,14 @@ describe("control orders: audit regressions", () => {
     rt.paper.positions = [lane("a", "S1-USDT", 1)];
     await step(rt, ex);
     const q = ex.positions.get("S1-USDT|LONG")!;
-    // the stop triggers: position and its stop gone (no ledger row is written for it)
-    ex.positions.delete("S1-USDT|LONG");
-    ex.orders = [];
+    // the stop triggers: exact venue history identifies the FILLED order (no extra ledger row is written for it)
+    ex.triggerStop("S1-USDT|LONG");
     // the stop-out holds lane "a" back (no reopen at market); a new lane on the key reopens it
     later();
     await step(rt, ex);
     assert.equal(ex.positions.get("S1-USDT|LONG"), undefined, "not reopened for lane a");
     rt.paper.positions = [{ ...lane("b", "S1-USDT", 1), entryT: 2 }];
-    await step(rt, ex);
+    const second = await step(rt, ex);
     assert.equal(ex.positions.get("S1-USDT|LONG"), q);
     // > 10 min later someone else adds q on the same symbol and direction (hedge account, merges)
     rt.db.run("UPDATE live_orders SET at = at - 3600000");
@@ -705,14 +705,17 @@ describe("control orders: audit regressions", () => {
     rt.paper.positions = [lane("a", "S1-USDT", 1)];
     await step(rt, ex);
     // the stop vanished (e.g. cancelled by hand) and the lane ended; the exchange refuses the close
-    ex.orders = [];
+    const stop = ex.orders.find((o) => o.venueSymbol === "S1-USDT" && o.type === "STOP_MARKET");
+    assert.ok(stop?.id);
+    assert.equal(await ex.cancel("S1-USDT", stop.id), true, "the removed stop has a terminal zero-fill receipt");
     const orig = ex.order.bind(ex);
     ex.order = async (p) => {
       if (p.type === "MARKET") throw new ExchangeRejected("system busy", 1);
       return orig(p);
     };
     rt.paper.positions = [];
-    for (let i = 0; i < 3; i++) await step(rt, ex); // close waits in backoff
+    later(6_000);
+    for (let i = 0; i < 3; i++) await step(rt, ex); // reconcile the exact cancellation, then repair while close waits
     assert.ok(ex.positions.has("S1-USDT|LONG"));
     assert.ok(
       ex.orders.some((o) => o.venueSymbol === "S1-USDT"),
@@ -747,6 +750,8 @@ describe("control orders: audit regressions", () => {
     const prices = [{ sym: "S1-USDT", last: 17 }];
     const rt: any = {
       generation: 1,
+      // This fixture is an explicitly synthetic memory-backed runtime and never reaches a real venue.
+      testOnlyAllowMemoryLive: true,
       db: new CoreDb(":memory:"),
       settings: {
         ...DEFAULT_SETTINGS,
@@ -1050,7 +1055,8 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
       if (partial && p.type === "MARKET" && p.positionSide === "LONG" && p.side === "SELL") {
         const got = +(Number(p.quantity) / 2).toFixed(3);
         await orig({ ...p, quantity: got });
-        return { order: { avgPrice: "17", executedQty: String(got) } };
+        return { order: { clientOrderId: p.clientOrderID, symbol: p.symbol, side: p.side,
+          positionSide: p.positionSide, type: p.type, status: "CANCELED", avgPrice: "17", executedQty: String(got) } };
       }
       return orig(p);
     };

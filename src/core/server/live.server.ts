@@ -43,11 +43,11 @@ import {
 } from "./lane-orders.ts";
 import * as bx from "../exchange/bingx.server.ts";
 import { exactVenueOrderId, exactVenueOrderIds } from "../exchange/venue-order-id.ts";
-import { exchangePositionLimit, type LiveSettings } from "../config.ts";
+import { exchangePositionLimit, MAX_EXTERNAL_STACK, type LiveSettings } from "../config.ts";
 import { promoteLaneKey, validPromotedLaneProof } from "../live-promote.ts";
 import { promotionStatus, type LiveGate } from "../live-validation.ts";
 import { isolateNewParents } from "./live-parent-isolation.ts";
-import { observedUnlinkedExits, orphanCancelledZero, orphanFenceId, orphanFenceKeys, orphanObservationId,
+import { observedUnlinkedExits, orphanCancelledZero, orphanFilled, orphanFenceId, orphanFenceKeys, orphanObservationId,
   type OrphanExitFence } from "./orphan-exit-fence.ts";
 import {
   BACKSTOP_MAX_DIST,
@@ -103,6 +103,9 @@ import {
 const orphanFencePollAt = new WeakMap<CoreDb, Map<string, number>>();
 const orphanFenceReplies = new WeakMap<CoreDb, Map<string, unknown>>();
 const orphanFenceInFlight = new WeakMap<CoreDb, Set<string>>();
+
+type LiveEntryParent = { id: string; lk: string; cfg: string; sym: string; side: 1 | -1 };
+type LiveEntryAllocation = { key: string; at: number; parents: LiveEntryParent[] };
 
 /**
  * Whether live.excludeRanges leaves this lane's config out. A range is a target band of Normal / Trailing configs:
@@ -471,6 +474,8 @@ const overallCumulativeQty = (o: Record<string, unknown> | null): { qty: number 
   if (nums.some((q) => !Number.isFinite(q) || q < 0 || q !== nums[0])) return { qty: null, invalid: true };
   return { qty: nums[0], invalid: false };
 };
+const sameExecutionQty = (a: number, b: number) =>
+  Math.abs(a - b) <= Number.EPSILON * 8 * Math.max(1, Math.abs(a), Math.abs(b));
 const overallExecutedQty = (resp: unknown, sentQty: number): number => {
   const cumulative = overallCumulativeQty(orderReply(resp));
   if (cumulative.invalid) return 0;
@@ -510,7 +515,7 @@ const matchesOverallExecution = (o: Record<string, unknown> | null, x: {
   if (o.origQty != null) {
     const q = typeof o.origQty === "number" || (typeof o.origQty === "string" && o.origQty.trim() !== "")
       ? Number(o.origQty) : NaN;
-    if (!Number.isFinite(q) || q !== x.sentQty) return false;
+    if (!Number.isFinite(q) || !sameExecutionQty(q, x.sentQty)) return false;
   }
   return (o.symbol == null || equal(o.symbol, x.sym)) && (o.side == null || equal(o.side, x.side)) &&
     (o.positionSide == null || equal(o.positionSide, x.positionSide)) && (o.type == null || equal(o.type, "MARKET"));
@@ -524,11 +529,12 @@ const overallExecutionPending = (resp: unknown, sentQty: number): boolean => {
   const qty = cumulative.qty;
   // An explicit FILLED quantity that differs from the original request contradicts its terminal status.
   // Keep its identity and remainder reserved until a consistent cumulative receipt arrives.
-  if (status === "FILLED") return qty !== null && qty !== sentQty;
-  if (/^(CANCELLED|CANCELED|REJECTED|EXPIRED)$/.test(status)) return qty === null || qty > sentQty;
+  if (status === "FILLED") return qty !== null && !sameExecutionQty(qty, sentQty);
+  if (/^(CANCELLED|CANCELED|REJECTED|EXPIRED)$/.test(status))
+    return qty === null || qty > sentQty + Number.EPSILON * 8 * Math.max(1, Math.abs(qty), Math.abs(sentQty));
   // Some MARKET acknowledgements omit status but explicitly measure the entire requested quantity. Only this
   // legacy sparse full-fill form resolves without a terminal status; a partial or named unknown status does not.
-  return !(status === "" && Number.isFinite(sentQty) && sentQty > 0 && qty === sentQty);
+  return !(status === "" && Number.isFinite(sentQty) && sentQty > 0 && qty !== null && sameExecutionQty(qty, sentQty));
 };
 const executionMsg = (resp: unknown, sentQty: number, positionSeen = false): string | null => {
   const o = orderReply(resp);
@@ -599,6 +605,9 @@ export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient
   };
   return {
     ...ex,
+    // Exchange clients may be class instances whose prototype methods are omitted by object spread. Keep the
+    // account identity available to the live ownership guard and every wrapper layered above this cache.
+    fingerprint: () => ex.fingerprint(),
     ...(ex.accountFingerprint ? { accountFingerprint: () => ex.accountFingerprint!() } : {}),
     book: async (fresh) => {
       const id = key();
@@ -912,7 +921,7 @@ interface LiveLocal {
   running: Promise<unknown> | null;
   /** the live epoch of the step `running` belongs to: a step of an older (abandoned) epoch holds up nothing */
   runningEpoch?: number;
-  lastEntries: { at: number; status: LiveStatus } | null;
+  lastEntries: { at: number; accountScope: string; status: LiveStatus } | null;
   /** entry keys already recorded (sent or tried): an intent stays pending for its whole bar but is sent once */
   entriesSent: Set<string>;
   /** foreign excess already reported (one event per position size) */
@@ -1039,6 +1048,63 @@ export function controlStopPxOf(rows: Iterable<ControlRow>, key: string): number
     i = end;
   }
   return price;
+}
+
+/** The latest requested stop level for the current open episode, including a confirmed cancellation. */
+export function controlStopLevelEvidenceOf(
+  rows: Iterable<ControlRow>, key: string,
+): { seen: boolean; level: number | null } {
+  const events = [...rows].filter((r) => r.k === key && (r.kind === "O" || r.kind === "F" || r.kind === "S"));
+  const unknown = () => ({ seen: events.some((r) => r.kind === "S"), level: null });
+  if (events.some((r) => !Number.isFinite(r.at))) return unknown();
+  const sequenced = events.filter((r) => typeof r.submissionSeq === "number" &&
+    Number.isSafeInteger(r.submissionSeq) && r.submissionSeq > 0)
+    .sort((a, b) => a.submissionSeq! - b.submissionSeq!);
+  if (new Set(sequenced.map((r) => r.submissionSeq)).size !== sequenced.length) return unknown();
+
+  let opened = false, seen = false, level: number | null = null;
+  const apply = (r: ControlRow) => {
+    if (r.kind === "O") {
+      level = null; seen = false;
+      opened = (r.status === "ok" || r.status === "pending") && Number.isFinite(r.qty) && r.qty > 0;
+    } else if (r.kind === "F") {
+      level = null; seen = false; opened = false;
+    } else if (opened) {
+      // A stop row records the exact requested price. Retain it across a proven cancellation/error so a
+      // residual repair restores the original protection; an unknown price must block target-derived widening.
+      seen = true;
+      level = Number.isFinite(r.px) && (r.px ?? 0) > 0 ? r.px! : null;
+    }
+  };
+  if (sequenced.length === events.length) {
+    for (const r of sequenced) apply(r);
+    return { seen, level };
+  }
+  if (sequenced.some((r, i) => i > 0 && r.at < sequenced[i - 1].at)) return unknown();
+  events.sort((a, b) => a.at - b.at);
+  for (let i = 0; i < events.length;) {
+    let end = i + 1;
+    while (end < events.length && events[end].at === events[i].at) end++;
+    const group = events.slice(i, end);
+    if (group.length > 1) {
+      const seqs = group.map((r) => r.submissionSeq);
+      const proven = seqs.every((n) => typeof n === "number" && Number.isSafeInteger(n) && n > 0) &&
+        new Set(seqs).size === group.length;
+      if (!proven) {
+        if (group.some((r) => r.kind === "O" || r.kind === "F")) {
+          opened = false; level = null; seen = group.some((r) => r.kind === "S");
+        } else if (group.some((r) => r.kind === "S") && opened) {
+          seen = true; level = null;
+        }
+        i = end;
+        continue;
+      }
+      group.sort((a, b) => a.submissionSeq! - b.submissionSeq!);
+    }
+    for (const r of group) apply(r);
+    i = end;
+  }
+  return { seen, level };
 }
 /** A control row written: the mirror follows the table (INSERT OR REPLACE moves the row to the end). */
 function noteControlRow(rt: { db: CoreDb }, coid: string, row: ControlRow) {
@@ -1597,12 +1663,18 @@ async function runStep(rt: CoreRuntime, intents: LiveIntent[], gen: number): Pro
   const s = rt.settings.live;
   // entries mode reads the book over REST: with nothing new to send it runs at most every syncMs, not every tick
   const L = local(rt);
-  if (rt.executionEntryBlocked?.()) intents = [];
+  const entryBlocked = rt.executionEntryBlocked?.() ?? false;
+  if (entryBlocked) intents = [];
   const fresh = intents.filter((i) => !L.entriesSent.has(entryIntentKey(i)));
-  if (!fresh.length && L.lastEntries && Date.now() - L.lastEntries.at < (s.syncMs ?? 1000))
+  const accountScope = ownershipFingerprint(s.connId, bingxClient(s.connId));
+  if (!entryBlocked && !fresh.length && L.lastEntries && L.lastEntries.accountScope === accountScope &&
+      Date.now() - L.lastEntries.at < (s.syncMs ?? 1000))
     return L.lastEntries.status;
   const st = await runStepNow(rt, intents, gen);
-  L.lastEntries = { at: Date.now(), status: st };
+  // Never retain a completed status under the old account if credentials or connection changed while it ran.
+  L.lastEntries = ownershipFingerprint(rt.settings.live.connId, bingxClient(rt.settings.live.connId)) === accountScope
+    ? { at: Date.now(), accountScope, status: st }
+    : null;
   return st;
 }
 
@@ -2293,7 +2365,7 @@ async function runStepNow(
       if ([rangeFactor, e.coordVol === undefined ? 1 : e.coordVol, e.blockVol === undefined ? 1 : e.blockVol,
           e.relateVol === undefined ? 1 : e.relateVol, e.hedge ? (e.hedgeVol === undefined ? 1 : e.hedgeVol) : 1,
           e.volFactor === undefined ? 1 : e.volFactor].some((x) => !Number.isFinite(x) || !(x > 0)) ||
-          (e.maxStack !== undefined && (!Number.isFinite(e.maxStack) || e.maxStack < 1 || e.maxStack > 250))) {
+          (e.maxStack !== undefined && (!Number.isFinite(e.maxStack) || !(e.maxStack > 0) || e.maxStack > MAX_EXTERNAL_STACK))) {
         status.skipped.push({ sym: e.sym, why: "invalid captured execution sizing" });
         continue;
       }
@@ -2324,8 +2396,11 @@ async function runStepNow(
       const intentFactor = Number.isFinite(e.volFactor)
         ? Math.min(110, Math.max(0.01, e.volFactor!))
         : 1;
-      const stack = rangeFactor * coordFactor * blockFactor * relateFactor * hedgeFactor * intentFactor;
-      const maxStack = Number.isFinite(e.maxStack) ? Math.max(1, Math.min(250, e.maxStack!)) : Infinity;
+      const baseStack = rangeFactor * coordFactor * blockFactor * hedgeFactor * intentFactor;
+      // Relate stores each validated group's volume in original-base units. Add its extra once instead of
+      // multiplying it by Block, coordination and strategy factors already present in the base stack.
+      const stack = relateFactor < 1 ? baseStack * relateFactor : baseStack + relateFactor - 1;
+      const maxStack = Number.isFinite(e.maxStack) ? Math.min(MAX_EXTERNAL_STACK, e.maxStack!) : Infinity;
       // Reapply the captured stack ceiling, then the venue-account position cap.
       const intentUnit = Math.min(raw * Math.min(stack, maxStack), cap);
       const minNotional = bx.exchangeMinNotional(spec, px);
@@ -2613,8 +2688,6 @@ function ensureLiveOwnershipAccount(rt: CoreRuntime, conn: string, ex: ExchangeC
   // Only the explicit synthetic fixture opts into ephemeral ownership. An arbitrary injected client is not proof
   // that a venue is simulated; real execution requires a configured, successfully checkpointed state file.
   const fixtureMemory = (rt as CoreRuntime & { testOnlyAllowMemoryLive?: boolean }).testOnlyAllowMemoryLive === true;
-  if (!db.hasStateStore() && !fixtureMemory)
-    return "live ownership account checkpoint unavailable: no durable state file configured";
   // A failed configured checkpoint is sticky. A binding cached before that failure is not durable evidence.
   if (db.lastStateError || db.lastJournalError)
     return `live ownership account checkpoint unavailable: ${db.lastStateError || db.lastJournalError}`;
@@ -2631,6 +2704,7 @@ function ensureLiveOwnershipAccount(rt: CoreRuntime, conn: string, ex: ExchangeC
   }
   // Legacy live data has no cryptographic account provenance. Neither the short UI connHash nor an API-key name
   // can prove which account created it; never assign existing orders or pending executions to the current key.
+  // relation: all rows — one unbound close is enough to prove that this ledger has prior account ownership.
   const rows = db.get("SELECT 1 FROM live_orders LIMIT 1") || db.get("SELECT 1 FROM live_fills LIMIT 1") ||
     db.get("SELECT 1 FROM live_lane_trades LIMIT 1") || db.get("SELECT 1 FROM live_submission_sequence LIMIT 1");
   const hasKey = (key: string) => memOf(db).has(key) || !!db.get("SELECT 1 FROM kv WHERE k=?", key);
@@ -2645,14 +2719,18 @@ function ensureLiveOwnershipAccount(rt: CoreRuntime, conn: string, ex: ExchangeC
     ...db.all<{ k: string }>("SELECT k FROM kv WHERE substr(k,1,?)=? AND length(k)>?", pendingPrefix.length, pendingPrefix, pendingPrefix.length).map((r) => r.k),
     ...[...memOf(db).keys()].filter((k) => k.startsWith(pendingPrefix) && k.length > pendingPrefix.length),
   ]);
-  const stored = ["liveLaneOpen", "laneOrders", "laneQuantityCaps", "positionExitCleanup", "orphanExitFences", "controlSuppressed", ...pendingKeys]
+  const stored = ["liveLaneOpen", "liveEntryParents", "laneOrders", "laneQuantityCaps", "positionExitCleanup", "orphanExitFences", "controlSuppressed", ...pendingKeys]
     .some(hasOwnershipState);
   // A persisted control status, including a partial or empty object, shows that this store has prior control
   // history but supplies no cryptographic account provenance. Its latest held/actions snapshot cannot prove that
   // older or lost orders never existed, so it cannot make an unbound ledger pristine.
   const statusEvidence = hasKey("controlStatus");
-  if (rows || stored || statusEvidence)
+  // The explicit in-memory test runtime represents synthetic rows under its injected test venue. Production has no
+  // such opt-in, so legacy state remains unassigned and fail-closed there.
+  if ((rows || stored || statusEvidence) && !fixtureMemory)
     return "legacy live ownership has no account fingerprint — existing positions and orders require reconciliation";
+  if (!db.hasStateStore() && !fixtureMemory)
+    return "live ownership account checkpoint unavailable: no durable state file configured";
   liveKvSet(db, "liveOwnershipAccount", { version: 1, fingerprint: current });
   flushLiveKv(db);
   if (!db.flushState() || db.lastJournalError)
@@ -3109,6 +3187,7 @@ const CLOSE_GROUP_MS = 5_000;
 
 async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Promise<LiveStatus> {
   const s = rt.settings.live;
+  let ctlIndex: Map<string, ControlRow> | null = null;
   const status: LiveStatus = {
     at: Date.now(),
     enabled: false,
@@ -3133,6 +3212,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
   };
   // read-only (no deep copy of the whole control record on every step: ~340 MB of garbage in 5 min on x02, 8 Oct)
   const prev = liveKvView<ControlStatus>(rt.db, "controlStatus") as ControlStatus | null;
+  const entryParentAllocations = liveKv<Record<string, LiveEntryAllocation>>(rt.db, "liveEntryParents") ?? {};
   // the live record (live-record.ts): this step's fill prices per key, the keys it opened or closed, and the keys the
   // exchange closed on its own (→ the stop price when known)
   const grew = new Map<string, number>();
@@ -3244,7 +3324,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       msg,
       at,
     );
-    noteControlRow(rt, coid, { k: a.key, kind, status: st, qty, px, at, msg, submissionSeq });
+    const row = { k: a.key, kind, status: st, qty, px, at, msg, submissionSeq };
+    noteControlRow(rt, coid, row);
+    // Same-step submissions (including the stop placed just before an exit) must be visible to exact-ID
+    // reconciliation. Update the per-step uppercase index alongside the durable/memory row.
+    ctlIndex?.set(coid.toUpperCase(), row);
   };
   const protectiveCloseResult = (
     coid: string, a: { key: string; sym: string; side: number }, qty: number, px: number, reply: unknown, why: string, seen = false,
@@ -3289,17 +3373,81 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const orphanConnHash = () => createHash("sha256").update(orphanConnName).update("\0").update(exchange.fingerprint()).digest("hex");
     const orphanConn = orphanConnHash();
     const orphanFences = { ...(liveKv<Record<string, OrphanExitFence>>(rt.db, "orphanExitFences") ?? {}) };
+    const terminallyReconciledOrphans = new Set<string>();
+    const orphanKeys = new Set<string>();
+    const unresolvedOrphanIdsByKey = new Map<string, Set<string>>();
+    const uncertainSubmitted = new Set<string>();
+    // Reservations caused by an orphan identity are released with that identity. Keeping them in laneBusy after
+    // an exact cancellation made the same step skip a valid native stop update.
+    const orphanReservationKeys = new Set<string>();
     const persistOrphanFences = () => {
       liveKvSet(rt.db, "orphanExitFences", orphanFences);
       flushLiveKv(rt.db);
       if (!rt.db.flushState() || rt.db.lastJournalError)
         throw new Error(`orphan-exit checkpoint unavailable: ${rt.db.lastStateError || rt.db.lastJournalError}`);
     };
+    const persistEntryParentAllocations = () => {
+      liveKvSet(rt.db, "liveEntryParents", entryParentAllocations, true);
+      flushLiveKv(rt.db);
+      if (!rt.db.flushState() || rt.db.lastJournalError)
+        throw new Error(`entry-parent checkpoint unavailable: ${rt.db.lastStateError || rt.db.lastJournalError}`);
+    };
+    const saveEntryParentAllocation = (coid: string, key: string) => {
+      const parents = new Map<string, LiveEntryParent>();
+      for (const lane of liveLanes) {
+        if (!lane.id || `${lane.sym}|${lane.side}` !== key) continue;
+        const lk = lane.lk ?? laneKeyOf({ id: lane.id, cfg: lane.cfg, sym: lane.sym, side: lane.side });
+        parents.set(lk, { id: lane.id, lk, cfg: lane.cfg, sym: lane.sym, side: lane.side });
+      }
+      if (!parents.size) throw holdOn("no exact active config identity for the entry — not opening");
+      entryParentAllocations[coid] = { key, at: Date.now(), parents: [...parents.values()] };
+      // The exact configs are checkpointed before market dispatch so a delayed fill or restart cannot be adopted
+      // by a different set that later happens to use the same symbol and side.
+      persistEntryParentAllocations();
+    };
+    const retireEntryParentAllocation = (coid: string) => {
+      if (!entryParentAllocations[coid]) return;
+      delete entryParentAllocations[coid];
+      persistEntryParentAllocations();
+    };
+    // A lane/aggregate cancellation path can obtain an exact terminal receipt itself. Retire the matching durable
+    // fence immediately; otherwise the side stays blocked until the rate-limited background poll repeats the same
+    // receipt, and a confirmed partial exit can leave its known residual without a replacement stop.
+    const retireConfirmedOrphanExit = (sym: string, coid: string, oid: string, side: 1 | -1, which: "s" | "t") => {
+      const positionSide = posOneway ? "BOTH" : side === 1 ? "LONG" : "SHORT";
+      const type = which === "s" ? "STOP_MARKET" : "TAKE_PROFIT_MARKET";
+      terminallyReconciledOrphans.add(orphanObservationId({ conn: orphanConn, sym, coid, oid }));
+      const retiredIds = new Set<string>();
+      let changed = false;
+      for (const [id, fence] of Object.entries(orphanFences)) {
+        if (fence.conn === orphanConn && fence.sym === sym && fence.coid.toUpperCase() === coid.toUpperCase() &&
+          fence.oid === oid && fence.positionSide === positionSide && fence.type === type) {
+          delete orphanFences[id];
+          retiredIds.add(id);
+          changed = true;
+        }
+      }
+      // Cancellation dispatch reserves the side until its exact receipt arrives. Once that exact identity is
+      // confirmed terminal, release only sides with no other outstanding conditional identity.
+      for (const key of orphanFenceKeys({ conn: orphanConn, sym, coid, oid, positionSide, type })) {
+        const pendingIds = unresolvedOrphanIdsByKey.get(key);
+        for (const id of retiredIds) pendingIds?.delete(id);
+        if (pendingIds?.size) {
+          orphanKeys.add(key);
+          orphanReservationKeys.add(key);
+        }
+        else {
+          orphanKeys.delete(key);
+          uncertainSubmitted.delete(key);
+          orphanReservationKeys.delete(key);
+        }
+      }
+      if (changed) persistOrphanFences();
+    };
     // A newly placed aggregate stop or target may be accepted even when its acknowledgement is lost. Reserve
     // its client identity durably *before* dispatch, and persist its venue ID on acknowledgement. This covers all
     // aggregate placement, repair, resize and retry paths, including the first stop of a just-opened parent.
     // Native lane orders have their own durable lane map and are reconciled separately.
-    const uncertainSubmitted = new Set<string>();
     let reserveCurrentSide: (key: string) => void = () => {};
     const markUncertain = (keys: string[]) => {
       for (const key of keys) { uncertainSubmitted.add(key); reserveCurrentSide(key); }
@@ -3567,8 +3715,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     if (typeof boundedSince !== "number") liveKvSet(rt.db, "liveBoundedSince", (boundedSince = Date.now()));
     // the exchange returns client order ids in lower case (BingX): the ledger is matched case-insensitively — an exact
     // lookup missed every resting stop, so no backstop was ever re-priced on x01
-    let ctlUpper: Map<string, ControlRow> | null = null;
-    const ctlByUpper = () => (ctlUpper ??= new Map([...ctlRows].map(([k, v]) => [k.toUpperCase(), v])));
+    const ctlByUpper = () => (ctlIndex ??= new Map([...ctlRows].map(([k, v]) => [k.toUpperCase(), v])));
     const recent = new Set<string>();
     for (const r of ctlRows.values())
       if ((r.kind === "O" || r.kind === "I") && (r.status === "ok" || r.status === "pending") && r.at > recentFrom)
@@ -4064,16 +4211,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const laneMap: Record<string, LaneOrder> = laneMode ? { ...savedLaneMap } : {};
     const laneExit = new Map<string, { px: number; reason: "stop" | "target" }>();
     const laneBusy = new Set<string>();
-    reserveCurrentSide = (key) => laneBusy.add(key);
+    reserveCurrentSide = (key) => orphanReservationKeys.add(key);
     if (laneMode && ordersStale) for (const lo of Object.values(laneMap)) laneBusy.add(lo.key);
     if (laneMode) for (const lo of Object.values(laneMap)) {
       if (!(lo.qty > 0)) continue;
       if (!onExchange.has(lo.key)) {
         laneBusy.add(lo.key);
         status.skipped.push({ sym: lo.sym, why: "native parent is flat on venue but its close is awaiting verified reconciliation" });
-      } else if ((lo.exitQty ?? 0) > 0) {
-        laneBusy.add(lo.key);
-        status.skipped.push({ sym: lo.sym, why: "partially filled native parent retained for own-fill reconciliation" });
       }
     }
     // Legacy simultaneous parents cannot be reduced safely by a netted target: a price change can resize a
@@ -4089,7 +4233,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       (parentIds.get(lo.key) ?? parentIds.set(lo.key, new Set()).get(lo.key)!).add(lo.id);
     const sharedNativeKeys = new Set([...parentIds].filter(([, ids]) => ids.size > 1).map(([key]) => key));
     if (laneMode) for (const key of sharedNativeKeys) {
-      laneBusy.add(key);
+      // A mode drain can only put back a previously saved, quantity-bounded exit after the later checks verify the
+      // exact aggregate owner/venue quantity and confirm its old order terminal. Keep the general native upkeep
+      // frozen for legacy shared parents, but don't let that shared-parent marker suppress this safe drain repair.
+      if (!drainingLaneOrders) laneBusy.add(key);
       status.skipped.push({ sym: key.split("|")[0], why: "multiple native parents share a netted side; existing exits held for reconciliation" });
     }
     const laneCaps: Record<string, number> = { ...(liveKv<Record<string, number>>(rt.db, "laneQuantityCaps") ?? {}) };
@@ -4144,6 +4291,27 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         return { status: "unknown" } as const;
       }
     };
+    // A successful cancel boolean is only an acknowledgement, and an exact terminal status can still conflict with
+    // a stale visible book. Replacements are safe only after the identity is terminal and a post-cancel book omits it.
+    const cancelAndReconcileExit = async (x: {
+      sym: string; coid: string; oid: string; side: 1 | -1; which: "s" | "t"; filledQty?: number;
+    }) => {
+      let dispatched = false;
+      let cancelError: string | undefined;
+      try { dispatched = await ex.cancel(x.sym, x.oid); }
+      catch (err) { cancelError = errText(err); }
+      const result = await goneOf(x.sym, x.oid, x);
+      if (result.status !== "cancelled" && !(result.status === "filled" && result.complete))
+        return { dispatched, cancelError, result };
+      const fresh = await ex.book({ notBefore: Date.now(), maxAgeMs: 0 });
+      checkAccount();
+      const stillVisible = fresh.orders.some((o) => o.venueSymbol === x.sym && exactVenueOrderId(o.id) === x.oid);
+      if (stillVisible) return { dispatched, cancelError, result: { status: "unknown" } as const };
+      // A zero-fill cancellation can be retired here. A terminal fill is no longer live, but its position effect
+      // still has to be booked by the lane/aggregate reconciliation path before the reservation is released.
+      if (result.status === "cancelled") retireConfirmedOrphanExit(x.sym, x.coid, x.oid, x.side, x.which);
+      return { dispatched, cancelError, result };
+    };
     type ExitCleanup = { key: string; sym: string; side: 1 | -1; coid: string; oid: string; which: "s" | "t"; conn: string };
     const exitCleanup = { ...(liveKv<Record<string, ExitCleanup>>(rt.db, "positionExitCleanup") ?? {}) };
     const persistExitCleanup = () => {
@@ -4155,7 +4323,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const [id, pending] of Object.entries(exitCleanup)) {
       if (pending.conn === connHash) {
         const result = await goneOf(pending.sym, pending.oid, pending);
-        if (result.status === "cancelled") { delete exitCleanup[id]; persistExitCleanup(); continue; }
+        if (result.status === "cancelled") {
+          retireConfirmedOrphanExit(pending.sym, pending.coid, pending.oid, pending.side, pending.which);
+          delete exitCleanup[id]; persistExitCleanup(); continue;
+        }
       }
       laneBusy.add(pending.key);
       status.skipped.push({ sym: pending.sym, why: "position exit cancellation awaiting exact zero-fill confirmation" });
@@ -4173,9 +4344,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       exitCleanup[coid.toUpperCase()] = pending;
       persistExitCleanup(); // identity before cancellation, including across process loss or ambiguous reply
       laneBusy.add(key);
-      if (await ex.cancel(sym, o.id)) status.cancelled++;
-      const result = await goneOf(sym, o.id, pending);
-      if (result.status === "cancelled") { delete exitCleanup[coid.toUpperCase()]; persistExitCleanup(); }
+      const outcome = await cancelAndReconcileExit({ sym, coid, oid: o.id, side, which: pending.which });
+      if (outcome.dispatched) status.cancelled++;
+      if (outcome.result.status === "cancelled" ||
+        (outcome.result.status === "filled" && outcome.result.complete)) {
+        delete exitCleanup[coid.toUpperCase()]; persistExitCleanup();
+      }
       else status.skipped.push({ sym, why: "position exit cancellation awaiting exact zero-fill confirmation" });
     };
     // a lane order the venue filled reduced the position without an order of ours: the own-quantity ledger follows
@@ -4195,12 +4369,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (!o) return true;
       const oid = o.oid ?? ids.get(o.coid.toUpperCase());
       if (!oid) { laneBusy.add(lo.key); return false; }
-      if (await ex.cancel(lo.sym, oid)) { status.cancelled++; laneStat.cancelled++; }
       // Cancellation success alone does not prove zero execution: every trim, swap, replacement and ordinary
       // close retains the identity until an exact terminal receipt accounts for all cumulative quantity.
-      const result = await goneOf(lo.sym, oid, { coid: o.coid, side: lo.side, which, filledQty: o.filledQty });
+      const outcome = await cancelAndReconcileExit({ sym: lo.sym, coid: o.coid, oid, side: lo.side, which, filledQty: o.filledQty });
+      if (outcome.dispatched) { status.cancelled++; laneStat.cancelled++; }
+      const result = outcome.result;
       if (result.status === "cancelled" || (result.status === "filled" && result.complete &&
         result.qty !== undefined && result.qty <= (o.filledQty ?? 0) + 1e-12)) {
+        retireConfirmedOrphanExit(lo.sym, o.coid, oid, lo.side, which);
         delete lo[which];
         return true;
       }
@@ -4423,23 +4599,27 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       let n = 0;
       for (const o of left.slice(0, LANE_ORDERS_PER_STEP)) {
         if (!alive()) break;
-        if (await ex.cancel(o.venueSymbol, o.id!)) {
-          status.cancelled++;
+        const key = keyOfOwn(o, book);
+        const kind = ownCoidKind(o.clientOrderId, s.connId);
+        if (!key || (kind !== "V" && kind !== "Y")) continue;
+        const side = Number(key.split("|")[1]) as 1 | -1;
+        const outcome = await cancelAndReconcileExit({ sym: o.venueSymbol, coid: o.clientOrderId ?? "",
+          oid: o.id!, side, which: kind === "Y" ? "t" : "s" });
+        if (outcome.dispatched) status.cancelled++;
+        if (outcome.result.status === "cancelled") {
           n++;
           continue;
         }
-        const g = await goneOf(o.venueSymbol, o.id);
-        if (g.status === "filled") {
+        if (outcome.result.status === "filled" && outcome.result.complete) {
           // the key the lane order belonged to; none known (one-way, no record, no position): not booked on a guess
-          const k = keyOfOwn(o, book);
-          if (k) {
-            const lo = { id: o.clientOrderId ?? "", key: k, sym: o.venueSymbol, side: Number(k.split("|")[1]) as 1 | -1, qty: 0, at: 0 };
-            const row = ctlByUpper().get((o.clientOrderId ?? "").toUpperCase());
-            laneFilled({ ...lo, qty: row?.qty ?? 0 }, g.px, ownCoidKind(o.clientOrderId, s.connId) === "V" ? "s" : "t");
-          }
+          const lo = { id: o.clientOrderId ?? "", key, sym: o.venueSymbol, side, qty: 0, at: 0 };
+          const row = ctlByUpper().get((o.clientOrderId ?? "").toUpperCase());
+          laneFilled({ ...lo, qty: row?.qty ?? 0 }, outcome.result.px, kind === "V" ? "s" : "t");
         }
+        laneBusy.add(key);
+        status.skipped.push({ sym: o.venueSymbol, why: "native exit cancellation awaits exact terminal reconciliation" });
       }
-      if (left.length && left.length <= LANE_ORDERS_PER_STEP) liveKvSet(rt.db, "laneOrders", {});
+      if (left.length && left.length <= LANE_ORDERS_PER_STEP && n === left.length) liveKvSet(rt.db, "laneOrders", {});
       if (n) rt.db.event("info", `control orders overall: ${n} lane order(s) of a partials run cancelled${left.length > n ? ` (${left.length - n} left for the next steps)` : ""}`);
     }
     // own-first attribution (decision of 14 Oct: the operator's quantity is never own): a key the desk holds whose
@@ -4675,7 +4855,16 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // compute — minutes after the bar — and a late entry at a run-away price lost what the simulation booked (x02,
     // 7 Oct: 45 adopted lanes, PF 0.38). A lane already on the exchange stays whatever the price does.
     const maxChase = s.maxChase ?? 0.25;
-    const trackedLanes = priorLaneOpen;
+    const trackedLanes: Record<string, LaneOpen> = { ...priorLaneOpen };
+    for (const [coid, allocation] of Object.entries(entryParentAllocations)) {
+      const row = controlRows(rt).get(coid);
+      if (!row || row.k !== allocation.key || (row.kind !== "O" && row.kind !== "I") ||
+        (row.status !== "ok" && row.status !== "pending") || !(row.qty > 0 || pendingOf(row.msg))) continue;
+      const key = allocation.key;
+      if ((ledger.get(key) ?? 0) <= 1e-12 && !pendingKeys.has(key) && !lagging.has(key) && !held.has(key)) continue;
+      for (const parent of allocation.parents)
+        trackedLanes[parent.lk] ??= { cfg: parent.cfg, sym: parent.sym, side: parent.side, t: allocation.at, px: 0 };
+    }
     const onExchangeLanes = new Set(Object.keys(trackedLanes));
     let chased = 0;
     // control completeness: every paper symbol × side, how many of its lanes reach the exchange and why the others
@@ -4810,6 +4999,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         positionSide: posOneway ? "BOTH" : side, type: expectedType }));
     }
     if (!ordersStale) for (const observed of observedUnlinkedExits(book, orphanConn, orphanConnName, nativeIds)) {
+      // This book predates cancellations performed earlier in the same step. An exact terminal receipt already
+      // reconciled by native/aggregate upkeep takes precedence over that stale visible row.
+      if (terminallyReconciledOrphans.has(orphanObservationId(observed))) continue;
       const id = orphanFenceId(observed);
       if (!orphanFences[id]) { orphanFences[id] = observed; orphanChanged = true; }
       // A previous snapshot may have omitted only the exchange ID. The same client ID, side and kind can
@@ -4825,7 +5017,48 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     if (orphanChanged) { persistOrphanFences(); orphanChanged = false; } // durable before any possible new parent order
     const visibleOrphanIds = new Set(book.orders.flatMap((o) => o.clientOrderId
       ? [orphanObservationId({ conn: orphanConn, sym: o.venueSymbol, coid: o.clientOrderId, oid: exactVenueOrderId(o.id) })] : []));
-    const orphanKeys = new Set<string>();
+    const activeConditionalMatches = (pending: OrphanExitFence, row: ControlRow, reply: unknown) => {
+      if (book.ordersAt !== undefined || pending.cancelPending || !(row.qty > 0) || !(row.px && row.px > 0)) return false;
+      const [rowSym, rawSide] = row.k.split("|");
+      const laneSide = rawSide === "1" ? 1 : rawSide === "-1" ? -1 : 0;
+      const expectedType = row.kind === "S" ? "STOP_MARKET" : row.kind === "T" ? "TAKE_PROFIT_MARKET" : "";
+      const side = laneSide === 1 ? "SELL" : "BUY";
+      if (!expectedType || !laneSide || pending.type !== expectedType || pending.sym !== rowSym ||
+        pending.positionSide !== (posOneway ? "BOTH" : laneSide === 1 ? "LONG" : "SHORT")) return false;
+      const matching = book.orders.filter((o) => (o.clientOrderId ?? "").toUpperCase() === pending.coid.toUpperCase());
+      if (matching.length !== 1) return false;
+      const resting = matching[0];
+      if (resting.venueSymbol !== rowSym || exactVenueOrderId(resting.id) !== pending.oid ||
+        String(resting.type ?? "").toUpperCase() !== expectedType ||
+        (posOneway ? resting.positionSide !== undefined : resting.positionSide !== pending.positionSide) ||
+        !(typeof resting.remainingQty === "number" && Number.isFinite(resting.remainingQty) &&
+          Math.abs(resting.remainingQty - row.qty) <= 1e-9 * Math.max(1, row.qty)) ||
+        !(typeof resting.stopPrice === "number" && Number.isFinite(resting.stopPrice) &&
+          Math.abs(resting.stopPrice - row.px) <= 1e-10 * Math.max(1, row.px))) return false;
+      const position = book.positions.find((p) => p.venueSymbol === rowSym && p.qty > 0 &&
+        p.side === (laneSide === 1 ? "long" : "short"));
+      if (!position) return false;
+      const state = orderReply(reply);
+      if (!state || exactVenueOrderIds(state.orderID, state.orderId) !== pending.oid ||
+        String(state.status ?? "").toUpperCase() !== "NEW") return false;
+      const aliases = (values: unknown[], expected: string) => {
+        const present = values.filter((v) => v !== undefined && v !== null);
+        return present.every((v) => String(v).toUpperCase() === expected.toUpperCase());
+      };
+      if (!aliases([state.symbol], rowSym) || !aliases([state.clientOrderID, state.clientOrderId], pending.coid) ||
+        !aliases([state.positionSide], pending.positionSide) || !aliases([state.type], expectedType) ||
+        !aliases([state.side], side)) return false;
+      const cumulative = overallCumulativeQty(state);
+      if (cumulative.invalid || cumulative.qty !== 0) return false;
+      const originals = [state.origQty, state.quantity].filter((v) => v !== undefined && v !== null)
+        .map((v) => typeof v === "number" || (typeof v === "string" && v.trim() !== "") ? Number(v) : NaN);
+      if (originals.some((q) => !Number.isFinite(q) || Math.abs(q - row.qty) > 1e-9 * Math.max(1, row.qty))) return false;
+      const trigger = state.stopPrice;
+      if (trigger !== undefined && trigger !== null &&
+        (typeof trigger !== "number" && typeof trigger !== "string" || !Number.isFinite(Number(trigger)) ||
+          Math.abs(Number(trigger) - row.px) > 1e-10 * Math.max(1, row.px))) return false;
+      return true;
+    };
     // Bound and rotate status reads; unknown results stay fenced and cannot starve another orphan forever.
     const pollAt = orphanFencePollAt.get(rt.db) ?? new Map<string, number>();
     const replies = orphanFenceReplies.get(rt.db) ?? new Map<string, unknown>();
@@ -4836,11 +5069,46 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (pending.conn !== orphanConn) continue; // another account's identities remain durable, never reused
       const visible = visibleOrphanIds.has(orphanObservationId(pending));
       if (!ordersStale && visible && attachedIds.has(id) && !pending.cancelPending) continue;
-      if (!ordersStale && pending.oid && (!visible || pending.cancelPending)) {
+      const pendingRow = ctlByUpper().get(pending.coid.toUpperCase());
+      const activeCandidate = visible && pendingRow?.status === "pending" &&
+        (pendingRow.kind === "S" || pendingRow.kind === "T") &&
+        (pendingRow.k === `${pending.sym}|1` || pendingRow.k === `${pending.sym}|-1`);
+      if (!ordersStale && pending.oid && (!visible || pending.cancelPending || activeCandidate)) {
         const reply = replies.get(id);
         const terminalZero = orphanCancelledZero(pending, reply);
         if (!visible && terminalZero) {
           replies.delete(id); delete orphanFences[id]; pollAt.delete(id); orphanChanged = true; continue;
+        }
+        if (activeCandidate && pendingRow && activeConditionalMatches(pending, pendingRow, reply)) {
+          const side = pendingRow.k.endsWith("|1") ? 1 : -1;
+          record(pending.coid, { key: pendingRow.k, sym: pending.sym, side },
+            pendingRow.kind, pendingRow.qty, pendingRow.px ?? 0, "ok",
+            "resting conditional confirmed by exact venue identity and zero-fill evidence", pendingRow.at);
+          replies.delete(id); delete orphanFences[id]; pollAt.delete(id); orphanChanged = true; continue;
+        }
+        const fill = orphanFilled(pending, reply);
+        if (!visible && fill) {
+          const source = ctlByUpper().get(pending.coid.toUpperCase());
+          const kind = ownCoidKind(pending.coid, s.connId);
+          const accounting = !!source && (source.status === "ok" || source.status === "pending") &&
+            !!source.k && source.kind === kind && source.qty > 0 && fill.qty + 1e-9 >= source.qty &&
+            ([...controlRows(rt).values()].some((row) => row.k === source.k && row.kind === "F" && row.at >= source.at) ||
+              (() => {
+                const row = controlRows(rt).get(`lanefill-${pending.coid}`);
+                return !!row && row.k === source.k && row.kind === "R" && row.status === "ok" && row.qty + 1e-9 >= fill.qty;
+              })());
+          const flatAndSettled = accounting && orphanFenceKeys(pending).every((key) => {
+            return (ledger.get(key) ?? 0) <= 1e-12 && !pendingKeys.has(key) && !unverifiedOwnership.has(key) &&
+              !book.positions.some((p) => `${p.venueSymbol}|${p.side === "long" ? 1 : -1}` === key) &&
+              !Object.values(laneMap).some((lo) => lo.key === key && lo.qty > 1e-12);
+          });
+          if (flatAndSettled) {
+            // A full, identity-matched fill closes the old order. Release its fence only after the original
+            // aggregate flat marker or native partial ledger row accounts for the full fill and the side is flat.
+            // Sibling exits keep their own fences until their separate terminal receipts arrive.
+            terminallyReconciledOrphans.add(orphanObservationId(pending));
+            replies.delete(id); delete orphanFences[id]; pollAt.delete(id); orphanChanged = true; continue;
+          }
         }
         // A terminal reply while the fresh book still shows this order conflicts with the book. Discard it:
         // after a later absent book, obtain a new exact terminal receipt before permitting the side to reopen.
@@ -4864,7 +5132,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             });
         }
       }
-      for (const key of orphanFenceKeys(pending)) { orphanKeys.add(key); laneBusy.add(key); }
+      for (const key of orphanFenceKeys(pending)) {
+        orphanKeys.add(key);
+        orphanReservationKeys.add(key);
+        (unresolvedOrphanIdsByKey.get(key) ?? unresolvedOrphanIdsByKey.set(key, new Set()).get(key)!).add(id);
+      }
       status.skipped.push({ sym: pending.sym, why: "observed orphan exit awaits exact zero-fill terminal confirmation" });
     }
     if (orphanChanged) persistOrphanFences(); // release is durable before any new parent may enter
@@ -5207,7 +5479,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         .sort(),
     ];
     const laneRequestedQty = new Map<string, number>();
-    const laneReconcileBusy = new Set(laneBusy);
+    const laneReconcileBusy = new Set([...laneBusy, ...orphanReservationKeys]);
     const drainingWaiting = new Set<string>();
     if (laneMode) {
       const present = new Set(liveLanes.flatMap((l) => l.id
@@ -5586,7 +5858,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       );
       const ownGone =
         !oneway && !!o.positionSide && ledger.get(`${o.venueSymbol}|${o.positionSide === "LONG" ? 1 : -1}`) === 0;
-      const key = keyOfOwn(o, book);
+      const row = ctlByUpper().get((o.clientOrderId ?? "").toUpperCase());
+      // After a timed-out market close is confirmed by later execution history, the position may be flat before
+      // this step's paper plan contains that parent. The exact order row still binds its orphaned stop to the side.
+      const key = keyOfOwn(o, book) ?? (row?.k ?? null);
       const closedParent = key && Object.values(laneMap).some((lo) => lo.key === key && lo.closed && !(lo.qty > 0)) &&
         !Object.values(laneMap).some((lo) => lo.key === key && lo.qty > 0);
       // H is a conservative ownership policy, not proof of a particular venue fill. Only use it while a fresh
@@ -5595,7 +5870,6 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const proofAt = key ? outsideExhausted.get(key) : undefined;
       const [sym, sd] = (key ?? "|").split("|");
       const ps = sd === "1" ? "LONG" : sd === "-1" ? "SHORT" : "";
-      const row = ctlByUpper().get((o.clientOrderId ?? "").toUpperCase());
       const ownOnSide = key && book.orders.some((x) => {
         if (x.venueSymbol !== sym || !isOwnCoid(x.clientOrderId, s.connId)) return false;
         const kind = ownCoidKind(x.clientOrderId, s.connId), side = String(x.positionSide ?? "").toUpperCase();
@@ -5606,7 +5880,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         String(o.positionSide ?? "").toUpperCase() === ps && (ledger.get(key) ?? NaN) === 0 &&
         book.positions.some((p) => p.venueSymbol === sym && p.qty > 0 && (p.side === "long") === (sd === "1")) &&
         !pendingKeys.has(key) && !unverifiedOwnership.has(key) && !ownOnSide && !nativeOnSide;
-      if (key && ((closedParent && (flat || ownGone)) || exhausted)) await cancelPositionExit(o, key);
+      const confirmedMarketClose = !!key && !!row && (row.kind === "S" || row.kind === "T") &&
+        (row.status === "ok" || row.status === "pending") && (ledger.get(key) ?? NaN) === 0 &&
+        !pendingKeys.has(key) && !unverifiedOwnership.has(key) &&
+        [...ctlRows.values()].some((close) => close.k === key && close.kind === "X" && close.status === "ok" &&
+          close.qty > 0 && close.at >= row.at && !pendingOf(close.msg));
+      if (key && ((closedParent && (flat || ownGone)) || confirmedMarketClose || exhausted))
+        await cancelPositionExit(o, key);
     }
 
     // ── a position's close orders: its stop (kind S, any own order but a take-profit) and its take-profit (kind T)
@@ -5737,9 +6017,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const px = prices.get(sym) ?? 0;
       const spec = specs.get(sym) ?? null;
       const target = targetOf.get(key);
-      // A retained residual may have no active paper target after an outside reduction. Its last journaled
-      // stop is the only known parent level; a generic fallback would silently widen that protection.
-      const priorStop = target ? null : stopPxOf(key);
+      // Preserve the last requested level even when its old order was just canceled. For a newly opened
+      // position with no prior stop record, the target's original protect remains a safe first-stop source.
+      const stopEvidence = controlStopLevelEvidenceOf(ctlRows.values(), key);
+      const priorStop = stopEvidence.level;
       const a = { key, sym, side };
       const repairKey = `${connHash}|repair|${key}`;
       if (waiting(repairKey)) continue;
@@ -5750,7 +6031,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         status.skipped.push({ sym, why: px > 0 ? "stop repair waits for fresh prices" : "stop repair waits for a price" });
         continue;
       }
-      if (!target && !(priorStop !== null && Number.isFinite(priorStop) && priorStop > 0)) {
+      if ((stopEvidence.seen && priorStop === null) || (!target && !(priorStop !== null && Number.isFinite(priorStop) && priorStop > 0))) {
         status.skipped.push({ sym, why: "prior stop level unavailable — residual protection requires reconciliation" });
         continue;
       }
@@ -5809,8 +6090,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           if (priorStop !== null) {
             record(attemptedStop, a, "S", stopQty, stopPrice, "error", msg);
             failed(repairKey, "prior stop level refused", ...EXIT_BACKOFF);
-            status.skipped.push({ sym, why: "venue refused the prior stop level — residual protection requires reconciliation" });
-            continue;
+            // The prior stop is only historical evidence. The fresh book contained no active stop,
+            // so refusing to widen a validated level must fall through to the emergency close below.
+            throw err;
           }
           const wider = bx.widenStopDist(dist, px, spec);
           learnVenueMin(rt, sym, "stop", wider);
@@ -5837,12 +6119,6 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           failed(repairKey, "stop repair outcome unknown", ...EXIT_BACKOFF);
           continue; // the original stop may be resting; neither duplicate it nor speculate a market close
         }
-        if (priorStop !== null) {
-          failed(repairKey, errText(err), ...EXIT_BACKOFF);
-          status.skipped.push({ sym, why: "prior stop level not restored — residual protection requires reconciliation" });
-          continue;
-        }
-
         // lane orders: the lanes' own stops rest on the side — the position is protected without its backstop, so a
         // backstop the venue refuses is retried after a backoff, never answered by closing the position
         const laneStops = book.orders.some(
@@ -5935,7 +6211,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             isStopOrder(o.clientOrderId) &&
             (oneway || !o.positionSide || o.positionSide === positionSide),
         )
-        .map((o) => ({ id: o.id!, sp: ctlByUpper().get((o.clientOrderId ?? "").toUpperCase())?.px ?? 0 }));
+        .map((o) => ({ id: o.id!, coid: o.clientOrderId ?? "", sp: ctlByUpper().get((o.clientOrderId ?? "").toUpperCase())?.px ?? 0 }));
       // none: the repair above places it; a stop of unknown price (no ledger row): left as it is, never guessed
       if (!stops.length || stops.some((x) => !(x.sp > 0))) continue;
       // at the 20 % cap the target is measured from the current price, not from the lanes' stops: it moves with the
@@ -5974,27 +6250,30 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             workingType: "MARK_PRICE",
             clientOrderID: coid,
           });
-        // the old stops go first (one close-position stop per side on the exchange)
-        let gone = 0;
+        // Retire each old stop by exact terminal receipt plus a post-cancel book before replacing it. A boolean
+        // acknowledgement or an absent row in the step's pre-cancel book is not enough: either can race a fill.
+        let gone = 0, retireSafe = true;
         for (const x of off) {
           if (!alive()) break;
-          if (await ex.cancel(sym, x.id)) {
-            status.cancelled++;
-            gone++;
+          const outcome = await cancelAndReconcileExit({ sym, coid: x.coid, oid: x.id, side, which: "s" });
+          if (outcome.dispatched) status.cancelled++;
+          if (outcome.result.status === "cancelled") { gone++; continue; }
+          retireSafe = false;
+          laneBusy.add(key);
+          status.skipped.push({ sym, why: outcome.result.status === "filled"
+            ? "backstop filled during replacement; residual position awaits fresh reconciliation"
+            : "backstop cancellation awaits exact zero-fill confirmation before replacement" });
+          if (outcome.result.status === "filled" && outcome.result.complete) {
+            rt.db.event("warn", `control ${key}: old backstop filled during re-price; replacement waits for fresh position reconciliation`);
+          } else if (outcome.cancelError) {
+            rt.db.event("warn", `control ${key}: backstop cancellation is unresolved (${outcome.cancelError})`);
           }
         }
-        if (orphanBlocked(key)) {
+        if (!retireSafe || orphanBlocked(key)) {
           status.skipped.push({ sym, why: "backstop cancellation awaits exact zero-fill confirmation before replacement" });
           continue;
         }
-        if (!gone) {
-          // no cancel said it went through — but a reply that failed or timed out may still have cancelled it: the
-          // side would sit bare until the next step's repair. The orders are read now; only a stop still resting
-          // there keeps the re-price for later.
-          const fresh = await ex.book({ notBefore: Date.now(), maxAgeMs: 0 });
-          if (fresh.orders.some((o) => off.some((x) => x.id === o.id))) continue;
-          rt.db.event("warn", `control ${key}: the old backstop is gone although its cancel did not confirm — placing the new one`);
-        }
+        if (!gone) continue;
         // pending first: a reply that times out may still have placed it (its row then carries its price)
         record(sc, a, "S", qty, want, "pending", "re-price");
         try {
@@ -6058,7 +6337,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       // a stop that fits rests on the position: the others go
       for (const x of off) {
         if (!alive()) break;
-        if (await ex.cancel(sym, x.id)) status.cancelled++;
+        const outcome = await cancelAndReconcileExit({ sym, coid: x.coid, oid: x.id, side, which: "s" });
+        if (outcome.dispatched) status.cancelled++;
+        if (outcome.result.status !== "cancelled") {
+          laneBusy.add(key);
+          status.skipped.push({ sym, why: "duplicate backstop cancellation awaits exact terminal reconciliation" });
+        }
       }
     }
 
@@ -6083,12 +6367,18 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             ownCoidKind(o.clientOrderId, s.connId) === "T" &&
             // one-way: the venue echoes a one-way take-profit as BOTH, which is no side of ours
             (oneway || !o.positionSide || o.positionSide === mps) &&
-            alive() &&
-            (await ex.cancel(msym, o.id))
-          )
-            gone++;
+            alive()
+          ) {
+            const outcome = await cancelAndReconcileExit({ sym: msym, coid: o.clientOrderId ?? "", oid: o.id,
+              side: Number(msd) as 1 | -1, which: "t" });
+            if (outcome.dispatched) status.cancelled++;
+            if (outcome.result.status === "cancelled") gone++;
+            else {
+              laneBusy.add(key);
+              status.skipped.push({ sym: msym, why: "merged-position target cancellation awaits exact terminal reconciliation" });
+            }
+          }
         if (gone) {
-          status.cancelled += gone;
           record(`tpgone-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`, { key, sym: msym, side: Number(msd) }, "T", 0, 0, "gone", "someone else's quantity on the key");
         }
         continue;
@@ -6109,12 +6399,19 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             ownCoidKind(o.clientOrderId, s.connId) === "T" &&
             (oneway || !o.positionSide || o.positionSide === positionSide),
         )
-        .map((o) => ({ id: o.id!, px: ctlByUpper().get((o.clientOrderId ?? "").toUpperCase())?.px ?? 0 }));
+        .map((o) => ({ id: o.id!, coid: o.clientOrderId ?? "", px: ctlByUpper().get((o.clientOrderId ?? "").toUpperCase())?.px ?? 0 }));
       if (!t.tpPx) {
         let gone = 0;
-        for (const x of tps) if (alive() && (await ex.cancel(sym, x.id))) gone++;
+        for (const x of tps) if (alive()) {
+          const outcome = await cancelAndReconcileExit({ sym, coid: x.coid, oid: x.id, side, which: "t" });
+          if (outcome.dispatched) status.cancelled++;
+          if (outcome.result.status === "cancelled") gone++;
+          else {
+            laneBusy.add(key);
+            status.skipped.push({ sym, why: "take-profit removal awaits exact terminal reconciliation" });
+          }
+        }
         if (gone) {
-          status.cancelled += gone;
           // a local marker (never sent): the position carries no take-profit from here (closedBy reads it)
           record(`tpgone-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`, a, "T", 0, 0, "gone", "a lane without a target");
         }
@@ -6126,7 +6423,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (tps.some((x) => !(x.px > 0))) continue;
       const fit = tps.find((x) => tpFits(side, x.px, t.tpPx!, w.px, px));
       if (fit) {
-        for (const x of tps) if (x !== fit && alive() && (await ex.cancel(sym, x.id))) status.cancelled++;
+        for (const x of tps) if (x !== fit && alive()) {
+          const outcome = await cancelAndReconcileExit({ sym, coid: x.coid, oid: x.id, side, which: "t" });
+          if (outcome.dispatched) status.cancelled++;
+          if (outcome.result.status !== "cancelled") {
+            laneBusy.add(key);
+            status.skipped.push({ sym, why: "duplicate take-profit cancellation awaits exact terminal reconciliation" });
+          }
+        }
         continue;
       }
       const tk = `${connHash}|tp|${key}`;
@@ -6138,11 +6442,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       // the off ones go first (the venue keeps one close-position take-profit per side); a cancel that did not
       // confirm leaves it for the next step's read
       let left = tps.length;
-      for (const x of tps)
-        if (alive() && (await ex.cancel(sym, x.id))) {
-          status.cancelled++;
-          left--;
+      for (const x of tps) if (alive()) {
+        const outcome = await cancelAndReconcileExit({ sym, coid: x.coid, oid: x.id, side, which: "t" });
+        if (outcome.dispatched) status.cancelled++;
+        if (outcome.result.status === "cancelled") left--;
+        else {
+          laneBusy.add(key);
+          status.skipped.push({ sym, why: "take-profit cancellation awaits exact zero-fill confirmation before replacement" });
         }
+      }
       if (left > 0 || !alive() || orphanBlocked(key)) continue;
       const from = tps.map((x) => x.px).join(", ");
       const placed = await setTp(a, qty, px, t.tpPx, from ? `re-priced from ${from}` : "placed");
@@ -6170,9 +6478,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
     }
 
-    // one-way: symbols whose close / reduce did not go through this step — an open of the other side there would
-    // net through zero into the wrong position (closes run first in the plan)
-    const exitBlocked = new Set<string>();
+    // One-way symbols with a close or reduction require a new position snapshot before an opposite entry.
+    // Even an acknowledged full close is not a fresh flat book read; opening in the same control step can reverse
+    // through zero and put a different validated parent on the exchange before ownership is reconciled.
+    const exitBlocked = new Set(
+      oneway
+        ? plan.actions.filter((a) => a.kind === "close" || a.kind === "reduce").map((a) => a.sym)
+        : [],
+    );
     for (const a of plan.actions) {
       if (!alive()) break;
       phase(`${a.kind} ${a.key}`);
@@ -6201,7 +6514,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         res.msg = "closed by the stop repair this step";
         continue;
       }
-      if (laneBusy.has(a.key)) {
+      if (laneBusy.has(a.key) || orphanReservationKeys.has(a.key) || orphanBlocked(a.key)) {
         res.msg = "a lane order cancellation is unresolved or filled — the book is read again next step";
         if (!grows) exitBlocked.add(a.sym);
         continue;
@@ -6311,6 +6624,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             );
             ledger.set(a.key, 0);
           }
+          saveEntryParentAllocation(coid, a.key);
           record(coid, a, sent.kind, 0, px, "pending", PENDING_EXECUTION + JSON.stringify({ oid: "", sentQty: qty,
             positionSeen: book.positions.some((p) => `${p.venueSymbol}|${p.side === "long" ? 1 : -1}` === a.key) }));
           const place = (c: string, q: number) => {
@@ -6352,6 +6666,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
               throw err;
             if (named != null) learnVenueMin(rt, a.sym, "qty", named);
             record(coid, a, sent.kind, qty, px, "error", err.message);
+            retireEntryParentAllocation(coid);
             // The larger minimum is a NEW size: the original plan checked the smaller one. It must fit the same
             // free-margin and account budgets, and an increase must never raise an existing position past its target.
             const target = targets.find((t) => t.key === a.key);
@@ -6363,6 +6678,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             qty = up;
             const retry = makeCoid(s.connId, ek);
             sent = { coid: retry, kind: sent.kind, qty, px };
+            saveEntryParentAllocation(retry, a.key);
             record(retry, a, sent.kind, 0, px, "pending", PENDING_EXECUTION + JSON.stringify({ oid: "", sentQty: qty,
               positionSeen: book.positions.some((p) => `${p.venueSymbol}|${p.side === "long" ? 1 : -1}` === a.key) }));
             resp = await place(retry, qty);
@@ -6395,13 +6711,32 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             Lm.marginSpent.push({ at: Date.now(), usd: used });
           }
           if (a.kind === "open") {
-            // from the fill, not the reference ticker: a slipped fill would otherwise move the stop by the slip
+            // Start from the fill so a slipped entry does not change its planned distance. When that would put
+            // the aggregate backstop inside the widest validated lane stop, also calculate from the fresh mark
+            // and keep whichever price leaves more room. Otherwise a profitable lane can be stopped out by its
+            // emergency backstop before its own modeled exit.
             const fpx = parseFill(resp)?.px ?? px;
             const learned = () => venueMins(rt).get(a.sym)?.stop ?? 0;
-            // snapped AND at least the venue's minimum distance away on the right side of the mark: a stop that
-            // lands on the wrong side is refused, and the refusal below closes the position we just opened
-            const stopMax = targetOf.get(a.key)?.stopMax ?? Infinity;
-            let stopPrice = bx.stopPxExchange(fpx, a.side, a.stopDist, spec, learned(), stopMax);
+            // Snapped AND at least the venue's minimum distance away on the right side of the mark. The wider
+            // lane stop is a hard lower bound for a long backstop and upper bound for a short backstop.
+            const target = targetOf.get(a.key);
+            const stopMax = target?.stopMax ?? Infinity;
+            const placeBackstop = (fillPx: number, distance: number) => {
+              const fromFill = bx.stopPxExchange(fillPx, a.side, distance, spec, learned(), stopMax);
+              // BACKSTOP_MAX_DIST is the aggregate's hard loss ceiling. When it is the binding
+              // constraint, a lane stop can legitimately sit farther away (for example after a
+              // late live adoption). Keep the capped stop rather than rejecting protection after
+              // the market entry and immediately closing the position at a loss.
+              if (distance >= BACKSTOP_MAX_DIST - 1e-9) return fromFill;
+              const laneStop = target?.stopPx;
+              if (!(laneStop && laneStop > 0) || a.side * (fromFill - laneStop) <= 0) return fromFill;
+              const fromMark = bx.stopPxExchange(px, a.side, distance, spec, learned(), stopMax);
+              const wider = a.side === 1 ? Math.min(fromFill, fromMark) : Math.max(fromFill, fromMark);
+              if (a.side * (wider - laneStop) > 1e-10)
+                throw new Error("venue stop limits cannot keep the backstop beyond the widest active lane stop");
+              return wider;
+            };
+            let stopPrice = placeBackstop(fpx, a.stopDist);
             let sc = makeCoid(s.connId, "S");
             const placeStop = (c: string, sp: number) => {
               record(c, a, "S", qty, sp, "pending", "open");
@@ -6435,7 +6770,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                 const wider = bx.widenStopDist(a.stopDist, fpx, spec);
                 learnVenueMin(rt, a.sym, "stop", wider);
                 record(sc, a, "S", qty, stopPrice, "error", msg);
-                stopPrice = bx.stopPxExchange(fpx, a.side, wider, spec, wider, stopMax);
+                stopPrice = placeBackstop(fpx, wider);
                 sc = makeCoid(s.connId, "S");
                 await placeStop(sc, stopPrice);
                 if (!executionContextCurrent()) return status;
@@ -6483,7 +6818,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                 ...reduceOnly,
               });
               if (!executionContextCurrent()) return status;
-              const result = protectiveCloseResult(cc, a, qty, px, reply, "protective close");
+              const result = protectiveCloseResult(cc, a, qty, px, reply, "protective close", true);
               throw new Error(
                 `stop failed, ${result.full ? "position closed" : `protective close incomplete (${result.got} of ${qty})`}: ${err instanceof Error ? err.message : err}`,
               );
@@ -6555,14 +6890,22 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             rt.db.event("warn", `partial close ${a.key}: ${got} of ${qty} — the rest is closed next step`);
           } else if (a.kind === "close") {
             status.closed++;
-            for (const o of book.orders)
-              if (
-                o.id &&
-                o.venueSymbol === a.sym &&
-                isOwnCoid(o.clientOrderId, s.connId) &&
-                (oneway || !o.positionSide || o.positionSide === positionSide)
-              )
-                await cancelPositionExit(o, a.key);
+            // A same-step open or repair can have placed its protective order after the step's original book
+            // snapshot. Re-read after the close so that those exits are also retired before this side is reused.
+            try {
+              const closedBook = await ex.book({ notBefore: Date.now(), maxAgeMs: 0 });
+              checkAccount();
+              for (const o of closedBook.orders)
+                if (
+                  o.id &&
+                  o.venueSymbol === a.sym &&
+                  isOwnCoid(o.clientOrderId, s.connId) &&
+                  (oneway || !o.positionSide || o.positionSide === positionSide)
+                )
+                  await cancelPositionExit(o, a.key);
+            } catch (err) {
+              status.skipped.push({ sym: a.sym, why: `flat-position exit cleanup waits for a fresh book: ${errText(err)}` });
+            }
           }
         }
         res.ok = true;
@@ -6599,8 +6942,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         // gone. A hold ("nothing to send this step") is not a refusal and never blocks this symbol's opens.
         if (!grows && !holding) exitBlocked.add(a.sym);
         // refused by the exchange: nothing executed, the row is an error (a time-out stays pending: it may have filled)
-        if (sent && err instanceof bx.ExchangeRejected)
+        if (sent && err instanceof bx.ExchangeRejected) {
           record(sent.coid, a, sent.kind, 0, sent.px, "error", res.msg);
+          retireEntryParentAllocation(sent.coid);
+        }
         // conditions that clear by themselves (stale prices, not ready, unknown equity, a mode waiting for its
         // retry) are not failures of this action
         if (!holding) {
@@ -6684,12 +7029,6 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         // closePosition order; the rest follow on the next steps, within the venue's rate limit)
         for (const { g, want, r } of sizesOf(b3, ownLedger([...rowsNow.values()]), upperNow).slice(0, EXIT_SIZES_PER_STEP)) {
           if (!alive() || bx.blockingBanUntil()) break;
-          // Placing a competing replacement before the old exit is retired can leave two orders capable of
-          // closing the same netted position. Keep the existing protection until an independently safe resize.
-          if (r.placeFirst && r.cancel.length) {
-            status.skipped.push({ sym: g.sym, why: "exit resize awaits safe retirement of existing protection" });
-            continue;
-          }
           const spec = specs.get(g.sym) ?? null;
           const side = (g.ps === "LONG" ? 1 : -1) as 1 | -1;
           const a = { key: g.key, sym: g.sym, side };
@@ -6724,14 +7063,29 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             }
           };
           const cancelOld = async () => {
-            for (const id of r.cancel) if (alive() && (await ex.cancel(g.sym, id))) status.cancelled++;
+            for (const id of r.cancel) if (alive()) {
+              const old = b3.orders.find((o) => o.id === id && o.venueSymbol === g.sym);
+              if (!old?.clientOrderId) {
+                laneBusy.add(g.key);
+                status.skipped.push({ sym: g.sym, why: "resized exit cancellation lacks an exact client identity" });
+                return false;
+              }
+              const outcome = await cancelAndReconcileExit({ sym: g.sym, coid: old.clientOrderId, oid: id,
+                side, which: g.t ? "t" : "s" });
+              if (outcome.dispatched) status.cancelled++;
+              if (outcome.result.status !== "cancelled") {
+                laneBusy.add(g.key);
+                status.skipped.push({ sym: g.sym, why: "resized exit cancellation awaits exact terminal reconciliation" });
+                return false;
+              }
+            }
+            return true;
           };
           if (r.placeFirst) {
             // the new piece rests before any old one goes: a refused one leaves the old ones as they are
             if (await place()) await cancelOld();
           } else {
-            await cancelOld();
-            if (!orphanBlocked(g.key)) await place();
+            if (await cancelOld() && !orphanBlocked(g.key)) await place();
           }
         }
     }
@@ -6782,7 +7136,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         }
         const covered: LaneWant[] = [];
         for (const [key, group] of byKey) {
-          if (isForeign(foreign, key) || laneBusy.has(key)) continue;
+          if (isForeign(foreign, key) || laneBusy.has(key) || orphanReservationKeys.has(key) || orphanBlocked(key)) continue;
           const t = targetOf.get(key);
           const spec = specs.get(key.split("|")[0]) ?? null;
           if (!t || !(t.lanes > 0) || !(t.qty > 0)) continue;
@@ -6810,7 +7164,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                 if (await cancelLaneOrders(lo, ids2)) delete laneMap[w.id];
               } else lo.weights = w.weights;
             }
-            if (laneBusy.has(key)) continue;
+            if (laneBusy.has(key) || orphanReservationKeys.has(key) || orphanBlocked(key)) continue;
           }
           const cov = coveredLanes(ws, laneMap, q, laneQty);
           const covIds = new Set(cov.map((w) => w.id));
@@ -6819,7 +7173,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             if (lo.key === key && !covIds.has(lo.id)) {
               if (await cancelLaneOrders(lo, ids2)) delete laneMap[lo.id];
             }
-          if (laneBusy.has(key)) continue;
+          if (laneBusy.has(key) || orphanReservationKeys.has(key) || orphanBlocked(key)) continue;
           for (const w of cov)
             if (!laneMap[w.id])
               laneMap[w.id] = { id: w.id, key, sym: w.sym, side: w.side, qty: w.qty ?? laneQty, exitQty: 0, exitNotional: 0,
@@ -6897,7 +7251,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         }
         repairs.sort((a, b) => Number(a.kind !== "placeStop") - Number(b.kind !== "placeStop"));
         const selectedRepairs = repairs.slice(0, Math.min(slots, LANE_ORDERS_PER_STEP));
+        // A partial exit's repair is the only action allowed for that parent this step. Its lane map can still
+        // look like an ordinary uncovered lane when the plan was built, so letting planLaneOrders run beside it
+        // can submit the same replacement stop twice (and can queue its sibling target before that stop is known).
+        const repairingLanes = new Set(selectedRepairs.map((act) => act.lane));
         const planned = planLaneOrders(covered, laneMap, resting, { ...planOpts, slots: Math.max(0, slots - selectedRepairs.length) })
+          .filter((act) => !repairingLanes.has(act.lane))
           .filter((act) => !drainingLaneOrders || act.kind === "placeStop" || act.kind === "placeTarget");
         const acts = [...selectedRepairs, ...planned].slice(0, LANE_ORDERS_PER_STEP);
         let capHit = false, budgetHit = false;
@@ -6964,11 +7323,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
               // gone already: a fill is the lane's exit (booked next step, from the book); otherwise placed anew
               const g = await goneOf(lo.sym, oid, { coid: o.coid, side: lo.side, which, filledQty: o.filledQty });
               if (g.status !== "cancelled") return;
+              retireConfirmedOrphanExit(lo.sym, o.coid, oid, lo.side, which);
             } else if (oid) {
               status.cancelled++;
               laneStat.cancelled++;
               const g = await goneOf(lo.sym, oid, { coid: o.coid, side: lo.side, which, filledQty: o.filledQty });
               if (g.status !== "cancelled") return;
+              retireConfirmedOrphanExit(lo.sym, o.coid, oid, lo.side, which);
             }
             delete lo[which];
             if (x.kind === "dropTarget") return;
@@ -7055,6 +7416,24 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         })]
       : liveLanes;
     recordLanes(rt, { lanes: recordedLanes, heldAfter, grew, shrank, external: recordExternal, externalWhy, externalSrc, laneExit, prices });
+    const attributedParents = liveKvView<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {};
+    let entryParentsChanged = false;
+    for (const [coid, allocation] of Object.entries(entryParentAllocations)) {
+      const row = controlRows(rt).get(coid);
+      if (!row) {
+        delete entryParentAllocations[coid];
+        entryParentsChanged = true;
+        continue;
+      }
+      const pending = !!row && !!pendingOf(row.msg);
+      const attributed = allocation.parents.length > 0 && allocation.parents.every((parent) => !!attributedParents[parent.lk]);
+      const exposure = (ledger.get(allocation.key) ?? 0) > 1e-12 || heldAfter.has(allocation.key) || pendingKeys.has(allocation.key);
+      if (attributed || (!pending && !exposure)) {
+        delete entryParentAllocations[coid];
+        entryParentsChanged = true;
+      }
+    }
+    if (entryParentsChanged) persistEntryParentAllocations();
     // Conditional history is read in the background after protection. A slow or unknown venue response cannot
     // delay this control step or certify a fill; the generation and connection fence each eventual update.
     if (!conditionalReconciliations.has(rt.db) && Date.now() >= (conditionalNext.get(rt.db) ?? 0) && [...ctlRows.values()].some((row) =>

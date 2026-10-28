@@ -42,6 +42,8 @@ function install(r: CoreRuntime, trades = [.02, -.01, .02].map((v, i) => close(v
   r.sim = walkForward(u, [], { ...r.wf, simH: 24 });
   r.sim.trades = trades; r.sim.openAtEnd = [];
   const primary = runSubset(r.sim, () => true, 1.1); r.sim.stats = primary.stats; r.sim.stable = primary.stable;
+  // The paper-step tests below exercise processing of an already Base-evaluated set.
+  r.sim.validated = [CFG];
   r.paper.selected = [CFG]; return r;
 }
 function owned(r: CoreRuntime, values: Array<number | null>, opts: { cfg?: string; sym?: string; side?: number; notional?: number | null; offset?: number; at?: number } = {}) {
@@ -387,7 +389,13 @@ describe("paper entry allocation provenance", () => {
     }));
     const open = { cfg, sym: SYM, side: 1, entryI: 0, entryT: t, entry: 100,
       stop: 96.1, target: 102.6, peak: 100, trailOn: false, mtm: 0 } as OpenPosition;
-    r.tapes = [makeTape(cfg, "follow", "rsi-mom-14-25@m15", { ...DEFAULT_PROTECT, tag: "mn" }, "normal", [SYM], raw, [open], [])];
+    const protect = { ...DEFAULT_PROTECT, tag: "mn" as const };
+    const pair = "follow|rsi-mom-14-25@m15";
+    r.tapes = [makeTape(cfg, "follow", "rsi-mom-14-25@m15", protect, "normal", [SYM], raw, [open], [])];
+    r.sim!.validated = [cfg];
+    r.wf.basePassed = new Set([pair]);
+    r.wf.basePassedRanges = { [pair]: ["mn"] };
+    r.wf.basePassedCells = passedCellsOf({ [pair]: [protectCellKey(protect)] });
     (r as unknown as { stepPaper(): void }).stepPaper();
     assert.equal(r.paper.positions.length, 0, "PF 1.2 does not clear the exact Minimal floor of 1.35");
     assert.equal(r.status.paperSkips?.liveValidation, 1, JSON.stringify(r.status.paperSkips));

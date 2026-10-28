@@ -211,7 +211,7 @@ for (const side of [1, -1] as const) {
     rt.db.db.close();
   });
 
-  it(`an empty stop error never becomes a false successful backstop, side ${side}`, async () => {
+  it(`an empty stop acknowledgement remains ambiguous and reserves the parent, side ${side}`, async () => {
     const { rt } = fakeRt(new CoreDb(":memory:"));
     Object.assign(rt.settings.live, { laneOrders: true, positionMode: "hedge", positionSize: "lanes",
       notionalUsd: 10, rebalancePct: 0, maxPositions: 0, maxNotionalUsd: 0, maxChase: 0, top: 0 });
@@ -223,8 +223,10 @@ for (const side of [1, -1] as const) {
     };
     rt.paper.positions = [{ ...lane(`follow|ema-9-21@m15|empty-${side}`, sym, side, 10), entryT: 1234 }];
     await stepLive(rt as unknown as CoreRuntime, [], rt.generation, ex);
-    assert.equal(ex.positions.size, 0, "a failed protective placement triggers the bounded emergency close");
+    assert.equal(ex.positions.size, 1, "an empty acknowledgement could mean the stop was accepted; do not race it with a market close");
     assert.equal(rt.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM live_orders WHERE kind='S' AND status='ok'")?.n, 0);
+    assert.equal(rt.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM live_orders WHERE kind='S' AND status='pending'")?.n, 1,
+      "the exact stop request stays pending until the venue identity is reconciled");
     rt.db.db.close();
   });
 }

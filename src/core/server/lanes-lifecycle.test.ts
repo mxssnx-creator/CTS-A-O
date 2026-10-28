@@ -116,6 +116,8 @@ function rtOf() {
   let positions: Pos[] = [];
   const rt = {
     generation: 1,
+    // This fixture is an explicitly synthetic memory-backed runtime and never reaches a real venue.
+    testOnlyAllowMemoryLive: true,
     db: new CoreDb(":memory:"),
     settings: {
       ...DEFAULT_SETTINGS,

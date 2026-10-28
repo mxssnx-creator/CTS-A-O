@@ -10,12 +10,23 @@ import { parseConfigId } from "../src/core/pipeline/pipeline.ts";
 import { iterateSessionArray } from "./lib/session-dump.mjs";
 
 export const GROUPS = ["2", "3", "4", "5", "6", "noTP"];
+export const CLOSE_REASONS = ["tp", "sl", "trail", "time"];
+export const KINDS = ["normal", "trailing", "trailing-only"];
+export const INITIAL_VERDICTS = ["passed", "failed"];
 const fresh = () => ({ settled: 0, long: 0, short: 0, gp: 0, gl: 0, cash: 0 });
+const freshReasons = () => Object.fromEntries(CLOSE_REASONS.map((reason) => [reason, fresh()]));
 export function makeAnalysis(cost) {
   assert.ok(Number.isFinite(cost) && cost >= 0, "cost must be a known nonnegative fraction");
   return { cost, zeroAllocated: 0, total: fresh(), byStep: Object.fromEntries(GROUPS.map(x => [x, fresh()])),
     byDirection: { long: fresh(), short: fresh() },
-    byStepDirection: Object.fromEntries(GROUPS.map(x => [x, { long: fresh(), short: fresh() }])) };
+    byStepDirection: Object.fromEntries(GROUPS.map(x => [x, { long: fresh(), short: fresh() }])),
+    byKind: Object.fromEntries(KINDS.map(x => [x, fresh()])),
+    byInitialVerdict: Object.fromEntries(INITIAL_VERDICTS.map(x => [x, fresh()])),
+    byCloseReason: freshReasons(),
+    byStepCloseReason: Object.fromEntries(GROUPS.map(x => [x, freshReasons()])),
+    byDirectionCloseReason: { long: freshReasons(), short: freshReasons() },
+    byKindCloseReason: Object.fromEntries(KINDS.map(x => [x, freshReasons()])),
+    byInitialVerdictCloseReason: Object.fromEntries(INITIAL_VERDICTS.map(x => [x, freshReasons()])) };
 }
 export function stepOf(protect, cost, step) {
   assert.ok(protect && protect.lowRangeOnly && Number.isFinite(cost) && Number.isFinite(step) && step > 0);
@@ -30,9 +41,15 @@ export function addRow(analysis, group, row) {
   assert.ok(Number.isFinite(row.allocatedNotional) && row.allocatedNotional >= 0, "allocation is unknown or negative");
   if (row.allocatedNotional === 0) { analysis.zeroAllocated++; return; }
   assert.ok(row.side === 1 || row.side === -1, "direction is unknown");
+  assert.ok(CLOSE_REASONS.includes(row.reason), "close reason is unknown or unsupported");
+  assert.ok(KINDS.includes(row.kind), "strategy kind is unknown or unsupported");
+  assert.ok(INITIAL_VERDICTS.includes(row.initialVerdict), "initial verdict is unknown or unsupported");
   assert.ok(Number.isFinite(row.unitR) && Number.isFinite(row.sizedPnl), "funded return or cash is unknown");
   const direction = row.side === 1 ? "long" : "short";
-  for (const x of [analysis.total, analysis.byStep[group], analysis.byDirection[direction], analysis.byStepDirection[group][direction]]) {
+  for (const x of [analysis.total, analysis.byStep[group], analysis.byDirection[direction], analysis.byStepDirection[group][direction],
+    analysis.byKind[row.kind], analysis.byInitialVerdict[row.initialVerdict], analysis.byCloseReason[row.reason],
+    analysis.byStepCloseReason[group][row.reason], analysis.byDirectionCloseReason[direction][row.reason],
+    analysis.byKindCloseReason[row.kind][row.reason], analysis.byInitialVerdictCloseReason[row.initialVerdict][row.reason]]) {
     x.settled++; x[direction]++; x.gp += Math.max(0, row.unitR); x.gl += Math.max(0, -row.unitR); x.cash += row.sizedPnl;
   }
 }
@@ -55,7 +72,18 @@ export function results(analysis) {
     byStep: Object.fromEntries(GROUPS.map(g => [g, pack(analysis.byStep[g])])),
     byDirection: Object.fromEntries(["long", "short"].map(d => [d, pack(analysis.byDirection[d])])),
     byStepDirection: Object.fromEntries(GROUPS.map(g => [g,
-      Object.fromEntries(["long", "short"].map(d => [d, pack(analysis.byStepDirection[g][d])]))])) };
+      Object.fromEntries(["long", "short"].map(d => [d, pack(analysis.byStepDirection[g][d])]))])),
+    byKind: Object.fromEntries(KINDS.map(kind => [kind, pack(analysis.byKind[kind])])),
+    byInitialVerdict: Object.fromEntries(INITIAL_VERDICTS.map(verdict => [verdict, pack(analysis.byInitialVerdict[verdict])])),
+    byCloseReason: Object.fromEntries(CLOSE_REASONS.map(reason => [reason, pack(analysis.byCloseReason[reason])])),
+    byStepCloseReason: Object.fromEntries(GROUPS.map(g => [g,
+      Object.fromEntries(CLOSE_REASONS.map(reason => [reason, pack(analysis.byStepCloseReason[g][reason])]))])),
+    byDirectionCloseReason: Object.fromEntries(["long", "short"].map(d => [d,
+      Object.fromEntries(CLOSE_REASONS.map(reason => [reason, pack(analysis.byDirectionCloseReason[d][reason])]))])),
+    byKindCloseReason: Object.fromEntries(KINDS.map(kind => [kind,
+      Object.fromEntries(CLOSE_REASONS.map(reason => [reason, pack(analysis.byKindCloseReason[kind][reason])]))])),
+    byInitialVerdictCloseReason: Object.fromEntries(INITIAL_VERDICTS.map(verdict => [verdict,
+      Object.fromEntries(CLOSE_REASONS.map(reason => [reason, pack(analysis.byInitialVerdictCloseReason[verdict][reason])]))])) };
 }
 
 async function main(dir) {
@@ -63,9 +91,21 @@ async function main(dir) {
   dir = resolve(dir);
   const read = p => readFileSync(`${dir}/${p}`), sha = p => createHash("sha256").update(read(p)).digest("hex");
   const protocol = JSON.parse(read("protocol.json")), detail = JSON.parse(read("runtime-step-detail.json"));
+  const progression = JSON.parse(read("progression-audit.json"));
   assert.equal(protocol.source.sha256, detail.sourceSha256);
   assert.equal(protocol.window.tradeStartT, detail.startT); assert.equal(protocol.window.endT, detail.endT);
   assert.deepEqual(protocol.symbols, detail.symbols); assert.deepEqual(detail.groups, GROUPS);
+  assert.equal(progression.status, "passed");
+  assert.equal(progression.startT, detail.startT); assert.equal(progression.endT, detail.endT);
+  assert.equal(progression.configs.length, progression.evaluatedDistinctConfigs);
+  const initialVerdicts = new Map();
+  for (const config of progression.configs) {
+    assert.ok(config && typeof config.id === "string" && Array.isArray(config.checks) && config.checks[0]?.[0] === detail.startT);
+    const passed = config.checks[0][1];
+    assert.ok(passed === 0 || passed === 1, "initial config verdict is unknown");
+    assert.ok(!initialVerdicts.has(config.id), "duplicate initial config verdict");
+    initialVerdicts.set(config.id, passed ? "passed" : "failed");
+  }
   const cost = protocol.actualSettings.cost, step = protocol.actualSettings.grid.lowRange.step;
   const analysis = makeAnalysis(cost), report = `${dir}/report/data.json`;
   const rawTrades = iterateSessionArray(`${dir}/raw.json`, "trades")[Symbol.asyncIterator]();
@@ -75,6 +115,8 @@ async function main(dir) {
     const trade = saved.value;
     assert.equal(row.closeIndex, totalRows++);
     for (const k of ["cfg", "sym", "side", "entryT", "exitT"]) assert.equal(row[k], trade[k], `raw ${k} mismatch`);
+    if (row.reason !== undefined) assert.equal(row.reason, trade.reason, "reported close reason disagrees with raw trade");
+    if (row.kind !== undefined) assert.equal(row.kind, trade.kind, "reported strategy kind disagrees with raw trade");
     assert.ok(["normal", "trailing", "trailing-only"].includes(trade.kind), "unsupported strategy type");
     assert.ok(Number.isFinite(trade.entry) && trade.entry > 0 && Number.isFinite(trade.exit) && trade.exit > 0);
     if (row.allocatedNotional > 0) {
@@ -89,7 +131,9 @@ async function main(dir) {
     assert.ok(protocol.symbols.includes(row.sym));
     assert.ok(row.exitT > detail.startT && row.exitT <= detail.endT, "settled order outside declared window");
     const parsed = parseConfigId(row.cfg);
-    addRow(analysis, stepOf(parsed?.protect, cost, step), row);
+    const initialVerdict = initialVerdicts.get(row.cfg);
+    assert.ok(initialVerdict, "funded order has no initial config verdict");
+    addRow(analysis, stepOf(parsed?.protect, cost, step), { ...row, reason: trade.reason, kind: trade.kind, initialVerdict });
   }
   assert.equal((await rawTrades.next()).done, true, "raw trades have extra rows");
   reconcile(analysis, detail);

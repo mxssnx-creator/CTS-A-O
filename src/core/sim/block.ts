@@ -28,6 +28,7 @@
 // Pause: after a raised position of a source closes positive, that source raises nothing for its next `pause`
 // closes (then its level is recalculated); 0 = no pause.
 import type { BlockAttribution, BlockConfig } from "../domain/types.ts";
+import { MAX_EXTERNAL_STACK } from "../config.ts";
 
 export type BlockSource = "config" | "overall" | "symbol" | "direction" | "indication" | "type";
 export const BLOCK_SOURCES: readonly BlockSource[] = [
@@ -370,7 +371,7 @@ export interface BlockDecision {
  * within [1, 8] (a non-finite maxMult raises nothing).
  */
 export function blockStackCap(b: Pick<BlockConfig, "maxMult">): number {
-  return Number.isFinite(b.maxMult) ? Math.min(8, Math.max(1, b.maxMult)) : 1;
+  return Number.isFinite(b.maxMult) ? Math.min(MAX_EXTERNAL_STACK, Math.max(1, b.maxMult)) : 1;
 }
 
 /** Shared may choose its own per-level raise; unset keeps the historic common ratio. Invalid ratios never raise. */

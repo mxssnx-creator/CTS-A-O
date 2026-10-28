@@ -30,6 +30,7 @@ import {
   GENERAL_RANGE,
   LONG_RANGE,
   MAX_EXCHANGE_POSITIONS,
+  MAX_EXTERNAL_STACK,
   MICRO_RANGE,
   MIN_PF_CHOICES,
   MINIMAL_PLUS_RANGE,
@@ -315,7 +316,7 @@ function SwitchRow(props: {
 
 const BLOCK_SOURCE_HELP: Array<[string, string]> = [
   ["config", "exact configuration × symbol × direction; each history and level is independent"],
-  ["overall", "all orders in the selected Real history; only settled closes contribute"],
+  ["overall", "all orders in the selected Real history; only completed executions with an exit contribute"],
   ["symbol", "same symbol × direction; long and short have separate histories and stacks"],
   ["direction", "same direction across symbols; long and short are judged separately"],
   [
@@ -326,8 +327,8 @@ const BLOCK_SOURCE_HELP: Array<[string, string]> = [
 ];
 
 const RELATE_SOURCE_HELP: Array<[RelateSource, string]> = [
-  ["config", "exact config × symbol × direction; each config set has its own settled record"],
-  ["overall", "all accepted, settled Real orders across the active book"],
+  ["config", "exact config × symbol × direction; each config set has its own executed-close record"],
+  ["overall", "all accepted Real executions with exits across the Active book"],
   ["symbol", "same symbol and direction; long and short remain separate"],
   ["direction", "same direction across symbols; long and short remain separate"],
   ["indication", "exact indication and timeframe lane × direction"],
@@ -362,7 +363,7 @@ export function BlockSources(props: {
       </Field>
       <Field
         label="History source"
-        hint="Accepted orders: settled orders that passed all Real entry gates, before account allocation, judged by net unit returns after costs. Candidate history is a diagnostic that also includes skipped orders; neither is venue fill evidence."
+        hint="Accepted orders: Real executions that passed all entry gates and have an exit, before account allocation, judged by net unit returns after costs. Candidate history is a diagnostic that also includes skipped orders; neither is venue fill evidence."
       >
         <select
           className="v2-select"
@@ -465,16 +466,16 @@ export function SignalsSettings(props: {
             {fmt.num(processingCounts.requested)} requested protection configurations
             {st.builtConfigs !== undefined ? ` · ${fmt.num(st.builtConfigs)} distinct built configs (including ladders and Exit)` : ""}
             {st.positions !== undefined
-              ? ` · closed positions / settled orders ${st.positions} / ${st.orders} (peak open ${st.peakPositions} / ${st.peakOrders})`
+              ? ` · closed positions / executed orders ${st.positions} / ${st.orders} (peak open ${st.peakPositions} / ${st.peakOrders})`
               : st.trades !== undefined
-                ? ` · ${st.trades} settled orders`
+                ? ` · ${st.trades} executed closes`
                 : ""}
             {st.openedOrders !== undefined ? ` · simulation opened positions / orders ${st.openedPositions ?? "–"} / ${st.openedOrders} · still open at simulation end ${st.openAtEndPositions ?? "–"} / ${st.openAtEndOrders}` : ""}
             {st.openPositions !== undefined
               ? ` · paper open now ${st.openPositions} / ${st.openOrders}`
               : ""}
             {st.coordinationOrders !== undefined
-              ? ` · coordination settled orders ${fmt.num(st.coordinationOrders)} (PF ${fmt.num(st.coordinationPf)} · net ${fmt.num(st.coordinationNet)})`
+              ? ` · coordination executed closes ${fmt.num(st.coordinationOrders)} (PF ${fmt.num(st.coordinationPf)} · net ${fmt.num(st.coordinationNet)})`
               : ""}
             {st.disabled ? ` · ${st.disabled} guarded` : ""}
           </span>
@@ -763,7 +764,7 @@ export function SignalsSettings(props: {
         </Field>
         <Field
           label="Direction acceptance"
-          hint="Signals only (the engine has its own switch under Real). ON: each direction uses settled accepted post-Base Signal orders, pooled across sources and symbols, with return PF ≥ the minimum. Rejected candidates and open marks do not enter this shared record. Too few signal entries in the window are judged on twice the hours; still too few means this shared gate has no veto, while every own-config gate still applies. A failing direction resumes when the retained record passes or ages out. OFF: Signals use their own acceptance alone. Held positions remain managed."
+          hint="Signals only (the engine has its own switch under Real). ON: each direction uses accepted post-Base Signal executions with exits, pooled across sources and symbols, with return PF ≥ the minimum. Rejected candidates and open marks do not enter this shared record. Too few signal entries in the window are judged on twice the hours; still too few means this shared gate has no veto, while every own-config gate still applies. A failing direction resumes when the retained record passes or ages out. OFF: Signals use their own acceptance alone. Held positions remain managed."
         >
           <Switch
             label="Signal direction acceptance"
@@ -848,7 +849,7 @@ export function SignalsSettings(props: {
       <div className="v2-grid v2-cols-4">
         <Field
           label="Loss-cluster guard"
-          hint="Pause new Signal orders in a direction when many accepted post-Base Signal entries have settled at a loss within the window. Count each signal entry once; rejected candidates and open marks cannot trigger this shared pause. Own history keeps calculating and held positions remain managed."
+          hint="Pause new Signal orders in a direction when many accepted post-Base Signal executions close at a loss within the window. Count each signal entry once; rejected candidates and open marks cannot trigger this shared pause. Own history keeps calculating and held positions remain managed."
         >
           <Switch
             label="Signal loss-cluster guard"
@@ -1091,7 +1092,7 @@ export function SignalsSettings(props: {
           <strong>Signals Coordination (Type)</strong>
           <span className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
             {coordinationOn
-              ? `${fmt.num(st?.coordinationPairs ?? 0)} pairs · ${fmt.num(st?.coordinationBuiltConfigs ?? st?.coordinationConfigs ?? 0)} built range/history configs · ${fmt.num(st?.coordinationActive ?? 0)} active units${st?.coordinationOrders !== undefined ? ` · ${fmt.num(st.coordinationOrders)} settled orders · PF ${fmt.num(st.coordinationPf)}` : ""}`
+              ? `${fmt.num(st?.coordinationPairs ?? 0)} pairs · ${fmt.num(st?.coordinationBuiltConfigs ?? st?.coordinationConfigs ?? 0)} built range/history configs · ${fmt.num(st?.coordinationActive ?? 0)} active units${st?.coordinationOrders !== undefined ? ` · ${fmt.num(st.coordinationOrders)} executed closes · PF ${fmt.num(st.coordinationPf)}` : ""}`
               : "Off"}
           </span>
         </div>
@@ -2182,7 +2183,7 @@ export function LowRangeShortSettings(props: { grid: object; set: (path: string[
     </div>}
     <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
       Price target = cost + step × target steps. Stop = cost + max(one step, net target × stop ratio).
-      Trailing peak gap = cost + max(two steps, net target × trailing ratio). Cost is deducted once from the settled return.
+      Trailing peak gap = cost + max(two steps, net target × trailing ratio). Cost is deducted once from the executed return.
       The separate trailing-only sets retain the engine's 3% ceiling. Short's minimum timeframe controls eligible lanes.
     </div>
     <div className="v2-grid v2-cols-3">
@@ -2963,7 +2964,7 @@ export function SettingsPage() {
                 </Field>
                 <Field
                   label="Holdout closes / config"
-                  hint="minimum settled simulated closes before the candidate can qualify"
+                  hint="minimum executed simulated closes before the candidate can qualify"
                 >
                   <Num
                     int
@@ -3640,7 +3641,7 @@ export function SettingsPage() {
               <Num
                 step={0.1}
                 min={1}
-                max={8}
+                max={MAX_EXTERNAL_STACK}
                 value={s.block.maxMult}
                 onChange={(v) => set(["block", "maxMult"], v)}
               />
@@ -3699,8 +3700,8 @@ export function SettingsPage() {
               </Field>
             ))}
           </div>
-          <Field label="Retain adjustment until net break-even"
-            hint="Retains each relation's raised level while its settled extra-leg unit balance is negative. Uses accepted modeled orders; no loss doubling, no change to stops or PF gates, and no borrowing from sibling relations. Off until explicitly enabled.">
+          <Field label="Retain group volume until net break-even"
+            hint="Enabled by default. Each raised Block group keeps its last applied extra volume through losses until that group's accepted extra-leg net returns to zero. Groups recover independently; this does not double size after losses or change exits or PF gates.">
             <input type="checkbox" checked={!!s.block.holdUntilNet}
               onChange={(e) => set(["block", "holdUntilNet"], e.target.checked)} />
           </Field>
@@ -4056,14 +4057,14 @@ export function SettingsPage() {
         </Panel>
         <Panel
           title="Relate"
-          sub="post-Base volume adjustment from accepted, settled Real-stage orders"
+          sub="post-Base volume adjustment from accepted Real-stage executions with exits"
         >
           <div className="v2-grid v2-cols-2">
-            <Field label="Enable Relate" hint="Off by default. Uses only accepted, settled simulated Real orders; it does not read candidate-only or open-position marks.">
+            <Field label="Enable Relate" hint="Off by default. Uses only accepted simulated Real executions with exits; it does not read candidate-only or open-position marks.">
               <Switch label="Enable Relate" checked={s.relate.enabled}
                 onChange={(v) => set(["relate", "enabled"], v)} />
             </Field>
-            <Field label="Auto Mode" hint="Scores Active thresholds using settled unit-return PF. Ratio and step depth do not change that score; ties favor the lowest ratio and the step count nearest your manual setting. Sized PF is hypothetical and does not select a winner.">
+            <Field label="Auto Mode" hint="Scores Active thresholds using executed-close unit-return PF. Ratio and step depth do not change that score; ties favor the lowest ratio and the step count nearest your manual setting. Sized PF is hypothetical and does not select a winner.">
               <Switch label="Relate Auto Mode" checked={s.relate.auto}
                 onChange={(v) => set(["relate", "auto"], v)} />
             </Field>
@@ -4078,7 +4079,7 @@ export function SettingsPage() {
               <Num step={0.2} min={0.2} max={6} value={s.relate.ratio}
                 onChange={(v) => set(["relate", "ratio"], Math.round(v * 5) / 5)} />
             </Field>
-            <Field label="Maximum positive steps" hint="Consecutive positive settled orders, capped at this many steps. Auto Mode searches 2–15; manual default is 5.">
+            <Field label="Maximum positive steps" hint="Consecutive positive executed closes, capped at this many steps. Auto Mode searches 2–15; manual default is 5.">
               <Num int min={2} max={15} value={s.relate.steps}
                 onChange={(v) => set(["relate"], { ...s.relate, steps: v, activeStep: Math.min(s.relate.activeStep, v) })} />
             </Field>
@@ -4086,20 +4087,20 @@ export function SettingsPage() {
               <Num int min={0} max={Math.min(6, s.relate.steps)} value={s.relate.activeStep}
                 onChange={(v) => set(["relate", "activeStep"], v)} />
             </Field>
-            <Field label="Minimum PF" hint="A relation cannot size orders unless its accepted settled unit returns clear this PF. Auto candidates must also clear it.">
+            <Field label="Minimum PF" hint="A relation cannot size orders unless its accepted executed-close unit returns clear this PF. Auto candidates must also clear it.">
               <Num step={0.1} min={0} max={100} value={s.relate.minPf}
                 onChange={(v) => set(["relate", "minPf"], v)} />
             </Field>
-            <Field label="Last-N evaluation" hint="Settled order window. The supported range is 60–250; default 250.">
+            <Field label="Last-N evaluation" hint="Executed-close window. The supported range is 60–250; default 250.">
               <Num int min={60} max={250} value={s.relate.lastN}
                 onChange={(v) => set(["relate"], { ...s.relate, lastN: v, minTrades: Math.min(s.relate.minTrades, v) })} />
             </Field>
-            <Field label="Minimum sample" hint="The relation needs at least this many settled orders before PF is judged; minimum 60 and no more than Last-N.">
+            <Field label="Minimum sample" hint="The relation needs at least this many executed closes before PF is judged; minimum 60 and no more than Last-N.">
               <Num int min={60} max={s.relate.lastN} value={s.relate.minTrades}
                 onChange={(v) => set(["relate", "minTrades"], v)} />
             </Field>
-            <Field label="Max stack × base" hint="The model reserves capacity for possible DCA and Axis ladder fills, so their initial size can be lower. Overall exchange sizing and venue minimums are controlled separately and can exceed this modeled limit.">
-              <Num int step={1} min={1} max={250} value={s.relate.maxStack}
+            <Field label="Max external stack × base" hint="Caps the combined Block, coordination, strategy, range, and Relate sizing groups whether Relate adjustments are on or off. The same 8× limit includes possible DCA and Axis ladder fills, which reserve a smaller external base. Venue minimums and account risk caps still apply.">
+              <Num int step={1} min={1} max={MAX_EXTERNAL_STACK} value={s.relate.maxStack}
                 onChange={(v) => set(["relate", "maxStack"], v)} />
             </Field>
             <Field label="Max SL (%)" hint="For modeled Relate volume raises, the existing fixed entry stop must already be within this distance from the original entry. Wider or unverified stops receive no Relate raise; Active admission still applies, and Max stack may still reserve capacity. This does not move stops; ATR and ladder stops are not yet qualified, and live venue enforcement is not verified.">

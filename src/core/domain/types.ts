@@ -558,6 +558,8 @@ export interface Trade {
   level?: number;
   /** External execution multiplier (Block × relation × type factor); r / mult is the underlying strategy return. */
   mult?: number;
+  /** Exact Block multiplier before coordination, strategy, range and Relate sizing. */
+  blockVol?: number;
   /** part of mult from coordination volume (Stable-02 relation volume). */
   coordVol?: number;
   /** Relate volume multiplier captured at entry, included in the total execution multiple. */
@@ -617,6 +619,7 @@ export interface OpenPosition {
    */
   w?: number;
   /** execution factors retained at entry for exact closes after settings change or restart */
+  blockVol?: number;
   coordVol?: number;
   /** Relate volume multiplier captured at entry; held positions never get resized by later settings. */
   relateVol?: number;

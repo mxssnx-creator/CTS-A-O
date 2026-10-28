@@ -11,6 +11,7 @@ import {
   Empty,
   ErrorNote,
   fmt,
+  Kpi,
   Line,
   liveState,
   Panel,
@@ -22,6 +23,10 @@ import {
 } from "../ui";
 
 type Any = any;
+
+const effectivePfText = (x: Any) => !x?.n ? "–"
+  : x.pfBasis !== "effective-model-returns" ? "Basis unavailable"
+    : x.noLoss ? "No losses" : fmt.pf(x.pf);
 
 export function StagesPage() {
   const { data, error } = usePoll(() => coreOverview(), 5000);
@@ -43,6 +48,21 @@ export function StagesPage() {
   const realSel = selected.length - sigSel;
   const exits = d.status?.exitStrategies;
   const exitHistory = exits?.history ?? {};
+  const activeKinds = (d.status?.listings?.byKind ?? []) as Any[];
+  const executedKinds = (d.sim?.byKind ?? {}) as Record<string, Any>;
+  const strategyKinds = [
+    ...new Set([...activeKinds.map((x) => x.kind), ...Object.keys(executedKinds)]),
+  ].sort();
+  const activeValidationGross = activeKinds.reduce(
+    (a, x) => ({ gp: a.gp + (x.gp ?? 0), gl: a.gl + (x.gl ?? 0) }),
+    { gp: 0, gl: 0 },
+  );
+  const activeValidationNoLoss = activeValidationGross.gp > 0 && activeValidationGross.gl <= 1e-12;
+  const activeValidationPf =
+    activeValidationGross.gl > 1e-12 ? activeValidationGross.gp / activeValidationGross.gl : null;
+  const activeValidationCloses = activeKinds.reduce((n, x) => n + (x.validationCloses ?? 0), 0);
+  const activeValidationPfText = (pf: number | null, noLoss: boolean) =>
+    noLoss ? "∞ (no losses)" : fmt.pf(pf);
   return (
     <>
       <ErrorNote error={error} />
@@ -107,7 +127,10 @@ export function StagesPage() {
 
       <PromotionEvidence status={d.status?.livePromotion} />
 
-      <Panel title="Strategy tape coverage" sub="Last completed research cohort, independent of the stage currently displayed">
+      <Panel
+        title="Strategy tape coverage"
+        sub="Last completed research cohort, independent of the stage currently displayed"
+      >
         <StrategyCoverageTable coverage={d.status?.strategyCoverage} />
       </Panel>
 
@@ -168,62 +191,207 @@ export function StagesPage() {
 
       <Panel
         title="Timeframe lanes"
-        sub="1m base, 5m / 15m / 30m derived · m+ = combined (agrees with every higher timeframe) · each lane independent through every stage · sim = the simulated run (Σ trade %), paper = the open paper book (virtual) · a position is one symbol × direction episode: a real position held by several lanes counts in each lane, the total row counts it once"
+        sub="Each lane is tracked through Base, Active validated configs, and Executed model closes. Open model positions and paper positions/orders are shown separately. A position is one symbol × direction episode."
         flush
       >
         {d.lanes?.length ? (
+          <>
+            <div className="v2-table-wrap">
+              <table className="v2-table">
+                <thead>
+                  <tr>
+                    <th>Lane</th>
+                    <th>Base evaluated</th>
+                    <th>Base passed</th>
+                    <th>Main tapes</th>
+                    <th>Active sets / validation closes</th>
+                    <th>Active validation PF</th>
+                    <th>Executed model closes</th>
+                    <th>Executed model unit PF</th>
+                    <th>Executed effective PF</th>
+                    <th>Executed unit net</th>
+                    <th>Executed effective net</th>
+                    <th>Executed model WR</th>
+                    <th>Model open at end</th>
+                    <th>Paper open pos / orders</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.lanes.map((l: Any) => (
+                    <tr key={l.lane}>
+                      <td style={{ fontWeight: 600 }}>{l.lane}</td>
+                      <td>{fmt.num(l.base)}</td>
+                      <td>{fmt.num(l.passed)}</td>
+                      <td>{fmt.num(l.tapes)}</td>
+                      <td>
+                        {fmt.num(l.activeSets)} / {fmt.num(l.activeCloses)}
+                      </td>
+                      <td className={l.activeSets ? pfTone(l.activePf) : ""}>
+                        {l.activeSets ? activeValidationPfText(l.activePf, l.activeNoLoss) : "–"}
+                      </td>
+                      <td>{fmt.num(l.n)}</td>
+                      <td className={l.n ? pfTone(l.pf) : ""}>{l.n ? unitStatsPfText(l) : "–"}</td>
+                      <td className={l.effective?.n ? pfTone(l.effective.pf) : ""}>{effectivePfText(l.effective)}</td>
+                      <td className={l.n ? tone(l.net) : ""}>{l.n ? fmt.pct(l.net) : "–"}</td>
+                      <td className={l.effective?.n ? tone(l.effective.net) : ""}>{l.effective?.n ? fmt.pct(l.effective.net) : "–"}</td>
+                      <td>{l.n ? fmt.ratio(l.wr) : "–"}</td>
+                      <td>{fmt.num(l.orderCounts?.openOrders ?? 0)}</td>
+                      <td>
+                        {l.open?.positions ?? 0} / {l.open?.orders ?? 0}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="v2-muted">
+                    <td style={{ fontWeight: 600 }}>all lanes</td>
+                    <td>{fmt.num(d.status?.baseEvaluated)}</td>
+                    <td>{fmt.num(d.status?.basePassed)}</td>
+                    <td>{fmt.num(d.wf?.tapes)}</td>
+                    <td>
+                      {fmt.num(d.status?.listings?.validated)} / {fmt.num(activeValidationCloses)}
+                    </td>
+                    <td className={activeKinds.length ? pfTone(activeValidationPf) : ""}>
+                      {activeKinds.length
+                        ? activeValidationPfText(activeValidationPf, activeValidationNoLoss)
+                        : "–"}
+                    </td>
+                    <td>{fmt.num(d.sim?.executed?.n)}</td>
+                    <td className={d.sim?.executed?.n ? pfTone(d.sim.executed.pf) : ""}>
+                      {d.sim?.executed?.n ? unitStatsPfText(d.sim.executed) : "–"}
+                    </td>
+                    <td className={d.sim?.effective?.n ? pfTone(d.sim.effective.pf) : ""}>
+                      {effectivePfText(d.sim?.effective)}
+                    </td>
+                    <td className={d.sim?.executed?.n ? tone(d.sim.executed.net) : ""}>
+                      {d.sim?.executed?.n ? fmt.pct(d.sim.executed.net) : "–"}
+                    </td>
+                    <td className={d.sim?.effective?.n ? tone(d.sim.effective.net) : ""}>
+                      {d.sim?.effective?.n ? fmt.pct(d.sim.effective.net) : "–"}
+                    </td>
+                    <td>{d.sim?.executed?.n ? fmt.ratio(d.sim.executed.wr) : "–"}</td>
+                    <td>{fmt.num(d.sim?.openAtEnd)}</td>
+                    <td>
+                      {d.paper?.book?.positions ?? 0} / {d.paper?.book?.orders ?? 0}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="v2-muted" style={{ marginTop: 8, fontSize: "var(--v-fs-xs)" }}>
+              Active validation PF pools the current step&apos;s admitted configs. Executed model unit PF
+              removes captured size; Executed effective PF includes the additive sized returns from
+              closed replay orders only. Open-at-end orders are counted separately. Exchange fill PF
+              remains in Statistics → Live.
+            </div>
+          </>
+        ) : (
+          <Empty>No compute yet</Empty>
+        )}
+      </Panel>
+
+      <Panel
+        title="Strategy execution by type"
+        sub={`Runtime seat set: ${d.wf?.seatSet ?? "validated"}. Simulated execution is pinned to the config IDs in validated set V. Active validation and Executed model columns use different windows. Mirror-to-Live exchange fills are reported separately in Statistics → Live.`}
+        flush
+      >
+        {strategyKinds.length ? (
           <div className="v2-table-wrap">
             <table className="v2-table">
               <thead>
                 <tr>
-                  <th>Lane</th>
-                  <th>Base evaluated</th>
-                  <th>Base passed</th>
-                  <th>Main tapes</th>
-                  <th>Sim positions / orders</th>
-                  <th>Sim settled model return PF</th>
-                  <th>Sim net (Σ trade %)</th>
-                  <th>Sim WR</th>
-                  <th>Paper open pos / orders</th>
+                  <th>Strategy</th>
+                  <th className="num">Active configs</th>
+                  <th className="num">Validation closes</th>
+                  <th className="num">Active validation PF</th>
+                  <th className="num">Executed model closes</th>
+                  <th className="num">Executed model unit PF</th>
+                  <th className="num">Executed effective PF</th>
+                  <th className="num">Executed unit net</th>
+                  <th className="num">Executed effective net</th>
                 </tr>
               </thead>
               <tbody>
-                {d.lanes.map((l: Any) => (
-                  <tr key={l.lane}>
-                    <td style={{ fontWeight: 600 }}>{l.lane}</td>
-                    <td>{fmt.num(l.base)}</td>
-                    <td>{fmt.num(l.passed)}</td>
-                    <td>{fmt.num(l.tapes)}</td>
-                    <td>
-                      {fmt.num(l.positions)} / {fmt.num(l.n)}
-                    </td>
-                    <td className={l.n ? pfTone(l.pf) : ""}>{l.n ? unitStatsPfText(l) : "–"}</td>
-                    <td className={l.n ? tone(l.net) : ""}>{l.n ? fmt.pct(l.net) : "–"}</td>
-                    <td>{l.n ? fmt.ratio(l.wr) : "–"}</td>
-                    <td>
-                      {l.open?.positions ?? 0} / {l.open?.orders ?? 0}
-                    </td>
-                  </tr>
-                ))}
-                <tr className="v2-muted">
-                  <td style={{ fontWeight: 600 }}>all lanes</td>
-                  <td colSpan={3} />
-                  <td>
-                    {fmt.num(d.sim?.positions)} / {fmt.num(d.sim?.stats?.n)}
-                  </td>
-                  <td>{fmt.pf(d.sim?.stats?.pf)}</td>
-                  <td>{fmt.pct(d.sim?.stats?.net)}</td>
-                  <td>{fmt.ratio(d.sim?.stats?.wr)}</td>
-                  <td>
-                    {d.paper?.book?.positions ?? 0} / {d.paper?.book?.orders ?? 0}
-                  </td>
-                </tr>
+                {strategyKinds.map((kind) => {
+                  const active = activeKinds.find((x) => x.kind === kind);
+                  const executed = executedKinds[kind];
+                  const effective = d.sim?.effectiveByKind?.[kind];
+                  return (
+                    <tr key={kind}>
+                      <td>
+                        {kind === "exit"
+                          ? "Historic Exit"
+                          : kind === "trailing-only"
+                            ? "Trailing only"
+                            : kind === "dca-active"
+                              ? "DCA Active"
+                              : kind[0].toUpperCase() + kind.slice(1)}
+                      </td>
+                      <td className="num">{fmt.num(active?.validated ?? 0)}</td>
+                      <td className="num">{fmt.num(active?.validationCloses ?? 0)}</td>
+                      <td className={`num ${active ? pfTone(active.pf) : ""}`}>
+                        {active ? activeValidationPfText(active.pf, active.noLoss) : "–"}
+                      </td>
+                      <td className="num">{fmt.num(executed?.n ?? 0)}</td>
+                      <td className={`num ${executed?.n ? pfTone(executed.pf) : ""}`}>
+                        {executed?.n ? unitStatsPfText(executed) : "–"}
+                      </td>
+                      <td className={`num ${effective?.n ? pfTone(effective.pf) : ""}`}>
+                        {effectivePfText(effective)}
+                      </td>
+                      <td className={`num ${executed?.n ? tone(executed.net) : ""}`}>
+                        {executed?.n ? fmt.pct(executed.net) : "–"}
+                      </td>
+                      <td className={`num ${effective?.n ? tone(effective.net) : ""}`}>
+                        {effective?.n ? fmt.pct(effective.net) : "–"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         ) : (
-          <Empty>No compute yet</Empty>
+          <Empty>No Active or Executed strategy data yet.</Empty>
         )}
+      </Panel>
+
+      <Panel
+        title="Mirror to Live · Exchange fills"
+        sub="Actual owned closes from exchange fill records, kept separate from Active validation and Executed model results. PF requires measured fill prices and fees; hand exits and unverified flat markers are excluded."
+      >
+        <div className="v2-grid v2-cols-4">
+          <Kpi
+            label="Exchange closes"
+            value={fmt.num(d.liveSession?.exchangeReturns?.n ?? 0)}
+            sub={`${fmt.num(d.liveSession?.exchangeReturns?.unknownReturns ?? 0)} closes with unknown return evidence`}
+          />
+          <Kpi
+            label="Exchange return PF"
+            value={d.liveSession?.exchangeReturns?.n
+              ? unitStatsPfText(d.liveSession.exchangeReturns)
+              : "–"}
+            className={d.liveSession?.exchangeReturns?.n
+              ? pfTone(d.liveSession.exchangeReturns.pf)
+              : ""}
+            sub="measured own-fill returns"
+          />
+          <Kpi
+            label="Exchange net return"
+            value={d.liveSession?.exchangeReturns?.n
+              ? fmt.pct(d.liveSession.exchangeReturns.net)
+              : "–"}
+            className={d.liveSession?.exchangeReturns?.n
+              ? tone(d.liveSession.exchangeReturns.net)
+              : ""}
+            sub="same exchange close sample"
+          />
+          <Kpi
+            label="Return evidence"
+            value={d.liveSession?.exchangeReturns?.pfBasis === "unit-net-returns"
+              ? "complete"
+              : "unavailable"}
+            sub="see Statistics → Live for fill-level details"
+          />
+        </div>
       </Panel>
 
       <div className="v2-grid v2-cols-3">
@@ -347,19 +515,30 @@ const PAGE = 50;
 function SetListings(props: { minPf: number }) {
   const [kind, setKind] = useState<"validated" | "active" | "proven">("validated");
   const [group, setGroup] = useState("");
+  const [lane, setLane] = useState("");
+  const [strategy, setStrategy] = useState("");
   const [page, setPage] = useState(0);
   const { data } = usePoll(
     () =>
-      coreListing({ data: { kind, group: group || undefined, offset: page * PAGE, limit: PAGE } }),
+      coreListing({
+        data: {
+          kind,
+          group: group || undefined,
+          lane: lane || undefined,
+          strategy: strategy || undefined,
+          offset: page * PAGE,
+          limit: PAGE,
+        },
+      }),
     10000,
-    [kind, group, page],
+    [kind, group, lane, strategy, page],
   );
   const d = data as Any;
   const pages = d?.total ? Math.ceil(d.total / PAGE) : 0;
   return (
     <Panel
       title="Validated and active sets"
-      sub="PF includes only sets that passed the configured validation and Last-N gates; quantities show validated sets / eligible calculated configs"
+      sub="The Active set is the current step's configs that passed Base and validation. Filter the line-by-line records by lane, strategy and range group."
     >
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <Seg
@@ -392,12 +571,55 @@ function SetListings(props: { minPf: number }) {
             }}
           />
         )}
+        {kind === "validated" && Array.isArray(d?.byKind) && (
+          <Seg
+            value={strategy}
+            label="strategy"
+            options={[
+              { value: "", label: "All strategies" },
+              ...d.byKind.map((x: Any) => ({
+                value: x.kind,
+                label: `${x.kind === "exit" ? "Historic Exit" : x.kind === "trailing-only" ? "Trailing only" : x.kind === "dca-active" ? "DCA Active" : x.kind[0].toUpperCase() + x.kind.slice(1)} ${x.validated}/${x.calculated}`,
+              })),
+            ]}
+            onChange={(v) => {
+              setStrategy(v);
+              setPage(0);
+              setGroup("");
+            }}
+          />
+        )}
+        {kind === "validated" && (
+          <Seg
+            value={lane}
+            label="lane"
+            options={[
+              { value: "", label: "All lanes" },
+              ...["1m", "1m+", "5m", "5m+", "15m", "15m+", "30m", "plain"].map((x) => ({
+                value: x,
+                label: x,
+              })),
+            ]}
+            onChange={(v) => {
+              setLane(v);
+              setPage(0);
+              setGroup("");
+            }}
+          />
+        )}
       </div>
-      {kind === "validated" && d?.ready && <div className="v2-muted" style={{marginTop: 8, fontSize: "var(--v-fs-xs)"}}>
-        {fmt.num(d.total)} / {fmt.num(d.calculated)} validated · Last-N {d.validation?.engineLastN || "off"}
-        {` · range Last-N ${d.validation?.rangeLastN || "off"} · ${d.validation?.historyH ?? "—"}h evaluation history`}
-        <div>Config PF uses the engine score 4 for a positive sample without losses; that case has no finite measured ratio. Group PF pools the validated windows&apos; gains and losses.</div>
-      </div>}
+      {kind === "validated" && d?.ready && (
+        <div className="v2-muted" style={{ marginTop: 8, fontSize: "var(--v-fs-xs)" }}>
+          {fmt.num(d.total)} / {fmt.num(d.calculated)} validated · Last-N{" "}
+          {d.validation?.engineLastN || "off"}
+          {` · range Last-N ${d.validation?.rangeLastN || "off"} · ${d.validation?.historyH ?? "—"}h evaluation history`}
+          <div>
+            Each Active config row shows its validation window beside Executed model closes for that
+            same config ID. Validation windows can overlap and differ from the full replay window.
+            Exchange fills are separate and appear in Statistics → Live.
+          </div>
+        </div>
+      )}
       {!d ? (
         <Empty>Loading…</Empty>
       ) : !d.ready ? (
@@ -412,11 +634,16 @@ function SetListings(props: { minPf: number }) {
                 <tr>
                   <th>Config</th>
                   <th>Range / strategy group</th>
-                  <th className="num">PF</th>
-                  <th className="num">Closes</th>
-                  <th className="num">Net</th>
+                  <th className="num">Active validation PF</th>
+                  <th className="num">Validation closes</th>
+                  <th className="num">Validation net</th>
                   <th className="num">DDT h</th>
                   <th className="num">Score</th>
+                  <th className="num">Executed model closes</th>
+                  <th className="num">Executed model unit PF</th>
+                  <th className="num">Executed effective PF</th>
+                  <th className="num">Executed unit net</th>
+                  <th className="num">Executed effective net</th>
                 </tr>
               ) : kind === "active" ? (
                 <tr>
@@ -448,6 +675,19 @@ function SetListings(props: { minPf: number }) {
                     <td className={`num ${tone(x.net)}`}>{fmt.pct(x.net)}</td>
                     <td className="num">{fmt.num(x.ddt)}</td>
                     <td className="num">{fmt.num(x.score)}</td>
+                    <td className="num">{fmt.num(x.executed?.n ?? 0)}</td>
+                    <td className={`num ${x.executed?.n ? pfTone(x.executed.pf) : ""}`}>
+                      {x.executed?.n ? unitStatsPfText(x.executed) : "–"}
+                    </td>
+                    <td className={`num ${x.executed?.effective?.n ? pfTone(x.executed.effective.pf) : ""}`}>
+                      {effectivePfText(x.executed?.effective)}
+                    </td>
+                    <td className={`num ${x.executed?.n ? tone(x.executed.net) : ""}`}>
+                      {x.executed?.n ? fmt.pct(x.executed.net) : "–"}
+                    </td>
+                    <td className={`num ${x.executed?.effective?.n ? tone(x.executed.effective.net) : ""}`}>
+                      {x.executed?.effective?.n ? fmt.pct(x.executed.effective.net) : "–"}
+                    </td>
                   </tr>
                 ) : kind === "active" ? (
                   <tr key={signalUnitRowKey(x)}>

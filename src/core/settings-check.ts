@@ -1,5 +1,5 @@
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
-import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, MAX_FOCUS_PAIRS, mergeGridSettings, type CoreSettings, type SettingsPatch } from "./config.ts";
+import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, MAX_EXTERNAL_STACK, MAX_FOCUS_PAIRS, mergeGridSettings, type CoreSettings, type SettingsPatch } from "./config.ts";
 import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "./model-cost.ts";
 import { checkGridVariantBudget } from "./sim/walkforward.ts";
 import { INDICATION_KINDS } from "./domain/types.ts";
@@ -400,7 +400,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       throw new Error("block history source: accepted-orders or real-candidates");
     num(s.block.maxLevel, 1, 12, "block max level");
     num(s.block.minActiveLevel, 1, 12, "block active level");
-    num(s.block.maxMult, 1, 8, "block max multiple (stack ≤ 8×)");
+    num(s.block.maxMult, 1, MAX_EXTERNAL_STACK, "block max multiple (stack ≤ 8×)");
     if (
       s.block.mode !== undefined &&
       s.block.mode !== "shared" &&
@@ -606,7 +606,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       throw new Error("Relate minimum trades must not exceed last-N");
     if (s.relate.maxStack !== undefined) {
       int(s.relate.maxStack, "Relate maximum stack");
-      num(s.relate.maxStack, 1, 250, "Relate maximum stack");
+      num(s.relate.maxStack, 1, MAX_EXTERNAL_STACK, "Relate maximum stack (systemwide stack ≤ 8×)");
     }
     if (s.relate.maxSl !== undefined) {
       num(s.relate.maxSl, 0.0025, 0.015, "Relate maximum SL");

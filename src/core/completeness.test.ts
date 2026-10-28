@@ -379,7 +379,7 @@ const CASES: Record<string, Case> = {
   "relate.minPf": num(0, 100),
   "relate.lastN": num(60, 250, { int: true }),
   "relate.minTrades": num(60, 250, { int: true }),
-  "relate.maxStack": num(1, 250, { int: true }),
+  "relate.maxStack": num(1, 8, { int: true }),
   "relate.maxSl": num(0.0025, 0.015, { also: [0.005, 0.0075, 0.01, 0.0125], bad: [0.003, 0.008] }),
 };
 

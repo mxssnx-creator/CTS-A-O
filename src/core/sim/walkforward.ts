@@ -61,6 +61,7 @@ import {
   DEFAULT_RELATE_ADJUSTMENT,
   DEFAULT_TOGGLES,
   GRID_VARIANTS_MAX,
+  MAX_EXTERNAL_STACK,
   PF_NEUTRAL,
   type CoreSettings,
 } from "../config.ts";
@@ -114,7 +115,7 @@ import {
   sourceKey,
   type BlockSource,
 } from "./block.ts";
-import { capRelateParts, relateBookOf, relateExternalStackCap, relateFixedStopWithinLimit, type RelateBook } from "./relate-volume.ts";
+import { capRelateParts, combineRelateStack, relateBookOf, relateExternalStackCap, relateFixedStopWithinLimit, type RelateBook } from "./relate-volume.ts";
 import { S2Coord } from "./s2coord.ts";
 import { isSignalCoordinationInd } from "../signal-coordination.ts";
 import { botFamilyOf } from "../bot-stats.ts";
@@ -503,11 +504,11 @@ export interface WalkForwardOptions {
   /** Qualified pairs whose builder policy admits independent untagged DCA/Axis, before allSets expansion. */
   baseWideLadderPairs?: ReadonlySet<string>;
   /**
-   * Which configs a step may seat. "pool" (default, today): every config of a Base-passed pair, re-validated at every
-   * step. "validated": only the validated set V — the configs that pass the evaluation (configEval) at the run's start
+   * Which configs a step may seat. "validated" (default): only the validated set V — the configs that pass the
+   * evaluation (configEval) at the run's start
    * (`validated`); each later step selects from V alone (its gates may drop a member for a step, never add a config
-   * outside V), and V is refreshed only by the next compute's Base + set evaluation. Not with probe / invertSeats
-   * (they seat configs outside V).
+   * outside V), and V is refreshed only by the next compute's Base + set evaluation. Explicit "pool" revalidates every
+   * config of a Base-passed pair at each step. Not with probe / invertSeats (they seat configs outside V).
    */
   seatSet?: "validated" | "pool";
   /**
@@ -865,6 +866,9 @@ export const ENGINE_SIDE_ACCEPT: SignalAccept = {
 
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
   return {
+    // The execution pipeline must consume only the configs admitted by Base and the initial set evaluation.
+    // Pool reselection can admit later configs whose PF was not part of that validated cohort.
+    seatSet: "validated",
     axisVolumeFactor: volumeRatio(s.axis.volumeFactor),
     exitVolumeFactor: volumeRatio(s.exitStrategy.volumeFactor),
     indicationVolumeFactors: signalVolumeFactorsOf(s.signals),
@@ -5415,7 +5419,9 @@ export function execDecision(
   const applyRelate = (decision: Extract<ExecDecision, { ok: true }>): ExecDecision => {
     if (!o.relate?.enabled) return decision;
     if (!ctx?.relate) return { ok: false, why: "relateUnavailable" };
-    const base = ctx.relateBase ? ctx.relateBase(decision.vol) : decision.vol;
+    // Relate source portions are always measured from the original base unit. Other sizing groups must not
+    // compound the relation additions before their combined stack is capped at execution.
+    const base = ctx.relateBase ? ctx.relateBase(decision.vol) : 1;
     if (!Number.isFinite(base) || !(base > 0)) return { ok: false, why: "relateVolumeUnknown" };
     const relation = ctx.relate.decide({
       cfg: tp.id,
@@ -6988,10 +6994,7 @@ export function* walkForwardGen(
         const vf = indicationVolumeFactors.get(tp.id) ?? 1;
         const hedgeVol = hedging ? (o.coord?.hedgeVolumeFactor ?? 1) : 1;
         const rangeVol = rangeVolumeFactorFor(tp, o);
-        const baseForBlock = (blockVolume: number) => {
-          const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, blockStackCap(o.block) / blockVolume)) : 1;
-          return blockVolume * cv * vf * hedgeVol * rangeVol;
-        };
+        const baseForBlock = (_blockVolume: number) => 1;
         const dec = why
           ? null
           : execDecision(tp, tr.entryT, stepOpts, {
@@ -7010,9 +7013,8 @@ export function* walkForwardGen(
             const shadowCap = relateExternalStackCap(o.relate.maxStack, tp.kind, tp.protect);
             fx.relateShadow = true;
             fx.relateMeasured = true;
-            fx.relateBase = Math.min(shadowBase, shadowCap);
-            fx.relateParts = capRelateParts(dec.relateParts ?? {}, Math.min(1, shadowCap / shadowBase),
-              shadowCap / shadowBase, shadowBase);
+            fx.relateBase = shadowBase;
+            fx.relateParts = capRelateParts(dec.relateParts ?? {}, Math.min(1, shadowCap), shadowCap, 1);
           }
           skipped++;
           skip(skipName(why), tr.side, tr.cfg);
@@ -7029,28 +7031,28 @@ export function* walkForwardGen(
         const stackCap = blockStackCap(o.block);
         const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
         const baseExecutionMult = dec.vol * cv * vf * hedgeVol * rangeVol;
-        const relationCap = relateExternalStackCap(o.relate?.maxStack ?? 250, tp.kind, tp.protect);
-        const relateVol = o.relate?.enabled
-          ? Math.min(dec.relateVol ?? 1, relationCap / Math.max(Number.MIN_VALUE, baseExecutionMult))
-          : 1;
+        const relationCap = relateExternalStackCap(o.relate?.maxStack ?? MAX_EXTERNAL_STACK, tp.kind, tp.protect);
+        const combined = combineRelateStack(baseExecutionMult, o.relate?.enabled ? (dec.relateVol ?? 1) : 1, relationCap);
+        const relateVol = o.relate?.enabled ? combined.relation : 1;
         const relateParts = o.relate?.enabled
-          ? capRelateParts(dec.relateParts ?? {}, relateVol, relationCap / baseExecutionMult, baseExecutionMult)
+          ? capRelateParts(dec.relateParts ?? {}, relateVol, relationCap, 1)
           : {};
         if (o.relate?.enabled) {
           fx.relateMeasured = true;
-          fx.relateBase = Math.min(baseExecutionMult, relationCap);
+          fx.relateBase = 1;
           if (Object.keys(relateParts).length) fx.relateParts = relateParts;
         }
-        const executionMult = baseExecutionMult * relateVol;
+        const executionMult = combined.volume;
         const x: Trade = {
           ...tr,
           r: tr.r * executionMult,
           vol: (tr.vol ?? 1) * executionMult,
           mult: executionMult,
+          blockVol: dec.vol,
           ...(cv !== 1 ? { coordVol: cv } : {}),
           ...(relateVol !== 1 ? { relateVol } : {}),
           ...(o.relate?.enabled ? { relateMeasured: true } : {}),
-          ...(o.relate?.enabled ? { relateBase: Math.min(baseExecutionMult, relationCap) } : {}),
+          ...(o.relate?.enabled ? { relateBase: 1 } : {}),
           ...(Object.keys(relateParts).length ? { relateParts } : {}),
           ...(vf !== 1 ? { volFactor: vf } : {}),
           ...(hedgeVol !== 1 ? { hedgeVol } : {}),

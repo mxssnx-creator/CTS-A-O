@@ -34,10 +34,19 @@ const u = makeUniverse([
 ]);
 
 describe("Low-Range Short integration", () => {
-  it("keeps all 195 sources and their timeframe identities independent, opt-in, and follow-only", () => {
-    assert.equal(LOW_RANGE_IDS.length, 195);
-    assert.equal(new Set(LOW_RANGE_IDS).size, 195);
-    assert.equal(INDICATIONS.filter((s) => s.kind === "low-range").length, 195);
+  it("defaults the opt-in Low-Range maximum hold to the best tested 5m cap", () => {
+    assert.equal(DEFAULT_LOW_RANGE_GRID.enabled, false);
+    assert.equal(DEFAULT_LOW_RANGE_GRID.maxHoldMin, 60);
+    assert.equal(DEFAULT_SETTINGS.gates.minPf, 1.1);
+    assert.equal(DEFAULT_SETTINGS.grid.rangeGate?.enabled, true);
+    assert.equal(DEFAULT_SETTINGS.grid.rangeGate?.lastN, 75);
+    assert.equal(DEFAULT_SETTINGS.grid.rangeGate?.minPf, 1.35);
+  });
+
+  it("keeps all 650 sources and their timeframe identities independent, opt-in, and follow-only", () => {
+    assert.equal(LOW_RANGE_IDS.length, 650);
+    assert.equal(new Set(LOW_RANGE_IDS).size, 650);
+    assert.equal(INDICATIONS.filter((s) => s.kind === "low-range").length, 650);
     const focus = [`follow|${IND}`, `revert|${IND}`];
     assert.deepEqual(allCombos(focus, [], [1, 5, 15, 30]), []);
     const combos = allCombos(focus, [], [1, 5, 15, 30], 0, true);

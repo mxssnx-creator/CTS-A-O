@@ -14,6 +14,7 @@ import { REQUEST_WINDOW_MS, takeSignedRequestSlot } from "../exchange/request-bu
 const originalKey = process.env.BINGX_X02_API_KEY;
 const originalSecret = process.env.BINGX_X02_SECRET;
 const originalArmed = process.env.CTS_CORE_LIVE;
+const originalBudgetFile = process.env.CTS_BINGX_RATE_BUDGET_FILE;
 const intent: LiveIntent = { cfg: "combo|ema-9-21@m1|entry", sym: "S0-USDT", side: 1,
   barT: 1, protect: { tp: .1, sl: .05, trail: 0, hold: 1 } };
 type Reply = { order: { orderId?: string; orderID?: string; clientOrderId?: string; symbol?: string; side?: string; positionSide?: string; type?: string;
@@ -134,6 +135,8 @@ describe("strict synthetic promotion evidence", () => {
 describe("entries mode: actual MARKET execution quantities", () => {
   beforeEach(() => {
     resetLiveBackoff();
+    // Request budget fixtures must not read or pollute the host's persistent venue budget.
+    process.env.CTS_BINGX_RATE_BUDGET_FILE = ":memory:";
     mock.timers.enable({ apis: ["Date"], now: fixtureClock += 100_000 });
     process.env.CTS_CORE_LIVE = "1";
     process.env.BINGX_X02_API_KEY = "entries-fixture-key";
@@ -146,6 +149,8 @@ describe("entries mode: actual MARKET execution quantities", () => {
     if (originalKey === undefined) delete process.env.BINGX_X02_API_KEY; else process.env.BINGX_X02_API_KEY = originalKey;
     if (originalSecret === undefined) delete process.env.BINGX_X02_SECRET; else process.env.BINGX_X02_SECRET = originalSecret;
     if (originalArmed === undefined) delete process.env.CTS_CORE_LIVE; else process.env.CTS_CORE_LIVE = originalArmed;
+    if (originalBudgetFile === undefined) delete process.env.CTS_BINGX_RATE_BUDGET_FILE;
+    else process.env.CTS_BINGX_RATE_BUDGET_FILE = originalBudgetFile;
   });
 
   it("hedge long and short of the same config and bar submit independent entries and native exits", async () => {
@@ -172,6 +177,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
 
   for (const legacy of ["entry", "pending"] as const) it(`unbound legacy ${legacy} remains held without venue writes or polling`, async () => {
     const { rt, state, step } = fixture();
+    rt.testOnlyAllowMemoryLive = false;
     const coid = makeCoid(rt.settings.live.connId, "E"), key = `${intent.cfg}|${intent.sym}|${intent.barT}`;
     if (legacy === "entry") rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
       coid, intent.cfg, intent.sym, 1, "E", 1, 10, "ok", key, Date.now());
@@ -407,8 +413,8 @@ describe("entries mode: actual MARKET execution quantities", () => {
   });
 
   for (const { name, tag, rangeFactor, cfg, expected } of [
-    { name: "Micro", tag: "micro", rangeFactor: 2.5, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc", expected: 27 },
-    { name: "Minimal", tag: "minimal", rangeFactor: 1.7, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mn", expected: 18.36 },
+    { name: "Micro", tag: "micro", rangeFactor: 2.5, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc", expected: 18.5 },
+    { name: "Minimal", tag: "minimal", rangeFactor: 1.7, cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mn", expected: 12.74 },
   ] as const) {
     it(`${name} live sizing stacks Block, Relate, coordination, strategy, and range factors before caps`, async () => {
       const { rt, state, step } = fixture();
@@ -430,7 +436,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
       assert.equal(result.placed, 1, `${name} entry reaches the synthetic live exchange: ${JSON.stringify(result)}`);
       const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
       assert.equal(Number(entry.quantity), expected,
-        `$10 × ${rangeFactor} range × 1.2 coordination × 2 Block × 1.5 Relate × 3 strategy ÷ $10 price`);
+        `$10 × ${rangeFactor} range × 1.2 coordination × 2 Block × 3 strategy, plus 0.5 original-base Relate units ÷ $10 price`);
       const stops = state.sent.filter((p) => p.type === "STOP_MARKET");
       assert.equal(stops.length, 1, `${name} partial fills receive native protection`);
       assert.equal(Number(stops[0].quantity), 0.25,
@@ -478,12 +484,12 @@ describe("entries mode: actual MARKET execution quantities", () => {
       assert.ok(rangeGrid && typeof rangeGrid === "object");
       Object.assign(rangeGrid, { volumeFactor: rangeFactor });
       const result = await step([{
-        ...intent, cfg, blockVol: 2, relateVol: 1.5, coordVol: 1.2, volFactor: 3, maxStack: 15,
+        ...intent, cfg, blockVol: 2, relateVol: 1.5, coordVol: 1.2, volFactor: 3, maxStack: 8,
       }]);
       assert.equal(result.placed, 1, JSON.stringify(result));
       const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
-      assert.equal(Number(entry.quantity), 15,
-        `${name} must cap the combined execution multiplier at 15× even if the current factors would exceed it`);
+      assert.equal(Number(entry.quantity), 8,
+        `${name} must cap the combined execution multiplier at the systemwide 8× ceiling`);
     });
   }
 
@@ -498,10 +504,10 @@ describe("entries mode: actual MARKET execution quantities", () => {
       const rangeGrid = rt.settings.grid[tag];
       assert.ok(rangeGrid && typeof rangeGrid === "object");
       Object.assign(rangeGrid, { volumeFactor: 4 });
-      await step([{ ...intent, cfg, rangeVol: captured, blockVol: 1.2, relateVol: 1.44, maxStack: 50 }]);
+      await step([{ ...intent, cfg, rangeVol: captured, blockVol: 1.2, relateVol: 1.44, maxStack: 8 }]);
       const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
       assert.ok(entry, `${name} entry is sent`);
-      assert.ok(Math.abs(Number(entry.quantity) - captured * 1.2 * 1.44) <= 0.001,
+      assert.ok(Math.abs(Number(entry.quantity) - (captured * 1.2 + 0.44)) <= 0.001,
         `${name} keeps the captured Real multiplier rather than repricing it from the edited grid`);
     });
   }
@@ -547,6 +553,14 @@ describe("entries mode: actual MARKET execution quantities", () => {
       assert.ok(result.skipped.some((x) => x.why.includes("invalid captured execution sizing")));
     });
   }
+
+  it("rejects a legacy captured Max stack above the systemwide 8× ceiling", async () => {
+    const { state, step } = fixture();
+    const result = await step([{ ...intent, maxStack: 250 }]);
+    assert.equal(result.placed, 0);
+    assert.equal(state.sent.length, 0);
+    assert.ok(result.skipped.some((x) => x.why.includes("invalid captured execution sizing")));
+  });
 
   for (const { name, cfg, factor } of [
     { name: "Wide", cfg: intent.cfg, factor: 1.4 },
@@ -1270,24 +1284,27 @@ describe("entries mode: actual MARKET execution quantities", () => {
       const status = await f.step();
       assert.match(status.error ?? "", /checkpoint unavailable/);
       assert.equal(f.state.sent.filter((p) => p.type === "MARKET").length, 0, "new exposure is never dispatched");
-      assert.equal(db.get<{ status: string }>("SELECT status FROM live_orders WHERE kind='E'")?.status, "not-sent");
-      assert.ok(status.skipped.some((x) => /entry not sent: ownership checkpoint unavailable/.test(x.why)));
+      const notSent = db.get<{ status: string }>("SELECT status FROM live_orders WHERE kind='E'");
+      if (failure === "state") assert.equal(notSent, undefined, "the account-state preflight fails before entry reservation");
+      else assert.equal(notSent?.status, "not-sent", "the journal failure is recorded before dispatch");
       db.db.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
-  it("a failed checkpoint reports uncertainty but does not suppress an already-needed protective close", async () => {
+  it("a failed ownership checkpoint leaves an existing position and venue exit untouched", async () => {
     const db = new CoreDb(":memory:", { statePath: "/dev/null/state.json" });
     const f = fixture(db);
     f.seed();
+    f.state.orders.push({ symbol: "S0-USDT", positionSide: "LONG", type: "STOP_MARKET", orderId: "existing-stop" });
     f.state.close.order = { orderId: "close", status: "NEW", executedQty: 0 };
     const status = await f.step([]);
     assert.match(status.error ?? "", /checkpoint unavailable/);
-    assert.equal(f.state.sent.filter((p) => p.type === "MARKET" && p.side === "SELL").length, 1,
-      "the existing protective-close path is retained");
+    assert.equal(f.state.sent.length, 0, "no account order changes before ownership can be checkpointed");
+    assert.equal(f.state.qty, 1, "the position remains in place");
+    assert.equal(f.state.orders.length, 1);
+    assert.equal(f.state.orders[0].orderId, "existing-stop", "the venue stop remains untouched");
     await f.step([]);
-    assert.equal(f.state.sent.filter((p) => p.type === "MARKET" && p.side === "SELL").length, 1,
-      "the in-process pending identity prevents a duplicate");
+    assert.equal(f.state.sent.length, 0, "a failed checkpoint cannot lead to duplicate or untracked writes");
     db.db.close();
   });
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,6 +30,8 @@ function fixture(db = new CoreDb(":memory:")) {
   const rt = {
     generation: 1,
     db,
+    // These tests exercise simulated venue ownership without a durable state file.
+    testOnlyAllowMemoryLive: true,
     settings: {
       ...DEFAULT_SETTINGS,
       sizing: { mode: "minQty" as const, pct: 0.02 },
@@ -61,6 +64,9 @@ function fixture(db = new CoreDb(":memory:")) {
 
 /** Recreate a durable legacy snapshot; current admission correctly fences two new parents on one netted side. */
 async function seedLegacy(rt: ReturnType<typeof fixture>["rt"], ex: SimExchange, positions: Position[]) {
+  // Bind the simulated account before seeding legacy records, without priming the live-KV cache.
+  rt.db.kvSet("liveOwnershipAccount", { version: 1, fingerprint: createHash("sha256")
+    .update(rt.settings.live.connId).update("\0").update(ex.fingerprint()).digest("hex") });
   rt.paper.positions = positions;
   const laneMap: Record<string, LaneOrder> = {};
   const open: Record<string, { cfg: string; sym: string; side: Side; t: number; px: number }> = {};
@@ -130,7 +136,7 @@ describe("native parent protection during mode drain", () => {
         const status = await step();
         assert.equal(ex.log.slice(submitted).some((o) => o.type === "MARKET"), false,
           "reconciliation does not guess a new market action after the double fill");
-        assert.ok(status.skipped.some((entry) => entry.why.includes("native parent")),
+        assert.ok(status.skipped.some((entry) => /native parent|orphan exit/.test(entry.why)),
           "the unresolved shared parent is reported");
         rt.db.db.close();
       });

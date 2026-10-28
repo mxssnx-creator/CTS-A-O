@@ -103,6 +103,7 @@ export type SimOrder = {
   symbol: string;
   clientOrderId?: string;
   positionSide?: "LONG" | "SHORT";
+  side?: "BUY" | "SELL";
   type?: string;
   stopPrice?: number;
   /** a partial order's quantity (closePosition: the whole side) */
@@ -202,7 +203,16 @@ export class SimExchange implements ExchangeClient {
             ...(this.liq.has(k) ? { liq: this.liq.get(k) } : {}),
           };
         }),
-      orders: this.orders.map((o) => ({ ...o })),
+      orders: this.orders.map((o) => ({
+        id: o.id,
+        symbol: o.symbol,
+        venueSymbol: o.venueSymbol,
+        ...(o.clientOrderId ? { clientOrderId: o.clientOrderId } : {}),
+        ...(o.positionSide === "LONG" || o.positionSide === "SHORT" ? { positionSide: o.positionSide } : {}),
+        ...(o.type ? { type: o.type } : {}),
+        ...(o.stopPrice !== undefined ? { stopPrice: o.stopPrice } : {}),
+        ...(!o.closePosition && o.qty !== undefined ? { remainingQty: o.qty } : {}),
+      })),
     };
   }
   async contracts() {
@@ -288,6 +298,7 @@ export class SimExchange implements ExchangeClient {
         symbol: sym,
         clientOrderId: String(p.clientOrderID),
         positionSide: ps,
+        side: String(p.side) === "BUY" ? "BUY" : "SELL",
         type: String(p.type),
         stopPrice: p.stopPrice === undefined ? undefined : Number(p.stopPrice),
         qty: Number(p.quantity),
@@ -315,7 +326,19 @@ export class SimExchange implements ExchangeClient {
   async orderStatus(_sym: string, id: string): Promise<unknown> {
     const d = this.done.get(id);
     if (d) return { order: { orderId: id, status: d.status, avgPrice: d.px ?? 0, executedQty: d.qty ?? 0 } };
-    return this.orders.some((o) => o.id === id) ? { order: { orderId: id, status: "NEW" } } : null;
+    const o = this.orders.find((x) => x.id === id);
+    return o ? { order: {
+      orderId: o.id,
+      clientOrderId: o.clientOrderId,
+      symbol: o.venueSymbol,
+      positionSide: o.positionSide,
+      side: o.side,
+      type: o.type,
+      status: "NEW",
+      origQty: o.qty,
+      executedQty: 0,
+      stopPrice: o.stopPrice,
+    } } : null;
   }
   /**
    * One resting order triggers: a partial one reduces its side by its quantity at its trigger price, a closePosition
@@ -362,10 +385,15 @@ export class SimExchange implements ExchangeClient {
         t: Date.now(),
       });
     this.positions.delete(k);
-    if (stop) this.hist(stop, "FILLED", stop.stopPrice, qty);
+    if (stop) {
+      this.done.set(stop.id, { status: "FILLED", px: stop.stopPrice, qty });
+      this.hist(stop, "FILLED", stop.stopPrice, qty);
+    }
     for (const o of this.orders)
-      if (o !== stop && o.venueSymbol === sym && o.positionSide === ps && o.clientOrderId?.startsWith("CTSB"))
+      if (o !== stop && o.venueSymbol === sym && o.positionSide === ps && o.clientOrderId?.startsWith("CTSB")) {
+        this.done.set(o.id, { status: "CANCELLED" });
         this.hist(o, "CANCELLED");
+      }
     this.orders = this.orders.filter(
       (o) =>
         !(o.venueSymbol === sym && o.positionSide === ps && o.clientOrderId?.startsWith("CTSB")),
@@ -421,7 +449,10 @@ export class SimExchange implements ExchangeClient {
     const qty = this.positions.get(k) ?? 0;
     if (qty > 0) this.fills.push({ sym, ps, into: false, qty, px: tp?.stopPrice ?? NaN, t: Date.now() });
     this.positions.delete(k);
-    if (tp) this.hist(tp, "FILLED", tp.stopPrice, qty);
+    if (tp) {
+      this.done.set(tp.id, { status: "FILLED", px: tp.stopPrice, qty });
+      this.hist(tp, "FILLED", tp.stopPrice, qty);
+    }
     this.orders = this.orders.filter((o) => o !== tp);
   }
   withEquity(eq: number) {
@@ -574,25 +605,26 @@ export function fakeRt(db: CoreDb = new CoreDb(":memory:"), symbols = 12) {
     last: 10 + i * 7,
   }));
   let positions: FakePaperPosition[] = [];
+  const settings: CoreSettings = {
+    ...DEFAULT_SETTINGS,
+    sizing: { mode: "fixed", pct: 0.02 },
+    live: {
+      ...DEFAULT_SETTINGS.live,
+      enabled: true,
+      mode: "overall",
+      notionalUsd: 10,
+      maxPositions: 100,
+      maxNotionalUsd: 40,
+      ratio: 1,
+      rebalancePct: 0.25,
+    },
+  };
   const rt = {
     generation: 1,
     // This synthetic fixture never sends to a live venue; explicit opt-in for its ephemeral memory database.
     testOnlyAllowMemoryLive: true,
     db,
-    settings: {
-      ...DEFAULT_SETTINGS,
-      sizing: { mode: "fixed" as const, pct: 0.02 },
-      live: {
-        ...DEFAULT_SETTINGS.live,
-        enabled: true,
-        mode: "overall" as const,
-        notionalUsd: 10,
-        maxPositions: 100,
-        maxNotionalUsd: 40,
-        ratio: 1,
-        rebalancePct: 0.25,
-      } as typeof DEFAULT_SETTINGS.live,
-    },
+    settings,
     sim: syntheticExecutionRun([]),
     livePromotionGate: undefined as SyntheticFixtureRuntime["livePromotionGate"],
     status: { lastBarT: Math.floor(Date.now() / H) * H },

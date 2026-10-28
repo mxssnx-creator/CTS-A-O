@@ -129,7 +129,8 @@ describe("toggles and Block", () => {
     assert.equal(blockLevel(t, 3 * H + 1, o.block), 2);
     assert.equal(blockLevel(t, 5 * H + 1, o.block), 0);
     const oo = { ...o, lastN: 0, toggles: tg };
-    assert.deepEqual(execDecision(t, 3 * H + 1, oo), { ok: true, level: 2, vol: 1.4, src: ["config"] });
+    assert.deepEqual(execDecision(t, 3 * H + 1, oo), { ok: true, level: 2, vol: 1.4, src: ["config"],
+      blockAttribution: { config: { level: 2, extra: 0.3999999999999999 } } });
     assert.deepEqual(execDecision(t, 5 * H + 1, oo), { ok: false, why: "normalOff" });
     // Block Active: below the min level the entry is skipped — also with Normal on
     const active = { ...oo, toggles: { ...tg, normal: true, blockActive: true } };
@@ -150,7 +151,8 @@ describe("toggles and Block", () => {
         ...activeOff,
         block: { ...activeOff.block, minActiveLevel: 2 },
       }),
-      { ok: true, level: 2, vol: 1.4, src: ["config"] },
+      { ok: true, level: 2, vol: 1.4, src: ["config"],
+        blockAttribution: { config: { level: 2, extra: 0.3999999999999999 } } },
     );
     assert.equal(kindExecutable("dca", { ...tg, dca: true, dcaActive: true }), false);
     assert.equal(kindExecutable("dca-active", { ...tg, dca: true, dcaActive: true }), true);
@@ -164,7 +166,8 @@ describe("toggles and Block", () => {
     // Normal off: an unraised trailing entry is skipped like an unraised plain one
     assert.deepEqual(execDecision(tr, 5 * H + 1, oo), { ok: false, why: "normalOff" });
     // a Block-raised trailing entry still executes, with the Block size
-    assert.deepEqual(execDecision(tr, 3 * H + 1, oo), { ok: true, level: 2, vol: 1.4, src: ["config"] });
+    assert.deepEqual(execDecision(tr, 3 * H + 1, oo), { ok: true, level: 2, vol: 1.4, src: ["config"],
+      blockAttribution: { config: { level: 2, extra: 0.3999999999999999 } } });
     // Normal on: trailing runs beside the plain book, raised or not
     const on = { ...oo, toggles: { ...tg, normal: true } };
     assert.deepEqual(execDecision(tr, 5 * H + 1, on), { ok: true, level: 0, vol: 1 });

@@ -67,6 +67,12 @@ class Venue extends SimExchange {
   }
 }
 
+function removeStopsWithExactZeroCancel(ex: Venue) {
+  for (const order of ex.orders.filter((o) => o.type === STOP))
+    ex.done.set(order.id, { status: "CANCELLED", qty: 0 });
+  ex.orders = ex.orders.filter((o) => o.type !== STOP);
+}
+
 /**
  * One-way (BOTH) venue: one net position per symbol, signed (long > 0, short < 0). A market moves the net; a reduce-only
  * one never opens. A stop or take-profit that fills takes its quantity off the net — the whole net when it is
@@ -246,6 +252,8 @@ function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: n
   ];
   const rt = {
     generation: 1,
+    // This fixture is an explicitly synthetic memory-backed runtime and never reaches a real venue.
+    testOnlyAllowMemoryLive: true,
     db,
     settings: {
       ...DEFAULT_SETTINGS,
@@ -483,12 +491,13 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
       const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
       rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02)];
       await step();
-      ex.orders = ex.orders.filter((o) => o.type !== STOP);
+      removeStopsWithExactZeroCancel(ex);
       ex.foreignFill(`${sym}|${ps}`, 2, true, mark);
       const n = ex.log.length;
+      let last: unknown;
       for (let i = 0; i < 3; i++) {
         tick(61_000);
-        await step();
+        last = await step();
       }
       assert.ok(ex.log.slice(n).some((p) => p.type === STOP), "the stop is re-placed");
       assert.deepEqual(
@@ -509,7 +518,7 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
       rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02)];
       await step();
       assert.equal(ex.positions.get(`${sym}|${ps}`), 4, "our own quantity on the side");
-      ex.orders = ex.orders.filter((o) => o.type !== STOP);
+      removeStopsWithExactZeroCancel(ex);
       ex.foreignFill(`${sym}|${ps}`, 2, true, mark);
       tick(61_000);
       await step();

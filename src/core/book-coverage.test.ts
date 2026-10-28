@@ -152,7 +152,18 @@ describe(
           real.set(tag, x);
         }
       }
-      const missing = [...tapeRanges].filter((r) => !traded.has(r));
+      const realValidatedRanges = new Set<string>(
+        (rt.sim!.validated ?? []).map((id) => rangeOfId(id) || "wide"),
+      );
+      // Base qualification is not an Active seat: Main's lane cap and Real's exact validation can still reject a
+      // range. Only ranges with an ID in the actual validated cohort must account for a Real entry path.
+      for (const tag of tapeRanges) {
+        if (realValidatedRanges.has(tag)) continue;
+        const row = real.get(tag);
+        assert.equal(row?.validated ?? 0, 0, `${tag} without an Active config cannot take a Real seat`);
+        assert.equal(traded.has(tag), false, `${tag} without an Active config cannot execute`);
+      }
+      const missing = [...realValidatedRanges].filter((r) => !traded.has(r));
       const unaccounted = missing.filter((tag) => {
         const row = real.get(tag);
         if (!row?.tapes) return true;

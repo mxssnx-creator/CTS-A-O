@@ -1,4 +1,4 @@
-/** Low-Range registry and Short-grid bridge. Its signals remain independent research candidates. */
+/** Low-Range registry and Short-grid bridge. Its signals remain independently gated research candidates. */
 import type { IndicationSpec } from "./registry.ts";
 import type { LowRangeGrid, Protect } from "../domain/types.ts";
 import { RT_COST } from "../model-cost.ts";
@@ -11,10 +11,11 @@ export { LOW_RANGE_IDS, LOW_RANGE_METHODS, LOW_RANGE_RELATIONS, LOW_RANGE_WINDOW
 export const LOW_RANGE_TIMEFRAMES = [1, 5, 15] as const;
 export const isLowRangeInd = (id: string) => id.startsWith("low-range-");
 
-/** Off until explicitly enabled; existing saved configurations and the live process remain unchanged. */
+/** Candidate calculation is registered; protection cells remain opt-in until forward validation supports them. */
 export const DEFAULT_LOW_RANGE_GRID: LowRangeGrid = {
   enabled: false, step: DEFAULT_LOW_RANGE_POLICY.step, steps: [...DEFAULT_LOW_RANGE_POLICY.steps],
-  slRatios: [...DEFAULT_LOW_RANGE_POLICY.slRatios], trailRatios: [...DEFAULT_LOW_RANGE_POLICY.trailRatios], maxHoldMin: 180,
+  // The same-feed 5m comparison (15/30/60/180m) selected 60m; longer time exits lost, shorter caps exited too early.
+  slRatios: [...DEFAULT_LOW_RANGE_POLICY.slRatios], trailRatios: [...DEFAULT_LOW_RANGE_POLICY.trailRatios], maxHoldMin: 60,
 };
 
 export function lowRangeSpecs(): IndicationSpec[] {

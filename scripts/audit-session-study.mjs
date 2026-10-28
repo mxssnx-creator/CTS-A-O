@@ -64,7 +64,8 @@ export function auditSessionStudy(raw, data, { purpose = 'development', protocol
   const gateScore = raw.qualification?.noLossGateScore ?? data.evidence?.qualification?.noLossGateScore ?? 4;
   const allocations = data.sizedOrders;
   const funded = [], excluded = { zeroAllocations: 0, unknownAllocations: 0, dustAllocations: 0 };
-  let unitMismatches = 0, cashMismatches = 0;
+  let unitMismatches = 0, cashMismatches = 0, reportedReasonRows = 0, reasonMismatches = 0,
+    reportedKindRows = 0, kindMismatches = 0;
   if (Array.isArray(allocations)) {
     check('all virtual closes retain exact allocation rows', allocations.length === (raw.trades?.length ?? 0), allocations.length, raw.trades?.length ?? 0);
     const indices = new Set();
@@ -73,6 +74,8 @@ export function auditSessionStudy(raw, data, { purpose = 'development', protocol
       if (!tr || !Number.isInteger(a.closeIndex) || indices.has(a.closeIndex) || identity(tr) !== identity(a))
         throw new Error('Allocation closeIndex/identity is missing, duplicated or mismatched');
       indices.add(a.closeIndex);
+      if (a.reason !== undefined) { reportedReasonRows++; if (a.reason !== tr.reason) reasonMismatches++; }
+      if (a.kind !== undefined) { reportedKindRows++; if (a.kind !== tr.kind) kindMismatches++; }
       if (!finite(a.allocatedNotional)) { excluded.unknownAllocations++; continue; }
       if (a.allocatedNotional === 0) { excluded.zeroAllocations++; continue; }
       if (a.allocatedNotional <= EPS_USD) { excluded.dustAllocations++; continue; }
@@ -87,6 +90,12 @@ export function auditSessionStudy(raw, data, { purpose = 'development', protocol
   } else check('exact allocation rows recorded (--signal-progress)', false);
   check('all unit returns agree with exact allocation rows', unitMismatches === 0, unitMismatches, 0);
   check('cash is weighted exactly once on every funded close', cashMismatches === 0, cashMismatches, 0);
+  check('reported close reasons match the raw tape when present',
+    (reportedReasonRows === 0 || (reportedReasonRows === allocations.length && reasonMismatches === 0)),
+    { reportedRows: reportedReasonRows, totalRows: allocations?.length ?? null, mismatches: reasonMismatches });
+  check('reported strategy kinds match the raw tape when present',
+    (reportedKindRows === 0 || (reportedKindRows === allocations.length && kindMismatches === 0)),
+    { reportedRows: reportedKindRows, totalRows: allocations?.length ?? null, mismatches: kindMismatches });
   const fundingKnown = Array.isArray(allocations) && !excluded.unknownAllocations && !excluded.dustAllocations;
   const sampleSummary = (xs) => fundingKnown ? summarize(xs, gateScore) : { ...summarize(xs, gateScore), closes: null, state: 'unknown', exactPf: null, unitGp: null, unitGl: null, unitNet: null };
   const total = sampleSummary(funded);

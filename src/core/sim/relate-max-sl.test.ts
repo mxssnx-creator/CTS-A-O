@@ -32,14 +32,16 @@ describe("Relate modeled maximum stop distance", () => {
 
   for (const side of [1, -1] as Side[]) for (const mode of ["shared", "additive"] as const)
     it(`uses real ${side === 1 ? "long" : "short"} bar exits with ${mode} sizing and keeps wider stops unraised`, () => {
-      const startT = Date.UTC(2026, 9, 1);
+      const dataStartT = Date.UTC(2026, 9, 1);
+      const warmTrades = 64;
+      const forwardTrades = 76;
       const barMs = H / 3;
-      const rows = Array.from({ length: 76 * 3 + 1 }, (_, i) => {
+      const rows = Array.from({ length: (warmTrades + forwardTrades) * 3 + 1 }, (_, i) => {
         const isEntry = i % 3 === 1;
-        const loss = Math.floor(i / 3) === 72;
+        const loss = Math.floor(i / 3) === warmTrades + 72;
         const favorable = isEntry && !loss ? 101.1 : 100.1;
         const adverse = isEntry && loss ? 98.9 : 99.9;
-        return { t: startT + i * barMs, o: 100,
+        return { t: dataStartT + i * barMs, o: 100,
           h: side === 1 ? favorable : 200 - adverse,
           l: side === 1 ? adverse : 200 - favorable,
           c: 100, v: 1 };
@@ -49,7 +51,8 @@ describe("Relate modeled maximum stop distance", () => {
       const defaults = defaultWalkForward(DEFAULT_SETTINGS);
       const relate = { ...DEFAULT_RELATE_ADJUSTMENT, enabled: true, auto: false, mode,
         ratio: .2, steps: 5, activeStep: 0, minTrades: 60, lastN: 250, sources };
-      const options = { ...defaults, startT, simH: Math.ceil(rows.length / 3), lastN: 0, validLastN: 0,
+      const startT = dataStartT + warmTrades * H;
+      const options = { ...defaults, startT, longH: 96, simH: forwardTrades, lastN: 0, validLastN: 0,
         normalBaseMinPf: 0, preGate: false, robustFrac: 0, symGate: "off" as const, rangeGate: undefined,
         engineSideAccept: { ...defaults.engineSideAccept!, enabled: false },
         toggles: { ...defaults.toggles, normal: true, trailing: false, block: false,
@@ -57,11 +60,11 @@ describe("Relate modeled maximum stop distance", () => {
         coord: { enabled: false, hourLock: 0, cooldown: "off" as const, conflict: false, confirm: false },
         relate, cost: .0015 };
       const endT = rows.at(-1)!.t + barMs;
-      const universe = { bars: [], caches: [], startT, endT, splitT: startT, nowT: endT, baseTf: 20 } as never;
+      const universe = { bars: [], caches: [], startT: dataStartT, endT, splitT: dataStartT, nowT: endT, baseTf: 20 } as never;
       for (const sl of [.005, .01]) {
         const p = { ...protect, sl };
         const actual = simulate(cfg, bars, signals, p, { cost: .0015 });
-        assert.equal(actual.trades.length, 76);
+        assert.equal(actual.trades.length, warmTrades + forwardTrades);
         const stopped = actual.trades.find((t) => t.reason === "sl");
         assert.ok(stopped);
         assert.ok(Math.abs(stopped.exit - 100 * (1 - side * sl)) < 1e-9);

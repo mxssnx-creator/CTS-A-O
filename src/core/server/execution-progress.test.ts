@@ -171,9 +171,12 @@ it("settings awaiting computation block native entries but retain stops, closes 
     { cfg: "a", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 0.5 },
     { cfg: "c", sym: "S4-USDT", side: 1, entry: 38, stop: 37, vol: 1 },
   ];
-  ex.orders = ex.orders.filter((o) => o.venueSymbol !== "S2-USDT");
   const before = ex.positions.get("S2-USDT|LONG")!;
-  const st = await stepLive(runtime, [], 1, ex);
+  let st = await stepLive(runtime, [], 1, ex);
+  for (let i = 1; i < 4; i++) {
+    if ((ex.positions.get("S2-USDT|LONG") ?? 0) < before) break;
+    st = await stepLive(runtime, [], 1, ex);
+  }
   assert.match(st.reason, /settings awaiting computation/);
   assert.equal(ex.positions.has("S3-USDT|LONG"), false);
   assert.equal(ex.positions.has("S4-USDT|LONG"), false);

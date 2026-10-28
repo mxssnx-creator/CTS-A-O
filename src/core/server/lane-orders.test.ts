@@ -58,6 +58,8 @@ function rtOf(db = new CoreDb(":memory:")) {
   let positions: Pos[] = [];
   const rt = {
     generation: 1,
+    // This fixture injects only a synthetic SimExchange and uses an explicitly memory-backed test runtime.
+    testOnlyAllowMemoryLive: true,
     db,
     settings: {
       ...DEFAULT_SETTINGS,

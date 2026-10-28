@@ -21,6 +21,7 @@ import {
   PREVIOUS_MICRO_FOCUS_21OCT,
   GENERAL_RANGE,
   MAX_BACKTEST_DAYS,
+  MAX_EXTERNAL_STACK,
   mergeGridSettings,
   exchangePositionLimit,
   LONG_RANGE,
@@ -110,7 +111,7 @@ import {
   upsertPreset,
   type Preset,
 } from "../presets.ts";
-import type { Bars, BlockConfig, Candle, OpenPosition, Protect, RelateParts, Trade } from "../domain/types.ts";
+import type { Bars, BlockConfig, Candle, OpenPosition, Protect, RelateAdjustmentConfig, RelateParts, Trade } from "../domain/types.ts";
 import { syntheticCandles, tailBars, headBars } from "../market/bars.ts";
 import {
   CandleSeries,
@@ -300,7 +301,7 @@ import { volumeRatio } from "../volume-ratio.ts";
 import os from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import { type BlockBook, type BlockSource, blockBookOf, blockStackCap } from "../sim/block.ts";
-import { capRelateParts, relateExternalStackCap, type RelateBook } from "../sim/relate-volume.ts";
+import { capRelateParts, combineRelateStack, relateExternalStackCap, type RelateBook } from "../sim/relate-volume.ts";
 import { carryTrail, TickMathBook, type TickMathResult } from "./tick-math.ts";
 import { enforceSignalPosition } from "../sim/trailing.ts";
 import { createExitProtection } from "../sim/exit-protection.ts";
@@ -697,6 +698,16 @@ export interface RuntimeStatus {
     byRange: Array<{ range: string; validated: number; pf: number | null }>;
     provenBySide?: true;
     byGroup: Array<{ group: string; validated: number; pf: number | null }>;
+    byKind: Array<{
+      kind: string;
+      validated: number;
+      calculated: number;
+      validationCloses: number;
+      gp: number;
+      gl: number;
+      pf: number | null;
+      noLoss: boolean;
+    }>;
   };
   /** the preset comparison after the paper step (comparePresets): running, presets done / total, when it last finished */
   compare?: {
@@ -1226,7 +1237,10 @@ export class CoreRuntime {
     this.wf = {
       ...defaultWalkForward(this.settings),
       ...pickWf(savedWf),
+      // Production/runtime execution always consumes the validated set V, including after loading a saved legacy pool.
+      seatSet: "validated",
     };
+    if (this.wf.relate) this.wf.relate.maxStack = Math.floor(Math.min(MAX_EXTERNAL_STACK, Math.max(1, this.wf.relate.maxStack)));
     const now = Date.now();
     this.status = {
       state: "idle",
@@ -2839,12 +2853,14 @@ export class CoreRuntime {
       ...pickWf(this.wf),
       ...sanitizeWf(wfPatch ?? {}),
       ...carry,
+      // A settings patch or restored in-memory value cannot switch runtime execution back to the candidate pool.
+      seatSet: "validated",
       gates: this.settings.gates,
       cost: this.settings.cost,
       toggles: this.settings.toggles,
       block: this.settings.block,
       dca: this.settings.dca,
-      relate: this.settings.relate,
+      relate: { ...this.settings.relate, maxStack: Math.floor(Math.min(MAX_EXTERNAL_STACK, Math.max(1, this.settings.relate.maxStack))) },
       rangeGate: rangeGateOf(this.settings.grid),
       rangeSeats: this.settings.grid.rangeSeats === true,
     };
@@ -5386,13 +5402,20 @@ export class CoreRuntime {
     // DCA / Axis set while its toggle is off (Block on keeps them: its feed reads every tape)
     const validatedOnly = wf.seatSet === "validated" && !wf.toggles.block;
     const engineMain = new Set([...main].filter((pair) => !pair.startsWith(`${EXIT_BOT}|`)));
+    // grid.allSets pairs are diagnostic measurement cohorts, not held-only pairs. They still need their tapes
+    // built for comparison even though validated-seat admission deliberately removes them from passedKeys.
+    const heldUnpassedPairs = new Set(
+      [...main].filter((pair) =>
+        !passedKeys.has(pair) && !addedKeys.has(pair) && !isSignalInd(pair.split("|")[1] ?? ""),
+      ),
+    );
     const built = await tapesFor(engineMain, wf.protects, dcaOpt, "strategy tapes", {
       ...protectFloors(s, rangeFitCutT),
       pairTags,
       pairTps,
       pairCells,
       ...(wf.seatSet === "validated"
-        ? { heldPairsOnly: new Set([...main].filter((k) => !passedKeys.has(k) && !isSignalInd(k.split("|")[1] ?? ""))) }
+        ? { heldPairsOnly: heldUnpassedPairs }
         : {}),
       ...(validatedOnly ? { skipDca: !wf.toggles.dca, skipAxis: wf.toggles.axis === false } : {}),
       heldIds,
@@ -5744,7 +5767,7 @@ export class CoreRuntime {
       enabled: this.wf.relate?.enabled === true,
       auto: this.wf.relate?.auto !== false,
       mode: this.wf.relate?.mode ?? "additive",
-      maxStack: this.wf.relate?.maxStack ?? 250,
+      maxStack: this.wf.relate?.maxStack ?? MAX_EXTERNAL_STACK,
       relations: sim.relate?.relations ?? 0,
       qualified: sim.relate?.qualified ?? 0,
       closes: sim.relate?.closes ?? 0,
@@ -7184,10 +7207,11 @@ export class CoreRuntime {
           kindExecutable(tp.kind, this.wf.toggles) &&
           (!this.wf.bots?.length || this.wf.bots.includes(tp.bot)),
       )
-      .map((tp) => ({ id: tp.id, group: liveGroupOf(tp.id) }));
+      .map((tp) => ({ id: tp.id, group: liveGroupOf(tp.id), kind: kindOfId(tp.id) }));
     const validated: SetListings["validated"] = [];
     const byRange: SetListings["byRange"] = {};
     const byGroup: SetListings["byGroup"] = {};
+    const byKind: SetListings["byKind"] = {};
     for (const p of picks) {
       // (the selection's window carries its gross profit / loss as well)
       const w = p.window as {
@@ -7211,11 +7235,17 @@ export class CoreRuntime {
         n: w.n,
         net: w.net,
         ddt: w.ddt,
+        gp: w.gp ?? 0,
+        gl: w.gl ?? 0,
       });
       const g = (byGroup[group] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
       g.rows.push(row);
       g.gp += w.gp ?? 0;
       g.gl += w.gl ?? 0;
+      const k = (byKind[kindOfId(p.id)] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
+      k.rows.push(row);
+      k.gp += w.gp ?? 0;
+      k.gl += w.gl ?? 0;
       if (range) {
         const r = (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
         r.rows.push(row);
@@ -7226,12 +7256,14 @@ export class CoreRuntime {
     for (const c of candidates) {
       const g = (byGroup[c.group] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
       g.calculated++;
+      (byKind[c.kind] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 }).calculated++;
       const range = kindOfId(c.id) === "exit" ? "" : RANGE_LABEL[rangeOfId(c.id)];
       if (range)
         (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 }).calculated++;
     }
     for (const r of Object.values(byRange)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
     for (const r of Object.values(byGroup)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
+    for (const r of Object.values(byKind)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
     const active: SetListings["active"] = [];
     for (const k of this.wf.signalActive ?? []) {
       const [bot, ind, sym, side, kind, config] = k.split("|");
@@ -7270,6 +7302,7 @@ export class CoreRuntime {
       },
       byRange,
       byGroup,
+      byKind,
       active,
       proven: proof ? [...proof.proven].sort() : null,
       ...(provenBySide ? { provenBySide: true as const } : {}),
@@ -7282,6 +7315,16 @@ export class CoreRuntime {
       proven: this.listings.proven ? this.listings.proven.length : null,
       byRange: Object.entries(byRange).map(([range, r]) => ({ range, validated: r.rows.length, pf: r.pf })),
       byGroup: Object.entries(byGroup).map(([group, r]) => ({ group, validated: r.rows.length, pf: r.pf })),
+      byKind: Object.entries(byKind).map(([kind, r]) => ({
+        kind,
+        validated: r.rows.length,
+        calculated: r.calculated,
+        validationCloses: r.rows.reduce((n, i) => n + validated[i].n, 0),
+        gp: r.gp,
+        gl: r.gl,
+        pf: r.pf,
+        noLoss: r.gp > 0 && r.gl <= 1e-12,
+      })),
       ...(provenBySide ? { provenBySide: true as const } : {}),
     };
   }
@@ -9600,10 +9643,11 @@ export class CoreRuntime {
       if (!exact) return undefined;
       const v = positionMult(p);
       if (!(Number.isFinite(v) && v > 0)) return undefined;
-      const { coordVol: _c, relateVol: _r, relateMeasured: _rm, relateBase: _rb, relateParts: _rp,
+      const { blockVol: _bv, coordVol: _c, relateVol: _r, relateMeasured: _rm, relateBase: _rb, relateParts: _rp,
         volFactor: _vf, hedgeVol: _hv, rangeVol: _rv, legs: _l, blockAttribution: _ba,
         blockLevels: _bl, blockEffectiveLevels: _be, blockSampleCounts: _bc, ...source } = exact;
       return { ...source, r: exact.r * v, vol: (exact.vol ?? 1) * v, mult: v,
+        ...(p.blockVol !== undefined ? { blockVol: p.blockVol } : {}),
         ...(p.coordVol !== undefined ? { coordVol: p.coordVol } : {}),
         ...(p.relateVol !== undefined ? { relateVol: p.relateVol } : {}),
         ...(p.relateMeasured ? { relateMeasured: true } : {}),
@@ -9843,9 +9887,7 @@ export class CoreRuntime {
             ...booksAt(op.entryT),
             sym: op.sym,
             side: op.side,
-            relateBase: (blockVol) => blockVol * (s2End?.factor ? this.s2EntryVolume(blockVol) : 1) *
-              volumeFactorForStrategy(tp, this.wf) * rangeVolumeFactorFor(tp, this.wf) *
-              (this.isHedgeEntry(op) ? (this.wf.coord?.hedgeVolumeFactor ?? 1) : 1),
+            relateBase: () => 1,
           });
       // engine and signal orders are capped each on their own
       const cls = sigCfg(op.cfg) ? "s" : "e";
@@ -9886,7 +9928,7 @@ export class CoreRuntime {
           this.relateShadowPending.set(orderKey(op), {
             entryT: op.entryT,
             base: Math.min(base, cap),
-            parts: capRelateParts(d.relateParts ?? {}, Math.min(1, cap / base), cap / base, base),
+            parts: capRelateParts(d.relateParts ?? {}, Math.min(1, cap), cap, 1),
           });
         }
         pSkip(`${pre}exec:${d.why}`);
@@ -9915,20 +9957,20 @@ export class CoreRuntime {
         : rangeVolumeFactorFor(tp, this.wf);
       const recordedRangeVol = held ? (prev?.rangeVol ?? 1) : rangeVol;
       const baseExternalMult = d.vol * cv * vf * appliedHedgeVol * rangeVol;
-      const relationCap = relateExternalStackCap(this.wf.relate?.maxStack ?? 250, tp.kind, tp.protect);
-      const relateVol = !held && this.wf.relate?.enabled
-        ? Math.min(d.relateVol ?? 1, relationCap / Math.max(Number.MIN_VALUE, baseExternalMult))
-        : 1;
+      const relationCap = relateExternalStackCap(this.wf.relate?.maxStack ?? MAX_EXTERNAL_STACK, tp.kind, tp.protect);
+      const combined = !held
+        ? combineRelateStack(baseExternalMult, this.wf.relate?.enabled ? (d.relateVol ?? 1) : 1, relationCap)
+        : { volume: baseExternalMult, relation: 1 };
+      const relateVol = this.wf.relate?.enabled ? combined.relation : 1;
       const recordedRelateVol = held ? (prev?.relateVol ?? 1) : relateVol;
       const recordedRelateMeasured = held ? prev?.relateMeasured === true : this.wf.relate?.enabled === true;
       const recordedRelateBase = held
         ? prev?.relateBase
-        : this.wf.relate?.enabled ? Math.min(baseExternalMult, relationCap) : undefined;
+        : this.wf.relate?.enabled ? 1 : undefined;
       const recordedRelateParts = held
         ? prev?.relateParts
         : this.wf.relate?.enabled
-          ? capRelateParts(d.relateParts ?? {}, relateVol,
-              relationCap / Math.max(Number.MIN_VALUE, baseExternalMult), baseExternalMult)
+          ? capRelateParts(d.relateParts ?? {}, relateVol, relationCap, 1)
           : undefined;
       openKeys.add(openDupKey(op));
       // the price at adoption, set once (a position held from before keeps its own, or none)
@@ -9940,7 +9982,8 @@ export class CoreRuntime {
         ...(heldPx ? { heldPx } : {}),
         // execution multiple × ladder weight (Axis: every filled rung is volume, as the simulation books it); the
         // live lane asks for this volume, and paper marks mtm (per unit) × it
-        vol: positionVolume(baseExternalMult * relateVol, op),
+        vol: positionVolume(combined.volume, op),
+        blockVol: held ? prev?.blockVol ?? 1 : d.vol,
         ...(positionVf !== 1 ? { volFactor: positionVf } : {}),
         ...(coordVol !== 1 ? { coordVol } : {}),
         ...(recordedHedgeVol !== 1 ? { hedgeVol: recordedHedgeVol } : {}),
@@ -10458,10 +10501,7 @@ export class CoreRuntime {
         if (++visited % 16 === 0) yield visited;
         // an entry on the next bar passes the same execution and coordination rules as in the simulation
         const d = execDecision(tp, entryT, this.wf, { ...books, sym: p.sym, side: p.side,
-          relateBase: (blockVol) => blockVol * this.s2EntryVolume(blockVol) *
-            volumeFactorForStrategy(tp, this.wf) * rangeVolumeFactorFor(tp, this.wf) *
-            (this.isHedgeEntry({ cfg: tp.id, sym: p.sym, side: p.side })
-              ? (this.wf.coord?.hedgeVolumeFactor ?? 1) : 1),
+          relateBase: () => 1,
         });
         if (!d.ok) {
           skip(tp, `exec:${d.why}`);
@@ -10533,9 +10573,11 @@ export class CoreRuntime {
         const rangeVol = rangeVolumeFactorFor(tp, this.wf);
         const hedgeVol = hedge ? (this.wf.coord?.hedgeVolumeFactor ?? 1) : 1;
         const baseExternalMult = d.vol * coordVol * volFactor * rangeVol * hedgeVol;
-        const relateVol = this.wf.relate?.enabled
-          ? Math.min(d.relateVol ?? 1, Math.max(1, this.wf.relate.maxStack) / Math.max(Number.MIN_VALUE, baseExternalMult))
-          : 1;
+        const relationCap = relateExternalStackCap(this.wf.relate?.maxStack ?? MAX_EXTERNAL_STACK,
+          tp.kind, p.protect ?? tp.protect);
+        const combined = combineRelateStack(baseExternalMult,
+          this.wf.relate?.enabled ? (d.relateVol ?? 1) : 1, relationCap);
+        const relateVol = this.wf.relate?.enabled ? combined.relation : 1;
         out.push({
           cfg: tp.id,
           sym: p.sym,
@@ -10549,7 +10591,7 @@ export class CoreRuntime {
           ...(coordVol !== 1 ? { coordVol } : {}),
           ...(d.vol !== 1 ? { blockVol: d.vol } : {}),
           ...(relateVol !== 1 ? { relateVol } : {}),
-          ...(this.wf.relate?.enabled ? { maxStack: this.wf.relate.maxStack } : {}),
+          maxStack: relationCap,
           ...(hedge ? { hedge: true, hedgeVol: this.wf.coord?.hedgeVolumeFactor ?? 1 } : {}),
         });
       }
@@ -10665,7 +10707,7 @@ export interface LiveIntent {
 export interface SetListings {
   paperStep: number;
   at: number;
-  candidates: Array<{ id: string; group: string }>;
+  candidates: Array<{ id: string; group: string; kind: string }>;
   validation: {
     at: number;
     engineLastN: number;
@@ -10685,6 +10727,8 @@ export interface SetListings {
     n: number;
     net: number;
     ddt: number;
+    gp: number;
+    gl: number;
   }>;
   /** per range: the rows of `validated` (best first) and the range's PF taken together on the validation windows */
   byRange: Record<
@@ -10692,6 +10736,10 @@ export interface SetListings {
     { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }
   >;
   byGroup: Record<
+    string,
+    { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }
+  >;
+  byKind: Record<
     string,
     { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }
   >;
@@ -10860,7 +10908,18 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.familySeats !== undefined) p.familySeats = Boolean(p.familySeats);
   if (p.familyNeedsBase !== undefined) p.familyNeedsBase = Boolean(p.familyNeedsBase);
   if (p.seatPer !== undefined && !["pair", "config"].includes(String(p.seatPer))) delete p.seatPer;
-  if (p.seatSet !== undefined && !["pool", "validated"].includes(String(p.seatSet))) delete p.seatSet;
+  if (p.seatSet !== undefined) {
+    if (!["pool", "validated"].includes(String(p.seatSet))) delete p.seatSet;
+    else p.seatSet = "validated";
+  }
+  if (p.relate !== undefined) {
+    const relate = p.relate as RelateAdjustmentConfig;
+    const maxStack = Number(relate.maxStack);
+    p.relate = {
+      ...relate,
+      maxStack: Math.floor(Number.isFinite(maxStack) ? Math.min(MAX_EXTERNAL_STACK, Math.max(1, maxStack)) : MAX_EXTERNAL_STACK),
+    };
+  }
   // symbol gate: veto (a proven loser on the symbol is skipped) / proven (only proven symbols) / per side / off
   if (
     p.symGate !== undefined &&

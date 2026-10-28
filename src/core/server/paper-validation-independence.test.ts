@@ -39,6 +39,7 @@ function paperEntry(samples: Sample[], groupN = 0, direction: 1 | -1 = 1, disabl
     ];
     const u = { bars: [], caches: [], startT: T - 24 * H, endT: T, splitT: T - 12 * H, nowT: T, baseTf: 15 } as never;
     rt.sim = walkForward(u, [], { ...rt.wf, simH: 24 });
+    rt.sim.validated = rt.tapes.map((t) => t.id);
     rt.sim.trades = samples.map((s, i): Trade => ({
       cfg: s.cfg, sym: SYM, side: s.side, entryT: T - H + i * 1_000,
       exitT: T - 10 * 60_000 + i * 1_000, entry: 100, exit: 100 * (1 + s.side * s.r),

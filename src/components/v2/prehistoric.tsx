@@ -121,10 +121,10 @@ export function PrehistoricPanel(props: {
             : "engine selection-pool validation unavailable"}
         />
         <Stat
-          k="Settled model return PF"
+          k="Pre-allocation model PF"
           v={s ? unitStatsPfText(s) : "–"}
           cls={pfTone(s?.pf, props.minPf)}
-          sub={`post-Base accepted records before allocation · min ${props.minPf}`}
+          sub={`post-Base accepted model records before Active seat allocation · min ${props.minPf}`}
         />
         <Stat
           k="DDT"

@@ -27,6 +27,7 @@ for (const mode of ["full", "fast"] as const) for (const side of [1, -1] as cons
         "normal", [SYM], history, [open], [])];
       const u = { bars: [], caches: [], startT: T - 24 * H, endT: T, splitT: T - 12 * H, nowT: T, baseTf: 15 } as never;
       rt.sim = walkForward(u, [], { ...rt.wf, simH: 24 });
+      rt.sim.validated = rt.tapes.map((t) => t.id);
       const bad = { ...history[0], cfg: HELD, side: side === 1 ? 2 : 0, entryT: T - H,
         exitT: T - 60_000 } as unknown as Trade;
       rt.sim.trades = [bad];

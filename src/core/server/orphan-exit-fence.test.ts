@@ -8,7 +8,7 @@ import { ExchangeRejected, RequestBudgetDeferred } from "../exchange/bingx.serve
 import { exactVenueOrderId, exactVenueOrderIds } from "../exchange/venue-order-id.ts";
 import { flushLiveKv, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
 import { makeCoid } from "./live.ts";
-import { orphanCancelledZero, orphanFenceId, orphanFenceKeys, type OrphanExitFence } from "./orphan-exit-fence.ts";
+import { orphanCancelledZero, orphanFilled, orphanFenceId, orphanFenceKeys, type OrphanExitFence } from "./orphan-exit-fence.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { fakeRt, rng, SimExchange } from "../test-support.ts";
 
@@ -57,6 +57,12 @@ describe("durable unlinked conditional fence", () => {
       { executedQty: .1 }, { executedQty: undefined }, { executedQty: "" },
       { executedQty: 0, cumExecQty: .1 }, { executedQty: 0, executedVolume: .1 }, { executedQty: NaN },
     ]) assert.equal(orphanCancelledZero(order, receipt(change)), false, JSON.stringify(change));
+    const filled = { order: { orderId: "42", symbol: SYM, clientOrderId: order.coid, positionSide: "LONG",
+      side: "SELL", type: "STOP_MARKET", status: "FILLED", executedQty: 1.25, avgPrice: 16.5 } };
+    assert.deepEqual(orphanFilled(order, filled), { qty: 1.25, px: 16.5 });
+    for (const change of [{ orderId: "another" }, { status: "CANCELED" }, { status: "PARTIALLY_FILLED" },
+      { executedQty: 0 }, { executedQty: undefined }, { executedQty: 1, cumExecQty: 2 }, { avgPrice: 0 }])
+      assert.equal(orphanFilled(order, { order: { ...filled.order, ...change } }), null, JSON.stringify(change));
     assert.equal(orphanCancelledZero({ ...order, oid: "" }, receipt()), false);
     assert.equal(orphanCancelledZero({ ...order, positionSide: "BOTH" }, receipt()), false);
     assert.equal(exactVenueOrderId(Number.MAX_SAFE_INTEGER + 1), "");
@@ -268,6 +274,104 @@ describe("durable unlinked conditional fence", () => {
     } finally { flushLiveKv(db); db.db.close(); rmSync(dir, { recursive: true, force: true }); }
   });
 
+  it("reconciles a timed-out resized stop only after its exact resting identity and zero fill are confirmed", async () => {
+    const db = new CoreDb(":memory:");
+    const rt = setup(db, "hedge"), ex = new SimExchange(rng(29));
+    try {
+      const lane = position(1);
+      rt.paper.positions = [lane];
+      await run(rt, ex);
+      assert.ok(ex.positions.get(`${SYM}|LONG`)! > 0);
+      const send = ex.order.bind(ex);
+      let stopN = 0, timedOutCoid = "";
+      ex.order = async (p) => {
+        const reply = await send(p);
+        if (p.type === "STOP_MARKET" && ++stopN === 1) {
+          timedOutCoid = String(p.clientOrderID);
+          throw new Error("transport timeout after accepted resize");
+        }
+        return reply;
+      };
+      rt.paper.positions = [{ ...lane, vol: 2 }];
+      await run(rt, ex);
+      assert.ok(timedOutCoid, `second stop was not sent; stopN=${stopN} positions=${JSON.stringify([...ex.positions])} ` +
+        `orders=${JSON.stringify(ex.orders)} log=${JSON.stringify(ex.log)} rows=${JSON.stringify(db.all("SELECT kind,qty,px,status,msg,coid FROM live_orders"))}`);
+      assert.equal(db.get<{ status: string }>("SELECT status FROM live_orders WHERE coid=?", timedOutCoid)?.status,
+        "pending", "the ambiguous resize is not credited before reconciliation");
+      assert.ok(ex.orders.some((o) => o.clientOrderId === timedOutCoid), "the accepted order is visible at the venue");
+
+      rt.paper.positions = [lane];
+      await run(rt, ex); // records the exact visible identity and starts its bounded status poll
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await run(rt, ex); // NEW + explicit zero fill + exact remainder releases only this order's fence
+
+      assert.equal(db.get<{ status: string }>("SELECT status FROM live_orders WHERE coid=?", timedOutCoid)?.status,
+        "ok", "the exact active receipt reconciles the requested protection");
+      assert.ok((ex.positions.get(`${SYM}|LONG`) ?? 0) <= 0.7,
+        "the previously blocked reduction now brings the position back to its active target");
+      assert.ok(ex.orders.some((o) => o.venueSymbol === SYM && o.type === "STOP_MARKET"),
+        "the reduced position retains protective stop coverage");
+      const fences = Object.values(db.kvGet<Record<string, OrphanExitFence>>("orphanExitFences") ?? {});
+      assert.equal(fences.some((f) => f.coid === timedOutCoid), false, "only the reconciled order fence is released");
+    } finally { flushLiveKv(db); db.db.close(); }
+  });
+
+  it("cancels the exact aggregate stop after a confirmed full close", async () => {
+    const db = new CoreDb(":memory:"), rt = setup(db, "hedge"), ex = new SimExchange(rng(31));
+    const cancelled: string[] = [];
+    const sendCancel = ex.cancel.bind(ex);
+    ex.cancel = async (sym, id) => { cancelled.push(id); return sendCancel(sym, id); };
+    try {
+      const lane = position(1);
+      rt.paper.positions = [lane];
+      await run(rt, ex);
+      const stop = ex.orders.find((o) => o.type === "STOP_MARKET");
+      assert.ok(stop?.id && stop.clientOrderId);
+      assert.ok(ex.positions.get(`${SYM}|LONG`)! > 0);
+
+      rt.paper.positions = [];
+      const result = await run(rt, ex);
+      assert.equal(ex.positions.get(`${SYM}|LONG`) ?? 0, 0, "the confirmed close flatlines the owned position");
+      assert.ok(cancelled.includes(stop.id), `the exact stop was canceled; result=${JSON.stringify(result)}`);
+      assert.equal(ex.orders.some((o) => o.id === stop.id), false, "no stop remains to trigger against a future owner");
+    } finally { flushLiveKv(db); db.db.close(); }
+  });
+
+  it("cancels the old stop after a timed-out market close is confirmed from exact execution history", async () => {
+    const db = new CoreDb(":memory:"), rt = setup(db, "hedge"), ex = new SimExchange(rng(32));
+    const cancelled: string[] = [];
+    const sendCancel = ex.cancel.bind(ex);
+    ex.cancel = async (sym, id) => { cancelled.push(id); return sendCancel(sym, id); };
+    try {
+      const lane = position(1);
+      rt.paper.positions = [lane];
+      await run(rt, ex);
+      const stop = ex.orders.find((o) => o.type === "STOP_MARKET");
+      assert.ok(stop?.id && stop.clientOrderId);
+
+      const send = ex.order.bind(ex);
+      ex.order = async (p) => {
+        const reply = await send(p);
+        if (p.type === "MARKET" && p.side === "SELL" && p.positionSide === "LONG")
+          throw new Error("transport timeout after accepted full close");
+        return reply;
+      };
+      rt.paper.positions = [];
+      await run(rt, ex);
+      assert.equal(ex.positions.get(`${SYM}|LONG`) ?? 0, 0, "the exchange filled the close despite the lost reply");
+      assert.ok(ex.orders.some((o) => o.id === stop.id), "the stop remains until close execution is reconciled");
+      assert.equal(db.get<{ status: string }>("SELECT status FROM live_orders WHERE kind='X' ORDER BY rowid DESC LIMIT 1")?.status,
+        "pending");
+
+      ex.order = send;
+      await run(rt, ex); // exact client ID + side + quantity from venue history confirms the close
+      assert.equal(db.get<{ status: string }>("SELECT status FROM live_orders WHERE kind='X' ORDER BY rowid DESC LIMIT 1")?.status,
+        "ok");
+      assert.ok(cancelled.includes(stop.id), "the exact prior stop is canceled after the market close is proven");
+      assert.equal(ex.orders.some((o) => o.id === stop.id), false);
+    } finally { flushLiveKv(db); db.db.close(); }
+  });
+
   for (const mode of ["hedge", "oneway"] as const) for (const side of [1, -1] as const)
     it(`${mode} side ${side}: an accepted but timed-out repair is neither duplicated nor market-closed after restart`, async () => {
       mock.timers.enable({ apis: ["Date"], now: Date.now() });
@@ -364,7 +468,7 @@ describe("durable unlinked conditional fence", () => {
     });
 
   for (const mode of ["hedge", "oneway"] as const) for (const side of [1, -1] as const)
-    it(`${mode}: a ${side === 1 ? "long" : "short"} stop replacement resumes only after exact zero-fill terminal proof`, async () => {
+    it(`${mode}: a ${side === 1 ? "long" : "short"} stop replacement resumes in the step that confirms exact zero-fill termination`, async () => {
       mock.timers.enable({ apis: ["Date"], now: Date.now() });
       const db = new CoreDb(":memory:"), rt = setup(db, mode);
       const ex = mode === "hedge" ? new SimExchange(rng(60)) : new OneWayExchange(rng(60));
@@ -375,13 +479,9 @@ describe("durable unlinked conditional fence", () => {
         const initial = ex.log.filter((o) => o.type === "STOP_MARKET").length;
         rt.paper.positions = [{ ...position(side), stop: 17 * (1 - side * .08) }];
         await run(rt, ex);
-        assert.equal(ex.log.filter((o) => o.type === "STOP_MARKET").length, initial,
-          "successful cancel alone does not cause same-step replacement");
-        assert.equal(ex.orders.some((o) => o.id === old.id), false, "the test venue really canceled the old stop");
-        await run(rt, ex); // schedule exact terminal-status read
-        await run(rt, ex); // consume that reply against a fresh book and repair
         assert.equal(ex.log.filter((o) => o.type === "STOP_MARKET").length, initial + 1,
-          "a replacement is sent after the runtime observes exact zero-fill terminal status");
+          "the exact terminal receipt and fresh absent-order book authorize replacement in this step");
+        assert.equal(ex.orders.some((o) => o.id === old.id), false, "the test venue really canceled the old stop");
         assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET").length, 1);
       } finally { flushLiveKv(db); db.db.close(); }
     });
@@ -497,7 +597,7 @@ describe("durable unlinked conditional fence", () => {
     } finally { flushLiveKv(db); db.db.close(); rmSync(dir, { recursive: true, force: true }); }
   });
 
-  it("an exact positive fill remains held until its original parent and accounting are reconciled", async () => {
+  it("an exact positive fill stays fenced until its original parent and accounting are reconciled", async () => {
     mock.timers.enable({ apis: ["Date"], now: Date.now() });
     const db = new CoreDb(":memory:"), rt = setup(db, "hedge"), ex = new SimExchange(rng(45));
     try {
@@ -511,12 +611,17 @@ describe("durable unlinked conditional fence", () => {
       assert.ok(receipt.order && typeof receipt.order === "object" && "status" in receipt.order && "executedQty" in receipt.order);
       assert.equal(receipt.order.status, "FILLED");
       assert.ok(typeof receipt.order.executedQty === "number" && receipt.order.executedQty > 0);
-      mock.timers.tick(20_000); await run(rt, ex); await run(rt, ex);
-      rt.paper.positions = [{ ...position(1), cfg: "follow|ema-24-48@m15|fresh", entryT: 2 }];
-      mock.timers.tick(7_200_000); await run(rt, ex); await run(rt, ex);
-      assert.equal(ex.positions.size, 0, "positive fills are not misclassified as zero-fill cancellation");
+      mock.timers.tick(20_000); await run(rt, ex);
       assert.ok(Object.values(db.kvGet<Record<string, OrphanExitFence>>("orphanExitFences") ?? {}).some((f) => f.oid === stop.id),
-        "exact fill attribution remains an explicit reconciliation hold");
+        "the fill stays fenced until its status and flat accounting are both observed");
+      await run(rt, ex);
+      assert.equal(Object.values(db.kvGet<Record<string, OrphanExitFence>>("orphanExitFences") ?? {}).some((f) => f.oid === stop.id), false,
+        "the exact full fill is released after its parent is flat and its ledger is reconciled");
+      rt.paper.positions = [{ ...position(1), cfg: "follow|ema-24-48@m15|fresh", entryT: 2 }];
+      mock.timers.tick(7_200_000); await run(rt, ex);
+      assert.ok((ex.positions.get(`${SYM}|LONG`) ?? 0) > 0, "a new parent is admitted only after exact fill accounting");
+      assert.equal(Object.values(db.kvGet<Record<string, OrphanExitFence>>("orphanExitFences") ?? {}).some((f) => f.oid === stop.id), false,
+        "a reconciled filled order no longer blocks a later parent");
     } finally { flushLiveKv(db); db.db.close(); }
   });
 

@@ -4370,6 +4370,8 @@ if (flag("signal-progress") || flag("chunk-allocations"))
       closeIndex,
       cfg: x.cfg,
       sym: x.sym,
+      kind: x.kind,
+      reason: x.reason,
       side: x.side,
       entryT: x.entryT,
       exitT: x.exitT,

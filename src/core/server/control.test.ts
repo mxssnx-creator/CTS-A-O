@@ -169,7 +169,10 @@ function checkInvariants(
         assert.equal(added, false, `${k} was grown without parent ownership proof`);
         continue;
       }
-      assert.ok(Math.abs(q - want) / want <= 0.25 + 1e-9, `${k} held ${q} vs target ${want}`);
+      assert.ok(Math.abs(q - want) / want <= 0.25 + 1e-9,
+        `${k} held ${q} vs target ${want}; logs=${JSON.stringify(ex.log.filter((x) => x.symbol === sym))}; ` +
+        `fills=${JSON.stringify(ex.fills.filter((x) => x.sym === sym))}; ` +
+        `ledger=${JSON.stringify(rt.db.all("SELECT coid,kind,qty,px,status,msg,at FROM live_orders WHERE sym=? ORDER BY rowid", sym))}`);
     }
   }
   if (strict)
@@ -189,7 +192,7 @@ function checkInvariants(
       if (o.clientOrderId?.startsWith("CTSB"))
         assert.ok(
           ex.positions.has(`${o.venueSymbol}|${o.positionSide}`),
-          `orphan ${o.clientOrderId}`,
+          `orphan ${o.clientOrderId}: order=${JSON.stringify(o)} positions=${JSON.stringify([...ex.positions])}`,
         );
 }
 
@@ -874,13 +877,14 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.ok(unv.skipped.some((x) => /own quantity unverified/.test(x.why)), JSON.stringify(unv.skipped));
     // (the operator settles it by hand; the rest of the run starts from a clean book)
     ex.closeByHand("S2-USDT|SHORT", 24);
-    // connection identity changes → flagged, full re-sync, still consistent
+    // a connection identity change is fenced against the previous account's bound ownership
     b.rt.paper.positions = [{ cfg: "k", sym: "S3-USDT", side: 1, entry: 31, stop: 30, vol: 1 }];
     await step(b.rt, ex);
+    const beforeSwitch = ex.log.length;
     ex.key = "key-B";
     const st = await step(b.rt, ex);
-    assert.equal(st.control?.reconnected, true);
-    checkInvariants(ex, b.rt, b.prices, true);
+    assert.match(st.reason, /ownership account differs/i);
+    assert.equal(ex.log.length, beforeSwitch, "a changed connection cannot reuse the prior account ledger");
   });
 
   it("does nothing while not armed, not ready or disabled", async () => {
@@ -1104,7 +1108,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.equal(closed[0].exit, ownStop.stopPrice);
   });
 
-  it("the protective stop of an opened position is priced from its fill, not from the reference ticker", async () => {
+  it("prices the backstop from a slipped fill without placing it inside the active lane stop", async () => {
     const ex = new SimExchange(rng(9));
     const stops: number[] = [];
     const base = ex.order.bind(ex);
@@ -1123,10 +1127,12 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     ];
     await step(rt, ex);
     assert.equal(stops.length, 1);
-    // the stop sits below the fill by the planned distance (from 24 it would sit about 1 below this)
-    assert.ok(stops[0] > 24 * 0.98 && stops[0] < 25, `stop ${stops[0]}`);
-    const dist = 1 - stops[0] / 25;
-    assert.ok(dist > 0.01 && dist < 0.05, `distance from the fill ${dist}`);
+    const control = liveKv(rt.db, "controlStatus") as { targets?: Array<{ key: string; stopPx?: number }> } | undefined;
+    const target = control?.targets?.find((x) => x.key === "S2-USDT|1");
+    assert.ok(target?.stopPx && target.stopPx > 0, "the active lane stop is present in the control plan");
+    assert.ok(stops[0] < 25, `stop ${stops[0]} must be below the slipped long fill`);
+    assert.ok(stops[0] <= target.stopPx + 1e-10,
+      `aggregate stop ${stops[0]} must not be tighter than the active lane stop ${target.stopPx}`);
   });
 
   it("the backstop distance of a trailed lane is measured from the current price, not from the entry", () => {
@@ -1162,7 +1168,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const orig = ex.order.bind(ex);
     let opens = 0;
     ex.order = async (p) => {
-      if (p.type === "STOP_MARKET") throw new Error("stop price precision");
+      if (p.type === "STOP_MARKET") throw new ExchangeRejected("stop price precision", 101400);
       if (p.type === "MARKET" && (p.side === "BUY") === (p.positionSide === "LONG")) opens++;
       return orig(p);
     };
@@ -1179,6 +1185,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       ls?.skipped.some(
         (x) => x.sym === "S2-USDT" && x.why.startsWith("open waiting after a failure"),
       ),
+      JSON.stringify(ls),
     );
   });
 
@@ -1409,6 +1416,8 @@ describe("control orders: listed symbols, bans, offline", () => {
     // from now on the open orders cannot be read: the last read still shows S1's stop, which is gone meanwhile,
     // and an own leftover sits on a flat symbol
     const stale = ex.orders.map((o) => ({ ...o }));
+    for (const o of ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && stopOf(o)))
+      ex.done.set(o.id, { status: "CANCELLED", qty: 0 });
     ex.orders = ex.orders.filter((o) => !(o.venueSymbol === "S1-USDT" && stopOf(o)));
     ex.orders.push({
       id: "left",
@@ -1437,6 +1446,8 @@ describe("control orders: listed symbols, bans, offline", () => {
     // The open orders are read again: held protection can be repaired and an independent side can open.
     // An unjournaled own-tagged leftover is not proof of ownership or zero fill and remains untouched.
     ex.book = fresh;
+    await step(rt, ex);
+    await new Promise<void>((resolve) => setImmediate(resolve));
     await step(rt, ex);
     assert.ok(ex.orders.some((o) => o.venueSymbol === "S1-USDT" && stopOf(o)));
     assert.ok(ex.positions.has("S2-USDT|LONG"), "fresh evidence releases the unrelated new side");
@@ -1476,10 +1487,14 @@ describe("control orders: listed symbols, bans, offline", () => {
     assert.ok(noteRateLimit("BingX 100410: 请稍后重试", now, TICKERS) > now);
     // S2's lane ended; S1's stop vanished
     rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+    for (const o of ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && stopOf(o)))
+      ex.done.set(o.id, { status: "CANCELLED", qty: 0 });
     ex.orders = ex.orders.filter((o) => !(o.venueSymbol === "S1-USDT" && stopOf(o)));
     const st = await step(rt, ex);
     assert.doesNotMatch(st.reason, /rate limit/);
     assert.equal(ex.positions.has("S2-USDT|LONG"), false, "the ended lane is closed during the klines ban");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await step(rt, ex);
     assert.ok(ex.orders.some((o) => o.venueSymbol === "S1-USDT" && stopOf(o)), "the stop is repaired during the klines ban");
     assert.ok(ex.positions.has("S1-USDT|LONG"));
   });

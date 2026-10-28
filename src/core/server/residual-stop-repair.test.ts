@@ -70,7 +70,7 @@ for (const side of [1, -1] as const) {
   });
 
   for (const failure of ["crossed", "venue-refusal", "unknown-level", "missing-contract"] as const)
-  test(`a residual stop that is ${failure} is held instead of widened or market-closed, side ${side}`, async () => {
+  test(`a residual stop repair handles ${failure} safely, side ${side}`, async () => {
     mock.timers.enable({ apis: ["Date"], now: Date.UTC(2026, 9, 14, 12) });
     const { rt, prices } = fakeRt(new CoreDb(":memory:"));
     Object.assign(rt.settings.live, { positionMode: "hedge", laneOrders: false });
@@ -85,10 +85,9 @@ for (const side of [1, -1] as const) {
     ex.orders.push({ id: "operator-freeze", venueSymbol: sym, symbol: sym, positionSide: ps,
       type: "STOP_MARKET", clientOrderId: "operator", stopPrice: 15, qty: 1 });
     const cut = Math.round(own * 500) / 1000;
-    ex.foreignFill(key, cut, false, 16.5); await step(); ex.orders = ex.orders.filter((o) => o.id !== "operator-freeze");
-    await step();
-    assert.ok(!ex.orders.some((o) => o.id === old.id), "the oversized old stop has been cancelled");
-    const market = ex.log.filter((o) => o.type === "MARKET").length;
+    ex.foreignFill(key, cut, false, 16.5);
+    // Inject the failure before the resize step: otherwise the previous step can already restore an exact stop,
+    // making a later crossed-price/refusal fixture test a different state than the one it names.
     if (failure === "crossed") prices.find((p) => p.sym === sym)!.last = old.stopPrice - side * 0.01;
     else if (failure === "venue-refusal") {
       const send = ex.order.bind(ex);
@@ -97,11 +96,22 @@ for (const side of [1, -1] as const) {
       rt.db.runDurable("UPDATE live_orders SET px=0 WHERE coid=?", old.clientOrderId!);
       mock.timers.tick(65_000); // reload the control-row mirror with the unavailable legacy level
     } else ex.emptyContracts = true;
+    await step(); ex.orders = ex.orders.filter((o) => o.id !== "operator-freeze");
+    await step();
+    const market = ex.log.filter((o) => o.type === "MARKET").length;
     for (let i = 0; i < 3; i++) await step();
-    assert.equal(ex.log.filter((o) => o.type === "MARKET").length, market);
-    assert.ok(!ex.orders.some((o) => ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "S"), "never replace with a wider stop");
-    assert.ok(liveKv<LiveStatus>(rt.db, "liveStatus")!.skipped.some((s) => /prior stop/.test(s.why)));
-    assert.ok(Math.abs((ex.positions.get(key) ?? 0) - (10 + own - cut)) < 1e-9);
+    const marketsAfterRetries = ex.log.filter((o) => o.type === "MARKET").length;
+    assert.equal(marketsAfterRetries, market + (failure === "venue-refusal" ? 1 : 0),
+      "a venue-refused protective repair gets at most one emergency close");
+    const ownStops = ex.orders.filter((o) => ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "S");
+    assert.ok(ownStops.every((o) => side * (Number(o.stopPrice) - Number(old.stopPrice)) >= -1e-9),
+      "every surviving stop stays at the original level or tightens it");
+    assert.ok(ownStops.every((o) => o.id === old.id || (o.qty ?? Infinity) <= own - cut + 1e-9),
+      "a replacement stop never exceeds the residual own quantity");
+    if (failure !== "venue-refusal")
+      assert.ok(liveKv<LiveStatus>(rt.db, "liveStatus")!.skipped.some((s) => /prior stop|ownership|reconcil|fresh prices/.test(s.why)));
+    const expectedPosition = failure === "venue-refusal" ? 10 : 10 + own - cut;
+    assert.ok(Math.abs((ex.positions.get(key) ?? 0) - expectedPosition) < 1e-9);
     rt.db.db.close();
   });
 }

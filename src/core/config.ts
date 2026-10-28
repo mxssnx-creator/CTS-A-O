@@ -25,6 +25,8 @@ export { RT_COST } from "./model-cost.ts";
 
 /** Hard ceiling for unique positions on the exchange. Strategy/config orders do not consume extra slots. */
 export const MAX_EXCHANGE_POSITIONS = 100;
+/** One systemwide ceiling for Block, Relate, coordination, and other external sizing groups. */
+export const MAX_EXTERNAL_STACK = 8;
 /** Bounded settings payload, including every independent Micro/Inverse source and the ordinary catalog. */
 export const MAX_FOCUS_PAIRS = 2000;
 
@@ -144,10 +146,12 @@ export const DEFAULT_BLOCK: BlockConfig = {
   },
   mode: "overall",
   historySource: "accepted-orders",
+  // Each raised Block group keeps its last applied extra volume until that group's realized extra net is recovered.
+  holdUntilNet: true,
   ratio: 0.5,
   maxLevel: 8,
   minActiveLevel: 2,
-  maxMult: 8,
+  maxMult: MAX_EXTERNAL_STACK,
   /** closes a source waits after a positive raised position (0 = none) */
   pause: 0,
   /** volume steps up to maxMult (0 = continuous) */
@@ -184,7 +188,7 @@ export const DEFAULT_RELATE_ADJUSTMENT: RelateAdjustmentConfig = {
   minPf: 1.5,
   lastN: 250,
   minTrades: 60,
-  maxStack: 250,
+  maxStack: MAX_EXTERNAL_STACK,
   maxSl: 0.0075,
   sources: {
     config: true,

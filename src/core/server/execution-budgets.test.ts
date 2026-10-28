@@ -628,7 +628,11 @@ describe("actual execution account budgets across independent Signal sets", () =
       "the native partial stays held while its exact ownership is reconciled");
     assert.equal(ex.log.filter((o) => o.type === "MARKET").length, count,
       "no second reduction is sent against a partly settled parent");
+    await step();
     assert.ok(ex.orders.some((o) => o.type === "STOP_MARKET"), "the held remainder retains an exchange stop");
+    assert.equal(ex.orders.filter((o) => o.symbol === "S0-USDT" && o.type === "STOP_MARKET" &&
+      ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V").length, 1,
+      "residual repair and ordinary planning submit only one native stop");
     assert.deepEqual(rt.db.all<{ qty: number }>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'").map((r) => r.qty), [.4]);
   });
 

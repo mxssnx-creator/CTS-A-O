@@ -1,4 +1,5 @@
 import type { Protect, RelateAdjustmentConfig, RelateParts, RelateSource, StratKind } from "../domain/types.ts";
+import { MAX_EXTERNAL_STACK } from "../config.ts";
 
 /** Validated Axis settings bound its deepest ladder to eight legs of at most five base units each. */
 export const AXIS_MAX_LEVELS = 8;
@@ -38,6 +39,26 @@ export function relateExternalStackCap(maxStack: number, kind: StratKind, protec
   }
   if (kind === "axis") return cap / (1 + (AXIS_MAX_LEVELS - 1) * AXIS_MAX_RUNG_RATIO);
   return cap;
+}
+
+/**
+ * Combine independent relation additions with the already sized base in original-base units.
+ * Raises add their extra volume once; they do not multiply the Block / coordination stack again. A sub-unit
+ * relation reservation (used for DCA / Axis intrinsic ladder capacity) scales the base down to fit its reserve.
+ */
+export function combineRelateStack(
+  base: number,
+  relation: number,
+  cap: number,
+): { volume: number; relation: number } {
+  if (!(Number.isFinite(base) && base > 0) || !(Number.isFinite(relation) && relation > 0) ||
+      !(Number.isFinite(cap) && cap > 0))
+    return { volume: 0, relation: 1 };
+  const boundedCap = Math.min(MAX_EXTERNAL_STACK, cap);
+  if (relation < 1) return { volume: Math.round(Math.min(boundedCap, base * relation) * 1e12) / 1e12, relation };
+  if (base >= boundedCap) return { volume: boundedCap, relation: 1 };
+  const applied = Math.min(relation, 1 + boundedCap - base);
+  return { volume: Math.round(Math.min(boundedCap, base + applied - 1) * 1e12) / 1e12, relation: applied };
 }
 
 export const RELATE_SOURCES: readonly RelateSource[] = [
@@ -144,14 +165,14 @@ export function relateStats(rows: readonly number[]): RelateSourceStats {
 }
 
 function boundedStack(x: number): number {
-  return Number.isFinite(x) ? Math.max(1, Math.min(250, x)) : 1;
+  return Number.isFinite(x) ? Math.max(1, Math.min(MAX_EXTERNAL_STACK, x)) : 1;
 }
 
 /** Allocate a capped total among independent relation portions without increasing the requested total. */
-export function capRelateParts(parts: RelateParts, total: number, shadowCap = 250, base = 1): RelateParts {
+export function capRelateParts(parts: RelateParts, total: number, shadowCap = MAX_EXTERNAL_STACK, base = 1): RelateParts {
   if (!Number.isFinite(base) || !(base > 0)) return {};
   // A reserved external ceiling can be less than one base unit when a ladder may later add legs.
-  const cap = Math.min(250, base * shadowCap);
+  const cap = Math.min(MAX_EXTERNAL_STACK, base * shadowCap);
   if (!Number.isFinite(cap) || !(cap > 0)) return {};
   const totalUnits = Math.max(0, Math.min(cap,
     Math.round(base * (Number.isFinite(total) ? total : 1) * 1e12) / 1e12));
@@ -278,9 +299,9 @@ export class RelateBook {
     else {
       const recorded = part ?? { volume: base ?? NaN, level: 0 };
       const tolerance = Number.isFinite(base) ? Math.max(1, Math.abs(base!)) * 1e-10 : 0;
-      if (measured && Number.isFinite(base) && (base ?? 0) > 0 && (base ?? 0) <= 250 &&
+      if (measured && Number.isFinite(base) && (base ?? 0) > 0 && (base ?? 0) <= MAX_EXTERNAL_STACK &&
           Number.isFinite(recorded.volume) && recorded.volume > 0 &&
-          recorded.volume <= 250 && Number.isInteger(recorded.level) && recorded.level >= 0 && recorded.level <= 15 &&
+          recorded.volume <= MAX_EXTERNAL_STACK && Number.isInteger(recorded.level) && recorded.level >= 0 && recorded.level <= 15 &&
           recorded.volume + tolerance >= (base ?? Infinity) &&
           (recorded.level > 0 || Math.abs(recorded.volume - base!) <= tolerance))
         this.previous.set(key, { volume: recorded.volume, level: recorded.level, positive: true });

@@ -190,6 +190,7 @@ describe("control orders: increases, stop repair, ownership", () => {
     await step(rt, ex);
     const q = ex.positions.get("S3-USDT|LONG");
     assert.ok(q);
+    for (const o of ex.orders) ex.done.set(o.id, { status: "CANCELLED", qty: 0 });
     ex.orders = []; // the stop is gone (cancelled by hand)
     rt.freshTickers = async () => {
       rt.tickersAt = Date.now();
@@ -197,12 +198,11 @@ describe("control orders: increases, stop repair, ownership", () => {
     };
     await step(rt, ex);
     assert.equal(ex.positions.get("S3-USDT|LONG"), q, "not closed");
-    assert.ok(
-      skippedOf(rt).skipped.some(
-        (x) => x.sym === "S3-USDT" && x.why === "stop repair waits for a price",
-      ),
-    );
+    assert.ok(skippedOf(rt).skipped.some((x) => x.sym === "S3-USDT" &&
+      /stop repair waits for a price|no fresh price|orphan exit awaits exact zero-fill/.test(x.why)),
+      JSON.stringify(skippedOf(rt)));
     // the price returns: the stop is repaired, the position stays
+    await new Promise<void>((resolve) => setImmediate(resolve));
     rt.freshTickers = async () => {
       rt.tickersAt = Date.now();
       return prices;

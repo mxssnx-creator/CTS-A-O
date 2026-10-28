@@ -1,0 +1,86 @@
+{
+  "status": "passed",
+  "scope": "Previously examined simulated funded settled orders, grouped by exact config's initial recorded post-Base verdict; later dynamic validation and entry gates still apply. Not independent trade observations or live fills.",
+  "startT": 1792368000000,
+  "endT": 1792454400000,
+  "initial": {
+    "evaluated": 14702,
+    "passed": 10439,
+    "pct": 71.00394504149095,
+    "historicalGp": 2358.2877577978675,
+    "historicalGl": 515.9430918352463,
+    "historicalPf": 4.570829215697549
+  },
+  "initialPassed": {
+    "initialConfigs": 10439,
+    "executedConfigs": 10105,
+    "settled": 121962,
+    "gp": 145.6425474191957,
+    "gl": 513.5244325781727,
+    "pf": 0.2836136670031272,
+    "pfState": "measured"
+  },
+  "initialFailed": {
+    "initialConfigs": 4263,
+    "executedConfigs": 1838,
+    "settled": 13849,
+    "gp": 14.210847114071926,
+    "gl": 67.83636638848577,
+    "pf": 0.20948715078117758,
+    "pfState": "measured"
+  },
+  "total": {
+    "settled": 135811,
+    "gp": 159.85339453326762,
+    "gl": 581.3607989666584,
+    "pf": 0.2749641785572738,
+    "zeroAllocated": 9052,
+    "unknownAllocated": 0
+  },
+  "everPassedDistinctConfigs": 12757,
+  "protocolSha256": "7a7fd423f1402f6a14fd19bf43ff0db487c7503bb28b04656af0548f9093db78",
+  "sourceSha256": "d4847b799025e5309ce575e762e38525e93016350244b8457fcc5e7102e29d42",
+  "frozenSettings": {
+    "historicExit": false,
+    "signals": false,
+    "block": false,
+    "dca": false,
+    "axis": false,
+    "normal": true,
+    "trailing": true,
+    "modeledRoundTripCost": 0.0015,
+    "symbols": 20
+  },
+  "inputs": {
+    "progressionAuditSha256": "3c979a6a02a579faa9858403f213bc29a94f7ac4f4ea5f236638dab6b7da59bc",
+    "cappedReconciliationSha256": "eff464579e777d53fbc2690895182d88dbdd197b912853c120cca8d2da86ca28",
+    "rawHeaderSha256": "81340d1f2faed6604bbd8c9cc53500425b4f42cd78a04fcc865ff307e0348ceb",
+    "auditScriptSha256": "f09175e8d260df7d65e89dc45b7dc3f3f32ffed9fca32a9c2a3d6d17a2ba7a64",
+    "exactTapeParityCanonicalSha256": "ea2fa2997bfe3fd6ad3d6abcd589d79352007e2ba97fb35a1f30005a1a6ef095"
+  },
+  "exactTapeParity": {
+    "matched": 135811,
+    "configTapes": 11943,
+    "missing": 0,
+    "mismatched": 0,
+    "range": [
+      {
+        "range": "sh",
+        "tape": {
+          "closes": 135811,
+          "gp": 159.85339453326807,
+          "gl": 581.3607989668267,
+          "pf": 0.274964178557195,
+          "pfState": "measured"
+        },
+        "execution": {
+          "closes": 135811,
+          "gp": 159.85339453326807,
+          "gl": 581.3607989668267,
+          "pf": 0.274964178557195,
+          "pfState": "measured"
+        }
+      }
+    ]
+  }
+}

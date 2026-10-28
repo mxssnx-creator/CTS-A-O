@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeRt, lane, SimExchange } from "../test-support.ts";
 import { CoreDb } from "./db.server.ts";
-import { controlRows, controlStopPxOf, flushLiveKv, liveKv, resetLiveBackoff, stepLive, type ControlRow } from "./live.server.ts";
+import { controlRows, controlStopLevelEvidenceOf, controlStopPxOf, flushLiveKv, liveKv, resetLiveBackoff, stepLive, type ControlRow } from "./live.server.ts";
 import { ownCoidKind } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 
@@ -93,6 +93,19 @@ test("a proven sequence wins over a backwards clock, but unsequenced records sta
   assert.equal(controlStopPxOf([...records, row("O", 0, 50, 3)], key), null);
   assert.equal(controlStopPxOf([...records, row("F", 0, 50, null)], key), null,
     "an unsequenced flat cannot be positioned across a known clock reversal");
+});
+
+test("residual stop recovery retains exact requested level across terminal rows and blocks unknown levels", () => {
+  const row = (kind: string, px: number, submissionSeq: number, status = "ok"): ControlRow =>
+    ({ k: "S1-USDT|1", kind, status, px, at: submissionSeq * 10, qty: 1, submissionSeq });
+  const key = "S1-USDT|1", opened = row("O", 0, 1), placed = row("S", 16, 2);
+  assert.deepEqual(controlStopLevelEvidenceOf([opened, placed], key), { seen: true, level: 16 });
+  assert.deepEqual(controlStopLevelEvidenceOf([opened, placed, row("S", 16, 3, "gone")], key),
+    { seen: true, level: 16 }, "a confirmed cancellation keeps its requested level for a residual repair");
+  assert.deepEqual(controlStopLevelEvidenceOf([opened, placed, row("S", 0, 3, "pending")], key),
+    { seen: true, level: null }, "an unknown latest stop must not fall back to a wider target stop");
+  assert.deepEqual(controlStopLevelEvidenceOf([opened, placed, row("O", 0, 4)], key),
+    { seen: false, level: null }, "a new parent starts a fresh protection episode");
 });
 
 for (const side of [1, -1] as const) test(`successive parents restore only their own residual stop, side ${side}`, async (t) => {

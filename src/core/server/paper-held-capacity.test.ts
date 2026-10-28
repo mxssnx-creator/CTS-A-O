@@ -33,6 +33,7 @@ for (const mode of ["full", "fast"] as const) {
         "normal", [SYM], raw, [open], [])];
       const u = { bars: [], caches: [], startT: T - 24 * H, endT: T, splitT: T - 12 * H, nowT: T, baseTf: 15 } as never;
       rt.sim = walkForward(u, [], { ...rt.wf, simH: 24 });
+      rt.sim.validated = rt.tapes.map((t) => t.id);
       rt.sim.trades = [];
       rt.paper.positions = [{ ...open, cfg: HELD, entryT: T - H, vol: 1, level: 0 }];
       rt.paper.selected = [CFG];
@@ -69,6 +70,7 @@ for (const mode of ["full", "fast"] as const) {
         { ...DEFAULT_PROTECT, tag: "mn" }, "normal", [SYM], [heldClose], [], [])];
       const u = { bars: [], caches: [], startT: T - 24 * H, endT: T, splitT: T - 12 * H, nowT: T, baseTf: 15 } as never;
       rt.sim = walkForward(u, [], { ...rt.wf, simH: 24 });
+      rt.sim.validated = rt.tapes.map((t) => t.id);
       rt.sim.trades = [];
       rt.paper.positions = [{ ...open, cfg: HELD, entryT: T - H, vol: 1, level: 0 }];
       rt.paper.selected = [CFG];

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DEFAULT_RELATE_ADJUSTMENT, DEFAULT_SETTINGS } from "../config.ts";
 import { auditState } from "../audit.ts";
 import { checkMerged, checkSettings } from "../settings-check.ts";
-import { capRelateParts, RelateBook, relateExternalStackCap, relateStats, type RelateBookEntry } from "./relate-volume.ts";
+import { capRelateParts, combineRelateStack, RelateBook, relateExternalStackCap, relateStats, type RelateBookEntry } from "./relate-volume.ts";
 import { defaultWalkForward, feedBooks, makeTape, relateBookFor, walkForward } from "./walkforward.ts";
 import type { Trade } from "../domain/types.ts";
 
@@ -36,19 +36,27 @@ describe("Relate settled-order sizing", () => {
   it("reserves the maximum possible ladder weight before an entry, without knowing its later fills", () => {
     const plain = { tp: 0.01, sl: 0.01, trail: 0, hold: 32 };
     const dca = { ...plain, dca: { levels: 2, step: 0.01, addRatio: 2.5 } };
-    for (const cap of [1, 2, 250]) {
-      assert.equal(relateExternalStackCap(cap, "normal", plain), cap);
-      assert.equal(relateExternalStackCap(cap, "dca-active", dca), cap);
-      assert.equal(relateExternalStackCap(cap, "dca", dca), cap / 6);
-      assert.equal(relateExternalStackCap(cap, "dca", plain), cap / 11,
+    for (const requested of [1, 2, 8, 250]) {
+      const cap = Math.min(requested, 8);
+      assert.equal(relateExternalStackCap(requested, "normal", plain), cap);
+      assert.equal(relateExternalStackCap(requested, "dca-active", dca), cap);
+      assert.equal(relateExternalStackCap(requested, "dca", dca), cap / 6);
+      assert.equal(relateExternalStackCap(requested, "dca", plain), cap / 11,
         "legacy ladders reserve the maximum supported DCA weight");
-      assert.equal(relateExternalStackCap(cap, "axis", plain), cap / 36,
+      assert.equal(relateExternalStackCap(requested, "axis", plain), cap / 36,
         "Axis reserves the maximum weight allowed by Settings");
       for (const weight of [1, 3.5, 6])
-        assert.ok(relateExternalStackCap(cap, "dca", dca) * weight <= cap + 1e-12);
+        assert.ok(relateExternalStackCap(requested, "dca", dca) * weight <= cap + 1e-12);
       for (const weight of [1, 6, 36])
-        assert.ok(relateExternalStackCap(cap, "axis", plain) * weight <= cap + 1e-12);
+        assert.ok(relateExternalStackCap(requested, "axis", plain) * weight <= cap + 1e-12);
     }
+    assert.deepEqual(combineRelateStack(1.2, 1.2, 8), { volume: 1.4, relation: 1.2 },
+      "independent 20% raises add to the existing 1.2× stack");
+    assert.equal(combineRelateStack(7.9, 1.5, 8).volume, 8, "the final stack is clipped to 8×");
+    assert.equal(combineRelateStack(1, 0.2, 0.2).volume, 0.2,
+      "intrinsic DCA / Axis reservation can reduce the external base below 1×");
+    assert.equal(capRelateParts({ config: { volume: 250, level: 1 } }, 250, 250, 1).config?.volume, 8,
+      "old relation portions cannot bypass the systemwide cap");
     assert.deepEqual(capRelateParts({ config: { volume: 2, level: 1 } }, 0.5, 0.5, 1),
       { config: { volume: 0.5, level: 1 } }, "a reserved ceiling may be smaller than one base unit");
     assert.deepEqual(capRelateParts({ config: { volume: 2, level: 1, shadow: true } }, 0.5, 0.5, 1),
@@ -76,7 +84,7 @@ describe("Relate settled-order sizing", () => {
         maxSl: DEFAULT_RELATE_ADJUSTMENT.maxSl,
       },
       { enabled: false, auto: true, mode: "additive", ratio: 2.6, steps: 5, activeStep: 0,
-        minPf: 1.5, lastN: 250, minTrades: 60, maxStack: 250, maxSl: 0.0075 },
+        minPf: 1.5, lastN: 250, minTrades: 60, maxStack: 8, maxSl: 0.0075 },
     );
     assert.doesNotThrow(() => checkSettings({ relate: DEFAULT_RELATE_ADJUSTMENT }));
   });
@@ -97,6 +105,7 @@ describe("Relate settled-order sizing", () => {
     assert.throws(() => checkSettings({ relate: { ...DEFAULT_RELATE_ADJUSTMENT, minTrades: 251 } }));
     assert.throws(() => checkSettings({ relate: { ...DEFAULT_RELATE_ADJUSTMENT, minPf: -0.1 } }));
     assert.throws(() => checkSettings({ relate: { ...DEFAULT_RELATE_ADJUSTMENT, maxStack: 1.5 } }));
+    assert.throws(() => checkSettings({ relate: { ...DEFAULT_RELATE_ADJUSTMENT, maxStack: 9 } }));
     for (const maxSl of [0.0025, 0.005, 0.0075, 0.01, 0.0125, 0.015])
       assert.doesNotThrow(() => checkSettings({ relate: { ...DEFAULT_RELATE_ADJUSTMENT, maxSl } }));
     for (const maxSl of [0, 0.0024, 0.003, 0.0151, NaN, Infinity])
@@ -262,19 +271,19 @@ describe("Relate settled-order sizing", () => {
     assert.equal(b.decide(identity).volume, 1.52, "each 1.05× portion advances to 1.26×");
   });
 
-  it("uses the previous effective volume when Block or range sizing changes the next base", () => {
+  it("keeps relation additions in original-base units when Block or range sizing changes", () => {
     const b = new RelateBook(config({ ratio: 0.2, steps: 5 }));
-    for (let i = 0; i < 60; i++) b.add(bookEntry(0.01, { relateBase: 3 }));
-    const first = b.decide(identity, 3);
+    for (let i = 0; i < 60; i++) b.add(bookEntry(0.01, { relateBase: 1 }));
+    const first = b.decide(identity, 1);
     assert.equal(first.volume, 1.2);
-    assert.equal(first.parts.config?.volume, 3.6);
-    b.add(bookEntry(0.01, { relateBase: 3, relateParts: first.parts }));
-    const smallerBase = b.decide(identity, 2);
-    assert.equal(smallerBase.volume, 2.16, "3.6 original-base units grow by 20% to 4.32");
-    assert.equal(smallerBase.parts.config?.volume, 4.32);
-    const largerBase = b.decide(identity, 5);
-    assert.equal(largerBase.volume, 1, "a larger current base is not reduced by a smaller prior target");
-    assert.equal(largerBase.parts.config?.volume, 5);
+    assert.equal(first.parts.config?.volume, 1.2);
+    b.add(bookEntry(0.01, { relateBase: 1, relateParts: first.parts }));
+    const next = b.decide(identity, 1);
+    assert.equal(next.volume, 1.44, "the relation source compounds only its own prior portion");
+    assert.equal(combineRelateStack(1.2, next.volume, 8).volume, 1.64,
+      "Block's 0.2 and Relate's 0.44 add against the original base");
+    assert.equal(combineRelateStack(2, next.volume, 8).volume, 2.44,
+      "a changed base does not multiply the relation group's 0.44 addition");
     assert.equal(b.decide(identity, Number.NaN).allowed, false);
   });
 
@@ -347,7 +356,7 @@ describe("Relate settled-order sizing", () => {
 
   it("matches an independent per-order Auto grid replay for steps, ratios, Active and caps", () => {
     const rows = Array.from({ length: 120 }, (_, i) => i % 6 < 2 ? -0.125 : 0.125);
-    for (const maxStack of [2, 5, 250]) {
+    for (const maxStack of [2, 5, 8]) {
       const settings = config({ auto: true, minTrades: 60, minPf: 1.5, maxStack, steps: 5 });
       const b = new RelateBook(settings);
       for (const r of rows) b.add(bookEntry(r));
@@ -437,13 +446,14 @@ describe("Relate settled-order sizing", () => {
       steps: 5,
       lastN: 250,
       minTrades: 60,
-      maxStack: 250,
+      maxStack: 8,
       maxSl: 0.01,
       sources: { config: true, overall: false, symbol: false, direction: false,
         indication: false, strategy: false, coordination: false, range: false },
     };
     const common = {
       ...defaults,
+      seatSet: "pool" as const,
       startT,
       simH: 76,
       lastN: 0,
@@ -481,8 +491,8 @@ describe("Relate settled-order sizing", () => {
     const raised = adjusted.trades.find((x) => (x.relateVol ?? 1) > 1);
     assert.ok(raised, "an order sees the prior 60 accepted settled closes after the validation warm-up");
     assert.equal(raised.relateVol, 1.2, "the first qualified step adds 20% to the previous base volume");
-    assert.ok(Math.abs((raised.mult ?? 1) - 1.44) < 1e-10,
-      "Block 1.2× is applied first, then Relate 1.2× stacks on it");
+    assert.ok(Math.abs((raised.mult ?? 1) - 1.4) < 1e-10,
+      "Block's 0.2 and Relate's 0.2 additions both use the original base");
     const next = adjusted.trades[adjusted.trades.indexOf(raised) + 1];
     assert.equal(next.relateVol, 1.44, "the following step uses the first adjusted volume");
     assert.equal(adjusted.trades.length, neutral.trades.length);
@@ -508,7 +518,7 @@ describe("Relate settled-order sizing", () => {
       });
       const tape = makeTape(cfg, "follow", identity.ind, protect, "dca", [identity.sym], rows, [], []);
       const defaults = defaultWalkForward(DEFAULT_SETTINGS);
-      const options = { ...defaults, startT, simH: 82, lastN: 0, validLastN: 0,
+      const options = { ...defaults, seatSet: "pool" as const, startT, simH: 82, lastN: 0, validLastN: 0,
         normalBaseMinPf: 0, preGate: false, robustFrac: 0, symGate: "off" as const, rangeGate: undefined,
         engineSideAccept: { ...defaults.engineSideAccept!, enabled: false },
         toggles: { ...defaults.toggles, normal: false, trailing: false, block: false,
@@ -525,16 +535,17 @@ describe("Relate settled-order sizing", () => {
         assert.ok(Math.abs((row.mult ?? 0) - 1 / 3) < 1e-10,
           `${tag}: the same reservation is set before either one or six units eventually fill`);
       }
-      assert.ok(unbounded.trades.some((row) => (row.vol ?? 0) > 2), "the test exercises a real ladder cap");
+      assert.ok(unbounded.trades.some((row) => Math.abs((row.vol ?? 0) - 2) < 1e-9),
+        "the global stack cap includes a fully filled intrinsic ladder even with Relate disabled");
       assert.ok(Math.abs(bounded.stats.pf - unbounded.stats.pf) < 1e-10,
         "the primary return PF retains the intrinsic tape return");
       const checks = new Map(auditState({ sim: bounded, tapes: [tape], cost: 0 }).checks.map((c) => [c.name, c]));
       assert.equal(checks.get("replay: every trade passes the Real rules with its recorded Block volume and level")?.ok,
         true, `${tag}: audit must apply the same entry-time DCA reservation`);
-      assert.equal(checks.get("relate: modeled volume within Max stack")?.ok, true);
+      assert.equal(checks.get("execution: modeled volume within Max stack")?.ok, true);
       const corrupted = { ...bounded, trades: bounded.trades.map((row, i) => i === 0 ? { ...row, vol: 2.1 } : row) };
       assert.equal(auditState({ sim: corrupted, tapes: [tape], cost: 0 }).checks
-        .find((c) => c.name === "relate: modeled volume within Max stack")?.ok, false,
+        .find((c) => c.name === "execution: modeled volume within Max stack")?.ok, false,
       "the audit must reject a ladder whose complete modeled volume exceeds the ceiling");
     }
   });
@@ -551,7 +562,7 @@ describe("Relate settled-order sizing", () => {
     });
     const tape = makeTape(cfg, "follow", identity.ind, protect, "axis", [identity.sym], rows, [], []);
     const defaults = defaultWalkForward(DEFAULT_SETTINGS);
-    const options = { ...defaults, startT, simH: 30, lastN: 0, validLastN: 0,
+    const options = { ...defaults, seatSet: "pool" as const, startT, simH: 30, lastN: 0, validLastN: 0,
       normalBaseMinPf: 0, preGate: false, robustFrac: 0, symGate: "off" as const, rangeGate: undefined,
       engineSideAccept: { ...defaults.engineSideAccept!, enabled: false },
       toggles: { ...defaults.toggles, normal: false, trailing: false, block: false,
@@ -569,7 +580,7 @@ describe("Relate settled-order sizing", () => {
     const checks = new Map(auditState({ sim: bounded, tapes: [tape], cost: 0 }).checks.map((c) => [c.name, c]));
     assert.equal(checks.get("replay: every trade passes the Real rules with its recorded Block volume and level")?.ok,
       true, "audit must apply the same Axis reservation");
-    assert.equal(checks.get("relate: modeled volume within Max stack")?.ok, true);
+    assert.equal(checks.get("execution: modeled volume within Max stack")?.ok, true);
   });
 
   it("Active recovers from its own skipped closes without adding them to accepted PF, on Micro and Minimal", () => {
@@ -590,7 +601,7 @@ describe("Relate settled-order sizing", () => {
         { tp: 0.01, sl: 0.01, trail: 0, hold: 32, tag }, "normal", [identity.sym], rows, [], []);
       const defaults = defaultWalkForward(DEFAULT_SETTINGS);
       const relate = config({ ratio: 0.2, steps: 5, activeStep: 2, lastN: 250, minTrades: 60, maxSl });
-      const options = { ...defaults, startT, simH: 82, lastN: 0, validLastN: 0,
+      const options = { ...defaults, seatSet: "pool" as const, startT, simH: 82, lastN: 0, validLastN: 0,
         normalBaseMinPf: 0, preGate: false, robustFrac: 0, symGate: "off" as const, rangeGate: undefined,
         engineSideAccept: { ...defaults.engineSideAccept!, enabled: false },
         toggles: { ...defaults.toggles, normal: true, trailing: false, block: false,

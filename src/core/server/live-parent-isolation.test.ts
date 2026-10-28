@@ -123,7 +123,9 @@ for (const side of [1, -1] as const) {
     Object.assign(rt.settings.live, { positionMode: "oneway", laneOrders: false, positionSize: "lanes" });
     const place = ex.order.bind(ex);
     ex.order = async (p) => {
-      if (p.positionSide !== "BOTH") return place(p);
+      // Market opens/closes are mapped to SimExchange's LONG/SHORT balance keys. Native one-way
+      // conditionals must remain BOTH so the control path sees the same position identity as BingX.
+      if (p.positionSide !== "BOTH" || p.type !== "MARKET") return place(p);
       const reduce = p.reduceOnly === "true" || p.closePosition === "true" || p.type !== "MARKET";
       const long = reduce ? p.side === "SELL" : p.side === "BUY";
       return place({ ...p, positionSide: long ? "LONG" : "SHORT" });
@@ -141,10 +143,12 @@ for (const side of [1, -1] as const) {
       assert.equal(ex.log.filter((x) => x.type === "MARKET").length, market);
       rt.paper.positions = [other];
       await step();
-      assert.equal(ex.positions.has(key), false);
-      assert.equal(ex.positions.has(`${SYM}|${side === 1 ? "SHORT" : "LONG"}`), false);
+      assert.equal(ex.positions.has(key), false, "the old parent closes after its stop is cancelled and reconciled");
+      assert.equal(ex.positions.has(`${SYM}|${side === 1 ? "SHORT" : "LONG"}`), false,
+        "the opposite parent cannot net against the existing lane in the close step");
       await step();
-      assert.equal(ex.positions.has(`${SYM}|${side === 1 ? "SHORT" : "LONG"}`), true);
+      assert.equal(ex.positions.has(`${SYM}|${side === 1 ? "SHORT" : "LONG"}`), true,
+        "the opposite parent opens only after the next fresh flat book read");
     } finally { flushLiveKv(rt.db); rt.db.db.close(); }
   });
 }
@@ -220,7 +224,8 @@ for (const side of [1, -1] as const) it(`an incomplete full close on side ${side
     if (partial && p.type === "MARKET" && p.side === exitSide) {
       const qty = Number(p.quantity) / 2;
       await place({ ...p, quantity: qty });
-      return { order: { status: "FILLED", executedQty: qty, avgPrice: 10 } };
+      ex.done.set("partial-close", { status: "CANCELLED", px: 10, qty });
+      return { order: { orderId: "partial-close", status: "CANCELLED", executedQty: qty, avgPrice: 10 } };
     }
     return place(p);
   };

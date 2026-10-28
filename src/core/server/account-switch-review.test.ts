@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, mock, test } from "node:test";
+import { afterEach, beforeEach, mock, test } from "node:test";
 import { fakeRt, lane, SimExchange } from "../test-support.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,7 +9,20 @@ import { cachedClient, flushLiveKv, liveUnitPeek, resetLiveBackoff, stepLive, ty
 import type { CoreRuntime } from "./runtime.server.ts";
 
 process.env.CTS_CORE_LIVE = "1";
-afterEach(() => { mock.timers.reset(); resetLiveBackoff(); });
+let priorBudgetFile: string | undefined;
+let fixtureBudgetDir: string | undefined;
+beforeEach(() => {
+  priorBudgetFile = process.env.CTS_BINGX_RATE_BUDGET_FILE;
+  fixtureBudgetDir = mkdtempSync(join(tmpdir(), "cts-account-switch-budget-"));
+  process.env.CTS_BINGX_RATE_BUDGET_FILE = join(fixtureBudgetDir, "requests.sqlite");
+});
+afterEach(() => {
+  mock.timers.reset(); resetLiveBackoff();
+  if (priorBudgetFile === undefined) delete process.env.CTS_BINGX_RATE_BUDGET_FILE;
+  else process.env.CTS_BINGX_RATE_BUDGET_FILE = priorBudgetFile;
+  if (fixtureBudgetDir) rmSync(fixtureBudgetDir, { recursive: true, force: true });
+  fixtureBudgetDir = undefined;
+});
 
 for (const side of [1, -1] as const) for (const native of [false, true])
 test(`old account ledger cannot act on new same-side foreign position, side ${side}, native ${native}`, async () => {
@@ -72,6 +85,7 @@ for (const state of ["ledger", "lane-state", "exit-cleanup", "orphan-state", "en
     const db = new CoreDb(":memory:", { statePath: join(dir, "state.json") });
     const { rt } = fakeRt(db), ex = new SimExchange();
     try {
+      rt.testOnlyAllowMemoryLive = false;
       if (state === "ledger") db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
         "legacy", "control|S1-USDT|1", "S1-USDT", 1, "O", .5, 17, "ok", "", Date.now());
       if (state === "lane-state") db.kvSet("laneOrders", { legacy: { qty: .5 } });
@@ -322,7 +336,7 @@ for (const invalid of [null, [], {}, "a", 1])
 test("a denied account switch cannot show or size from the old account balance", async () => {
   const db = new CoreDb(":memory:"), { rt } = fakeRt(db), ex = new SimExchange().withEquity(100);
   try {
-    ex.key = "account-a"; Object.assign(rt.settings, { sizing: { mode: "equityPct", pct: 0.1 } });
+    ex.key = "account-a"; rt.settings.sizing = { mode: "equityPct", pct: 0.1 };
     await stepLive(rt as unknown as CoreRuntime, [], rt.generation, ex);
     assert.equal(liveUnitPeek(rt as unknown as CoreRuntime).wallet, 100);
     ex.key = "account-b";
@@ -393,22 +407,30 @@ test("Entries discards a pending execution receipt if the account changes during
 
 test("Entries cached status is not reused when the API key changes inside syncMs", async () => {
   const oldKey = process.env.BINGX_X02_API_KEY, oldSecret = process.env.BINGX_X02_SECRET;
+  const keyA = `entries-cache-a-${Date.now()}`, keyB = `entries-cache-b-${Date.now()}`;
   const db = new CoreDb(":memory:"), { rt } = fakeRt(db);
   try {
-    process.env.BINGX_X02_API_KEY = "entries-cache-a"; process.env.BINGX_X02_SECRET = "test-secret";
+    process.env.BINGX_X02_API_KEY = keyA; process.env.BINGX_X02_SECRET = "test-secret";
     rt.settings.live = { ...rt.settings.live, mode: "entries", syncMs: 60_000, requireReady: false };
+    let balanceReads = 0;
     mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
       const path = new URL(String(input)).pathname;
-      const data = path.endsWith("/trade/openOrders") ? { orders: [] } : path.endsWith("/user/balance")
-        ? { balance: { asset: "USDT", equity: 100, balance: 100, availableMargin: 100 } } : [];
+      let data: unknown = [];
+      if (path.endsWith("/trade/openOrders")) data = { orders: [] };
+      else if (path.endsWith("/swap/v2/user/balance")) {
+        balanceReads++;
+        const balance = process.env.BINGX_X02_API_KEY === keyA ? 100 : 200;
+        data = { balance: { asset: "USDT", equity: balance, balance, availableMargin: balance } };
+      }
       return new Response(JSON.stringify({ code: 0, data }));
     });
     const first = await stepLive(rt as unknown as CoreRuntime, [], rt.generation);
     assert.equal(first.account?.wallet, 100);
-    process.env.BINGX_X02_API_KEY = "entries-cache-b";
+    process.env.BINGX_X02_API_KEY = keyB;
     const second = await stepLive(rt as unknown as CoreRuntime, [], rt.generation);
-    assert.match(second.reason, /ownership account differs/i);
-    assert.equal(second.account, undefined);
+    assert.match(second.reason, /ownership account differs/i, JSON.stringify({ second, balanceReads }));
+    assert.equal(second.account, undefined, "B cannot receive A's cached status or wallet");
+    assert.equal(balanceReads, 1, "the bound-account guard runs before an account-B balance read");
   } finally {
     mock.restoreAll();
     if (oldKey === undefined) delete process.env.BINGX_X02_API_KEY; else process.env.BINGX_X02_API_KEY = oldKey;
@@ -421,6 +443,7 @@ for (const key of ["liveLaneOpen", "laneOrders", "laneQuantityCaps", "positionEx
   test(`unbound legacy ${key}:null is not proof of empty ownership`, async () => {
     const db = new CoreDb(":memory:"), { rt } = fakeRt(db), ex = new SimExchange();
     try {
+      rt.testOnlyAllowMemoryLive = false;
       db.kvSet(key, null);
       rt.paper.positions = [lane("new", "S1-USDT", 1, 17)];
       const status = await stepLive(rt as unknown as CoreRuntime, [], rt.generation, ex);
@@ -432,6 +455,7 @@ for (const key of ["liveLaneOpen", "laneOrders", "laneQuantityCaps", "positionEx
 test("unbound legacy successful open action remains ownership evidence even when held is empty", async () => {
   const db = new CoreDb(":memory:"), { rt } = fakeRt(db), ex = new SimExchange();
   try {
+    rt.testOnlyAllowMemoryLive = false;
     db.kvSet("controlStatus", { held: [], actions: [{ kind: "open", ok: true, sym: "S1-USDT" }] });
     rt.paper.positions = [lane("new", "S1-USDT", 1, 17)];
     const status = await stepLive(rt as unknown as CoreRuntime, [], rt.generation, ex);
@@ -444,6 +468,7 @@ for (const status of [{}, { placed: 1 }, { held: [] }, { actions: [] }, { held: 
   test(`unbound partial control status ${JSON.stringify(status)} holds account binding`, async () => {
     const db = new CoreDb(":memory:"), { rt } = fakeRt(db), ex = new SimExchange();
     try {
+      rt.testOnlyAllowMemoryLive = false;
       db.kvSet("controlStatus", status); rt.paper.positions = [lane("new", "S1-USDT", 1, 17)];
       const result = await stepLive(rt as unknown as CoreRuntime, [], rt.generation, ex);
       assert.match(result.reason, /legacy live ownership has no account fingerprint/i);

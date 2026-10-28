@@ -27,8 +27,9 @@ function fixture(): Bars {
 
 describe("Low-Range research candidate", () => {
   it("gives each method, relation and lookback a distinct identity", () => {
-    assert.equal(LOW_RANGE_IDS.length, 195);
-    assert.equal(new Set(LOW_RANGE_IDS).size, 195);
+    assert.equal(LOW_RANGE_IDS.length, 650);
+    assert.equal(new Set(LOW_RANGE_IDS).size, 650);
+    assert.deepEqual(LOW_RANGE_WINDOWS, [1, 2, 3, 6, 9, 12, 18, 24, 36, 48]);
   });
   it("is causal and incremental output matches full recalculation through a gap", () => {
     const b = fixture();
@@ -68,11 +69,12 @@ describe("Low-Range research candidate", () => {
       const breakReverse = lowRangeState(k, window, method, "breakout-move-reverse");
       const bothFollow = lowRangeState(k, window, method, "trend-breakout-move-follow");
       const bothReverse = lowRangeState(k, window, method, "trend-breakout-move-reverse");
-      for (let i = window; i < b.n; i++) {
+      for (let i = Math.max(window, 2); i < b.n; i++) {
         if (!base[i]) continue;
         let high = -Infinity, low = Infinity;
         for (let j = i - window; j < i; j++) { high = Math.max(high, b.h[j]); low = Math.min(low, b.l[j]); }
-        const delta = Math.log(b.c[i - 1] / b.c[i - window]), threshold = Math.log(high / low) * 0.2;
+        const anchor = b.c[window === 1 ? i - 2 : i - window];
+        const delta = Math.log1p((b.c[i - 1] - anchor) / anchor), threshold = Math.log1p((high - low) / low) * 0.2;
         const move = delta >= threshold ? 1 : delta <= -threshold ? -1 : 0;
         const f = move === base[i] ? base[i] : 0, r = move === -base[i] ? base[i] : 0;
         assert.equal(follow[i], f, `${window}/${method}/${i} follow`);

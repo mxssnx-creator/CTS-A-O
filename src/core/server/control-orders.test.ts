@@ -56,6 +56,8 @@ function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: n
   let positions: Pos[] = [];
   const rt = {
     generation: 1,
+    // This fixture is an explicitly synthetic memory-backed runtime and never reaches a real venue.
+    testOnlyAllowMemoryLive: true,
     db: new CoreDb(":memory:"),
     settings: {
       ...DEFAULT_SETTINGS,
@@ -317,7 +319,8 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
 
     // The same held parent no longer has a target: no take-profit may cut its run.
     rt.paper.positions = [{ ...a, target: undefined }];
-    tick(1_000);
+    tick(6_000);
+    await step();
     await step();
     assert.equal(ex.of("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 0, "removed for the target-less lane");
     assert.equal(statusOf(rt).protect?.noTarget, 1);
@@ -423,6 +426,8 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
         assert.ok(cancelled.order && typeof cancelled.order === "object" && "status" in cancelled.order && "executedQty" in cancelled.order);
         assert.equal(cancelled.order.status, "CANCELLED");
         assert.equal(cancelled.order.executedQty, 0);
+        tick(6_000);
+        await step(); // schedule an exact status read for the order absent from the fresh book
         await step();
         assert.ok(ex.positions.has("S1-USDT|LONG"), "a new parent can open after exact cancellation confirmation");
         assert.equal(ex.log.filter((p) => p.type === "MARKET").length, opens + 1);
@@ -550,9 +555,12 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
     assert.ok(ls[0].stopPrice! > 9.8 && ls[0].stopPrice! < 10, `long stop ${ls[0].stopPrice} inside 9.8`);
     assert.ok(ss[0].stopPrice! < 20.4 && ss[0].stopPrice! > 20, `short stop ${ss[0].stopPrice} inside 20.4`);
     // a lost stop is repaired inside it too
-    ex.orders = ex.orders.filter((o) => !(o.venueSymbol === "S1-USDT" && o.type === "STOP_MARKET"));
+    const oldStop = ex.of("S1-USDT|LONG", "STOP_MARKET")[0];
+    assert.ok(oldStop?.id);
+    assert.equal(await ex.cancel("S1-USDT", oldStop.id), true, "the removed stop has a terminal zero-fill receipt");
     tick(1_000);
     await step();
+    await step(); // consume the exact status receipt scheduled when the absent order was first observed
     const r = ex.of("S1-USDT|LONG", "STOP_MARKET");
     assert.equal(r.length, 1);
     assert.ok(r[0].stopPrice! > 9.8, `repaired stop ${r[0].stopPrice}`);

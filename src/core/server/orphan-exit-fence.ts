@@ -74,3 +74,34 @@ export function orphanCancelledZero(x: OrphanExitFence, reply: unknown): boolean
     .map((v) => typeof v === "number" || (typeof v === "string" && v.trim() !== "") ? Number(v) : NaN);
   return quantities.length > 0 && quantities.every((q) => Number.isFinite(q) && q === 0);
 }
+
+/** A filled order is separate from a zero-fill cancel: release it only after the caller reconciles its parent. */
+export function orphanFilled(x: OrphanExitFence, reply: unknown): { qty: number; px: number } | null {
+  if (!x.oid || !reply || typeof reply !== "object") return null;
+  const raw = (reply as { order?: unknown }).order ?? reply;
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (exactVenueOrderIds(o.orderID, o.orderId) !== x.oid) return null;
+  const matches = (v: unknown, expected: string) => v === undefined || v === null || String(v).toUpperCase() === expected;
+  if (!matches(o.symbol, x.sym.toUpperCase()) || !matches(o.clientOrderId, x.coid.toUpperCase()) ||
+      !matches(o.clientOrderID, x.coid.toUpperCase())) return null;
+  if (x.type !== "UNKNOWN" && !matches(o.type, x.type)) return null;
+  if (x.type === "UNKNOWN" && o.type !== undefined && o.type !== null &&
+      !["STOP_MARKET", "TAKE_PROFIT_MARKET"].includes(String(o.type).toUpperCase())) return null;
+  const ps = String(o.positionSide ?? "").toUpperCase();
+  if (ps && x.positionSide !== "BOTH" && ps !== x.positionSide) return null;
+  if (ps && x.positionSide === "BOTH" && ps !== "BOTH") return null;
+  const side = String(o.side ?? "").toUpperCase();
+  if (side && x.positionSide !== "BOTH" && side !== (x.positionSide === "LONG" ? "SELL" : "BUY")) return null;
+  if (String(o.status ?? "").toUpperCase() !== "FILLED") return null;
+  const quantities = [o.executedQty, o.executedVolume, o.cumExecQty, o.filledQty]
+    .filter((v) => v !== undefined && v !== null)
+    .map((v) => typeof v === "number" || (typeof v === "string" && v.trim() !== "") ? Number(v) : NaN);
+  if (!quantities.length || quantities.some((q) => !Number.isFinite(q) || q <= 0) ||
+      quantities.some((q) => Math.abs(q - quantities[0]) > 1e-10 * Math.max(1, Math.abs(q)))) return null;
+  const prices = [o.avgPrice, o.avgFillPrice, o.fillPrice]
+    .filter((v) => v !== undefined && v !== null)
+    .map((v) => typeof v === "number" || (typeof v === "string" && v.trim() !== "") ? Number(v) : NaN);
+  if (!prices.length || prices.some((p) => !Number.isFinite(p) || p <= 0)) return null;
+  return { qty: quantities[0], px: prices[0] };
+}

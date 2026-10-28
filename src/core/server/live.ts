@@ -1353,12 +1353,19 @@ export function ownLedger(
   rows: ReadonlyArray<{ k: string; kind: string; status: string; qty: number }>,
 ): Map<string, number> {
   const out = new Map<string, number>();
+  const subtract = (q: number, amount: number) => {
+    const left = Math.max(0, q - amount);
+    // Repeated exchange quantities can leave a few IEEE-754 ulps after an exact fill (for example,
+    // 0.294 - 0.2939999999999987). Do not keep a phantom own position alive or leave its exit resting.
+    const ulps = Number.EPSILON * 8 * Math.max(1, q, amount);
+    return left <= ulps ? 0 : left;
+  };
   for (const r of rows) {
     const q = out.get(r.k) ?? 0;
     if ((r.kind === "O" || r.kind === "I") && (r.status === "ok" || r.status === "pending")) out.set(r.k, q + r.qty);
-    else if ((r.kind === "X" || r.kind === "R") && r.status === "ok") out.set(r.k, Math.max(0, q - r.qty));
+    else if ((r.kind === "X" || r.kind === "R") && r.status === "ok") out.set(r.k, subtract(q, r.qty));
     // an outside reduction the desk attributed to its own quantity first (outsideReduction)
-    else if (r.kind === "H" && r.status === "ok") out.set(r.k, Math.max(0, q - r.qty));
+    else if (r.kind === "H" && r.status === "ok") out.set(r.k, subtract(q, r.qty));
     // flat marker: the exchange showed the key flat (a stop-out, a manual close, an open that never filled)
     else if (r.kind === "F") out.set(r.k, 0);
   }
