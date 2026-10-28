@@ -4932,7 +4932,8 @@ export function withProbe<T extends { picks: Selection[]; eligible: number }>(
   t: number,
   o: WalkForwardOptions,
 ): T {
-  if (!o.probe?.perRange && !o.probe?.perCell) return r;
+  // Recent-only execution accepts qualified configs only; demo probes deliberately bypass validation.
+  if (o.gates?.lastNOnly || (!o.probe?.perRange && !o.probe?.perCell)) return r;
   const extra = probePicks(tapes, t, o, new Set(r.picks.map((p) => p.id)));
   return extra.length
     ? { ...r, picks: [...r.picks, ...extra], eligible: r.eligible + extra.length }
@@ -5601,8 +5602,7 @@ export function execDecision(
       return { ok: false, why: "signalSide" };
     // the Signal's own last N on this exact symbol and direction (min PF, DDT and DDR)
     if (
-      !o.probe?.perRange &&
-      !o.probe?.perCell &&
+      (o.gates?.lastNOnly || (!o.probe?.perRange && !o.probe?.perCell)) &&
       (!signalConfigEval(tp, entryT, o, ctx.sym, ctx.side).ok || (!o.gates?.lastNOnly && !signalLastNOk(
         tp,
         ctx.sym,
@@ -5625,16 +5625,14 @@ export function execDecision(
   if (
     !isSignalInd(tp.ind) &&
     o.basePassed &&
-    !o.probe?.perRange &&
-    !o.probe?.perCell &&
+    (o.gates?.lastNOnly || (!o.probe?.perRange && !o.probe?.perCell)) &&
     !configEval(tp, entryT, o).ok
   )
     return { ok: false, why: "configValidation" };
 
   if (
     !isSignalInd(tp.ind) &&
-    !o.probe?.perRange &&
-    !o.probe?.perCell &&
+    (o.gates?.lastNOnly || (!o.probe?.perRange && !o.probe?.perCell)) &&
     !(ctx?.side === 1 || ctx?.side === -1
       ? configDirectionEval(tp, entryT, o, ctx.side).ok
       : configEval(tp, entryT, o).ok)
@@ -5643,7 +5641,7 @@ export function execDecision(
 
   // last-N uses the stricter of its own floor and the stage min PF, so a pass below min PF cannot enter
   // a demo probe seat (a range tape) trades without the last-N and symbol gates: that is what it measures
-  const probed = (!!o.probe?.perRange && !!tp.protect.tag) || !!o.probe?.perCell;
+  const probed = !o.gates?.lastNOnly && ((!!o.probe?.perRange && !!tp.protect.tag) || !!o.probe?.perCell);
   // end stage / Live: the recent closes must clear min PF and the DDT gate again
   // signals: their own last N (never more than the engine's)
   // Per direction: the last N closes of the entry's own side. Full engine validation above also requires the
@@ -6887,7 +6885,7 @@ export function* walkForwardGen(
       const act = signalActivation ? yield* signalActivation.at(t)
         : yield* activeSignalsAtGen(sigIdx, t, o.signalRank, signalHistoryHours(o), o);
       hedgeKeys = new Set();
-      if (o.coord?.enabled && o.coord.hedge) {
+      if (!o.gates?.lastNOnly && o.coord?.enabled && o.coord.hedge) {
         const neg = new Set<number>();
         for (const [h, v] of hourNet) if (v < 0 && h < Math.floor(t / H)) neg.add(h);
         for (const k of yield* hedgeSignalsAtGen(sigIdx, t, neg, signalHistoryHours(o), {
@@ -7284,7 +7282,7 @@ export function* walkForwardGen(
     feed.push(vopen.pop()!);
     if (++drained % 32 === 0) yield -12;
   }
-  const hasHedgeEnd = !!(o.coord?.enabled && o.coord.hedge && sigIdx.length);
+  const hasHedgeEnd = !!(!o.gates?.lastNOnly && o.coord?.enabled && o.coord.hedge && sigIdx.length);
   const hedgeLossHours = new Set(
     [...hourNet].filter(([h, v]) => v < 0 && h < Math.floor(stopT / H)).map(([h]) => h),
   );

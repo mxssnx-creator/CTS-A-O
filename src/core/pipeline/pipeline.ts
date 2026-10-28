@@ -1561,6 +1561,7 @@ export function rangeBaseStats(
   /** grid.baseCells: filled with the key (protectCellKey) of every range cell that passed */
   cellsOut?: string[],
   baseLastN = 0,
+  lastNOnly = false,
 ): Record<string, RangeBaseStat> | undefined {
   if (!protects.length) return undefined;
   // a lane-less indication (a research tool, a legacy preset) trades the base timeframe: the same expression
@@ -1601,7 +1602,12 @@ export function rangeBaseStats(
     }
     const pc = pass ? pass(k, cand) : false;
     const pp = pass ? pass(k, prev) : false;
-    if (pc !== pp ? pc : cand.net > prev.net) out[k] = cand;
+    const recentNet = (s: RangeBaseStat) => {
+      const x = s.baseLast;
+      return x && !x.invalid && x.requested === baseLastN && x.n === baseLastN &&
+        Number.isFinite(x.gp) && Number.isFinite(x.gl) ? x.gp - x.gl : -Infinity;
+    };
+    if (pc !== pp ? pc : (lastNOnly ? recentNet(cand) > recentNet(prev) : cand.net > prev.net)) out[k] = cand;
   }
   return out;
 }
@@ -1914,7 +1920,7 @@ export function baseRuns(
   const completeRangeProtects = typeof completeRangeProtectsOrCells === "boolean" ? [] : completeRangeProtectsOrCells;
   if (typeof completeRangeProtectsOrCells === "boolean") cells = completeRangeProtectsOrCells;
   // two-window Base (gates.baseWindows; null while unset: nothing more is computed)
-  const plan = baseWindowsPlan(gates);
+  const plan = gates?.lastNOnly ? null : baseWindowsPlan(gates);
   const out: ComboRun[] = [];
   // grouped by indication: its indicator series are computed once for every bot, then released before the
   // next indication (a worker holding every indicator of every lane and symbol grew to gigabytes)
@@ -1960,6 +1966,7 @@ export function baseRuns(
               plan ? { plan, ruleTpsOut: ruleTps } : undefined,
               cellKeys,
               gates?.baseLastN ?? 0,
+              gates?.lastNOnly === true,
             );
         if (ranges) r.ranges = ranges;
         if (Object.keys(tps).length) r.rangeTps = tps;
@@ -2004,7 +2011,7 @@ export function* runPipeline(
       ];
   const s1: ComboRun[] = pre ? [...pre.s1] : [];
   // two-window Base (gates.baseWindows; null while unset), exactly as baseRuns (the workers' path)
-  const plan = baseWindowsPlan(s.gates);
+  const plan = s.gates.lastNOnly ? null : baseWindowsPlan(s.gates);
   for (let i = 0; i < combos.length; i++) {
     const c = combos[i];
     const source = isSignalInd(c.ind) ? signalUniverse : u;
@@ -2042,6 +2049,7 @@ export function* runPipeline(
         plan ? { plan, ruleTpsOut: ruleTps } : undefined,
         cellKeys,
         s.gates.baseLastN ?? 0,
+        s.gates.lastNOnly === true,
       );
       if (ranges) r.ranges = ranges;
       if (Object.keys(tps).length) r.rangeTps = tps;

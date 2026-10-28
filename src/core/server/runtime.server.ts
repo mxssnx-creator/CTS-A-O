@@ -5659,7 +5659,7 @@ export class CoreRuntime {
       [...strategyTapes, ...sigTapes], newBuildStats, s.grid.minimalPlus,
       // Strictly before the run, never fitted on its future closes.
       wf.startT ?? Math.floor((wu.nowT - wf.simH * H) / H) * H,
-      heldIds, !!(wf.probe?.perRange || wf.probe?.perCell),
+      heldIds, !wf.gates?.lastNOnly && !!(wf.probe?.perRange || wf.probe?.perCell),
     );
     const tapes = rangePublication.tapes;
     wf.signalRank = sig.enabled ? sig : undefined;

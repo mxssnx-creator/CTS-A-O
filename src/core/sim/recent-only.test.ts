@@ -3,8 +3,9 @@ import { describe, it } from "node:test";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { Protect, Trade } from "../domain/types.ts";
 import { baseLastNOf } from "../pipeline/base-lastn.ts";
-import { baseGateSensitivity, baseRangeCounts, baseRangeWhy, passesBase } from "../pipeline/pipeline.ts";
-import { activeSignalsAt, configContextEval, configDirectionEval, defaultWalkForward, execDecision, makeTape, selectAt, selectDurable, selectFixed, signalConfigEval, signalIndex, signalValidationOk, SignalActivationBook } from "./walkforward.ts";
+import { baseGateSensitivity, baseRangeCounts, baseRangeWhy, cellStats, makeUniverse, passesBase, rangeBaseStats } from "../pipeline/pipeline.ts";
+import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
+import { activeSignalsAt, configContextEval, configDirectionEval, defaultWalkForward, execDecision, makeTape, selectAt, selectDurable, selectFixed, signalConfigEval, signalIndex, signalValidationOk, SignalActivationBook, withProbe } from "./walkforward.ts";
 import { signalSettings } from "../signal-config.ts";
 import { sigActiveKey, type SignalUnitReport } from "../signals.ts";
 
@@ -51,6 +52,24 @@ describe("Last-N-only qualification (not yet enabled in CoreRuntime)", () => {
     assert.equal(why.passed, 1); assert.equal(why.first.net, 1);
     assert.equal("windows" in why.first, false);
     assert.equal(baseGateSensitivity(runs, gates, [])[0].pfPassedMedian, 2);
+  });
+
+  it("selects the representative Base cell by the same recent evidence it validates", () => {
+    const ind = "break-atr@m15", cost = .002;
+    const u = makeUniverse([barsFromCandles("A", 15, syntheticCandles("A", 15, 1500, Date.UTC(2026, 9, 1), 4))]);
+    const a: Protect = { tp: .01, sl: .005, trail: 0, hold: 8, tag: "sh" };
+    const b: Protect = { tp: .02, sl: .02, trail: 0, hold: 4, tag: "sh" };
+    const gates = { minTrades: 9, minPf: 1.1, baseLastN: 12, lastNOnly: true };
+    const x = cellStats(u, "follow", ind, a, cost, null, undefined, 12)!;
+    const y = cellStats(u, "follow", ind, b, cost, null, undefined, 12)!;
+    assert.ok(passesBase(x, gates) && passesBase(y, gates));
+    assert.ok(x.net > y.net, "the old full-history ranking prefers the first cell");
+    assert.ok(x.baseLast!.gp - x.baseLast!.gl < y.baseLast!.gp - y.baseLast!.gl,
+      "the current 12-close ranking prefers the second cell");
+    const run = (recent: boolean) => rangeBaseStats(u, "follow", ind, [a, b], cost, null, undefined, false,
+      (_tag, s) => passesBase(s, gates), 15, undefined, undefined, undefined, 12, recent)!.sh;
+    assert.deepEqual(run(false), x);
+    assert.deepEqual(run(true), y);
   });
 
   it("judges exactly the preceding 12 own closes irrespective of elapsed hours in every selector", () => {
@@ -131,5 +150,20 @@ describe("Last-N-only qualification (not yet enabled in CoreRuntime)", () => {
     assert.equal(configContextEval(good, T, o, "A-USDT", 1).ok, true);
     assert.equal(configContextEval(good, T, o, "A-USDT", -1).ok, false);
     assert.equal(configContextEval(good, T, o, "B-USDT", 1).ok, false);
+  });
+
+  it("never seats or admits an unvalidated probe in Last-N-only mode", () => {
+    const badEngine = tape("rsi-mom-14-20@m15", Array(30).fill(0.01), Array(12).fill(-0.01));
+    const badSignal = tape("sig-ema-cross-s@m15", Array(30).fill(0.01), Array(12).fill(-0.01));
+    const goodSignal = tape("sig-ema-cross-s@m15", [], Array(12).fill(0.01));
+    const base = { ...opts(), signalGuardN: 0, normalBaseMinPf: 0,
+      toggles: { ...DEFAULT_SETTINGS.toggles, normal: true, block: false, blockActive: false } };
+    for (const probe of [{ perRange: 1 }, { perRange: 0, perCell: 1 }]) {
+      const o = { ...base, probe };
+      assert.deepEqual(withProbe({ picks: [], eligible: 0 }, [badEngine], T, o), { picks: [], eligible: 0 });
+      assert.equal(execDecision(badEngine, T, o, { sym: "A-USDT", side: 1 }).ok, false);
+      assert.equal(execDecision(badSignal, T, o, { sym: "A-USDT", side: 1 }).ok, false);
+      assert.equal(execDecision(goodSignal, T, o, { sym: "A-USDT", side: 1 }).ok, true);
+    }
   });
 });

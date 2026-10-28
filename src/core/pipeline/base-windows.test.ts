@@ -221,6 +221,15 @@ describe("two-window Base: the windows of one cell", () => {
 });
 
 describe("two-window Base in the Base stage", () => {
+  it("does not calculate calendar windows in Last-N-only mode", () => {
+    const u = universe();
+    const recent: Gates = { ...gates0, minTrades: 9, baseLastN: 12, lastNOnly: true };
+    const without = base(u, recent);
+    const withLegacyWindows = base(u, { ...recent, baseWindows: { gate: { split: 2 }, report: [{ split: 3 }] } });
+    assert.deepEqual(withLegacyWindows, without);
+    assert.ok(!JSON.stringify(withLegacyWindows).includes('"bw"'));
+    assert.ok(!JSON.stringify(withLegacyWindows).includes('"ruleTps"'));
+  });
   it("unset: Base computes what it did — no window field, the cell stats and the pass tags of the readout's run", () => {
     const u = universe();
     const off = base(u, gates0);
