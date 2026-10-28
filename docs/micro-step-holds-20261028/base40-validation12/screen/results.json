@@ -1,0 +1,1576 @@
+{
+  "schema": "cts-low-range-short-24h-research-v1",
+  "status": "completed",
+  "scope": "unallocated all-window candidate screen with matched 60m Normal TP and trailing reference cells, not production or venue execution",
+  "total": {
+    "cells": 3900,
+    "basePassed": 43,
+    "activeConfigs": 25,
+    "contexts": 86,
+    "validated": 25,
+    "historicalGp": 214.74196626635816,
+    "historicalGl": 74.2568421502216,
+    "forwardCandidates": 782,
+    "forwardGatePassed": 74,
+    "forwardGateRejected": 708,
+    "forwardGateFailures": {
+      "lcb": 85,
+      "net": 327,
+      "closes": 186,
+      "lastN": 48,
+      "green": 44,
+      "pf": 18
+    },
+    "settled": 74,
+    "long": 68,
+    "short": 6,
+    "openAtEnd": 0,
+    "wins": 30,
+    "losses": 44,
+    "flat": 0,
+    "gp": 0.125767125828238,
+    "gl": 0.15612462254676185,
+    "exitReasons": {
+      "sl": {
+        "n": 11,
+        "gp": 0,
+        "gl": 0.09899999999999962,
+        "pf": 0
+      },
+      "time": {
+        "n": 43,
+        "gp": 0.017352037041814917,
+        "gl": 0.05607689849573058,
+        "pf": 0.30943289495826903
+      },
+      "tp": {
+        "n": 18,
+        "gp": 0.108000000000001,
+        "gl": 0,
+        "pf": "no-loss"
+      },
+      "trail": {
+        "n": 2,
+        "gp": 0.0004150887864221031,
+        "gl": 0.001047724051031637,
+        "pf": 0.39618140483974545
+      }
+    },
+    "failureReasons": {
+      "lcb": 12,
+      "closes": 21,
+      "net": 17,
+      "green": 5,
+      "lastN": 5,
+      "pf": 1
+    },
+    "historicalPf": 2.8918812064743493,
+    "validatedPct": 29.069767441860463,
+    "forwardPf": 0.8055559960797902
+  },
+  "byStep": {
+    "3": {
+      "cells": 3900,
+      "basePassed": 43,
+      "activeConfigs": 25,
+      "contexts": 86,
+      "validated": 25,
+      "historicalGp": 214.74196626635816,
+      "historicalGl": 74.2568421502216,
+      "forwardCandidates": 782,
+      "forwardGatePassed": 74,
+      "forwardGateRejected": 708,
+      "forwardGateFailures": {
+        "lcb": 85,
+        "net": 327,
+        "closes": 186,
+        "lastN": 48,
+        "green": 44,
+        "pf": 18
+      },
+      "settled": 74,
+      "long": 68,
+      "short": 6,
+      "openAtEnd": 0,
+      "wins": 30,
+      "losses": 44,
+      "flat": 0,
+      "gp": 0.125767125828238,
+      "gl": 0.15612462254676185,
+      "exitReasons": {
+        "sl": {
+          "n": 11,
+          "gp": 0,
+          "gl": 0.09899999999999962,
+          "pf": 0
+        },
+        "time": {
+          "n": 43,
+          "gp": 0.017352037041814917,
+          "gl": 0.05607689849573058,
+          "pf": 0.30943289495826903
+        },
+        "tp": {
+          "n": 18,
+          "gp": 0.108000000000001,
+          "gl": 0,
+          "pf": "no-loss"
+        },
+        "trail": {
+          "n": 2,
+          "gp": 0.0004150887864221031,
+          "gl": 0.001047724051031637,
+          "pf": 0.39618140483974545
+        }
+      },
+      "failureReasons": {
+        "lcb": 12,
+        "closes": 21,
+        "net": 17,
+        "green": 5,
+        "lastN": 5,
+        "pf": 1
+      },
+      "historicalPf": 2.8918812064743493,
+      "validatedPct": 29.069767441860463,
+      "forwardPf": 0.8055559960797902
+    }
+  },
+  "byStepTf": {
+    "3|1": {
+      "cells": 1300,
+      "basePassed": 2,
+      "activeConfigs": 1,
+      "contexts": 4,
+      "validated": 1,
+      "historicalGp": 5.092546595941873,
+      "historicalGl": 2.0304428766595635,
+      "forwardCandidates": 31,
+      "forwardGatePassed": 1,
+      "forwardGateRejected": 30,
+      "forwardGateFailures": {
+        "lcb": 4,
+        "net": 17,
+        "closes": 9
+      },
+      "settled": 1,
+      "long": 1,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 0,
+      "losses": 1,
+      "flat": 0,
+      "gp": 0,
+      "gl": 0.008999999999999897,
+      "exitReasons": {
+        "sl": {
+          "n": 1,
+          "gp": 0,
+          "gl": 0.008999999999999897,
+          "pf": 0
+        }
+      },
+      "failureReasons": {
+        "lcb": 2,
+        "closes": 1
+      },
+      "historicalPf": 2.5080964623442203,
+      "validatedPct": 25,
+      "forwardPf": 0
+    },
+    "3|5": {
+      "cells": 1300,
+      "basePassed": 29,
+      "activeConfigs": 19,
+      "contexts": 58,
+      "validated": 19,
+      "historicalGp": 177.56458020369897,
+      "historicalGl": 57.98252672079125,
+      "forwardCandidates": 544,
+      "forwardGatePassed": 63,
+      "forwardGateRejected": 481,
+      "forwardGateFailures": {
+        "lastN": 43,
+        "lcb": 58,
+        "net": 192,
+        "closes": 139,
+        "green": 44,
+        "pf": 5
+      },
+      "settled": 63,
+      "long": 61,
+      "short": 2,
+      "openAtEnd": 0,
+      "wins": 25,
+      "losses": 38,
+      "flat": 0,
+      "gp": 0.11080535853396423,
+      "gl": 0.11019004194458487,
+      "exitReasons": {
+        "sl": {
+          "n": 7,
+          "gp": 0,
+          "gl": 0.06299999999999965,
+          "pf": 0
+        },
+        "time": {
+          "n": 38,
+          "gp": 0.014390269747541228,
+          "gl": 0.04614231789355358,
+          "pf": 0.31186707570127625
+        },
+        "tp": {
+          "n": 16,
+          "gp": 0.0960000000000009,
+          "gl": 0,
+          "pf": "no-loss"
+        },
+        "trail": {
+          "n": 2,
+          "gp": 0.0004150887864221031,
+          "gl": 0.001047724051031637,
+          "pf": 0.39618140483974545
+        }
+      },
+      "failureReasons": {
+        "net": 11,
+        "closes": 15,
+        "lcb": 9,
+        "green": 1,
+        "lastN": 3
+      },
+      "historicalPf": 3.062380862750989,
+      "validatedPct": 32.758620689655174,
+      "forwardPf": 1.0055841397146286
+    },
+    "3|15": {
+      "cells": 1300,
+      "basePassed": 12,
+      "activeConfigs": 5,
+      "contexts": 24,
+      "validated": 5,
+      "historicalGp": 32.0848394667173,
+      "historicalGl": 14.243872552770785,
+      "forwardCandidates": 207,
+      "forwardGatePassed": 10,
+      "forwardGateRejected": 197,
+      "forwardGateFailures": {
+        "lcb": 23,
+        "lastN": 5,
+        "closes": 38,
+        "net": 118,
+        "pf": 13
+      },
+      "settled": 10,
+      "long": 6,
+      "short": 4,
+      "openAtEnd": 0,
+      "wins": 5,
+      "losses": 5,
+      "flat": 0,
+      "gp": 0.014961767294273787,
+      "gl": 0.03693458060217706,
+      "exitReasons": {
+        "sl": {
+          "n": 3,
+          "gp": 0,
+          "gl": 0.027000000000000052,
+          "pf": 0
+        },
+        "time": {
+          "n": 5,
+          "gp": 0.002961767294273688,
+          "gl": 0.009934580602177005,
+          "pf": 0.29812705869281125
+        },
+        "tp": {
+          "n": 2,
+          "gp": 0.012000000000000097,
+          "gl": 0,
+          "pf": "no-loss"
+        }
+      },
+      "failureReasons": {
+        "closes": 5,
+        "net": 6,
+        "green": 4,
+        "lcb": 1,
+        "pf": 1,
+        "lastN": 2
+      },
+      "historicalPf": 2.252536264126851,
+      "validatedPct": 20.833333333333332,
+      "forwardPf": 0.4050883223889074
+    }
+  },
+  "byStepRange": {
+    "3|sh": {
+      "cells": 3900,
+      "basePassed": 43,
+      "activeConfigs": 25,
+      "contexts": 86,
+      "validated": 25,
+      "historicalGp": 214.74196626635816,
+      "historicalGl": 74.2568421502216,
+      "forwardCandidates": 782,
+      "forwardGatePassed": 74,
+      "forwardGateRejected": 708,
+      "forwardGateFailures": {
+        "lcb": 85,
+        "net": 327,
+        "closes": 186,
+        "lastN": 48,
+        "green": 44,
+        "pf": 18
+      },
+      "settled": 74,
+      "long": 68,
+      "short": 6,
+      "openAtEnd": 0,
+      "wins": 30,
+      "losses": 44,
+      "flat": 0,
+      "gp": 0.125767125828238,
+      "gl": 0.15612462254676185,
+      "exitReasons": {
+        "sl": {
+          "n": 11,
+          "gp": 0,
+          "gl": 0.09899999999999962,
+          "pf": 0
+        },
+        "time": {
+          "n": 43,
+          "gp": 0.017352037041814917,
+          "gl": 0.05607689849573058,
+          "pf": 0.30943289495826903
+        },
+        "tp": {
+          "n": 18,
+          "gp": 0.108000000000001,
+          "gl": 0,
+          "pf": "no-loss"
+        },
+        "trail": {
+          "n": 2,
+          "gp": 0.0004150887864221031,
+          "gl": 0.001047724051031637,
+          "pf": 0.39618140483974545
+        }
+      },
+      "failureReasons": {
+        "lcb": 12,
+        "closes": 21,
+        "net": 17,
+        "green": 5,
+        "lastN": 5,
+        "pf": 1
+      },
+      "historicalPf": 2.8918812064743493,
+      "validatedPct": 29.069767441860463,
+      "forwardPf": 0.8055559960797902
+    }
+  },
+  "byStepMethod": {
+    "3|edge-turn": {
+      "cells": 780,
+      "basePassed": 9,
+      "activeConfigs": 6,
+      "contexts": 18,
+      "validated": 6,
+      "historicalGp": 37.28285673407084,
+      "historicalGl": 15.688264952730279,
+      "forwardCandidates": 229,
+      "forwardGatePassed": 11,
+      "forwardGateRejected": 218,
+      "forwardGateFailures": {
+        "lastN": 7,
+        "lcb": 24,
+        "net": 126,
+        "closes": 48,
+        "pf": 13
+      },
+      "settled": 11,
+      "long": 7,
+      "short": 4,
+      "openAtEnd": 0,
+      "wins": 5,
+      "losses": 6,
+      "flat": 0,
+      "gp": 0.014961767294273787,
+      "gl": 0.04593458060217695,
+      "exitReasons": {
+        "sl": {
+          "n": 4,
+          "gp": 0,
+          "gl": 0.03599999999999995,
+          "pf": 0
+        },
+        "time": {
+          "n": 5,
+          "gp": 0.002961767294273688,
+          "gl": 0.009934580602177005,
+          "pf": 0.29812705869281125
+        },
+        "tp": {
+          "n": 2,
+          "gp": 0.012000000000000097,
+          "gl": 0,
+          "pf": "no-loss"
+        }
+      },
+      "failureReasons": {
+        "net": 3,
+        "closes": 5,
+        "green": 1,
+        "lcb": 2,
+        "pf": 1
+      },
+      "historicalPf": 2.3764805634279136,
+      "validatedPct": 33.333333333333336,
+      "forwardPf": 0.3257190355965656
+    },
+    "3|failed-break": {
+      "cells": 780,
+      "basePassed": 1,
+      "activeConfigs": 0,
+      "contexts": 2,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 0,
+      "long": 0,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 0,
+      "losses": 0,
+      "flat": 0,
+      "gp": 0,
+      "gl": 0,
+      "exitReasons": {},
+      "failureReasons": {
+        "lcb": 2
+      },
+      "historicalPf": null,
+      "validatedPct": 0,
+      "forwardPf": null
+    },
+    "3|breakout": {
+      "cells": 780,
+      "basePassed": 8,
+      "activeConfigs": 4,
+      "contexts": 16,
+      "validated": 4,
+      "historicalGp": 59.476548643346675,
+      "historicalGl": 18.347203962404986,
+      "forwardCandidates": 132,
+      "forwardGatePassed": 14,
+      "forwardGateRejected": 118,
+      "forwardGateFailures": {
+        "green": 30,
+        "net": 88
+      },
+      "settled": 14,
+      "long": 14,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 2,
+      "losses": 12,
+      "flat": 0,
+      "gp": 0.012000000000000219,
+      "gl": 0.017071602011927887,
+      "exitReasons": {
+        "time": {
+          "n": 12,
+          "gp": 0,
+          "gl": 0.017071602011927887,
+          "pf": 0
+        },
+        "tp": {
+          "n": 2,
+          "gp": 0.012000000000000219,
+          "gl": 0,
+          "pf": "no-loss"
+        }
+      },
+      "failureReasons": {
+        "net": 8,
+        "green": 4
+      },
+      "historicalPf": 3.2417227586949644,
+      "validatedPct": 25,
+      "forwardPf": 0.7029217288228631
+    },
+    "3|mid-reclaim": {
+      "cells": 780,
+      "basePassed": 21,
+      "activeConfigs": 11,
+      "contexts": 42,
+      "validated": 11,
+      "historicalGp": 77.341205065064,
+      "historicalGl": 30.70147076952006,
+      "forwardCandidates": 349,
+      "forwardGatePassed": 41,
+      "forwardGateRejected": 308,
+      "forwardGateFailures": {
+        "lcb": 61,
+        "net": 93,
+        "closes": 94,
+        "lastN": 41,
+        "green": 14,
+        "pf": 5
+      },
+      "settled": 41,
+      "long": 39,
+      "short": 2,
+      "openAtEnd": 0,
+      "wins": 19,
+      "losses": 22,
+      "flat": 0,
+      "gp": 0.07480535853396357,
+      "gl": 0.09140823974199938,
+      "exitReasons": {
+        "sl": {
+          "n": 7,
+          "gp": 0,
+          "gl": 0.06299999999999965,
+          "pf": 0
+        },
+        "time": {
+          "n": 22,
+          "gp": 0.014390269747541228,
+          "gl": 0.02736051569096809,
+          "pf": 0.5259502382950905
+        },
+        "tp": {
+          "n": 10,
+          "gp": 0.06000000000000025,
+          "gl": 0,
+          "pf": "no-loss"
+        },
+        "trail": {
+          "n": 2,
+          "gp": 0.0004150887864221031,
+          "gl": 0.001047724051031637,
+          "pf": 0.39618140483974545
+        }
+      },
+      "failureReasons": {
+        "closes": 16,
+        "net": 2,
+        "lcb": 8,
+        "lastN": 5
+      },
+      "historicalPf": 2.5191368076687435,
+      "validatedPct": 26.19047619047619,
+      "forwardPf": 0.8183655953238176
+    },
+    "3|compression-break": {
+      "cells": 780,
+      "basePassed": 4,
+      "activeConfigs": 4,
+      "contexts": 8,
+      "validated": 4,
+      "historicalGp": 40.64135582387665,
+      "historicalGl": 9.519902465566272,
+      "forwardCandidates": 72,
+      "forwardGatePassed": 8,
+      "forwardGateRejected": 64,
+      "forwardGateFailures": {
+        "closes": 44,
+        "net": 20
+      },
+      "settled": 8,
+      "long": 8,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 4,
+      "losses": 4,
+      "flat": 0,
+      "gp": 0.024000000000000438,
+      "gl": 0.0017102001906576063,
+      "exitReasons": {
+        "tp": {
+          "n": 4,
+          "gp": 0.024000000000000438,
+          "gl": 0,
+          "pf": "no-loss"
+        },
+        "time": {
+          "n": 4,
+          "gp": 0,
+          "gl": 0.0017102001906576063,
+          "pf": 0
+        }
+      },
+      "failureReasons": {
+        "net": 4
+      },
+      "historicalPf": 4.269093719276795,
+      "validatedPct": 50,
+      "forwardPf": 14.033444816055106
+    }
+  },
+  "byStepHour": {
+    "3|1791565200000": {
+      "cells": 0,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 7,
+      "long": 7,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 0,
+      "losses": 7,
+      "flat": 0,
+      "gp": 0,
+      "gl": 0.022331594246479035,
+      "exitReasons": {
+        "sl": {
+          "n": 1,
+          "gp": 0,
+          "gl": 0.008999999999999897,
+          "pf": 0
+        },
+        "time": {
+          "n": 6,
+          "gp": 0,
+          "gl": 0.013331594246479141,
+          "pf": 0
+        }
+      },
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": 0
+    },
+    "3|1791554400000": {
+      "cells": 0,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 5,
+      "long": 5,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 0,
+      "losses": 5,
+      "flat": 0,
+      "gp": 0,
+      "gl": 0.033161094224923665,
+      "exitReasons": {
+        "sl": {
+          "n": 3,
+          "gp": 0,
+          "gl": 0.02699999999999968,
+          "pf": 0
+        },
+        "time": {
+          "n": 2,
+          "gp": 0,
+          "gl": 0.006161094224923988,
+          "pf": 0
+        }
+      },
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": 0
+    },
+    "3|1791558000000": {
+      "cells": 0,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 9,
+      "long": 7,
+      "short": 2,
+      "openAtEnd": 0,
+      "wins": 0,
+      "losses": 9,
+      "flat": 0,
+      "gp": 0,
+      "gl": 0.03840674611150075,
+      "exitReasons": {
+        "time": {
+          "n": 6,
+          "gp": 0,
+          "gl": 0.011406746111500698,
+          "pf": 0
+        },
+        "sl": {
+          "n": 3,
+          "gp": 0,
+          "gl": 0.027000000000000052,
+          "pf": 0
+        }
+      },
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": 0
+    },
+    "3|1791576000000": {
+      "cells": 0,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 6,
+      "long": 6,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 6,
+      "losses": 0,
+      "flat": 0,
+      "gp": 0.036000000000000656,
+      "gl": 0,
+      "exitReasons": {
+        "tp": {
+          "n": 6,
+          "gp": 0.036000000000000656,
+          "gl": 0,
+          "pf": "no-loss"
+        }
+      },
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": "no-loss"
+    },
+    "3|1791583200000": {
+      "cells": 0,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 2,
+      "long": 2,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 0,
+      "losses": 2,
+      "flat": 0,
+      "gp": 0,
+      "gl": 0.000005023830992967413,
+      "exitReasons": {
+        "time": {
+          "n": 2,
+          "gp": 0,
+          "gl": 0.000005023830992967413,
+          "pf": 0
+        }
+      },
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": 0
+    },
+    "3|1791594000000": {
+      "cells": 0,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 8,
+      "long": 8,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 2,
+      "losses": 6,
+      "flat": 0,
+      "gp": 0.004023293924850631,
+      "gl": 0.0025653002859864094,
+      "exitReasons": {
+        "time": {
+          "n": 8,
+          "gp": 0.004023293924850631,
+          "gl": 0.0025653002859864094,
+          "pf": 1.5683520353655571
+        }
+      },
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": 1.5683520353655571
+    },
+    "3|1791590400000": {
+      "cells": 0,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 4,
+      "long": 4,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 4,
+      "losses": 0,
+      "flat": 0,
+      "gp": 0.024000000000000063,
+      "gl": 0,
+      "exitReasons": {
+        "tp": {
+          "n": 4,
+          "gp": 0.024000000000000063,
+          "gl": 0,
+          "pf": "no-loss"
+        }
+      },
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": "no-loss"
+    },
+    "3|1791608400000": {
+      "cells": 0,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 17,
+      "long": 17,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 9,
+      "losses": 8,
+      "flat": 0,
+      "gp": 0.03357560771326558,
+      "gl": 0.029369350064091415,
+      "exitReasons": {
+        "sl": {
+          "n": 2,
+          "gp": 0,
+          "gl": 0.017999999999999957,
+          "pf": 0
+        },
+        "tp": {
+          "n": 4,
+          "gp": 0.024000000000000098,
+          "gl": 0,
+          "pf": "no-loss"
+        },
+        "time": {
+          "n": 10,
+          "gp": 0.009575607713265481,
+          "gl": 0.01032162601305982,
+          "pf": 0.9277227930124178
+        },
+        "trail": {
+          "n": 1,
+          "gp": 0,
+          "gl": 0.001047724051031637,
+          "pf": 0
+        }
+      },
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": 1.1432192963070356
+    },
+    "3|1791561600000": {
+      "cells": 0,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 6,
+      "long": 6,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 5,
+      "losses": 1,
+      "flat": 0,
+      "gp": 0.02441508878642229,
+      "gl": 0.0009113607377611864,
+      "exitReasons": {
+        "tp": {
+          "n": 4,
+          "gp": 0.024000000000000188,
+          "gl": 0,
+          "pf": "no-loss"
+        },
+        "time": {
+          "n": 1,
+          "gp": 0,
+          "gl": 0.0009113607377611864,
+          "pf": 0
+        },
+        "trail": {
+          "n": 1,
+          "gp": 0.0004150887864221031,
+          "gl": 0,
+          "pf": "no-loss"
+        }
+      },
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": 26.789708811024113
+    },
+    "3|1791568800000": {
+      "cells": 0,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 2,
+      "long": 2,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 0,
+      "losses": 2,
+      "flat": 0,
+      "gp": 0,
+      "gl": 0.018000000000000013,
+      "exitReasons": {
+        "sl": {
+          "n": 2,
+          "gp": 0,
+          "gl": 0.018000000000000013,
+          "pf": 0
+        }
+      },
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": 0
+    },
+    "3|1791630000000": {
+      "cells": 0,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 2,
+      "long": 2,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 2,
+      "losses": 0,
+      "flat": 0,
+      "gp": 0.0016517142935322101,
+      "gl": 0,
+      "exitReasons": {
+        "time": {
+          "n": 2,
+          "gp": 0.0016517142935322101,
+          "gl": 0,
+          "pf": "no-loss"
+        }
+      },
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": "no-loss"
+    },
+    "3|1791550800000": {
+      "cells": 0,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 2,
+      "long": 0,
+      "short": 2,
+      "openAtEnd": 0,
+      "wins": 0,
+      "losses": 2,
+      "flat": 0,
+      "gp": 0,
+      "gl": 0.001439572442849374,
+      "exitReasons": {
+        "time": {
+          "n": 2,
+          "gp": 0,
+          "gl": 0.001439572442849374,
+          "pf": 0
+        }
+      },
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": 0
+    },
+    "3|1791612000000": {
+      "cells": 0,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 2,
+      "long": 2,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 0,
+      "losses": 2,
+      "flat": 0,
+      "gp": 0,
+      "gl": 0.009934580602177005,
+      "exitReasons": {
+        "time": {
+          "n": 2,
+          "gp": 0,
+          "gl": 0.009934580602177005,
+          "pf": 0
+        }
+      },
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": 0
+    },
+    "3|1791547200000": {
+      "cells": 0,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 2,
+      "long": 0,
+      "short": 2,
+      "openAtEnd": 0,
+      "wins": 2,
+      "losses": 0,
+      "flat": 0,
+      "gp": 0.0021014211101665963,
+      "gl": 0,
+      "exitReasons": {
+        "time": {
+          "n": 2,
+          "gp": 0.0021014211101665963,
+          "gl": 0,
+          "pf": "no-loss"
+        }
+      },
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": "no-loss"
+    }
+  },
+  "byStrategy": {
+    "normal": {
+      "cells": 1950,
+      "basePassed": 25,
+      "activeConfigs": 15,
+      "contexts": 50,
+      "validated": 15,
+      "historicalGp": 126.20908638016545,
+      "historicalGl": 45.359656265166834,
+      "forwardCandidates": 478,
+      "forwardGatePassed": 45,
+      "forwardGateRejected": 433,
+      "forwardGateFailures": {
+        "lcb": 66,
+        "net": 195,
+        "closes": 112,
+        "lastN": 35,
+        "green": 19,
+        "pf": 6
+      },
+      "settled": 45,
+      "long": 42,
+      "short": 3,
+      "openAtEnd": 0,
+      "wins": 17,
+      "losses": 28,
+      "flat": 0,
+      "gp": 0.07510619161296167,
+      "gl": 0.10735025491611845,
+      "exitReasons": {
+        "sl": {
+          "n": 8,
+          "gp": 0,
+          "gl": 0.07199999999999954,
+          "pf": 0
+        },
+        "time": {
+          "n": 26,
+          "gp": 0.009106191612961004,
+          "gl": 0.03535025491611892,
+          "pf": 0.25759903668498824
+        },
+        "tp": {
+          "n": 11,
+          "gp": 0.06600000000000066,
+          "gl": 0,
+          "pf": "no-loss"
+        }
+      },
+      "failureReasons": {
+        "lcb": 10,
+        "closes": 11,
+        "net": 9,
+        "green": 3,
+        "lastN": 2
+      },
+      "historicalPf": 2.782408350767983,
+      "validatedPct": 30,
+      "forwardPf": 0.6996368259362615
+    },
+    "trailing": {
+      "cells": 1950,
+      "basePassed": 18,
+      "activeConfigs": 10,
+      "contexts": 36,
+      "validated": 10,
+      "historicalGp": 88.53287988619275,
+      "historicalGl": 28.897185885054764,
+      "forwardCandidates": 304,
+      "forwardGatePassed": 29,
+      "forwardGateRejected": 275,
+      "forwardGateFailures": {
+        "green": 25,
+        "net": 132,
+        "closes": 74,
+        "lcb": 19,
+        "lastN": 13,
+        "pf": 12
+      },
+      "settled": 29,
+      "long": 26,
+      "short": 3,
+      "openAtEnd": 0,
+      "wins": 13,
+      "losses": 16,
+      "flat": 0,
+      "gp": 0.050660934215276364,
+      "gl": 0.04877436763064336,
+      "exitReasons": {
+        "time": {
+          "n": 17,
+          "gp": 0.008245845428853912,
+          "gl": 0.020726643579611664,
+          "pf": 0.39783795177358894
+        },
+        "tp": {
+          "n": 7,
+          "gp": 0.04200000000000034,
+          "gl": 0,
+          "pf": "no-loss"
+        },
+        "sl": {
+          "n": 3,
+          "gp": 0,
+          "gl": 0.027000000000000073,
+          "pf": 0
+        },
+        "trail": {
+          "n": 2,
+          "gp": 0.0004150887864221031,
+          "gl": 0.001047724051031637,
+          "pf": 0.39618140483974545
+        }
+      },
+      "failureReasons": {
+        "closes": 10,
+        "net": 8,
+        "lcb": 2,
+        "lastN": 3,
+        "green": 2,
+        "pf": 1
+      },
+      "historicalPf": 3.063719776671429,
+      "validatedPct": 27.77777777777778,
+      "forwardPf": 1.0386794678491686
+    }
+  },
+  "byStrategyTf": {
+    "normal|1": {
+      "cells": 650,
+      "basePassed": 2,
+      "activeConfigs": 1,
+      "contexts": 4,
+      "validated": 1,
+      "historicalGp": 5.092546595941873,
+      "historicalGl": 2.0304428766595635,
+      "forwardCandidates": 31,
+      "forwardGatePassed": 1,
+      "forwardGateRejected": 30,
+      "forwardGateFailures": {
+        "lcb": 4,
+        "net": 17,
+        "closes": 9
+      },
+      "settled": 1,
+      "long": 1,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 0,
+      "losses": 1,
+      "flat": 0,
+      "gp": 0,
+      "gl": 0.008999999999999897,
+      "exitReasons": {
+        "sl": {
+          "n": 1,
+          "gp": 0,
+          "gl": 0.008999999999999897,
+          "pf": 0
+        }
+      },
+      "failureReasons": {
+        "lcb": 2,
+        "closes": 1
+      },
+      "historicalPf": 2.5080964623442203,
+      "validatedPct": 25,
+      "forwardPf": 0
+    },
+    "trailing|1": {
+      "cells": 650,
+      "basePassed": 0,
+      "activeConfigs": 0,
+      "contexts": 0,
+      "validated": 0,
+      "historicalGp": 0,
+      "historicalGl": 0,
+      "forwardCandidates": 0,
+      "forwardGatePassed": 0,
+      "forwardGateRejected": 0,
+      "forwardGateFailures": {},
+      "settled": 0,
+      "long": 0,
+      "short": 0,
+      "openAtEnd": 0,
+      "wins": 0,
+      "losses": 0,
+      "flat": 0,
+      "gp": 0,
+      "gl": 0,
+      "exitReasons": {},
+      "failureReasons": {},
+      "historicalPf": null,
+      "validatedPct": null,
+      "forwardPf": null
+    },
+    "normal|5": {
+      "cells": 650,
+      "basePassed": 17,
+      "activeConfigs": 11,
+      "contexts": 34,
+      "validated": 11,
+      "historicalGp": 101.02620529451369,
+      "historicalGl": 33.80447831238746,
+      "forwardCandidates": 328,
+      "forwardGatePassed": 36,
+      "forwardGateRejected": 292,
+      "forwardGateFailures": {
+        "lastN": 30,
+        "lcb": 39,
+        "net": 119,
+        "closes": 80,
+        "green": 19,
+        "pf": 5
+      },
+      "settled": 36,
+      "long": 35,
+      "short": 1,
+      "openAtEnd": 0,
+      "wins": 13,
+      "losses": 23,
+      "flat": 0,
+      "gp": 0.061195134873771186,
+      "gl": 0.07041567431394158,
+      "exitReasons": {
+        "sl": {
+          "n": 5,
+          "gp": 0,
+          "gl": 0.044999999999999665,
+          "pf": 0
+        },
+        "time": {
+          "n": 22,
+          "gp": 0.007195134873770614,
+          "gl": 0.02541567431394192,
+          "pf": 0.2830983268393426
+        },
+        "tp": {
+          "n": 9,
+          "gp": 0.05400000000000056,
+          "gl": 0,
+          "pf": "no-loss"
+        }
+      },
+      "failureReasons": {
+        "net": 6,
+        "closes": 8,
+        "lcb": 7,
+        "green": 1,
+        "lastN": 1
+      },
+      "historicalPf": 2.9885450194181287,
+      "validatedPct": 32.35294117647059,
+      "forwardPf": 0.869055582723507
+    },
+    "trailing|5": {
+      "cells": 650,
+      "basePassed": 12,
+      "activeConfigs": 8,
+      "contexts": 24,
+      "validated": 8,
+      "historicalGp": 76.53837490918534,
+      "historicalGl": 24.17804840840379,
+      "forwardCandidates": 216,
+      "forwardGatePassed": 27,
+      "forwardGateRejected": 189,
+      "forwardGateFailures": {
+        "green": 25,
+        "net": 73,
+        "closes": 59,
+        "lcb": 19,
+        "lastN": 13
+      },
+      "settled": 27,
+      "long": 26,
+      "short": 1,
+      "openAtEnd": 0,
+      "wins": 12,
+      "losses": 15,
+      "flat": 0,
+      "gp": 0.04961022366019307,
+      "gl": 0.03977436763064328,
+      "exitReasons": {
+        "time": {
+          "n": 16,
+          "gp": 0.007195134873770614,
+          "gl": 0.020726643579611664,
+          "pf": 0.34714423713293874
+        },
+        "tp": {
+          "n": 7,
+          "gp": 0.04200000000000034,
+          "gl": 0,
+          "pf": "no-loss"
+        },
+        "sl": {
+          "n": 2,
+          "gp": 0,
+          "gl": 0.017999999999999985,
+          "pf": 0
+        },
+        "trail": {
+          "n": 2,
+          "gp": 0.0004150887864221031,
+          "gl": 0.001047724051031637,
+          "pf": 0.39618140483974545
+        }
+      },
+      "failureReasons": {
+        "closes": 7,
+        "net": 5,
+        "lcb": 2,
+        "lastN": 2
+      },
+      "historicalPf": 3.165614263663323,
+      "validatedPct": 33.333333333333336,
+      "forwardPf": 1.2472913239221928
+    },
+    "normal|15": {
+      "cells": 650,
+      "basePassed": 6,
+      "activeConfigs": 3,
+      "contexts": 12,
+      "validated": 3,
+      "historicalGp": 20.090334489709882,
+      "historicalGl": 9.524735076119812,
+      "forwardCandidates": 119,
+      "forwardGatePassed": 8,
+      "forwardGateRejected": 111,
+      "forwardGateFailures": {
+        "lcb": 23,
+        "lastN": 5,
+        "closes": 23,
+        "net": 59,
+        "pf": 1
+      },
+      "settled": 8,
+      "long": 6,
+      "short": 2,
+      "openAtEnd": 0,
+      "wins": 4,
+      "losses": 4,
+      "flat": 0,
+      "gp": 0.013911056739190488,
+      "gl": 0.027934580602176975,
+      "exitReasons": {
+        "sl": {
+          "n": 2,
+          "gp": 0,
+          "gl": 0.017999999999999967,
+          "pf": 0
+        },
+        "time": {
+          "n": 4,
+          "gp": 0.0019110567391903898,
+          "gl": 0.009934580602177005,
+          "pf": 0.19236410833202283
+        },
+        "tp": {
+          "n": 2,
+          "gp": 0.012000000000000097,
+          "gl": 0,
+          "pf": "no-loss"
+        }
+      },
+      "failureReasons": {
+        "closes": 2,
+        "net": 3,
+        "green": 2,
+        "lcb": 1,
+        "lastN": 1
+      },
+      "historicalPf": 2.1092801352638024,
+      "validatedPct": 25,
+      "forwardPf": 0.4979869552115768
+    },
+    "trailing|15": {
+      "cells": 650,
+      "basePassed": 6,
+      "activeConfigs": 2,
+      "contexts": 12,
+      "validated": 2,
+      "historicalGp": 11.994504977007416,
+      "historicalGl": 4.719137476650973,
+      "forwardCandidates": 88,
+      "forwardGatePassed": 2,
+      "forwardGateRejected": 86,
+      "forwardGateFailures": {
+        "pf": 12,
+        "net": 59,
+        "closes": 15
+      },
+      "settled": 2,
+      "long": 0,
+      "short": 2,
+      "openAtEnd": 0,
+      "wins": 1,
+      "losses": 1,
+      "flat": 0,
+      "gp": 0.0010507105550832982,
+      "gl": 0.009000000000000086,
+      "exitReasons": {
+        "time": {
+          "n": 1,
+          "gp": 0.0010507105550832982,
+          "gl": 0,
+          "pf": "no-loss"
+        },
+        "sl": {
+          "n": 1,
+          "gp": 0,
+          "gl": 0.009000000000000086,
+          "pf": 0
+        }
+      },
+      "failureReasons": {
+        "net": 3,
+        "green": 2,
+        "pf": 1,
+        "closes": 3,
+        "lastN": 1
+      },
+      "historicalPf": 2.5416731418300507,
+      "validatedPct": 16.666666666666668,
+      "forwardPf": 0.11674561723147646
+    }
+  },
+  "elapsedMs": 27169.075781,
+  "peakRss": 346943488,
+  "peakCgroup": 2234494976,
+  "ordersSha256": "a6d25c6c671aad746a5577fc58f8c6bb9c627e3a3accfea3b661af6541bb720a",
+  "ledgerSha256": "d4f93b3baf22c5ed0fef891669e71f21a44c050d6350bb497668db21dc763381"
+}

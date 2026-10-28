@@ -2331,11 +2331,10 @@ export function* buildTapesGen(
                   !exitConfig && !p0.trailOnly && !!tps && !tps.includes(p0.tp)
                   ? "baseTarget"
                   : !exitConfig && !!p0.tag && !!cellSet &&
-                    (isLowRangeInd(c.ind)
-                      // Low-Range proof is for the effective lane cell, including feedback. A different
-                      // already-measured cell may prove that exact result; the source cell cannot.
-                      ? !cellSet.has(protectCellKey(p))
-                      : cellTags!.has(p0.tag) && !cellSet.has(protectCellKey(p0)))
+                    (isLowRangeInd(c.ind) || cellTags!.has(p0.tag)) &&
+                    // Proofs identify the actual lane cell, including feedback. A source cell cannot prove
+                    // a different hold or adjusted protection unless that exact cell also passed Base.
+                    !cellSet.has(protectCellKey(p))
                     ? "baseCell"
                     : !exitConfig && !p0.trailOnly && !!p0.tag && !!fitted && !fitted.has(`${p0.tag}|${p0.tp}`)
                       ? "rangeFit"

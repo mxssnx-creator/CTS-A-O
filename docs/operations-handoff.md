@@ -1,3 +1,33 @@
+## 2026-10-28 — Micro hold and exact Base proof checkpoint
+
+A 20-symbol retrospective Micro hold comparison covered 429 scoped Follow
+indication/lane pairs, steps 1–4, 1/5/15m lanes and Normal, capped Trailing,
+and trailing-only. At a 15m cap, 1/24 direction contexts (4.17%) passed
+historical validation at PF 3.3132, followed by four modeled closes at PF
+0.4104. At 20m, 17/52 (32.69%) passed at PF 3.3395, followed by 140 closes at
+PF 0.4613. At 30m, 22/78 (28.21%) passed at PF 3.6716, followed by 176 closes
+at PF 0.5385. At 50m, 27/130 (20.77%) passed at PF 3.8619, followed by 134
+closes at PF 0.4408. These are overlapping, unallocated modeled results using
+Validation Last-N 15, not venue fills or a fresh holdout. None supports a
+profitable default. Positions opened/closed/held were 4/4/0, 20/20/0, 26/26/0
+and 29/29/0 respectively; modeled order counts are 4/4/0, 140/140/0,
+176/176/0 and 134/134/0.
+
+Exact Base-cell proofs now retain minute caps, use the actual lane hold in
+both Base and tape admission, and include independently enabled trailing-only
+cells for legacy range sources. Feedback needs its own exact proof and held
+unqualified positions stay protected without new admission. Recompute old Base
+proofs from the original data on upgrade; old reference-bar keys or cells
+measured under a lost minute cap must not be silently translated into proof.
+The Base 40 / Validation 12 research screen passed 43/3,900 Base cells and
+25/86 (29.07%) historical directions at PF 2.8919; its separate forward
+walk-forward modeled 37 closes at PF 0.9638. This Base 40 gate is not yet a
+production setting. The requested production Base 40 / Validation 12 defaults,
+per-step hold controls and per-config Auto Mode still require implementation and
+validation. No live account, deployment or settings changed. Full details,
+source/feed seals, per-config rows and close ledgers are in
+`docs/micro-step-holds-20261028/README.md`.
+
 ## 2026-10-28 — Base 60 / Validation 8, 10, 12 and selector integrity
 
 On the 20-symbol retrospective Low-Range Short 1m/5m/15m cohort, Base passed
