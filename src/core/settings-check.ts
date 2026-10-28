@@ -98,6 +98,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       num(s.gates.baseLastN, 0, 500, "Base last-N (closes)");
       int(s.gates.baseLastN, "Base last-N");
     }
+    if (s.gates.lastNOnly !== undefined && typeof s.gates.lastNOnly !== "boolean")
+      throw new Error("Last-N-only validation (gates.lastNOnly): true or false");
     if (s.gates.warmup !== undefined && typeof s.gates.warmup !== "boolean")
       throw new Error("sample warm-up (gates.warmup): true or false");
     if (s.gates.minGreen !== undefined)

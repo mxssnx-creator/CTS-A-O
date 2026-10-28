@@ -357,7 +357,8 @@ export interface SignalUnitReport {
   n: number;
   net: number;
   dd: number;
-  okShare: number;
+  /** null when time-block ranking is not part of the active policy. */
+  okShare: number | null;
   recentN?: number;
   recentNet?: number;
 }

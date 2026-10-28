@@ -1,3 +1,26 @@
+## 2026-10-28 — Last-N-only prototype, not enabled
+
+An optional `gates.lastNOnly` prototype evaluates completed Base and exact
+config/direction/Signal-context closes by their requested Last-N sample rather
+than time-window performance. It requires at least nine and the complete
+configured sample, keeps symbol/direction isolation, uses strictly prior closes,
+and aligns Base diagnostic PF with the qualifying sample. Its simulated/native
+entry coordination paths bypass the hourly loss guard, selected feedback
+windows and coordination cooldown while this explicit flag is set. Other
+time-based gates remain unaudited. The flag remains unset by default and is not migrated
+into runtime settings. This is a checkpoint, not a release or PF claim.
+
+Before enabling: audit Historic Exit fitting and holdout, Signal history,
+retention and revalidation, live promotion and each remaining hour-based gate;
+apply backed-up Base-40/Validation-12 settings including saved overrides and
+all strategy paths; test real stage and order transitions, held protection,
+performance and reporting. Base currently proves representative pair/range
+cells, not necessarily every independent ladder or Signal config. Insufficient
+history must remain insufficient. Venue fills and sustained PF are unmeasured.
+
+Separately, CTS-G PR #110 aligned general entry signals and guarded batch
+errors; that is a different repository and does not change CTS-A-O execution.
+
 ## 2026-10-28 — Bybit cooldown and shared-budget hardening
 
 Bybit rate-limit responses now publish a unique atomic cooldown marker in
