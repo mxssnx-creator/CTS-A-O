@@ -1,3 +1,12 @@
+## 2026-10-28 — Processed-set restart evidence hardening
+
+The stage-book prototype previously restored an Active order even when a saved Validation or Real PF or sample
+count was malformed. Its saved open entries now include their entry-time Last-N policy and floor, and restore
+checks both verdicts and the resulting stage. Version 2 snapshots reject version 1 because those old snapshots
+lack the policy needed to prove admission. This code is not yet wired to production; any future integration must
+provide protected recovery of actual legacy held positions and pending orders without manufacturing Active proof.
+No forward profitability or venue execution claim follows from these tests.
+
 ## 2026-10-28 — Processed-set same-time boundary correction
 
 Entries now assess Validation and Real using closes strictly earlier than their decision timestamp, even if a

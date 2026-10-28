@@ -154,3 +154,32 @@ test("Validation and Real both retain strictly prior windows across a larger sam
   assert.equal(later.validation.state, "failed");
   assert.equal(later.stage, "postBase");
 });
+
+for (const broken of ["validation-pf", "validation-count", "real-pf", "real-count", "missing-policy", "changed-policy", "real-stage"] as const) {
+  test(`restart rejects an Active order whose ${broken} evidence is malformed`, () => {
+    const book = new ProcessedSetBook("paper", 12);
+    for (let n = 0; n < 18; n++) enterAndClose(book, identity, 2 * n, .02);
+    book.acceptPostBase(identity, "held", 36, policy);
+    const snap = book.snapshot(), opened = snap.open[0];
+    if (broken === "validation-pf") opened.validation.pf = null;
+    if (broken === "validation-count") opened.validation.n = 0;
+    if (broken === "real-pf") opened.real!.pf = 0;
+    if (broken === "real-count") opened.real!.n = 0;
+    if (broken === "missing-policy") Reflect.deleteProperty(opened, "policy");
+    if (broken === "changed-policy") opened.policy.validationN = 12;
+    if (broken === "real-stage") opened.real = { state: "insufficient", n: 8, pf: null };
+    assert.throws(() => ProcessedSetBook.restore(snap), /invalid processed open/);
+  });
+}
+
+test("restart retains the entry policy and refuses legacy snapshots without it", () => {
+  const book = new ProcessedSetBook("paper", 12), p = { ...policy };
+  const admission = book.acceptPostBase(identity, "cold", 0, p);
+  p.validationN = 12; admission.policy.realN = 12;
+  const snapshot = book.snapshot();
+  assert.deepEqual(snapshot.open[0].policy, policy, "caller changes cannot rewrite the entry-time policy");
+  assert.equal(ProcessedSetBook.restore(snapshot).snapshot().open[0].stage, "postBase");
+  const legacy = structuredClone(snapshot) as unknown as { version: number };
+  legacy.version = 1;
+  assert.throws(() => ProcessedSetBook.restore(legacy as never), /invalid processed-set snapshot/);
+});
