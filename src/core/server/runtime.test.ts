@@ -1,6 +1,6 @@
 // Runtime coordination tests on the synthetic feed (no network): races between cycles, settings, stop,
 // resync and the watchdog; plus a responsiveness bound on the event loop during a full compute.
-import { allCombos, microLaneFloor } from "../pipeline/pipeline.ts";
+import { allCombos, configId, microLaneFloor } from "../pipeline/pipeline.ts";
 import { afterEach, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { baseFocus, CoreRuntime as BaseRuntime, sanitizeWf } from "./runtime.server.ts";
@@ -241,7 +241,7 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.ok(tfs.size >= 1);
   });
 
-  it("retires paper positions from before the timeframe lanes and gives every lane its Main share", async () => {
+  it("retains lane-less legacy positions without inventing tapes, while each lane gets its Main share", async () => {
     const rt = mk();
     rt.paper.positions = [
       {
@@ -262,11 +262,11 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running");
     rt.stop();
-    assert.ok(rt.paper.positions.every((p) => laneOf(p.cfg.split("|")[1]).tf !== null));
+    assert.ok(rt.paper.positions.some((p) => p.cfg === "follow|rsi-14|tp2.6|sl3.9|tr0|h32"));
     assert.ok(
       rt.db
         .all<{ msg: string }>("SELECT msg FROM events")
-        .some((e) => /retired 1 paper position/.test(e.msg)),
+        .some((e) => /1 legacy position\(s\) retained/.test(e.msg)),
     );
     assert.ok(
       rt.tapes.every((t) => laneOf(t.ind).tf !== null),
@@ -286,6 +286,54 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     );
     const tapeLanes = new Set(rt.tapes.map((t) => laneLabel(t.ind)));
     for (const l of passedLanes) assert.ok(tapeLanes.has(l), `lane ${l} reaches Main`);
+  });
+
+  for (const ind of ["ema-9-21@m15", "sig-ema-cross-s@m15"]) {
+    it(`disabled Historic Exit retains only the held ${ind} protection`, async () => {
+      const rt = mk();
+      rt.updateSettings({ signals: { ...rt.settings.signals, enabled: false } });
+      const cfg = configId("exit", ind, { tp: .02, sl: .02, trail: 0, hold: 8,
+        exitType: "historic", exitSide: 1, exitSet: "static-sl" });
+      rt.paper.positions = [{ cfg, sym: "SYN0-USDT", side: 1,
+        entryT: Math.floor(Date.now() / 3_600_000) * 3_600_000 - 3_600_000,
+        entryI: 0, entry: 100, stop: 98, target: 102, peak: 100, trailOn: false, mtm: 0, vol: 1 }];
+      rt.start();
+      await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+      rt.stop();
+      assert.equal(rt.status.exitStrategies?.enabled, false);
+      assert.equal(rt.status.exitStrategies?.pairs, 0);
+      const exits = rt.tapes.filter((t) => t.kind === "exit");
+      assert.equal(exits.length, 1, "no fresh Exit siblings are built");
+      assert.equal(exits[0].id, cfg);
+      assert.equal(exits[0].heldOnly, true);
+      assert.ok(!rt.paper.selected.includes(cfg), "the held-only Exit cannot gain a new seat");
+      assert.ok(rt.paper.positions.some((p) => p.cfg === cfg), "missing exact close retains the held position");
+    });
+  }
+
+  it("an old held Signal Exit is not rediscovered for new entries when Signals are disabled", async () => {
+    const rt = mk();
+    rt.updateSettings({ signals: { ...rt.settings.signals, enabled: false },
+      exitStrategy: { ...rt.settings.exitStrategy, enabled: true, includeTactics: false,
+        includeRelations: false, includeMicro: false },
+      gates: { ...rt.settings.gates, minTrades: 500 } });
+    const ind = "sig-ema-cross-s@m15";
+    const cfg = configId("exit", ind, { tp: .02, sl: .02, trail: 0, hold: 8,
+      exitType: "historic", exitSide: 1, exitSet: "static-sl" });
+    rt.paper.positions = [{ cfg, sym: "SYN0-USDT", side: 1,
+      entryT: Math.floor(Date.now() / 3_600_000) * 3_600_000 - 3_600_000,
+      entryI: 0, entry: 100, stop: 98, target: 102, peak: 100, trailOn: false, mtm: 0, vol: 1 }];
+    rt.start();
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+    rt.stop();
+    assert.ok((rt.status.exitStrategies?.pairs ?? 0) > 0, "ordinary configured Exit sources remain available");
+    assert.ok(!rt.pipeline?.s1.some((run) => run.bot === "exit" && isSignalInd(run.ind)),
+      "held recovery cannot discover a Signal Exit source as a new Base candidate");
+    const exits = rt.tapes.filter((t) => t.kind === "exit");
+    assert.equal(exits.length, 1);
+    assert.equal(exits[0].id, cfg);
+    assert.equal(exits[0].heldOnly, true);
+    assert.ok(!rt.paper.selected.includes(cfg));
   });
 
   it("shutdown persists settings, stats and runs; a new process restores them", async () => {

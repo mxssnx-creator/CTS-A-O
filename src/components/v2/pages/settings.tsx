@@ -2848,7 +2848,7 @@ export function SettingsPage() {
         </Panel>
         <Panel
           title="Independent Historic Exit"
-          sub="Bot-free Base sources · each family, side, timeframe lane, and relation gets its own prehistory fit and holdout gate"
+          sub="Separate, opt-in category · each configured source lane and side has its own Base, prehistory fit and holdout gate"
         >
           {(() => {
             const exits = s.exitStrategy ?? DEFAULT_SETTINGS.exitStrategy;
@@ -2863,7 +2863,7 @@ export function SettingsPage() {
               <div className="v2-grid v2-cols-3">
                 <Field
                   label="Historic Exit"
-                  hint="builds independently qualified Exit configs for ordinary sources and Signals, each with its own history and gates; does not inherit Bot execution triggers"
+                  hint="builds independently qualified Exit configs only for configured source lanes; turning this off retains protection for held Exit positions"
                 >
                   <Switch
                     label="Build independent Exit"
@@ -2873,7 +2873,7 @@ export function SettingsPage() {
                 </Field>
                 <Field
                   label="Exit timeframes"
-                  hint="independent lanes; combined lanes confirm with completed higher bars"
+                  hint="allowed configured source lanes; combined lanes confirm with completed higher bars"
                 >
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     {[1, 5, 15, 30].map((tf) => (
@@ -2889,7 +2889,7 @@ export function SettingsPage() {
                 </Field>
                 <Field
                   label="Independent tactics and relations"
-                  hint="includes standalone Tactic sources, Relate subsets/profiles, and Break relation subsets"
+                  hint="allow configured Tactic, Micro and relation sources and combined lanes within this category"
                 >
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <Switch

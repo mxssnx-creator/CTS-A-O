@@ -6,10 +6,8 @@ import type { ComboRun } from "./pipeline/pipeline.ts";
 import type { ExitStrategySettings } from "./config.ts";
 import { entrySignal } from "./bots/bots.ts";
 import {
-  INDICATIONS,
-  higherFactors,
+  INDICATION_BY_ID,
   isSignalInd,
-  laneInd,
   laneOf,
 } from "./indications/registry.ts";
 import { isMicroCalculationInd as isMicroFamilyInd, microAnchorTf } from "./indications/micro-family.ts";
@@ -122,9 +120,9 @@ const rounded = (x: number) => +x.toFixed(4);
 const sideKey = (side: 1 | -1) => (side === 1 ? "long" : "short");
 
 /**
- * Build bot-free Exit relations. Focused indications are deduplicated across Bots, then expanded onto the Exit
- * timeframe lanes. Tactic and Relate indications are added as their own source families, including every relation
- * subset and activity profile even when no Bot is focused on them.
+ * Build bot-free Exit relations only for configured, explicit entry-source lanes. A source from one timeframe or
+ * family must not silently create a different entry source. Each resulting Exit pair still passes its own Base and
+ * holdout gates; appearing here is not evidence that a source is effective.
  */
 export function exitStrategyPairs(
   runs: Iterable<Pick<ComboRun, "ind">>,
@@ -135,54 +133,21 @@ export function exitStrategyPairs(
   >,
   disabledKinds: readonly string[] = [],
 ): string[] {
-  const bases = new Set<string>();
-  const disabled = new Set(disabledKinds);
-  const addBase = (id: string) => {
-    const base = laneOf(id).base;
-    // Low-Range currently owns only its exact Short cells; Historic Exit uses different fitted economics.
-    if (!base || base === "none" || isSignalInd(base) || isLowRangeInd(base)) return;
-    const kind = INDICATIONS.find((x) => x.id === base)?.kind;
-    if (kind && disabled.has(kind)) return;
-    bases.add(base);
-  };
-  for (const run of runs) addBase(run.ind);
-  for (const spec of INDICATIONS) {
-    if (spec.kind === "micro" && settings?.includeMicro === true) addBase(spec.id);
-    if (spec.kind === "tactic" && settings?.includeTactics !== false) addBase(spec.id);
-    if ((spec.kind === "relate" || isBreakRelInd(spec.id)) && settings?.includeRelations !== false)
-      addBase(spec.id);
-  }
-
-  const available = [...new Set(u.bars.map((b) => b.tfMin))].sort((a, b) => a - b);
-  const tfs = (settings?.timeframes?.length ? settings.timeframes : [1, 5, 15])
-    .filter((tf) => available.includes(tf))
-    .sort((a, b) => a - b);
   const pairs = new Set<string>();
-  const addLane = (base: string, tf: number, combined = false) => {
-    const ind = laneInd(base, tf, combined);
-    if (seriesOf(u, ind).length) pairs.add(`${EXIT_BOT}|${ind}`);
-  };
-  for (const base of [...bases].sort()) {
-    if (isMicroFamilyInd(base)) {
-      const tf = microAnchorTf(base);
-      if (tf !== null && tfs.includes(tf)) addLane(base, tf);
-      continue;
-    }
-    if (isRelateInd(base)) {
-      const tf = relateAnchorTf(base);
-      if (tf !== null && tfs.includes(tf)) addLane(base, tf);
-      continue;
-    }
-    if (isBreakRelInd(base)) {
-      const tf = breakAnchorTf(base);
-      if (tf !== null && tfs.includes(tf)) addLane(base, tf);
-      continue;
-    }
-    for (const tf of tfs) {
-      addLane(base, tf);
-      if (settings?.includeCombined !== false && higherFactors(tf, tfs).length)
-        addLane(base, tf, true);
-    }
+  const disabled = new Set(disabledKinds);
+  const tfs = settings?.timeframes?.length ? settings.timeframes : [1, 5, 15];
+  for (const { ind } of runs) {
+    const { base, tf, combined } = laneOf(ind);
+    // A legacy source with no lane cannot establish an exact timeframe; never invent one for a fresh Exit.
+    if (!base || base === "none" || tf === null || !tfs.includes(tf) ||
+      isSignalInd(base) || isLowRangeInd(base) || !seriesOf(u, ind).length) continue;
+    const kind = INDICATION_BY_ID.get(base)?.kind;
+    if (!kind || disabled.has(kind) || (combined && settings?.includeCombined === false)) continue;
+    if (isMicroFamilyInd(base) && (settings?.includeMicro !== true || combined || microAnchorTf(base) !== tf)) continue;
+    if (kind === "tactic" && settings?.includeTactics === false) continue;
+    if ((isRelateInd(base) || isBreakRelInd(base)) &&
+      (settings?.includeRelations === false || combined || (relateAnchorTf(base) ?? breakAnchorTf(base)) !== tf)) continue;
+    pairs.add(`${EXIT_BOT}|${ind}`);
   }
   return [...pairs].sort();
 }
@@ -194,9 +159,15 @@ export function exitStrategyPairs(
 export function exitSignalStrategyPairs(
   runs: Iterable<Pick<ComboRun, "ind">>,
   u: Universe,
+  settings?: Pick<ExitStrategySettings, "timeframes" | "includeCombined">,
 ): string[] {
   const inds = new Set<string>();
-  for (const run of runs) if (isSignalInd(run.ind) && seriesOf(u, run.ind).length) inds.add(run.ind);
+  for (const run of runs) {
+    const { tf, combined } = laneOf(run.ind);
+    if (isSignalInd(run.ind) && tf !== null &&
+      (!settings?.timeframes?.length || settings.timeframes.includes(tf)) &&
+      (!combined || settings?.includeCombined !== false) && seriesOf(u, run.ind).length) inds.add(run.ind);
+  }
   return [...inds].sort().map((ind) => `${EXIT_BOT}|${ind}`);
 }
 
