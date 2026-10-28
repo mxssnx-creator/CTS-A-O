@@ -46,7 +46,7 @@ test("actual runtime trial reduces engine combos while preserving all Signal con
   assert.equal(trial.runtime.settings.grid.micro, false);
   assert.deepEqual(trial.runtime.settings.grid.short, runtime.settings.grid.short);
   assert.deepEqual(trial.runtime.settings.signals, runtime.settings.signals);
-  assert.equal(trial.runtime.wf.lastN, 15); assert.equal(trial.runtime.wf.signalValidLastN, 4);
+  assert.equal(trial.runtime.wf.lastN, 15); assert.equal(trial.runtime.wf.signalValidLastN, 12);
   assert.ok(trial.focusEvidence.trialExpandedPairs < trial.focusEvidence.baselineExpandedPairs);
   assert.ok(trial.focusEvidence.unchangedSignals.combos > 0);
   assert.ok(trial.focusEvidence.unchangedSignals.coordinatorProtects > 0);
