@@ -2812,13 +2812,13 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Base sets min PF"
-              hint="the PF from which Base builds and evaluates a pair's config sets (one floor for every range). Each set still has to clear its own stage / range minimum before it can trade, so this only widens what is computed · 0.5 – 1.5"
+              hint="Default 1.10. Base construction floor for untagged / Wide sets; tagged ranges retain their separately configured floors. Every set must pass its own later validation before execution · 0.5 – 1.5"
             >
               <Num
                 step={0.01}
                 min={0.5}
                 max={1.5}
-                value={s.gates.baseSetsMinPf ?? 1}
+                value={s.gates.baseSetsMinPf ?? s.gates.minPf}
                 onChange={(v) => set(["gates", "baseSetsMinPf"], v)}
               />
             </Field>
