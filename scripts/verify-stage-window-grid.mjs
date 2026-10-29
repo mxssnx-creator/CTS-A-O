@@ -27,7 +27,7 @@ const dual=(trades,t,primaryN,secondaryN)=>{const a=win(trades,t,primaryN),b=win
   return{state:a.state==='insufficient'||b.state==='insufficient'?'insufficient':a.state==='qualified'&&b.state==='qualified'?'qualified':'failed',primary:a,secondary:[b]};};
 const compareGate=(actual,expected)=>{assert.equal(actual.state,expected.state);assert.equal(actual.primary.n,expected.primary.n);near(actual.primary.pf,expected.primary.pf);
   assert.equal(actual.secondary.length,expected.secondary.length);for(let i=0;i<actual.secondary.length;i++){assert.equal(actual.secondary[i].n,expected.secondary[i].n);near(actual.secondary[i].pf,expected.secondary[i].pf);}};
-const negative=(trades,t)=>{const a=win(trades,t,50),b=win(trades,t,5),c=win(trades,t,10),mean=b.mean!==null&&c.mean!==null?(b.mean+c.mean)/2:null;
+const negative=(trades,t)=>{const a=win(trades,t,p.mainPrimaryN),b=win(trades,t,5),c=win(trades,t,10),mean=b.mean!==null&&c.mean!==null?(b.mean+c.mean)/2:null;
   return{primary:a,mean,state:a.state==='insufficient'||b.state==='insufficient'||c.state==='insufficient'?'insufficient':a.state==='qualified'&&mean<0?'qualified':'failed'};};
 const all=(result,c)=>[...result.trades.map(t=>({...t,closed:true,tf:c.tf,kind:c.kind})),
   ...(result.open?[{...result.open,exitT:Infinity,closed:false,tf:c.tf,kind:c.kind}]:[])],
@@ -53,7 +53,7 @@ for await(const line of createInterface({input:readable,crlfDelay:Infinity})){
     checkSet(b.main,c,'main',c.side,undefined,policy(primary,secondary));const root=JSON.parse(b.main.parentSetId);
     assert.equal(root[0],'base');assert.equal(root[1],null);assert.equal(root[6],policy(primary,secondary));
     assert.deepEqual(JSON.parse(root[2]),[c.cfg,c.sym,c.side,c.kind,c.relation,p.economicRevision]);
-    checkSet(b.inverseMain,c,'main',-c.side,b.main.setId,JSON.stringify([50,true,[5,10]]),'inverse');
+    checkSet(b.inverseMain,c,'main',-c.side,b.main.setId,JSON.stringify([p.mainPrimaryN,true,[5,10]]),'inverse');
     checkPrices(main,c.side);checkPrices(inverse,-c.side);
     for(const t of all(main,c))assert.equal(dual(raw.trades,t.entryT,primary,secondary).state,'qualified');
     for(const t of all(inverse,c)){assert.ok(mainEntries.has(t.entryT));assert.equal(negative(main.trades,t.entryT).state,'qualified');}
@@ -62,20 +62,20 @@ for await(const line of createInterface({input:readable,crlfDelay:Infinity})){
       else{const e=negative(main.trades,d.entryT);assert.equal(d.state,e.state);near(d.primaryPf,e.primary.pf);near(d.mean,e.mean);}}
     for(const mainN of p.mainSecondarySamples)for(const realN of p.realSamples){const data=b.cases[`${mainN}|${realN}`],a=aggregates.get(`${primary}|${secondary}|${mainN}|${realN}`),
       real=read(data.real),inverseReal=read(data.inverseReal),active=read(data.active),inverseActive=read(data.inverseActive),
-      checkpoint={base:dual(raw.trades,p.start,primary,secondary),main:dual(main.trades,p.start,50,mainN),inverseMain:dual(inverse.trades,p.start,50,mainN)},
+      checkpoint={base:dual(raw.trades,p.start,primary,secondary),main:dual(main.trades,p.start,p.mainPrimaryN,mainN),inverseMain:dual(inverse.trades,p.start,p.mainPrimaryN,mainN)},
       decisions={main:mainDecisions,inverseMain:inverseDecisions,...Object.fromEntries(Object.entries(data.decisions).map(([n,index])=>[n,c.dictionary[index]]))};
       for(const n of ['base','main','inverseMain'])compareGate(data.checkpoint[n],checkpoint[n]);
       if(checkpoint.base.state==='qualified'){const h=a.historical;h.base++;h.baseGp+=checkpoint.base.primary.gp;h.baseGl+=checkpoint.base.primary.gl;
         if(checkpoint.main.state==='qualified')h.main++;if(checkpoint.inverseMain.state==='qualified')h.inverseMain++;}
-      checkSet(data.real,c,'real',c.side,b.main.setId,policy(50,mainN));
-      checkSet(data.inverseReal,c,'real',-c.side,b.inverseMain.setId,policy(50,mainN),'inverse');
+      checkSet(data.real,c,'real',c.side,b.main.setId,policy(p.mainPrimaryN,mainN));
+      checkSet(data.inverseReal,c,'real',-c.side,b.inverseMain.setId,policy(p.mainPrimaryN,mainN),'inverse');
       checkSet(data.active,c,'active',c.side,data.real.setId,JSON.stringify(realN));
       checkSet(data.inverseActive,c,'active',-c.side,data.inverseReal.setId,JSON.stringify(realN),'inverse');
       for(const [name,result,parent,label]of [['real',real,main,'Main'],['inverseReal',inverseReal,inverse,'Inverse']]){
         checkPrices(result,label==='Main'?c.side:-c.side);const parents=entryTimes(parent,c);
-        for(const t of all(result,c)){assert.ok(parents.has(t.entryT));assert.equal(dual(parent.trades,t.entryT,50,mainN).state,'qualified');}
-        for(const d of decisions[name]){if(!parents.has(d.entryT))assert.equal(d.state,'parentMissing');else{const e=dual(parent.trades,d.entryT,50,mainN);compareGate(d,e);
-          a.readiness[`matched${label}`]++;a.readiness[`max${label}OwnN`]=Math.max(a.readiness[`max${label}OwnN`],e.primary.n);if(e.primary.n===50)a.readiness[label==='Main'?'mainFullPrimary':'inverseFullPrimary']++;}}
+        for(const t of all(result,c)){assert.ok(parents.has(t.entryT));assert.equal(dual(parent.trades,t.entryT,p.mainPrimaryN,mainN).state,'qualified');}
+        for(const d of decisions[name]){if(!parents.has(d.entryT))assert.equal(d.state,'parentMissing');else{const e=dual(parent.trades,d.entryT,p.mainPrimaryN,mainN);compareGate(d,e);
+          a.readiness[`matched${label}`]++;a.readiness[`max${label}OwnN`]=Math.max(a.readiness[`max${label}OwnN`],e.primary.n);if(e.primary.n===p.mainPrimaryN)a.readiness[label==='Main'?'mainFullPrimary':'inverseFullPrimary']++;}}
       }
       for(const [name,result,parent]of [['active',active,real],['inverseActive',inverseActive,inverseReal]]){
         const expected=all(parent,c).filter(t=>win(parent.trades,t.entryT,realN).state==='qualified');

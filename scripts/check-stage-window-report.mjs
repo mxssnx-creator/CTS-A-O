@@ -31,6 +31,21 @@ for(let range=0;range<3;range++){
  }
  console.log('Verified range',range,'combinations',combinations,'stage listings',stageListings);
 }
+let sensitivityCases=0,sensitivityListings=0;
+if(await page.evaluate(()=>!!window.CTS_REPORT_DATA.mainPrimarySensitivity))for(let study=0;study<6;study++){
+ await page.selectOption('#sensStudy',String(study));
+ for(let choice=0;choice<8;choice++){
+  await page.selectOption('#sensCase',String(choice));
+  for(const stage of ['main','inverseMain','real','inverseReal','active','inverseActive']){
+   await page.selectOption('#sensStage',stage);
+   const actual=await page.evaluate(({study,choice,stage})=>({expected:window.CTS_REPORT_DATA.mainPrimarySensitivity[study].results.cases[choice].stages[stage].openedOrders,
+    label:document.getElementById('sensPage').textContent,selection:window.CTS_SENSITIVITY_SELECTION}),{study,choice,stage});
+   assert.equal(actual.selection.study,study);assert.equal(actual.selection.caseIndex,choice);assert.equal(actual.selection.stage,stage);
+   assert.equal(Number(actual.label.match(/^([\d,]+) /)[1].replaceAll(',','')),actual.expected);sensitivityListings++;
+  }
+  sensitivityCases++;
+ }
+}
 await page.selectOption('#range','0');await page.selectOption('#mainN','15');await page.selectOption('#realN','15');await page.locator('button[data-primary="20"][data-secondary="15"]').click();
 await page.fill('#search','BTC-USDT');assert.match(await page.textContent('#page'),/240 contexts/);await page.fill('#search','long');assert.match(await page.textContent('#page'),/2,400 contexts/);await page.fill('#search','');
 await page.click('#next');assert.match(await page.textContent('#page'),/page 2\/96/);await page.click('#previous');
@@ -39,6 +54,6 @@ for(const stage of ['main','real','active']){await page.selectOption('#chartStag
 await page.selectOption('#metric','basePf');await page.evaluate(()=>scrollTo(0,0));mkdirSync('/workspace/screenshots',{recursive:true});await page.screenshot({path:'/workspace/screenshots/cts-stage-window-desktop.png',fullPage:false});
 await page.setViewportSize({width:390,height:844});await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:'/workspace/screenshots/cts-stage-window-mobile.png',fullPage:false});
 assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'no page-wide horizontal overflow');assert.deepEqual(errors,[]);
-const result={status:'pass',combinations,stageListings,contexts:14400,desktop:[1440,1100],mobile:[390,844],consoleErrors:errors,searchAndPagination:true,heatmapMetrics:6,holdComparisons:6,curveStages:3};
+const result={status:'pass',combinations,stageListings,contexts:14400,desktop:[1440,1100],mobile:[390,844],consoleErrors:errors,sensitivityCases,sensitivityListings,searchAndPagination:true,heatmapMetrics:6,holdComparisons:6,curveStages:3};
 assert.equal(await page.locator('#holdFollowup tr').count(),6);
 writeFileSync(output,JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));await browser.close();

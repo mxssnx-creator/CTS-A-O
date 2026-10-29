@@ -1,3 +1,50 @@
+## 2026-10-29 — Main primary15/25 sensitivity reaches Active but still loses
+
+The follow-up independently tests Main primary15/25 with secondary15/25, Base20+15 or50+15 and Real15/25,
+on the same20 symbols and8 October12:00 to9 October12:00 UTC trading period with24h prior candles. Micro15m,
+Minimal30m andShort60m each run both primary values: six studies,28,800 context checks and48 cases. These
+are separate sensitivity policies, not a default migration. All six own-predecessor scalar/price/identity audits
+and Base/Main entry-parity traces pass:7,198,582 windows and1,253,037 price returns,46,748 matched-entry checks
+with identical economics and no silently lost qualified Main entries. Source strategy behavior is unchanged.
+The first Micro attempts retained an incorrect descriptive primary50 phrase in inverseRule while the declared
+numerical policy was15/25; they are preserved as rejected metadata attempts. Corrected v2 studies were fully
+rerun and independently audited; only those v2 Micro records are used in the report and accepted evidence.
+
+For Base20+15 / Main15+15 / Real15:
+
+| Range / hold | Initial Base pass / historical PF | Later Main PF | Real passed / matched Main entries | Real positions O/C/H | Real orders O/C/H | Active positions O/C/H | Active orders O/C/H | Active model PF |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Micro15m | 57/4800 (1.1875%) /1.412476 |0.570281 |438/5417 (8.0857%) |146/146/0 |438/438/0 |28/28/0 |31/31/0 |0.404529 |
+| Minimal30m |78/4800 (1.625%) /1.439734 |0.655576 |641/7651 (8.37799%) |146/146/0 |641/641/0 |14/14/0 |25/25/0 |0.433250 |
+| Short60m |94/4800 (1.958333%) /1.435241 |0.681702 |741/8473 (8.7454%) |164/161/3 |741/735/6 |15/15/0 |31/31/0 |0.317460 |
+
+These Active orders are unallocated model mirrors, not actual funded ownership or exchange fills. Venue PF is
+unavailable. With Main25+15 / Real15 the corresponding Active counts/PFs are Micro13/13/0 at0.742965,
+Minimal0/0/0 unavailable, andShort5/5/0 at0. No finite Active PF across all48 sensitivity cases exceeds1.
+Thus the primary50 count requirement explains much of the empty original grid, but lowering N does not fix
+profitability. Correct own-stage histories and high entry-time historical PF do not make later price returns
+identical to the validation window. Do not hide these losses, choose a profitable-looking empty default or claim
+a completed high-PF fix. Additional hold/trailing/native-lane checks pass175 tests, extending the earlier60.
+
+The saved HTML report is updated with all48 sensitivity cases, every processed order and its own prior gate,
+phase/group statistics and separate positions/orders. Browser verification covers240 original grid selections,
+1440 original stage listings plus48 sensitivity selections and288 sensitivity listings, with no console errors.
+The original grid/hold evidence remains valid and unchanged; sensitivity evidence is a separate archive.
+Both full workflows passed combined source664f3afad40a93b415df31d1901028bd9f113acf before this research-only
+follow-up. Merged reporting release #231 remains at2cdae8fd747fb4a817bfdc01a773a029652b09fc.
+
+Deployment discovery remains blocked: current connected Vercel personal and team projects filtered by the exact
+mxssnx-creator/CTS-A-O repository return no project, and prior project context supplies no exact CTS-A-O runtime
+URL/address. Do not substitute the separate CTS-K-N deployment. No actual CTS-A-O production order/exit log or
+venue-filled PF has been inspected. The actual deployed CTS-A-O URL and selected connection are needed to trace
+that runtime's Main/exit behavior. The separate production adapter blockers below remain open; #219 is draft.
+
+Current report: https://chatgpt.com/library?file_id=libfile_594f2a56ae788191b7d24e6f1a4a958d&account_id=personal
+Original full Micro evidence: https://chatgpt.com/library?file_id=libfile_322e10627a748191ae3e47a624bdf612&account_id=personal
+Original full Minimal evidence: https://chatgpt.com/library?file_id=libfile_236cc319843c8191867151719e63248b&account_id=personal
+Original full Short evidence: https://chatgpt.com/library?file_id=libfile_329f117f3e1481919edbe4d302aaf139&account_id=personal
+Paired Micro hold evidence: https://chatgpt.com/library?file_id=libfile_a6dfd5c3c9b481918717e2e5b5a019d6&account_id=personal
+
 ## 2026-10-29 — 24h window grid, hold attribution and validated statistics release
 
 The requested 20-symbol 24h trading / 24h prehistory test is complete on the cached minute feed. Trading is
