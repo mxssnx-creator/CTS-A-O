@@ -1,0 +1,31 @@
+▶ evaluation window orders
+  ✔ a loser still open at the window end lowers the window's PF (it was dropped before) (1.413444ms)
+  ✔ a dump without openEnd (older engines) gives the closed orders only (0.135999ms)
+✔ evaluation window orders (2.410107ms)
+▶ the eval sees Block: volume-weighted PF and unit PF raised / unraised
+  ✔ splits raised from unraised orders and weighs the book by volume (0.373528ms)
+  ✔ Block off (every order at one unit): both PFs agree, nothing raised (0.148057ms)
+✔ the eval sees Block: volume-weighted PF and unit PF raised / unraised (0.715249ms)
+✔ legacy unknown or invalid multiplier evidence makes primary unit PF unavailable (0.23209ms)
+✔ a config id gives its range, trail distance and hold time in hours (2.343419ms)
+✔ a trail distance reads as a fraction without float noise (112 % of an id is 0.0112, not 0.011200000000000002) (0.282064ms)
+✔ a range tag before a DCA or Axis suffix still names the range (0.241524ms)
+✔ an inherited object key is not a range tag (0.18406ms)
+✔ a signal's lanes are its own variants: two lanes of one signal are not pooled (0.236387ms)
+✔ ATR protects keep their atr token: ATR variants do not merge with each other or with pct variants (0.675992ms)
+✔ pf: no loss is 9, no gain is 0, else gross profit over gross loss (0.17726ms)
+✔ the score is the minimum PF over the windows; a window with no trades counts as 0 (0.482598ms)
+✔ a window the run did not compute for the range is unscored, not 0 and not a pass (9.447083ms)
+✔ the minimum trade count is an option, off by default (0.46396ms)
+✔ variants are kept apart by range, trail, hold and atr, and sorted by their minimum PF (0.499413ms)
+✔ two signals with the same trail and hold are two variants: a signal's historic configs are never pooled (0.294923ms)
+✔ script and engine PF agree at neutral one without discarding tiny losses (1.185029ms)
+✔ no-loss conventions never replace unknown, overflowed, or losing evidence (0.183429ms)
+ℹ tests 19
+ℹ suites 2
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 188.327468

@@ -4,6 +4,7 @@
 // combined PF among the variants that are positive in most windows. Writes markdown, prints the top lines.
 //
 //   node scripts/core-block-sweep-report.mjs --glob runs/blk/s1-w --out runs/blk/stage1 [--top 12] [--min-n 60]
+import { profitFactorRatio } from "../src/core/metrics/profit-factor.mjs";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
@@ -21,7 +22,7 @@ const files = readdirSync(dir)
   .filter((f) => f.startsWith(basename(prefix)) && f.endsWith(".json"))
   .map((f) => join(dir, f));
 const wins = files.map((f) => JSON.parse(readFileSync(f, "utf8")));
-const pf = (gp, gl) => (gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0);
+const pf = (gp, gl) => (profitFactorRatio(gp, gl, 99));
 const agg = new Map();
 for (const w of wins)
   for (const r of [...w.rows, ...(w.rangeRows ?? [])]) {

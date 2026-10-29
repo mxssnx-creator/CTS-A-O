@@ -1,8 +1,25 @@
+## 2026-10-29 — stage WIP combined with merged PF-neutral release
+
+Main PR #239 is merged at `af8a790ab7ea6eb6813971c1bfe6f96cdee9dffe`, with exact release tree `aa1c348f68827f0810e761d6b82bd207008c1d0e`. This development branch retains that release and the independent Last-N audit alongside the prior stage prototype. Only handoff prose conflicted; both histories are preserved. The combined chain/source/settings/PF/report regressions pass 48/48 in 3.02s and typecheck passes. `DEFAULT_STAGE_CHAIN.enabled` remains false and is explicitly checked. This is not activation or completion of the persistent production adapter.
+
+The latest measured release cohort is unchanged: eight symbols, 8–9 October 2026 12:00 UTC, 24h trading + 24h evaluated prehistory + 24h indicator warmup. Base 143/1398 (10.23%), initial configs 405/1276 (31.74%), finite passing historical PF 17.3995 plus six no-loss sets; later funded-model PF 0.2731. Positions 52/49/3 and orders 3116/3108/8 opened/closed/held. Exchange PF is unavailable; this is not a fresh stage-enabled profitability run. Preserve the 72h total study limit.
+
+## 2026-10-29 — PF neutral-one repair verified on combined Main
+
+Published source `7a05b91227320c3ba22da2b854f31a6ce8378a13` includes concurrent PR #237 / Main `d677b05`. Local tree-identical checkpoint `a397ef1c0d5c681ca6f13cc755822a2de6026695`; economic/report SHA256 `67a8752724b5371a9953f1ff19ada5cfcd7fc9685dabd8554507105bbb9463c5`. Final documentation-only commit does not change tested source. Bounded hosted run 40967442788 passes typecheck, selected core/script/display/CLI/report regressions, full production/core-worker build and desktop/mobile development/production Settings rendering. All four screenshots inspected: actual form, no console/page errors, no horizontal overflow or baseline divergence. The smoke gate waits for real content; its earlier loading-shell pass is not sufficient UI proof.
+
+PF 1 is neutral, not a required replacement for every measurement. Removed absolute tiny-loss cutoffs from core/report/paper-coordination paths; equal tiny gains/losses no longer become no-loss sentinels, and tiny losing evidence cannot qualify. Removed PF-minus-one display and positive neutral-cell tints. Empty/flat/unknown/true no-loss evidence and configured qualification floors remain distinct. The standalone report client keeps its colour helper inside serialized code; the report-page regression checks both available names and actual neutral/loss/profit colours.
+
+Final frozen 8-symbol replay: 24h trading 8–9 October 12:00 UTC, 24h evaluated prehistory, 24h indicator-only warmup (72h TOTAL), 0.15% modeled round trip. Base 143/1398 (10.2289%), initial 405/1276 (31.7398%), finite historical mean 17.399524089 plus 6 no-loss; subsequent closed model PF 0.273050873. Positions 52/49/3, orders 3116/3108/8 opened/closed/held. 11.826s, 558.8 MiB peak RSS. All 2,468 candidate histories, 24 validation steps, 25 Signal selection snapshots, 3,108 funded closes, 8 held orders and every allocation exactly match prior Main; all 3,108 source/funded returns reconcile. Coverage remains 76/78 (30m startup 96/120 bars; 13/16 categories). Never label this exhaustive catalogue coverage or profitable forward performance. Full protocol/raw sidecars/HTML/checks: `docs/pf-neutral-20261029`.
+
+The broader forward-PF issue and persistent Main→Real→Active runtime adapter remain unresolved. The combined stage WIP stays disabled; this repair is not a completed stage integration. Venue PF and a selected production deployment remain unavailable. Preview uses synthetic market data with live exchange execution disabled. An unnecessary optional-variant attempt was cancelled and is not counted as verification. User's 72h TOTAL bound remains mandatory; default legacy full workflows were not run because they include longer market histories.
+
 ## 2026-10-29 — final combined checkpoint preserves merged PR235 and concurrent fixes
 
 This unmerged stage-development checkpoint now includes mainc58fa3528f5728097f25b264e7adcc32806d27ba (PR235), including the concurrent Base range qualification, Axis coverage and realtime stop-gap fixes fromad5e33a. The final merge conflicted only in handoff prose.66focused processed-set/chain/source,minute-cap,validated-PF/listing tests pass in1.989s; typecheck passes. stages.enabled=false is explicitly verified. Earlier broader combined checks were81/81 plus32API/durable-paper checks before the concurrent range/stop-gap merge. No new combined-default market profitability is claimed.
 
 The latest measured main-release8-symbol8–9October cohort has Base143/1398(10.2289%),initial405/1276(31.7398%),finite historical mean17.399524089 plus6no-loss;fundedPF0.273050873,positions52/49/3,orders3116/3108/8O/C/H. Refreshed exact-main source67ccf745 reproduces all2468source tapes,3108funded closes and every allocation;11.997s,531.7MiBpeakRSS,76/78coverage checks(30m startup insufficient). VenuePFunavailable. Full persistent independent Main/Real/Overall/Active/Live integration remains unfinished. Keep new studies≤72hTOTAL.
+
 
 ## 2026-10-29 — exact combined-source replay complete
 

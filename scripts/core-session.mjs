@@ -43,6 +43,7 @@
 //   at report time on the baseline's positions. CTS_CORE_VARIANTS=0 skips both; CTS_CORE_VARIANTS_MIN_MB (1500)
 //   stops the variants below that much available memory. --replay-unit 2 / --replay-min 2: the replay's lane unit and
 //   exchange minimum (USD).
+import { profitFactorRatio } from "../src/core/metrics/profit-factor.mjs";
 import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { columnarStore, pruneFeed, RANK_TF, readStored, boundedReplayFeed, readSessionFeed } from "./lib/session-feed.mjs";
@@ -2232,7 +2233,7 @@ const afterBaseMd = (e, tapeAgg, xs) => {
     ord[k] = { n: own.n, gp: own.gpR, gl: own.glR };
   }
   const f = (x, d = 2) => (x == null || !Number.isFinite(x) ? "–" : x.toFixed(d));
-  const pf = (gp, gl, n) => (!n ? "–" : gl > 1e-12 ? f(gp / gl) : gp > 1e-12 ? "∞ (no loss)" : "–");
+  const pf = (gp, gl, n) => (!n ? "–" : gl > 0 ? f(profitFactorRatio(gp, gl)) : gp > 0 ? "∞ (no loss)" : "–");
   const basePf = (b) => pf(b.passedGp ?? 0, b.passedGl ?? 0, b.passed ?? 0);
   const validated = (passed, evaluated) =>
     Number.isFinite(passed) && Number.isFinite(evaluated) && evaluated > 0 && passed >= 0 && passed <= evaluated
@@ -5016,11 +5017,13 @@ function clientMain(D) {
   // deepens with the distance from PF 1 (blue above, red below); a cell without closes stays blank.
   function heatHtml(Hm) {
     const shade = (gp, gl, n) => {
-      if (!n) return "";
-      const pf = gl > 0 ? gp / gl : gp > 0 ? 8 : 1;
+      // clientMain is serialized into standalone HTML and cannot import helpers.
+      if (!(Number.isFinite(n) && n > 0) || !Number.isFinite(gp) || !Number.isFinite(gl) || gp < 0 || gl < 0 || gp === gl) return "";
+      const pf = gl > 0 ? gp / gl : 8;
+      if (!Number.isFinite(pf) || pf === 1) return "";
       const d = Math.min(1, Math.abs(Math.log2(Math.max(pf, 1e-3))) / 2);
       const pc = Math.round(10 + d * 50);
-      return ` style="background:color-mix(in srgb, var(${pf >= 1 ? "--pos" : "--neg"}) ${pc}%, transparent)"`;
+      return ` style="background:color-mix(in srgb, var(${pf > 1 ? "--pos" : "--neg"}) ${pc}%, transparent)"`;
     };
     const td = (z) =>
       z.n

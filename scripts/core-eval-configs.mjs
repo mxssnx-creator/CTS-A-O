@@ -7,6 +7,7 @@
 //
 //   node --experimental-strip-types scripts/core-eval-configs.mjs --settings runs/x01/x01.json \
 //     [--pre 20] [--run 24] [--min-n 10] [--off-pf 1.0] --out runs/x01/eval
+import { profitFactorRatio } from "../src/core/metrics/profit-factor.mjs";
 import { readFileSync, writeFileSync } from "node:fs";
 
 const { CoreRuntime } = await import("../src/core/server/runtime.server.ts");
@@ -68,7 +69,7 @@ for (const x of sim.trades) {
   add(groups.symbol, x.sym, x);
 }
 const fin = (a) => {
-  const pf = a.gl > 1e-12 ? a.gp / a.gl : a.gp > 0 ? 99 : 0;
+  const pf = profitFactorRatio(a.gp, a.gl, 99);
   const hs = [...a.hours.values()];
   return {
     n: a.n,

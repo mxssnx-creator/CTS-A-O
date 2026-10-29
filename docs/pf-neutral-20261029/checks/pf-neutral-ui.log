@@ -1,0 +1,23 @@
+✔ PF display is neutral at one and positive above one independently of qualification (1.358694ms)
+✔ settled zero-return samples are flat without a PF ratio, distinct from loss-only samples (0.423882ms)
+✔ return PF is the primary metric and cash PF remains a separate diagnostic (0.249777ms)
+✔ missing, invalid and empty execution ledgers never report profitability (0.185011ms)
+✔ position-only reads cannot claim an exchange balance snapshot (0.182678ms)
+✔ a source, range or connection switch cannot display a prior request's figures (1.085834ms)
+✔ live ledger with no exchange baseline cannot claim a paper-funded account balance (0.168497ms)
+✔ a no-loss return PF sample discloses the sentinel without changing its numeric ranking value (0.243287ms)
+✔ cash PF text uses explicit no-loss provenance without reinterpreting measured or legacy four (0.219301ms)
+✔ preset comparisons distinguish a no-loss score from an actual finite ratio of four (0.3275ms)
+✔ old comparison payloads cannot present a legacy score or delta as a measured ratio (0.282565ms)
+✔ paper close displays use persisted unit returns and never fall back to size-weighted returns (0.183009ms)
+✔ unavailable archived unit history is distinct from a known empty run and a no-loss score (0.502948ms)
+✔ saved preset cards require verified unit evidence while fixed research keeps its disclosed study basis (0.232361ms)
+✔ PF charts and text share one neutral value, including explicitly signed net charts (1.837416ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 180.045284

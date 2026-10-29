@@ -9,6 +9,29 @@ import { fileURLToPath } from "node:url";
 const script = fileURLToPath(new URL("./core-live-coord.mjs", import.meta.url));
 const evidence = { kind: "forward-paper", source: "ref.paper", pfBasis: "net-returns", actualExecution: false };
 
+test("tiny neutral or losing returns cannot open a paper range or its opening gate", (t) => {
+  for (const amount of [1e-13, 1e-20]) {
+    for (const ratio of [1, .5]) {
+      const { patch, stdout } = fixture(t).run(
+        { paper: { Micro: { n: 15, gp: ratio * amount, gl: amount } } },
+        "--ranges", "micro", "--gate",
+      );
+      assert.equal(patch.on.micro, false);
+      assert.equal(patch.paused, true);
+      assert.ok(stdout.includes(`return PF ${ratio.toFixed(2)} → off`));
+    }
+  }
+});
+
+test("unknown paper totals cannot preserve an already open coordination gate", (t) => {
+  const { patch } = fixture(t, { on: { micro: true }, paused: false }).run(
+    { paper: { Micro: { n: 15, gp: null, gl: 1 }, Short: { n: 15, gp: 1, gl: null } } },
+    "--ranges", "micro", "--gate",
+  );
+  assert.equal(patch.on.micro, false);
+  assert.equal(patch.paused, true);
+});
+
 function fixture(t, initialPatch) {
   const dir = mkdtempSync(join(tmpdir(), "cts-paper-coord-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));

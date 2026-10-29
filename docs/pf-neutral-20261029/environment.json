@@ -1,0 +1,7 @@
+{
+  "NODE_OPTIONS": "--max-old-space-size=1024",
+  "CTS_CORE_VARIANTS": "0",
+  "CTS_CORE_COMPARE": "0",
+  "CTS_CORE_STATE": "off",
+  "CTS_CORE_LIVE": "0"
+}

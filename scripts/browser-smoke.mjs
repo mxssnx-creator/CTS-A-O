@@ -111,6 +111,10 @@ try {
     const resp = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
     const status = resp?.status() ?? 0;
     await page.waitForTimeout(1000);
+    // Async pages can render their shell before the requested data/content. A
+    // targeted check must wait for that content instead of certifying Loading.
+    const readyText = process.env.BROWSER_SMOKE_READY_TEXT;
+    if (readyText) await page.getByText(readyText, { exact: true }).first().waitFor({ state: "visible", timeout: timeoutMs });
 
     const title = await page.title();
     const hasCanvas = (await page.locator("canvas").count()) > 0;
@@ -138,6 +142,7 @@ try {
       consoleErrors: errors.consoleErrors,
       pageErrors: errors.pageErrors,
       screenshot: vp.screenshot,
+      ...(readyText ? { readyText } : {}),
     };
   }
 

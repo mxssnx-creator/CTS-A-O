@@ -1,0 +1,70 @@
+[core-tests] offline Node transport guard; 6 files; concurrency 1; compute workers 1
+▶ bot statistics: families, sample floors and the frozen verdict
+  ✔ a family is a bot × range; signal configs are named apart (3.924059ms)
+  ✔ a stored return with no fee is re-priced: only the missing part of the round trip is taken off (0.242005ms)
+  ✔ a row with no exit price (open at the window end, marked) keeps its stored return, long and short (0.138303ms)
+  ✔ a small sample is not judged, never a pass (1.009211ms)
+  ✔ a family with enough trades, events, sides and blocks that stays above PF 1 at both costs passes (0.722561ms)
+  ✔ the same family losing at 0.2 % fails, and names the failing test (0.792473ms)
+  ✔ the 01:06 restart's stops are excluded from every judgement and counted apart (1.291375ms)
+  ✔ an event is one symbol, side and 15-minute entry bar: entries inside one bar are one event (0.201676ms)
+✔ bot statistics: families, sample floors and the frozen verdict (9.722107ms)
+▶ post-Base modeled unit provenance
+  ✔ cannot promote a legacy modeled sample with missing multipliers despite valid owned execution (1.131801ms)
+  ✔ keeps a new unknown loss in the current window instead of backfilling older wins (0.363353ms)
+  ✔ accepts known unit returns and explicit unit multipliers on the exact same close sample (0.286631ms)
+✔ post-Base modeled unit provenance (2.764517ms)
+▶ live record: lanes at the exchange's prices
+  ✔ joins at the fill that grew the position, leaves at the fill that shrank it (1.783517ms)
+  ✔ a stop-out closes every lane of the key at the stop price; Block legs are one lane (0.360419ms)
+  ✔ long and short of one config entering on the same bar are two lanes (the paper position's direction is part of it) (0.315072ms)
+  ✔ a lane whose key the exchange does not hold never enters the record (0.148338ms)
+✔ live record: lanes at the exchange's prices (2.875619ms)
+▶ live record judges before the simulation
+  ✔ a config with N exchange closes is judged on them, with fewer on the simulation (0.29937ms)
+  ✔ groups pool the exchange closes of every config the desk traded (0.663614ms)
+  ✔ the adjuster reads a set's exchange window once it is full, never mixed with paper closes (1.288521ms)
+✔ live record judges before the simulation (2.508151ms)
+▶ acceptance groups on the exchange record
+  ✔ keys an engine close by type family × range × side, causally (0.250838ms)
+  ✔ keeps each Historic Exit config-set acceptance record independent (0.221355ms)
+  ✔ engine direction acceptance: the exchange's losses refuse the group the simulation accepts (0.255936ms)
+  ✔ one sample per entry: the lane closes of one entry are one trade (r summed, exits at the last close) (0.214595ms)
+  ✔ Signal exchange acceptance keeps exact protection configs independent (0.790179ms)
+  ✔ signal side acceptance reads the exchange's signal closes (0.24544ms)
+✔ acceptance groups on the exchange record (2.307116ms)
+✔ PF neutral remains one across engine, Signal, owned-close and pooled paths at scale 1 (8.935082ms)
+✔ Minimal plus cannot qualify neutral or losing tiny returns at scale 1 (1.640958ms)
+✔ PF neutral remains one across engine, Signal, owned-close and pooled paths at scale 1e-9 (0.446735ms)
+✔ Minimal plus cannot qualify neutral or losing tiny returns at scale 1e-9 (0.126275ms)
+✔ PF neutral remains one across engine, Signal, owned-close and pooled paths at scale 1e-13 (0.320711ms)
+✔ Minimal plus cannot qualify neutral or losing tiny returns at scale 1e-13 (1.158571ms)
+✔ PF neutral remains one across engine, Signal, owned-close and pooled paths at scale 1e-20 (0.341161ms)
+✔ Minimal plus cannot qualify neutral or losing tiny returns at scale 1e-20 (0.19824ms)
+▶ trade statistics
+  ✔ uses the completed exit-bar hour just before, exactly at, and after each hourly boundary (3.450204ms)
+  ✔ profit factor: gross profit over gross loss; no loss is the capped PF; nothing is zero (0.285419ms)
+  ✔ the sample statistics of four trades (+2, −1, +3, −2 %) (0.357265ms)
+  ✔ no trades is the empty record (0.132435ms)
+  ✔ the composite score: a sample below its minimum is never positive; a profitable sample scores by net, PF, hours and drawdown (0.279269ms)
+✔ trade statistics (6.617321ms)
+▶ pooled PF of sets
+  ✔ a no-loss set pools as all profit, not as a PF-4 set with a phantom loss (8.108268ms)
+  ✔ a set with a gross loss pools from its exact PF and net, whether or not gp / gl are given (0.161777ms)
+  ✔ includes a break-even set's exact profit and loss instead of inflating the pooled PF (0.180825ms)
+  ✔ uses exact sums when a ratio is rounded to one or capped, preserving their own units (0.186134ms)
+  ✔ rejects invalid explicit sums rather than inventing a favorable split (0.140827ms)
+  ✔ empty sets pool nothing; PF exactly 1 without gross sums cannot be reconstructed (0.117382ms)
+✔ pooled PF of sets (10.25574ms)
+✔ validated sets each contribute one PF, independently of their loss volume and overlapping histories (0.845872ms)
+✔ no-loss sets stay explicit and never become the finite gate score4 (0.195537ms)
+✔ empty, legacy and corrupt passing evidence cannot be replaced by a pool or execution PF (0.286861ms)
+✔ bounded grouped summaries have the same per-set mean as a scalar evaluation (1.202605ms)
+ℹ tests 47
+ℹ suites 7
+ℹ pass 47
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1636.643493

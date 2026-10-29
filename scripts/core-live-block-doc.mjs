@@ -5,6 +5,7 @@
 //
 //   node scripts/core-live-block-doc.mjs --desk "Overall:runs/hm/live-overall:runs/hm/exchange-CTSV2O_.json" \
 //     --desk "Shared:…" --desk "Additive:…" --out docs/live-vst-block.md
+import { profitFactorRatio } from "../src/core/metrics/profit-factor.mjs";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { profitFactor } from "../src/core/metrics/stats.ts";
 
@@ -19,7 +20,7 @@ const oi = argv.indexOf("--out");
 const out = oi >= 0 ? argv[oi + 1] : "docs/live-vst-block.md";
 const read = (f) => (f && existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : null);
 const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
-const pf = (gp, gl) => (gl > 1e-12 ? gp / gl : gp > 0 ? Infinity : 0);
+const pf = (gp, gl) => (profitFactorRatio(gp, gl));
 const pfs = (x) => (x === Infinity ? "∞" : f2(x));
 const primaryPfText = (v) => f2(profitFactor(v.gp, v.gl)) + (v.gp > 0 && v.gl <= 0 ? " (no losses; sentinel)" : "");
 const t = (ms) => new Date(ms).toISOString().slice(0, 16).replace("T", " ");

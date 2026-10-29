@@ -8,6 +8,20 @@ import { writeSessionDump } from "./lib/session-dump.mjs";
 
 const script = new URL("./eval-validation.mjs", import.meta.url).pathname;
 const execute = (dir) => spawnSync(process.execPath, [script, dir], { encoding: "utf8", timeout: 10_000 });
+
+test("validation CLI reports equal tiny gains and losses as neutral one", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "cts-validation-neutral-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const id = "follow|ema@m1|mc";
+  writeFileSync(join(dir, "val-2026-10-14.json"), JSON.stringify({
+    validation: [{ t: 1, real: [id], checks: [[id, 1, 2, 1, 1e-20, 1e-20]] }],
+    trades: [{ cfg: id, r: 1e-20 }, { cfg: id, r: -1e-20 }],
+    engine: { baseByRange: [] },
+  }));
+  const result = execute(dir);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Micro\s+1\.0\s+1\.0\s+100%\s+1\.00\s+1\.00\s+2\.0\s+1\.00/);
+});
 function sample() {
   const micro = "follow|ema@m1|mc", short = "follow|rsi@m1|sh";
   return {

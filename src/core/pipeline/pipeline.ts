@@ -1,3 +1,4 @@
+import { profitFactorRatio } from "../metrics/profit-factor.mjs";
 // Progressive pipeline over a universe of symbols:
 //   S1 coarse    every bot × indication with the default protect
 //   S2 refine    TP/SL/trail grid on the S1 leaders
@@ -1121,7 +1122,8 @@ export function pooledPf(sets: Iterable<{ pf: number; net: number; gp?: number; 
     gp += g.gp;
     gl += g.gl;
   }
-  return { pf: gl > 1e-12 ? gp / gl : null, gp, gl };
+  const pf = profitFactorRatio(gp, gl);
+  return { pf: gl > 0 && Number.isFinite(pf) ? pf : null, gp, gl };
 }
 
 export interface BaseRangeCount {
