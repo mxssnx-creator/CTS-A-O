@@ -102,6 +102,8 @@ test("historical, owned and grouped Last-N recover tiny windows from their origi
   assert.deepEqual(liveGroupGates([record], 0, 3*H, 2, 1.05).get("Minimal"), { ok: false, n: 2, pf: 1 });
   const side = sideTapeOf({ id: cfg, exitT: Float64Array.from(exits), r: Float64Array.from(values), side: Int8Array.from([1,1,1,1]) }, 1);
   assert.deepEqual(liveGate(side, 0, 3*H, 2, 1.05), { ok: false, n: 2, pf: 1 });
+  const unknownSide = sideTapeOf({ id: cfg, exitT: Float64Array.from(exits), r: Float64Array.from([2,-1,NaN,tiny]), side: Int8Array.from([1,1,1,1]) }, 1);
+  assert.deepEqual(liveGate(unknownSide, 0, 3*H, 2, 1.05), { ok: false, n: 2, pf: null, unknown: 1 });
   assert.equal(lastNOk(record as unknown as ConfigTape, 3*H, 2, 1.05), false);
   const winners = liveRecords([2, -1, tiny, tiny].map((r, i) => ({ cfg, exitT: exits[i], r }))).get(cfg)!;
   assert.equal(lastNOk(winners as unknown as ConfigTape, 3*H, 2, 1.05), true, "genuine no-loss tail retains its own evidence");
