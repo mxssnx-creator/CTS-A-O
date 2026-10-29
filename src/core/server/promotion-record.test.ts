@@ -5,6 +5,18 @@ import {ownedPromotionIdentities,ownedPromotionRecord,type OwnedPaperRow} from "
 import {executionRecordKey,ownedPaperExecutionRecords} from "../live-record.ts";
 import {liveGate,promotionGate} from "../live-validation.ts";
 
+test("a close adopted after its exit remains unknown in the effective Last-N record",()=>{
+  const db=new CoreDb(":memory:"),lane={cfg:"follow|test@m1|tp1|sl2|tr0|h15|mc",sym:"AAA-USDT",side:1};
+  try {
+    for(let i=0;i<3;i++)db.run("INSERT INTO paper_book_trades(cfg,sym,side,entry_t,exit_t,unit_r,owned_notional_usd,held_at,held_px,entry,exit,vol,reason) VALUES(?,?,?,?,?,?,100,?,100,100,102.15,1,'exit')",
+      lane.cfg,lane.sym,lane.side,i+1,1000+i,.02,i===2?1003:i+1);
+    const gate=()=>{const record=ownedPromotionRecord(db,lane,3,2000,"effective");assert.ok(record);return liveGate(record,0,2000,3,1.1);};
+    assert.equal(gate().ok,false);assert.equal(gate().unknown,1);
+    db.run("UPDATE paper_book_trades SET held_at=entry_t WHERE cfg=? AND sym=? AND side=?",lane.cfg,lane.sym,lane.side);
+    assert.equal(gate().ok,true);assert.equal(gate().unknown,undefined);
+  } finally {db.db.close();}
+});
+
 test("strict entry windows exclude same-time persisted, pending and ambiguous closes without stale cache",()=>{
   const lane={cfg:"follow|test@m1|tp1|sl2|tr0|h15|mc",sym:"AAA-USDT",side:1};
   const row=(entry:number,exitT:number,r:number):OwnedPaperRow=>({...lane,entry_t:entry,exit_t:exitT,

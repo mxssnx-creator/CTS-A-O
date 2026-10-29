@@ -1,3 +1,16 @@
+## 2026-10-29 — Promotion fixture chronology regression
+
+Final draft checkpoint 0350b278b28a1ea49164e38b0bdc0e048ffa3e4a passed Exact Signal, quality and slow-runtime,
+but core shard 2 failed one paper-admission fixture. A deterministic 01:55 UTC clock reproduced the failure:
+fixture adoption used module time minus one hour while its custom exit used the hour boundary minus ten
+minutes, placing adoption after exit during the last ten minutes of an hour. Production correctly treated
+that impossible ownership as unknown. Fixtures now declare adoption at their explicit synthetic entry and
+exercise closes ten and seventy minutes before the boundary. A separate database regression retains the
+actual guard: adoption after exit fails the effective Last-N window until the ownership clock is corrected.
+The production gate and its unknown-evidence behavior are unchanged. Both promotion files pass all 39 checks,
+including the deterministic late-hour reproduction. Market results and production integration blockers in
+the following section remain unchanged. This fixture repair is not an explanation for the measured PF drop.
+
 ## 2026-10-29 — Separate inverse Main and dual-window processed sets (draft)
 
 The operator explicitly selected a separate inverse set. The new draft StageChainBook creates distinct Base,

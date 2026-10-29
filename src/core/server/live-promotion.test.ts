@@ -52,7 +52,9 @@ function owned(r: CoreRuntime, values: Array<number | null>, opts: { cfg?: strin
   values.forEach((value, i) => r.db.run(
     "INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,held_at,at,unit_r,owned_notional_usd,entry,held_px,exit) VALUES (?,?,?,?,?,?,1,'time',?,?,?,?,100,100,?)",
     opts.cfg ?? CFG, opts.sym ?? SYM, opts.side ?? 1, (opts.offset ?? 0) + i, (opts.at ?? NOW - 100_000) + i * 1000,
-    value ?? -.1, NOW - H, NOW, value, opts.notional === undefined ? 20 : opts.notional,
+    // The fixture declares ownership from this entry at its supplied held price. A wall-clock-derived adoption
+    // could land AFTER a custom historical exit in the last ten minutes of an hour, correctly making it unknown.
+    value ?? -.1, (opts.offset ?? 0) + i, NOW, value, opts.notional === undefined ? 20 : opts.notional,
     value === null ? null : 100 * (1 + (opts.side ?? 1) * value),
   ));
 }
@@ -525,24 +527,26 @@ describe("paper entry allocation provenance", () => {
 
   it("Last-N-only paper admission judges handled closes rather than modeled orders never held", () => {
     const t = Math.floor(Date.now() / H) * H;
-    for (const [modeled, handled, expected] of [[.02, -.01, false], [-.01, .02, true]] as const) {
-      const r = install(fixture(), Array.from({ length: 3 }, (_, i) => close(modeled, i, {
-        entryT: t - 2 * H + i * 1000, exitT: t - H + i * 1000,
-      })));
-      r.wf.gates = { ...r.wf.gates, lastNOnly: true, baseLastN: 12, minTrades: 9 };
-      r.wf.validLastN = 12; r.wf.lastN = 0; r.wf.rangeGate = undefined; r.wf.symGate = "off";
-      const raw = Array.from({ length: 30 }, (_, i) => close(.02, i, {
-        entryT: t - 3 * H + i * 60_000, exitT: t - 2 * H + i * 60_000,
-      }));
-      const open = { cfg: CFG, sym: SYM, side: 1, entryI: 0, entryT: t, entry: 100,
-        stop: 96.1, target: 102.6, peak: 100, trailOn: false, mtm: 0 } as OpenPosition;
-      r.tapes = [makeTape(CFG, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal", [SYM], raw, [open], [])];
-      r.sim!.validated = [CFG];
-      owned(r, Array(3).fill(handled), { at: t - 10 * 60_000 });
-      owned(r, Array(3).fill(-handled), { sym: "BBB-USDT", at: t - 10 * 60_000, offset: 100 });
-      (r as unknown as { stepPaper(): void }).stepPaper();
-      assert.equal(r.paper.positions.length > 0, expected, `modeled ${modeled}, handled ${handled}: ${JSON.stringify(r.status.paperSkips)}`);
-      assert.equal(r.status.liveValidation?.basis, "owned-paper");
+    for (const closeAgeMinutes of [10, 70]) {
+      for (const [modeled, handled, expected] of [[.02, -.01, false], [-.01, .02, true]] as const) {
+        const r = install(fixture(), Array.from({ length: 3 }, (_, i) => close(modeled, i, {
+          entryT: t - 2 * H + i * 1000, exitT: t - H + i * 1000,
+        })));
+        r.wf.gates = { ...r.wf.gates, lastNOnly: true, baseLastN: 12, minTrades: 9 };
+        r.wf.validLastN = 12; r.wf.lastN = 0; r.wf.rangeGate = undefined; r.wf.symGate = "off";
+        const raw = Array.from({ length: 30 }, (_, i) => close(.02, i, {
+          entryT: t - 3 * H + i * 60_000, exitT: t - 2 * H + i * 60_000,
+        }));
+        const open = { cfg: CFG, sym: SYM, side: 1, entryI: 0, entryT: t, entry: 100,
+          stop: 96.1, target: 102.6, peak: 100, trailOn: false, mtm: 0 } as OpenPosition;
+        r.tapes = [makeTape(CFG, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal", [SYM], raw, [open], [])];
+        r.sim!.validated = [CFG];
+        owned(r, Array(3).fill(handled), { at: t - closeAgeMinutes * 60_000 });
+        owned(r, Array(3).fill(-handled), { sym: "BBB-USDT", at: t - closeAgeMinutes * 60_000, offset: 100 });
+        (r as unknown as { stepPaper(): void }).stepPaper();
+        assert.equal(r.paper.positions.length > 0, expected, `age ${closeAgeMinutes}m, modeled ${modeled}, handled ${handled}: ${JSON.stringify(r.status.paperSkips)}`);
+        assert.equal(r.status.liveValidation?.basis, "owned-paper");
+      }
     }
   });
 
