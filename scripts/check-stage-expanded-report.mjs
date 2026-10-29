@@ -12,7 +12,7 @@ await page.goto(pathToFileURL(resolve(file)).href);await page.waitForFunction(()
 const checked=await page.evaluate(()=>{
   const $=id=>document.getElementById(id),D=window.CTS_EXPANDED_DATA;let selections=0,variantSelections=0,orderRows=0;
   for(const d of D.datasets){if(d.audit.status!=='pass'||d.results.cases.length!==48608)throw Error('incomplete audited dataset');
-    $('range').value=d.protocol.range;$('pre').value=String(d.protocol.prehistoryHours);$('variant').value='direct';$('mainN').value='15';$('realN').value='15';
+    $('pricing').value=d.protocol.executionTfMin===1?'minute':'lane';$('range').value=d.protocol.range;$('pre').value=String(d.protocol.prehistoryHours);$('variant').value='direct';$('mainN').value='15';$('realN').value='15';
     for(const minimal of ['off','1p','1n','2p','2n','3p','3n']){$('minimal').value=minimal;window.CTS_EXPANDED_RENDER();
       for(const bp of d.protocol.basePolicies.filter(b=>(b.minimal?`${b.minimal.n}${b.minimal.polarity[0]}`:'off')===minimal)){
         const button=$('heatmap').querySelector(`button[data-long="${bp.long}"][data-short="${bp.short}"]`);button.click();
@@ -31,8 +31,8 @@ const checked=await page.evaluate(()=>{
   }
   return {datasets:D.datasets.length,selections,variantSelections,checkedListedOrders:orderRows,caseCoverage:D.datasets.reduce((s,d)=>s+d.results.cases.length,0)};
 });
-assert.equal(checked.datasets,6);assert.equal(checked.selections,588);assert.equal(checked.variantSelections,2976);assert.equal(checked.caseCoverage,291648);
-await page.selectOption('#range','mc');await page.selectOption('#pre','24');await page.selectOption('#minimal','off');await page.selectOption('#variant','direct');await page.selectOption('#mainN','15');await page.selectOption('#realN','15');await page.locator('button[data-long="40"][data-short="15"]').click();
+assert.equal(checked.datasets,12);assert.equal(checked.selections,1176);assert.equal(checked.variantSelections,5952);assert.equal(checked.caseCoverage,583296);
+await page.selectOption('#pricing','lane');await page.selectOption('#range','mc');await page.selectOption('#pre','24');await page.selectOption('#minimal','off');await page.selectOption('#variant','direct');await page.selectOption('#mainN','15');await page.selectOption('#realN','15');await page.locator('button[data-long="40"][data-short="15"]').click();
 await page.selectOption('#orderStage','main');await page.selectOption('#period','measured');
 assert.equal(await page.evaluate(()=>window.CTS_EXPANDED_ORDER_COUNT),1534);
 const listedSymbol=await page.evaluate(()=>window.CTS_EXPANDED_LISTED('main')[0].c.sym);
@@ -43,7 +43,7 @@ await page.fill('#orderSearch','');await page.selectOption('#orderStage','active
 assert.ok(await page.locator('#orderNext').isEnabled());await page.click('#orderNext');assert.match(await page.locator('#orderCount').textContent(),/page 2/);await page.click('#orderPrev');
 await page.fill('#contextSearch','BTC-USDT');assert.match(await page.locator('#contextCount').textContent(),/240 of 4,800/);await page.fill('#contextSearch','');
 assert.match(await page.locator('#costEffect').textContent(),/gross price PF 1\.0892 → net PF 0\.6227/);
-await page.evaluate(()=>window.scrollTo(0,0));
+await page.selectOption('#pricing','minute');await page.evaluate(()=>window.scrollTo(0,0));
 await page.screenshot({path:'/workspace/screenshots/cts-expanded-stage-desktop.png',fullPage:false});
 await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/workspace/screenshots/cts-expanded-stage-mobile.png',fullPage:false});
 assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'mobile document overflow');assert.deepEqual(errors,[]);

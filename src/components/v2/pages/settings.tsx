@@ -341,8 +341,8 @@ export function StageWindowsSettings(props: { stages?: StageChainSettings; set: 
     write({ ...stages, [stage]: next });
   };
   return <div className="v2-lines" style={{ gap: 16 }}>
-    <SwitchRow label="Independent processed stage sets" title="Independent processed stage sets"
-      help="Base-qualified entries create Main sets. Only their processed closes qualify Real; Real's own closes qualify Active."
+    <SwitchRow label="Independent processed stage sets (draft)" title="Independent processed stage sets"
+      help="Saved policy for Base → Main → Real → Active. Production execution integration is pending."
       checked={stages.enabled} onChange={(enabled) => write({ ...stages, enabled })} />
     <div className="v2-grid v2-cols-2">
       {(["base", "main"] as const).map((stage) => {

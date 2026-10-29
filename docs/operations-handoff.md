@@ -1,3 +1,37 @@
+## 2026-10-29 — Merged PF defaults; audited stage and execution-price matrices
+
+PR232 is MERGED at remote main a50a10e297654f6f90a731d8f269ffde7bcf2d94. Exact release head39486d2ea05f23014586faedb072ddf281842d03 passed BOTH complete workflows: Exit40836024858 and Exact Signal40836024856. Before/after backups are backup/main-before-base-pf11-defaults-20261029 and backup/main-after-base-pf11-defaults-20261029. Ordinary Base/Wide/range floors now1.1, with transactional backups, preserved custom settings and selective cache retirement. No real account/order was manually changed.
+
+Current combined economic source is remote5061d45b679d409d03bffe38d5b88fde2bd43003 (locald22074f, economic files frozen at7844ba2). Both full workflows pass: Exact40840408265 and Exit40840408251. Main232 is an additional parent; the local merge preserves both histories and reconciles only comment/archived-option conflicts. Merge parity6 checks pass. Additional focused runs pass52 stage/source/default/native checks and361 Settings/API/completeness checks. Typecheck and scoped lint pass. The safe merged Settings preview passed desktop/mobile with Live disabled and synthetic market.
+
+The new study covers exactly20symbols,8Oct12:00–9Oct12:00UTC (14:00–14:00Vienna), separate24h/48h prehistory, Low-Range step3 Normal/Trailing, independent1/5/15m indication lanes. Base long20/30/40/50 × short5/10/15/20/25 has14 valid pairs and6 explicitly invalid >50% pairs. Seven minimal modes give98 independent Base policies. Main long50 with short1/5/15/25; Real1/5/15/25; direct plus all30 separately priced inverse-trigger variants (all15 nonempty subsets of1/2/5/10 × all/mean). That is48608 cases/range/warmup,291648 per pricing model. No future day/hour result selects a gate; all decisions use only own closed predecessor orders.
+
+A fidelity gap was found: the first harness used1m input but priced higher-lane exits on their own5/15m OHLC bars. It is retained as the lane OHLC CONTROL, not minute execution. The corrected minute harness projects each completed lane signal to the next1m open and prices TP/SL/trailing/hold exits on1m candles. Hold counts are minute units independent of indication timeframe. Both paths keep costs once, exact contexts and all raw evidence. The independent minute verifier also checks signal-clock alignment and minute TP/SL/gap/trailing/hold paths. This harness correction is NOT a claim that the legacy production builder was converted.
+
+All12 matrix audits pass:583296 combinations,57600 context/model checks,74010493 scalar windows,256401216 gate decisions and4951350 checked model closes (these are audit counts across parameter policies, NOT funded fills). Minute-only audits account for291648 cases,37013068 scalar windows,128198540 decisions and2488620 closes. Every branch has a price simulation or an independently verified no-primary-pass certificate. Equal masks share economics only within one exact context; identities and denominators remain separate. All Real/Active cohorts are empty/unavailable. No positive stable executed default was found.
+
+Reference below is Base40+15 / Main50+15 / Real15, minimal off, direct; it is NOT the factory default or an untouched holdout. Counts are opened/closed/held; PF is later unit-return PF after the0.15% cost.
+
+| Prehistory | Range | Base pass/evaluated | Historical PF | Later Main PF | Main positions O/C/H | Main orders O/C/H |
+|---|---|---|---|---|---|---|
+| 24h | mc | 10/4800 (0.2083%) | 1.205231 | 0.617328 | 307/305/2 | 1585/1583/2 |
+| 24h | mn | 10/4800 (0.2083%) | 1.239100 | 0.632294 | 278/275/3 | 1749/1744/5 |
+| 24h | sh | 6/4800 (0.1250%) | 1.244173 | 0.674219 | 249/245/4 | 1629/1614/15 |
+| 48h | mc | 12/4800 (0.2500%) | 1.204062 | 0.621473 | 336/333/3 | 1669/1665/4 |
+| 48h | mn | 14/4800 (0.2917%) | 1.228854 | 0.643526 | 326/323/3 | 1957/1952/5 |
+| 48h | sh | 17/4800 (0.3542%) | 1.237607 | 0.657859 | 351/346/5 | 2887/2870/17 |
+
+Minute Micro24h reference: Real0/1585 (0%); Active0/0/0 positions and orders, PF unavailable. Main exits:501TP,414SL,97trail,571time. The earlier lane OHLC control had487TP/399SL/89trail/557time, gross price PF1.089173→net0.622714 with the correct single cost. Correct minute pricing changes the outcome to0.617328, not high PF. No loss or admitted order is removed from later statistics because its set stops qualifying.
+
+Fixed locations: stage-policy.ts stageObservationAvailability/stageWindow count already observed equal-clock closes before the next decision; stage-chain.ts records immutable event sequences and restart proofs (snapshotv4); stage-source.ts prevents rejected last-bar pending flags from becoming owned orders. Future/current-entry results remain unavailable. Settings/presets save independent50% ratios and signed minimal/negative policies; their UI now explicitly labels the execution integration as draft.
+
+UNFINISHED production work: persistent Base-linked Main and Main-linked Real source streams, complete pending/partial-fill ownership/restart, placement of additional/Overall controls, true minute pricing for all legacy higher-lane simulator paths, and final Active→Live proof mapping without an extra Last-N remain required before enabling/merging219. The new Settings flag is not an installed production adapter. Legacy walkforward.ts configEval/original tapes and accepted-close ProcessedValidationBook still need that integration; merely flipping warmup false would create a cold-start freeze. Do not claim this scope completed or infer venue PF. Actual CTS-A-O deployment/selected connection remains unidentified in connected project context; do not probe CTS-K-N.
+
+Saved evidence: minute archive libfile_dcf6cf363e008191b3f239749ae7ec45; lane control archive libfile_2271c4ede10c8191a747406ae4ef38d7; paired-clock archive libfile_d69d6835ec2c8191b5ddabc6ceaadaa2. The new comparison HTML updates native report libfile_9c5b14262bbc81919d30974c323d3b53 after full browser QA. Previous archives/report versions remain preserved. Financial data artifacts stay outside git; reproducer scripts and this handoff are in git.
+
+One combined-render attempt lost its exec transport after three normalized datasets and produced no accepted artifact. The replacement generator keeps the prior compressed bundle opaque instead of retaining two decoded data graphs while building the next; it preserves every row in independently indexed bundles. Do not call the failed render a pass. Final browser QA PASSES12 datasets,1176 Base selections,5952 variant/window selections and1656224 listed-order checks, with CSV/search/pagination, zero console errors and both viewports. Comparison HTML is9.3MB; its decoded graphs stay separately indexed by price path.
+
+---
 ## 2026-10-29 — Observed-close ordering fix and CI fixture reconciliation
 
 Draft ledger regression reproduced: a Main loss already observed at the next entry's timestamp was excluded by
