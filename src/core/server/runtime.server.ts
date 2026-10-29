@@ -1217,6 +1217,7 @@ export class CoreRuntime {
     const savedWf = migrateValidationLast12(db,
       migrateSignalHistory150(db, migrateSignalLast4Policy(db, migrateSignalEvaluationPolicy(db, migrateWfCaps(db)))));
     migrateMicroMinimalBase30(db);
+    migrateBasePf11(db);
     migrateExpandedSignalDefaults(db);
     migrateNeutralVolumeRatios(db);
     migrateDcaTwoSteps(db);
@@ -11324,6 +11325,69 @@ function migrateValidationLast12(db: CoreDb, saved: Partial<WalkForwardOptions>)
     db.kvSet("validationLast12V1", true);
   });
   return out;
+}
+
+/** Align former factory PF floors once. Deliberate custom floors and unrelated saved results survive. */
+export function migrateBasePf11(db: CoreDb): void {
+  if (db.kvGet("basePf11V1")) return;
+  const settings = db.kvGet<SettingsPatch>("settings"), presets = db.kvGet<Preset[]>("presets");
+  const backtests = db.kvGet<Record<string, unknown>>("presetBacktests");
+  const series = db.kvGet<Record<string, unknown>>("presetSeries");
+  const backup = structuredClone({ settings, presets, presetBacktests: backtests, presetSeries: series });
+  const formerRanges = { micro: 1.05, minimal: 1.1, short: 1.1, general: 1.2, long: 1.3 };
+  const oldDefaults: CoreSettings = { ...DEFAULT_SETTINGS,
+    gates: { ...DEFAULT_SETTINGS.gates, baseSetsMinPf: 1, rangeMinPf: formerRanges } };
+  const beforeDesk = mergeSettings(oldDefaults, backup.settings);
+  const upgrade = (s: SettingsPatch | undefined, inherited: number) => {
+    const g = s?.gates;
+    if (!g || (g.minPf ?? inherited) !== 1.1 ||
+        (g.rangeMinPf !== undefined && !isDeepStrictEqual(g.rangeMinPf, formerRanges))) return false;
+    let changed = false;
+    if (g.baseSetsMinPf === 1) { g.baseSetsMinPf = 1.1; changed = true; }
+    if (g.rangeMinPf !== undefined) { g.rangeMinPf = { ...DEFAULT_SETTINGS.gates.rangeMinPf }; changed = true; }
+    return changed;
+  };
+  let changed = upgrade(settings, DEFAULT_SETTINGS.gates.minPf);
+  const afterDesk = mergeSettings(DEFAULT_SETTINGS, settings);
+  for (const p of presets ?? []) changed = upgrade(p.settings, afterDesk.gates.minPf) || changed;
+  const beforeById = new Map([...ALL_RESEARCH_PRESETS, ...(backup.presets ?? [])].map((p) => [p.id, p]));
+  const afterById = new Map([...ALL_RESEARCH_PRESETS, ...(presets ?? [])].map((p) => [p.id, p]));
+  const signature = (desk: CoreSettings, preset: Preset) => {
+    const g = mergeSettings(desk, presetSettings(preset.settings)).gates;
+    return [g.minPf, g.baseSetsMinPf, g.rangeMinPf];
+  };
+  const affected = (id: string) => {
+    const before = beforeById.get(id), after = afterById.get(id);
+    if (!before || !after) return true;
+    try { return !isDeepStrictEqual(signature(beforeDesk, before), signature(afterDesk, after)); }
+    catch { return true; }
+  };
+  const invalid = new Set<string>();
+  for (const p of presets ?? []) if (affected(p.id)) {
+    invalid.add(p.id);
+    if (p.metrics) {
+      const { gp: _gp, gl: _gl, ...metrics } = p.metrics;
+      p.metrics = { ...metrics, pf: null, pfBasis: "unavailable", noLoss: null, pfConvention: "unavailable",
+        source: `${metrics.source ?? "Previous result"} — Base PF defaults changed; re-evaluate for current results` };
+      changed = true;
+    }
+  }
+  for (const id of new Set([...Object.keys(backtests ?? {}), ...Object.keys(series ?? {})]))
+    if (affected(id)) invalid.add(id);
+  db.tx(() => {
+    if (changed || invalid.size) db.kvSet("basePf11BackupV1", { ...backup, invalidPresetIds: [...invalid] });
+    if (changed) {
+      if (settings) db.kvSet("settings", settings);
+      if (presets) db.kvSet("presets", presets);
+    }
+    if (invalid.size) {
+      const keepBacktests = { ...backtests }, keepSeries = { ...series };
+      for (const id of invalid) { delete keepBacktests[id]; delete keepSeries[id]; }
+      if (backtests) db.kvSet("presetBacktests", keepBacktests);
+      if (series) db.kvSet("presetSeries", keepSeries);
+    }
+    db.kvSet("basePf11V1", true);
+  });
 }
 
 /** Prior cached preset PFs are not proof under the new per-range Base windows; keep a transactional backup. */

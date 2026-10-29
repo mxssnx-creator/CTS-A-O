@@ -1,3 +1,21 @@
+## 2026-10-29 — Ordinary Base PF1.1 factory release
+
+The requested factory floor is now1.1 for ordinary Micro/Minimal/Short/General/Long and Wide/Base construction.
+Global minPf was already1.1; the old range overrides1.05/1.2/1.3 and Wide construction1.0 were inconsistent.
+A transactional once-only migration backs up settings, presets and affected derived caches, replaces only former
+factory values, preserves custom floors, and retires changed/unproven cached PF rather than reusing stale wins.
+Signal's independent1.5 floor and explicit custom settings retain their existing meaning. API/UI use the correct
+Base fallback. This release does not include or enable the unfinished independent-stage draft #219.
+
+Focused default/range/migration tests pass77 checks; typecheck and build pass. Scoped lint has0 errors and5
+pre-existing warnings. Exact release CI is pending before merge. A production
+runtime/account has not been identified or changed. High end PF is not established. Latest independent model
+reference,20 symbols8–9 October12:00UTC(14:00Vienna),24h prior +24h trading, Micro15m Base20+15/Main15+15/Real15:
+Base57/4800(1.1875%), historical PF1.4124757452; Main PF0.5702814980, positions669/666/3 and orders5417/5412/5
+O/C/H; Real438/5417(8.08566%); Active positions28/28/0,orders31/31/0,modeled PF0.4045290210. Venue PF unavailable.
+Those old reference windows violate the newly requested50% ratio and remain an explicitly old-policy comparison.
+The expanded constrained matrix and persistent Main/Real source/ownership adapters are separate draft work.
+
 ## 2026-10-29 — Validated statistics headline
 
 Overview leads with PF from passing historical validation windows and passed/evaluated percentage. Statistics

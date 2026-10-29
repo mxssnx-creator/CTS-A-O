@@ -69,8 +69,8 @@ describe("positive coordinations stay on", () => {
     assert.equal(DEFAULT_SETTINGS.grid.baseTargets, true);
   });
 
-  it("Base builds a pair's sets from PF 1 up, and a check it cannot compute yet counts as valid", () => {
-    assert.equal(DEFAULT_SETTINGS.gates.baseSetsMinPf, 1);
+  it("Base builds a pair's sets from PF 1.1 up, and the explicit legacy warm-up policy stays separate", () => {
+    assert.equal(DEFAULT_SETTINGS.gates.baseSetsMinPf, 1.1);
     assert.equal(DEFAULT_SETTINGS.gates.warmup, true);
     // the two-window Base gate (gates.baseWindows) narrows this: off until a causal record in positive-coordinations.md
     assert.equal(DEFAULT_SETTINGS.gates.baseWindows, undefined);
