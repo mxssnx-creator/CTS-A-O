@@ -532,14 +532,14 @@ describe("sample warm-up (gates.warmup): a check that cannot be computed yet is 
     );
   });
 
-  it("Base and ordinary range factory floors are PF 1.1, including the Wide prefilter", async () => {
+  it("Base and downstream evaluations retain each requested range floor, including Wide", async () => {
     const { DEFAULT_GATES } = await import("../config.ts");
     const { baseSetsGates, passesBase } = await import("../pipeline/pipeline.ts");
     const { minPfOf } = await import("../minimal-coord.ts");
-    assert.equal(DEFAULT_GATES.baseSetsMinPf, 1.1, "the sets floor");
+    assert.equal(DEFAULT_GATES.baseSetsMinPf, 1.25, "the Wide sets floor");
     assert.equal(DEFAULT_GATES.warmup, true, "the sample warm-up is on");
     const sets = baseSetsGates(DEFAULT_GATES);
-    assert.equal(sets.minPf, 1.1);
+    assert.equal(sets.minPf, 1.25);
     assert.deepEqual(
       sets.rangeMinPf,
       DEFAULT_GATES.rangeMinPf,
@@ -553,13 +553,13 @@ describe("sample warm-up (gates.warmup): a check that cannot be computed yet is 
       assert.equal(passesBase(st, { ...sets, minPf: minPfOf(sets, tag) }), false, tag);
     const middle = { n: 40, pf: 1.15, net: 0.5, mdd: 0.1,
       baseLast: { requested: 40, n: 40, gp: 1.15, gl: 1, stop: 3.9 } };
-    assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "mn") }), true, "Minimal 1.10");
-    assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "sh") }), true, "Short 1.10");
+    assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "mn") }), true, "Minimal 1.08");
+    assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "sh") }), true, "Short 1.12");
     assert.equal(
       passesBase(middle, { ...sets, minPf: minPfOf(sets, "gn") }),
-      true,
-      "General 1.10",
+      false,
+      "General 1.25",
     );
-    assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "lg") }), true, "Long 1.10");
+    assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "lg") }), false, "Long 1.50");
   });
 });

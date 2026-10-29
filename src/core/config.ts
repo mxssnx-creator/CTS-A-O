@@ -53,7 +53,7 @@ export const PROTECT_GRID = {
 /** Last-N candidates for the walk-forward gate. */
 export const LAST_N_GRID = [5, 8, 10, 12, 15, 20, 25, 30, 40, 50, 75, 100] as const;
 
-/** PF 1 is neutral; the default floor 1.1 keeps one position cost of margin above it. */
+/** Return PF 1 is neutral. Evaluation floors are independent by economic range. */
 export const PF_NEUTRAL = 1;
 
 import {
@@ -76,7 +76,7 @@ export {
 };
 
 export const DEFAULT_GATES: Gates = {
-  minPf: 1.1,
+  minPf: 1.25,
   // longest drawdown time allowed, hours (selectable 2–35)
   maxDdtH: 35,
   // floor under the scaled DDT limit (operator, 6 Oct: "increase min default DDT to 18 hrs")
@@ -84,14 +84,14 @@ export const DEFAULT_GATES: Gates = {
   // max drawdown ratio: a config's largest drawdown ÷ its net over the window (docs/block-sweep.md, DDR sweep:
   // 12 windows — PF 1.232 → 1.244, drawdown −9 %, 85 % of the orders kept; 0.5 = low drawdown, −39 % orders)
   maxDdr: 1,
-  // One factory PF floor from Base through each range's own later evaluation. Explicit custom floors survive.
-  rangeMinPf: { micro: 1.1, minimal: 1.1, short: 1.1, general: 1.1, long: 1.1 },
+  // Operator 29 Oct: each range keeps its own floor through Base and subsequent evaluation.
+  rangeMinPf: { micro: 1.05, minimal: 1.08, short: 1.12, general: 1.25, long: 1.5 },
   minTrades: 12,
   baseLastN: 40,
   baseRangeLastN: { micro: 30, minimal: 30 },
   quorum: 0.6,
   // The untagged/Wide Base prefilter uses the same factory floor as the independently evaluated range cells.
-  baseSetsMinPf: 1.1,
+  baseSetsMinPf: 1.25,
   // a check with too few closes to compute counts as valid until it has enough, then is judged normally
   warmup: true,
   // A partial sample still needs at least nine completed closes; zero means require the full requested sample.

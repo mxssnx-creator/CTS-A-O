@@ -37,7 +37,7 @@ export interface BaseConfigCountRow {
   lastExitT: number | null;
 }
 
-const FLOOR_PF = 1.1;
+const FLOOR_PF = 1.05;
 
 export class BaseConfigCounter {
   private readonly options: BaseConfigCountOptions;
@@ -76,7 +76,7 @@ export class BaseConfigCounter {
         passed: 0,
         notEvaluated: {},
         minPf: Math.max(FLOOR_PF, minPfOf(o.gates, tag, ind)),
-        floorPf: ind.startsWith("sig-") ? SIGNAL_MIN_PF : FLOOR_PF,
+        floorPf: ind.startsWith("sig-") ? SIGNAL_MIN_PF : minPfOf({ minPf: FLOOR_PF }, tag, ind),
         cost: o.cost,
         cutT: o.cutT,
         fromT: o.fromT,

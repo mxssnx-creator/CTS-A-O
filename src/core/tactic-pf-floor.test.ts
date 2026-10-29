@@ -92,7 +92,7 @@ const OPTIONS = {
 };
 
 describe("first-class indication minimum return PF is consistent from Base through entry", () => {
-  it("applies the 1.1 floor to Tactic, Relate and Break identities while preserving stricter stage/range minima", () => {
+  it("uses independent Micro floors and retains the other Tactic, Relate and Break minima", () => {
     for (const ind of [
       "tactic-trend-s",
       IND,
@@ -102,7 +102,7 @@ describe("first-class indication minimum return PF is consistent from Base throu
       "break-rel-don-5-dd24-guarded@m5",
       "break-mc-rel-retest-15-dd48-balanced@m15",
     ])
-      for (const tag of [undefined, "mc", "sh"]) assert.equal(minPfOf(G, tag, ind), 1.1);
+      for (const tag of [undefined, "mc", "sh"]) assert.equal(minPfOf(G, tag, ind), tag === "mc" ? 1.05 : 1.1);
     assert.equal(minPfOf(G, "gn", IND), 1.3);
     assert.equal(minPfOf({ ...G, minPf: 1.4 }, undefined, IND), 1.4);
     assert.equal(minPfOf(G, "mc", OTHER), 1.05);
@@ -114,13 +114,13 @@ describe("first-class indication minimum return PF is consistent from Base throu
     const low = sample(1.08);
     const g = baseSetsGates({ ...G, baseSetsMinPf: 1 });
     const lowRun = { ind: IND, full: low, ranges: { mc: low, sh: low } };
-    assert.deepEqual(basePassTags(lowRun, g, ["mc", "sh", "gn"]), []);
+    assert.deepEqual(basePassTags(lowRun, g, ["mc", "sh", "gn"]), ["mc"]);
     assert.deepEqual(
       basePassTags({ ...lowRun, ind: OTHER }, g, ["mc", "sh", "gn"]).sort(),
       ["", "mc"].sort(),
     );
     for (const tag of ["", "mc", "sh"]) {
-      assert.equal(rangeCellPass({ ...G, baseSetsMinPf: 1 }, IND)(tag, low), false);
+      assert.equal(rangeCellPass({ ...G, baseSetsMinPf: 1 }, IND)(tag, low), tag === "mc");
       assert.equal(rangeCellPass({ ...G, baseSetsMinPf: 1 }, OTHER)(tag, low), tag !== "sh",
         "ordinary Short also keeps the 1.1 range floor");
       assert.equal(rangeCellPass({ ...G, baseSetsMinPf: 1 }, OTHER)(tag, sample(1.12)), true);
@@ -137,13 +137,13 @@ describe("first-class indication minimum return PF is consistent from Base throu
     }));
     const count = baseRangeCounts(runs, G, ["mc"]);
     for (const row of count) {
-      assert.equal(row.passed, 1);
-      assert.equal(row.minPf, 1.1);
+      assert.equal(row.passed, row.tag === "mc" ? 2 : 1);
+      assert.equal(row.minPf, row.tag === "mc" ? 1.05 : 1.1);
     }
     const why = baseRangeWhy(runs, G, ["mc"]);
     for (const row of why) {
-      assert.equal(row.passed, 1);
-      assert.equal(row.first.pf, 1);
+      assert.equal(row.passed, row.tag === "mc" ? 2 : 1);
+      assert.equal(row.first.pf, row.tag === "mc" ? 0 : 1);
     }
     const sensitivity = baseGateSensitivity(
       runs,
@@ -153,7 +153,7 @@ describe("first-class indication minimum return PF is consistent from Base throu
     );
     for (const row of sensitivity) {
       assert.equal(row.passed, 1);
-      assert.equal(row.passedAnyRange, 1);
+      assert.equal(row.passedAnyRange, 2);
     }
   });
 

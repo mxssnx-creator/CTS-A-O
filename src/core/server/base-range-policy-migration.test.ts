@@ -6,7 +6,7 @@ import { CoreRuntime } from "./runtime.server.ts";
 function dbWithPresets() {
   const db = new CoreDb(":memory:");
   // Isolate Base-30 retirement; the separate PF-default migration has its own provenance/rollback tests.
-  for (const key of ["signalEvaluation100V1", "signalLast4V1", "signalHistory150V1", "validationLast12V1", "basePf11V1", "ddtMax35"])
+  for (const key of ["signalEvaluation100V1", "signalLast4V1", "signalHistory150V1", "validationLast12V1", "basePf11V1", "rangePfFloors20261029V1", "ddtMax35"])
     db.kvSet(key, true);
   db.kvSet("wfCapsV", 37);
   const metrics = { pf: 2, pfBasis: "unit-net-returns", gp: 2, gl: 1, n: 20, net: 1,
