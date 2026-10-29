@@ -19,6 +19,7 @@ import {
   markedOpenTrade,
   positionMult,
   positionVolume,
+  type TapeBuildStat,
 } from "./walkforward.ts";
 import { DEFAULT_AXIS, DEFAULT_SETTINGS } from "../config.ts";
 import { signalSettings } from "../signal-config.ts";
@@ -601,7 +602,7 @@ describe("axis: signal strategy sets", () => {
       ([m, p]) => ({ rangeOfId: m.rangeOfId, kindOfId: p.kindOfId }),
     );
     const u = makeUniverse([
-      barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 700, Date.UTC(2026, 8, 20))),
+      barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 288, Date.UTC(2026, 8, 20))),
     ]);
     const wf = defaultWalkForward({ ...DEFAULT_SETTINGS, tfMin: 15 });
     const grid = protectGrid(15, DEFAULT_SETTINGS.grid, 0.002);
@@ -617,21 +618,36 @@ describe("axis: signal strategy sets", () => {
     const ratio = snapTpRatio(axis.tpRatio ?? 2.2);
     assert.ok(Math.abs(vs[0].maxSl - Math.max(...mnTps) / ratio) < 1e-6, `${vs[0].maxSl}`);
     assert.ok(Math.abs(vs[0].minSl - Math.min(...mnTps) / ratio) < 1e-6, `${vs[0].minSl}`);
-    const build = (tags: string[]) =>
+    const build = (tags: string[], buildStats?: Map<string, TapeBuildStat>) =>
       buildTapes(u, grid, 0.002, { protects: wf.dcaProtects, dca: wf.dca, axis }, new Set([key]), null, null, {
         minSl: 0.005,
         minTrail: 0.005,
         pairTags: { [key]: tags },
+        buildStats,
       } as never);
-    const onlyMn = build(["mn"]);
+    const stats = new Map<string, TapeBuildStat>();
+    const onlyMn = build(["mn"], stats);
     const ax = onlyMn.filter((t) => t.kind === "axis");
     assert.ok(ax.length === 2, ax.map((t) => t.id).join(" "));
+    const mnStats = stats.get(`${combo.ind}|mn|axis`);
+    assert.ok(mnStats, "range Axis tapes have their own build and coverage record");
+    assert.deepEqual([mnStats.grid, mnStats.built, mnStats.kept, mnStats.few], [2, 2, 2, 0]);
     for (const t of ax) {
       assert.equal(rangeOfId(t.id), "mn", t.id);
       assert.equal(kindOfId(t.id), "axis");
       assert.equal(t.protect.tag, "mn");
       for (let i = 0; i < t.n; i++) assert.ok(Number.isFinite(t.r[i]));
     }
+    const recoveryStats = new Map<string, TapeBuildStat>();
+    const recovered = buildTapes(u, grid, 0.002, { protects: wf.dcaProtects, dca: wf.dca, axis },
+      new Set([key]), null, null, { minSl: 0.005, minTrail: 0.005, pairTags: { [key]: [] },
+        heldIds: new Set([ax[0].id]), buildStats: recoveryStats });
+    const recoveredAxis = recovered.filter((t) => t.kind === "axis" && t.protect.tag === "mn");
+    assert.deepEqual(recoveredAxis.map((t) => t.id), [ax[0].id]);
+    assert.equal(recoveredAxis[0].heldOnly, true);
+    const recoveredStats = recoveryStats.get(`${combo.ind}|mn|axis`)!;
+    assert.deepEqual([recoveredStats.grid, recoveredStats.built, recoveredStats.kept, recoveredStats.skip.baseRange],
+      [2, 0, 0, 2], "held exits and their rejected siblings do not become active sets");
     // no Wide pass: no Wide (untagged) Axis or DCA ladders
     assert.equal(onlyMn.filter((t) => (t.kind === "axis" || t.kind.startsWith("dca")) && !t.protect.tag).length, 0);
     // with Wide passed as well, the Wide ladders come back beside the Minimal ones

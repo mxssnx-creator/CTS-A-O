@@ -843,7 +843,7 @@ export interface PaperBook {
   eligible: number;
   /**
    * stopHit: observed stop/target crossing or captured hold expiry (its lane leaves live control at once);
-   * hitPx: the level it crossed (unset: the stop)
+   * hitPx: observed adverse quote at a stop, the target limit, or observed price at expiry (unset: the stop)
    */
   /** legs: Block type overall — the extra volume of every raising source (its own position) */
   /** tkBar / tkHi / tkLo: the lane bar the tick follows for a trailing position, and its high and low so far */
@@ -12196,9 +12196,9 @@ export function baseRangeRules(
 /**
  * The Base gate over the S1 runs, one rule for the engine's compute and the preset backtest (the backtest judged the
  * default protect alone and built every range and target of a passed pair: sets the engine never validates). Each
- * engine pair is judged at the default protect and at one cell of each enabled range, against that range's own min PF:
- * the ranges it passes are the ones whose configs it computes (pairTags), and per range only the targets whose Base
- * cells passed (pairTps, grid.baseTargets).
+ * engine pair is judged at the default protect and at one cell of each enabled range, against that range's own min PF.
+ * The separate construction maps can include diagnostic ranges and targets, but qualifiedTags always records only
+ * actual Base passes and is used by the engine and preset admission gates.
  */
 export function basePass(
   s1: readonly ComboRun[],
@@ -12226,6 +12226,7 @@ export function basePass(
   addedKeys: Set<string>;
 } {
   const pairTags: Record<string, string[]> = {};
+  const qualifiedTags: Record<string, string[]> = {};
   const pairCells: Record<string, readonly string[]> = {};
   const cellsOn = s.grid?.baseCells === true;
   const setsGates = baseSetsGates(s.gates);
@@ -12241,6 +12242,7 @@ export function basePass(
     // a family's pair builds only the sets of its own range (the other ranges of the pair are other families)
     if (evalFams) tags = familyTags(evalFams, r.bot, r.ind, tags);
     if (!tags.length) return false;
+    qualifiedTags[`${r.bot}|${r.ind}`] = [...tags];
     // the ranges built: the passed ones, or (baseRanges off) every range that applies, the unpassed ones with every
     // target (pairTps lists only the passed ranges' targets)
     let built = pairBuildTags(r.ind, tags, ALL_RANGE_TAGS, applies, rangesOn);
@@ -12260,9 +12262,6 @@ export function basePass(
   });
   const qualified = [...passed];
   const qualifiedCells = Object.fromEntries(Object.entries(pairCells).map(([pair, cells]) => [pair, [...cells]]));
-  const qualifiedTags = Object.fromEntries(
-    Object.entries(pairTags).map(([k, tags]) => [k, [...tags]]),
-  );
   const qualifiedTps = Object.fromEntries(
     Object.entries(pairTps).map(([pair, ranges]) => [
       pair,

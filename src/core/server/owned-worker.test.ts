@@ -22,6 +22,25 @@ const positions = (n: number): TickPosition[] =>
   }));
 
 describe("private serial realtime worker", () => {
+  it("publishes observed adverse gap marks once for long and short stops", async () => {
+    const worker = new OwnedWorker(128), initial = positions(2).map(p => ({ ...p, trail: 0 }));
+    const units = Float64Array.of(1, 1), cost = .0012;
+    try {
+      await worker.run({ type: "tick-init", positions: initial, units, cost, baseTfMin: 1,
+        trailFree: false, prices: { S0: 100, S1: 100 }, now: 60_000 }, 5_000);
+      const result = (await worker.run<{ result: TickMathResult }>({ type: "tick-advance",
+        prices: { S0: 97, S1: 103 }, now: 60_001 }, 5_000)).result;
+      assert.equal(Object.keys(result.hits ?? {}).length, 2);
+      assert.deepEqual(Object.values(result.hits!).map(hit => hit.px).sort((a, b) => a! - b!), [97, 103]);
+      assert.equal(result.patches[0].values.hitPx, 97);
+      assert.equal(result.patches[1].values.hitPx, 103);
+      assert.ok(Math.abs(result.patches[0].values.mtm! - (-.03 - cost)) < 1e-12);
+      assert.ok(Math.abs(result.patches[1].values.mtm! - (-.03 - cost)) < 1e-12);
+      const later = await worker.run<{ result: TickMathResult }>({ type: "tick-advance",
+        prices: { S0: 96, S1: 104 }, now: 60_002 }, 5_000);
+      assert.equal(later.result.hits, null);
+    } finally { worker.dispose(); }
+  });
   it("retains deadline close reasons and exact marks across flat frames on both directions", async () => {
     const worker = new OwnedWorker(128), M = 60_000;
     const initial = positions(2).map((p) => ({ ...p, trail: 0, executionTfMin: 1, holdEndT: 2 * M }));

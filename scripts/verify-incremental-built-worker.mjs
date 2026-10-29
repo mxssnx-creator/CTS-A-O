@@ -109,10 +109,8 @@ try {
   }));
   const units = new Float64Array([1, 1]),
     prices = { "BTC-USDT": 101 };
-  const reference = new TickMathBook(structuredClone(positions), units, 0.0015, 1, false).advance(
-    prices,
-    60000,
-  );
+  const referenceBook = new TickMathBook(structuredClone(positions), units, 0.0015, 1, false);
+  const reference = referenceBook.advance(prices, 60000);
   const marked = await request({
     type: "tick-init",
     positions,
@@ -124,6 +122,17 @@ try {
     now: 60000,
   });
   assert.deepEqual(marked.result, reference);
+  // The production bundle must publish the first observed adverse quote, not the crossed stop level.
+  for (const [px, now] of [[94, 60001], [106, 60002]]) {
+    const frame = { "BTC-USDT": px };
+    const local = referenceBook.advance(frame, now);
+    const remote = await request({ type: "tick-advance", prices: frame, now });
+    assert.deepEqual(remote.result, local);
+    assert.equal(Object.values(remote.result.hits ?? {})[0]?.px, px);
+    const closed = remote.result.patches.find((p) => p.values.stopHit === now);
+    assert.equal(closed?.values.hitPx, px);
+    assert.ok(Math.abs(closed.values.mtm - (-0.06 - 0.0015)) < 1e-12);
+  }
   console.log(
     JSON.stringify({
       passed: true,
@@ -132,6 +141,7 @@ try {
         "realtime incremental tape exact parity",
         "historical Real complete-result parity",
         "Long/Short tick math exact parity",
+        "Long/Short stop-gap marks and one modeled cost",
       ],
       closes: next.n,
     }),
