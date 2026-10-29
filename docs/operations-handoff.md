@@ -1,3 +1,11 @@
+## 2026-10-29 — PR234 first CI found recovery-count defect; deadline follow-up included
+
+First hosted headb9c4993 failed one of1080core-shard1 tests: recovery-only held exits added an extra configured Base cell (10vs9). The assertion was correct; recovered-only cells now skip BaseConfigCounter and grid candidate stats. The existing worker/serialization regression passes with its fixture bounded to72h. Other first-head checks passed, but that head must not be merged as green.
+
+Realtime audit also reproduced flat-price expiry waiting for compute. Explicit capped positions now capture holdEndT, tick workers/fallback wake at its deadline, and observed time/price/reason persist through own-order hit keys and rebuild. No quote means unresolved price, not a fabricated fill; an existingTP/SL instruction is not overwritten. Original held deadlines survive current-grid changes.141focused regressions passed before the counter follow-up; fresh20symbol72h stress has identical full1280context rows/checksum,0.556s,75.3MiB sampledheap,218.8MiB maxRSS under256MiB heapcap. Detailed follow-up:docs/minute-cap-execution-20261029/realtime-deadlines.md. Updated combined verification PASSED169focused regressions in10.106s, typecheck and full development/core-worker build; hosted rerun pending.
+
+Financial cohort unchanged:8–9Oct20symbolMicro step3 Normal/Trailing,24h prehistory,oldPF1.1 policy. Base10/4800(0.20833%),historicalPF1.2052314969;MainPF0.6173282875;positions307/305/2,orders1585/1583/2O/C/H;Real0/1585;Active/venuePF unavailable. Full new stage adapter/Overall/venue mapping remains unfinished and unmerged; no high-PF guarantee. New market studies remain≤72h TOTAL.
+
 ## 2026-10-29 — isolated capped-minute execution repair verified on main233
 
 This isolated release starts from maina25b0c5 (PR233) and contains only the capped execution/hold repair and its evidence. It does NOT include draft219, the independent30m catalogue, or the new persistent stage adapter. Shared minute execution fixes subbar caps discarded ashold0 and distinct caps sharing IDs; exact hm config/cell identity, own source ATR/Axis projections, realtime held clock/restart provenance, legacy exit-only recovery, hard Axis Desk maxima and known-minute statistics labels are tested. Backed-up proof/count migration preserves settings, held positions and realized ledgers.

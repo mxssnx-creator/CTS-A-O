@@ -598,6 +598,10 @@ export interface OpenPosition {
   entryI: number;
   /** Actual model price clock captured at entry; absent legacy positions retain their indication clock. */
   executionTfMin?: number;
+  /** Captured explicit hold deadline; absent legacy positions do not infer one from current settings. */
+  holdEndT?: number;
+  /** Observed realtime close instruction, not evidence of a venue fill. */
+  hitReason?: ExitReason;
   entry: number;
   stop: number;
   target: number;

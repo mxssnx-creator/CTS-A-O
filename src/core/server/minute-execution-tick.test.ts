@@ -30,3 +30,38 @@ test("rebuilding a position cannot reinterpret retained tick indices using a dif
   assert.equal(carried.tkBar, undefined);
   assert.equal(carried.stop, 98, "price protection remains monotone independently of bar provenance");
 });
+
+test("a flat quote closes at the captured hold deadline without waiting for a compute or indication bar", () => {
+  const p = { ...position(), trail: 0, holdEndT: 15 * M }, other = { ...position(), side: -1 as const,
+    stop: 102, target: 95, trail: 0 };
+  const book = new TickMathBook([p, other], Float64Array.of(1, 1), .0015, 1, false);
+  book.advance({ "CLOCK-USDT": 100 }, M);
+  assert.equal(p.stopHit, undefined);
+  book.advance({ "CLOCK-USDT": 100 }, 15 * M - 1);
+  assert.equal(p.stopHit, undefined, "the last price before expiry cannot trigger an early close");
+  const due = book.advance({ "CLOCK-USDT": 100 }, 15 * M);
+  assert.equal(p.stopHit, 15 * M); assert.equal(p.hitPx, 100);
+  assert.equal(p.hitReason, "time"); assert.equal(other.stopHit, undefined, "legacy expiry cannot be inferred");
+  assert.equal(Object.values(due.hits ?? {})[0]?.reason, "time");
+  assert.equal(book.advance({ "CLOCK-USDT": 100 }, 16 * M).hits, null, "no duplicate close on a later tick");
+});
+
+test("expiry without a valid quote stays unresolved and later closes at observed time, never a fabricated earlier price", () => {
+  const p = { ...position(), trail: 0, holdEndT: 15 * M };
+  const book = new TickMathBook([p], Float64Array.of(1), .0015, 1, false);
+  book.advance({}, 16 * M); assert.equal(p.stopHit, undefined);
+  book.advance({ "CLOCK-USDT": 0 }, 16 * M); assert.equal(p.stopHit, undefined);
+  book.advance({ "CLOCK-USDT": 100.1 }, 17 * M);
+  assert.equal(p.stopHit, 17 * M); assert.equal(p.hitPx, 100.1); assert.equal(p.hitReason, "time");
+});
+
+test("a captured deadline cannot overwrite an already observed TP/SL instruction", () => {
+  for (const px of [98, 105]) {
+    const p = { ...position(), trail: 0, holdEndT: 15 * M };
+    const book = new TickMathBook([p], Float64Array.of(1), .0015, 1, false);
+    book.advance({ "CLOCK-USDT": px }, M);
+    assert.equal(p.stopHit, M); assert.equal(p.hitPx, px);
+    book.advance({ "CLOCK-USDT": 100 }, 15 * M);
+    assert.equal(p.stopHit, M); assert.equal(p.hitPx, px); assert.equal(p.hitReason, undefined);
+  }
+});

@@ -1,6 +1,6 @@
 import { modeledPriceReturn } from "../model-cost.ts";
 // Pure price/protection math shared by the realtime thread and its sliced recovery path.
-import type { OpenPosition } from "../domain/types.ts";
+import type { ExitReason, OpenPosition } from "../domain/types.ts";
 import { trailBar } from "../sim/backtest.ts";
 import { enforceSignalPosition } from "../sim/trailing.ts";
 import { advanceExitProtection } from "../sim/exit-protection.ts";
@@ -9,9 +9,10 @@ import { isSignalInd, laneOf } from "../indications/registry.ts";
 export type TickPosition = OpenPosition &
   TickTrail & { stopHit?: number; hitPx?: number; vol?: number };
 export type TickPatch = { index: number; values: Partial<TickPosition> };
+export type TickExitHit = { at: number; stop: number; px?: number; reason?: ExitReason };
 export interface TickMathResult {
   open: number;
-  hits: Record<string, { at: number; stop: number; px?: number }> | null;
+  hits: Record<string, TickExitHit> | null;
   trailMoved: boolean;
   patches: TickPatch[];
 }
@@ -91,7 +92,9 @@ export class TickMathBook {
           const protectTf = !p.stopHit && (p.exitProtection || (p.trail ?? 0) > 0) ? laneMs : 0;
           const barDue =
             protectTf > 0 && (p.tkBar === undefined || now >= (p.tkBar + 1) * protectTf);
-          if (changed || barDue) {
+          const deadline = Number.isFinite(p.holdEndT) && p.holdEndT! > p.entryT ? p.holdEndT! : Infinity;
+          const holdDue = !p.stopHit && now >= deadline;
+          if (changed || barDue || holdDue) {
             if (enforceSignalPosition(p)) result.trailMoved = true;
             if (!p.stopHit && (p.trail || p.exitProtection))
               if (tickTrail(p, px, now, protectTf || laneMs)) result.trailMoved = true;
@@ -101,11 +104,13 @@ export class TickMathBook {
                 px,
                 isSignalInd(p.cfg.split("|")[1] ?? "") ? false : this.trailFree,
               );
-              if (level > 0) {
+              if (level > 0 || holdDue) {
                 p.stopHit = now;
-                p.hitPx = level;
+                p.hitPx = level > 0 ? level : px;
+                if (!(level > 0)) p.hitReason = "time";
                 const key = `${p.cfg}|${p.sym}|${p.side > 0 ? 1 : -1}|${p.entryT}`;
-                (result.hits ??= {})[key] = { at: now, stop: p.stop, px: level };
+                (result.hits ??= {})[key] = { at: now, stop: p.stop, px: p.hitPx,
+                  ...(p.hitReason ? { reason: p.hitReason } : {}) };
               }
             }
             const at = p.stopHit ? (p.hitPx ?? p.stop) : px;
@@ -132,6 +137,7 @@ export class TickMathBook {
                   tkClose: p.tkClose,
                   stopHit: p.stopHit,
                   hitPx: p.hitPx,
+                  ...(p.hitReason ? { hitReason: p.hitReason } : {}),
                 },
               });
           }
@@ -140,6 +146,7 @@ export class TickMathBook {
               g.nextBarT,
               ((p.tkBar ?? Math.floor(now / protectTf)) + 1) * protectTf,
             );
+          if (!p.stopHit) g.nextBarT = Math.min(g.nextBarT, deadline);
           sum += p.mtm * (p.vol ?? 1) * this.units[index];
         }
         g.px = px;

@@ -126,7 +126,7 @@ for (const mode of ["full", "fast"] as const) for (const scenario of ["malformed
   });
 }
 
-test("changed values of an existing exact stop-hit key are persisted", () => {
+test("changed values and captured time cause of an existing exact stop-hit key are persisted", () => {
   const db = new CoreDb(":memory:");
   const rt = new CoreRuntime(db, { live: { liveLastN: 0 } }, { market: "synthetic", replay: true, priceStream: null });
   rt.stop();
@@ -139,13 +139,14 @@ test("changed values of an existing exact stop-hit key are persisted", () => {
     rt.sim = walkForward(u, [], { ...rt.wf, simH: 24 });
     rt.tapes = [makeTape(HELD, "follow", "ema-9-21@m15", { ...DEFAULT_PROTECT, tag: "mn" },
       "normal", [SYM], [], [open], [])];
-    rt.paper.positions = [{ ...open, vol: 1, level: 0, stopHit: T - 5_000, hitPx: 98.8 }];
+    rt.paper.positions = [{ ...open, vol: 1, level: 0, stopHit: T - 5_000, hitPx: 98.8, hitReason: "time" }];
     const key = `${HELD}|${SYM}|1|${entryT}`;
     db.kvSet("stopHits", { [key]: { at: T - 10_000, stop: 99, px: 99.2 } });
     const hooks = rt as unknown as { lastSelection: unknown; stepPaperGen(fast?: undefined, reuse?: boolean): Generator<number, void> };
     hooks.lastSelection = { picks: [], eligible: 0 };
     for (const _ of hooks.stepPaperGen(undefined, true)) { /* drain */ }
     assert.equal(rt.paper.positions[0].hitPx, 98.8);
-    assert.deepEqual(db.kvGet<Record<string, unknown>>("stopHits")?.[key], { at: T - 5_000, stop: 99, px: 98.8 });
+    assert.equal(rt.paper.positions[0].hitReason, "time");
+    assert.deepEqual(db.kvGet<Record<string, unknown>>("stopHits")?.[key], { at: T - 5_000, stop: 99, px: 98.8, reason: "time" });
   } finally { rt.dispose(); db.db.close(); }
 });
