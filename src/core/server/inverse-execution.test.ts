@@ -1,14 +1,16 @@
 // Deterministic adapter integration, not real venue/PF evidence.
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import { fakeRt, lane, rng, SimExchange } from "../test-support.ts";
-import { stepLive, liveKv } from "./live.server.ts";
+import { fakeRt, lane, rng, SimExchange, PINNED_END } from "../test-support.ts";
+import { stepLive, liveKv, resetLiveBackoff } from "./live.server.ts";
 import { CoreDb } from "./db.server.ts";
 
 for (const symbols of [12, 20]) test(`Inverse preserves ${symbols}-symbol long/short identities through native open, stop updates and close`, async () => {
   const prev = process.env.CTS_CORE_LIVE;
   process.env.CTS_CORE_LIVE = "1";
-  mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  // Independent simulated venues cannot inherit account retry state or a backwards mocked clock.
+  resetLiveBackoff();
+  mock.timers.enable({ apis: ["Date"], now: PINNED_END + symbols * 3_600_000 });
   const db = new CoreDb(":memory:");
   try {
     const { rt, prices } = fakeRt(db, symbols);
@@ -76,6 +78,7 @@ for (const symbols of [12, 20]) test(`Inverse preserves ${symbols}-symbol long/s
     assert.equal(ex.fills.filter((f) => f.into).length, symbols * 2);
     assert.equal(ex.fills.filter((f) => !f.into).length, symbols * 2);
   } finally {
+    resetLiveBackoff();
     mock.timers.reset();
     if (prev === undefined) delete process.env.CTS_CORE_LIVE;
     else process.env.CTS_CORE_LIVE = prev;
