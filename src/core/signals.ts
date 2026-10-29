@@ -13,6 +13,8 @@ import type { ExitConfigSet, Protect } from "./domain/types.ts";
 import { atrProtect } from "./sim/backtest.ts";
 import { isSignalInd, laneInd } from "./indications/registry.ts";
 import { SIGNAL_MIN_PF } from "./signal-policy.ts";
+import { rawProfitFactor } from "./metrics/profit-factor.ts";
+import { imprecisePrefix, returnWindow } from "./metrics/return-window.ts";
 import {
   SIGNAL_SOURCES,
   signalId,
@@ -463,7 +465,7 @@ function sliceClock(ms = 8): () => boolean {
   };
 }
 
-type AcceptColumns = { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array };
+type AcceptColumns = { t: Float64Array; r: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array; direction: Int32Array };
 type AcceptSymbols = { syms: string[]; slots: Uint32Array };
 type LazyAcceptSource = { tp: AcceptTape; counts: Int32Array; symbols: AcceptSymbols };
 const acceptSymbolsCache = new WeakMap<readonly string[], AcceptSymbols>();
@@ -576,9 +578,11 @@ export class SignalAcceptIndex {
       const cols: Array<
         | {
             t: Float64Array;
+            r: Float64Array;
             gp: Float64Array;
             gl: Float64Array;
             cn: Int32Array;
+            direction: Int32Array;
             next: number;
             seen: Set<number> | null;
           }
@@ -588,9 +592,11 @@ export class SignalAcceptIndex {
         const n = counts[slot];
         cols[slot] = {
           t: new Float64Array(n),
+          r: new Float64Array(n),
           gp: new Float64Array(n + 1),
           gl: new Float64Array(n + 1),
           cn: new Int32Array(n + 1),
+          direction: new Int32Array(n + 1),
           next: 0,
           seen: tp.entryT ? new Set() : null,
         };
@@ -600,8 +606,10 @@ export class SignalAcceptIndex {
         const j = x.next++;
         const r = +tp.r[i];
         x.t[j] = tp.exitT[i];
+        x.r[j] = r;
         x.gp[j + 1] = x.gp[j] + (r > 0 ? r : 0);
         x.gl[j + 1] = x.gl[j] + (r > 0 ? 0 : -r);
+        x.direction[j + 1] = x.direction[j] + (r > 0 ? 1 : r < 0 ? -1 : 0);
         const entry = tp.entryT ? +tp.entryT[i] : 0;
         const first = !x.seen?.has(entry);
         x.seen?.add(entry);
@@ -609,12 +617,14 @@ export class SignalAcceptIndex {
         if ((i & 8191) === 8191 && clock()) yield 0;
       }
       for (const slot of slots) {
-        const { t, gp, gl, cn } = cols[slot]!;
+        const { t, r, gp, gl, cn, direction } = cols[slot]!;
         this.groups.set(acceptKey(tp.ind, symbols.syms[slot >> 1], slot % 2 ? 1 : -1, tp.kind, tp.id), {
           t,
+          r,
           gp,
           gl,
           cn,
+          direction,
         });
       }
       if (clock()) yield 0;
@@ -664,19 +674,23 @@ export class SignalAcceptIndex {
       for (let i = 0; i < c.n; i++) order[i] = i;
       order.sort((a, b) => c.t[a] - c.t[b]);
       const t = new Float64Array(c.n);
+      const r = new Float64Array(c.n);
       const gp = new Float64Array(c.n + 1);
       const gl = new Float64Array(c.n + 1);
       // (counts: integers, 4 B each)
       const cn = new Int32Array(c.n + 1);
+      const direction = new Int32Array(c.n + 1);
       // an entry counts at its first close (causal: the later closes of its other configs add no count); keyed by
       // its lane indication and entry time as numbers (a string per close before)
       const seen = new Map<number, Set<number>>();
       for (let j = 0; j < c.n; j++) {
         const i = order[j];
-        const r = c.r[i];
+        const value = c.r[i];
         t[j] = c.t[i];
-        gp[j + 1] = gp[j] + (r > 0 ? r : 0);
-        gl[j + 1] = gl[j] + (r > 0 ? 0 : -r);
+        r[j] = value;
+        gp[j + 1] = gp[j] + (value > 0 ? value : 0);
+        gl[j + 1] = gl[j] + (value > 0 ? 0 : -value);
+        direction[j + 1] = direction[j] + (value > 0 ? 1 : value < 0 ? -1 : 0);
         let first = true;
         if (c.ii[i] >= 0) {
           let es = seen.get(c.ii[i]);
@@ -686,7 +700,7 @@ export class SignalAcceptIndex {
         }
         cn[j + 1] = cn[j] + (first ? 1 : 0);
       }
-      this.groups.set(k, { t, gp, gl, cn });
+      this.groups.set(k, { t, r, gp, gl, cn, direction });
       // the group's scratch columns are done with: released now, not with the whole set at the end (60 B a close)
       cols.delete(k);
       if (clock()) yield 0;
@@ -713,7 +727,7 @@ export class SignalAcceptIndex {
     const n = symI < 0 || (side !== 1 && side !== -1) ? 0 : counts[slot];
     if (!n) return undefined;
     const columns: AcceptColumns = {
-      t: new Float64Array(n), gp: new Float64Array(n + 1), gl: new Float64Array(n + 1), cn: new Int32Array(n + 1),
+      t: new Float64Array(n), r: new Float64Array(n), gp: new Float64Array(n + 1), gl: new Float64Array(n + 1), cn: new Int32Array(n + 1), direction: new Int32Array(n + 1),
     };
     const seen = tp.entryT ? new Set<number>() : null;
     let j = 0;
@@ -721,13 +735,15 @@ export class SignalAcceptIndex {
       if (symbols.slots[tp.symI[i]] !== symI || (tp.side[i] > 0 ? 1 : -1) !== side) continue;
       const r = +tp.r[i], entry = tp.entryT ? +tp.entryT[i] : 0;
       columns.t[j] = tp.exitT[i];
+      columns.r[j] = r;
       columns.gp[j + 1] = columns.gp[j] + (r > 0 ? r : 0);
       columns.gl[j + 1] = columns.gl[j] + (r > 0 ? 0 : -r);
+      columns.direction[j + 1] = columns.direction[j] + (r > 0 ? 1 : r < 0 ? -1 : 0);
       columns.cn[j + 1] = columns.cn[j] + (seen?.has(entry) ? 0 : 1);
       seen?.add(entry);
       j++;
     }
-    const bytes = columns.t.byteLength + columns.gp.byteLength + columns.gl.byteLength + columns.cn.byteLength;
+    const bytes = columns.t.byteLength + columns.r.byteLength + columns.gp.byteLength + columns.gl.byteLength + columns.cn.byteLength + columns.direction.byteLength;
     while (this.cached.size && (this.cached.size >= ACCEPT_CACHE_GROUPS || this.cachedBytes + bytes > ACCEPT_CACHE_BYTES)) {
       const first = this.cached.keys().next().value!;
       this.cachedBytes -= this.cached.get(first)!.bytes;
@@ -757,9 +773,8 @@ export class SignalAcceptIndex {
     const a = above(t - hours * 3_600_000);
     const b = above(t);
     if (b <= a) return { n: 0, pf: 0 };
-    const gp = g.gp[b] - g.gp[a];
-    const gl = g.gl[b] - g.gl[a];
-    return { n: g.cn[b] - g.cn[a], pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+    const { gp, gl } = returnWindow(g, a, b);
+    return { n: g.cn[b] - g.cn[a], pf: rawProfitFactor(gp, gl) };
   }
 }
 
@@ -870,7 +885,7 @@ export class EngineSideIndex {
   }
   private groups = new Map<
     string,
-    { h: Float64Array; gp: Float64Array; gl: Float64Array; n: Float64Array }
+    { h: Float64Array; gp: Float64Array; gl: Float64Array; n: Float64Array; bucketGp: Float64Array; bucketGl: Float64Array }
   >();
   /** Extend the hourly record with strictly newer closes, retaining every earlier candidate and hour. */
   *append(tapes: readonly SideTape[]): Generator<number, void> {
@@ -892,15 +907,22 @@ export class EngineSideIndex {
         gp: new Float64Array(n + 1),
         gl: new Float64Array(n + 1),
         n: new Float64Array(n + 1),
+        bucketGp: new Float64Array(n),
+        bucketGl: new Float64Array(n),
       };
       next.h.set(old.h);
+      next.bucketGp.set(old.bucketGp);
+      next.bucketGl.set(old.bucketGl);
       for (const col of ["gp", "gl", "n"] as const) next[col].set(old[col]);
       for (let i = 0; i < extra.h.length; i++) {
         const j = old.h.length - overlap + i;
         next.h[j] = extra.h[i];
+        next.bucketGp[j] = (overlap && i === 0 ? old.bucketGp[j] : 0) + extra.bucketGp[i];
+        next.bucketGl[j] = (overlap && i === 0 ? old.bucketGl[j] : 0) + extra.bucketGl[i];
         for (const col of ["gp", "gl", "n"] as const) {
           const before = overlap && i === 0 ? old[col][old.h.length] : next[col][j];
-          next[col][j + 1] = before + extra[col][i + 1] - extra[col][i];
+          const increment = col === "gp" ? extra.bucketGp[i] : col === "gl" ? extra.bucketGl[i] : extra.n[i + 1] - extra.n[i];
+          next[col][j + 1] = before + increment;
         }
       }
       this.groups.set(key, next);
@@ -943,10 +965,14 @@ export class EngineSideIndex {
         gp: new Float64Array(m + 1),
         gl: new Float64Array(m + 1),
         n: new Float64Array(m + 1),
+        bucketGp: new Float64Array(m),
+        bucketGl: new Float64Array(m),
       };
       for (let j = 0; j < m; j++) {
         const b = g.get(hs[j])!;
         x.h[j] = hs[j];
+        x.bucketGp[j] = b[0];
+        x.bucketGl[j] = b[1];
         x.gp[j + 1] = x.gp[j] + b[0];
         x.gl[j + 1] = x.gl[j] + b[1];
         x.n[j + 1] = x.n[j] + b[2];
@@ -975,9 +1001,13 @@ export class EngineSideIndex {
     const a = first(cur - Math.max(1, Math.round(hours)));
     const b = first(cur); // buckets before the entry's own hour
     if (b <= a) return { n: 0, pf: 0 };
-    const gp = g.gp[b] - g.gp[a];
-    const gl = g.gl[b] - g.gl[a];
-    return { n: g.n[b] - g.n[a], pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+    let gp = g.gp[b] - g.gp[a];
+    let gl = g.gl[b] - g.gl[a];
+    if (imprecisePrefix(g.gp, a, b) || imprecisePrefix(g.gl, a, b)) {
+      gp = gl = 0;
+      for (let i = a; i < b; i++) { gp += g.bucketGp[i]; gl += g.bucketGl[i]; }
+    }
+    return { n: g.n[b] - g.n[a], pf: rawProfitFactor(gp, gl) };
   }
   /**
    * A per-indication group (engineSideAccept.perInd) decides once it holds minTrades closes in twice its window
@@ -1143,7 +1173,7 @@ export class SignalGuard {
       if (x.r > 0) gp += x.r;
       else gl -= x.r;
     }
-    const res = { n, pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+    const res = { n, pf: rawProfitFactor(gp, gl) };
     m.byHours.set(hours, res);
     return res;
   }

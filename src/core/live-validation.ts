@@ -4,6 +4,7 @@
 // Groups are secondary paper coordinators; a winning sibling never supplies another lane's strict proof.
 import type { ConfigTape } from "./sim/walkforward.ts";
 import { profitFactor } from "./metrics/stats.ts";
+import { returnWindow } from "./metrics/return-window.ts";
 import { isSignalInd } from "./indications/registry.ts";
 import { RANGE_LABEL, rangeOfId } from "./minimal-coord.ts";
 import { eventBar } from "./bot-stats.ts";
@@ -65,7 +66,7 @@ export function promotionStatus(lanes: LivePromotionStatus["lanes"], at = Date.n
     nominalAttribution: "unverified-not-promotion-proof", lanes: lanes.slice(0, 200) };
 }
 export type PromotionState = "qualified" | "ineligible" | "model-insufficient" | "execution-insufficient" | "unknown" | "model-failed" | "execution-failed";
-type ReturnRecord = Pick<ConfigTape, "exitT" | "gp" | "gl"> & { unknown?: Uint32Array };
+type ReturnRecord = Pick<ConfigTape, "exitT" | "gp" | "gl"> & { r?: ArrayLike<number>; unknown?: Uint32Array };
 const validRecordTimes = new WeakMap<object, { times: Float64Array; valid: boolean }>();
 function recordTimesOk(record: ReturnRecord): boolean {
   const cached = validRecordTimes.get(record);
@@ -94,9 +95,9 @@ export function promotionGate(
     const g = record && count > 0 ? liveGate(record, since, now, count, minPf) : { n: 0, pf: null, unknown: 0 };
     const b = record ? lowerBound(record.exitT, now + 1) : 0;
     const a = record ? Math.max(lowerBound(record.exitT, since), b - count) : 0;
-    const gp = record ? record.gp[b] - record.gp[a] : 0, gl = record ? record.gl[b] - record.gl[a] : 0;
+    const { gp, gl } = record ? returnWindow(record, a, b) : { gp: 0, gl: 0 };
     const invalid = (record ? !recordTimesOk(record) : false) || !Number.isFinite(gp) || !Number.isFinite(gl) || gp < 0 || gl < 0 || (g.pf !== null && !Number.isFinite(g.pf));
-    const unknown = (g.unknown ?? 0) + Number(invalid);
+    const unknown = (g.unknown ?? 0) + Number(invalid && !(g.unknown && g.unknown > 0));
     return { source, n: g.n, pf: unknown ? null : g.pf, unknown,
       noLoss: unknown ? null : gp > 0 && gl === 0,
       pfConvention: unknown ? "unavailable" : gp > 0 && gl === 0 ? "no-loss-score" : gl > 0 ? "ratio" : "empty",
@@ -150,7 +151,7 @@ function lowerBound(xs: Float64Array, t: number): number {
 
 /** The config's last `n` closes in [since, now] and whether they clear `minPf`. */
 export function liveGate(
-  tp: Pick<ConfigTape, "exitT" | "gp" | "gl"> & { unknown?: Uint32Array },
+  tp: ReturnRecord,
   since: number,
   now: number,
   n: number,
@@ -164,7 +165,10 @@ export function liveGate(
   const unknown = (tp.unknown?.[b] ?? 0) - (tp.unknown?.[from] ?? 0);
   if (unknown > 0) return { ok: false, n: Math.min(n, Math.max(0, k)), pf: null, unknown };
   if (k < n) return { ok: true, n: Math.max(0, k), pf: null };
-  const pf = profitFactor(tp.gp[b] - tp.gp[from], tp.gl[b] - tp.gl[from]);
+  const { gp, gl } = returnWindow(tp, from, b);
+  if (!(Number.isFinite(gp) && Number.isFinite(gl))) return { ok: false, n, pf: null, unknown: 1 };
+  const pf = profitFactor(gp, gl);
+  if (!Number.isFinite(pf)) return { ok: false, n, pf: null, unknown: 1 };
   return { ok: pf >= minPf, n, pf };
 }
 
@@ -173,6 +177,8 @@ export interface SideColumns {
   exitT: Float64Array;
   gp: Float64Array;
   gl: Float64Array;
+  r: Float64Array;
+  unknown?: Uint32Array;
 }
 /**
  * The per-side copies sideTapeOf built, by tape object. The caller owns it and drops it with its compute (one memo
@@ -188,7 +194,7 @@ export function sideTapeOf(
   tp: Pick<ConfigTape, "id" | "exitT" | "r" | "side">,
   side: 1 | -1,
   memo?: SideTapeMemo,
-): Pick<ConfigTape, "id" | "exitT" | "gp" | "gl"> {
+): Pick<ConfigTape, "id" | "exitT" | "gp" | "gl"> & { r: Float64Array; unknown?: Uint32Array } {
   let m = memo?.get(tp);
   if (!m) {
     m = new Map();
@@ -202,19 +208,23 @@ export function sideTapeOf(
     const exitT = new Float64Array(c);
     const gp = new Float64Array(c + 1);
     const gl = new Float64Array(c + 1);
+    const r = new Float64Array(c);
+    const unknown = new Uint32Array(c + 1);
     let j = 0;
     for (let i = 0; i < n; i++) {
       if (tp.side[i] !== side) continue;
-      const r = tp.r[i];
+      const value = tp.r[i];
       exitT[j] = tp.exitT[i];
-      gp[j + 1] = gp[j] + (r > 0 ? r : 0);
-      gl[j + 1] = gl[j] + (r < 0 ? -r : 0);
+      r[j] = value;
+      gp[j + 1] = gp[j] + (value > 0 ? value : 0);
+      gl[j + 1] = gl[j] + (value < 0 ? -value : 0);
+      unknown[j + 1] = unknown[j] + Number(!Number.isFinite(value));
       j++;
     }
-    s = { exitT, gp, gl };
+    s = { exitT, gp, gl, r, ...(unknown[c] ? { unknown } : {}) };
     m.set(side, s);
   }
-  return { id: tp.id, exitT: s.exitT, gp: s.gp, gl: s.gl };
+  return { id: tp.id, ...s };
 }
 
 /** A live group's key: the group alone, or the group and its side when live.sideGates judges each side apart. */
@@ -243,7 +253,7 @@ export function liveGroupOf(cfg: string): string {
  * stops opening new entries while one that earns keeps trading. Below `n` pooled closes a group is not judged.
  */
 export function liveGroupGates(
-  tapes: Iterable<Pick<ConfigTape, "id" | "exitT" | "gp" | "gl"> & { unknown?: Uint32Array }>,
+  tapes: Iterable<ReturnRecord & Pick<ConfigTape, "id">>,
   since: number,
   now: number,
   n: number,
@@ -262,11 +272,14 @@ export function liveGroupGates(
     let acc = per.get(g);
     if (!acc) per.set(g, (acc = []));
     for (let i = Math.max(a, b - n); i < b; i++) {
+      const { gp, gl } = returnWindow(tp, i, i + 1);
+      const invalid = !(Number.isFinite(gp) && Number.isFinite(gl));
+      const recordedUnknown = (tp.unknown?.[i + 1] ?? 0) - (tp.unknown?.[i] ?? 0);
       acc.push({
         t: tp.exitT[i],
-        p: tp.gp[i + 1] - tp.gp[i],
-        l: tp.gl[i + 1] - tp.gl[i],
-        u: (tp.unknown?.[i + 1] ?? 0) - (tp.unknown?.[i] ?? 0),
+        p: invalid ? 0 : gp,
+        l: invalid ? 0 : gl,
+        u: recordedUnknown + Number(invalid && recordedUnknown === 0),
         id: tp.id,
         i,
       });
@@ -298,6 +311,7 @@ export const ENGINE_PROOF_PF = 1.2;
 
 /** A unit's closes shaped like a tape (exit times ascending, gain / loss prefix sums), with each close's event. */
 export interface ProofTape extends Pick<ConfigTape, "exitT" | "gp" | "gl"> {
+  r?: ArrayLike<number>;
   /** prefix counts of closes whose return is unknown (a unit with one among its last n is counted apart, never judged) */
   unknown?: Uint32Array;
   /** per close, in exit order: the event it belongs to (closes of one event are one sample); unset = each close its own */
@@ -422,10 +436,12 @@ function signalTapes(rows: ReadonlyArray<ProofClose>, bySide: boolean): Map<stri
     const exitT = new Float64Array(xs.length);
     const gp = new Float64Array(xs.length + 1);
     const gl = new Float64Array(xs.length + 1);
+    const returns = new Float64Array(xs.length);
     const unknown = new Uint32Array(xs.length + 1);
     xs.forEach((v, i) => {
       exitT[i] = v.t;
       const r = typeof v.r === "number" && Number.isFinite(v.r) ? v.r : null;
+      returns[i] = r === null ? NaN : r;
       const p = r === null ? gp[i] : gp[i] + Math.max(0, r);
       const l = r === null ? gl[i] : gl[i] + Math.max(0, -r);
       const valid = r !== null && Number.isFinite(p) && Number.isFinite(l);
@@ -433,7 +449,7 @@ function signalTapes(rows: ReadonlyArray<ProofClose>, bySide: boolean): Map<stri
       gl[i + 1] = valid ? l : gl[i];
       unknown[i + 1] = unknown[i] + Number(!valid);
     });
-    out.set(u, { exitT, gp, gl, unknown, ev: xs.map((v) => v.ev) });
+    out.set(u, { exitT, gp, gl, r: returns, unknown, ev: xs.map((v) => v.ev) });
   }
   return out;
 }
