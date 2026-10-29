@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
+import { runInNewContext } from "node:vm";
 
 const SCRIPT = new URL("../../scripts/core-session.mjs", import.meta.url);
 
@@ -46,6 +47,24 @@ function unresolvedNames(code: string): string[] {
 }
 
 describe("session report page", () => {
+  it("renders neutral, empty and unknown PF cells without gain or loss colouring", () => {
+    const sf = ts.createSourceFile("page.js", functionText("clientMain"), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+    let code = "";
+    const visit = (node: ts.Node): void => {
+      if (ts.isVariableDeclaration(node) && node.name.getText(sf) === "shade" && node.initializer &&
+          ts.isArrowFunction(node.initializer) && node.initializer.parameters.length === 3) code = node.initializer.getText(sf);
+      ts.forEachChild(node, visit);
+    };
+    visit(sf); assert.ok(code, "actual standalone PF heatmap function must be present");
+    const shade = runInNewContext(`(${code})`);
+    for (const amount of [1, 1e-13, 1e-20]) {
+      assert.equal(shade(amount, amount, 2), "");
+      assert.match(shade(amount / 2, amount, 2), /--neg/);
+      assert.match(shade(amount * 2, amount, 2), /--pos/);
+    }
+    for (const args of [[0, 0, 2], [0, 0, 0], [1, 1, 0], [NaN, 1, 2], [1, NaN, 2], [1, -1, 2]])
+      assert.equal(shade(...args), "");
+  });
   it("clientMain uses only its own names and the browser's (no top-level helper of the script)", () => {
     const missing = unresolvedNames(`${functionText("clientMain")}\n`);
     assert.deepEqual(missing, []);

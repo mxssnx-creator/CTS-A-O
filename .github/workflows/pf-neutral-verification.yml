@@ -37,6 +37,7 @@ jobs:
           node --test scripts/lib/pf-neutral.test.mjs scripts/lib/eval-variants.test.mjs scripts/lib/eval-base-rules.test.mjs scripts/eval-orders.test.mjs
           node --experimental-strip-types --no-warnings --test src/components/v2/accounting.test.ts
           node --experimental-strip-types --no-warnings --test scripts/core-live-coord.test.mjs scripts/eval-validation.test.mjs scripts/core-session.test.mjs
+          node scripts/test-core.mjs src/core/report-page.test.ts
       - run: env -u DATABASE_URL npm run build
       - name: Browser render checks on dev and production
         run: |

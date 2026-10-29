@@ -44,7 +44,6 @@
 //   stops the variants below that much available memory. --replay-unit 2 / --replay-min 2: the replay's lane unit and
 //   exchange minimum (USD).
 import { profitFactorRatio } from "../src/core/metrics/profit-factor.mjs";
-import { pfHeatStyle } from "./lib/pf-presentation.mjs";
 import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { columnarStore, pruneFeed, RANK_TF, readStored, boundedReplayFeed, readSessionFeed } from "./lib/session-feed.mjs";
@@ -5017,7 +5016,15 @@ function clientMain(D) {
   // that passed their evaluation, the orders executed; per indication × target for the passed configs. The colour
   // deepens with the distance from PF 1 (blue above, red below); a cell without closes stays blank.
   function heatHtml(Hm) {
-    const shade = pfHeatStyle;
+    const shade = (gp, gl, n) => {
+      // clientMain is serialized into standalone HTML and cannot import helpers.
+      if (!(Number.isFinite(n) && n > 0) || !Number.isFinite(gp) || !Number.isFinite(gl) || gp < 0 || gl < 0 || gp === gl) return "";
+      const pf = gl > 0 ? gp / gl : 8;
+      if (!Number.isFinite(pf) || pf === 1) return "";
+      const d = Math.min(1, Math.abs(Math.log2(Math.max(pf, 1e-3))) / 2);
+      const pc = Math.round(10 + d * 50);
+      return ` style="background:color-mix(in srgb, var(${pf > 1 ? "--pos" : "--neg"}) ${pc}%, transparent)"`;
+    };
     const td = (z) =>
       z.n
         ? `<td class="num"${shade(z.gp, z.gl, z.n)} title="${z.n} closes${z.cfgs ? ` · ${z.cfgs} configs` : ""}">${pfTxt(z.gp, z.gl, z.n)}<br><span class="note">${z.n}</span></td>`
