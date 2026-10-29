@@ -86,6 +86,8 @@ export class TickMathBook {
             laneMs = (laneOf(p.cfg.split("|")[1] ?? "").tf ?? this.baseTfMin) * 60_000;
             this.lanes.set(p.cfg, laneMs);
           }
+          if (Number.isFinite(p.executionTfMin) && p.executionTfMin! > 0)
+            laneMs = p.executionTfMin! * 60_000;
           const protectTf = !p.stopHit && (p.exitProtection || (p.trail ?? 0) > 0) ? laneMs : 0;
           const barDue =
             protectTf > 0 && (p.tkBar === undefined || now >= (p.tkBar + 1) * protectTf);
@@ -172,6 +174,7 @@ export function crossedStop(p: { side: number; stop: number }, px: number): bool
 /** A paper position's trail state while the tick follows it (its lane bar, and that bar's high and low so far). */
 export interface TickTrail {
   cfg?: string;
+  executionTfMin?: number;
   side: number;
   entry: number;
   stop: number;
@@ -282,7 +285,7 @@ export function carryTrail(
       ? { exitProtection: { ...op.exitProtection, cost: prev.exitProtection.cost ?? 0,
           trailFloor: prev.exitProtection.trailFloor } }
       : {}),
-    ...(prev.tkBar !== undefined
+    ...(prev.tkBar !== undefined && op.executionTfMin === prev.executionTfMin
       ? {
           tkBar: prev.tkBar,
           tkHi: prev.tkHi,

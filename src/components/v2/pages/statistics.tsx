@@ -352,8 +352,8 @@ function Configs(props: { rows: Any[]; source: string }) {
                           <code style={{ wordBreak: "break-all" }}>{r.key}</code>
                         </div>
                         <div>
-                          <div className="v2-muted">indication kind · bars held max</div>
-                          {indicationKindLabel(r.indKind)} · {r.holdBars}
+                          <div className="v2-muted">indication kind · maximum hold</div>
+                          {indicationKindLabel(r.indKind)} · {r.maxHoldMin !== undefined ? `≤ ${r.maxHoldMin} min` : `${r.holdBars} bars`}
                         </div>
                         <div>
                           <div className="v2-muted">first → last close</div>

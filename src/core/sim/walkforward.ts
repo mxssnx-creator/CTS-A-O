@@ -101,6 +101,7 @@ import {
   type UnitStats,
 } from "../metrics/stats.ts";
 import { ATR_PERIOD, simulate, splitSides, sideSignal } from "./backtest.ts";
+import { cappedExecution, cappedPriceStart, clearCappedProjections, hasMinutePrices } from "./capped-execution.ts";
 import type { SimulationCursor, TapeContinuations, CursorResult } from "./cursor.ts";
 import { headBars } from "../market/bars.ts";
 import { symbolDirections } from "./symbol-directions.ts";
@@ -1964,6 +1965,7 @@ export function* buildTapesBoundedGen(
   } finally {
     // Completion, cancellation and errors all release derived series. Owned tapes and continuation state stay intact.
     for (const cache of args[0].caches) cache.clear();
+    clearCappedProjections(args[0]);
   }
 }
 
@@ -2016,18 +2018,18 @@ export function* buildTapesGen(
     if (!tags) heldRangeTagsByPair.set(pair, (tags = new Set()));
     tags.add(tag);
   }
-  // A held Low-Range position can outlive a settings change or restart. Rebuild its exact historical
+  // A held plain position can outlive a settings change or a minute-cap identity migration. Rebuild its exact historical
   // distances and lane hold, but only to manage that position; it must never acquire a new seat.
-  const recoveredLowRange = new Map<string, Protect[]>();
+  const recoveredPlain = new Map<string, Protect[]>();
   for (const id of floors?.heldIds ?? []) {
     const parsed = parseConfigId(id);
     const kind = kindOfId(id);
-    if (!parsed || !isLowRangeInd(parsed.ind) ||
+    if (!parsed ||
         !(kind === "normal" || kind === "trailing" || kind === "trailing-only")) continue;
     const pair = `${parsed.bot}|${parsed.ind}`;
-    const list = recoveredLowRange.get(pair) ?? [];
+    const list = recoveredPlain.get(pair) ?? [];
     list.push(parsed.protect);
-    recoveredLowRange.set(pair, list);
+    recoveredPlain.set(pair, list);
   }
   const syms = u.bars.map((b) => b.sym);
   const out: ConfigTape[] = [];
@@ -2050,19 +2052,25 @@ export function* buildTapesGen(
     id: string,
     s: number,
     sig: Int8Array,
-    run: (cursor: SimulationCursor | undefined, b: Bars, sig: Int8Array, k: SeriesCache) => R,
+    protect: Protect,
+    run: (cursor: SimulationCursor | undefined, b: Bars, sig: Int8Array, k: SeriesCache,
+      p: Protect, series: (v: Float64Array) => Float64Array, cooldown: number) => R,
     rawExit = false,
   ): R => {
-    const cursor = floors?.continuations?.cursor(id, u.bars[s], directions.get(sig) ?? 0);
+    const initial = cappedExecution(u, s, sig, protect, rawExit ? 0 : cooldown);
+    const stamp = (result: R, minute: boolean): R => {
+      if (minute && result.open) result.open.executionTfMin = 1;
+      return result;
+    };
+    const cursor = floors?.continuations?.cursor(id, initial.bars, directions.get(sig) ?? 0);
     if (cursor) {
       const side = directions.get(sig) ?? 0;
       const pair = id.split("|").slice(0, 2);
       const sourceKey = `cursor-source:${pair.join("|")}:${Number(rawExit)}`;
       const filter = !rawExit && isSignalInd(pair[1]) ? floors?.entry : null;
-      floors!.continuations!.bind(cursor, id, u.bars[s], (nextU) => {
+      floors!.continuations!.bind(cursor, id, initial.bars, (nextU) => {
         const b = nextU.bars[s],
           k = nextU.caches[s];
-        return cursor.run(b, () => {
           const sg = floors!.continuations!.measure(
             "sourceMs",
             () =>
@@ -2081,12 +2089,13 @@ export function* buildTapesGen(
               }),
             sourceKey,
           );
-          return floors!.continuations!.measure("simulationMs", () => run(cursor, b, sg, k));
-        });
+          const next = cappedExecution(nextU, s, sg, protect, rawExit ? 0 : cooldown);
+          return stamp(cursor.run(next.bars, () => floors!.continuations!.measure("simulationMs",
+            () => run(cursor, next.bars, next.signal, k, next.protect, next.series, next.cooldown))), next.minute);
       });
-      return cursor.run(u.bars[s], () => run(cursor, u.bars[s], sig, u.caches[s]));
+      return stamp(cursor.run(initial.bars, () => run(cursor, initial.bars, initial.signal, u.caches[s], initial.protect, initial.series, initial.cooldown)), initial.minute);
     }
-    return run(undefined, u.bars[s], sig, u.caches[s]);
+    return stamp(run(undefined, initial.bars, initial.signal, u.caches[s], initial.protect, initial.series, initial.cooldown), initial.minute);
   };
   // B6: a held-only pair builds only its held ids, a DCA / Axis set whose toggle is off only a held id
   const b6Skip = (id: string, pair: string, kind: "dca" | "axis") =>
@@ -2126,7 +2135,7 @@ export function* buildTapesGen(
   // (a pair's own configs count in the progress too)
   if (floors?.pairProtects)
     for (const c of combos) total += floors.pairProtects[`${c.bot}|${c.ind}`]?.length ?? 0;
-  for (const c of combos) total += recoveredLowRange.get(`${c.bot}|${c.ind}`)?.length ?? 0;
+  for (const c of combos) total += recoveredPlain.get(`${c.bot}|${c.ind}`)?.length ?? 0;
   let done = 0;
   let cachePairs = 0;
   for (const c of combos) {
@@ -2142,6 +2151,10 @@ export function* buildTapesGen(
       if (Number.isFinite(fromT))
         t.fromT =
           u.evaluationFromT === undefined ? fromT : Math.max(u.evaluationFromT, fromT - 24 * H);
+      if (t.protect.maxHoldMin !== undefined && hasMinutePrices(u)) {
+        const priceStart = cappedPriceStart(u, series);
+        if (Number.isFinite(priceStart)) t.fromT = Math.max(t.fromT ?? -Infinity, priceStart);
+      }
       return t;
     };
     const sigs: Array<Int8Array | null> = new Array(u.bars.length).fill(null);
@@ -2206,7 +2219,7 @@ export function* buildTapesGen(
         }
       }
       done += per + (floors?.pairProtects?.[`${c.bot}|${c.ind}`]?.length ?? 0) +
-        (recoveredLowRange.get(`${c.bot}|${c.ind}`)?.length ?? 0);
+        (recoveredPlain.get(`${c.bot}|${c.ind}`)?.length ?? 0);
       continue;
     }
     // long and short run independently: each direction on its own side-filtered signal (its own position slot), so
@@ -2266,7 +2279,7 @@ export function* buildTapesGen(
     const cellTags = cellKeys ? new Set(cellKeys.map((k) => k.slice(0, k.indexOf("|")))) : null;
     const microInd = isMicroInd(laneOf(c.ind).base);
     const own = floors?.pairProtects?.[`${c.bot}|${c.ind}`];
-    const recovered = recoveredLowRange.get(pairKey) ?? [];
+    const recovered = recoveredPlain.get(pairKey) ?? [];
     const recoveredSet = new Set(recovered);
     const pairProtects = own?.length || recovered.length ? [...protects, ...(own ?? []), ...recovered] : protects;
     for (const p0 of pairProtects) {
@@ -2281,7 +2294,7 @@ export function* buildTapesGen(
         continue;
       }
       const lane = recoveredSet.has(p0) ? p0 : laneProtect(p0, c.ind);
-      if (lane.hold < 1) {
+      if (lane.hold < 1 && !(lane.maxHoldMin !== undefined && hasMinutePrices(u))) {
         floors?.baseConfigCounter?.record(c.bot, c.ind, lane, kind, [], "holdTooShort");
         done++;
         continue;
@@ -2383,11 +2396,12 @@ export function* buildTapesGen(
           id,
           s,
           sg,
-          (cursor, b, direction, cache) =>
-            simulate(id, b, direction, p, {
+          p,
+          (cursor, b, direction, cache, executionProtect, series, executionCooldown) =>
+            simulate(id, b, direction, executionProtect, {
               cost,
-              cooldown: exitConfig ? 0 : cooldown,
-              atr: p.atr ? cache.atrEma(ATR_PERIOD) : undefined,
+              cooldown: exitConfig ? 0 : executionCooldown,
+              atr: p.atr ? series(cache.atrEma(ATR_PERIOD)) : undefined,
               cursor,
             }),
           !!p.exitType && !!exitSigs,
@@ -2435,7 +2449,9 @@ export function* buildTapesGen(
         continue; // the current generated set below keeps its ordinary independent admission verdict
       const trades: Trade[] = [], open: OpenPosition[] = [], pending: ConfigTape["pending"] = [];
       for (const { symbol: s, direction: sg } of orderedSides) {
-        const res = simulateDca(id, u.bars[s], sg, p, p.dca, kind === "dca-active", cost, cooldown);
+        const view = cappedExecution(u, s, sg, p, cooldown);
+        const res = simulateDca(id, view.bars, view.signal, view.protect, p.dca, kind === "dca-active", cost, view.cooldown);
+        if (view.minute && res.open) res.open.executionTfMin = 1;
         trades.push(...res.trades);
         if (res.open) open.push(res.open);
         if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
@@ -2460,6 +2476,10 @@ export function* buildTapesGen(
             continue;
           }
           const p = { ...adj(c.bot, c.ind, kind, laneProtect(p0, c.ind)), dca: dcaSnapshot(dcaOpt.dca) };
+          if (p.hold < 1 && !(p.maxHoldMin !== undefined && hasMinutePrices(u))) {
+            floors?.baseConfigCounter?.record(c.bot, c.ind, p, kind, [], "holdTooShort");
+            done++; continue;
+          }
           const id = configId(c.bot, c.ind, p, kind);
           if (notOnly(id) || b6Skip(id, `${c.bot}|${c.ind}`, "dca")) {
             floors?.baseConfigCounter?.record(c.bot, c.ind, p, kind, [], "only-ids");
@@ -2492,8 +2512,8 @@ export function* buildTapesGen(
           const open: OpenPosition[] = [];
           const pending: ConfigTape["pending"] = [];
           for (const { symbol: s, direction: sg } of orderedSides) {
-            const res = resume(id, s, sg, (cursor, b, direction) =>
-              simulateDca(id, b, direction, p, dcaOpt.dca, active, cost, cooldown, cursor),
+            const res = resume(id, s, sg, p, (cursor, b, direction, _cache, executionProtect, _series, executionCooldown) =>
+              simulateDca(id, b, direction, executionProtect, dcaOpt.dca, active, cost, executionCooldown, cursor),
             );
             for (const tr of res.trades) trades.push(tr);
             // a ladder open at the last close is carried (marked open in the simulation, held in paper / live)
@@ -2535,6 +2555,10 @@ export function* buildTapesGen(
           }
           const p0l = laneProtect(isSignalInd(c.ind) && floors?.signalTrailMax !== undefined && p0.trailMax === undefined
             ? { ...p0, trailMax: floors.signalTrailMax } : p0, c.ind);
+          if (p0l.hold < 1 && !(p0l.maxHoldMin !== undefined && hasMinutePrices(u))) {
+            floors?.baseConfigCounter?.record(c.bot, c.ind, p0l, "axis", [], "holdTooShort");
+            done++; continue;
+          }
           const p = adj(c.bot, c.ind, "axis", p0l);
           // the id is the lane cell + variant, never the feedback-adjusted placeholder: Axis takes its stops from
           // the axis / ATR floored at deskFloor / revFloor (which carry the feedback floors; fixed exits use p.sl),
@@ -2572,19 +2596,19 @@ export function* buildTapesGen(
           const pending: ConfigTape["pending"] = [];
           for (const { symbol: s, direction: sg } of orderedSides) {
             if (ax.mode === "desk") {
-              const res = resume(id, s, sg, (cursor, b, direction, cache) =>
+              const res = resume(id, s, sg, p, (cursor, b, direction, cache, executionProtect, series, executionCooldown) =>
                 simulateAxisDesk(
                   id,
                   b,
                   direction,
-                  p,
+                  executionProtect,
                   ax,
-                  cache.ema(
-                    Math.max(2, Math.round(ax.centerMin ? ax.centerMin / b.tfMin : ax.center)),
-                  ),
-                  cache.atr(14),
+                  series(cache.ema(
+                    Math.max(2, Math.round(ax.centerMin ? ax.centerMin / cache.b.tfMin : ax.center)),
+                  )),
+                  series(cache.atr(14)),
                   cost,
-                  cooldown,
+                  executionCooldown,
                   deskFloor,
                   cursor,
                 ),
@@ -2600,19 +2624,19 @@ export function* buildTapesGen(
                 );
               continue;
             }
-            const res = resume(id, s, sg, (cursor, b, direction, cache) =>
+            const res = resume(id, s, sg, p, (cursor, b, direction, cache, executionProtect, series, executionCooldown) =>
               simulateAxis(
                 id,
                 b,
                 direction,
-                p,
+                executionProtect,
                 ax,
-                cache.ema(
-                  Math.max(2, Math.round(ax.centerMin ? ax.centerMin / b.tfMin : ax.center)),
-                ),
-                cache.atr(14),
+                series(cache.ema(
+                  Math.max(2, Math.round(ax.centerMin ? ax.centerMin / cache.b.tfMin : ax.center)),
+                )),
+                series(cache.atr(14)),
                 cost,
-                cooldown,
+                executionCooldown,
                 revFloor,
                 cursor,
               ),
@@ -2647,6 +2671,10 @@ export function* buildTapesGen(
             if (!axisInWindow()) continue;
             const p0l = laneProtect(isSignalInd(c.ind) && floors?.signalTrailMax !== undefined && rv.p0.trailMax === undefined
               ? { ...rv.p0, trailMax: floors.signalTrailMax } : rv.p0, c.ind);
+            if (p0l.hold < 1 && !(p0l.maxHoldMin !== undefined && hasMinutePrices(u))) {
+              floors?.baseConfigCounter?.record(c.bot, c.ind, p0l, "axis", [], "holdTooShort");
+              continue;
+            }
             const id = configId(c.bot, c.ind, p0l, "axis").replace(/\|axis$/, `${rv.tag}|axis`);
             const held = floors?.heldIds?.has(id) ?? false;
             const filtered = tagsOk !== undefined && !tagsOk.includes(rv.p0.tag ?? "");
@@ -2675,22 +2703,22 @@ export function* buildTapesGen(
             const open: OpenPosition[] = [];
             const pending: ConfigTape["pending"] = [];
             for (const { symbol: s, direction: sg } of orderedSides) {
-              const res = resume(id, s, sg, (cursor, b, direction, cache) =>
+              const res = resume(id, s, sg, p0l, (cursor, b, direction, cache, executionProtect, series, executionCooldown) =>
                 simulateAxisDesk(
                   id,
                   b,
                   direction,
-                  p0l,
+                  executionProtect,
                   rv.ax,
-                  cache.ema(
+                  series(cache.ema(
                     Math.max(
                       2,
-                      Math.round(rv.ax.centerMin ? rv.ax.centerMin / b.tfMin : rv.ax.center),
+                      Math.round(rv.ax.centerMin ? rv.ax.centerMin / cache.b.tfMin : rv.ax.center),
                     ),
-                  ),
-                  cache.atr(14),
+                  )),
+                  series(cache.atr(14)),
                   cost,
-                  cooldown,
+                  executionCooldown,
                   rf,
                   cursor,
                 ),
@@ -2720,6 +2748,7 @@ export function* buildTapesGen(
           }
       }
     }
+    clearCappedProjections(u);
   }
   return out;
 }

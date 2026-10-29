@@ -56,6 +56,7 @@ import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
 import { isLowRangeInd } from "../indications/low-range.ts";
 import { PRE_CONTEXT_FOCUS_21OCT } from "../indications/context-default-focus.ts";
 import { migrateIntradayFocus } from "./intraday-focus-migration.server.ts";
+import { migrateMinuteCaps } from "./minute-cap-migration.server.ts";
 import { isBreakRelInd } from "../indications/break-config.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
@@ -1228,6 +1229,7 @@ export class CoreRuntime {
     migrateMicroBreakoutFocus(db);
     migrateMicroContextFocus(db);
     migrateIntradayFocus(db);
+    migrateMinuteCaps(db);
     migrateHistoricExitOptIn(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
