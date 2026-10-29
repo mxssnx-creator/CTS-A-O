@@ -15,7 +15,7 @@ import { entrySignal } from "../bots/bots.ts";
 import { isSignalInd } from "../indications/registry.ts";
 import { tacticCooldown } from "../indications/filters.ts";
 import { ATR_PERIOD, simulateFrom, splitSides, type SimState } from "./backtest.ts";
-import { cappedExecution } from "./capped-execution.ts";
+import { cappedExecution, stampCappedOpen } from "./capped-execution.ts";
 import {
   makeTape,
   REASONS,
@@ -111,7 +111,7 @@ function runConfig(
         trades.push(tr);
       }
       if (res.open) {
-        if (view.minute) res.open.executionTfMin = 1;
+        stampCappedOpen(res.open, view);
         open.push(res.open);
       }
       if (res.pending)

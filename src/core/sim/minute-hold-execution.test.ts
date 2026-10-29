@@ -79,6 +79,7 @@ test("private cursors close a capped position on the next minute without waiting
     { minSl: 0, minTrail: 0, microOwnInds: false, continuations });
   assert.equal(initial.open.length, 1);
   assert.equal(initial.open[0].executionTfMin, 1, "held tick/restart protection must retain its execution clock");
+  assert.equal(initial.open[0].holdEndT, entryT + 15 * M);
   const closed = [...continuations.advance(nextU, new Set([1]))].flatMap((x) => x.result.trades);
   assert.equal(closed.length, 1); assert.equal(closed[0].reason, "tp");
   assert.equal(closed[0].entryT, entryT); assert.equal(closed[0].exitT, entryT + 2 * M);
@@ -122,4 +123,15 @@ test("a longer indication prehistory cannot overstate the capped tape's minute-p
   const [tape] = buildTapes(shortened, [protect], cost, undefined, new Set([`follow|${ind}`]), null, null,
     { minSl: 0, minTrail: 0, microOwnInds: false });
   assert.equal(tape.fromT, cut);
+});
+
+test("a retained capped order keeps its original deadline when the current grid increases the hold", () => {
+  const { entryT, at } = fixture(false), u = at(entryT + M), only = new Set([`follow|${ind}`]);
+  const floors = { minSl: 0, minTrail: 0, microOwnInds: false };
+  const [original] = buildTapes(u, [protect], cost, undefined, only, null, null, floors);
+  const [retained] = buildTapes(u, [{ ...protect, maxHoldMin: 20 }], cost, undefined, only, null, null,
+    { ...floors, heldIds: new Set([original.id]), onlyIds: new Set([original.id]) });
+  assert.ok(retained); assert.equal(retained.id, original.id); assert.equal(retained.heldOnly, true);
+  assert.equal(retained.open[0].holdEndT, entryT + 15 * M);
+  assert.equal(retained.open[0].holdEndT, original.open[0].holdEndT);
 });

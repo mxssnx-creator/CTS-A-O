@@ -1,4 +1,4 @@
-import type { Bars, Protect } from "../domain/types.ts";
+import type { Bars, OpenPosition, Protect } from "../domain/types.ts";
 import type { Universe } from "../pipeline/pipeline.ts";
 
 const M = 60_000;
@@ -10,6 +10,11 @@ interface Projection {
   sourceTfMin: number;
 }
 export interface CappedExecution extends Projection { protect: Protect; cooldown: number; minute: boolean }
+export function stampCappedOpen(open: OpenPosition | null | undefined, view: CappedExecution): void {
+  if (!view.minute || !open) return;
+  open.executionTfMin = view.bars.tfMin;
+  open.holdEndT = open.entryT + view.protect.hold * view.bars.tfMin * M;
+}
 const minuteBooks = new WeakMap<Universe, Map<string, Bars>>();
 const projections = new WeakMap<Universe, WeakMap<Int8Array, Projection>>();
 /** Job/pair boundaries release expanded signal/ATR arrays; immutable price inputs stay shared. */

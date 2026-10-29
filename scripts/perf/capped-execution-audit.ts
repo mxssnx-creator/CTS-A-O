@@ -46,7 +46,10 @@ export function runCappedExecutionAudit(hours = 72, symbolCount = 20, onOrder?: 
           row.contexts += 2; tapes++; row.held += tp.open.length; row.pending += tp.pending.length;
           const bySide = new Map([1, -1].map((side) => [side, { symbol: sym, kind: name, tf, side,
             closed: 0, held: 0, pending: 0, gp: 0, gl: 0, exits: {} as Record<string, number> }]));
-          for (const held of tp.open) assert.equal(held.executionTfMin, 1);
+          for (const held of tp.open) {
+            assert.equal(held.executionTfMin, 1);
+            assert.equal(held.holdEndT, held.entryT + holdMin * 60_000);
+          }
           for (const held of tp.open) {
             bySide.get(held.side)!.held++;
             onOrder?.({ state: "held", cfg: tp.id, symbol: sym, kind: name, tf, side: held.side,

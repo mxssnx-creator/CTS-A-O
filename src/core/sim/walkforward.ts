@@ -101,7 +101,7 @@ import {
   type UnitStats,
 } from "../metrics/stats.ts";
 import { ATR_PERIOD, simulate, splitSides, sideSignal } from "./backtest.ts";
-import { cappedExecution, cappedPriceStart, clearCappedProjections, hasMinutePrices } from "./capped-execution.ts";
+import { cappedExecution, cappedPriceStart, clearCappedProjections, hasMinutePrices, stampCappedOpen, type CappedExecution } from "./capped-execution.ts";
 import type { SimulationCursor, TapeContinuations, CursorResult } from "./cursor.ts";
 import { headBars } from "../market/bars.ts";
 import { symbolDirections } from "./symbol-directions.ts";
@@ -2058,8 +2058,8 @@ export function* buildTapesGen(
     rawExit = false,
   ): R => {
     const initial = cappedExecution(u, s, sig, protect, rawExit ? 0 : cooldown);
-    const stamp = (result: R, minute: boolean): R => {
-      if (minute && result.open) result.open.executionTfMin = 1;
+    const stamp = (result: R, view: CappedExecution): R => {
+      stampCappedOpen(result.open, view);
       return result;
     };
     const cursor = floors?.continuations?.cursor(id, initial.bars, directions.get(sig) ?? 0);
@@ -2091,11 +2091,11 @@ export function* buildTapesGen(
           );
           const next = cappedExecution(nextU, s, sg, protect, rawExit ? 0 : cooldown);
           return stamp(cursor.run(next.bars, () => floors!.continuations!.measure("simulationMs",
-            () => run(cursor, next.bars, next.signal, k, next.protect, next.series, next.cooldown))), next.minute);
+            () => run(cursor, next.bars, next.signal, k, next.protect, next.series, next.cooldown))), next);
       });
-      return stamp(cursor.run(initial.bars, () => run(cursor, initial.bars, initial.signal, u.caches[s], initial.protect, initial.series, initial.cooldown)), initial.minute);
+      return stamp(cursor.run(initial.bars, () => run(cursor, initial.bars, initial.signal, u.caches[s], initial.protect, initial.series, initial.cooldown)), initial);
     }
-    return stamp(run(undefined, initial.bars, initial.signal, u.caches[s], initial.protect, initial.series, initial.cooldown), initial.minute);
+    return stamp(run(undefined, initial.bars, initial.signal, u.caches[s], initial.protect, initial.series, initial.cooldown), initial);
   };
   // B6: a held-only pair builds only its held ids, a DCA / Axis set whose toggle is off only a held id
   const b6Skip = (id: string, pair: string, kind: "dca" | "axis") =>
@@ -2285,6 +2285,8 @@ export function* buildTapesGen(
     for (const p0 of pairProtects) {
       const exitConfig = p0.exitType === "historic";
       const kind: StratKind = protectKind(p0);
+      // Recovery-only exits are not additional configured/evaluated Base cells.
+      const configCounter = recoveredSet.has(p0) ? undefined : floors?.baseConfigCounter;
       if (!exitConfig && (p0.lowRangeOnly === true) !== isLowRangeInd(c.ind)) {
         done++;
         continue;
@@ -2295,7 +2297,7 @@ export function* buildTapesGen(
       }
       const lane = recoveredSet.has(p0) ? p0 : laneProtect(p0, c.ind);
       if (lane.hold < 1 && !(lane.maxHoldMin !== undefined && hasMinutePrices(u))) {
-        floors?.baseConfigCounter?.record(c.bot, c.ind, lane, kind, [], "holdTooShort");
+        configCounter?.record(c.bot, c.ind, lane, kind, [], "holdTooShort");
         done++;
         continue;
       }
@@ -2318,7 +2320,7 @@ export function* buildTapesGen(
           st.grid++;
           st.skip.trailTooShort = (st.skip.trailTooShort ?? 0) + 1;
         }
-        floors?.baseConfigCounter?.record(c.bot, c.ind, lane, kind, [], "trailTooShort");
+        configCounter?.record(c.bot, c.ind, lane, kind, [], "trailTooShort");
         done++;
         continue;
       }
@@ -2327,7 +2329,7 @@ export function* buildTapesGen(
       const p = recoveredSet.has(p0) || floors?.heldOnlyIds?.has(laneId) ? lane : adj(c.bot, c.ind, kind, lane);
       const id = configId(c.bot, c.ind, p);
       if (notOnly(id)) {
-        floors?.baseConfigCounter?.record(c.bot, c.ind, p, kind, [], "only-ids");
+        configCounter?.record(c.bot, c.ind, p, kind, [], "only-ids");
         done++;
         continue;
       }
@@ -2364,16 +2366,16 @@ export function* buildTapesGen(
                       : null;
       const filtered = why !== null;
       const st =
-        bs && why !== "microOwnInds" && why !== "laneFloor" ? statOf(c.ind, p0.tag, kind) : null;
+        bs && !recoveredSet.has(p0) && why !== "microOwnInds" && why !== "laneFloor" ? statOf(c.ind, p0.tag, kind) : null;
       if (st) st.grid++;
       if (filtered && !held) {
-        floors?.baseConfigCounter?.record(c.bot, c.ind, p, kind, [], why!);
+        configCounter?.record(c.bot, c.ind, p, kind, [], why!);
         if (st) st.skip[why!] = (st.skip[why!] ?? 0) + 1;
         done++;
         continue;
       }
       if (built.has(id)) {
-        floors?.baseConfigCounter?.record(c.bot, c.ind, p, kind, [], "duplicate");
+        configCounter?.record(c.bot, c.ind, p, kind, [], "duplicate");
         if (st) st.skip.duplicate = (st.skip.duplicate ?? 0) + 1;
         done++;
         continue;
@@ -2427,7 +2429,7 @@ export function* buildTapesGen(
         if (!enough) st.few++;
         else statKept(st, p);
       }
-      floors?.baseConfigCounter?.record(c.bot, c.ind, p, kind, trades);
+      configCounter?.record(c.bot, c.ind, p, kind, trades);
       if (!floors?.countOnly && (enough || held)) {
         const tp = atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending));
         if (filtered || !enough || recoveredSet.has(p0) || floors?.heldOnlyIds?.has(id)) tp.heldOnly = true;
@@ -2451,7 +2453,7 @@ export function* buildTapesGen(
       for (const { symbol: s, direction: sg } of orderedSides) {
         const view = cappedExecution(u, s, sg, p, cooldown);
         const res = simulateDca(id, view.bars, view.signal, view.protect, p.dca, kind === "dca-active", cost, view.cooldown);
-        if (view.minute && res.open) res.open.executionTfMin = 1;
+        stampCappedOpen(res.open, view);
         trades.push(...res.trades);
         if (res.open) open.push(res.open);
         if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });

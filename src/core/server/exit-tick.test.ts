@@ -64,6 +64,18 @@ afterEach(async () => {
 });
 
 describe("completed protection bars through the actual runtime tick", () => {
+  it("publishes and persists a flat-price time exit between computes using the position's captured deadline", async () => {
+    mock.timers.enable({ apis: ["Date"], now: T0 });
+    const rt = runtime(), protect: Protect = { tp: .05, sl: .02, trail: 0, hold: 15, maxHoldMin: 15 };
+    const held = { ...position(protect, 1), holdEndT: T0 + 15 * M, executionTfMin: 1 };
+    rt.paper.positions = [held]; setPrice(rt, held.sym, 100);
+    await rt.tick(); assert.equal(held.stopHit, undefined);
+    mock.timers.tick(15 * M); setPrice(rt, held.sym, 100);
+    await rt.tick();
+    assert.equal(held.stopHit, T0 + 15 * M); assert.equal(held.hitPx, 100); assert.equal(held.hitReason, "time");
+    const hits = rt.db.kvGet<Record<string, { at: number; reason?: string }>>("stopHits")!;
+    assert.equal(Object.values(hits)[0]?.at, T0 + 15 * M); assert.equal(Object.values(hits)[0]?.reason, "time");
+  });
   it("publishes sliced ticker marks, Exit state and equity together", async () => {
     mock.timers.enable({ apis: ["Date"], now: T0 });
     const rt = runtime();

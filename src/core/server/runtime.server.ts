@@ -309,7 +309,7 @@ import os from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import { type BlockBook, type BlockSource, blockBookOf, blockStackCap } from "../sim/block.ts";
 import { capRelateParts, combineRelateStack, relateExternalStackCap, type RelateBook } from "../sim/relate-volume.ts";
-import { carryTrail, TickMathBook, type TickMathResult } from "./tick-math.ts";
+import { carryTrail, TickMathBook, type TickMathResult, type TickExitHit } from "./tick-math.ts";
 import { enforceSignalPosition } from "../sim/trailing.ts";
 import { createExitProtection } from "../sim/exit-protection.ts";
 import {
@@ -845,7 +845,7 @@ export interface PaperBook {
   scores?: Map<string, number>;
   eligible: number;
   /**
-   * stopHit: time a tick price crossed the position's stop or target (its lane leaves the live control at once);
+   * stopHit: observed stop/target crossing or captured hold expiry (its lane leaves live control at once);
    * hitPx: the level it crossed (unset: the stop)
    */
   /** legs: Block type overall — the extra volume of every raising source (its own position) */
@@ -2517,7 +2517,7 @@ export class CoreRuntime {
       // the tick's stop crossings persisted in one write (a read and a write of every hit per crossing before)
       if (newHits) {
         const hits =
-          this.db.kvGet<Record<string, { at: number; stop: number; px?: number }>>("stopHits") ??
+          this.db.kvGet<Record<string, TickExitHit>>("stopHits") ??
           {};
         this.db.kvSet("stopHits", Object.assign(hits, newHits));
       }
@@ -9595,14 +9595,16 @@ export class CoreRuntime {
       }
     > = [];
     const saved =
-      this.db.kvGet<Record<string, { at: number; stop: number; px?: number }>>("stopHits") ?? {};
+      this.db.kvGet<Record<string, TickExitHit>>("stopHits") ?? {};
     const stopHits: Record<string, number> = {};
     const stopHitsStop: Record<string, number> = {};
     const stopHitsPx: Record<string, number | undefined> = {};
+    const stopHitsReason: Record<string, TickExitHit["reason"]> = {};
     for (const [k, v] of Object.entries(saved)) {
       stopHits[k] = v.at;
       stopHitsStop[k] = v.stop;
       stopHitsPx[k] = v.px;
+      stopHitsReason[k] = v.reason;
     }
     const perSym = new Map<string, number>();
     const perSide = new Map<string, number>();
@@ -10154,7 +10156,8 @@ export class CoreRuntime {
                 : undefined;
           // the price the stop was crossed at travels with the hit (the live exit is priced from it)
           const hitPx = fromPrev ? prev!.hitPx : own ? stopHitsPx[id] : stopHitsPx[lid];
-          return hit ? { stopHit: hit, ...(hitPx ? { hitPx } : {}) } : {};
+          const hitReason = fromPrev ? prev!.hitReason : own ? stopHitsReason[id] : stopHitsReason[lid];
+          return hit ? { stopHit: hit, ...(hitPx ? { hitPx } : {}), ...(hitReason ? { hitReason } : {}) } : {};
         })(),
       });
     }
@@ -10215,14 +10218,15 @@ export class CoreRuntime {
       this.db.event("warn", `paper: ${carriedMissing} held position(s) carried; their exact tape close is unavailable`);
     this.carriedMissing = carriedMissing;
     // Persist crossings for the recovered positions too, so an unrelated rebuild cannot re-open their live shares.
-    const keepHits: Record<string, { at: number; stop: number; px?: number }> = {};
+    const keepHits: Record<string, TickExitHit> = {};
     for (const p of positions)
       if (p.stopHit)
-        keepHits[posId(p)] = { at: p.stopHit, stop: p.stop, ...(p.hitPx ? { px: p.hitPx } : {}) };
+        keepHits[posId(p)] = { at: p.stopHit, stop: p.stop, ...(p.hitPx ? { px: p.hitPx } : {}),
+          ...(p.hitReason ? { reason: p.hitReason } : {}) };
     if (
       Object.keys(keepHits).length !== Object.keys(saved).length ||
       Object.keys(keepHits).some((k) => !saved[k] || saved[k].at !== keepHits[k].at ||
-        saved[k].stop !== keepHits[k].stop || saved[k].px !== keepHits[k].px)
+        saved[k].stop !== keepHits[k].stop || saved[k].px !== keepHits[k].px || saved[k].reason !== keepHits[k].reason)
     )
       this.db.kvSet("stopHits", keepHits);
     // the paper book's own record: every position it held that left it this step, with the close its tape gave it
@@ -10453,6 +10457,7 @@ export class CoreRuntime {
       if (prev?.stopHit && prev.stop === p.stop) {
         p.stopHit = prev.stopHit;
         if (prev.hitPx) p.hitPx = prev.hitPx;
+        if (prev.hitReason) p.hitReason = prev.hitReason;
       }
     }
     this.paper = {
