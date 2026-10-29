@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "sourceCheckpoint": "67ccf745046c853b75f1ccb3c22e37bd783bcd24",
+  "sourceSha256": "5b7b4e53ce0b093458de4ebf9be6389203b5c2defd3043b4260ba9cbecc74e50",
+  "sourceTapeComparisons": 2468,
+  "exactFundedTradeRecords": true,
+  "exactHeldRecords": true,
+  "exactAllocations": true,
+  "exactTotalReport": true,
+  "tradeSha256": "551700fb1fa1c1c9b9595851bbb6cc56de995243e747ec19a06a97f821af33b8",
+  "fundedCounts": {
+    "openedPositions": 52,
+    "closedPositions": 49,
+    "openPositions": 3,
+    "openedOrders": 3116,
+    "settledOrders": 3108,
+    "openOrders": 8,
+    "basis": "funded-modeled-allocations"
+  },
+  "executedPf": 0.27305087297507424,
+  "resources": {
+    "exitCode": 1,
+    "wallSeconds": 11.996929296001326,
+    "peakRssKiB": 544420
+  },
+  "checks": {
+    "passed": 76,
+    "total": 78,
+    "failed": [
+      {
+        "name": "coverage: every combo evaluated at Base (engine + signal + independent Exit)",
+        "expected": 1634,
+        "actual": 1461,
+        "ok": false
+      },
+      {
+        "name": "coverage: every indication kind evaluated",
+        "expected": 16,
+        "actual": 13,
+        "ok": false
+      }
+    ]
+  },
+  "scope": "The merged concurrent range/stop-gap source reproduces all candidate tapes and the exact funded cohort. This window has baseRanges=true; the diagnostic expansion defect is demonstrated by separate bounded regressions. Realtime gap execution is tested by bounded worker fixtures, not this candle replay."
+}
