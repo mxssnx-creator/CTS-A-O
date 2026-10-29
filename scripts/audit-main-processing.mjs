@@ -15,7 +15,11 @@ function add(s, r) { s.n++; if (!Number.isFinite(r)) s.unknown++; else { s.gp +=
 const finish = s => ({ ...s, pf: !s.unknown && s.n && s.gl ? s.gp / s.gl : null,
   noLoss: !s.unknown && s.n > 0 && s.gp > 0 && s.gl === 0 });
 export function simpleCostCheck(t, cost, tolerance = 1e-6) {
-  if (!['normal', 'trailing', 'trailing-only', 'exit'].includes(t.kind)) return { state: 'intrinsic-ladder', error: null };
+  if (['axis', 'dca', 'dca-active'].includes(t.kind)) return { state: 'intrinsic-ladder', error: null };
+  if (!['normal', 'trailing', 'trailing-only', 'exit'].includes(t.kind) ||
+      !Number.isFinite(cost) || cost < 0 || !Number.isFinite(t.entry) || t.entry <= 0 ||
+      !Number.isFinite(t.exit) || t.exit <= 0 || (t.side !== 1 && t.side !== -1))
+    return { state: 'failed', error: null };
   const actual = modeledUnitReturn(t), expected = t.side * (t.exit - t.entry) / t.entry - cost;
   const error = Math.abs(actual - expected);
   return { state: Number.isFinite(error) && error <= tolerance ? 'matched' : 'failed', error, expected, actual };

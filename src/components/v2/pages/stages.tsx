@@ -519,7 +519,7 @@ export function SetListings(props: { minPf: number }) {
   const [lane, setLane] = useState("");
   const [strategy, setStrategy] = useState("");
   const [page, setPage] = useState(0);
-  const { data } = usePoll(
+  const { data, error } = usePoll(
     () =>
       coreListing({
         data: {
@@ -541,6 +541,7 @@ export function SetListings(props: { minPf: number }) {
       title="Validated and active sets"
       sub="The Active set is the current step's configs that passed Base and validation. Filter the line-by-line records by lane, strategy and range group."
     >
+      <ErrorNote error={error} />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <Seg
           value={kind}

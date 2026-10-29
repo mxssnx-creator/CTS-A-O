@@ -1,3 +1,11 @@
+# Main closed cohort and passing-set means — 29 October 2026
+
+Primary Main execution PF uses closed orders only, matching executed/type/config/hourly cohorts. Endpoint marks retain a separately labeled mark-inclusive report and complete held counts. Never compare a closed numerator with marked losses or silently discard the held losses. Preset views explicitly labeled with endpoint marks retain that basis.
+
+Validation PF is an equal-weight mean of individually passing config windows, with finite, no-loss and unknown set counts. Pooled GP/GL is a separate loss-weighted diagnostic. Do not average the finite gate score4 as measured no-loss PF. Old summaries without per-set evidence cannot be converted to a mean from aggregate GP/GL.
+
+The new eight-symbol8–9October24h run with24h evaluated prehistory and24h indicator warmup has405/1276initial passing configs, finite historical mean17.399524089 plus6no-loss sets, and later funded PF0.273050873. Base143/1398(10.2289%); positions52/49/3 andorders3116/3108/8 opened/closed/held. Exact source/execution parity and before/after order/allocation equality pass. The production derived-set adapter remains pending; venue PF is unavailable. Detailed evidence and limitations:docs/main-processing-audit-20261029/README.md.
+
 # Complete position counts and published Base detail — 24 October 2026
 
 A position remains open while any funded sibling configuration order is held. Primary total/hour position counts must use the complete funded order ledger, including endpoint holdings; a grouping of settled orders alone is only a settled-subset diagnostic. Keep opened, settled and held order counts separate, conserve both ledgers at every right-closed hourly boundary, and never sum overlapping type-group position episodes. The native audit independently reconstructs these totals and asserts report aliases against the complete ledger.

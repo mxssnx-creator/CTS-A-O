@@ -14,4 +14,6 @@ test('unknown returns and intrinsic ladder semantics never become a successful o
   assert.equal(simpleCostCheck(trade, .0015).state, 'failed');
   assert.equal(simpleCostCheck({ ...trade, kind: 'dca' }, .0015).state, 'intrinsic-ladder');
   assert.equal(simpleCostCheck({ ...trade, kind: 'axis' }, .0015).state, 'intrinsic-ladder');
+  assert.equal(simpleCostCheck({ ...trade, kind: 'legacy-unknown' }, .0015).state, 'failed');
+  assert.equal(simpleCostCheck({ ...trade, unitR: .0185 }, -.0015).state, 'failed');
 });
