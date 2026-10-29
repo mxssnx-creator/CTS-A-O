@@ -4319,7 +4319,7 @@ export function SettingsPage() {
               </Field>
               <Field
                 label="Base-passed ranges only"
-                hint="on: a pair builds only the ranges it passed in Base · off: a pair that passed any range builds every range its indication applies to, the unpassed ones at every target — each config then judged by its own seat gates"
+                hint="on: a pair builds only the ranges it passed in Base · off: it also builds applicable unpassed ranges for measurement · tagged ranges need their own Base pass; independent untagged DCA / Axis retain their separate policy"
               >
                 <Switch
                   label="passed ranges"

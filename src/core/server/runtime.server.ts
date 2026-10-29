@@ -1,3 +1,4 @@
+import { addValidatedSetPf, emptyValidatedSetPf, validatedSetPf, type ValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
 import { checkStageChainSettings, mergeStageSettings } from "../sim/stage-settings.ts";
 import { isHistoricExitConfig } from "../exit-scope.ts";
@@ -700,16 +701,19 @@ export interface RuntimeStatus {
     paperStep: number;
     at: number;
     validated: number;
+    calculated?: number;
+    validation?: SetListings["validation"];
     active: number;
     proven: number | null;
-    byRange: Array<{ range: string; validated: number; pf: number | null }>;
+    byRange: Array<{ range: string; validated: number; calculated?: number; pf: number | null; setPf?: ValidatedSetPf | null }>;
     provenBySide?: true;
-    byGroup: Array<{ group: string; validated: number; pf: number | null }>;
+    byGroup: Array<{ group: string; validated: number; calculated?: number; pf: number | null; setPf?: ValidatedSetPf | null }>;
     byKind: Array<{
       kind: string;
       validated: number;
       calculated: number;
       validationCloses: number;
+      setPf?: ValidatedSetPf | null;
       gp: number;
       gl: number;
       pf: number | null;
@@ -846,7 +850,7 @@ export interface PaperBook {
   eligible: number;
   /**
    * stopHit: observed stop/target crossing or captured hold expiry (its lane leaves live control at once);
-   * hitPx: the level it crossed (unset: the stop)
+   * hitPx: observed adverse quote at a stop, the target limit, or observed price at expiry (unset: the stop)
    */
   /** legs: Block type overall — the extra volume of every raising source (its own position) */
   /** tkBar / tkHi / tkLo: the lane bar the tick follows for a trailing position, and its high and low so far */
@@ -7251,32 +7255,35 @@ export class CoreRuntime {
         gp: w.gp ?? 0,
         gl: w.gl ?? 0,
       });
-      const g = (byGroup[group] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
+      const g = (byGroup[group] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0, setPf: emptyValidatedSetPf() });
       g.rows.push(row);
       g.gp += w.gp ?? 0;
       g.gl += w.gl ?? 0;
-      const k = (byKind[kindOfId(p.id)] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
+      addValidatedSetPf(g.setPf!, w.n, w.gp, w.gl);
+      const k = (byKind[kindOfId(p.id)] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0, setPf: emptyValidatedSetPf() });
       k.rows.push(row);
       k.gp += w.gp ?? 0;
       k.gl += w.gl ?? 0;
+      addValidatedSetPf(k.setPf!, w.n, w.gp, w.gl);
       if (range) {
-        const r = (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
+        const r = (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0, setPf: emptyValidatedSetPf() });
         r.rows.push(row);
         r.gp += w.gp ?? 0;
         r.gl += w.gl ?? 0;
+        addValidatedSetPf(r.setPf!, w.n, w.gp, w.gl);
       }
     }
     for (const c of candidates) {
-      const g = (byGroup[c.group] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
+      const g = (byGroup[c.group] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0, setPf: emptyValidatedSetPf() });
       g.calculated++;
-      (byKind[c.kind] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 }).calculated++;
+      (byKind[c.kind] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0, setPf: emptyValidatedSetPf() }).calculated++;
       const range = kindOfId(c.id) === "exit" ? "" : RANGE_LABEL[rangeOfId(c.id)];
       if (range)
-        (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 }).calculated++;
+        (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0, setPf: emptyValidatedSetPf() }).calculated++;
     }
-    for (const r of Object.values(byRange)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
-    for (const r of Object.values(byGroup)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
-    for (const r of Object.values(byKind)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
+    for (const r of Object.values(byRange)) r.pf = validatedSetPf(r.setPf)?.pf ?? null;
+    for (const r of Object.values(byGroup)) r.pf = validatedSetPf(r.setPf)?.pf ?? null;
+    for (const r of Object.values(byKind)) r.pf = validatedSetPf(r.setPf)?.pf ?? null;
     const active: SetListings["active"] = [];
     for (const k of this.wf.signalActive ?? []) {
       const [bot, ind, sym, side, kind, config] = k.split("|");
@@ -7324,10 +7331,12 @@ export class CoreRuntime {
       paperStep: this.listings.paperStep,
       at: this.listings.at,
       validated: validated.length,
+      calculated: candidates.length,
+      validation: this.listings.validation,
       active: active.length,
       proven: this.listings.proven ? this.listings.proven.length : null,
-      byRange: Object.entries(byRange).map(([range, r]) => ({ range, validated: r.rows.length, pf: r.pf })),
-      byGroup: Object.entries(byGroup).map(([group, r]) => ({ group, validated: r.rows.length, pf: r.pf })),
+      byRange: Object.entries(byRange).map(([range, r]) => ({ range, validated: r.rows.length, calculated: r.calculated, pf: r.pf, setPf: validatedSetPf(r.setPf) })),
+      byGroup: Object.entries(byGroup).map(([group, r]) => ({ group, validated: r.rows.length, calculated: r.calculated, pf: r.pf, setPf: validatedSetPf(r.setPf) })),
       byKind: Object.entries(byKind).map(([kind, r]) => ({
         kind,
         validated: r.rows.length,
@@ -7336,7 +7345,8 @@ export class CoreRuntime {
         gp: r.gp,
         gl: r.gl,
         pf: r.pf,
-        noLoss: r.gp > 0 && r.gl <= 1e-12,
+        noLoss: validatedSetPf(r.setPf)?.noLoss ?? false,
+        setPf: validatedSetPf(r.setPf),
       })),
       ...(provenBySide ? { provenBySide: true as const } : {}),
     };
@@ -10864,15 +10874,15 @@ export interface SetListings {
   /** per range: the rows of `validated` (best first) and the range's PF taken together on the validation windows */
   byRange: Record<
     string,
-    { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }
+    { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number; setPf?: ValidatedSetPfAccumulator }
   >;
   byGroup: Record<
     string,
-    { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }
+    { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number; setPf?: ValidatedSetPfAccumulator }
   >;
   byKind: Record<
     string,
-    { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }
+    { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number; setPf?: ValidatedSetPfAccumulator }
   >;
   /** Signal units active at the paper step include their exact protection config; Base/discovery rows omit cfg. */
   active: Array<{
@@ -12286,9 +12296,9 @@ export function baseRangeRules(
 /**
  * The Base gate over the S1 runs, one rule for the engine's compute and the preset backtest (the backtest judged the
  * default protect alone and built every range and target of a passed pair: sets the engine never validates). Each
- * engine pair is judged at the default protect and at one cell of each enabled range, against that range's own min PF:
- * the ranges it passes are the ones whose configs it computes (pairTags), and per range only the targets whose Base
- * cells passed (pairTps, grid.baseTargets).
+ * engine pair is judged at the default protect and at one cell of each enabled range, against that range's own min PF.
+ * The separate construction maps can include diagnostic ranges and targets, but qualifiedTags always records only
+ * actual Base passes and is used by the engine and preset admission gates.
  */
 export function basePass(
   s1: readonly ComboRun[],
@@ -12316,6 +12326,7 @@ export function basePass(
   addedKeys: Set<string>;
 } {
   const pairTags: Record<string, string[]> = {};
+  const qualifiedTags: Record<string, string[]> = {};
   const pairCells: Record<string, readonly string[]> = {};
   const cellsOn = s.grid?.baseCells === true;
   const setsGates = baseSetsGates(s.gates);
@@ -12331,6 +12342,7 @@ export function basePass(
     // a family's pair builds only the sets of its own range (the other ranges of the pair are other families)
     if (evalFams) tags = familyTags(evalFams, r.bot, r.ind, tags);
     if (!tags.length) return false;
+    qualifiedTags[`${r.bot}|${r.ind}`] = [...tags];
     // the ranges built: the passed ones, or (baseRanges off) every range that applies, the unpassed ones with every
     // target (pairTps lists only the passed ranges' targets)
     let built = pairBuildTags(r.ind, tags, ALL_RANGE_TAGS, applies, rangesOn);
@@ -12350,9 +12362,6 @@ export function basePass(
   });
   const qualified = [...passed];
   const qualifiedCells = Object.fromEntries(Object.entries(pairCells).map(([pair, cells]) => [pair, [...cells]]));
-  const qualifiedTags = Object.fromEntries(
-    Object.entries(pairTags).map(([k, tags]) => [k, [...tags]]),
-  );
   const qualifiedTps = Object.fromEntries(
     Object.entries(pairTps).map(([pair, ranges]) => [
       pair,

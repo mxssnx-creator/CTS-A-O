@@ -48,6 +48,8 @@ test("listing PF and quantities contain only Last-N validated sets, excluding un
     assert.deepEqual(rt.status.listings?.byKind, [{
       kind: "normal", validated: 1, calculated: 2, validationCloses: 100,
       gp: 1, gl: 0, pf: null, noLoss: true,
+      setPf: { sets: 1, finiteSets: 0, noLossSets: 1, unavailableSets: 0,
+        finiteMean: null, pf: null, noLoss: true },
     }], "Active counts and PF include validated configs only; pool candidates remain separate");
     assert.equal(listing.validation.engineLastN, rt.wf.validLastN);
     assert.equal(listing.validation.rangeLastN, rt.wf.rangeGate!.lastN);

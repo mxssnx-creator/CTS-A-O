@@ -64,6 +64,39 @@ afterEach(async () => {
 });
 
 describe("completed protection bars through the actual runtime tick", () => {
+  it("persists each direction's first observed stop gap without closing its wider sibling", async () => {
+    mock.timers.enable({ apis: ["Date"], now: T0 });
+    const rt = runtime();
+    const narrow: Protect = { tp: .05, sl: .02, trail: 0, hold: 10 };
+    const wide: Protect = { ...narrow, sl: .04 };
+    const positions = [position(narrow, 1, "L-USDT"), position(wide, 1, "L-USDT"),
+      position(narrow, -1, "S-USDT"), position(wide, -1, "S-USDT")];
+    rt.paper.positions = positions;
+    rt.paper.units = new Map(positions.map(p => [orderKey(p), rt.settings.paperNotional]));
+    for (const sym of ["L-USDT", "S-USDT"]) setPrice(rt, sym, 100);
+    await rt.tick();
+    mock.timers.tick(M);
+    setPrice(rt, "L-USDT", 97); setPrice(rt, "S-USDT", 103);
+    await rt.tick();
+    for (const [index, side, quote] of [[0, 1, 97], [2, -1, 103]] as const) {
+      const p = positions[index];
+      assert.equal(p.hitPx, quote); assert.ok(p.stopHit);
+      assert.equal(positions[index + 1].stopHit, undefined);
+      const candles = [candle(T0), candle(T0 + M), candle(T0 + 2 * M, quote)];
+      const expected = simulate(p.cfg, barsFromCandles(p.sym, 1, candles),
+        Int8Array.of(side, 0, 0), narrow, { cost: COST }).trades[0];
+      assert.equal(expected.exit, quote); close(p.mtm, expected.r);
+    }
+    const hits = rt.db.kvGet<Record<string, { px: number }>>("stopHits")!;
+    assert.equal(Object.keys(hits).length, 2);
+    assert.deepEqual(Object.values(hits).map(x => x.px).sort((a, b) => a - b), [97, 103]);
+    mock.timers.tick(1);
+    setPrice(rt, "L-USDT", 95); setPrice(rt, "S-USDT", 105);
+    await rt.tick();
+    assert.deepEqual(positions.map(p => p.hitPx), [97, 95, 103, 105]);
+    assert.equal(Object.keys(rt.db.kvGet<Record<string, unknown>>("stopHits")!).length, 4);
+    close(rt.paper.equity, positions.reduce((sum, p) => sum + p.mtm * rt.settings.paperNotional, 0));
+  });
   it("publishes and persists a flat-price time exit between computes using the position's captured deadline", async () => {
     mock.timers.enable({ apis: ["Date"], now: T0 });
     const rt = runtime(), protect: Protect = { tp: .05, sl: .02, trail: 0, hold: 15, maxHoldMin: 15 };
@@ -368,8 +401,8 @@ describe("completed protection bars through the actual runtime tick", () => {
     setPrice(rt, p.sym, 103);
     await rt.tick();
     assert.ok(p.stopHit);
-    assert.equal(p.hitPx, p.stop);
-    close(p.mtm, (p.stop - p.entry) / p.entry - COST);
+    assert.equal(p.hitPx, 103, "the first observed quote beyond the stop is the conservative paper mark");
+    close(p.mtm, (103 - p.entry) / p.entry - COST);
     close(rt.paper.equity, p.mtm * rt.settings.paperNotional);
     assert.equal(Object.keys(rt.db.kvGet<Record<string, unknown>>("stopHits") ?? {}).length, 1);
   });

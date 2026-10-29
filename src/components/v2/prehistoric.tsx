@@ -4,6 +4,7 @@ import { RANGE_LABEL } from "@/core/minimal-coord";
 import { hasUnitReturnBasis, unitStatsPfText } from "./accounting";
 import { pooledBasePfText, signalProgressCounts } from "./progression";
 import { fmt, pfTone, Pill } from "./ui";
+import { validationCohortView } from "./validation-cohort";
 import { StrategyCoverageTable } from "./strategy-coverage";
 
 type Any = any;
@@ -51,6 +52,7 @@ export function PrehistoricPanel(props: {
     (a, b) => (b[1].n ?? 0) - (a[1].n ?? 0),
   );
   const c = p.counts;
+  const validation = validationCohortView(st.postBaseValidation);
   return (
     <section className="v2-panel" style={{ padding: 12, display: "grid", gap: 10 }}>
       <header style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -114,8 +116,8 @@ export function PrehistoricPanel(props: {
       <div className="v2-grid v2-cols-6" style={{ gap: 8 }}>
         <Stat
           k="Post-Base validation PF"
-          v={st.postBaseValidation?.noLoss ? "no losses" : fmt.pf(st.postBaseValidation?.pf)}
-          cls={pfTone(st.postBaseValidation?.pf, props.minPf)}
+          v={validation.pfText}
+          cls={pfTone(validation.pf, props.minPf)}
           sub={st.postBaseValidation
             ? `${fmt.num(st.postBaseValidation.passed)} / ${fmt.num(st.postBaseValidation.evaluated)} engine configs · ${fmt.frac(st.postBaseValidation.evaluated > 0 ? st.postBaseValidation.passed / st.postBaseValidation.evaluated : null)} · ${fmt.time(st.postBaseValidation.at)} UTC`
             : "engine selection-pool validation unavailable"}
@@ -146,7 +148,7 @@ export function PrehistoricPanel(props: {
         <Stat k="Symbols trading" v={`${s?.perSymbol?.length ?? 0}`} sub={`of ${p.ready} ready`} />
       </div>
       {st.postBaseValidation && <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-        Validation PF pools the passing engine configs&apos; overlapping historical windows. It is separate from later modeled closes, allocated paper results and exchange fills; Signals use their own context validation.
+        Validation PF averages individually passing engine sets. {validation.basisText}. Overlapping historical windows are separate from later closed execution and exchange fills; Signals use their own context validation.
       </div>}
       <div className="v2-grid v2-cols-6" style={{ gap: 8 }}>
         <Stat k="Base evaluated" v={fmt.num(st.baseEvaluated ?? c.base)} sub="pairs" />

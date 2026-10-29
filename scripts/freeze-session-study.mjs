@@ -65,7 +65,8 @@ const protocol = {
   source: { checkpoint: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(), basisCheckpoint: execFileSync("git", ["rev-parse", "HEAD"], { cwd: basisRoot, encoding: "utf8" }).trim(), files, sha256: studySha256(studyExactJson(files)) },
   actualSettings, actualWf,
   account: { balance: 10, leverage: 10, sizing: actualSettings.sizing },
-  policy: { qualification: "No PF/sample/DD/Last-N thresholds relaxed. All configured ranges remain enabled for initial 22-symbol evaluation.", scoring: "Post-Base qualified engine execution; independently qualified exact Signal configs separately; combined funded account separately.", directions: "Both directions enabled; realized counts reported, never fabricated.", evidence: "Offline model only; no venue fills or live promotion." },
+  ...(supplied?.study ? { study: supplied.study } : {}),
+  policy: { qualification: `${symbols.length} fixed symbols. Production-normalized thresholds, grids and sources are frozen below; study overrides must be disclosed in study metadata.`, scoring: "Post-Base qualified engine execution; independently qualified exact Signal configs separately; combined funded account separately.", directions: "Both directions enabled; realized counts reported, never fabricated.", evidence: "Offline model only; no venue fills or live promotion." },
 };
 mkdirSync(out, { recursive: true });
 const deskPath = resolve(out, "desk.json"), protocolPath = resolve(out, "protocol.json");

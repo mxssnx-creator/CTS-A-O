@@ -541,6 +541,33 @@ describe("worker pool", { timeout: 300_000 }, () => {
     assert.deepEqual(norm(merged), norm(localStats));
   });
 
+  it("range-specific Axis build counts match the actual tapes on workers and in process", async () => {
+    const selected = pairs.slice(0, 2);
+    const boundedBars = ["A", "B", "C"].map((symbol) =>
+      barsFromCandles(`${symbol}-USDT`, 15, syntheticCandles(symbol, 15, 288, END)));
+    const boundedUniverse = makeUniverse(boundedBars);
+    const tags = Object.fromEntries(selected.map((pair) => [pair, ["mn"]]));
+    const options = { ...dcaOpt, axis: { ...dcaOpt.axis, perRange: true } };
+    const floors = { minSl: 0.004, minTrail: 0.002, pairTags: tags };
+    const stats = new Map<string, TapeBuildStat>();
+    const local = buildTapes(boundedUniverse, parityProtects, s.cost, options, new Set(selected), s.tactics, null,
+      { ...floors, buildStats: stats });
+    const axis = local.filter((t) => t.kind === "axis" && t.protect.tag === "mn" && !t.heldOnly);
+    assert.ok(axis.length > 0, "the test must build range-specific Axis sets");
+    const count = [...stats.values()].filter((x) => x.kind === "axis" && x.tag === "mn")
+      .reduce((n, x) => n + x.kept, 0);
+    assert.equal(count, axis.length);
+    const floorsOf = floorsForPairs(floors);
+    const replies = await runOnWorkers<{ tapes: typeof local; buildStats?: TapeBuildStat[] }>(
+      slices(selected, 2).map((part) => ({ type: "tapes", bars: boundedBars, pairs: part, protects: parityProtects,
+        cost: s.cost, dcaOpt: options, tactics: s.tactics, adjust: null, floors: floorsOf(part) })), 2);
+    assert.deepEqual(replies.flatMap((x) => x.tapes).map((t) => t.id), local.map((t) => t.id));
+    const merged = new Map<string, TapeBuildStat>();
+    for (const reply of replies) mergeBuildStats(merged, reply.buildStats ?? []);
+    const entries = (m: Map<string, TapeBuildStat>) => [...m.entries()].sort(([a], [b]) => a.localeCompare(b));
+    assert.deepEqual(entries(merged), entries(stats));
+  });
+
   it("progress reaches 1 when every message is done, never backwards (short parts post no progress of their own)", async () => {
     // before: a worker posts tape progress at most every 400 ms, so a part shorter than that never reported its
     // end and the stage stayed at "Signals 0 %" until the next stage

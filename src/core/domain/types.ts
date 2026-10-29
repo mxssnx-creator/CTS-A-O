@@ -930,8 +930,8 @@ export interface ProtectGridSpec {
   baseTargets?: boolean;
   /**
    * The tape stage builds only the ranges a pair passed in Base (its pass tags). Default on. Off: a pair that passed
-   * Base in any range builds every range that applies to its indication — the ranges it did not pass with every
-   * target (no Base target to keep), each config then judged by its own seat gates (range gate, min PF, last N).
+   * Base in any range builds every range that applies to its indication for diagnostics. Tagged ranges must pass
+   * Base to enter execution; independently allowed untagged DCA/Axis ladders retain their separate policy.
    */
   baseRanges?: boolean;
   /**

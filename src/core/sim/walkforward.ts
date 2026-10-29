@@ -1,3 +1,4 @@
+import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
 import { DerivedCache } from "./derived-cache.ts";
 import { ProcessedValidationBook } from "./processed-validation.ts";
 import { baseLastNForRange } from "../pipeline/base-lastn.ts";
@@ -2682,9 +2683,14 @@ export function* buildTapesGen(
             const filtered = tagsOk !== undefined && !tagsOk.includes(rv.p0.tag ?? "");
             if (filtered && !held) {
               floors?.baseConfigCounter?.record(c.bot, c.ind, p0l, "axis", [], "baseRange");
+              const st = bs ? statOf(c.ind, p0l.tag, "axis") : null;
+              if (st) {
+                st.grid++;
+                st.skip.baseRange = (st.skip.baseRange ?? 0) + 1;
+              }
               continue;
             }
-            if (notOnly(id) || built.has(id) || b6Skip(id, `${c.bot}|${c.ind}`, "axis")) {
+            if (notOnly(id) || b6Skip(id, `${c.bot}|${c.ind}`, "axis")) {
               floors?.baseConfigCounter?.record(
                 c.bot,
                 c.ind,
@@ -2695,7 +2701,20 @@ export function* buildTapesGen(
               );
               continue;
             }
+            const st = bs ? statOf(c.ind, p0l.tag, "axis") : null;
+            if (st) st.grid++;
+            if (built.has(id)) {
+              floors?.baseConfigCounter?.record(c.bot, c.ind, p0l, "axis", [], "duplicate");
+              if (st) st.skip.duplicate = (st.skip.duplicate ?? 0) + 1;
+              continue;
+            }
             built.add(id);
+            // A recovered, filtered position is exit-only; it cannot count as a seat-eligible set.
+            if (st && filtered) st.skip.baseRange = (st.skip.baseRange ?? 0) + 1;
+            else if (st) {
+              st.built++;
+              statKept(st, p0l);
+            }
             const rf = {
               minSl: Math.max(rv.minSl, deskFloor.minSl),
               minTrail: deskFloor.minTrail,
@@ -2995,6 +3014,8 @@ export interface ValidationSummary {
   gp: number;
   gl: number;
   failures: Partial<Record<EvalGate, number>>;
+  /** Equal weight per passing config; never a pool-weighted PF or a no-loss score. */
+  setPf?: ValidatedSetPfAccumulator;
 }
 
 function summarizeValidation(summary: ValidationSummary | null, ev: ConfigEval, n: number, gp: number, gl: number) {
@@ -3002,6 +3023,7 @@ function summarizeValidation(summary: ValidationSummary | null, ev: ConfigEval, 
   summary.evaluated++;
   if (ev.ok) {
     summary.passed++;
+    addValidatedSetPf(summary.setPf ??= emptyValidatedSetPf(), n, gp, gl);
     summary.closes += n;
     summary.gp += gp;
     summary.gl += gl;
@@ -4607,7 +4629,7 @@ export function* selectFixedGen(
   const checks: ValidationCheck[] | null = o.recordValidation === true ? [] : null;
   const validationSummary: ValidationSummary | null =
     o.recordValidation === "summary"
-      ? { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {} }
+      ? { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {}, setPf: emptyValidatedSetPf() }
       : null;
   const basePf = new Map<string, number>();
   // the base PFs are read by beatsBase only, which judges nothing without family seats or with every config its seat
@@ -4860,7 +4882,9 @@ export function* selectGroupsGen(
     eligible += r.eligible;
     if (r.checks) checks = [...(checks ?? []), ...r.checks];
     if (r.validationSummary) {
-      validationSummary ??= { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {} };
+      validationSummary ??= { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {}, setPf: emptyValidatedSetPf() };
+      if (r.validationSummary.setPf) mergeValidatedSetPf(validationSummary.setPf!, r.validationSummary.setPf);
+      else { validationSummary.setPf!.sets += r.validationSummary.passed; validationSummary.setPf!.unavailableSets += r.validationSummary.passed; }
       for (const key of ["evaluated", "passed", "closes", "gp", "gl"] as const) validationSummary[key] += r.validationSummary[key];
       for (const key of Object.keys(r.validationSummary.failures) as Array<keyof ValidationSummary["failures"]>) validationSummary.failures[key] = (validationSummary.failures[key] ?? 0) + r.validationSummary.failures[key]!;
     }
@@ -7023,7 +7047,7 @@ export function* walkForwardGen(
     // evaluator as activation and entry, never from a pooled representative.
     const signalChecks: ValidationCheck[] = [];
     const validationSummary = sel?.validationSummary ?? (o.recordValidation === "summary"
-      ? { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {} } as ValidationSummary : null);
+      ? { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {}, setPf: emptyValidatedSetPf() } as ValidationSummary : null);
     if (o.recordValidation) {
       let checked = 0;
       for (const tp of sigTapes) {
