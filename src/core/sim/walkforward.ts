@@ -3096,6 +3096,8 @@ export interface BlockFeedEntry {
   autoSources?: number[];
   /** Passed every actual Real entry gate; only settled accepted orders feed accepted-order Block history. */
   accepted?: boolean;
+  /** Own Base-qualified model slot; advances downstream validation independently of funding. */
+  validationSource?: boolean;
   /** Proven relation portions from the modeled accepted entry; absent legacy provenance is unknown. */
   relateMeasured?: boolean;
   relateBase?: number;
@@ -6864,6 +6866,9 @@ export function* walkForwardGen(
     let settled = 0;
     while (vopen.size && vopen.peekT() <= t) {
       const fx = vopen.pop()!;
+      if (fx.validationSource && fx.cfg && fx.entryT !== undefined && (fx.side === 1 || fx.side === -1))
+        processedValidation?.closeSource({ cfg: fx.cfg, sym: fx.sym, side: fx.side, kind: fx.type,
+          entryT: fx.entryT, unitR: fx.r, markedOpen: fx.open });
       if (fx.cfg && !sigCfg(fx.cfg) && !isHistoricExitConfig(fx.cfg, fx.type)) engineOpen.add(fx.sym, fx.side, -1);
       feed.push(fx);
       feedBooks(fx, book, guard, direction, relateBook);
@@ -6873,7 +6878,6 @@ export function* walkForwardGen(
     while (open.size && open.peekT() <= t) {
       const x = open.pop()!;
       counts.add(x, -1);
-      processedValidation?.close(x);
       const k = Math.floor(x.exitT / H);
       let hours = hourNet;
       if (isHistoricExitConfig(x.cfg, x.kind)) {
@@ -7133,6 +7137,7 @@ export function* walkForwardGen(
         }
         const hourKey = Math.floor(tr.entryT / H);
         let why = "";
+        let fundingWhy = "";
         // engine orders and signal orders are capped each on their own (same class only)
         const cls = sigCfg(tr.cfg);
         const isExit = isHistoricExitConfig(tr.cfg, tr.kind);
@@ -7170,22 +7175,21 @@ export function* walkForwardGen(
             : null);
         if (!o.gates?.lastNOnly && o.guardPct > 0 && (ownHours.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
         else if (coordWhy) why = coordWhy;
-        else if (counts.dupe(tr.sym, tr.cfg, tr.side)) why = "dupe";
-        else if (counts.perSymbol(tr.sym, cls, capScope) >= caps.perSymbol) why = "perSymbol";
-        else if (counts.open(cls, capScope) >= caps.maxOpen) why = "maxOpen";
-        else if (counts.perSide(tr.side, cls, capScope) >= caps.perSide) why = "perSide";
+        else if (counts.dupe(tr.sym, tr.cfg, tr.side) || processedValidation?.sourceBusy(tr)) why = "dupe";
+        if (counts.perSymbol(tr.sym, cls, capScope) >= caps.perSymbol) fundingWhy = "perSymbol";
+        else if (counts.open(cls, capScope) >= caps.maxOpen) fundingWhy = "maxOpen";
+        else if (counts.perSide(tr.side, cls, capScope) >= caps.perSide) fundingWhy = "perSide";
         else if (
           counts.positionsFull(tr.sym, tr.side, cls, cls ? o.signalMaxPositions : o.maxPositions, capScope)
         )
-          why = "maxPositions";
+          fundingWhy = "maxPositions";
         else if (
           o.entryCrowd &&
           (crowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) >= crowdCapOf(o, tr.cfg)
         )
-          why = "crowd";
-        else if (processedValidation && !processedValidation.verdict(tp.id, tr.sym, tr.side, tp.kind,
-          validationLastNForTape(tp, o), minPfForTape(tp, o)).ok)
-          why = "processedValidation";
+          fundingWhy = "crowd";
+        // Legacy mode retains its admission order. Last-N-only learning must run before account funding.
+        if (!processedValidation && !why) why = fundingWhy;
         const vf = indicationVolumeFactors.get(tp.id) ?? 1;
         const hedgeVol = hedging ? (o.coord?.hedgeVolumeFactor ?? 1) : 1;
         const rangeVol = rangeVolumeFactorFor(tp, o);
@@ -7202,6 +7206,14 @@ export function* walkForwardGen(
               side: tr.side,
             });
         if (dec && !dec.ok) why = dec.why;
+        if (!why && dec?.ok && processedValidation) {
+          if (!processedValidation.admitSource(tr)) why = "dupe";
+          else {
+            fx.validationSource = true;
+            if (!processedValidation.verdict(tp.id, tr.sym, tr.side, tp.kind,
+              validationLastNForTape(tp, o), minPfForTape(tp, o)).ok) why = "processedValidation";
+          }
+        }
         if (why || !dec || !dec.ok) {
           if (dec && !dec.ok && dec.why === "relateActive" && o.relate?.enabled) {
             const shadowBase = dec.relateBase ?? baseForBlock(dec.relateBaseVol ?? 1);
@@ -7216,7 +7228,7 @@ export function* walkForwardGen(
           skipR(skipName(why), tr.r);
           continue;
         }
-        // All account-independent Real entry gates passed. Do not stamp candidates held back by any earlier gate.
+        // All account-independent Real entry gates passed. A funding rejection is not a failed model gate.
         fx.accepted = true;
         delete fx.relateShadow;
         if (dec.blockAttribution) fx.blockAttribution = dec.blockAttribution;
@@ -7238,6 +7250,12 @@ export function* walkForwardGen(
           if (Object.keys(relateParts).length) fx.relateParts = relateParts;
         }
         const executionMult = combined.volume;
+        if (fundingWhy) {
+          skipped++;
+          skip(skipName(fundingWhy), tr.side, tr.cfg);
+          skipR(skipName(fundingWhy), tr.r);
+          continue;
+        }
         const x: Trade = {
           ...tr,
           r: tr.r * executionMult,

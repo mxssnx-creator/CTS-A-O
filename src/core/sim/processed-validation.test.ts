@@ -40,3 +40,23 @@ test("processed warmup, unknown evidence and recovery never invent returns", () 
   assert.equal(get(b).state, "qualified", "only three subsequent known closes replace the unknown");
   assert.equal(get(b, "", "A").state, "unknown");
 });
+
+test("qualified source slots reject overlaps, stale closes and retries without borrowing sibling ownership", () => {
+  const b = new ProcessedValidationBook(3), a = trade();
+  assert.ok(b.admitSource(a));
+  assert.equal(b.admitSource({ ...a, entryT: 2 }), false);
+  assert.ok(b.admitSource({ ...a, sym: "B" }), "each symbol owns its slot");
+  b.closeSource({ ...a, entryT: 2, unitR: .1 });
+  assert.ok(b.sourceBusy(a), "a different entry cannot close the owner");
+  b.closeSource({ ...a, unitR: .1, markedOpen: true });
+  assert.equal(get(b).n, 0, "endpoint marks never become closed evidence");
+  assert.ok(b.sourceBusy(a), "a held source keeps its protection slot");
+  b.closeSource({ ...a, unitR: -.01 });
+  b.closeSource({ ...a, unitR: .1 });
+  assert.equal(get(b).n, 1, "duplicate close cannot replace a loss");
+  assert.equal(b.admitSource(a), false, "a settled intent cannot enter again");
+  assert.ok(b.admitSource({ ...a, entryT: 3 }));
+  assert.ok(b.sourceBusy({ ...a, sym: "B" }), "closing A never releases B");
+  b.closeSource({ ...a, entryT: 3, unitR: NaN });
+  assert.equal(get(b).state, "unknown", "unknown evidence occupies its actual chronological window");
+});

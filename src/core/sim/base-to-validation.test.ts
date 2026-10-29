@@ -136,6 +136,49 @@ test("losing rejected candidates cannot deactivate a qualified context with winn
   assert.ok(result.trades.every((x) => x.r > 0));
 });
 
+test("own qualified source keeps learning after its execution gate fails and can recover", () => {
+  const past = Array.from({ length: 40 }, (_, i) => ({ sym, side: 1 as const, r: .01,
+    entryT: T - (40 - i) * 60_000, exitT: T - (40 - i) * 60_000 + 1000 }));
+  const future = Array.from({ length: 24 }, (_, i) => ({ sym, side: 1 as const,
+    r: i < 12 ? -.01 : .02, entryT: T + (i * 4 + 1) * 60_000,
+    exitT: T + (i * 4 + 3) * 60_000 }));
+  const after = { sym, side: 1 as const, r: .02, entryT: T + 110 * 60_000, exitT: T + 112 * 60_000 };
+  const tp = tape("normal", p, [...past, ...future, after]);
+  const o = { ...options(), seatSet: "validated" as const, startT: T, simH: 12, preH: 12, stepH: 1,
+    coord: { enabled: false, confirm: false, conflict: false, hourLock: 0, cooldown: "off" as const } };
+  const u = { bars: [], caches: [], startT: T - 48 * H, endT: T + 12 * H, splitT: T,
+    nowT: T + 12 * H, baseTf: 5 } as never;
+  const result = walkForward(u, [tp], o);
+  assert.equal(result.trades.filter((x) => x.r < 0).length, 12, "later failure never erases owned losses");
+  assert.ok(!result.trades.some((x) => x.entryT === future[12].entryT), "the first recovery result cannot authorize its own entry");
+  assert.ok(result.trades.some((x) => x.entryT === after.entryT), "subsequent own qualified model closes recover the gate without funding rejected entries");
+});
+
+test("funding caps cannot hide qualified source losses and leave a context indefinitely warming", () => {
+  const history = (s: string) => Array.from({ length: 40 }, (_, i) => ({ sym: s, side: 1 as const, r: .01,
+    entryT: T - (40 - i) * 60_000, exitT: T - (40 - i) * 60_000 + 1000 }));
+  const busy = tape("normal", { ...p, sl: .02 }, [...history("B-USDT"),
+    { sym: "B-USDT", side: 1, r: .01, entryT: T + 60_000, exitT: T + 60 * 60_000 }]);
+  const losses = Array.from({ length: 12 }, (_, i) => ({ sym, side: 1 as const, r: -.01,
+    entryT: T + (i * 4 + 2) * 60_000, exitT: T + (i * 4 + 4) * 60_000 }));
+  const after = { sym, side: 1 as const, r: .02, entryT: T + 70 * 60_000, exitT: T + 72 * 60_000 };
+  const target = tape("normal", p, [...history(sym), ...losses, after]);
+  const o = { ...options(), maxOpen: 1, seatSet: "validated" as const, startT: T,
+    simH: 12, preH: 12, stepH: 1,
+    coord: { enabled: false, confirm: false, conflict: false, hourLock: 0, cooldown: "off" as const } };
+  const u = { bars: [], caches: [], startT: T - 48 * H, endT: T + 12 * H, splitT: T,
+    nowT: T + 12 * H, baseTf: 5 } as never;
+  const result = walkForward(u, [busy, target], o);
+  assert.deepEqual(result.trades.map((x) => x.cfg), [busy.id], "the freed funding slot cannot qualify the target's losing own source");
+  assert.equal(result.skips.maxOpen, 12);
+  assert.equal(result.skips.processedValidation, 1);
+  const source = result.feed.filter((x) => x.cfg === target.id && x.validationSource);
+  assert.equal(source.length, 13, "all nonoverlapping upstream-qualified model orders keep their own stream");
+  assert.equal(source.filter((x) => x.accepted).length, 12, "pre-funding Real admissions are separate from the failed downstream gate");
+  assert.ok(!source.find((x) => x.entryT === after.entryT)?.accepted,
+    "a failed downstream PF gate cannot feed accepted Real/Overall statistics");
+});
+
 for (const source of ["sig-ema-cross-s@m5", "sig-coord-v2-r60-n3-i3-br9a60mhgf0326kw8ow07@m5"])
   for (const kind of ["normal", "trailing", "exit"] as StratKind[]) {
     test(`${source}/${kind}: Signal Validation requires its own Base proof`, () => {
