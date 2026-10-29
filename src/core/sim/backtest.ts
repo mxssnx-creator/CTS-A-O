@@ -9,6 +9,7 @@ import { capSignalProtect, capTrailingOnlyProtect, isSignalConfig, ratchetTrail 
 import { atrEma } from "../math/indicators.ts";
 import { RT_COST, modeledPriceReturn } from "../model-cost.ts";
 import type { SimulationCursor } from "./cursor.ts";
+import { admitSimulationEntry, type EntryAdmission } from "./entry-admission.ts";
 import {
   advanceExitProtection,
   createExitProtection,
@@ -36,14 +37,7 @@ export interface SimOptions {
    * The callback must use only evidence available by entryT; callers that resume a simulation must
    * restore the same admission state alongside its SimState.
    */
-  admitEntry?: (entry: {
-    readonly cfg: string;
-    readonly sym: string;
-    readonly side: Side;
-    readonly signalCloseT: number;
-    readonly entryT: number;
-    readonly entry: number;
-  }) => boolean;
+  admitEntry?: EntryAdmission;
   /**
    * Optional entry-time ceiling on the initial stop distance from that entry, expressed as a fraction.
    * Decisions supplied here must already be causal: only a caller coordinating all relevant settled orders
@@ -521,12 +515,7 @@ function simCore(
       if (j + 1 >= n) break;
       i = j;
       const s = sig[i];
-      if (opt.admitEntry) {
-        const admitted = opt.admitEntry({ cfg, sym, side: s > 0 ? 1 : -1,
-          signalCloseT: t[i] + bars.tfMin * 60_000, entryT: t[i + 1], entry: o[i + 1] });
-        if (typeof admitted !== "boolean") throw new TypeError("entry admission must return a boolean");
-        if (!admitted) continue;
-      }
+      if (!admitSimulationEntry(opt.admitEntry, cfg, bars, i, s > 0 ? 1 : -1)) continue;
       {
         inPos = true;
         side = s > 0 ? 1 : -1;

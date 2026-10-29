@@ -67,3 +67,14 @@ The operator explicitly authorizes fixes, tests, backups, regular GitHub push/me
 - **Operator update, 24 October 2026 evening:** Signal and Exit evaluation/fitting history defaults are 150 hours, superseding 100h; keep Last-4 and minute paths. Signal coordination uses only the Signal protection grid and independent Exit, not ordinary Short/General/Long grid expansion. Incremental work advances selected and held configs only; background history remains complete for reevaluation. Report exact-context and any-context configuration Last-N readiness by type/range separately.
 
 - **Operator update, 27 October 2026: independent strategy lanes and continuous post-Base progression.** Keep indication, timeframe, side, strategy type, range and complete protection/config identities independent through Base, ongoing validation, paper/live admission, held-position recovery and their own TP, SL and trailing closes. Historic Exit is a separately qualified strategy; it must not close or qualify another strategy's position. Do not use a pooled range or sibling win to satisfy an exact config's forward PF. Shared portfolio/venue risk controls must be identified separately, including any exchange-wide emergency backstop or one-way netting that prevents independent physical positions. Preserve partial/pending fills and retained held protections. The Short range minimum return PF is 1.1 or any stricter configured floor. Track each config's causal validation at successive decisions and its subsequent funded settled return PF; an initial high PF or an aggregate pooled score does not establish continued performance. Unknown or insufficient observations stay unknown, and historical validation remains separate from later execution and venue fills.
+
+- **Operator stage architecture and inverse choice, 29 October 2026:** Each exact Base coordination/range/type/config
+  must create its own Base-linked Main processed set. Main's additional processing feeds only its own subsequent
+  validation; qualified Main creates a new Real set whose Overall processing supplies the final gate. No later
+  gate may read the raw Base pool or sibling wins in place of its immediate predecessor's processed results.
+  Base and Main require a primary Last-50 and secondary Last-15 by default; compare secondary 5/10/15/20/25
+  without future leakage. Real uses one Last-15. Negative Main Last-5/10 means a separate opposite-direction Main
+  set with its own actual simulation, costs, closes and positive validation before Real; it never means negating
+  a loss or admitting the original direction as profitable. Final Active ownership mirrors to the exchange without
+  another Last-N gate, preserving static venue/risk limits and held protections. Integration is still pending in
+  draft #219; a primitive or empty cohort does not establish production completion, a best default or stable high PF.
