@@ -219,22 +219,27 @@ test("unknown partials poison their final order instead of borrowing older wins"
   assert.equal(book.gate(base.id, 21).state, "unknown"); assert.equal(book.summary(base.id).returnPf, null);
 });
 
-test("same-time closes and batches larger than Last-N cannot replace strictly earlier evidence", () => {
+test("already observed equal-clock closes replace older evidence even in batches larger than Last-N", () => {
   const { book, base } = chain();
   for (let i = 0; i < 9; i++) { open(book, base, 2 * i); close(book, base, 2 * i, .02); }
   for (let i = 0; i < 60; i++) open(book, base, 18 + i);
   for (let i = 0; i < 60; i++) book.close(base.id, `order-${18 + i}`, 18 + i, "final", 100, -.03, true);
-  assert.equal(book.gate(base.id, 100).state, "qualified");
+  assert.equal(book.gate(base.id, 100).state, "failed");
   const restored = StageChainBook.restore(JSON.parse(JSON.stringify(book.snapshot())));
-  assert.equal(restored.gate(base.id, 100).state, "qualified");
+  assert.equal(restored.gate(base.id, 100).state, "failed");
   assert.equal(restored.gate(base.id, 101).state, "failed");
 });
 
-test("late execution evidence is unavailable before observation and does not retroactively change admissions", () => {
+test("late execution evidence becomes available after observation without changing an earlier admission", () => {
   const { book, base } = chain();
+  const main = book.main(base.id, "late-observation");
   for (let i = 0; i < 9; i++) open(book, base, i);
-  for (let i = 0; i < 9; i++) book.close(base.id, `order-${i}`, i, "fill", 10 + i, .02, true, 30);
   assert.equal(book.gate(base.id, 30).state, "insufficient");
+  assert.equal(book.enter(main.id, "early", "early", 30).ok, false);
+  for (let i = 0; i < 9; i++) book.close(base.id, `order-${i}`, i, "fill", 10 + i, .02, true, 30);
+  assert.equal(book.gate(base.id, 30).state, "qualified");
+  assert.throws(() => book.enter(main.id, "early", "early", 30), /duplicate/);
+  assert.equal(book.enter(main.id, "later", "later", 30).ok, true);
   assert.equal(book.gate(base.id, 31).state, "qualified");
   assert.throws(() => book.gate(base.id, 20), /decision time/);
 });

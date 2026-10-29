@@ -173,7 +173,7 @@ describe("two-window Base: the windows of one cell", () => {
 
   it("defaults: every block, minN 3, the Base floor (baseSetsMinPf) as PF floor with net > 0 dropped under 1; ranges pick the tags", () => {
     const plan = baseWindowsPlan(withWindows({ gate: { split: 3 } }))!;
-    assert.deepEqual([plan.gate!.need, plan.gate!.minN, plan.gate!.minPf], [3, 3, 1]);
+    assert.deepEqual([plan.gate!.need, plan.gate!.minN, plan.gate!.minPf], [3, 3, 1.1]);
     assert.equal(
       baseWindowsPlan({ ...gates0, baseSetsMinPf: 0.9, baseWindows: { gate: { split: 2 } } })!.gate!
         .minPf,

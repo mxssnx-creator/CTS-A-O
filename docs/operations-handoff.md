@@ -1,3 +1,22 @@
+## 2026-10-29 — Observed-close ordering fix and CI fixture reconciliation
+
+Draft ledger regression reproduced: a Main loss already observed at the next entry's timestamp was excluded by
+the strict timestamp filter, allowing an older win to qualify Real. The new book uses explicit observation event
+order (snapshot version4, independent policy fingerprint). A close observed before the next decision counts;
+future/current-entry outcomes do not. Ambiguous equal-clock evidence stays unknown. Restart rejects conflicting
+events or altered frozen proofs. Standalone historical helpers retain an explicit strict-clock mode for archived
+studies; new research must record closed-bar phase0 before next-open decision phase1, without shifting prices.
+This is a proven draft-ledger defect, not yet a demonstrated deployed-runtime PF root cause.
+
+All48 targeted stage/source/index/lifecycle checks pass, including scalar/index parity across changing sequences,
+late/unknown results, restart and held-order protection. Typecheck passes. Full CI on prior foundation73b3 failed
+because old fixtures inherited the requested PF default changes; separate default release#232 now has29 passing
+default/range/migration/lifecycle checks,2 actual-runtime checks and3 comparison checks. Its archived candidate
+lifecycle hash is unchanged after explicitly pinning former economic inputs. Runtime tests now compare actual
+Base-qualified ranges/windows and count only the economically matching published replacement, not an abandoned
+compute. The construction prefilter warning remains visible. Remote release sourcea12b0de6c4997852e0230add0537bd15627bb85d
+is awaiting complete CI; do not merge before green. New financial matrix still pending; old measured PF is unchanged.
+
 ## 2026-10-29 — Extended window policy work in progress
 
 The operator now requests factory Base PF1.1; Base long20/30/40/50 × short5/10/15/20/25 with a hard short/long

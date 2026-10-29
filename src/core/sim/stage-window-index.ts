@@ -13,6 +13,8 @@ export class StageWindowIndex {
   private readonly loss: Float64Array;
   private readonly unknown: Uint32Array;
   private readonly knownMax: Float64Array;
+  private readonly sequenceAtKnownMax: Float64Array;
+  private readonly entryMax: Float64Array;
   private readonly cache = new Map<number, CompactStageWindow>();
   private cachePf = NaN;
   private invalid = false;
@@ -24,13 +26,15 @@ export class StageWindowIndex {
       const key = JSON.stringify([r.orderId, r.entryT]);
       if (!r || typeof r.orderId !== "string" || !r.orderId.trim() || ids.has(key) ||
           ![r.entryT, r.exitT, r.knownT].every((n) => Number.isFinite(n) && n >= 0) ||
-          r.exitT < r.entryT || r.knownT < r.exitT) this.invalid = true;
+          r.exitT < r.entryT || r.knownT < r.exitT ||
+          r.knownSeq !== undefined && (!Number.isSafeInteger(r.knownSeq) || r.knownSeq < 0)) this.invalid = true;
       ids.add(key);
     }
     if (!this.invalid) this.rows.sort(compareStageObservation);
     const size = this.rows.length + 1;
     this.gain = new Float64Array(size); this.loss = new Float64Array(size);
     this.unknown = new Uint32Array(size); this.knownMax = new Float64Array(size);
+    this.sequenceAtKnownMax = new Float64Array(size); this.entryMax = new Float64Array(size);
     if (this.invalid) return;
     for (let i = 0; i < this.rows.length; i++) {
       const r = this.rows[i], known = r.unitReturn !== null && Number.isFinite(r.unitReturn);
@@ -38,21 +42,29 @@ export class StageWindowIndex {
       this.loss[i + 1] = this.loss[i] + (known ? Math.max(0, -r.unitReturn!) : 0);
       this.unknown[i + 1] = this.unknown[i] + Number(!known);
       this.knownMax[i + 1] = Math.max(this.knownMax[i], r.knownT);
+      this.sequenceAtKnownMax[i + 1] = r.knownT > this.knownMax[i] ? (r.knownSeq ?? Infinity)
+        : r.knownT === this.knownMax[i] ? Math.max(this.sequenceAtKnownMax[i], r.knownSeq ?? Infinity)
+        : this.sequenceAtKnownMax[i];
+      this.entryMax[i + 1] = Math.max(this.entryMax[i], r.entryT);
     }
   }
-  private scalar(n: number, minPf: number, beforeT: number): CompactStageWindow {
-    const { rows: _rows, ...w } = stageWindow(this.rows, n, minPf, beforeT);
+  private scalar(n: number, minPf: number, beforeT: number, decisionSeq?: number): CompactStageWindow {
+    const { rows: _rows, ...w } = stageWindow(this.rows, n, minPf, beforeT, decisionSeq);
     return Object.freeze(w);
   }
-  window(n: number, minPf: number, beforeT: number): CompactStageWindow {
+  window(n: number, minPf: number, beforeT: number, decisionSeq?: number): CompactStageWindow {
     if (!Number.isSafeInteger(n) || n < 1 || n > 500 || !Number.isFinite(minPf) || minPf <= 1 ||
-        !Number.isFinite(beforeT) || beforeT < 0) throw new RangeError("invalid indexed stage window");
+        !Number.isFinite(beforeT) || beforeT < 0 || decisionSeq !== undefined &&
+        (!Number.isSafeInteger(decisionSeq) || decisionSeq < 0)) throw new RangeError("invalid indexed stage window");
     if (this.invalid) return Object.freeze({ requestedN: n, n: Math.min(this.rows.length, n),
       state: "unknown", pf: null, mean: null, gp: 0, gl: 0 });
     let low = 0, high = this.rows.length;
-    while (low < high) { const mid = (low + high) >>> 1; if (this.rows[mid].exitT < beforeT) low = mid + 1; else high = mid; }
+    while (low < high) { const mid = (low + high) >>> 1;
+      if (this.rows[mid].exitT < beforeT || decisionSeq !== undefined && this.rows[mid].exitT === beforeT) low = mid + 1;
+      else high = mid; }
     const b = low;
-    if (b && this.knownMax[b] >= beforeT) return this.scalar(n, minPf, beforeT);
+    if (b && (this.knownMax[b] > beforeT || this.entryMax[b] >= beforeT || this.knownMax[b] === beforeT &&
+        (decisionSeq === undefined || this.sequenceAtKnownMax[b] >= decisionSeq))) return this.scalar(n, minPf, beforeT, decisionSeq);
     if (this.cachePf !== minPf) { this.cache.clear(); this.cachePf = minPf; }
     const key = n * (this.rows.length + 1) + b, cached = this.cache.get(key);
     if (cached) return cached;

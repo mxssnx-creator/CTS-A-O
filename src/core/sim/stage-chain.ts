@@ -1,7 +1,7 @@
 import { processedSetKey, type ProcessedBasis, type ProcessedSetIdentity } from "./processed-set.ts";
 import {
   checkStageChainSettings, compareStageObservation, dualStageGate, negativeMainTrigger, singleStageGate, stageWindow,
-  minimalStageWindow, secondaryWindowsFor,
+  minimalStageWindow, secondaryWindowsFor, stageObservationAvailability,
   type NegativeMainTrigger, type StageChainSettings, type StageGate, type StageObservation,
 } from "./stage-policy.ts";
 
@@ -29,9 +29,10 @@ export interface StageOrder {
   orderId: string;
   positionId: string;
   entryT: number;
+  admissionSeq: number;
   proof: AdmissionProof | null;
   /** Realized contributions on the original order unit; partials are not extra Last-N orders. */
-  slices: Array<{ id: string; unitReturn: number | null; exitT: number; knownT: number }>;
+  slices: Array<{ id: string; unitReturn: number | null; exitT: number; knownT: number; knownSeq: number }>;
   autoCandidates: number[];
 }
 interface Totals {
@@ -55,10 +56,11 @@ interface SetRecord {
     parentMissing: number };
 }
 export interface StageChainSnapshot {
-  version: 3;
+  version: 4;
   basis: ProcessedBasis;
   settings: StageChainSettings;
   clock: number;
+  sequence: number;
   records: SetRecord[];
   open: StageOrder[];
   seenAtClock: string[];
@@ -87,12 +89,14 @@ const totals = (): Totals => ({ openedOrders: 0, closedOrders: 0, openedPosition
   settledSlices: 0, unknownSlices: 0, grossProfit: 0, grossLoss: 0, overflow: false });
 const evaluations = (): SetRecord["evaluations"] => ({ evaluated: 0, qualified: 0, insufficient: 0, unknown: 0, failed: 0, parentMissing: 0 });
 const idOf = (s: Omit<StageSet, "id">) => JSON.stringify([s.stage, s.parentSetId, processedSetKey(s.identity), s.processingId, s.variant, s.minPf, s.admissionPolicy]);
-const dualKey = (p: StageChainSettings["base"]) => JSON.stringify([p.primaryN, p.secondaryN, p.secondaryMode,
+const CLOCK_POLICY = "observed-before-entry-v1";
+const dualKey = (p: StageChainSettings["base"]) => JSON.stringify([CLOCK_POLICY, p.primaryN, p.secondaryN, p.secondaryMode,
   [...p.secondaryWindows].sort((a, b) => a - b), p.maxShortRatio ?? .5, p.minimal ?? null]);
 const sameLineage = (a: ProcessedSetIdentity, b: ProcessedSetIdentity) =>
   processedSetKey({ ...a, side: b.side }) === processedSetKey(b);
 const observationValid = (r: StageObservation) => r && nonempty(r.orderId) && time(r.entryT) &&
   time(r.exitT) && r.exitT >= r.entryT && time(r.knownT) && r.knownT >= r.exitT &&
+  Number.isSafeInteger(r.knownSeq) && r.knownSeq! > 0 &&
   (r.unitReturn === null || Number.isFinite(r.unitReturn));
 
 /**
@@ -110,6 +114,7 @@ export class StageChainBook {
   private readonly parentMissesAtClock = new Set<string>();
   private readonly heldPositions = new Map<string, Map<string, number>>();
   private clock = -1;
+  private sequence = 0;
   private readonly capacity: number;
 
   constructor(basis: ProcessedBasis, settings: StageChainSettings) {
@@ -131,6 +136,10 @@ export class StageChainBook {
     const r = this.records.get(id);
     if (!r) throw new Error("unknown stage set");
     return r;
+  }
+  private nextSequence(): number {
+    if (!Number.isSafeInteger(this.sequence + 1)) throw new RangeError("stage observation sequence exhausted");
+    return ++this.sequence;
   }
   private register(set: Omit<StageSet, "id">): StageSet {
     processedSetKey(set.identity);
@@ -157,7 +166,7 @@ export class StageChainBook {
     if (parent.stage !== "main" || parent.variant !== "direct") throw new TypeError("inverse Main needs a direct Main parent");
     return this.register({ stage: "main", identity: { ...parent.identity, side: parent.identity.side === 1 ? -1 : 1 },
       parentSetId: parent.id, processingId, variant: "inverse", minPf: parent.minPf,
-      admissionPolicy: JSON.stringify([this.policy.main.primaryN, this.policy.negativeMain.enabled,
+      admissionPolicy: JSON.stringify([CLOCK_POLICY, this.policy.main.primaryN, this.policy.negativeMain.enabled,
         [...this.policy.negativeMain.windows].sort((a, b) => a - b), this.policy.negativeMain.combination ?? "mean"]) });
   }
   real(mainSetId: string, processingId: string): StageSet {
@@ -170,15 +179,18 @@ export class StageChainBook {
     const parent = this.record(realSetId).set;
     if (parent.stage !== "real") throw new TypeError("Active needs its exact processed Real parent");
     return this.register({ stage: "active", identity: parent.identity, parentSetId: parent.id,
-      processingId: "execution", variant: parent.variant, minPf: parent.minPf, admissionPolicy: JSON.stringify(this.policy.realN) });
+      processingId: "execution", variant: parent.variant, minPf: parent.minPf, admissionPolicy: JSON.stringify([CLOCK_POLICY, this.policy.realN]) });
   }
 
   gate(setId: string, entryT: number): StageGate {
+    return this.decisionGate(setId, entryT, this.sequence + 1);
+  }
+  private decisionGate(setId: string, entryT: number, decisionSeq: number): StageGate {
     if (!time(entryT) || entryT < this.clock) throw new RangeError("invalid stage decision time");
     const r = this.record(setId), s = r.set;
     if (s.stage === "active") throw new TypeError("Active mirror has no further Last-N gate");
-    return s.stage === "real" ? singleStageGate(r.history, this.policy.realN, s.minPf, entryT)
-      : dualStageGate(r.history, this.policy[s.stage], s.minPf, entryT, new Map(r.scores));
+    return s.stage === "real" ? singleStageGate(r.history, this.policy.realN, s.minPf, entryT, decisionSeq)
+      : dualStageGate(r.history, this.policy[s.stage], s.minPf, entryT, new Map(r.scores), decisionSeq);
   }
 
   /** A child points to a currently processed parent order at the same entry, never a raw sibling. */
@@ -188,6 +200,7 @@ export class StageChainBook {
     const r = this.record(setId), s = r.set, key = orderKey(setId, orderId, entryT);
     if (this.open.has(key) || (entryT === this.clock && this.seenAtClock.has(key))) throw new Error("duplicate stage entry");
     this.at(entryT);
+    const admissionSeq = this.nextSequence();
     let proof: AdmissionProof | null = null;
     if (s.parentSetId) {
       const source = this.record(s.parentSetId);
@@ -203,7 +216,7 @@ export class StageChainBook {
       // arrive later at this same observation clock; only a real evaluation/admission is deduplicated here.
       this.seenAtClock.add(key);
       if (s.stage === "main" && s.variant === "inverse") {
-        const negative = negativeMainTrigger(source.history, this.policy, s.minPf, entryT);
+        const negative = negativeMainTrigger(source.history, this.policy, s.minPf, entryT, admissionSeq);
         r.evaluations.evaluated++;
         if (!negative.qualified) {
           const state = negative.primary.state === "unknown" || negative.windows.some((w) => w.state === "unknown") ? "unknown"
@@ -214,27 +227,27 @@ export class StageChainBook {
         r.evaluations.qualified++;
         proof = { sourceSetId: source.set.id, parentOrderId: parentOrderId!, gate: null, negative, autoScores: [] };
       } else {
-        const gate = this.gate(source.set.id, entryT);
+        const gate = this.decisionGate(source.set.id, entryT, admissionSeq);
         r.evaluations.evaluated++; r.evaluations[gate.state]++;
         if (gate.state !== "qualified") return { ok: false, reason: gate.state, gate };
         proof = { sourceSetId: source.set.id, parentOrderId: parentOrderId ?? null, gate, negative: null,
           autoScores: (source.set.stage === "base" || source.set.stage === "main") && this.policy[source.set.stage].secondaryMode === "auto"
-            ? source.scores.map(([n, rows]) => [n, structuredClone(rows.filter((x) => x.knownT < entryT && x.exitT < entryT)
+            ? source.scores.map(([n, rows]) => [n, structuredClone(rows.filter((x) => stageObservationAvailability(x, entryT, admissionSeq) === "available")
               .slice(-this.policy[source.set.stage as "base" | "main"].primaryN))]) : [] };
       }
     } else this.seenAtClock.add(key);
     const policy = s.stage === "base" || s.stage === "main" ? this.policy[s.stage] : null;
-    const primaryOk = policy && stageWindow(r.history, policy.primaryN, s.minPf, entryT).state === "qualified" &&
-      (!policy.minimal?.enabled || minimalStageWindow(r.history, policy.minimal, s.minPf, entryT)?.state === "qualified");
+    const primaryOk = policy && stageWindow(r.history, policy.primaryN, s.minPf, entryT, admissionSeq).state === "qualified" &&
+      (!policy.minimal?.enabled || minimalStageWindow(r.history, policy.minimal, s.minPf, entryT, admissionSeq)?.state === "qualified");
     const autoCandidates = policy && primaryOk ? secondaryWindowsFor(policy).filter((n) =>
-      stageWindow(r.history, n, s.minPf, entryT).state === "qualified") : [];
+      stageWindow(r.history, n, s.minPf, entryT, admissionSeq).state === "qualified") : [];
     let positions = this.heldPositions.get(setId);
     if (!positions) { positions = new Map(); this.heldPositions.set(setId, positions); }
     const held = positions.get(positionId) ?? 0;
     if (!held) r.totals.openedPositions++;
     positions.set(positionId, held + 1);
     r.totals.openedOrders++;
-    const order: StageOrder = { setId, orderId, positionId, entryT, proof, slices: [], autoCandidates };
+    const order: StageOrder = { setId, orderId, positionId, entryT, admissionSeq, proof, slices: [], autoCandidates };
     this.open.set(key, order);
     return { ok: true, order: structuredClone(order) };
   }
@@ -258,8 +271,9 @@ export class StageChainBook {
     if (order.slices.some((s) => s.id === sliceId)) throw new Error("duplicate stage close slice");
     if (order.slices.some((s) => s.exitT > exitT)) throw new Error("stage close slices must follow execution time");
     this.at(knownT);
+    const knownSeq = this.nextSequence();
     const r = this.record(setId), t = r.totals;
-    order.slices.push({ id: sliceId, exitT, knownT, unitReturn });
+    order.slices.push({ id: sliceId, exitT, knownT, knownSeq, unitReturn });
     t.settledSlices++;
     if (unitReturn === null) t.unknownSlices++;
     else if (unitReturn > 0) t.grossProfit += unitReturn; else t.grossLoss -= unitReturn;
@@ -270,7 +284,7 @@ export class StageChainBook {
     let sum: number | null = order.slices.some((s) => s.unitReturn === null) ? null
       : order.slices.reduce((a, s) => a + s.unitReturn!, 0);
     if (sum !== null && !Number.isFinite(sum)) sum = null;
-    const row = { orderId, entryT, exitT, knownT, unitReturn: sum };
+    const row = { orderId, entryT, exitT, knownT, knownSeq, unitReturn: sum };
     this.append(r.history, row);
     for (const n of order.autoCandidates) {
       let scores = r.scores.find(([k]) => k === n)?.[1];
@@ -299,20 +313,33 @@ export class StageChainBook {
   }
   summaries(): StageSetStats[] { return [...this.records.keys()].map((id) => this.summary(id)); }
   snapshot(): StageChainSnapshot {
-    return structuredClone({ version: 3, basis: this.basis, settings: this.policy, clock: this.clock,
+    return structuredClone({ version: 4, basis: this.basis, settings: this.policy, clock: this.clock, sequence: this.sequence,
       records: [...this.records.values()], open: [...this.open.values()], seenAtClock: [...this.seenAtClock],
       parentMissesAtClock: [...this.parentMissesAtClock] });
   }
 
   static restore(snapshot: StageChainSnapshot): StageChainBook {
-    if (!snapshot || snapshot.version !== 3 || !Number.isFinite(snapshot.clock) || snapshot.clock < -1 ||
+    if (!snapshot || snapshot.version !== 4 || !Number.isFinite(snapshot.clock) || snapshot.clock < -1 ||
+      !Number.isSafeInteger(snapshot.sequence) || snapshot.sequence < 0 ||
+      (snapshot.clock === -1) !== (snapshot.sequence === 0) ||
       !Array.isArray(snapshot.records) || !Array.isArray(snapshot.open) || !Array.isArray(snapshot.seenAtClock) ||
       !Array.isArray(snapshot.parentMissesAtClock))
       throw new TypeError("invalid stage-chain snapshot");
     const book = new StageChainBook(snapshot.basis, snapshot.settings);
     book.clock = snapshot.clock;
+    book.sequence = snapshot.sequence;
+    const events = new Map<number, string>();
+    const remember = (sequence: number, value: unknown) => {
+      const stamp = JSON.stringify(value), previous = events.get(sequence);
+      if (previous !== undefined && previous !== stamp) throw new TypeError("conflicting stage observation event");
+      events.set(sequence, stamp);
+    };
+    const rememberClose = (setId: string, x: StageObservation) => remember(x.knownSeq!,
+      ["close", setId, x.orderId, x.entryT, x.exitT, x.knownT, x.unitReturn]);
+    let minimumEvents = 0;
     const validHistory = (rows: StageObservation[]) => Array.isArray(rows) && rows.length <= 2 * book.capacity &&
-      rows.every((x, i) => observationValid(x) && x.knownT <= snapshot.clock && (!i || compareStageObservation(rows[i - 1], x) <= 0)) &&
+      rows.every((x, i) => observationValid(x) && x.knownT <= snapshot.clock && x.knownSeq! <= snapshot.sequence &&
+        (!i || compareStageObservation(rows[i - 1], x) <= 0)) &&
       new Set(rows.map((x) => JSON.stringify([x.orderId, x.entryT]))).size === rows.length;
     for (const r of snapshot.records) {
       const s = r.set;
@@ -342,15 +369,25 @@ export class StageChainBook {
         ((s.stage === "base" || s.stage === "main" && s.variant === "direct") && e.parentMissing !== 0))
         throw new TypeError("invalid stage totals or history");
       book.records.set(s.id, structuredClone(r));
+      minimumEvents += t.settledSlices + (s.stage === "base" ? t.openedOrders : e.evaluated + e.parentMissing);
+      if (!Number.isSafeInteger(minimumEvents) || minimumEvents > snapshot.sequence) throw new TypeError("invalid stage event totals");
+      for (const x of r.history) rememberClose(s.id, x);
+      for (const [, rows] of r.scores) for (const x of rows) rememberClose(s.id, x);
     }
     for (const o of snapshot.open) {
       const r = book.record(o.setId), s = r.set;
       if (!nonempty(o.orderId) || !nonempty(o.positionId) || !time(o.entryT) || o.entryT > snapshot.clock ||
-        !Array.isArray(o.slices) || o.slices.some((x) => !nonempty(x.id) || !observationValid({ ...x, orderId: o.orderId, entryT: o.entryT }) || x.knownT > snapshot.clock) ||
+        !Number.isSafeInteger(o.admissionSeq) || o.admissionSeq < 1 || o.admissionSeq > snapshot.sequence ||
+        !Array.isArray(o.slices) || o.slices.some((x, i) => !nonempty(x.id) ||
+          !observationValid({ ...x, orderId: o.orderId, entryT: o.entryT }) || x.knownT > snapshot.clock ||
+          x.knownSeq <= o.admissionSeq || x.knownSeq > snapshot.sequence || i > 0 &&
+          (x.knownSeq <= o.slices[i - 1].knownSeq || x.knownT < o.slices[i - 1].knownT || x.exitT < o.slices[i - 1].exitT)) ||
         new Set(o.slices.map((x) => x.id)).size !== o.slices.length || !Array.isArray(o.autoCandidates) ||
         new Set(o.autoCandidates).size !== o.autoCandidates.length ||
         o.autoCandidates.some((n) => !(s.stage === "base" || s.stage === "main") || !secondaryWindowsFor(book.policy[s.stage]).includes(n)))
         throw new TypeError("invalid held stage order");
+      remember(o.admissionSeq, ["entry", o.setId, o.orderId, o.entryT]);
+      for (const x of o.slices) remember(x.knownSeq, ["partial", o.setId, o.orderId, x.id, x.exitT, x.knownT, x.unitReturn]);
       const p = o.proof;
       if (s.stage === "base") {
         if (p !== null) throw new TypeError("Base cannot carry a promotion proof");
@@ -361,19 +398,25 @@ export class StageChainBook {
         if (s.stage === "main" && s.variant === "inverse") {
           if (!p.negative || p.gate !== null) throw new TypeError("missing inverse trigger proof");
           const rows = p.negative.windows.reduce((a, w) => w.rows.length > a.length ? w.rows : a, p.negative.primary.rows);
-          const expected = negativeMainTrigger(rows, book.policy, s.minPf, o.entryT);
-          if (!rows.every((x) => observationValid(x) && x.knownT < o.entryT) || !expected.qualified || JSON.stringify(expected) !== JSON.stringify(p.negative))
+          const expected = negativeMainTrigger(rows, book.policy, s.minPf, o.entryT, o.admissionSeq);
+          if (!rows.every((x) => observationValid(x) && x.knownSeq! < o.admissionSeq &&
+              stageObservationAvailability(x, o.entryT, o.admissionSeq) === "available") || !expected.qualified || JSON.stringify(expected) !== JSON.stringify(p.negative))
             throw new TypeError("invalid inverse trigger proof");
+          for (const x of rows) rememberClose(source.id, x);
         } else {
           if (!p.gate || p.negative !== null || p.gate.state !== "qualified") throw new TypeError("missing positive stage proof");
           const sourceRows = p.gate.primary.rows.length >= Math.max(0, ...p.gate.secondary.map((w) => w.requestedN))
             ? p.gate.primary.rows : p.gate.secondary.reduce((a, w) => w.rows.length > a.length ? w.rows : a, p.gate.primary.rows);
-          if (!sourceRows.every((x) => observationValid(x) && x.knownT < o.entryT) ||
-            p.autoScores.some(([, rows]) => !Array.isArray(rows) || !rows.every((x) => observationValid(x) && x.knownT < o.entryT)))
+          const available = (x: StageObservation) => observationValid(x) && x.knownSeq! < o.admissionSeq &&
+            stageObservationAvailability(x, o.entryT, o.admissionSeq) === "available";
+          if (!sourceRows.every(available) ||
+            p.autoScores.some(([, rows]) => !Array.isArray(rows) || !rows.every(available)))
             throw new TypeError("invalid stage source evidence");
-          const expected = source.stage === "real" ? singleStageGate(sourceRows, book.policy.realN, s.minPf, o.entryT)
-            : dualStageGate(sourceRows, book.policy[source.stage as "base" | "main"], s.minPf, o.entryT, new Map(p.autoScores));
+          const expected = source.stage === "real" ? singleStageGate(sourceRows, book.policy.realN, s.minPf, o.entryT, o.admissionSeq)
+            : dualStageGate(sourceRows, book.policy[source.stage as "base" | "main"], s.minPf, o.entryT, new Map(p.autoScores), o.admissionSeq);
           if (JSON.stringify(expected) !== JSON.stringify(p.gate)) throw new TypeError("invalid frozen stage gate");
+          for (const x of sourceRows) rememberClose(source.id, x);
+          for (const [, rows] of p.autoScores) for (const x of rows) rememberClose(source.id, x);
         }
       }
       const key = orderKey(o.setId, o.orderId, o.entryT);

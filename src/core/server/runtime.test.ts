@@ -3,7 +3,7 @@
 import { allCombos, configId, microLaneFloor } from "../pipeline/pipeline.ts";
 import { afterEach, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { baseFocus, CoreRuntime as BaseRuntime, sanitizeWf } from "./runtime.server.ts";
+import { baseFocus, basePass, CoreRuntime as BaseRuntime, sanitizeWf } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { auditStateGen, type AuditInput } from "../audit.ts";
 import { CoreDb } from "./db.server.ts";
@@ -49,7 +49,7 @@ const small = {
   },
   // the synthetic feed has no edge: lenient gates so Base passes pairs and there are tapes, seats and trades to
   // publish and audit (the gates themselves: gating.test, walkforward.test, lastn-calc.test)
-  gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
+  gates: { minPf: 1.05, baseSetsMinPf: 1.05, minTrades: 3, maxDdr: 0 },
   // runtime mechanics, not signal quality (signals.test covers the full signal defaults): percent exits and the
   // classic sources only keep each engine light enough to run several in parallel
   signals: signalSettings({
@@ -273,17 +273,10 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       "no plain tapes",
     );
     // the Main share reaches every lane that has Base passers
-    const passedLanes = new Set(
-      rt
-        .pipeline!.s1.filter(
-          (r) =>
-            r.bot !== "exit" &&
-            r.full.pf >= rt.settings.gates.minPf &&
-            r.full.net > 0 &&
-            r.full.n >= rt.settings.gates.minTrades,
-        )
-        .map((r) => laneLabel(r.ind)),
-    );
+    // Judge actual Base-qualified windows/ranges, not just the pooled full-history PF diagnostic.
+    const passedLanes = new Set(basePass(rt.pipeline!.s1.filter((r) => r.bot !== "exit"),
+      rt.settings).qualified.map((r) => laneLabel(r.ind)));
+    assert.ok(passedLanes.size > 0, "the fixture has qualified Base lanes to exercise");
     const tapeLanes = new Set(rt.tapes.map((t) => laneLabel(t.ind)));
     for (const l of passedLanes) assert.ok(tapeLanes.has(l), `lane ${l} reaches Main`);
   });
@@ -435,9 +428,11 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     // the test passed only while compute #1's auto-adjust happened to start a second compute)
     const minPf = rt.settings.gates.minPf + 0.05;
     rt.updateSettings({ gates: { ...rt.settings.gates, minPf } });
-    // the running compute keeps its snapshot; the follow-up compute takes the change
-    await until(() => rt.status.computes >= 2, 180_000);
+    // Economic revision fencing retires the old attempt without counting/publishing it.
+    // Wait for the replacement's exact settings, rather than requiring the discarded attempt to count.
+    await until(() => rt.status.computes >= 1 && rt.sim?.opts.gates.minPf === minPf, 180_000);
     assert.equal(rt.sim?.opts.gates.minPf, minPf);
+    assert.equal(rt.status.computes, 1, "only the matching economic revision is published");
     rt.stop();
   });
 
