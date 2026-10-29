@@ -27,12 +27,12 @@ const applies = { enabled: (tag: string) => tag === "mn" || tag === "sh" };
 function fixture() {
   return basePass([run(IND, { mn: good, sh: bad }), run(BAD, { mn: bad, sh: bad })], s, applies);
 }
-function tape(ind: string, tag: "mn" | "sh" | undefined, kind: StratKind = "normal") {
+function tape(ind: string, tag: "mn" | "sh" | undefined, kind: StratKind = "normal", side: 1 | -1 = 1) {
   const protect = { tp: 0.01, sl: 0.01, trail: 0, hold: 32, tag };
   const id = `${pair(ind)}|tp1|sl1|tr0|h32${tag ? `|${tag}` : ""}${kind === "normal" ? "" : `|${kind}`}`;
   const trades = Array.from({ length: 30 }, (_, i): Trade => ({
-    cfg: id, sym: "AAA-USDT", side: 1, entryT: NOW - (31 - i) * H,
-    exitT: NOW - (30 - i) * H, entry: 100, exit: 101, r: 0.01,
+    cfg: id, sym: "AAA-USDT", side, entryT: NOW - (31 - i) * H,
+    exitT: NOW - (30 - i) * H, entry: 100, exit: 100 + side, r: 0.01,
     reason: "tp", bars: 1, mfe: 0.01, mae: 0, kind,
   }));
   return makeTape(id, "follow", ind, protect, kind, ["AAA-USDT"], trades, [], []);
@@ -123,10 +123,27 @@ describe("diagnostic allSets retains the Base-qualified cohort", () => {
       "a contradictory allowlist cannot invent the required qualified pair");
   });
 
-  it("preserves explicit baseRanges off while allSets alone cannot expand admission", () => {
-    const out = basePass([run(IND, { mn: good, sh: bad })], { ...s, grid: { ...s.grid, baseRanges: false } }, applies);
-    assert.deepEqual(out.qualifiedTags[pair(IND)], ["mn", "sh"], "the independently configured range-expansion policy remains explicit");
-  });
+  for (const allSets of [false, true]) for (const side of [1, -1] as const)
+    for (const kind of ["normal", "trailing", "trailing-only", "dca", "dca-active", "axis"] as const)
+      it(`range expansion stays diagnostic: ${kind}, side ${side}, allSets ${allSets}`, () => {
+        const settings = { ...s, grid: { ...s.grid, baseRanges: false, allSets } };
+        const out = basePass([run(IND, { mn: good, sh: bad })], settings, applies);
+        assert.deepEqual(out.pairTags[pair(IND)], ["mn", "sh"], "both ranges remain available to build");
+        assert.deepEqual(out.qualifiedTags[pair(IND)], ["mn"], "only the independently passed range is proof");
+        const passed = tape(IND, "mn", kind, side), failed = tape(IND, "sh", kind, side);
+        const tapes = [passed, failed];
+        const o = { ...options(), basePassedRanges: out.qualifiedTags,
+          validated: new Set(tapes.map((tp) => tp.id)),
+          toggles: { ...s.toggles, normal: true, trailing: true, block: false, dca: true,
+            dcaActive: kind === "dca-active", axis: true } };
+        assert.ok(tapes.every((tp) => configEval(tp, NOW, o).ok), "both tapes have profitable later history");
+        assert.equal(baseAllowsTape(passed, o), true);
+        assert.equal(baseAllowsTape(failed, o), false);
+        assert.equal(execDecision(passed, NOW, o, { sym: "AAA-USDT", side }).ok, true);
+        assert.deepEqual(execDecision(failed, NOW, o, { sym: "AAA-USDT", side }), { ok: false, why: "base" });
+        for (const select of [selectFixed, selectAt]) assert.deepEqual(select(tapes, NOW, o).picks.map((p) => p.id), [passed.id]);
+        assert.deepEqual(selectDurable(tapes, NOW, o, new Set([failed.id])).picks.map((p) => p.id), [passed.id]);
+      });
 
   for (const allSets of [false, true]) it(`retains exact Base targets through selection, entry and cache updates (allSets ${allSets})`, () => {
     const row = { ...run(IND, { mn: good, sh: bad }), rangeTps: { mn: [0.01] } };

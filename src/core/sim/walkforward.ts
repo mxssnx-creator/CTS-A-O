@@ -2676,9 +2676,14 @@ export function* buildTapesGen(
             const filtered = tagsOk !== undefined && !tagsOk.includes(rv.p0.tag ?? "");
             if (filtered && !held) {
               floors?.baseConfigCounter?.record(c.bot, c.ind, p0l, "axis", [], "baseRange");
+              const st = bs ? statOf(c.ind, p0l.tag, "axis") : null;
+              if (st) {
+                st.grid++;
+                st.skip.baseRange = (st.skip.baseRange ?? 0) + 1;
+              }
               continue;
             }
-            if (notOnly(id) || built.has(id) || b6Skip(id, `${c.bot}|${c.ind}`, "axis")) {
+            if (notOnly(id) || b6Skip(id, `${c.bot}|${c.ind}`, "axis")) {
               floors?.baseConfigCounter?.record(
                 c.bot,
                 c.ind,
@@ -2689,7 +2694,20 @@ export function* buildTapesGen(
               );
               continue;
             }
+            const st = bs ? statOf(c.ind, p0l.tag, "axis") : null;
+            if (st) st.grid++;
+            if (built.has(id)) {
+              floors?.baseConfigCounter?.record(c.bot, c.ind, p0l, "axis", [], "duplicate");
+              if (st) st.skip.duplicate = (st.skip.duplicate ?? 0) + 1;
+              continue;
+            }
             built.add(id);
+            // A recovered, filtered position is exit-only; it cannot count as a seat-eligible set.
+            if (st && filtered) st.skip.baseRange = (st.skip.baseRange ?? 0) + 1;
+            else if (st) {
+              st.built++;
+              statKept(st, p0l);
+            }
             const rf = {
               minSl: Math.max(rv.minSl, deskFloor.minSl),
               minTrail: deskFloor.minTrail,
