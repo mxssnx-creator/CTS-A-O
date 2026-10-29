@@ -20,7 +20,7 @@ it("a preset starts from the default validation and gates; mainnet keeps its flo
   assert.deepEqual(
     [demo.wf.lastN, demo.wf.validLastN, demo.settings.gates.minPf],
     // the code defaults, whatever they are
-    [defaultWalkForward(DEFAULT_SETTINGS).lastN, defaultWalkForward(DEFAULT_SETTINGS).validLastN, 1.1],
+    [defaultWalkForward(DEFAULT_SETTINGS).lastN, defaultWalkForward(DEFAULT_SETTINGS).validLastN, 1.25],
     "the relaxed preset does not carry over",
   );
   demo.shutdown("test");

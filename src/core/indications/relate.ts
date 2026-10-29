@@ -5,17 +5,10 @@ import type { Bars, IndicationKind } from "../domain/types.ts";
 import type { IndicationSpec } from "./registry.ts";
 import { SeriesCache } from "./cache.ts";
 import type { MarketRef } from "./market.ts";
+import { INTRADAY_SUBSETS, INTRADAY_TIMEFRAMES, intradayAnchor } from "./intraday-timeframes.ts";
 
-export const RELATE_TIMEFRAMES = [1, 5, 15] as const;
-export const RELATE_SUBSETS = [
-  [1],
-  [5],
-  [15],
-  [1, 5],
-  [1, 15],
-  [5, 15],
-  [1, 5, 15],
-] as const;
+export const RELATE_TIMEFRAMES = INTRADAY_TIMEFRAMES;
+export const RELATE_SUBSETS = INTRADAY_SUBSETS;
 
 export const RELATE_MODES = [
   { id: "trend", label: "Trend", description: "Established EMA, ADX and directional-movement trend." },
@@ -93,9 +86,9 @@ export const isRelateMicroInd = (base: string) => base.startsWith("relate-mc-");
 /** The exact anchor lane for this relation: the smallest (fastest) timeframe in its subset. */
 export function relateAnchorTf(base: string): number | null {
   if (!isRelateInd(base)) return null;
-  const match = /^relate-(?:mc-)?(1|5|15)(?:x(5|15))?(?:x(15))?-(?:trend|adaptive)-(?:guarded|balanced)$/.exec(base);
+  const match = /^relate-(?:mc-)?([\dx]+)-(?:trend|adaptive)-(?:guarded|balanced)$/.exec(base);
   if (!match) return null;
-  return Number(match[1]);
+  return intradayAnchor(match[1]);
 }
 
 function valid(b: Bars, i: number): boolean {

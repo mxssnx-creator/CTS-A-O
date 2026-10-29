@@ -246,6 +246,10 @@ describe("processing through the stages, every strategy type, every toggle combi
         disabledKinds: ["micro", "inverse"],
         pinned: [],
         mainTop: 24,
+        // Freeze the lifecycle/toggle matrix's original qualification policy. New factory floors are
+        // tested separately; a stricter factory gate cannot promise every family wins on this fixture.
+        gates: { minPf: 1.1, baseSetsMinPf: 1.1,
+          rangeMinPf: { micro: 1.1, minimal: 1.1, short: 1.1, general: 1.1, long: 1.1 } },
         grid,
         // This 128-toggle matrix exercises the ordinary range/DCA/Axis pipeline. Keep its former Signal
         // scalar lane explicit; the full Expanded catalog has a separate frozen native replay.

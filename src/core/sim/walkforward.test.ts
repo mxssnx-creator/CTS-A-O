@@ -283,6 +283,7 @@ describe('fixed selection respects min PF', () => {
       ...o,
       lastN: 4,
       lastNMinPf: 1,
+      gates: { ...o.gates, minPf: 1.1 },
       toggles: { ...o.toggles, normal: true, block: false },
     });
     assert.equal(pass.ok, true);

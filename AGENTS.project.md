@@ -1,5 +1,12 @@
 This conversation belongs to the CTS-A-O project. In the original Grok environment, project files are mounted at `/workspace/artifacts`; check there for user-provided sources when available. Use the actual repository checkout in other environments.
 
+- **Operator update, 29 October 2026:** Default evaluation PF by range is Micro1.05, Minimal1.08,
+  Short1.12, General/Medium/Normal/Wide1.25, Long1.5. Use the matching range consistently at later gates;
+  preserve deliberately configured custom policies and separately defined Signal/Exit economics. New market
+  studies must use at most72hours TOTAL including prehistory. Keep batches bounded and measure time/memory.
+  Additional research families must use completed1/5/15/30m bars with independent source/config identities,
+  Trend/Break/activity/drawdown relations and costs; registration or synthetic passes do not prove high PF.
+
 - **Post-Base Signal feedback clarification, 25 October 2026:** Signal shared direction acceptance and loss-cluster pauses consume settled accepted modeled Real orders, preserving their existing thresholds, windows and onset deduplication. Rejected candidates and unproven legacy admissions cannot qualify or veto this shared post-Base record. The exact config's historical validation/guard and the explicitly separate raw `sideGateN` diagnostic retain all candidate observations. Accepted modeled orders are not verified venue fills. Keep unknown/missing venue return provenance unavailable and compare identical settled cohorts before claiming a PF regression.
 
 ## Standing operator instructions (2026-10-14, amended 2026-10-16)

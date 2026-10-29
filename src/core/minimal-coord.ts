@@ -531,9 +531,10 @@ export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf">, tag: string 
   const v = key ? gates.rangeMinPf?.[key] : undefined;
   const configured = typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;
   const min = tag === "sh" ? Math.max(1.1, configured) : configured;
-  // First-class Tactic, Relate and relational Break configs share a minimum return PF of 1.1 from Base onward.
+  // Tagged research families use the same independent range floor as ordinary indications. The former
+  // hard-coded 1.1 silently overrode requested Micro/Minimal floors at every downstream stage.
   return ind && (ind.startsWith("low-range-") || ind.startsWith("micro-") || ind.startsWith("inverse-") || ind.startsWith("tactic-") || ind.startsWith("relate-") || ind.startsWith("break-rel-") || ind.startsWith("break-mc-rel-"))
-    ? Math.max(1.1, min)
+    ? Math.max(key === "micro" || key === "minimal" ? 1.05 : 1.1, min)
     : min;
 }
 

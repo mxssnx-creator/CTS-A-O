@@ -37,6 +37,7 @@ type SharedContext = {
   trend1: Int8Array;
   trend5: Int8Array;
   trend15: Int8Array;
+  trend30: Int8Array;
   don: Int8Array;
   don8: Int8Array;
   squeeze: Int8Array;
@@ -189,6 +190,7 @@ function blankContext(n: number, market: MarketRef | null): SharedContext {
     trend1: new Int8Array(n),
     trend5: new Int8Array(n),
     trend15: new Int8Array(n),
+    trend30: new Int8Array(n),
     don: new Int8Array(n),
     don8: new Int8Array(n),
     squeeze: new Int8Array(n),
@@ -222,6 +224,7 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
   if (b.tfMin <= 1) out.trend1 = trendOn(k, 1);
   if (b.tfMin <= 5) out.trend5 = trendOn(k, 5);
   if (b.tfMin <= 15) out.trend15 = trendOn(k, 15);
+  if (b.tfMin <= 30) out.trend30 = trendOn(k, 30);
 
   const dn = k.don(20);
   const dn8 = k.don(8);
@@ -519,8 +522,8 @@ function relationState(
     if (!dir) continue;
     let aligned = true;
     for (const tf of tfs) {
-      const trend = tf === 1 ? x.trend1 : tf === 5 ? x.trend5 : x.trend15;
-      if (trend[i] !== dir) { aligned = false; break; }
+      const trend = tf === 1 ? x.trend1 : tf === 5 ? x.trend5 : tf === 15 ? x.trend15 : tf === 30 ? x.trend30 : undefined;
+      if (!trend || trend[i] !== dir) { aligned = false; break; }
     }
     if (!aligned) continue;
     const priceDd = dir > 0

@@ -1,5 +1,6 @@
 /** A bounded research catalogue; every source/profile/lane keeps its own qualification. */
-export const INVERSE_TIMEFRAMES = [1, 5, 15] as const;
+import { INTRADAY_TIMEFRAMES } from "./intraday-timeframes.ts";
+export const INVERSE_TIMEFRAMES = INTRADAY_TIMEFRAMES;
 export const INVERSE_SOURCES = [
   "trend-ema",
   "trend-adx",

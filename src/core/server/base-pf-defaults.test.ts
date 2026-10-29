@@ -10,13 +10,14 @@ const former = () => ({ gates: { minPf: 1.1, baseSetsMinPf: 1,
 const custom = () => ({ gates: { minPf: 1.4, baseSetsMinPf: 1.25,
   rangeMinPf: { micro: 1.15, minimal: 1.2, short: 1.3, general: 1.4, long: 1.5 } } });
 
-test("fresh runtime uses PF1.1 for ordinary Base/range factory floors and keeps Signal's own floor", () => {
+test("fresh runtime uses the requested independent range floors and keeps Signal's own floor", () => {
   const db = new CoreDb(":memory:"), rt = new CoreRuntime(db, undefined, { market: "synthetic", priceStream: null });
   try {
-    assert.equal(rt.settings.gates.minPf, 1.1); assert.equal(rt.settings.gates.baseSetsMinPf, 1.1);
-    for (const tag of ["mc", "mn", "sh", "gn", "lg", ""]) assert.equal(minPfOf(rt.settings.gates, tag), 1.1);
+    assert.equal(rt.settings.gates.minPf, 1.25); assert.equal(rt.settings.gates.baseSetsMinPf, 1.25);
+    assert.deepEqual(["mc", "mn", "sh", "gn", "lg", ""].map((tag) => minPfOf(rt.settings.gates, tag)),
+      [1.05, 1.08, 1.12, 1.25, 1.5, 1.25]);
     assert.equal(minPfOf(DEFAULT_SETTINGS.gates, "sh", "sig-ema-cross-s@m15"), 1.5);
-    assert.equal(rt.wf.gates.minPf, 1.1);
+    assert.equal(rt.wf.gates.minPf, 1.25);
   } finally { rt.dispose(); db.db.close(); }
 });
 
@@ -29,7 +30,8 @@ test("former factory PF migration backs up settings/results, retains custom gate
     db.kvSet("presetSeries", { factory: [1], custom: [2] });
     migrateBasePf11(db);
     assert.deepEqual(db.kvGet<{ gates: unknown }>("settings")!.gates,
-      { minPf: 1.1, baseSetsMinPf: 1.1, rangeMinPf: DEFAULT_SETTINGS.gates.rangeMinPf });
+      { minPf: 1.1, baseSetsMinPf: 1.1,
+        rangeMinPf: { micro: 1.1, minimal: 1.1, short: 1.1, general: 1.1, long: 1.1 } });
     const presets = db.kvGet<Array<{ id: string; settings: unknown }>>("presets")!;
     assert.deepEqual(presets[1].settings, own);
     assert.deepEqual(db.kvGet("presetBacktests"), { custom: { proof: "custom" } });

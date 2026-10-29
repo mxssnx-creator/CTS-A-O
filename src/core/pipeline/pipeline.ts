@@ -268,7 +268,7 @@ export function laneInds(base: string, tfs: readonly number[]): string[] {
   for (const tf of lanes) {
     out.push(laneInd(base, tf));
     if (base !== "none" && higherFactors(tf, lanes.length ? lanes : TF_LADDER).length)
-      out.push(laneInd(base, tf, true));
+      out.push(laneInd(base, tf, true, lanes.includes(30) && (isLowRangeInd(base) || isInverseInd(base))));
   }
   return out;
 }

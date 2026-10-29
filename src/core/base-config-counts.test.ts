@@ -122,7 +122,7 @@ describe("full Base configured-cell counts", () => {
     const rows = count.rows();
     assert.equal(rows.length, 14);
     for (const row of rows) {
-      const floor = row.tag === "gn" ? 1.4 : 1.1;
+      const floor = row.tag === "gn" ? 1.4 : 1.05;
       const manuallyPassed = samples.filter((xs) =>
         passesBase(statsOf(xs, 100), { minPf: floor, minTrades: 2, maxDdr: 0 }),
       ).length;

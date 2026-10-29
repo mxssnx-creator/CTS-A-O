@@ -74,10 +74,10 @@ describe("Relate indication family", () => {
   it("registers every subset, mode and ratio profile with one independent anchor lane", () => {
     const specs = relateSpecs();
     assert.ok(INDICATION_KINDS.includes("relate"));
-    assert.equal(specs.length, 40);
-    assert.equal(RELATE_CONFIG_IDS.length, 40);
-    assert.equal(new Set(RELATE_CONFIG_IDS).size, 40);
-    assert.equal(RELATE_SUBSETS.length, 7);
+    assert.equal(specs.length, 88);
+    assert.equal(RELATE_CONFIG_IDS.length, 88);
+    assert.equal(new Set(RELATE_CONFIG_IDS).size, 88);
+    assert.equal(RELATE_SUBSETS.length, 15);
     assert.equal(RELATE_MODES.length, 2);
     assert.equal(RELATE_PROFILES.length, 2);
     assert.deepEqual(specs.map((spec) => spec.id).sort(), [...RELATE_CONFIG_IDS].sort());
@@ -85,11 +85,11 @@ describe("Relate indication family", () => {
       assert.equal(INDICATION_BY_ID.get(spec.id)?.kind, "relate");
       assert.equal(spec.kind, "relate");
       assert.ok(isRelateInd(spec.id));
-      assert.equal(relateAnchorTf(spec.id), Number(spec.id.match(/^relate-(?:mc-)?(1|5|15)(?=x|-)/)?.[1]));
+      assert.equal(relateAnchorTf(spec.id), Number(spec.id.match(/^relate-(?:mc-)?(1|5|15|30)(?=x|-)/)?.[1]));
     }
 
     const focus = specs.map((spec) => `follow|${spec.id}`);
-    const combos = allCombos(focus, [], [1, 5, 15]);
+    const combos = allCombos(focus, [], [1, 5, 15, 30]);
     assert.equal(combos.length, specs.length);
     assert.equal(new Set(combos.map((x) => x.ind)).size, specs.length);
     for (const combo of combos) {
@@ -97,8 +97,8 @@ describe("Relate indication family", () => {
       assert.equal(lane.combined, false, combo.ind);
       assert.equal(lane.tf, relateAnchorTf(lane.base), combo.ind);
     }
-    assert.equal(allCombos(focus, ["relate"], [1, 5, 15]).length, 0);
-    assert.equal(allCombos(focus, [], [1, 5]).length, 32, "15m-anchored configs need the 15m lane selected");
+    assert.equal(allCombos(focus, ["relate"], [1, 5, 15, 30]).length, 0);
+    assert.equal(allCombos(focus, [], [1, 5]).length, 64, "15m/30m-anchored configs need their anchor lane selected");
   });
 
   it("routes standard and Micro identities through Micro, Minimal and Short range rules", () => {
@@ -120,8 +120,8 @@ describe("Relate indication family", () => {
     assert.equal(rangeAppliesTo(micro, "mn", { ...baseRules, microOwnInds: "minimal" }), true);
   });
 
-  it("produces causal signals for every 1/5/15m subset and resets after data gaps", () => {
-    const byTf = new Map([[1, bars("A-USDT", 1, 1_200)], [5, bars("B-USDT", 5, 600)], [15, bars("C-USDT", 15, 240)]]);
+  it("produces causal signals for every1/5/15/30m subset within72h and resets after data gaps", () => {
+    const byTf = new Map([1, 5, 15, 30].map((tf) => [tf, bars(`TF${tf}-USDT`, tf, Math.floor(4320 / tf))]));
     for (const spec of relateSpecs()) {
       const tf = relateAnchorTf(spec.id)!;
       const k = new SeriesCache(byTf.get(tf)!);

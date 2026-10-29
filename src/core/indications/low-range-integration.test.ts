@@ -37,7 +37,7 @@ describe("Low-Range Short integration", () => {
   it("defaults the opt-in Low-Range maximum hold to the best tested 5m cap", () => {
     assert.equal(DEFAULT_LOW_RANGE_GRID.enabled, false);
     assert.equal(DEFAULT_LOW_RANGE_GRID.maxHoldMin, 60);
-    assert.equal(DEFAULT_SETTINGS.gates.minPf, 1.1);
+    assert.equal(DEFAULT_SETTINGS.gates.minPf, 1.25);
     assert.equal(DEFAULT_SETTINGS.grid.rangeGate?.enabled, true);
     assert.equal(DEFAULT_SETTINGS.grid.rangeGate?.lastN, 75);
     assert.equal(DEFAULT_SETTINGS.grid.rangeGate?.minPf, 1.35);
@@ -50,9 +50,10 @@ describe("Low-Range Short integration", () => {
     const focus = [`follow|${IND}`, `revert|${IND}`];
     assert.deepEqual(allCombos(focus, [], [1, 5, 15, 30]), []);
     const combos = allCombos(focus, [], [1, 5, 15, 30], 0, true);
-    assert.equal(combos.length, 5);
-    assert.ok(combos.every((c) => c.bot === "follow" && !c.ind.includes("@m30")));
-    assert.deepEqual(allCombos(focus, [], [1, 5, 15, 30], 0, true, 15).map((c) => c.ind), [`${IND}@m15`]);
+    assert.equal(combos.length, 7);
+    assert.ok(combos.every((c) => c.bot === "follow") && combos.some((c) => c.ind.endsWith("@m30")));
+    assert.deepEqual(allCombos(focus, [], [1, 5, 15, 30], 0, true, 15).map((c) => c.ind),
+      [`${IND}@m15`, `${IND}@m15c30`, `${IND}@m30`]);
     assert.equal(allCombos(focus, ["low-range"], [1, 5, 15], 0, true).length, 0);
     const p = lowRangeGridProtects(lowRange, cost)[0];
     const a = configId("follow", `${IND}@m1`, laneProtect(p, `${IND}@m1`));

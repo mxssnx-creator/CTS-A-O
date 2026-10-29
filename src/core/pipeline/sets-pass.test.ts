@@ -41,8 +41,8 @@ describe("setsPassTags: the Base pass the sets see", () => {
     } as never;
     const custom = { ...gates, rangeMinPf: { minimal: 1.1, general: 1.2, long: 1.3 } };
     assert.deepEqual(setsPassTags(r, custom, applies, ALL), ["mn"]);
-    assert.deepEqual(setsPassTags(r, gates, applies, ALL), ["mn", "gn", "lg"],
-      "the operator's 1.1 factory floors apply to all ordinary ranges");
+    assert.deepEqual(setsPassTags(r, gates, applies, ALL), ["mn"],
+      "the new General1.25 and Long1.5 factory floors reject PF1.15 independently");
   });
 
   it("a pair failing every cell has no sets at all", () => {
