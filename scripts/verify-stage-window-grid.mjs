@@ -90,7 +90,7 @@ for await(const line of createInterface({input:readable,crlfDelay:Infinity})){
   }
   if(contexts%1200===0)process.stderr.write(`independently audited ${contexts}/4800 contexts\n`);
 }
-assert.equal(contexts,4800);assert.equal(contexts,reported.contextCount);assert.equal(reported.cases.length,80);
+assert.equal(contexts,4800);assert.equal(contexts,reported.contextCount);assert.equal(reported.cases.length,p.caseCount);
 const counts=orders=>{const by=new Map();for(const t of orders){const key=`${t.sym}|${t.side}`;const xs=by.get(key)??[];xs.push(t);by.set(key,xs);}let openedPositions=0,closedPositions=0,openPositions=0;
   for(const xs of by.values()){xs.sort((a,b)=>a.entryT-b.entryT);let end=-Infinity,exists=false;for(const t of xs){if(t.entryT>=end){if(exists&&Number.isFinite(end))closedPositions++;openedPositions++;end=t.exitT;exists=true;}else end=Math.max(end,t.exitT);}
     if(exists&&Number.isFinite(end))closedPositions++;else if(exists)openPositions++;}

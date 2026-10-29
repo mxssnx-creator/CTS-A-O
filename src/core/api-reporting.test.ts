@@ -29,6 +29,20 @@ function fixture() {
   return r;
 }
 
+test("Statistics publishes passing validation PF and percentage inputs beside unchanged later execution losses", async () => {
+  const r = fixture();
+  r.status.postBaseValidation = { at: END, evaluated: 20, passed: 3, closes: 45, pf: 1.8, noLoss: false };
+  r.sim!.trades = r.sim!.trades.map((t) => ({ ...t, r: -Math.abs(t.r), mult: 1 }));
+  const result = await coreStatisticsData(coreStatisticsInput({ source: "sim" })) as Any;
+  assert.deepEqual(result.postBaseValidation, r.status.postBaseValidation);
+  assert.equal(result.postBaseValidation.passed / result.postBaseValidation.evaluated, .15);
+  assert.equal(result.report.total.pf, 0, "admitted orders' subsequent losses remain in execution PF");
+  assert.equal(result.report.total.n, 2);
+  r.status.postBaseValidation = null;
+  const unavailable = await coreStatisticsData(coreStatisticsInput({ source: "sim" })) as Any;
+  assert.equal(unavailable.postBaseValidation, null, "missing validation cannot fall back to the execution aggregate");
+});
+
 test("Overview, lane and connection summaries normalize retained weighted records and retain PF provenance", async () => {
   const r = fixture();
   const overview = await coreOverviewData(connInput()) as Any;

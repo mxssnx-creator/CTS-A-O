@@ -1,3 +1,108 @@
+## 2026-10-29 — 24h window grid, hold attribution and validated statistics release
+
+The requested 20-symbol 24h trading / 24h prehistory test is complete on the cached minute feed. Trading is
+8 October 2026 12:00 to 9 October 12:00 UTC (14:00 to 14:00 Vienna). Three independently reported Low-Range
+Normal/Trailing studies use Micro15m, Minimal30m and Short60m holds, 1/5/15m source lanes, step3 protection,
+0.15% modeled round-trip cost and min PF1.1. Base primary20/30/40/50 × secondary5/10/15/20/25 is crossed with
+Main primary50 + secondary15/25 and Real15/25: 80 cases/range, 14,400 contexts, 240 cases. These are isolated
+source/stage models without additional/Overall volume adjustments, funded allocation, production paper or venue
+fills. Base/Main/Real source reconstruction and gate checks do not establish a production adapter.
+
+Independent scalar audits pass 35,247,459 windows and 798,197 price-return checks across the three ranges,
+including exact parent/policy identities, chronology, costs once, sides, kinds, held counts and all 24 hourly bins.
+The exact baseline source/verifier is GitHub commit 34b25cb4b3d9a9299a3fdd6ec47176ef68e36477. A later generalized
+verifier supports the fixed hold follow-ups without changing the scalar calculations; each audit retains its
+own verifier SHA256. Full JSONL decisions, protocols, summaries, independent audits and traces are preserved.
+
+Base50+15 / Main50+15 / Real15 (initial historical checkpoint versus later new-entry results):
+
+| Range / hold | Base passed / evaluated | Historical primary PF | Later Main PF | Main positions O/C/H | Main orders O/C/H | Real passed / matched |
+| --- | --- | --- | --- | --- | --- | --- |
+| Micro15m | 2/4800 (0.041667%) | 1.146332 | 0.546209 | 191/190/1 | 697/696/1 | 0/697 |
+| Minimal30m | 2/4800 (0.041667%) | 1.353634 | 0.637442 | 197/194/3 | 802/798/4 | 0/802 |
+| Short60m | 0/4800 (0%) | unavailable | 0.679603 | 168/165/3 | 735/730/5 | 0/735 |
+
+New Base contexts can qualify later, so zero initial Short acceptance does not imply zero all-day Main orders.
+Real source orders occur in other tested cells (maximum aggregated opened orders30 Micro,7 Minimal,11 Short),
+but no case reaches an Active order. Every Active position/order count is0/0/0; Active and venue PF unavailable.
+There is no measured best Active default. The highest observed Main-only PF in each range is still below1:
+Micro0.677697 at Base40+10 (1386 closes); Minimal0.701427 at20+5 (6128); Short0.758647 at20+5 (5951).
+Do not present those exploratory Main rankings as profitable settings or relax the required histories.
+
+Across the three grids, 181,874 matched-entry checks find identical Base/Main entry/exit prices, close clocks,
+reasons, durations, directions and net returns. No qualified Main entry is silently lost. Another3306 accepted
+entries use an independently freed Main slot after an earlier raw intent was rejected. Counts across window
+policies overlap and are not unique venue fills. This isolated model has no cross-strategy Exit controller;
+its measured PF drop therefore occurs without such a collision. The runtime Exit-isolation and own-exit suites
+also pass. Production additional/Overall/venue paths still require their separate complete integration audit.
+
+Paired Micro hold follow-ups use the same period/source with Base20+15 and50+15, Main50+15 and Real15. Both
+30m and60m studies pass independent scalar and entry-parity audits (4800 contexts and2 cases each). For Base20+15:
+
+| Hold | Initial Base pass | Historical PF | Later Main PF | Main positions O/C/H | Main orders O/C/H | Timed closes |
+| --- | --- | --- | --- | --- | --- | --- |
+| 15m | 57/4800 (1.1875%) | 1.412476 | 0.570281 | 669/666/3 | 5417/5412/5 | 2515 |
+| 30m | 78/4800 (1.625%) | 1.439734 | 0.655576 | 541/533/8 | 7651/7619/32 | 2186 |
+| 60m | 94/4800 (1.958333%) | 1.435241 | 0.681702 | 423/409/14 | 8473/8397/76 | 1117 |
+
+The15m timed-close subset has net PF0.218788; its277 trailing closes PF0.061530. Gross price PF1.044708 for all
+Base20+15 Main closes becomes net PF0.570281 after one legitimate0.15% cost deduction. TP closes are recorded;
+1426 TP closes are positive after cost. Longer holds improve this Main diagnostic but remain below neutral;
+all follow-up Active positions/orders are0/0/0. No hold or Last-N default is promoted from these empty Active cohorts.
+
+The self-contained HTML report lists every grid cell, all14,400 contexts, all processed order cohorts, six
+heatmap metrics, hourly curves, Long/Short and kind/timeframe groups, close reasons, hold distributions, source
+parity and paired holds. Browser checks pass240 selections and1440 stage listings, search, pagination, all
+heatmap modes and the six hold comparison rows. A mobile select overflow was found and fixed. Desktop/mobile
+screenshots were inspected. The report separates passing historical PF from subsequent processed execution.
+
+Reporting fix #231 is merged at2cdae8fd747fb4a817bfdc01a773a029652b09fc after both full workflows pass exact
+head b3bc36674f7aac98e23d0faeea10bad48b5857c7; remote main backups exist before and after. Overview leads with
+passing historical validation PF plus percentage. Statistics shows that same timestamped snapshot separately,
+even without an execution report. Actual model/owned/venue results keep all admitted losses. Fifty focused
+reporting/admission checks,60 protection/Exit/source/stage checks,39 promotion checks, typecheck/lint/build pass.
+The deep dev/built app check passes both viewports with real local APIs, synthetic market and live/autostart off;
+external fonts/platform chrome were network fixtures. The earlier fixed-one-second smoke hit restricted external
+requests/loading and is not relabeled a successful clean smoke. No account, native order or deployed instance
+was manually changed or reloaded.
+
+Remaining production blockers in the older stage-architecture section still apply. Draft #219 stays disabled and
+unmerged as an end-to-end fix until genuine persistent Main/Real streams, additional/Overall processing,
+pending/partial fills, held recovery, Settings/UI stage controls and final Active-to-Live ownership are wired.
+The measured future PF is losing/empty; neither the reporting change nor a passing historical gate proves high
+future execution PF. Do not drop losses or replace processed history with a raw Base/sibling pool.
+
+## 2026-10-29 — Validated statistics headline
+
+Overview leads with PF from passing historical validation windows and passed/evaluated percentage. Statistics
+exposes that same current selection snapshot in a separate panel, including its evaluation clock. Subsequent
+model, owned paper and venue execution PF retain all admitted orders and their losses; current invalidation
+does not erase prior execution. The API never substitutes an execution aggregate for missing validation.
+No-loss and empty validation snapshots remain explicitly distinct. Shared UI formatting rejects invalid counts.
+This reporting release does not activate the unfinished stage-chain draft or certify forward profitability.
+
+The isolated 20-symbol Low-Range Normal/Trailing 24h model test (8 October 12:00 to 9 October 12:00 UTC,
+14:00 to 14:00 Vienna, 24h prehistory) independently audited 14,400 contexts and 240 cases. Base primary
+20/30/40/50 and secondary 5/10/15/20/25 were swept; Main primary 50 was retained with secondary 15/25,
+and Real used 15/25. Base 50+15, Main 50+15, Real 15 results at the initial checkpoint and later execution:
+
+| Range / hold | Base passed / evaluated | Historical PF | Later Main PF | Main positions O/C/H | Main orders O/C/H | Real passed / matched |
+| --- | --- | --- | --- | --- | --- | --- |
+| Micro / 15m | 2/4800 (0.041667%) | 1.146332 | 0.546209 | 191/190/1 | 697/696/1 | 0/697 |
+| Minimal / 30m | 2/4800 (0.041667%) | 1.353634 | 0.637442 | 197/194/3 | 802/798/4 | 0/802 |
+| Short / 60m | 0/4800 (0%) | unavailable | 0.679603 | 168/165/3 | 735/730/5 | 0/735 |
+
+New exact Base contexts can qualify later during the day; initial checkpoint counts are not all-day counts.
+Active positions/orders are 0/0/0 across the grid, so Active PF and venue-fill PF are unavailable. All 181,874
+matched Base/Main entries retain identical economics, and no qualified Main entry was silently lost. This
+isolated model has no cross-strategy Exit controls. In Micro Base20+15, 2515 timed exits have PF0.218788 and
+277 trailing exits PF0.061530; costs are charged once. These observations do not prove that a hold edit will
+improve Active results. A paired hold follow-up and the detailed heatmap are recorded in draft #219.
+
+The isolated release passed 50 reporting/admission checks and typecheck/scoped lint; exact full CI is recorded
+on its PR. No database, deployed instance, selected account or venue order was manually changed.
+
+
 ## 2026-10-29 — Promotion fixture chronology regression
 
 Final draft checkpoint 0350b278b28a1ea49164e38b0bdc0e048ffa3e4a passed Exact Signal, quality and slow-runtime,

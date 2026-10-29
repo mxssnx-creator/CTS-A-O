@@ -1378,7 +1378,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
   let endT: number;
   let paperEvidence: { requested: number; verifiedOwnership: number; unknownOwnership: number; cashBasis: "recorded-paper-history" | "owned-paper-forward"; recordedReturns: ReturnStatsReport } | null = null;
   if (data.source === "sim") {
-    if (!sim) return ser({ report: null, why: "no simulated run yet" });
+    if (!sim) return ser({ report: null, why: "no simulated run yet", postBaseValidation: r.status.postBaseValidation ?? null });
     trades = sim.trades as never;
     startT = sim.startT;
     endT = sim.endT;
@@ -1541,6 +1541,8 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
   });
   return ser({
     report,
+    // Passing historical windows are a current validation snapshot, never a replacement for executed losses.
+    postBaseValidation: r.status.postBaseValidation ?? null,
     paperEvidence,
     // The exact closes behind the totals, latest first; never mix paper or simulated rows into execution history.
     closes: data.source === "live"
