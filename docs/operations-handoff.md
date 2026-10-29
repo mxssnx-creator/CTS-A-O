@@ -1,3 +1,36 @@
+## 2026-10-29 — Processed-parent denominator and retry identity regressions
+
+The disabled draft StageChainBook had two reproducible ledger defects. An intent without its exact accepted
+Main/Real parent was counted as a failed validation, diluting the processed-parent percentage with raw intents.
+It also consumed the entry identity before the parent check, so an early child attempt could block the actual
+processed child when its parent arrived later at the same clock. These are prototype defects, not a demonstrated
+root cause in the deployed CTS-A-O runtime. Both new regressions fail on local parent6d92e9a77bf93086c170e5c440646e3323f40ffe
+(remote4cbee1a4ea11a0d800c593f53aacd11f472006a1): evaluated10 rather than0, and duplicate-stage-entry.
+
+The fix keeps outside-parent intents in a separate, deduplicated parentMissing diagnostic. Only an actual
+parent-eligible gate decision consumes its identity or validation denominator; a genuinely failed gate still
+deduplicates. Snapshot version2 persists and checks both identities and counters; this unreleased prototype
+rejects version1 rather than reinterpreting its mixed counters. Execution summaries now expose a positive
+no-loss flag and unavailable finite PF instead of reporting the gate sentinel4 as measured execution PF.
+Flat and unknown results remain distinct. The report labels passed/parent-eligible entries and keeps missing
+parent attempts separate. Its archived older experiment evaluated/percent fields include all source attempts;
+the displayed eligible denominator is evaluated minus parentMissing. Financial returns and archived evidence
+are unchanged. New source studies must retain that field distinction.
+
+All48 stage/source/ladder tests pass after the fix, including partial closes, restart proof, held identity,
+separate inverse simulation, raw-parent retries and flat/no-loss/unknown PF. Typecheck and scoped lint pass.
+Browser checks pass240 original selections/1440 listings and48 sensitivity selections/288 listings, including
+the corrected Real denominator, desktop/mobile layout, search, pagination, six heatmap modes and six hold rows.
+Both complete workflows also passed the previous remote4cbee1a4ea11a0d800c593f53aacd11f472006a1 checkpoint
+(Exact Signal40816779797 and Exit verification40816779805); final ledger-source CI is a separate later check.
+
+The measured20-symbol8–9 October12:00UTC24h/24h-prior Micro15m Base20+15/Main15+15/Real15 cohort is unchanged:
+Base57/4800(1.1875%), historical PF1.4124757452; later Main PF0.5702814980, positions669/666/3 and
+orders5417/5412/5 opened/closed/held. Real438/5417(8.08566%). Active positions28/28/0 and orders31/31/0
+have modeled PF0.4045290210. These unallocated model orders are not funded paper or venue fills; venue PF
+is unavailable. Production adapters, actual runtime discovery and the high-forward-PF requirement remain
+unresolved. Reporting or ledger repairs do not make a losing subsequent sample profitable.
+
 ## 2026-10-29 — Main primary15/25 sensitivity reaches Active but still loses
 
 The follow-up independently tests Main primary15/25 with secondary15/25, Base20+15 or50+15 and Real15/25,

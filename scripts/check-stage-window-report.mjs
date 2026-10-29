@@ -39,8 +39,10 @@ if(await page.evaluate(()=>!!window.CTS_REPORT_DATA.mainPrimarySensitivity))for(
   for(const stage of ['main','inverseMain','real','inverseReal','active','inverseActive']){
    await page.selectOption('#sensStage',stage);
    const actual=await page.evaluate(({study,choice,stage})=>({expected:window.CTS_REPORT_DATA.mainPrimarySensitivity[study].results.cases[choice].stages[stage].openedOrders,
-    label:document.getElementById('sensPage').textContent,selection:window.CTS_SENSITIVITY_SELECTION}),{study,choice,stage});
-   assert.equal(actual.selection.study,study);assert.equal(actual.selection.caseIndex,choice);assert.equal(actual.selection.stage,stage);
+    label:document.getElementById('sensPage').textContent,selection:window.CTS_SENSITIVITY_SELECTION,
+    realGateText:document.querySelectorAll('#sensStages tr')[2].children[1].textContent,
+    realGateExpected:(()=>{const d=window.CTS_REPORT_DATA.mainPrimarySensitivity[study].results.cases[choice].decisions.real;return `${d.qualified}/${d.evaluated-d.parentMissing}`;})()}),{study,choice,stage});
+   assert.equal(actual.realGateText,actual.realGateExpected);assert.equal(actual.selection.study,study);assert.equal(actual.selection.caseIndex,choice);assert.equal(actual.selection.stage,stage);
    assert.equal(Number(actual.label.match(/^([\d,]+) /)[1].replaceAll(',','')),actual.expected);sensitivityListings++;
   }
   sensitivityCases++;

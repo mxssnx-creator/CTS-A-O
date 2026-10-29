@@ -1,4 +1,3 @@
-import { profitFactor } from "../metrics/stats.ts";
 import { processedSetKey, type ProcessedBasis, type ProcessedSetIdentity } from "./processed-set.ts";
 import {
   checkStageChainSettings, compareStageObservation, dualStageGate, negativeMainTrigger, singleStageGate, stageWindow,
@@ -50,24 +49,29 @@ interface SetRecord {
   history: StageObservation[];
   scores: Array<[number, StageObservation[]]>;
   totals: Totals;
-  evaluations: { evaluated: number; qualified: number; insufficient: number; unknown: number; failed: number };
+  evaluations: { evaluated: number; qualified: number; insufficient: number; unknown: number; failed: number;
+    /** An intent outside the accepted parent stream is not a validation of a processed parent order. */
+    parentMissing: number };
 }
 export interface StageChainSnapshot {
-  version: 1;
+  version: 2;
   basis: ProcessedBasis;
   settings: StageChainSettings;
   clock: number;
   records: SetRecord[];
   open: StageOrder[];
   seenAtClock: string[];
+  parentMissesAtClock: string[];
 }
 export interface StageSetStats extends Totals {
   set: StageSet;
   basis: ProcessedBasis;
   heldOrders: number;
   heldPositions: number;
-  /** Return PF of realized slices; the gate separately uses complete order contributions. */
+  /** Measured return ratio of realized slices; the gate separately uses complete order contributions. */
   returnPf: number | null;
+  /** A positive sample without losses has no finite measured ratio; never display the gate score 4 as PF. */
+  noLoss: boolean;
   evaluations: SetRecord["evaluations"] & { percent: number | null };
 }
 export type StageAdmission = { ok: true; order: StageOrder } | {
@@ -80,7 +84,7 @@ const time = (n: unknown): n is number => typeof n === "number" && Number.isFini
 const orderKey = (s: string, id: string, t: number) => JSON.stringify([s, id, t]);
 const totals = (): Totals => ({ openedOrders: 0, closedOrders: 0, openedPositions: 0, closedPositions: 0,
   settledSlices: 0, unknownSlices: 0, grossProfit: 0, grossLoss: 0, overflow: false });
-const evaluations = (): SetRecord["evaluations"] => ({ evaluated: 0, qualified: 0, insufficient: 0, unknown: 0, failed: 0 });
+const evaluations = (): SetRecord["evaluations"] => ({ evaluated: 0, qualified: 0, insufficient: 0, unknown: 0, failed: 0, parentMissing: 0 });
 const idOf = (s: Omit<StageSet, "id">) => JSON.stringify([s.stage, s.parentSetId, processedSetKey(s.identity), s.processingId, s.variant, s.minPf, s.admissionPolicy]);
 const dualKey = (p: StageChainSettings["base"]) => JSON.stringify([p.primaryN, p.secondaryN, p.secondaryMode,
   [...p.secondaryWindows].sort((a, b) => a - b)]);
@@ -102,6 +106,7 @@ export class StageChainBook {
   private readonly records = new Map<string, SetRecord>();
   private readonly open = new Map<string, StageOrder>();
   private readonly seenAtClock = new Set<string>();
+  private readonly parentMissesAtClock = new Set<string>();
   private readonly heldPositions = new Map<string, Map<string, number>>();
   private clock = -1;
   private readonly capacity: number;
@@ -118,7 +123,7 @@ export class StageChainBook {
 
   private at(t: number): void {
     if (!time(t) || t < this.clock) throw new RangeError("stage events must follow their observation clock");
-    if (t > this.clock) this.seenAtClock.clear();
+    if (t > this.clock) { this.seenAtClock.clear(); this.parentMissesAtClock.clear(); }
     this.clock = t;
   }
   private record(id: string): SetRecord {
@@ -181,16 +186,21 @@ export class StageChainBook {
       throw new TypeError("invalid stage entry");
     const r = this.record(setId), s = r.set, key = orderKey(setId, orderId, entryT);
     if (this.open.has(key) || (entryT === this.clock && this.seenAtClock.has(key))) throw new Error("duplicate stage entry");
-    this.at(entryT); this.seenAtClock.add(key);
+    this.at(entryT);
     let proof: AdmissionProof | null = null;
     if (s.parentSetId) {
       const source = this.record(s.parentSetId);
       // Base source evidence qualifies independent Main simulations before taking their slot. Later stages
       // additionally require the exact preceding stage's accepted order, including inverse Main's trigger.
       if (source.set.stage !== "base" && (!parentOrderId || !this.open.has(orderKey(source.set.id, parentOrderId, entryT)))) {
-        r.evaluations.evaluated++; r.evaluations.failed++;
+        if (!this.parentMissesAtClock.has(key)) {
+          this.parentMissesAtClock.add(key); r.evaluations.parentMissing++;
+        }
         return { ok: false, reason: "parent-order" };
       }
+      // An outside-parent intent does not consume a processed entry identity. The actual parent may
+      // arrive later at this same observation clock; only a real evaluation/admission is deduplicated here.
+      this.seenAtClock.add(key);
       if (s.stage === "main" && s.variant === "inverse") {
         const negative = negativeMainTrigger(source.history, this.policy, s.minPf, entryT);
         r.evaluations.evaluated++;
@@ -211,7 +221,7 @@ export class StageChainBook {
             ? source.scores.map(([n, rows]) => [n, structuredClone(rows.filter((x) => x.knownT < entryT && x.exitT < entryT)
               .slice(-this.policy[source.set.stage as "base" | "main"].primaryN))]) : [] };
       }
-    }
+    } else this.seenAtClock.add(key);
     const policy = s.stage === "base" || s.stage === "main" ? this.policy[s.stage] : null;
     const primaryOk = policy && stageWindow(r.history, policy.primaryN, s.minPf, entryT).state === "qualified";
     const autoCandidates = policy && primaryOk ? policy.secondaryWindows.filter((n) =>
@@ -277,22 +287,25 @@ export class StageChainBook {
       .map((order) => structuredClone({ set: this.record(order.setId).set, order }));
   }
   summary(setId: string): StageSetStats {
-    const r = this.record(setId), t = r.totals, pf = t.settledSlices && !t.unknownSlices && !t.overflow
-      ? profitFactor(t.grossProfit, t.grossLoss) : null;
+    const r = this.record(setId), t = r.totals, known = t.settledSlices > 0 && !t.unknownSlices && !t.overflow,
+      pf = known && t.grossLoss > 0 ? t.grossProfit / t.grossLoss : null;
     return structuredClone({ ...t, set: r.set, basis: this.basis,
       heldOrders: t.openedOrders - t.closedOrders, heldPositions: t.openedPositions - t.closedPositions,
       returnPf: pf !== null && Number.isFinite(pf) ? pf : null,
+      noLoss: known && t.grossProfit > 0 && t.grossLoss === 0,
       evaluations: { ...r.evaluations, percent: r.evaluations.evaluated ? 100 * r.evaluations.qualified / r.evaluations.evaluated : null } });
   }
   summaries(): StageSetStats[] { return [...this.records.keys()].map((id) => this.summary(id)); }
   snapshot(): StageChainSnapshot {
-    return structuredClone({ version: 1, basis: this.basis, settings: this.policy, clock: this.clock,
-      records: [...this.records.values()], open: [...this.open.values()], seenAtClock: [...this.seenAtClock] });
+    return structuredClone({ version: 2, basis: this.basis, settings: this.policy, clock: this.clock,
+      records: [...this.records.values()], open: [...this.open.values()], seenAtClock: [...this.seenAtClock],
+      parentMissesAtClock: [...this.parentMissesAtClock] });
   }
 
   static restore(snapshot: StageChainSnapshot): StageChainBook {
-    if (!snapshot || snapshot.version !== 1 || !Number.isFinite(snapshot.clock) || snapshot.clock < -1 ||
-      !Array.isArray(snapshot.records) || !Array.isArray(snapshot.open) || !Array.isArray(snapshot.seenAtClock))
+    if (!snapshot || snapshot.version !== 2 || !Number.isFinite(snapshot.clock) || snapshot.clock < -1 ||
+      !Array.isArray(snapshot.records) || !Array.isArray(snapshot.open) || !Array.isArray(snapshot.seenAtClock) ||
+      !Array.isArray(snapshot.parentMissesAtClock))
       throw new TypeError("invalid stage-chain snapshot");
     const book = new StageChainBook(snapshot.basis, snapshot.settings);
     book.clock = snapshot.clock;
@@ -317,13 +330,14 @@ export class StageChainBook {
         r.scores.some(([n, rows]) => !book.policy.base.secondaryWindows.includes(n) && !book.policy.main.secondaryWindows.includes(n) || !validHistory(rows)) ||
         new Set(r.scores.map(([n]) => n)).size !== r.scores.length ||
         ![t.openedOrders, t.closedOrders, t.openedPositions, t.closedPositions, t.settledSlices, t.unknownSlices,
-          e.evaluated, e.qualified, e.insufficient, e.unknown, e.failed].every((v) => Number.isSafeInteger(v) && v >= 0) ||
+          e.evaluated, e.qualified, e.insufficient, e.unknown, e.failed, e.parentMissing].every((v) => Number.isSafeInteger(v) && v >= 0) ||
         t.closedOrders > t.openedOrders || t.closedPositions > t.openedPositions || t.openedPositions > t.openedOrders ||
         t.closedPositions > t.closedOrders || t.settledSlices < t.closedOrders || t.unknownSlices > t.settledSlices ||
         r.history.length > t.closedOrders || !Number.isFinite(t.grossProfit) || t.grossProfit < 0 ||
         !Number.isFinite(t.grossLoss) || t.grossLoss < 0 || typeof t.overflow !== "boolean" ||
         e.evaluated !== e.qualified + e.insufficient + e.unknown + e.failed ||
-        (s.stage === "base" ? e.evaluated !== 0 : e.qualified !== t.openedOrders))
+        (s.stage === "base" ? e.evaluated !== 0 : e.qualified !== t.openedOrders) ||
+        ((s.stage === "base" || s.stage === "main" && s.variant === "direct") && e.parentMissing !== 0))
         throw new TypeError("invalid stage totals or history");
       book.records.set(s.id, structuredClone(r));
     }
@@ -383,6 +397,17 @@ export class StageChainBook {
     }
     for (const o of book.open.values()) if (o.entryT === book.clock && !book.seenAtClock.has(orderKey(o.setId, o.orderId, o.entryT)))
       throw new TypeError("missing held stage deduplication");
+    const misses = new Map<string, number>();
+    for (const k of snapshot.parentMissesAtClock) {
+      if (!nonempty(k) || book.parentMissesAtClock.has(k)) throw new TypeError("invalid parent intent deduplication");
+      let entry: unknown;
+      try { entry = JSON.parse(k); } catch { throw new TypeError("invalid parent intent deduplication"); }
+      if (!Array.isArray(entry) || entry.length !== 3 || !book.records.has(entry[0]) || !nonempty(entry[1]) || entry[2] !== book.clock)
+        throw new TypeError("invalid parent intent identity");
+      book.parentMissesAtClock.add(k); misses.set(entry[0], (misses.get(entry[0]) ?? 0) + 1);
+    }
+    for (const [id, n] of misses) if (n > book.record(id).evaluations.parentMissing)
+      throw new TypeError("invalid parent intent totals");
     for (const [id, r] of book.records) for (const row of r.history)
       if (row.entryT === book.clock && !book.seenAtClock.has(orderKey(id, row.orderId, row.entryT)))
         throw new TypeError("missing completed stage deduplication");

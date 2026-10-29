@@ -136,7 +136,8 @@ test("inverse must complete its own Main and Real windows before its Active chai
     if (a.ok) { close(book, active, t, .005); activeCloses++; }
   }
   assert.ok(activeCloses > 0); assert.equal(book.summary(active.id).closedOrders, activeCloses);
-  assert.equal(book.summary(active.id).returnPf, 4, "no-loss score on a declared synthetic fixture, not a measured live ratio");
+  assert.equal(book.summary(active.id).returnPf, null, "a no-loss gate score is not a finite measured execution ratio");
+  assert.equal(book.summary(active.id).noLoss, true);
   assert.deepEqual(StageChainBook.restore(book.snapshot()).summaries(), book.summaries());
 });
 
@@ -339,4 +340,57 @@ test("settings validate every window and keep independently cloned defaults", ()
     (s: StageChainSettings) => { s.negativeMain.windows = [15]; }]) {
     const s = settings(); mutate(s); assert.throws(() => checkStageChainSettings(s));
   }
+});
+
+test("validation percentage counts only processed parent orders; unrelated intents remain a separate diagnostic", () => {
+  const { book, base, main, real } = chain();
+  for (let n = 0; n < 18; n++) {
+    const t = n * 2; open(book, base, t); const m = open(book, main, t);
+    close(book, base, t, .02); if (m.ok) close(book, main, t, .02);
+  }
+  for (let i = 0; i < 10; i++) assert.equal(book.enter(real.id, `unrelated-${i}`, `outside-position-${i}`, 36, `outside-${i}`).ok, false);
+  assert.equal(book.summary(real.id).evaluations.evaluated, 0);
+  assert.equal(book.summary(real.id).evaluations.percent, null, "empty parent evaluation is unavailable, not zero percent");
+  assert.equal(book.summary(real.id).evaluations.parentMissing, 10);
+  open(book, base, 36); assert.equal(open(book, main, 36).ok, true);
+  assert.equal(open(book, real, 36, "order-36").ok, true);
+  const stats = book.summary(real.id);
+  assert.deepEqual(stats.evaluations, { evaluated: 1, qualified: 1, insufficient: 0, unknown: 0, failed: 0,
+    parentMissing: 10, percent: 100 });
+  assert.equal(stats.openedOrders, 1);
+  assert.deepEqual(StageChainBook.restore(book.snapshot()).summaries(), book.summaries());
+  const invalid = book.snapshot(); invalid.records.find((r) => r.set.id === real.id)!.evaluations.parentMissing = -1;
+  assert.throws(() => StageChainBook.restore(invalid), /totals or history/);
+  const legacy = book.snapshot() as unknown as { version: number }; legacy.version = 1;
+  assert.throws(() => StageChainBook.restore(legacy as never), /snapshot/);
+});
+
+test("an early outside-parent intent cannot poison the later processed child identity at the same clock", () => {
+  const { book, base, main, real } = chain();
+  for (let n = 0; n < 18; n++) {
+    const t = n * 2; open(book, base, t); const m = open(book, main, t);
+    close(book, base, t, .02); if (m.ok) close(book, main, t, .02);
+  }
+  assert.equal(open(book, real, 36, "order-36").ok, false);
+  assert.equal(open(book, real, 36, "order-36").ok, false, "a repeated raw intent is still outside the parent stream");
+  assert.equal(book.summary(real.id).evaluations.parentMissing, 1, "retries do not inflate diagnostics");
+  const restored = StageChainBook.restore(book.snapshot());
+  assert.equal(open(restored, real, 36, "order-36").ok, false);
+  assert.equal(restored.summary(real.id).evaluations.parentMissing, 1);
+  open(restored, base, 36); assert.equal(open(restored, main, 36).ok, true);
+  assert.equal(open(restored, real, 36, "order-36").ok, true, "the actual processed parent now exists");
+  assert.throws(() => open(restored, real, 36, "order-36"), /duplicate/);
+  assert.equal(restored.summary(real.id).evaluations.percent, 100);
+  assert.deepEqual(StageChainBook.restore(restored.snapshot()).summaries(), restored.summaries());
+});
+
+test("stage execution statistics distinguish no-loss, flat and unknown returns from measured finite PF", () => {
+  const { book, base } = chain();
+  open(book, base, 0); close(book, base, 0, 0);
+  assert.equal(book.summary(base.id).returnPf, null); assert.equal(book.summary(base.id).noLoss, false);
+  open(book, base, 2); close(book, base, 2, .01);
+  assert.equal(book.summary(base.id).returnPf, null); assert.equal(book.summary(base.id).noLoss, true);
+  open(book, base, 4); close(book, base, 4, null);
+  assert.equal(book.summary(base.id).returnPf, null); assert.equal(book.summary(base.id).noLoss, false);
+  assert.equal(book.summary(base.id).unknownSlices, 1);
 });
