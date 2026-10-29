@@ -1,0 +1,14 @@
+[core-tests] offline Node transport guard; 1 files; concurrency 1; compute workers 1
+▶ session report page
+  ✔ renders neutral, empty and unknown PF cells without gain or loss colouring (158.761561ms)
+  ✔ clientMain uses only its own names and the browser's (no top-level helper of the script) (780.449173ms)
+  ✔ the check sees a top-level helper the page cannot reach (245.813178ms)
+✔ session report page (1186.427845ms)
+ℹ tests 3
+ℹ suites 1
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1698.358457

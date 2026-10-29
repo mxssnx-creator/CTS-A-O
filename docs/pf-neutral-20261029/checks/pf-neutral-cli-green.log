@@ -1,0 +1,80 @@
+✔ tiny neutral or losing returns cannot open a paper range or its opening gate (514.615899ms)
+✔ coordinator labels profitable paper return evidence even when exchange and cash PF conflict (112.14289ms)
+✔ profitable exchange fields do not replace losing or absent reference paper evidence (197.954158ms)
+✔ missing reference preserves opt-in and opt-out range starts and the closed opening gate (100.058143ms)
+✔ default minimum counts and PF hysteresis preserve range and opening decisions (660.13972ms)
+✔ opening gate includes unmanaged ranges and excludes disabled managed ranges (95.988588ms)
+✔ custom gate thresholds still apply and patches preserve unrelated settings (203.028504ms)
+▶ session CLI settings precedence
+  ✔ applies --focus all after a frozen --settings focus (1.26888ms)
+✔ session CLI settings precedence (2.034595ms)
+▶ immutable minute book lookup cache
+  ✔ caches each order and each minute-symbol including zero and missing prices (4.692816ms)
+  ✔ keeps the production minute loop's order, volume, missing-price and unknown-allocation arithmetic (2.353773ms)
+  ✔ keeps secondary capped and uncapped minute passes independent with the legacy multiplication order (1.616246ms)
+✔ immutable minute book lookup cache (8.920535ms)
+▶ session CLI sidecar replay preserves complete evidence
+  ✔ matches legacy report data and unit-row SHA while retaining all physical validation history (1789.811424ms)
+  ✔ fails replay when a tape chunk is corrupted instead of skipping stage evidence (401.840297ms)
+  ✔ still fails the stage check when valid sidecar data disagrees with an executed unit return (384.722562ms)
+✔ session CLI sidecar replay preserves complete evidence (2576.997367ms)
+▶ session CLI background comparison policy
+  ✔ defaults off before runtime startup and preserves explicit diagnostic opt-in (1093.611252ms)
+✔ session CLI background comparison policy (1093.781433ms)
+▶ session reports: return PF primary, simulated provenance
+  ✔ prints CLI help without starting a simulated session (350.787018ms)
+  ✔ reports both ordinary and Signal Exit orders under the independent Exit range (392.201766ms)
+  ✔ still rejects an executed Exit cell with no computed heat evidence (391.096012ms)
+  ✔ keeps first simulated-step seats distinct from the later paper selection in every output (406.437201ms)
+  ✔ reports offline source metadata and never invents a provider for legacy dumps (759.053044ms)
+  ✔ reports the configured Signal horizon separately from available input and engine prehistory (384.688298ms)
+  ✔ rejects replay preload without a cached feed and both explicit replay boundaries before startup (1035.833751ms)
+  ✔ reports an empty Base run as unavailable PF with passing consistency checks (360.189298ms)
+  ✔ checks engine config sets separately from active Signal tapes (376.366211ms)
+  ✔ accounts for pre-run rejections without hiding missing active sets (801.433378ms)
+  ✔ counts the separately recorded Signal Exit Base pass in legacy replay coverage (417.255096ms)
+  ✔ reports measured no-loss PF separately from the finite Base gate score and labels later funnel stages (392.967743ms)
+  ✔ reports the paper Live last-N gate separately from walk-forward order results (404.273763ms)
+  ✔ keeps equal current range counts labeled as independent measurements (425.304141ms)
+  ✔ marks equal legacy counts as copied when range provenance is absent (427.909616ms)
+  ✔ a type with only zero-funded closes retains virtual hourly cells without inventing funded coverage (411.711975ms)
+  ✔ chunk-allocations preserves complete allocation evidence without enabling Signal research (416.603732ms)
+  ✔ zeros floating-point cap residue before cash/unit allocation and records the original ghost amount (429.308208ms)
+  ✔ keeps return PF primary across JSON, Markdown, write-up and the rendered HTML headline (407.942475ms)
+  ✔ the uncapped comparison uses return PF first on the same closed-order sample (418.11651ms)
+  ✔ removes the execution volume multiple from primary PF while retaining sized cash results (446.819971ms)
+  ✔ does not report a fabricated primary PF when an execution multiplier is invalid (472.573171ms)
+✔ session reports: return PF primary, simulated provenance (10330.95166ms)
+▶ session qualification matches the runtime's full indication rules
+  ✔ matches actual runtime admission, Tactic 1.1, range floors and absent own-cell fallback (2.331649ms)
+  ✔ uses runtime Base-set gates, sample/DD gates and the no-loss score rather than infinity (0.4296ms)
+  ✔ records every full indication's effective validation minimum without first-row bias (0.262895ms)
+  ✔ renders mixed current thresholds and marks historical aggregates as unverified without requalifying them (1390.609376ms)
+  ✔ discloses partial return normalization without changing or certifying missing multipliers (0.321523ms)
+  ✔ retains legacy variant/preset aggregates while withholding an unrecorded primary unit PF (491.251419ms)
+✔ session qualification matches the runtime's full indication rules (1885.532458ms)
+✔ full tape dumps stream never-qualified own history without changing qualified outcomes (28.645213ms)
+✔ opening counts include endpoint-held and endpoint-entered orders while separating zero funding (519.413685ms)
+✔ margin usage alone never changes loss equity or drawdown for identical funded notionals (922.946977ms)
+✔ records independent Exit Base proof without borrowing ordinary ranges or a profitable headline (0.607653ms)
+✔ independent Signal Exit built sets reconcile to Signal tapes without polluting engine coverage (415.498827ms)
+▶ session replay deadlines
+  ✔ rejects incomplete universes with zero or earlier partial computes (2.438613ms)
+  ✔ rejects stale paper state and removes its event listener after timeout (3.277846ms)
+  ✔ fails offline startup at its deadline, cleans up, and writes no successful dump (450.155271ms)
+  ✔ rejects invalid deadline values before starting the runtime (1497.74089ms)
+✔ session replay deadlines (1953.969974ms)
+✔ validation CLI reports equal tiny gains and losses as neutral one (76.599135ms)
+✔ validation CLI retains identical hourly checks and executed cohorts for legacy and chunked dumps (169.510338ms)
+✔ validation CLI rejects corrupt validation chunks instead of reporting zero steps (85.983985ms)
+✔ report heatmaps keep neutral, flat, empty and unknown samples uncoloured (1.414387ms)
+✔ script and engine PF agree at neutral one without discarding tiny losses (0.936969ms)
+✔ no-loss conventions never replace unknown, overflowed, or losing evidence (0.255038ms)
+ℹ tests 58
+ℹ suites 7
+ℹ pass 58
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20204.285805

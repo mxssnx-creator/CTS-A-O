@@ -1,0 +1,43 @@
+[core-tests] offline Node transport guard; 1 files; concurrency 1; compute workers 1
+▶ session report page
+  ✖ clientMain uses only its own names and the browser's (no top-level helper of the script) (781.610419ms)
+  ✔ the check sees a top-level helper the page cannot reach (220.754831ms)
+✖ session report page (1003.489662ms)
+ℹ tests 2
+ℹ suites 1
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1373.987661
+
+✖ failing tests:
+
+test at src/core/report-page.test.ts:49:3
+✖ clientMain uses only its own names and the browser's (no top-level helper of the script) (781.610419ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+  + [
+  +   "Cannot find name 'pfHeatStyle'."
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/b69c1e5067d8/CTS-A-O-pf-neutral/src/core/report-page.test.ts:51:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at node:internal/test_runner/test:1903:71
+      at node:internal/per_context/primordials:504:82
+      at new Promise (<anonymous>)
+      at new SafePromise (node:internal/per_context/primordials:478:3)
+      at node:internal/per_context/primordials:504:9
+      at Array.map (<anonymous>) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ "Cannot find name 'pfHeatStyle'." ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

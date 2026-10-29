@@ -1,5 +1,7 @@
 This conversation belongs to the CTS-A-O project. In the original Grok environment, project files are mounted at `/workspace/artifacts`; check there for user-provided sources when available. Use the actual repository checkout in other environments.
 
+- **PF neutral point, operator 29 October 2026:** PF is the conventional gross-positive-return / gross-negative-return ratio, neutral at exactly 1.00 everywhere. Do not show PF minus one as PF, colour PF 1 as a gain, discard tiny nonzero losses or replace real losses with a neutral value. Empty, flat, unknown and true no-loss samples remain explicitly distinct and cannot manufacture qualified performance. Preserve configured range qualification floors above one.
+
 - **Operator update, 29 October 2026:** Default evaluation PF by range is Micro1.05, Minimal1.08,
   Short1.12, General/Medium/Normal/Wide1.25, Long1.5. Use the matching range consistently at later gates;
   preserve deliberately configured custom policies and separately defined Signal/Exit economics. New market

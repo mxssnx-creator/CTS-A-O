@@ -1,0 +1,14 @@
+✔ a config id gives its range tag and its target as a fraction (0.97432ms)
+✔ per range × rule: the pairs, orders, events and PF the rule keeps, by window, beside the run as it was (1.672644ms)
+✔ eval-gate carries a dump's basePairs[].rules into windows[].pairs and the report rules into summary.baseRules (unset: neither) (1544.959216ms)
+✔ an Axis config is kept wherever the rule keeps its range (its ladder targets are not Base cells) (0.712506ms)
+✔ a run whose orders are not its Base pairs' is marked (contrarian seats, every set, ranges without Base) (69.292263ms)
+✔ eval-gate and core-session refuse a settings patch checkSettings refuses (exit 2, before any run) (665.589624ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2369.506852

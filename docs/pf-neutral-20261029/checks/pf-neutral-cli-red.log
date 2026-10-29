@@ -1,0 +1,67 @@
+✖ tiny neutral or losing returns cannot open a paper range or its opening gate (104.673505ms)
+✔ coordinator labels profitable paper return evidence even when exchange and cash PF conflict (114.133965ms)
+✔ profitable exchange fields do not replace losing or absent reference paper evidence (230.228725ms)
+✔ missing reference preserves opt-in and opt-out range starts and the closed opening gate (103.286467ms)
+✔ default minimum counts and PF hysteresis preserve range and opening decisions (639.030832ms)
+✔ opening gate includes unmanaged ranges and excludes disabled managed ranges (95.933059ms)
+✔ custom gate thresholds still apply and patches preserve unrelated settings (208.01139ms)
+✖ validation CLI reports equal tiny gains and losses as neutral one (73.39436ms)
+✔ validation CLI retains identical hourly checks and executed cohorts for legacy and chunked dumps (192.523754ms)
+✔ validation CLI rejects corrupt validation chunks instead of reporting zero steps (76.722567ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 8
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1593.221033
+
+✖ failing tests:
+
+test at scripts/core-live-coord.test.mjs:12:1
+✖ tiny neutral or losing returns cannot open a paper range or its opening gate (104.673505ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/b69c1e5067d8/CTS-A-O-pf-neutral/scripts/core-live-coord.test.mjs:19:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/eval-validation.test.mjs:12:1
+✖ validation CLI reports equal tiny gains and losses as neutral one (73.39436ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Micro\s+1\.0\s+1\.0\s+100%\s+1\.00\s+1\.00\s+2\.0\s+1\.00/. Input:
+  
+  '1 windows, 1 hourly steps (full engine, default settings, mode fixed, causal, 48 h windows)\n' +
+    'range          cand/h  valid/h  rate  PF cand  PF valid  orders/h  PF realized  Base PF med\n' +
+    'Wide              0.0      0.0     –      NaN       NaN       0.0            –            –\n' +
+    'Micro             1.0      1.0  100%     9.00      9.00       2.0         9.00            –\n' +
+    'Minimal           0.0      0.0     –      NaN       NaN       0.0            –            –\n' +
+    'Minimal plus      0.0      0.0     –      NaN       NaN       0.0            –            –\n' +
+    'Short             0.0      0.0     –      NaN       NaN       0.0            –            –\n' +
+    'General           0.0      0.0     –      NaN       NaN       0.0            –            –\n' +
+    'Long              0.0      0.0     –      NaN       NaN       0.0            –            –\n' +
+    'Signals           0.0      0.0     –      NaN       NaN       0.0            –            –\n'
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/b69c1e5067d8/CTS-A-O-pf-neutral/scripts/eval-validation.test.mjs:23:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '1 windows, 1 hourly steps (full engine, default settings, mode fixed, causal, 48 h windows)\nrange          cand/h  valid/h  rate  PF cand  PF valid  orders/h  PF realized  Base PF med\nWide              0.0      0.0     –      NaN       NaN       0.0            –            –\nMicro             1.0      1.0  100%     9.00      9.00       2.0         9.00            –\nMinimal           0.0      0.0     –      NaN       NaN       0.0            –            –\nMinimal plus      0.0      0.0     –      NaN       NaN       0.0            –            –\nShort             0.0      0.0     –      NaN       NaN       0.0            –            –\nGeneral           0.0      0.0     –      NaN       NaN       0.0            –            –\nLong              0.0      0.0     –      NaN       NaN       0.0            –            –\nSignals           0.0      0.0     –      NaN       NaN       0.0            –            –\n',
+    expected: /Micro\s+1\.0\s+1\.0\s+100%\s+1\.00\s+1\.00\s+2\.0\s+1\.00/,
+    operator: 'match',
+    diff: 'simple'
+  }
