@@ -1,3 +1,81 @@
+## 2026-10-29 — Separate inverse Main and dual-window processed sets (draft)
+
+The operator explicitly selected a separate inverse set. The new draft StageChainBook creates distinct Base,
+Main, inverse Main, Real and Active identities and order histories. Main's negative Last-5/10 trigger requires
+its positive primary window first, then creates the opposite direction with its own simulated prices, stops,
+TP/trailing/hold handling and cost. It never negates a parent's return or admits the original losing direction.
+Every later gate reads its immediate predecessor's own complete processed orders. Derived identities capture
+upstream admission policy; changing a gate cannot silently inherit that derived set's older policy history.
+Base/Main default to primary 50 plus secondary 15; secondary static, multiple-all and causal auto support 5/10/15/20/25.
+Auto trains only on earlier completed candidate-gate outcomes and falls back to the explicit static setting while
+insufficient. Real uses one Last-15. Each Base's PF floor is inherited throughout its chain. Partial contributions
+form one complete Last-N order only on final closure; unknowns, late availability, equal-time boundaries,
+duplicate events and frozen restart proofs fail closed. Held Active ownership survives later gate failure and
+has no further mirror Last-N gate in this primitive.
+
+This is not connected to production. DEFAULT_STAGE_CHAIN.enabled remains false until proper ownership,
+pending-fill recovery and the production adapter exist. It is not a new Settings control or a settings migration.
+Source simulation supports Normal, Trailing, trailing-only, Historic Exit, DCA, DCA Active and both Axis modes;
+45 focused tests pass, including the independent inverse sources and stage sequence. Typecheck/scoped lint pass.
+Both full GitHub workflows passed the draft source checkpoint 75952718d92520e1603d75e5b61a25c5f87b9c66
+(tree 0307d81191e21f471eca15408d35f384984d0d45); the additional trailing-only/Exit fixtures are in the following
+checkpoint. The 131 source/cursor/cost/trailing/identity/cohort checks and production build passed for merged
+PR #230. Main is 23de9129179713eb2973f2673279e23c209f7f97; remote backups exist immediately before and after it.
+No deployed instance, selected account, database, held position or native order was changed.
+
+Three offline studies each use 20 symbols, 1/5/15m, Low-Range step 3 Normal/Trailing, modeled 0.15% round-trip
+cost, 84h prior candles and 10 October 2026 00:00–12:00 UTC (02:00–14:00 Vienna). Micro has a 15m hold,
+Minimal 30m and Short 60m. Base/Main primary N is 50, secondary N is swept independently over 5/10/15/20/25
+(25 combinations per range); Real N is 15. These exclude funding, additional/Overall adjustments, production
+paper and venue fills. Each source/stage is independently simulated and only preceding own completed orders
+are evaluated; source-slot rejection happens before holding. Full source and admission-policy identities are
+independently checked in the final run. Results exactly match the earlier numerical experiments after adding
+those identities. An initial Short summary omitted held orders from group counts; it was rejected and rerun.
+
+Default secondary 15/15 results (counts are opened / closed / held):
+
+| Range / hold | Base at start | Historical primary PF | Later Main PF | Main positions | Main orders | Real qualified / matched Main entries |
+| --- | --- | --- | --- | --- | --- | --- |
+| Micro / 15m | 7/4800 (0.145833%) | 1.238320 | 0.602622 | 77/76/1 | 351/345/6 | 0/351 |
+| Minimal / 30m | 31/4800 (0.645833%) | 1.280751 | 0.566864 | 96/93/3 | 554/542/12 | 0/554 |
+| Short / 60m | 37/4800 (0.770833%) | 1.283424 | 0.698001 | 107/99/8 | 840/816/24 | 0/840 |
+
+At the historical checkpoint Main qualified 0/7, 0/31 and 0/37 Base-qualified contexts; historical Main PF is
+unavailable. Later Real and inverse Main are empty across all 75 combinations. Active positions/orders are
+0/0/0 in every case; their PF and venue-fill PF are unavailable. At default secondary 15, the largest own Main
+samples before matched entries are respectively 19/50, 23/50 and 30/50. Across the Short sweep the maximum is
+35/50. This explains why Main secondary N does not change Real execution here: the primary window is not ready.
+More own processed history is necessary; do not substitute a raw Base pool, shrink N, call empty PF positive,
+or select a supposedly best default from these empty Active cohorts. The older Last-40/12/12 study used a
+different cohort and cannot be used as a same-sample improvement comparison.
+
+The independent scalar audit checked 14,400 contexts, 75 combinations, 5,548,127 windows and 1,191,143 price
+returns, including costs once, chronology, parent sets, both directions, independent kind/timeframe groups and
+held counts. Report controls were checked in a Node VM/DOM harness across 75 selections and 450 stage cohorts,
+with 14,400 context rows and 8,293 order listing rows; this is not a browser rendering test. The report includes
+all combinations, independent Long/Short and type/timeframe views, full config IDs, exact entry/exit listings,
+returns, reasons, durations and promotion counts. The evidence archive contains all JSONL decisions, hashes and
+an immutable GitHub source reference; repository code is retained in GitHub rather than duplicated in the archive.
+
+Detailed report: https://chatgpt.com/library?file_id=libfile_bac60a1ae4208191bd757d34835ae4d4&account_id=personal
+Complete experiment evidence (333 MiB compressed): https://chatgpt.com/library?file_id=libfile_5065aad8c0948191a64fb7c28945f7da&account_id=personal
+
+Production integration still required before draft #219 can be enabled or merged as the requested fix:
+1. Construct and persist genuine Main/Real processed streams from exact published Base provenance, all strategy
+   families and own admission/close events, rather than the current initial raw-tape Validation path.
+2. Apply additional processing at Main and Overall processing at Real exactly once, including cost/volume/stack
+   accounting and independent accepted-order feedback.
+3. Reconcile pending/resting/partial fills, late fees, protected legacy holds, restart identities and actual owned
+   quantities across all source types. An optional source hook alone does not establish funded execution.
+4. Admit paper/system Active ownership only from final Real proof, then mirror it without livePromotionGate's
+   extra Last-N qualification; retain static venue/account risk controls and held protection.
+5. Wire Settings/UI and backed-up migrations, count-driven older-history requests for insufficient processed
+   samples, complete stage/position/order statistics and a full system simulation. The cached 20-symbol feed
+   covers only the studied 96h; longer 20-symbol evidence is not present here.
+6. Resolve the earlier full-grid memory abort and finish the complete additional/Overall-strategy and funded
+   venue checks. Positive or stable end-execution PF remains unproved; these isolated losing/empty results do not
+   establish profitability, a best hold setting or a best secondary-N default.
+
 ## 2026-10-29 — Ladder source admission and Axis cost guards
 
 DCA, DCA Active, Axis revert and Axis desk now accept the same optional causal entry-admission callback as

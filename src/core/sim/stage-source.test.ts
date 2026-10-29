@@ -23,11 +23,13 @@ function prices(side: Side) {
     l: mirror(side === 1 ? l : h), c: mirror(c), v: 1 })));
 }
 
-for (const mode of ["normal", "trailing", "dca", "dca-active", "axis-fixed", "axis-managed", "axis-desk"] as const) {
+for (const mode of ["normal", "trailing", "trailing-only", "exit", "dca", "dca-active", "axis-fixed", "axis-managed", "axis-desk"] as const) {
   test(`inverse ${mode} delegates to its own simulator, cost and protection rules`, () => {
-    const kind = mode.startsWith("axis") ? "axis" : mode as "normal" | "trailing" | "dca" | "dca-active";
+    const kind = mode.startsWith("axis") ? "axis" : mode as "normal" | "trailing" | "trailing-only" | "exit" | "dca" | "dca-active";
     const b = prices(-1), cfg = `follow|ema-9-21@m1|${mode}`,
-      p: Protect = { ...protect, trail: mode === "trailing" ? .01 : 0 },
+      p: Protect = { ...protect, trail: mode === "trailing" || mode === "trailing-only" ? .01 : 0,
+        ...(mode === "trailing-only" ? { tp: 0, trailOnly: true } : {}),
+        ...(mode === "exit" ? { exitType: "historic", exitSet: "breakeven", exitSide: 1 } as const : {}) },
       center = new Float64Array(b.n).fill(100), atr = new Float64Array(b.n).fill(1);
     const book = new StageChainBook("model", DEFAULT_STAGE_CHAIN), base = book.base({ baseConfigId: cfg, symbol: b.sym,
       side: 1, kind, lane: "independent", economicRevision: "policy-v1" }, 1.1), main = book.main(base.id, "main"),
@@ -56,6 +58,8 @@ for (const mode of ["normal", "trailing", "dca", "dca-active", "axis-fixed", "ax
     assert.deepEqual(actual.open, expected.open ?? null);
     assert.equal(actual.pending, expected.pending); assert.equal(actual.setId, inverse.id);
     assert.equal(actual.baseConfigId, cfg);
+    assert.equal(actual.parentSetId, main.id); assert.equal(actual.admissionPolicy, inverse.admissionPolicy);
+    if (kind === "trailing-only") assert.ok(actual.trades.every((t) => t.reason !== "tp"));
     assert.ok(actual.trades.length || actual.open);
     assert.throws(() => simulateStageSource(inverse, { ...source, cfg: "other-config" }, () => true), /exact set/);
     assert.throws(() => simulateStageSource(inverse, { ...source, signal: opposite }, () => true), /another Base direction/);
