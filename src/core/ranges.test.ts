@@ -631,7 +631,7 @@ test("Base sets floor: lowering Wide never weakens a configured range floor", ()
   const st = (pf: number, net: number) => ({ n: 40, pf, net, mdd: 1,
     baseLast: { requested: 40, n: 40, gp: pf, gl: 1, stop: 1 } }) as never;
   // The factory Base floor is now PF 1.1; explicit custom range floors still keep their own meaning.
-  assert.equal(DEFAULT_SETTINGS.gates.baseSetsMinPf, 1.1);
+  assert.equal(DEFAULT_SETTINGS.gates.baseSetsMinPf, 1.25);
   const g = {
     ...DEFAULT_SETTINGS.gates,
     baseSetsMinPf: undefined,

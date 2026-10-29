@@ -1218,6 +1218,7 @@ export class CoreRuntime {
       migrateSignalHistory150(db, migrateSignalLast4Policy(db, migrateSignalEvaluationPolicy(db, migrateWfCaps(db)))));
     migrateMicroMinimalBase30(db);
     migrateBasePf11(db);
+    migrateRangePfFloors(db);
     migrateExpandedSignalDefaults(db);
     migrateNeutralVolumeRatios(db);
     migrateDcaTwoSteps(db);
@@ -11329,37 +11330,59 @@ function migrateValidationLast12(db: CoreDb, saved: Partial<WalkForwardOptions>)
 
 /** Align former factory PF floors once. Deliberate custom floors and unrelated saved results survive. */
 export function migrateBasePf11(db: CoreDb): void {
-  if (db.kvGet("basePf11V1")) return;
+  // Freeze both historical policies: changing current defaults must not rewrite an earlier migration.
+  const before = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.1, baseSetsMinPf: 1,
+    rangeMinPf: { micro: 1.05, minimal: 1.1, short: 1.1, general: 1.2, long: 1.3 } } };
+  const after = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.1, baseSetsMinPf: 1.1,
+    rangeMinPf: { micro: 1.1, minimal: 1.1, short: 1.1, general: 1.1, long: 1.1 } } };
+  migratePfDefaults(db, "basePf11", before, after, 1.1, 1.1);
+}
+
+/** Backed-up once-only upgrade of the preceding factory policy, preserving deliberate custom floors. */
+export function migrateRangePfFloors(db: CoreDb): void {
+  const before = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.1, baseSetsMinPf: 1.1,
+    rangeMinPf: { micro: 1.1, minimal: 1.1, short: 1.1, general: 1.1, long: 1.1 } } };
+  migratePfDefaults(db, "rangePfFloors20261029", before, DEFAULT_SETTINGS, 1.1, 1.05);
+}
+
+function migratePfDefaults(db: CoreDb, policy: string, oldDefaults: CoreSettings, nextDefaults: CoreSettings,
+  oldFamilyFloor: number, nextFamilyFloor: number): void {
+  const version = `${policy}V1`, backupKey = `${policy}BackupV1`;
+  if (db.kvGet(version)) return;
   const settings = db.kvGet<SettingsPatch>("settings"), presets = db.kvGet<Preset[]>("presets");
   const backtests = db.kvGet<Record<string, unknown>>("presetBacktests");
   const series = db.kvGet<Record<string, unknown>>("presetSeries");
   const backup = structuredClone({ settings, presets, presetBacktests: backtests, presetSeries: series });
-  const formerRanges = { micro: 1.05, minimal: 1.1, short: 1.1, general: 1.2, long: 1.3 };
-  const oldDefaults: CoreSettings = { ...DEFAULT_SETTINGS,
-    gates: { ...DEFAULT_SETTINGS.gates, baseSetsMinPf: 1, rangeMinPf: formerRanges } };
+  const former = oldDefaults.gates, next = nextDefaults.gates;
   const beforeDesk = mergeSettings(oldDefaults, backup.settings);
   const upgrade = (s: SettingsPatch | undefined, inherited: number) => {
     const g = s?.gates;
-    if (!g || (g.minPf ?? inherited) !== 1.1 ||
-        (g.rangeMinPf !== undefined && !isDeepStrictEqual(g.rangeMinPf, formerRanges))) return false;
+    if (!g || (g.minPf ?? inherited) !== former.minPf ||
+        (g.rangeMinPf !== undefined && !isDeepStrictEqual(g.rangeMinPf, former.rangeMinPf))) return false;
     let changed = false;
-    if (g.baseSetsMinPf === 1) { g.baseSetsMinPf = 1.1; changed = true; }
-    if (g.rangeMinPf !== undefined) { g.rangeMinPf = { ...DEFAULT_SETTINGS.gates.rangeMinPf }; changed = true; }
+    if (g.minPf === former.minPf && g.minPf !== next.minPf) { g.minPf = next.minPf; changed = true; }
+    if (g.baseSetsMinPf === former.baseSetsMinPf && g.baseSetsMinPf !== next.baseSetsMinPf) {
+      g.baseSetsMinPf = next.baseSetsMinPf; changed = true;
+    }
+    if (g.rangeMinPf !== undefined && !isDeepStrictEqual(g.rangeMinPf, next.rangeMinPf)) {
+      g.rangeMinPf = { ...next.rangeMinPf }; changed = true;
+    }
     return changed;
   };
-  let changed = upgrade(settings, DEFAULT_SETTINGS.gates.minPf);
-  const afterDesk = mergeSettings(DEFAULT_SETTINGS, settings);
-  for (const p of presets ?? []) changed = upgrade(p.settings, afterDesk.gates.minPf) || changed;
+  let changed = upgrade(settings, former.minPf);
+  const afterDesk = mergeSettings(nextDefaults, settings);
+  for (const p of presets ?? []) changed = upgrade(p.settings, beforeDesk.gates.minPf) || changed;
   const beforeById = new Map([...ALL_RESEARCH_PRESETS, ...(backup.presets ?? [])].map((p) => [p.id, p]));
   const afterById = new Map([...ALL_RESEARCH_PRESETS, ...(presets ?? [])].map((p) => [p.id, p]));
-  const signature = (desk: CoreSettings, preset: Preset) => {
+  const signature = (desk: CoreSettings, preset: Preset, familyFloor: number) => {
     const g = mergeSettings(desk, presetSettings(preset.settings)).gates;
-    return [g.minPf, g.baseSetsMinPf, g.rangeMinPf];
+    return [g.minPf, g.baseSetsMinPf, g.rangeMinPf,
+      ["mc", "mn", "sh", "gn", "lg", ""].map((tag) => Math.max(familyFloor, minPfOf(g, tag)))];
   };
   const affected = (id: string) => {
     const before = beforeById.get(id), after = afterById.get(id);
     if (!before || !after) return true;
-    try { return !isDeepStrictEqual(signature(beforeDesk, before), signature(afterDesk, after)); }
+    try { return !isDeepStrictEqual(signature(beforeDesk, before, oldFamilyFloor), signature(afterDesk, after, nextFamilyFloor)); }
     catch { return true; }
   };
   const invalid = new Set<string>();
@@ -11375,7 +11398,7 @@ export function migrateBasePf11(db: CoreDb): void {
   for (const id of new Set([...Object.keys(backtests ?? {}), ...Object.keys(series ?? {})]))
     if (affected(id)) invalid.add(id);
   db.tx(() => {
-    if (changed || invalid.size) db.kvSet("basePf11BackupV1", { ...backup, invalidPresetIds: [...invalid] });
+    if (changed || invalid.size) db.kvSet(backupKey, { ...backup, invalidPresetIds: [...invalid] });
     if (changed) {
       if (settings) db.kvSet("settings", settings);
       if (presets) db.kvSet("presets", presets);
@@ -11386,7 +11409,7 @@ export function migrateBasePf11(db: CoreDb): void {
       if (backtests) db.kvSet("presetBacktests", keepBacktests);
       if (series) db.kvSet("presetSeries", keepSeries);
     }
-    db.kvSet("basePf11V1", true);
+    db.kvSet(version, true);
   });
 }
 

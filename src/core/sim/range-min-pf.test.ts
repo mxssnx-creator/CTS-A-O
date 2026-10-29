@@ -86,10 +86,10 @@ describe("per-range stage min PF", () => {
 
   it("the configured defaults apply the intended stage floor to each range", () => {
     const g = DEFAULT_SETTINGS.gates;
-    assert.deepEqual(g.rangeMinPf, { micro: 1.1, minimal: 1.1, short: 1.1, general: 1.1, long: 1.1 });
+    assert.deepEqual(g.rangeMinPf, { micro: 1.05, minimal: 1.08, short: 1.12, general: 1.25, long: 1.5 });
     assert.deepEqual(
       ["mc", "mn", "mp", "sh", "gn", "lg", undefined].map((tag) => minPfOf(g, tag)),
-      [1.1, 1.1, 1.1, 1.1, 1.1, 1.1, g.minPf],
+      [1.05, 1.08, 1.08, 1.12, 1.25, 1.5, g.minPf],
     );
   });
 

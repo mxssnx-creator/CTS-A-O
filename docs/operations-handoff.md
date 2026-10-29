@@ -1,3 +1,16 @@
+## 2026-10-29 — Requested independent PF floors and bounded validation work
+
+New operator defaults: Micro1.05, Minimal1.08, Short1.12, General/Medium/Normal/Wide1.25, Long1.5. Explicit custom settings survive. New market studies are capped at72hours TOTAL including prehistory; do not launch longer studies. Signal and independent Historic Exit floors retain their distinct policy. Normal means the ordinary economic range, not permission to lower a Signal source’s separate minimum.
+
+Fixed a hidden research-family PF1.1 override for tagged Micro/Minimal, and the same mismatch in full configured-cell statistics. A once-only transactional migration backs up settings/presets/caches, upgrades former factory values, preserves custom floors, and retires results whose effective policy changed. The older PF1.1 migration now freezes both of its historical policies. Do not trust a prior cached PF under the new defaults.
+
+116 focused checks pass, including migration rollback/custom preservation, source-family range floors, Base-to-entry/count parity and the unchanged archived candidate-lifetime hashes (the fixture now explicitly freezes its historical global PF1.1). Typecheck, production build and lint pass (47 existing warnings, zero errors). Complete core inventory and desktop/mobile preview checks are still running at this checkpoint; do not claim those passed prematurely. No selected exchange/account or deployment was changed.
+
+The latest measured financial cohort is unchanged and used the OLD PF1.1 policy:20symbols,Low-Range step3 Normal/Trailing,8Oct12:00–9Oct12:00UTC,24h prehistory,1/5/15m indications and1m execution,Base40+15/Main50+15/Real15. Base10/4800(0.2083%), passing historical PF1.205231; subsequent Main PF0.617328. Positions307/305/2 and orders1585/1583/2 opened/closed/held. Real0/1585(0%); ActivePF unavailable; venue/funded execution unverified. New defaults are not a measured profitability improvement.
+
+Separately, the unmerged stage branch has red/green actual walkForward regressions for an execution gate that stops learning after rejecting entries, and funding caps that hide upstream model losses. Own qualified source streams now continue before downstream PF/funding checks, preserving own slots, overlaps, unknowns and accepted-Real markers.70 focused checks and27 bounded-window/source checks pass. A48h synthetic stress(24hpre+24htrade,20symbols) passes6720contexts/2419200sourceorders in73.515s; sampled batch-end heap219MiB/RSS619MiB. This is mechanic evidence only; full persistent Main/Real production adapter and venue mapping remain pending in draft219. A further benchmark change releases each batch in a function scope and removes quadratic verification; its new performance measurement is pending.
+
+---
 ## 2026-10-29 — Ordinary Base PF1.1 factory release
 
 The requested factory floor is now1.1 for ordinary Micro/Minimal/Short/General/Long and Wide/Base construction.

@@ -37,7 +37,7 @@ describe("Low-Range Short integration", () => {
   it("defaults the opt-in Low-Range maximum hold to the best tested 5m cap", () => {
     assert.equal(DEFAULT_LOW_RANGE_GRID.enabled, false);
     assert.equal(DEFAULT_LOW_RANGE_GRID.maxHoldMin, 60);
-    assert.equal(DEFAULT_SETTINGS.gates.minPf, 1.1);
+    assert.equal(DEFAULT_SETTINGS.gates.minPf, 1.25);
     assert.equal(DEFAULT_SETTINGS.grid.rangeGate?.enabled, true);
     assert.equal(DEFAULT_SETTINGS.grid.rangeGate?.lastN, 75);
     assert.equal(DEFAULT_SETTINGS.grid.rangeGate?.minPf, 1.35);
