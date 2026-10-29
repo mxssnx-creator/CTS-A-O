@@ -200,7 +200,11 @@ describe("strict exact-lane reference promotion", () => {
     c.netReturn! += 5e-11;
     const p = decide(e).promotedLanes[0];
     assert.equal(p.executionCloses[0].unitR, 0.02);
+    assert.equal(p.executionCloses[0].netPnl, 2);
+    assert.equal(p.executionCloses[0].entryNotional, 100);
     assert.equal(p.executionPf, 2, "PF uses cost-derived returns instead of tolerance-adjusted declared values");
+    assert.equal(validPromotedLaneProof({ ...p, executionCloses: p.executionCloses.map((x, i) =>
+      i === 0 ? { ...x, netPnl: -x.netPnl! } : x) }, NOW), false, "a tampered dollar P&L cannot prove Real");
   });
 
   it("rejects a changed identity anywhere in either evidence tape", () => {

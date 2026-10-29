@@ -1,4 +1,5 @@
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
+import { checkStageChainSettings, mergeStageSettings } from "../sim/stage-settings.ts";
 import { isHistoricExitConfig } from "../exit-scope.ts";
 import { lstatSync } from "node:fs";
 import { mergeWorkerTapesGen } from "./tape-merge.ts";
@@ -272,6 +273,7 @@ import {
   liveGroupKeyOf,
   liveGroupOf,
   promotionGate,
+  realExecutionGate,
   sideTapeOf,
   type LiveGate,
   type LiveValidationStatus,
@@ -290,7 +292,7 @@ import {
   type LiveRecord,
 } from "../live-record.ts";
 import { OWN_CLOSE_SQL } from "../relation.ts";
-import { ownedPromotionRecord } from "./promotion-record.server.ts";
+import { ownedPromotionIdentities, ownedPromotionRecord, type OwnedPaperRow } from "./promotion-record.server.ts";
 import { signalActiveHas, type ExchangeAccept, type SignalActivationEnd } from "../signals.ts";
 import {
   isSignalCoordinationInd,
@@ -2801,6 +2803,7 @@ export class CoreRuntime {
     const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${evaluationHistorySettings(this.settings, this.wf).historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`;
     const prevCompute = computeKey(this.settings, this.wf);
     const next = mergeSettings(this.settings, patch);
+    checkStageChainSettings(next.stages);
     if (patch.grid) {
       checkLowRangeComplete(next.grid);
       checkRangeReplacementsComplete(next.grid);
@@ -2846,6 +2849,7 @@ export class CoreRuntime {
       signalMaxPositions: this.wf.signalMaxPositions,
       // the Base gates of the last compute: without them every pair took seats until the next compute finished
       basePassed: this.wf.basePassed,
+      baseQualificationT: this.wf.baseQualificationT,
       basePassedCells: this.wf.basePassedCells,
       exitBasePassed: this.wf.exitBasePassed,
       basePassedRanges: this.wf.basePassedRanges,
@@ -5665,7 +5669,7 @@ export class CoreRuntime {
       [...strategyTapes, ...sigTapes], newBuildStats, s.grid.minimalPlus,
       // Strictly before the run, never fitted on its future closes.
       wf.startT ?? Math.floor((wu.nowT - wf.simH * H) / H) * H,
-      heldIds, !!(wf.probe?.perRange || wf.probe?.perCell),
+      heldIds, !wf.gates?.lastNOnly && !!(wf.probe?.perRange || wf.probe?.perCell),
     );
     const tapes = rangePublication.tapes;
     wf.signalRank = sig.enabled ? sig : undefined;
@@ -5729,6 +5733,7 @@ export class CoreRuntime {
     this.resetRealtime("qualified research cohort replaced");
     Object.assign(this.wf, {
       basePassed: wf.basePassed,
+      baseQualificationT: wf.gates?.lastNOnly ? sim.startT : undefined,
       basePassedCells: wf.basePassedCells,
       exitBasePassed: wf.exitBasePassed,
       basePassedRanges: wf.basePassedRanges,
@@ -7356,6 +7361,8 @@ export class CoreRuntime {
     lanes: NonNullable<CoreSettings["live"]["promotedLanes"]>;
     byKey: Map<string, NonNullable<CoreSettings["live"]["promotedLanes"]>[number]>;
     records: Map<string, LiveRecord>;
+    realRecords: Map<string, LiveRecord>;
+    realCashRecords: Map<string, LiveRecord>;
   } | null = null;
   private modeledExecutionRecords() {
     const sim = this.sim;
@@ -7413,7 +7420,12 @@ export class CoreRuntime {
     );
     const sim = this.sim;
     const model = this.modeledExecutionRecords();
-    const owned = ownedPromotionRecord(this.db, lane, n, now);
+    // The Real gate has its own N; loading the larger window once lets both indexed records share one read.
+    const realN = this.settings.live.realLastN ?? 12;
+    const historyN = Math.max(n, realN);
+    const owned = ownedPromotionRecord(this.db, lane, historyN, now);
+    const effective = ownedPromotionRecord(this.db, lane, historyN, now, "effective");
+    const cash = ownedPromotionRecord(this.db, lane, historyN, now, "cash");
     const key = executionRecordKey(lane.cfg, lane.sym, lane.side);
     const lanes = this.settings.live.promotedLanes;
     if (lanes && this.promotionReferenceMemo?.lanes !== lanes) {
@@ -7424,10 +7436,19 @@ export class CoreRuntime {
             p.executionCloses.map((c) => ({ cfg: promoteLaneKey(p), exitT: c.exitT, r: c.unitR })),
           ),
       );
+      const realCloses = lanes
+        .filter((p) => validPromotedLaneProof(p, now) && p.executionSource === "verified-venue" &&
+          p.executionCloses.every((c) => typeof c.netPnl === "number" && typeof c.entryNotional === "number"))
+        .flatMap((p) => p.executionCloses.map((c) => ({ cfg: promoteLaneKey(p), exitT: c.exitT,
+          netPnl: c.netPnl!, entryNotional: c.entryNotional! })));
+      const realRecords = liveRecords(realCloses.map((c) => ({ ...c, r: c.netPnl / c.entryNotional })));
+      const realCashRecords = liveRecords(realCloses.map((c) => ({ ...c, r: c.netPnl })));
       this.promotionReferenceMemo = {
         lanes,
         byKey: new Map(lanes.map((p) => [promoteLaneKey(p), p])),
         records,
+        realRecords,
+        realCashRecords,
       };
     }
     const ref =
@@ -7463,6 +7484,53 @@ export class CoreRuntime {
           }
         : undefined,
     );
+    const referenceReal = reference ? this.promotionReferenceMemo?.realRecords.get(key) : undefined;
+    const realRefGate = referenceReal && reference
+      ? liveGate(referenceReal, reference.fromT, now, realN, minPf) : undefined;
+    const rb = referenceReal ? lowerBound(referenceReal.exitT, now + 1) : 0;
+    const ra = Math.max(0, rb - realN);
+    const realGp = referenceReal ? referenceReal.gp[rb] - referenceReal.gp[ra] : 0;
+    const realGl = referenceReal ? referenceReal.gl[rb] - referenceReal.gl[ra] : 0;
+    const realNoLoss = realGp > 0 && realGl === 0;
+    const real = realExecutionGate(effective, now, realN, minPf,
+      reference && referenceReal && realRefGate ? {
+        source: "verified-venue", n: realRefGate.n, pf: realRefGate.pf, unknown: realRefGate.unknown ?? 0,
+        fromT: rb > ra ? referenceReal.exitT[ra] : null, toT: rb > ra ? referenceReal.exitT[rb - 1] : null,
+        noLoss: realNoLoss, pfConvention: realNoLoss ? "no-loss-score" : "ratio", validUntilT: reference.validUntilT,
+      } : undefined);
+    const pb = referenceReal ? lowerBound(referenceReal.exitT, now + 1) : 0, pa = Math.max(0, pb - n);
+    const processedGp = referenceReal ? referenceReal.gp[pb] - referenceReal.gp[pa] : 0;
+    const processedGl = referenceReal ? referenceReal.gl[pb] - referenceReal.gl[pa] : 0;
+    const processedNoLoss = processedGp > 0 && processedGl === 0;
+    const processedRefGate = referenceReal && reference ? liveGate(referenceReal, reference.fromT, now, n, minPf) : undefined;
+    const processed = realExecutionGate(effective, now, n, minPf,
+      reference && referenceReal && processedRefGate ? {
+        source: "verified-venue", n: processedRefGate.n, pf: processedRefGate.pf, unknown: processedRefGate.unknown ?? 0,
+        fromT: pb > pa ? referenceReal.exitT[pa] : null, toT: pb > pa ? referenceReal.exitT[pb - 1] : null,
+        noLoss: processedNoLoss, pfConvention: processedNoLoss ? "no-loss-score" : "ratio", validUntilT: reference.validUntilT,
+      } : undefined);
+    const referenceCash = reference ? this.promotionReferenceMemo?.realCashRecords.get(key) : undefined;
+    const cashRefGate = referenceCash && reference ? liveGate(referenceCash, reference.fromT, now, realN, minPf) : undefined;
+    const cb = referenceCash ? lowerBound(referenceCash.exitT, now + 1) : 0, ca = Math.max(0, cb - realN);
+    const cashGp = referenceCash ? referenceCash.gp[cb] - referenceCash.gp[ca] : 0;
+    const cashGl = referenceCash ? referenceCash.gl[cb] - referenceCash.gl[ca] : 0;
+    const cashNoLoss = cashGp > 0 && cashGl === 0;
+    const realCash = realExecutionGate(cash, now, realN, minPf,
+      reference && referenceCash && cashRefGate ? {
+        source: "verified-venue", n: cashRefGate.n, pf: cashRefGate.pf, unknown: cashRefGate.unknown ?? 0,
+        fromT: cb > ca ? referenceCash.exitT[ca] : null, toT: cb > ca ? referenceCash.exitT[cb - 1] : null,
+        noLoss: cashNoLoss, pfConvention: cashNoLoss ? "no-loss-score" : "ratio", validUntilT: reference.validUntilT,
+      } : undefined);
+    const useProcessed = this.wf.gates?.lastNOnly === true;
+    const initialOk = useProcessed ? processed.ok : gate.ok;
+    const processedState = processed.state === "real-insufficient" ? "execution-insufficient"
+      : processed.state === "real-failed" ? "execution-failed" : processed.state;
+    const gated: LiveGate = { ...gate, ...(useProcessed ? { processed: processed.window, modelRequired: false,
+      execution: processed.window, n: processed.window.n, pf: processed.window.pf, source: processed.window.source } : {}),
+      real: real.window, realCash: realCash.window, realLastN: realN, realState: real.state,
+      realBasis: real.window.source === "verified-venue" ? "verified-venue-return" : "paper-effective-return", ok: initialOk && real.ok,
+      state: initialOk ? real.state : useProcessed ? processedState : gate.state,
+      unknown: Math.max(useProcessed ? processed.window.unknown : (gate.unknown ?? 0), real.window.unknown) };
     const tp = this.tapeIndex().get(lane.cfg);
     const selected = this.paper.selected;
     if (selected && this.promotionSelectedMemo?.selected !== selected)
@@ -7475,7 +7543,7 @@ export class CoreRuntime {
       (isSignalInd(ind) ||
         (baseAllowsTape(tp, this.wf) &&
           (!this.wf.basePassed || configEval(tp, now, this.wf).ok) &&
-          configDirectionEval(tp, now, this.wf, lane.side).ok &&
+          (this.wf.gates.lastNOnly || configDirectionEval(tp, now, this.wf, lane.side).ok) &&
           engineContextValid(tp, now, this.wf, lane.sym, lane.side))) &&
       (!isSignalInd(ind) ||
         (signalValidationOk(tp, now, this.wf, lane.sym, lane.side) &&
@@ -7490,7 +7558,7 @@ export class CoreRuntime {
               tp.kind,
               tp.id,
             ))));
-    return eligible ? gate : { ...gate, ok: false, state: "ineligible" };
+    return eligible ? gated : { ...gated, ok: false, state: "ineligible" };
   }
   /**
    * Pooled per-config OWNED PAPER diagnostic (null when off). Strict native admission uses livePromotionGate's
@@ -8824,6 +8892,7 @@ export class CoreRuntime {
       {
         ...patch,
         gates: { ...DEFAULT_SETTINGS.gates, ...(patch.gates ?? {}) },
+        stages: mergeStageSettings(DEFAULT_SETTINGS.stages, patch.stages),
         tactics: { ...DEFAULT_SETTINGS.tactics, ...(patch.tactics ?? {}) },
         focus: patch.focus ?? [],
       },
@@ -8850,7 +8919,13 @@ export class CoreRuntime {
       ? { ...p.settings.grid, ...settings.grid,
           lowRange: mergeGridSettings(mergeGridSettings(DEFAULT_SETTINGS.grid, p.settings.grid), settings.grid).lowRange }
       : settings.grid;
-    const merged = presetSettings({ ...p.settings, ...settings, ...(gridPatch ? { grid: gridPatch } : {}) });
+    const stagePatch = settings.stages !== undefined
+      ? mergeStageSettings(mergeStageSettings(DEFAULT_SETTINGS.stages, p.settings.stages), settings.stages) : p.settings.stages;
+    const merged = presetSettings({ ...p.settings, ...settings, ...(gridPatch ? { grid: gridPatch } : {}),
+      ...(stagePatch ? { stages: stagePatch } : {}) });
+    checkStageChainSettings(mergeStageSettings(DEFAULT_SETTINGS.stages, merged.stages));
+    const stageEdited = settings.stages !== undefined && !isDeepStrictEqual(
+      mergeStageSettings(DEFAULT_SETTINGS.stages, p.settings.stages), mergeStageSettings(DEFAULT_SETTINGS.stages, merged.stages));
     const g = merged.grid;
     if (g) {
       // Presets do not carry cost and are applied on the current desk, so
@@ -8873,6 +8948,8 @@ export class CoreRuntime {
       wf: { ...p.wf, ...sanitizeWf(wf as never) },
       metrics: {
         ...p.metrics,
+        ...(stageEdited ? { pf: null, gp: undefined, gl: undefined, pfBasis: "unavailable" as const,
+          noLoss: null, pfConvention: "unavailable" as const } : {}),
         source: `${p.metrics.source} — settings edited since; run a backtest for current results`,
       },
     };
@@ -9327,7 +9404,7 @@ export class CoreRuntime {
     crowdSeats?: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number }>,
   ): string | null {
     const hk = Math.floor(op.entryT / H);
-    if (this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
+    if (!this.wf.gates?.lastNOnly && this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
     // (coordination reads only the entry's own symbol: the whole book filtered per candidate was ~340 MB of garbage in
     // 5 min on x02, 8 Oct allocation profile)
     const at = open.filter((x) => x.sym === op.sym && x.entryT <= op.entryT && !x.stopHit);
@@ -9346,9 +9423,10 @@ export class CoreRuntime {
       }
     }
     // confirmation as in the simulation: an engine candidate (taken or not) open at the entry, not only a position
-    const coordWhy = coordBlock(this.wf.coord, op, hourNet, at, confirmPool);
+    const coord = this.wf.gates?.lastNOnly && this.wf.coord ? { ...this.wf.coord, hourLock: 0, cooldown: "off" as const } : this.wf.coord;
+    const coordWhy = coordBlock(coord, op, hourNet, at, confirmPool);
     // a hedge-only signal trades while the book is losing (this or the previous hour), without confirmation
-    const hedging = this.isHedgeEntry(op);
+    const hedging = !this.wf.gates?.lastNOnly && this.isHedgeEntry(op);
     if (hedging) {
       const losing =
         (!this.wf.coord?.hedgePrevOnly && (hourNet.get(hk) ?? 0) < 0) ||
@@ -9364,7 +9442,7 @@ export class CoreRuntime {
     const s2Key = this.wf.coord?.s2Side ? `${op.sym}|${op.side > 0 ? 1 : -1}` : op.sym;
     if (s2End?.paused.includes(s2Key)) return "s2Window";
     const sg = this.wf.signalSourceGate;
-    if (sg?.enabled && sigCfg(op.cfg) && !isHistoricExitConfig(op.cfg)) {
+    if (!this.wf.gates?.lastNOnly && sg?.enabled && sigCfg(op.cfg) && !isHistoricExitConfig(op.cfg)) {
       const src = signalSourceOf(op.cfg.split("|")[1] ?? "");
       if (sourceUnstable(srcClosed.get(src), op.entryT, sg)) return "sourceUnstable";
     }
@@ -9701,8 +9779,25 @@ export class CoreRuntime {
     const releases = [...provisionalHeld].flatMap((key) => {
       const p = prevByKey.get(key)!;
       const close = heldCloseOf(p);
-      return close ? [{ key, p, at: close.exitT }] : [];
+      return close ? [{ key, p, close, at: close.exitT }] : [];
     }).sort((a, b) => a.at - b.at);
+    const ownedNotionalOf = (p: PaperBook["positions"][number], x: Trade): number | null => {
+      const allocation = this.paperOwnedAllocations?.get(orderKey(p));
+      const sameShare = typeof x.vol === "number" && typeof p.vol === "number" &&
+        Math.abs(x.vol - p.vol) <= 1e-9 * Math.max(1, p.vol);
+      const notional = sameShare && allocation && typeof p.vol === "number" && p.vol <= allocation.vol + 1e-12
+        ? allocation.unitUsd * p.vol : NaN;
+      return Number.isFinite(notional) && notional > 1e-9 ? notional : null;
+    };
+    const releasedRows = new Map<string, OwnedPaperRow[]>();
+    for (const { p, close } of this.wf.gates?.lastNOnly ? releases : []) {
+      const key = executionRecordKey(p.cfg, p.sym, p.side), rows = releasedRows.get(key) ?? [];
+      const unit = unitReturn(close);
+      rows.push({ cfg: p.cfg, sym: p.sym, side: p.side, entry_t: p.entryT, exit_t: close.exitT,
+        unit_r: Number.isFinite(unit) ? unit : null, owned_notional_usd: ownedNotionalOf(p, close),
+        held_at: p.heldAt ?? null, held_px: p.heldPx ?? null, entry: close.entry, exit: close.exit, vol: close.vol ?? 1 });
+      releasedRows.set(key, rows);
+    }
     yield 0;
     // Block sources (overall / symbol / direction / indication) judge executed positions closed before each entry
     const booksAt = fast
@@ -9733,14 +9828,16 @@ export class CoreRuntime {
     const lvSince = this.liveSince();
     const lvNow = Date.now();
     const lvMemo = new Map<string, LiveGate>();
-    // Paper keeps learning. Its deactivation record is the settled AFTER-Base execution simulation, never the
-    // independent raw candidate tape. Strict funded proof is checked separately at native live admission.
+    // In Last-N-only mode the continuous paper gate follows the book's own handled closes. The legacy mode
+    // retains its modeled post-Base record until the new policy has completed integration and migration.
     // Forward deactivation must follow the exact config, symbol and direction even when legacy pooled proof is selected.
     const lvBySide = true;
     // Both independent sides are included in the diagnostic count, including insufficient ones.
     const lvSides = lvBySide ? LV_SIDES_APART : LV_SIDES_POOLED;
     const lvModel = this.modeledGateRecords(lvBySide) ?? new Map<string, LiveRecord>();
     const lvExact = this.modeledExecutionRecords()?.records ?? new Map<string, LiveRecord>();
+    const lvOwned = this.wf.gates?.lastNOnly === true;
+    const lvOwnedIdentities = lvOwned ? ownedPromotionIdentities(this.db) : undefined;
     // judged as of `at`: a paper entry as of its entry time (the closes after it are not known when it enters — with
     // now, up to a step of later closes decided it), the entries planner as of now
     const lvOf = (x: ConfigTape, at = lvNow, side?: 1 | -1, sym?: string, cache = true): LiveGate => {
@@ -9751,10 +9848,15 @@ export class CoreRuntime {
       // A Live floor can tighten the matching stage floor, never relax it.
       const minPf = liveMinPfOf(this.settings, x.protect.tag, x.ind, x.kind);
       if (!g) {
-        const model = lvExact.get(executionRecordKey(x.id, sym, side));
+        const key = executionRecordKey(x.id, sym, side);
+        const pending = releasedRows.get(key) ?? [];
+        const model = lvOwned
+          ? (lvOwnedIdentities!.ambiguous || lvOwnedIdentities!.keys.has(key) || pending.length
+              ? ownedPromotionRecord(this.db, { cfg: x.id, sym, side }, lvN, at, "effective", pending, true) : undefined)
+          : lvExact.get(key);
         g = {
-          ...(model ? liveGate(model, lvSince, at, lvN, minPf) : { ok: true, n: 0, pf: null }),
-          source: "post-base-accepted",
+          ...(model ? liveGate(model, lvOwned ? 0 : lvSince, at, lvN, minPf) : { ok: true, n: 0, pf: null }),
+          source: lvOwned ? "owned-paper" : "post-base-accepted",
         };
         if (cache) lvMemo.set(mk, g);
       }
@@ -10135,21 +10237,7 @@ export class CoreRuntime {
           x
             ? [p.cfg, p.sym, p.side, p.entryT, x.exitT, x.r, x.vol ?? 1, x.reason ?? "close", p.heldAt ?? null, now, p.heldPx ?? null, x.entry, x.exit, x.mult ?? 1,
                 Number.isFinite(unitReturn(x)) ? unitReturn(x) : null,
-                (() => {
-                  const allocation = this.paperOwnedAllocations?.get(orderKey(p));
-                  const sameShare =
-                    typeof x.vol === "number" &&
-                    typeof p.vol === "number" &&
-                    Math.abs(x.vol - p.vol) <= 1e-9 * Math.max(1, p.vol);
-                  const notional =
-                    sameShare &&
-                    allocation &&
-                    typeof p.vol === "number" &&
-                    p.vol <= allocation.vol + 1e-12
-                      ? allocation.unitUsd * p.vol
-                      : NaN;
-                  return Number.isFinite(notional) && notional > 1e-9 ? notional : null;
-                })(),
+                ownedNotionalOf(p, x),
               ]
             : // left the book without a close on record (retired, dropped from its tape): its last mark, flagged
               [p.cfg, p.sym, p.side, p.entryT, now, (p.mtm ?? 0) * (p.vol ?? 1), p.vol ?? 1, "dropped", p.heldAt ?? null, now, p.heldPx ?? null, p.entry, null, positionMult(p), null, null],
@@ -10317,9 +10405,9 @@ export class CoreRuntime {
       this.status.liveValidation = {
         lastN: lvN,
         minPf: lvMinPf,
-        since: lvSince,
+        since: lvOwned ? 0 : lvSince,
         at: lvNow,
-        basis: "post-base-accepted",
+        basis: lvOwned ? "owned-paper" : "post-base-accepted",
         evaluated,
         unjudged,
         unknown,
@@ -12368,6 +12456,7 @@ function mergeSettings(
     tfs: [...(base.tfs ?? DEFAULT_SETTINGS.tfs)],
     tfDays: { ...DEFAULT_SETTINGS.tfDays, ...(base.tfDays ?? {}) },
     gates: { ...base.gates },
+    stages: mergeStageSettings(base.stages),
     live: { ...base.live },
     toggles: { ...base.toggles },
     tactics: { ...base.tactics },
@@ -12393,6 +12482,7 @@ function mergeSettings(
       ...out,
       ...p,
       gates: { ...out.gates, ...(p.gates ?? {}) },
+      stages: mergeStageSettings(out.stages, p.stages),
       exitStrategy: { ...out.exitStrategy, ...(p.exitStrategy ?? {}) },
       live: { ...out.live, ...(p.live ?? {}) },
       toggles: { ...out.toggles, ...(p.toggles ?? {}) },

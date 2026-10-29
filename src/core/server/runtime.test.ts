@@ -273,8 +273,7 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       "no plain tapes",
     );
     // the Main share reaches every lane that has Base passers
-    // Full-history PF alone is not the Base pass: range applicability, exact Last-N evidence and
-    // the independent set-construction floor also apply. Compare the actual qualified cohort.
+    // Judge actual Base-qualified windows/ranges, not just the pooled full-history PF diagnostic.
     const passedLanes = new Set(basePass(rt.pipeline!.s1.filter((r) => r.bot !== "exit"),
       rt.settings).qualified.map((r) => laneLabel(r.ind)));
     assert.ok(passedLanes.size > 0, "the fixture has qualified Base lanes to exercise");

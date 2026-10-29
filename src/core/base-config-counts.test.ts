@@ -17,6 +17,27 @@ const trades = (returns: readonly number[], offset = 0): TradeLike[] =>
   returns.map((r, i) => ({ r, entryT: offset + i * 10, exitT: offset + i * 10 + 5 }));
 
 describe("full Base configured-cell counts", () => {
+  it("reports the complete recent Base sample rather than contradictory older returns in Last-N-only mode", () => {
+    for (const ind of ["ema-9-21@m15", "sig-ema-cross-s@m15"]) {
+      const count = new BaseConfigCounter(options({ cutT: 1000, signalLastN: 12,
+        gates: { minPf: 1.1, minTrades: 9, baseLastN: 12, lastNOnly: true } }));
+      const withContext = (xs: TradeLike[]) => xs.map(x => ({ ...x, sym: "A", side: 1 }));
+      count.record("follow", ind, P, "normal", withContext(trades([...Array(20).fill(0.1), ...Array(12).fill(-0.01)])));
+      count.record("follow", ind, { ...P, tp: .02 }, "normal", withContext(trades([...Array(20).fill(-0.1), ...Array(12).fill(0.01)])));
+      count.record("follow", ind, { ...P, tp: .03 }, "normal", withContext(trades(Array(11).fill(0.01))));
+      const row = count.rows()[0];
+      assert.equal(row.evaluated, 3);
+      assert.equal(row.pfPassed, 1, `${ind}: only the full winning recent sample clears the PF floor`);
+      assert.equal(row.passed, 1, `${ind}: insufficient evidence does not qualify`);
+    }
+  });
+  it("counts a Last-N-only Signal context without reapplying the disabled full-history gate", () => {
+    const count = new BaseConfigCounter(options({ cutT: 1000, signalLastN: 12,
+      gates: { minPf: 1.1, minTrades: 9, baseLastN: 12, lastNOnly: true } }));
+    const own = trades(Array(12).fill(0.01)).map(x => ({ ...x, sym: "A", side: 1 }));
+    count.record("follow", "sig-ema-cross-s@m15", P, "normal", own);
+    assert.equal(count.rows()[0].passed, 1);
+  });
   it("uses each cell's recent Base closes without borrowing an older winning history", () => {
     const count = new BaseConfigCounter(options({ cutT: 1000,
       gates: { minPf: 1.1, minTrades: 2, maxDdr: 0, baseLastN: 4, lastNFloor: 2 } }));

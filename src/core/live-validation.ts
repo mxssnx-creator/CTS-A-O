@@ -23,7 +23,18 @@ export interface LiveGate {
   /** A strict promotion verdict never falls back to an unjudged group or candidate tape. */
   required?: true;
   model?: PromotionWindow;
+  /** Whether the modeled-only window is an admission gate or a separately displayed diagnostic. */
+  modelRequired?: boolean;
+  /** Exact handled-return validation window in Last-N-only mode. */
+  processed?: PromotionWindow;
   execution?: PromotionWindow;
+  /** Real gate's own cost-adjusted execution return; paper prices are never attributed venue fills. */
+  real?: PromotionWindow;
+  /** Separately labeled dollar-weighted reconciliation; never used to decide the return-PF gate. */
+  realCash?: PromotionWindow;
+  realLastN?: number;
+  realState?: RealExecutionState;
+  realBasis?: "paper-effective-return" | "verified-venue-return";
   state?: PromotionState;
   minN?: number;
   minPf?: number;
@@ -57,14 +68,15 @@ export interface LivePromotionStatus {
 }
 export function promotionStatus(lanes: LivePromotionStatus["lanes"], at = Date.now()): LivePromotionStatus {
   return { at, evidenceBasis: "settled-post-base-and-owned-execution", qualified: lanes.filter((l) => l.ok).length,
-    insufficient: lanes.filter((l) => l.state === "model-insufficient" || l.state === "execution-insufficient").length,
+    insufficient: lanes.filter((l) => l.state === "model-insufficient" || l.state === "execution-insufficient" || l.state === "real-insufficient").length,
     unknown: lanes.filter((l) => (l.unknown ?? 0) > 0).length,
-    failed: lanes.filter((l) => l.state === "model-failed" || l.state === "execution-failed").length,
+    failed: lanes.filter((l) => l.state === "model-failed" || l.state === "execution-failed" || l.state === "real-failed").length,
     ineligible: lanes.filter((l) => l.state === "ineligible").length,
     verifiedVenue: lanes.filter((l) => l.execution?.source === "verified-venue").length,
     nominalAttribution: "unverified-not-promotion-proof", lanes: lanes.slice(0, 200) };
 }
-export type PromotionState = "qualified" | "ineligible" | "model-insufficient" | "execution-insufficient" | "unknown" | "model-failed" | "execution-failed";
+export type PromotionState = "qualified" | "ineligible" | "model-insufficient" | "execution-insufficient" | "real-insufficient" | "unknown" | "model-failed" | "execution-failed" | "real-failed";
+export type RealExecutionState = "qualified" | "real-insufficient" | "unknown" | "real-failed";
 type ReturnRecord = Pick<ConfigTape, "exitT" | "gp" | "gl"> & { unknown?: Uint32Array };
 const validRecordTimes = new WeakMap<object, { times: Float64Array; valid: boolean }>();
 function recordTimesOk(record: ReturnRecord): boolean {
@@ -134,6 +146,19 @@ export function promotionGate(
     pf: m.pf !== null && e.pf !== null ? Math.min(m.pf, e.pf) : null,
     unknown: m.unknown + e.unknown, source: e.source, model: m, execution: e, state,
     minN: n, minPf, evidenceBasis: "settled-post-base-and-owned-execution", ...(referenceIgnored ? { referenceIgnored } : {}) };
+}
+
+/** A separate chronological gate for owned executable-price returns, with no time-window heuristic. */
+export function realExecutionGate(record: ReturnRecord | undefined, now: number, n: number, minPf: number,
+  verifiedExecution?: PromotionWindow): {
+  ok: boolean; state: RealExecutionState; window: PromotionWindow;
+} {
+  const valid = Number.isInteger(n) && n > 0 && Number.isFinite(now) && now >= 0 && Number.isFinite(minPf) && minPf >= 0;
+  const window = promotionGate(undefined, record, 0, now, n, minPf, verifiedExecution).execution!;
+  if (!valid) window.unknown = Math.max(window.unknown, 1);
+  const state: RealExecutionState = window.unknown ? "unknown" : window.pf === null ? "real-insufficient"
+    : window.pf <= 1 || window.pf < minPf ? "real-failed" : "qualified";
+  return { ok: state === "qualified", state, window };
 }
 
 /** First index with exitT >= t (exitT ascending). */
@@ -488,9 +513,9 @@ export interface LiveValidationStatus {
   lastN: number;
   minPf: number;
   since: number;
-  /** Latest snapshot time; these are accepted post-Base modeled outcomes, not venue fills. */
+  /** Latest snapshot time; paper and accepted modeled outcomes are distinct from venue fills. */
   at: number;
-  basis: "post-base-accepted";
+  basis: "post-base-accepted" | "owned-paper";
   /** Selected config × symbol × direction contexts, including unjudged and unknown contexts. */
   evaluated: number;
   /** Fewer than N known own closes: unproven paper warm-up. */

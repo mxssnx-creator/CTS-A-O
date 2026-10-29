@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { coreSettings, presetAction } from "./api-conn";
 import { MAX_DDT_CHOICES, MIN_PF_CHOICES, SYMBOL_RANK_CHOICES } from "@/core/config";
+import { DEFAULT_STAGE_CHAIN, mergeStageSettings } from "@/core/sim/stage-settings";
 import { INDICATION_KINDS } from "@/core/domain/types";
 import { indicationKindLabel } from "./indication-ui";
 import { ErrorNote, Modal, Pill, Switch } from "./ui";
@@ -14,6 +15,7 @@ import {
   Num,
   ProtectRanges,
   SignalsSettings,
+  StageWindowsSettings,
   Timeframes,
 } from "./pages/settings";
 
@@ -86,6 +88,7 @@ function effective(engine: Any, p: Any) {
       v && typeof v === "object" && !Array.isArray(v) ? { ...(engine[k] ?? {}), ...(v as Any) } : v;
   // a preset without its own symbol selection shows the engine's current one (and keeps it on apply)
   merged.symbols ??= 1;
+  merged.stages = mergeStageSettings(DEFAULT_STAGE_CHAIN, ps.stages);
   merged.symbolRank ??= "volatility1h";
   for (const k of NOT_IN_PRESET) delete merged[k];
   return merged;
@@ -136,6 +139,7 @@ export function PresetSettingsDialog(props: {
         tfs: s.tfs,
         tfDays: s.tfDays,
         gates: s.gates,
+        stages: s.stages,
         toggles: s.toggles,
         tactics: s.tactics,
         disabledKinds: s.disabledKinds ?? [],
@@ -287,6 +291,9 @@ export function PresetSettingsDialog(props: {
           </Section>
           <Section title="Signals">
             <SignalsSettings signals={s.signals} set={set} grid={s.grid} />
+          </Section>
+          <Section title="Stage validation windows">
+            <StageWindowsSettings stages={s.stages} set={set} />
           </Section>
           <Section title="Gates">
             <div className="v2-grid v2-cols-4">

@@ -202,6 +202,7 @@ test("regression: a planted micro edge passes Base at Micro's own cell and build
     undefined,
     undefined,
     40,
+    undefined,
     gates0.baseRangeLastN,
   )!;
   assert.ok(ranges.mc, "judged at Micro's own cell");

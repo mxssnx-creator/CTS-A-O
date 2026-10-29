@@ -41,6 +41,8 @@ export interface SignalHistValidation {
   minTrades: number;
   maxDdr?: number;
   lastN?: number;
+  /** Qualify on a complete own-context recent sample, independently of calendar windows. */
+  lastNOnly?: boolean;
   /** Coordinator historic configs qualify independently against each enabled exit range's stage PF floor. */
   rangeMinPf?: Partial<Record<"sh" | "gn" | "lg", number>>;
   /** Runtime coordinators qualify in Signals only; legacy studies retain explicit range gates. */
@@ -66,7 +68,7 @@ export function signalHistPassingRanges(
 /** Signals retain the configured stage PF floor; the lower engine Wide prefilter cannot relax it. */
 export function signalHistValidationOf(
   cost: number,
-  gates: Pick<Gates, "minPf" | "rangeMinPf" | "baseSetsMinPf" | "minTrades" | "maxDdr">,
+  gates: Pick<Gates, "minPf" | "rangeMinPf" | "baseSetsMinPf" | "minTrades" | "maxDdr" | "lastNOnly">,
   lastN = SIGNAL_VALID_LAST_N,
 ): SignalHistValidation {
   return {
@@ -75,6 +77,7 @@ export function signalHistValidationOf(
     lastN,
     minTrades: gates.minTrades,
     maxDdr: gates.maxDdr,
+    ...(gates.lastNOnly ? { lastNOnly: true } : {}),
   };
 }
 
@@ -378,7 +381,7 @@ export function* signalHistProtectsGen(
     // narrow it further; otherwise live research begins at the earliest available candle for this lane.
     const fromT = Math.max(
       u.evaluationFromT ?? earliest,
-      h.lookbackH > 0 ? cutT - h.lookbackH * 3_600_000 : -Infinity,
+      !validation?.lastNOnly && h.lookbackH > 0 ? cutT - h.lookbackH * 3_600_000 : -Infinity,
     );
     if (!Number.isFinite(fromT) || fromT >= cutT) {
       if (diagnostics) diagnostics.insufficientEntries++;
@@ -456,24 +459,29 @@ export function* signalHistProtectsGen(
             // hist.minN already validated the pooled mature excursions used to fit this source's quantiles.
             // Each exact symbol/direction must satisfy its configured close minimum, without borrowing a
             // sibling's returns or inheriting the separate pooled fitting count as an extra own-context gate.
-            const sampled = contexts.filter(({ history, last, required }) => history.n >= validation.minTrades && last.n >= required);
+            const sampled = contexts.filter(({ history, last, required }) => validation.lastNOnly
+              ? Number.isSafeInteger(required) && required >= 9 && last.n === required && last.n >= validation.minTrades
+              : history.n >= validation.minTrades && last.n >= required);
             if (!sampled.length) {
               if (diagnostics) diagnostics.insufficientTrades++;
               continue;
             }
             const minPf = Math.max(SIGNAL_MIN_PF, validation.minPf);
-            const profitable = sampled.filter(({ history, last }) => history.net > 0 && history.pf >= minPf && last.net > 0 && last.pf >= minPf);
+            const profitable = sampled.filter(({ history, last }) =>
+              last.net > 0 && Number.isFinite(last.pf) && last.pf >= minPf &&
+              (validation.lastNOnly || (history.net > 0 && history.pf >= minPf)));
             if (!profitable.length) {
               if (diagnostics) diagnostics.pfRejected++;
               continue;
             }
-            const passing = profitable.filter(({ history, last }) => !ddrFails(history.mdd, history.net, validation.maxDdr) && !ddrFails(last.mdd, last.net, validation.maxDdr));
+            const passing = validation.lastNOnly ? profitable : profitable.filter(({ history, last }) =>
+              !ddrFails(history.mdd, history.net, validation.maxDdr) && !ddrFails(last.mdd, last.net, validation.maxDdr));
             if (!passing.length) {
               if (diagnostics) diagnostics.ddrRejected++;
               continue;
             }
             const passingRanges = [...new Set(passing.flatMap(({ history, last }) => signalHistPassingRanges(
-              Math.min(history.pf, last.pf), minPf,
+              validation.lastNOnly ? last.pf : Math.min(history.pf, last.pf), minPf,
               isSignalCoordinationInd(ind) && !validation.coordinationSignalRange ? (validation.rangeMinPf ?? {}) : undefined,
             )))];
             if (!passingRanges.length) {

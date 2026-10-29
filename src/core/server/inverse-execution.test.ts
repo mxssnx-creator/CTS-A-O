@@ -8,8 +8,7 @@ import { CoreDb } from "./db.server.ts";
 for (const symbols of [12, 20]) test(`Inverse preserves ${symbols}-symbol long/short identities through native open, stop updates and close`, async () => {
   const prev = process.env.CTS_CORE_LIVE;
   process.env.CTS_CORE_LIVE = "1";
-  // Each scenario owns its clock and retry state. Resetting a wall-clock mock after a +61s
-  // step must not leave a future account backoff in the next independent exchange fixture.
+  // Independent simulated venues cannot inherit account retry state or a backwards mocked clock.
   resetLiveBackoff();
   mock.timers.enable({ apis: ["Date"], now: PINNED_END + symbols * 3_600_000 });
   const db = new CoreDb(":memory:");
