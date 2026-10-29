@@ -1,3 +1,4 @@
+import { migrateMinuteCaps } from "./minute-cap-migration.server.ts";
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
 import { isHistoricExitConfig } from "../exit-scope.ts";
 import { lstatSync } from "node:fs";
@@ -1219,6 +1220,7 @@ export class CoreRuntime {
     migrateMicroMinimalBase30(db);
     migrateBasePf11(db);
     migrateRangePfFloors(db);
+    migrateMinuteCaps(db);
     migrateExpandedSignalDefaults(db);
     migrateNeutralVolumeRatios(db);
     migrateDcaTwoSteps(db);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildStatistics, liveTrades, minuteCloseAtOrBefore, presetSeries, subTypeOf, timeline, typeOf, withWithout, type StatTrade, type LedgerRow } from "./statistics.ts";
 import { statsOf, unitStatsOf } from "./metrics/stats.ts";
+import { configId } from "./pipeline/pipeline.ts";
 
 const H = 3_600_000;
 const T0 = Date.UTC(2026, 8, 30, 0);
@@ -15,6 +16,14 @@ const tr = (o: Partial<StatTrade>): StatTrade => ({
   r: 0.01,
   reason: "tp",
   ...o,
+});
+
+test("statistics preserve the minute ceiling when the indication hold rounds to zero bars", () => {
+  const cfg = configId("follow", "ema-9-21@m30", { tp: .005, sl: .01, trail: 0, hold: 0, maxHoldMin: 15 });
+  const report = buildStatistics({ source: "paper", trades: [tr({ cfg })], startT: T0, endT: T0 + 2 * H,
+    balance: 100, unit: () => 10, price: () => null, cost: .0015, leverage: 1, minActiveLevel: 2 });
+  assert.equal(report.configs[0].maxHoldMin, 15);
+  assert.equal(report.configs[0].holdBars, 0);
 });
 
 test("timeline: balance steps at each close, equity marks open orders, margin and the open book follow", () => {

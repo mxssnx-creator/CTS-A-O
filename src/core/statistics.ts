@@ -562,6 +562,8 @@ export interface ConfigRow extends GroupRow {
   sl: number;
   trail: number;
   holdBars: number;
+  /** Explicit wall-clock ceiling, independent of the indication's bar length. */
+  maxHoldMin?: number;
   syms: number;
 }
 
@@ -725,6 +727,7 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       sl: p?.protect.sl ?? 0,
       trail: p?.protect.trail ?? 0,
       holdBars: p?.protect.hold ?? 0,
+      ...(p?.protect.maxHoldMin !== undefined ? { maxHoldMin: p.protect.maxHoldMin } : {}),
       syms: new Set(xs.map((x) => x.sym)).size,
     };
   });
