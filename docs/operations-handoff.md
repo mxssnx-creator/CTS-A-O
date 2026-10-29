@@ -1,3 +1,38 @@
+## 2026-10-29 — Saved final report and tested ledger checkpoint
+
+The ledger regression fix is pushed at aacb8f87dd584fa2d0066502b8613ab578fe2c69 (local equivalent
+bc32939511498979e38303ce059de490a5bfecf2, exact tree8b99dab96d803048156ee52d58c69a58fd5f8e44).
+All48 focused tests, local production build, typecheck and scoped lint pass. Both complete workflows pass
+exact sourceaacb8f87dd584fa2d0066502b8613ab578fe2c69: Exact Signal40818563184 and Exit verification40818563179,
+including quality/browser, all four core partitions, slow-runtime and the final verify job. The core inventory
+has4760 tests:4758 pass,0 fail,2 skipped; both separately scheduled long runtime tests pass. The two core skips
+are the pre-existing mixed-operation storm and background prior-days preset backtest tests; they are not claimed
+as covered. Quality's eight skips concern absent template app-env/brand-skill fixtures. Quality reports
+777 passes/8 skips among785 script/browser checks and87 app/component passes; repository lint retains47 warnings
+and0 errors, while the scoped ledger/report lint has no warnings/errors. These CI checks are functional evidence,
+not venue fills or profitable trading proof. Draft #219 stays disabled and unmerged as a full-system fix.
+Main was rechecked against2cdae8fd747fb4a817bfdc01a773a029652b09fc and is unchanged after merged #230/#231.
+
+The HTML report replacement succeeded as version1 with the same stable file identity:
+https://chatgpt.com/library?file_id=libfile_594f2a56ae788191b7d24e6f1a4a958d&account_id=personal
+Its9736671 bytes have SHA256 ad7fe60871749d11d227de0b66826cf0c2136794ec356f3355d00ba0f7df0a14.
+The new complete Main15/25 sensitivity archive also saved successfully:
+https://chatgpt.com/library?file_id=libfile_f971b0bbcfd881919d17fc8ec8606de4&account_id=personal
+Its339858110 bytes have SHA256 ee11f88b92842d4a28af3638ba08324aeb086b005f51ba4d098742e1e5eec5a0.
+It retains all six accepted study directories, full raw decisions, protocols, independent audits/traces,
+report QA/manifest and the before/after regression logs. Financial study source remains4cbee1a4ea11a0d800c593f53aacd11f472006a1;
+the later ledger fix is identified separately. Rejected first-attempt Micro metadata is not included among
+the accepted six studies. Original grid and paired-hold archives remain unchanged and linked below.
+
+The final report was visually inspected on desktop/mobile and passes240 original selections/1440 listings
+and48 sensitivity selections/288 listings with no console errors or page overflow. The reference20-symbol
+8–9 October12:00UTC24h/24h-prior Micro15m Base20+15/Main15+15/Real15 cohort is unchanged: Base57/4800
+(1.1875%), historical PF1.4124757452; Main PF0.5702814980, positions669/666/3 and orders5417/5412/5
+opened/closed/held. Real438/5417(8.08566%); Active positions28/28/0, orders31/31/0 and modeled PF0.4045290210.
+Venue PF is unavailable. The final pipeline is not established profitable; missing production adapters and
+the actual deployed CTS-A-O target/selected connection remain blockers. No production instance or venue order
+was manually changed. Do not mistake these isolated research results for all strategy families or funded fills.
+
 ## 2026-10-29 — Processed-parent denominator and retry identity regressions
 
 The disabled draft StageChainBook had two reproducible ledger defects. An intent without its exact accepted
