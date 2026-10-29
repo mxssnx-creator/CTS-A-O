@@ -11391,7 +11391,7 @@ function migratePfDefaults(db: CoreDb, policy: string, oldDefaults: CoreSettings
     if (p.metrics) {
       const { gp: _gp, gl: _gl, ...metrics } = p.metrics;
       p.metrics = { ...metrics, pf: null, pfBasis: "unavailable", noLoss: null, pfConvention: "unavailable",
-        source: `${metrics.source ?? "Previous result"} — Base PF defaults changed; re-evaluate for current results` };
+        source: `${metrics.source ?? "Previous result"} — ${policy === "basePf11" ? "Base PF defaults" : "range PF evaluation floors"} changed; re-evaluate for current results` };
       changed = true;
     }
   }

@@ -360,7 +360,7 @@ describe("first-class Micro", () => {
         rangeAppliesTo(ind, tag, { enabled: () => true, microOwnInds: "minimal" }),
         true,
       );
-    assert.equal(minPfOf({ minPf: 1.05 }, "mc", ind), 1.1);
+    assert.equal(minPfOf({ minPf: 1.05 }, "mc", ind), 1.05);
     assert.equal(minPfOf({ minPf: 1.5 }, "mc", ind), 1.5);
     const protects: Protect[] = ["mc", "mn", "sh"].flatMap((tag) =>
       [0, 0.003].map((trail) => ({
@@ -481,6 +481,6 @@ it("mirrors each complete Micro technique before entry with its own net-return q
       [...normal].map((x) => (x === 0 ? 0 : -x)),
       inverse.id,
     );
-    assert.equal(minPfOf({ minPf: 1.05 }, "mc", inverse.id), 1.1);
+    assert.equal(minPfOf({ minPf: 1.05 }, "mc", inverse.id), 1.05);
   }
 });

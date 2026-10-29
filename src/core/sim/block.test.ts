@@ -1004,6 +1004,8 @@ describe("AutoBlockBook (windowAuto)", () => {
         ...defaultWalkForward(DEFAULT_SETTINGS),
         toggles: { ...DEFAULT_TOGGLES, block: true, blockActive: false },
         block: alt,
+        // This replay-stamp fixture's PF is1.2; keep its original qualification policy explicit.
+        gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.1 },
         symGate: undefined,
         coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
         simH: 12,

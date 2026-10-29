@@ -900,9 +900,14 @@ describe("session qualification matches the runtime's full indication rules", ()
       assert.equal(row.minPf, 1.1);
       assert.equal(row.minPfMax, 1.1);
       assert.deepEqual(row.minPfByInd, { [tactic]: 1.1, [other]: 1.1 });
-      // Micro still has a lower ordinary floor than Tactic, so both insertion orders exercise mixed minima.
+      const micro = {};
+      for (const ind of inds) recordSessionMinimum(micro, gates, "mc", ind);
+      assert.equal(micro.minPf, 1.05);
+      assert.equal(micro.minPfMax, 1.05);
+      assert.deepEqual(micro.minPfByInd, { [tactic]: 1.05, [other]: 1.05 });
+      // Wide retains the independent Tactic floor; both insertion orders still exercise mixed minima.
       const mixed = {};
-      for (const ind of inds) recordSessionMinimum(mixed, gates, "mc", ind);
+      for (const ind of inds) recordSessionMinimum(mixed, gates, "", ind);
       assert.equal(mixed.minPf, 1.05);
       assert.equal(mixed.minPfMax, 1.1);
       assert.deepEqual(mixed.minPfByInd, { [tactic]: 1.1, [other]: 1.05 });

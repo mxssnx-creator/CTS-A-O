@@ -236,7 +236,8 @@ describe("last-N", () => {
     // The first close in the later winning block lands exactly at 26 h: four prior losses
     // plus this larger win pass N=5, while the same sample just before the close does not.
     xs[25] = tr(25, 0.06);
-    const gates = { ...DEFAULT_GATES, maxDdtH: 1e9, maxDdr: 0 };
+    // Freeze this clock-boundary fixture's original PF policy; factory floors have a separate regression.
+    const gates = { ...DEFAULT_GATES, minPf: 1.1, maxDdtH: 1e9, maxDdr: 0 };
     const historical = optimizeLastN("x", xs, { gates, grid: [5, 10], nowT: 5 * H });
     assert.equal(historical.bestN, 5, "the optimizer still selects its in-sample N");
     assert.equal(historical.gateOpen, false, "the first five completed closes are losses");
