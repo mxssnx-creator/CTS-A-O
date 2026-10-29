@@ -1,3 +1,33 @@
+## 2026-10-29 — Validated statistics headline
+
+Overview leads with PF from passing historical validation windows and passed/evaluated percentage. Statistics
+exposes that same current selection snapshot in a separate panel, including its evaluation clock. Subsequent
+model, owned paper and venue execution PF retain all admitted orders and their losses; current invalidation
+does not erase prior execution. The API never substitutes an execution aggregate for missing validation.
+No-loss and empty validation snapshots remain explicitly distinct. Shared UI formatting rejects invalid counts.
+This reporting release does not activate the unfinished stage-chain draft or certify forward profitability.
+
+The isolated 20-symbol Low-Range Normal/Trailing 24h model test (8 October 12:00 to 9 October 12:00 UTC,
+14:00 to 14:00 Vienna, 24h prehistory) independently audited 14,400 contexts and 240 cases. Base primary
+20/30/40/50 and secondary 5/10/15/20/25 were swept; Main primary 50 was retained with secondary 15/25,
+and Real used 15/25. Base 50+15, Main 50+15, Real 15 results at the initial checkpoint and later execution:
+
+| Range / hold | Base passed / evaluated | Historical PF | Later Main PF | Main positions O/C/H | Main orders O/C/H | Real passed / matched |
+| --- | --- | --- | --- | --- | --- | --- |
+| Micro / 15m | 2/4800 (0.041667%) | 1.146332 | 0.546209 | 191/190/1 | 697/696/1 | 0/697 |
+| Minimal / 30m | 2/4800 (0.041667%) | 1.353634 | 0.637442 | 197/194/3 | 802/798/4 | 0/802 |
+| Short / 60m | 0/4800 (0%) | unavailable | 0.679603 | 168/165/3 | 735/730/5 | 0/735 |
+
+New exact Base contexts can qualify later during the day; initial checkpoint counts are not all-day counts.
+Active positions/orders are 0/0/0 across the grid, so Active PF and venue-fill PF are unavailable. All 181,874
+matched Base/Main entries retain identical economics, and no qualified Main entry was silently lost. This
+isolated model has no cross-strategy Exit controls. In Micro Base20+15, 2515 timed exits have PF0.218788 and
+277 trailing exits PF0.061530; costs are charged once. These observations do not prove that a hold edit will
+improve Active results. A paired hold follow-up and the detailed heatmap are recorded in draft #219.
+
+The isolated release passed 50 reporting/admission checks and typecheck/scoped lint; exact full CI is recorded
+on its PR. No database, deployed instance, selected account or venue order was manually changed.
+
 ## 2026-10-29 — Ladder source admission and Axis cost guards
 
 DCA, DCA Active, Axis revert and Axis desk now accept the same optional causal entry-admission callback as

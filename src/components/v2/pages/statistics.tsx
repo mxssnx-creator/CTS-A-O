@@ -18,6 +18,7 @@ import {
   liveBalanceUnavailable,
 } from "../accounting";
 import { ArcShare, HeatGrid, MultiChart, SignedBars } from "../charts";
+import { validationCohortView } from "../validation-cohort";
 import {
   downloadFile,
   Empty,
@@ -495,11 +496,25 @@ export function StatisticsPage() {
       />
     </div>
   );
+  const validation = validationCohortView(d?.postBaseValidation);
+  const validationPanel = (
+    <Panel title="Current validated sets" sub="Passing historical validation windows only. Subsequent execution and exchange results remain in their own samples below.">
+        <div className="v2-grid v2-cols-3">
+          <Kpi label="Validated sets PF" value={validation.pfText} className={pfTone(validation.pf)}
+            sub="Return PF of passing windows; overlapping histories are not independent fills" />
+          <Kpi label="Validated percentage" value={fmt.frac(validation.fraction)}
+            sub={`${validation.counts} engine configs passed / evaluated`} />
+          <Kpi label="Validation snapshot" value={validation.at === null ? "Unavailable" : `${fmt.time(validation.at)} UTC`}
+            sub="Current selection snapshot; separate from the execution time filter" />
+        </div>
+      </Panel>
+  );
   if (!d) return <>{error ? <ErrorNote error={error} /> : <Empty>Loading…</Empty>}</>;
   if (!r)
     return (
       <>
         {controls}
+        {validationPanel}
         <Empty>{d.why ?? "No data yet"}</Empty>
       </>
     );
@@ -543,6 +558,7 @@ export function StatisticsPage() {
   return (
     <>
       <ErrorNote error={error} />
+      {validationPanel}
       <Panel
         title="Statistics"
         sub={`${d.conn ?? ""} · ${d.sourceLabel ?? r.source} · ${fmt.time(r.startT)} → ${fmt.time(r.endT)} UTC · USD after fees${d.feesModelled ? " (includes estimated fees; unknown net returns cannot qualify PF)" : ""} · PF neutral 1; net % per unit of notional${r.source === "live" ? ` · measured trading-fee return basis; funding in account history · account read ${fmt.ago(d.accountAt)}` : ""}${r.open?.positions ? ` · ${r.open.positions} own positions open (marked in the chart, not closes)` : ""}`}
