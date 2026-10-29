@@ -74,7 +74,10 @@ test("actual stopped runtime settings remain default-positive and retain full ex
   assert.ok(p.actualSettings.grid.micro.tp.length > 5);
   assert.ok(p.actualSettings.grid.micro.slOfTp.length > 10);
   assert.ok(p.positiveCoordWarnings.length > 0);
-  assert.ok(p.positiveCoordWarnings.every((x) => x.includes("Axis is off")));
+  assert.equal(p.actualSettings.gates.baseSetsMinPf, 1.1);
+  assert.ok(p.positiveCoordWarnings.every((x) => x.includes("Axis is off") ||
+    x.includes("Base builds a pair's sets only from PF 1.1")),
+    "retain the explicit warning about the newly requested Base prefilter; do not hide excluded samples");
   const { CoreRuntime } = await import("../src/core/server/runtime.server.ts");
   const { CoreDb } = await import("../src/core/server/db.server.ts");
   const rt = new CoreRuntime(

@@ -31,7 +31,7 @@ describe("setsPassTags: the Base pass the sets see", () => {
     assert.ok(setsPassTags(r, gates, applies, ALL).includes(""));
   });
 
-  it("a tagged Base cell uses its configured range minimum, not the PF 1 wide prefilter", () => {
+  it("a tagged Base cell uses its configured range minimum independently of the Wide floor", () => {
     const middle = { n: 200, pf: 1.15, net: 5, mdd: 1, baseLast: recent(1.15) };
     const r = {
       bot: "follow",
@@ -39,7 +39,10 @@ describe("setsPassTags: the Base pass the sets see", () => {
       full: bad,
       ranges: { mn: middle, gn: middle, lg: middle },
     } as never;
-    assert.deepEqual(setsPassTags(r, gates, applies, ALL), ["mn"]);
+    const custom = { ...gates, rangeMinPf: { minimal: 1.1, general: 1.2, long: 1.3 } };
+    assert.deepEqual(setsPassTags(r, custom, applies, ALL), ["mn"]);
+    assert.deepEqual(setsPassTags(r, gates, applies, ALL), ["mn", "gn", "lg"],
+      "the operator's 1.1 factory floors apply to all ordinary ranges");
   });
 
   it("a pair failing every cell has no sets at all", () => {
