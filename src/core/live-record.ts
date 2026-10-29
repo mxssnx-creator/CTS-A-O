@@ -15,6 +15,7 @@ import { isSignalCoordinationInd } from "./signal-coordination.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
 import { rangeOfId } from "./minimal-coord.ts";
 import { modeledUnitReturn } from "./metrics/stats.ts";
+import { rawProfitFactor } from "./metrics/profit-factor.ts";
 import type { Trade } from "./domain/types.ts";
 
 /** Full protection/source/lane/type identity plus the independently traded symbol and direction. */
@@ -271,6 +272,8 @@ export interface LiveRecord {
   exitT: Float64Array;
   gp: Float64Array;
   gl: Float64Array;
+  /** Original unit returns allow exact reconstruction after large expired prefixes. */
+  r?: Float64Array;
   /** Prefix count of unknown unit returns; retains chronological legacy rows instead of skipping losses. */
   unknown?: Uint32Array;
 }
@@ -340,16 +343,18 @@ export function* liveRecordsGen(
     const exitT = new Float64Array(xs.length);
     const gp = new Float64Array(xs.length + 1);
     const gl = new Float64Array(xs.length + 1);
+    const returns = new Float64Array(xs.length);
     const unknown = new Uint32Array(xs.length + 1);
     xs.forEach((v, i) => {
       exitT[i] = v.t;
       const r = typeof v.r === "number" && Number.isFinite(v.r) ? v.r : null;
+      returns[i] = r === null ? NaN : r;
       gp[i + 1] = gp[i] + (r === null ? 0 : Math.max(0, r));
       gl[i + 1] = gl[i] + (r === null ? 0 : Math.max(0, -r));
       unknown[i + 1] = unknown[i] + Number(r === null);
     });
     const u = unknown[xs.length] ? { unknown } : {};
-    out.set(key, side === undefined ? { id: cfg, exitT, gp, gl, ...u } : { id: cfg, side, exitT, gp, gl, ...u });
+    out.set(key, side === undefined ? { id: cfg, exitT, gp, gl, r: returns, ...u } : { id: cfg, side, exitT, gp, gl, r: returns, ...u });
   }
   return out;
 }
@@ -462,7 +467,7 @@ export function exchangeAcceptIndex(
         if (x.r > 0) gp += x.r;
         else gl -= x.r;
       }
-      return { n, pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+      return { n, pf: rawProfitFactor(gp, gl) };
     },
   };
 }

@@ -11,6 +11,7 @@ import { cappedExecution, clearCappedProjections, hasMinutePrices } from "../sim
 import { tacticCooldown } from "../indications/filters.ts";
 import { DEFAULT_PROTECT, PROTECT_GRID, type CoreSettings } from "../config.ts";
 import { RT_COST } from "../model-cost.ts";
+import { rawProfitFactor } from "../metrics/profit-factor.ts";
 import type {
   Bars,
   BaseLastNStats,
@@ -1115,7 +1116,8 @@ export function pooledPf(sets: Iterable<{ pf: number; net: number; gp?: number; 
     gp += g.gp;
     gl += g.gl;
   }
-  return { pf: gl > 1e-12 ? gp / gl : null, gp, gl };
+  const pf = gl > 0 ? rawProfitFactor(gp, gl) : NaN;
+  return { pf: Number.isFinite(pf) ? pf : null, gp, gl };
 }
 
 export interface BaseRangeCount {

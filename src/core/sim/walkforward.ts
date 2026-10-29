@@ -1,4 +1,5 @@
 import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
+import { returnWindow } from "../metrics/return-window.ts";
 import { DerivedCache } from "./derived-cache.ts";
 import { exitScopeSuffix, isHistoricExitConfig } from "../exit-scope.ts";
 import { isLowRangeInd, lowRangeGridProtects } from "../indications/low-range.ts";
@@ -1540,9 +1541,8 @@ export function tapeTrades(tp: ConfigTape, from = 0, to = tp.n): Trade[] {
 
 /** O(1) window numbers from prefix sums (net in percent). */
 function win(tp: ConfigTape, a: number, b: number) {
-  const gp = tp.gp[b] - tp.gp[a];
-  const gl = tp.gl[b] - tp.gl[a];
-  return { n: b - a, net: (tp.rs[b] - tp.rs[a]) * 100, pf: profitFactor(gp, gl), gp, gl };
+  const { gp, gl, rescanned } = returnWindow(tp, a, b);
+  return { n: b - a, net: (rescanned ? gp - gl : tp.rs[b] - tp.rs[a]) * 100, pf: profitFactor(gp, gl), gp, gl };
 }
 
 /** gates.lossPrior: one virtual stop-out at the config's own stop (r units), added to every evaluation PF's losses */
@@ -4463,9 +4463,8 @@ function configPassAt(
     const pa = lowerBound(tp.exitT, t - o.preH * H);
     const pn = b - pa;
     if (pn >= 3) {
-      const pgp = tp.gp[b] - tp.gp[pa];
-      const pgl = tp.gl[b] - tp.gl[pa];
-      const pnet = (tp.rs[b] - tp.rs[pa]) * 100;
+      const { gp: pgp, gl: pgl, rescanned } = returnWindow(tp, pa, b);
+      const pnet = (rescanned ? pgp - pgl : tp.rs[b] - tp.rs[pa]) * 100;
       if (!qualifiedPf(pgp, pgl, minPf) || !(Number.isFinite(pnet) && pnet >= 0)) return false;
     }
   }
@@ -4655,8 +4654,7 @@ export function* selectFixedGen(
       ca[i] = a;
       cb[i] = b;
     }
-    const gp = tp.gp[b] - tp.gp[a];
-    const gl = tp.gl[b] - tp.gl[a];
+    const { gp, gl, rescanned } = returnWindow(tp, a, b);
     const n = b - a;
     const pf = profitFactor(gp, gl);
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
@@ -4664,7 +4662,7 @@ export function* selectFixedGen(
       basePf.set(info.pairKey, Math.max(basePf.get(info.pairKey) ?? -Infinity, pf));
     // a held-only tape serves its open position, it takes no new seat
     if (!info.canSeat) continue;
-    const net = (tp.rs[b] - tp.rs[a]) * 100;
+    const net = (rescanned ? gp - gl : tp.rs[b] - tp.rs[a]) * 100;
     let lcb: number;
     let gh: number;
     let ddt: number;
@@ -5020,7 +5018,8 @@ export function lastNOk(
     n = b;
   }
   if (!warmup) short = false;
-  if (!qualifiedPf(tp.gp[b] - tp.gp[b - n], tp.gl[b] - tp.gl[b - n] + prior, minPf)) return false;
+  const { gp, gl } = returnWindow(tp, b - n, b);
+  if (!qualifiedPf(gp, gl + prior, minPf)) return false;
   // the same closes have to come back inside the drawdown-time gate and keep their drawdown ratio — not judged on a
   // sample shorter than the gate asks for (the drawdown of 8 of 50 closes is not that config's drawdown)
   if (!short && (maxDdtH > 0 || maxDdr !== 0)) {

@@ -14,6 +14,8 @@ import type { Gates, MicroGrid, MinimalGrid, ProtectGridSpec, RangeMinPfKey, Ran
 import type { MicroIndRule } from "./indications/micro.ts";
 import { POSITION_COST_RT, RT_COST } from "./model-cost.ts";
 import { SIGNAL_MIN_PF } from "./signal-policy.ts";
+import { rawProfitFactor } from "./metrics/profit-factor.ts";
+import { returnWindow } from "./metrics/return-window.ts";
 
 export const MINIMAL_COORD = "Minimal Coord.";
 
@@ -439,7 +441,7 @@ export function plusVariants(enabled: boolean, cells: number, holdN: number): nu
  * gate on the whole tape kept or dropped a config for the whole run on closes from inside the run; bug hunt, 13 Oct).
  */
 export function gateMinimalPlus<
-  T extends { id: string; n: number; gp: ArrayLike<number>; gl: ArrayLike<number>; exitT?: ArrayLike<number> },
+  T extends { id: string; n: number; gp: ArrayLike<number>; gl: ArrayLike<number>; r?: ArrayLike<number>; exitT?: ArrayLike<number> },
 >(
   tapes: readonly T[],
   plus: { enabled?: boolean; lastN?: number; minPf?: number } | false | null | undefined,
@@ -465,12 +467,14 @@ export function gateMinimalPlus<
     }
     if (n < lastN) return false;
     const from = n - lastN;
-    const gp = t.gp[n] - t.gp[from];
-    const gl = t.gl[n] - t.gl[from];
-    const pf = gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0;
-    const allGl = t.gl[n] - t.gl[0];
-    const allGp = t.gp[n] - t.gp[0];
-    const allPf = allGl > 1e-12 ? allGp / allGl : allGp > 0 ? 99 : 0;
+    const { gp, gl } = returnWindow(t, from, n);
+    const score = (wins: number, losses: number) => {
+      const pf = rawProfitFactor(wins, losses);
+      return pf === Infinity ? 99 : pf;
+    };
+    const pf = score(gp, gl);
+    const { gp: allGp, gl: allGl } = returnWindow(t, 0, n);
+    const allPf = score(allGp, allGl);
     // the last window and the whole tape both have to clear: a hot tail on a losing book does not seat
     return pf + 1e-12 >= minPf && allPf + 1e-12 >= minPf;
   });

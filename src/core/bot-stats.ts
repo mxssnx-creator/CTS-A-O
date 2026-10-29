@@ -1,6 +1,7 @@
 import { signalSourceOf } from "./indications/registry.ts";
 import { closeClassOf } from "./relation.ts";
 import { POSITION_COST_RT, POSITION_COST_STRESS_RT } from "./model-cost.ts";
+import { rawProfitFactor } from "./metrics/profit-factor.ts";
 
 // Per-bot exchange statistics: every config's closed trade on the exchange (live_lane_trades), judged against the frozen
 // criteria in docs/bot-stability-criteria.md. Pure functions: the desk's status and any statistics view read the same
@@ -94,7 +95,7 @@ export function profitFactor(xs: readonly number[]): number {
     if (x > 0) gp += x;
     else gl -= x;
   }
-  return gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl;
+  return rawProfitFactor(gp, gl);
 }
 
 function sqnOf(xs: readonly number[]): number {
@@ -178,7 +179,11 @@ export function botStatsFromRows(rows: readonly LaneRow[]): {
     const longPf = profitFactor(long);
     const shortPf = profitFactor(short);
     const why: string[] = [];
-    const judgeable = xs.length >= MIN_TRADES && events >= MIN_EVENTS && long.length >= MIN_SIDE_TRADES && short.length >= MIN_SIDE_TRADES && judged.length > 0;
+    const knownPf = (pf: number) => Number.isFinite(pf) || pf === Infinity;
+    const known = stored.every(Number.isFinite) && r02.every(Number.isFinite) && r04.every(Number.isFinite) &&
+      [pf02, pf04, longPf, shortPf].every(knownPf);
+    const judgeable = known && xs.length >= MIN_TRADES && events >= MIN_EVENTS && long.length >= MIN_SIDE_TRADES && short.length >= MIN_SIDE_TRADES && judged.length > 0;
+    if (!known) why.push("unknown or unrepresentable return PF");
     if (xs.length < MIN_TRADES) why.push(`trades ${xs.length} of ${MIN_TRADES}`);
     if (events < MIN_EVENTS) why.push(`events ${events} of ${MIN_EVENTS}`);
     if (long.length < MIN_SIDE_TRADES) why.push(`long trades ${long.length} of ${MIN_SIDE_TRADES}`);
