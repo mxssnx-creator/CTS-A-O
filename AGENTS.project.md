@@ -78,3 +78,8 @@ The operator explicitly authorizes fixes, tests, backups, regular GitHub push/me
   a loss or admitting the original direction as profitable. Final Active ownership mirrors to the exchange without
   another Last-N gate, preserving static venue/risk limits and held protections. Integration is still pending in
   draft #219; a primitive or empty cohort does not establish production completion, a best default or stable high PF.
+
+- **Validated statistics, operator 29 October 2026:** Primary validation displays use only passing historical
+  validation windows and show passed/evaluated percentage and the snapshot clock. Keep subsequent model, owned
+  paper and exchange PF separately labeled; never delete a previously admitted order's later loss because its set
+  no longer validates. Empty/missing validation cannot borrow an execution PF or fabricate a passing ratio.

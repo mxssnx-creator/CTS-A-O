@@ -6,6 +6,7 @@ import { ExecutionSummary } from "../execution-summary";
 import { hasUnitReturnBasis, unitStatsPfText } from "../accounting";
 import { PromotionEvidence } from "../promotion-evidence";
 import { PrehistoricPanel } from "../prehistoric";
+import { validationCohortView } from "../validation-cohort";
 import { ArcShare, EquityChart, MultiArcGauge, RadialHours, SignedBars } from "../charts";
 import { sizeText } from "@/core/live-labels";
 import { hasCompleteAccountMark, hasCompleteOwnership } from "@/core/account-mark";
@@ -306,6 +307,7 @@ export function OverviewPage() {
   const s = sim?.stats;
   const knownReturns = hasUnitReturnBasis(s);
   const minPf = d.settings.gates.minPf;
+  const validation = validationCohortView(d.status?.postBaseValidation);
   const hours = (sim?.hourly ?? []) as Array<{ t: number; net: number; n: number; pf: number }>;
   let cum = 0;
   const curve = hours.map((h) => ({ t: h.t + 3_600_000, v: (cum += h.net) }));
@@ -337,10 +339,12 @@ export function OverviewPage() {
       <PromotionEvidence status={d.status?.livePromotion} />
       <div className="v2-grid v2-cols-6">
         <Kpi
-          label="Model return PF"
-          value={s ? unitStatsPfText(s) : "–"}
-          className={pfTone(s?.pf, minPf)}
-          sub={`post-Base accepted records before allocation, including endpoint marks · min ${minPf} · separate from funded execution`}
+          label="Validated sets PF"
+          value={validation.pfText}
+          className={pfTone(validation.pf, minPf)}
+          sub={validation.available
+            ? `${validation.counts} engine configs · ${fmt.frac(validation.fraction)} validated · historical passing windows at ${fmt.time(validation.at)} UTC`
+            : "Passing validation snapshot unavailable"}
         />
         <Kpi
           label="Sim net (Σ trade %)"
@@ -378,7 +382,7 @@ export function OverviewPage() {
           {knownReturns ? <MultiArcGauge
             size={190}
             center={unitStatsPfText(s)}
-            centerSub="model return PF"
+            centerSub="subsequent model PF"
             rings={[
               { label: `Return PF vs 2.0`, value: (s?.pf ?? 0) / 2, display: unitStatsPfText(s) },
               { label: "Green hours", value: s?.gh ?? 0, display: fmt.ratio(s?.gh) },
