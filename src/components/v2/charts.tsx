@@ -1,6 +1,8 @@
 // Lightweight SVG charts for Core v2. One y-axis per chart, thin marks, recessive grid, hover tooltips.
 // Colors come from the design tokens (validated categorical palette per light/dark design).
 import { useMemo, useRef, useState, type ReactNode } from "react";
+import { divergeFill } from "./chart-colors";
+export { divergeFill } from "./chart-colors";
 
 export const SERIES = [
   "var(--v-s1)",
@@ -12,14 +14,6 @@ export const SERIES = [
   "var(--v-s7)",
   "var(--v-s8)",
 ];
-
-/** Diverging fill around a neutral value (PF 1 → grey). */
-export function divergeFill(v: number, neutral = 1, span = 1): string {
-  if (!Number.isFinite(v)) return "var(--v-grid)";
-  const d = Math.max(-1, Math.min(1, (v - neutral) / span));
-  const pct = Math.round(Math.abs(d) * 85 + 10);
-  return `color-mix(in srgb, ${d >= 0 ? "var(--v-up)" : "var(--v-down)"} ${pct}%, var(--v-grid))`;
-}
 
 function useTip() {
   const [tip, setTip] = useState<{ x: number; y: number; c: ReactNode } | null>(null);

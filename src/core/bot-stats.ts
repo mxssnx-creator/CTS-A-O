@@ -1,6 +1,7 @@
 import { signalSourceOf } from "./indications/registry.ts";
 import { closeClassOf } from "./relation.ts";
 import { POSITION_COST_RT, POSITION_COST_STRESS_RT } from "./model-cost.ts";
+import { profitFactorRatio } from "./metrics/profit-factor.mjs";
 
 // Per-bot exchange statistics: every config's closed trade on the exchange (live_lane_trades), judged against the frozen
 // criteria in docs/bot-stability-criteria.md. Pure functions: the desk's status and any statistics view read the same
@@ -94,7 +95,7 @@ export function profitFactor(xs: readonly number[]): number {
     if (x > 0) gp += x;
     else gl -= x;
   }
-  return gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl;
+  return profitFactorRatio(gp, gl);
 }
 
 function sqnOf(xs: readonly number[]): number {

@@ -1,3 +1,4 @@
+import { profitFactorRatio } from "./metrics/profit-factor.mjs";
 // Nominal lane attribution at venue fill/market prices. The merged venue position has no per-config allocation,
 // so these rows alone are NOT verified funded executions and cannot authorize strict live promotion.
 // Each lane is attributed here: it joins at the fill price of the order that grew its position in
@@ -462,7 +463,7 @@ export function exchangeAcceptIndex(
         if (x.r > 0) gp += x.r;
         else gl -= x.r;
       }
-      return { n, pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+      return { n, pf: profitFactorRatio(gp, gl) };
     },
   };
 }

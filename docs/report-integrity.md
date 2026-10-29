@@ -1,3 +1,11 @@
+# Neutral PF is one — 29 October 2026
+
+Use the conventional return ratio everywhere: equal nonzero gross gains and losses yield exactly 1; lower ratios remain losing. `profitFactorRatio` removes the absolute loss cutoff that incorrectly turned tiny real losses into no-loss sentinels in Signal acceptance, guards, Minimal Plus, statistics and report/coordination scripts. Preserve each existing explicit no-loss scoring convention, but never present it as a measured finite ratio. Zero/zero remains an internal unqualified score, displayed as flat or empty using counts and provenance.
+
+PF 1 is uncoloured in UI and report heatmaps. Remove the secondary PF-minus-one display. Signed net-return charts still have their explicitly labelled zero baseline. Standalone report code is serialized: helpers must be inside `clientMain`, verified by `report-page.test.ts`; importing a top-level shade function breaks the exported HTML.
+
+Bounded numerical, actual CLI and report regressions include tiny neutral/losing samples and unknown totals. The final 8-symbol cohort and all 24 validation decisions are identical to the prior release: closed PF 0.273050873, Base 143/1398 (10.2289%), initial configs 405/1276 (31.7398%). This fixes PF consistency, not the unresolved forward losses or pending persistent stage adapter. See `pf-neutral-20261029/README.md`.
+
 # Main closed cohort and passing-set means — 29 October 2026
 
 Primary Main execution PF uses closed orders only, matching executed/type/config/hourly cohorts. Endpoint marks retain a separately labeled mark-inclusive report and complete held counts. Never compare a closed numerator with marked losses or silently discard the held losses. Preset views explicitly labeled with endpoint marks retain that basis.

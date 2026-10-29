@@ -1,0 +1,7 @@
+
+/workspace/scratch/b69c1e5067d8/CTS-A-O-pf-neutral/src/components/v2/charts.tsx
+  5:10  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  7:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+✖ 2 problems (0 errors, 2 warnings)
+

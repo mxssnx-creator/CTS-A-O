@@ -1,3 +1,4 @@
+import { PF_NEUTRAL } from "../../core/metrics/profit-factor.mjs";
 /** The user's primary PF metric: net returns after costs, independent of account size or order notional. */
 export function returnPf(
   row?: ComparisonPf | null,
@@ -44,24 +45,10 @@ function isFlatUnitSample(row?: ComparisonPf | null): boolean {
 }
 
 /** PF 1 is neutral. An explicit qualification floor may warn on a positive but unqualified ratio. */
-export function pfTone(value: unknown, min = 1): string {
-  if (typeof value !== "number" || !Number.isFinite(value) || value === 1) return "";
-  if (value < 1) return "v2-down";
+export function pfTone(value: unknown, min = PF_NEUTRAL): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value === PF_NEUTRAL) return "";
+  if (value < PF_NEUTRAL) return "v2-down";
   return value >= min ? "v2-up" : "v2-warn";
-}
-
-/** Signed presentation only. Qualification still uses conventional PF (breakeven = 1). */
-export function returnPfEdge(row?: ComparisonPf | null): number | null {
-  if (!hasUnitReturnBasis(row)) return null;
-  const pf = measuredComparisonPf(row);
-  return pf === null ? null : pf - 1;
-}
-
-export function returnPfEdgeText(row?: ComparisonPf | null): string {
-  const edge = returnPfEdge(row);
-  if (edge !== null) return `${edge > 0 ? "+" : ""}${edge.toFixed(2)}`;
-  if (hasUnitReturnBasis(row) && comparisonPfText(row) === "No losses") return "No losses";
-  return "–";
 }
 
 /** A valid empty unit sample is different from an archive whose execution weighting cannot be recovered. */

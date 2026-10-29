@@ -17,6 +17,7 @@
 //     --patch runs/x01/patch.json [--ranges micro,minimal,short,general,long] [--min-n 10] [--on-pf 1.1] \
 //     [--off-pf 1.0] \
 //     [--gate --gate-n 15]
+import { profitFactorRatio } from "../src/core/metrics/profit-factor.mjs";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 
 const { MICRO_RANGE, MINIMAL_RANGE, SHORT_RANGE, GENERAL_RANGE, LONG_RANGE } = await import(
@@ -55,11 +56,11 @@ for (const k of ranges) {
   const r = RANGES[k];
   if (!r) throw new Error(`unknown range ${k}`);
   const a = ref.paper?.[r.label] ?? { n: 0, gp: 0, gl: 0 };
-  const pf = a.gl > 1e-12 ? a.gp / a.gl : a.gp > 0 ? Infinity : 0;
+  const pf = profitFactorRatio(a.gp, a.gl);
   const was = on[k] ?? r.start;
   let now = was;
   if (a.n >= minN && pf >= onPf) now = true;
-  else if (a.n >= minN && pf < offPf) now = false;
+  else if (Number.isNaN(pf) || a.n >= minN && pf < offPf) now = false;
   if (now !== was) changed = true;
   on[k] = now;
   lines.push(
@@ -73,11 +74,14 @@ if (gate) {
   const off = new Set(ranges.filter((k) => !on[k]).map((k) => RANGES[k].label));
   const t = Object.entries(ref.paper ?? {})
     .filter(([label]) => !off.has(label))
-    .reduce((a, [, v]) => ({ n: a.n + v.n, gp: a.gp + v.gp, gl: a.gl + v.gl }), { n: 0, gp: 0, gl: 0 });
-  const pf = t.gl > 1e-12 ? t.gp / t.gl : t.gp > 0 ? Infinity : 0;
+    .reduce((a, [, v]) => {
+      const known = Number.isFinite(v.gp) && Number.isFinite(v.gl) && v.gp >= 0 && v.gl >= 0;
+      return { n: a.n + v.n, gp: known ? a.gp + v.gp : NaN, gl: known ? a.gl + v.gl : NaN };
+    }, { n: 0, gp: 0, gl: 0 });
+  const pf = profitFactorRatio(t.gp, t.gl);
   const was = paused;
   if (t.n >= gateN && pf >= onPf) paused = false;
-  else if (t.n < gateN || pf < offPf) paused = true;
+  else if (Number.isNaN(pf) || t.n < gateN || pf < offPf) paused = true;
   const reason = t.n < gateN ? `reference has ${t.n} of ${gateN} forward-paper closes` : `reference forward-paper return PF ${pf === Infinity ? "∞" : pf.toFixed(2)} over ${t.n} closes`;
   // a decision that flips is written; a reason that only counts closes (2 of 15 → 3 of 15) is not, since every
   // patch the desk applies is a settings update

@@ -42,7 +42,7 @@ const findings=[A.entryChecks+' exact funded entries rechecked against Base perm
 findings.forEach(x=>document.getElementById('findings').append(el('div',x)));
 const kinds=['normal','trailing','trailing-only','dca','dca-active','axis','exit'];
 const sums=xs=>{let gp=0,gl=0;for(const x of xs){gp+=Math.max(0,x.unitReturn??0);gl+=Math.max(0,-(x.unitReturn??0))}return{n:xs.length,pf:xs.length&&gl?gp/gl:null,noLoss:xs.length>0&&gp>0&&gl===0}};
-const tint=s=>!s.n?'#f1f4f4':s.noLoss||s.pf>=1?'#dff0e6':'#f9e2de';
+const tint=s=>!s.n||s.pf===1||s.pf===null&&!s.noLoss?'#f1f4f4':s.noLoss||s.pf>1?'#dff0e6':'#f9e2de';
 const hours=Array.from({length:24},(_,i)=>A.window.startT+i*3600000);table('heat',['Settled UTC',...kinds],hours.map(t=>[when(t),...kinds.map(k=>{const s=sums(O.filter(x=>x.kind===k&&x.exitT>t&&x.exitT<=t+3600000));return{text:pf(s)+' · '+s.n,color:tint(s)}})]));
 const ranges=['mc','mn','sh','gn','lg','wide','sig'];table('types',['Strategy',...ranges.map(x=>x+' PF · closes')],kinds.map(k=>[k,...ranges.map(r=>{const s=sums(O.filter(x=>x.kind===k&&x.range===r));return{text:pf(s)+' · '+s.n,color:tint(s)}})]));
 const exitKeys=[...new Set(O.map(x=>x.kind+' | '+x.reason))].sort();table('exits',['Strategy | reason','Closes','PF','Avg hold min','Min hold','Max hold','Unit gains','Unit losses'],exitKeys.map(k=>{const xs=O.filter(x=>x.kind+' | '+x.reason===k),s=sums(xs),hs=xs.map(x=>x.holdMinutes);return[k,s.n,pf(s),fmt(hs.reduce((a,b)=>a+b,0)/hs.length,1),Math.min(...hs),Math.max(...hs),fmt(xs.reduce((a,x)=>a+Math.max(0,x.unitReturn),0)),fmt(xs.reduce((a,x)=>a+Math.max(0,-x.unitReturn),0))]}));

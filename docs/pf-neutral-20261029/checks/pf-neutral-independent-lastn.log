@@ -1,0 +1,10 @@
+✔ Last-N preserves neutral, loss, no-loss, flat and missing observations (1.660577ms)
+✔ entry-time windows exclude same-time and future closes and keep exact ownership (0.287843ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 224.230132

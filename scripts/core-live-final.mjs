@@ -6,6 +6,7 @@
 //   node scripts/core-live-final.mjs --dir runs/full --out docs/live-vst-full.md [--notes notes.md]
 // With started.log in the run directory (one line per desk launch, "--- reason" lines for restarts of every desk)
 // the report lists the run history; --notes appends a markdown file (e.g. the issues found and fixed).
+import { profitFactorRatio } from "../src/core/metrics/profit-factor.mjs";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { profitFactor } from "../src/core/metrics/stats.ts";
@@ -58,9 +59,9 @@ for (const name of names) {
   const open = (ex?.positions ?? []).filter((x) => x.open).length;
   // paper: every range's closes of this desk together
   const pp = Object.values(s.paper ?? {}).reduce((a, v) => ({ n: a.n + v.n, gp: a.gp + v.gp, gl: a.gl + v.gl }), { n: 0, gp: 0, gl: 0 });
-  const paperPf = pp.gl > 1e-12 ? pp.gp / pp.gl : pp.gp > 0 ? Infinity : 0;
+  const paperPf = profitFactorRatio(pp.gp, pp.gl);
   lines.push(
-    `| ${name} | ${s.tag} | ${(s.symbols ?? []).length} (${cfg.symbolOffset ?? 0}+) | ${f2(s.hours)} | ${s.engine?.computes ?? 0} | ${f2(s.engine?.sim?.pf)} · ${s.engine?.sim?.n ?? 0} | ${s.engine?.real ?? 0} | ${pp.n ? `${Number.isFinite(paperPf) ? f2(paperPf) : "∞"} · ${pp.n}` : "–"} | ${tot.n && returnBased ? returnPfText(tot) : "–"} | ${ex?.orders ?? 0} | ${tot.pos} (${open}) | ${tot.won} | ${f2(tot.net)} | ${f2(tot.fee)} |`,
+    `| ${name} | ${s.tag} | ${(s.symbols ?? []).length} (${cfg.symbolOffset ?? 0}+) | ${f2(s.hours)} | ${s.engine?.computes ?? 0} | ${f2(s.engine?.sim?.pf)} · ${s.engine?.sim?.n ?? 0} | ${s.engine?.real ?? 0} | ${pp.n ? `${paperPf === Infinity ? "∞" : f2(paperPf)} · ${pp.n}` : "–"} | ${tot.n && returnBased ? returnPfText(tot) : "–"} | ${ex?.orders ?? 0} | ${tot.pos} (${open}) | ${tot.won} | ${f2(tot.net)} | ${f2(tot.fee)} |`,
   );
   const g = cfg.grid ?? {};
   const ranges = [

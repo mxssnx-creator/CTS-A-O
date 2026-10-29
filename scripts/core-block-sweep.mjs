@@ -6,6 +6,7 @@
 //
 //   CTS_CORE_WORKERS=1 node --experimental-strip-types scripts/core-block-sweep.mjs --symbols 12 --pre 12 --run 24 \
 //     [--end-ago 24] [--stage 1|2|3] [--best runs/blk/best.json] [--settings '{…}'] --out runs/blk/w0
+import { profitFactorRatio } from "../src/core/metrics/profit-factor.mjs";
 import { writeFileSync } from "node:fs";
 
 const { CoreRuntime } = await import("../src/core/server/runtime.server.ts");
@@ -107,7 +108,7 @@ function run(name, patch, tapes = rt.tapes) {
     byRange: Object.fromEntries(
       Object.entries(byRange).map(([k, a]) => [
         k,
-        { n: a.n, gp: +(a.gp * 100).toFixed(3), gl: +(a.gl * 100).toFixed(3), pf: +(a.gl > 1e-12 ? a.gp / a.gl : a.gp > 0 ? 99 : 0).toFixed(3) },
+        { n: a.n, gp: +(a.gp * 100).toFixed(3), gl: +(a.gl * 100).toFixed(3), pf: +(profitFactorRatio(a.gp, a.gl, 99)).toFixed(3) },
       ]),
     ),
     ms: Date.now() - t,

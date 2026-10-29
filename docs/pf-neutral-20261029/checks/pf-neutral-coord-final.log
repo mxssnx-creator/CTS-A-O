@@ -1,0 +1,16 @@
+✔ tiny neutral or losing returns cannot open a paper range or its opening gate (408.309262ms)
+✔ unknown paper totals cannot preserve an already open coordination gate (105.005842ms)
+✔ coordinator labels profitable paper return evidence even when exchange and cash PF conflict (106.125994ms)
+✔ profitable exchange fields do not replace losing or absent reference paper evidence (191.86057ms)
+✔ missing reference preserves opt-in and opt-out range starts and the closed opening gate (95.948252ms)
+✔ default minimum counts and PF hysteresis preserve range and opening decisions (590.01398ms)
+✔ opening gate includes unmanaged ranges and excludes disabled managed ranges (99.432425ms)
+✔ custom gate thresholds still apply and patches preserve unrelated settings (205.358885ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1893.08804

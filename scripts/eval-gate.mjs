@@ -8,6 +8,7 @@
 //   node --experimental-strip-types scripts/eval-gate.mjs --label base [--settings '{"gates":{"minTrades":30}}'] [--jobs 2]
 //     [--from ISO --to ISO [--split ISO]] [--plan: print the windows and their warm-up, run nothing] [--allow-short-warmup]
 //     [--toggles '{"axis":true}': merged over the eval's toggles] [--window-h N: N-hour windows, default 48]
+import { profitFactorRatio } from "../src/core/metrics/profit-factor.mjs";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { blockSplit, unitR, windowOrders } from "./lib/eval-orders.mjs";
@@ -150,7 +151,7 @@ function pf(rs) {
     if (v > 0) gp += v;
     else gl -= v;
   }
-  return gl < 1e-12 ? (gp > 0 ? 9 : 0) : gp / gl;
+  return profitFactorRatio(gp, gl, 9);
 }
 
 // the session each window runs (CTS_EVAL_SESSION: a test hook, a stand-in session that writes a dump)
@@ -449,7 +450,7 @@ const summary = {
         a.gl += v.gl;
       }
     const out = Object.entries(acc)
-      .map(([why, a]) => ({ why, n: a.n, pf: a.gl > 1e-12 ? +(a.gp / a.gl).toFixed(4) : null }))
+      .map(([why, a]) => ({ why, n: a.n, pf: a.gl > 0 ? +profitFactorRatio(a.gp, a.gl).toFixed(4) : null }))
       .sort((a, b) => b.n - a.n);
     return out.length ? [{ why: "executed", n: trades.length, pf: +pf(trades.map((t) => t.r)).toFixed(4) }, ...out] : [];
   })(),
@@ -523,7 +524,7 @@ const summary = {
       setsMinPf: a.setsMinPf,
       setsPfMean: a.setsValidated ? +(a.setsPfSum / a.setsValidated).toFixed(3) : null,
       orders: a.orders,
-      pf: a.gl > 1e-12 ? +(a.gp / a.gl).toFixed(4) : null,
+      pf: a.gl > 0 ? +profitFactorRatio(a.gp, a.gl).toFixed(4) : null,
       // PF after Base: every config of the Base-passed pairs, and the configs validated at each run start, over the run
       afterBaseN: a.poolN,
       afterBasePf: a.poolGl > 1e-12 ? +(a.poolGp / a.poolGl).toFixed(4) : null,
@@ -548,7 +549,7 @@ const summary = {
               }
               acc.set(range, a);
             }
-          const pfOfSum = (x) => (x.gl > 1e-12 ? +(x.gp / x.gl).toFixed(4) : null);
+          const pfOfSum = (x) => (x.gl > 0 ? +profitFactorRatio(x.gp, x.gl).toFixed(4) : null);
           return [...acc].map(([range, a]) => ({
             range,
             orders: a.unit.n,

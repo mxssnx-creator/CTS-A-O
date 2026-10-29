@@ -1,0 +1,66 @@
+name: Bounded PF verification
+on:
+  push:
+    branches: ['fix/pf-neutral-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bounded-pf-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  bounded-pf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_STATE: off
+      CTS_CORE_COMPARE: "0"
+      CTS_CORE_VARIANTS: "0"
+      CTS_CORE_MARKET: synthetic
+      CTS_CORE_TEST_SETTINGS: '{"historyDays":3,"tfDays":{"1":3,"5":3,"15":3,"30":3},"symbols":2}'
+      BROWSER_SMOKE_READY_TEXT: 'Return PF neutral = 1.00 · qualification uses each range’s configured minimum above 1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck -- --pretty false
+      - name: Bounded PF regressions
+        run: |
+          node scripts/test-core.mjs src/core/metrics/pf-neutral.test.ts src/core/metrics/stats.test.ts src/core/pipeline/pooled-pf.test.ts src/core/bot-stats.test.ts src/core/live-record.test.ts src/core/validated-set-pf.test.ts
+          node --test scripts/lib/pf-neutral.test.mjs scripts/lib/eval-variants.test.mjs scripts/lib/eval-base-rules.test.mjs scripts/eval-orders.test.mjs
+          node --experimental-strip-types --no-warnings --test src/components/v2/accounting.test.ts
+          node --experimental-strip-types --no-warnings --test scripts/core-live-coord.test.mjs scripts/eval-validation.test.mjs scripts/core-session.test.mjs
+          node scripts/test-core.mjs src/core/report-page.test.ts
+      - run: env -u DATABASE_URL npm run build
+      - name: Browser render checks on dev and production
+        run: |
+          for browser in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$browser" >/dev/null 2>&1; then
+              export CTS_UI_BROWSER_EXECUTABLE="$(command -v "$browser")"
+              break
+            fi
+          done
+          if [ -z "${CTS_UI_BROWSER_EXECUTABLE:-}" ]; then npx playwright install --with-deps --only-shell chromium; fi
+          sudo mkdir -p /workspace/screenshots/pf-neutral
+          sudo chown -R "$USER" /workspace/screenshots/pf-neutral
+          npm run dev > /workspace/screenshots/pf-neutral/dev.log 2>&1 &
+          DEV_PID=$!
+          trap 'kill "$DEV_PID" 2>/dev/null || true; npm run preview:stop' EXIT
+          for attempt in $(seq 1 60); do if curl -fs http://127.0.0.1:8080/v2/settings >/dev/null; then break; fi; sleep 1; done
+          node scripts/browser-smoke.mjs http://127.0.0.1:8080/v2/settings /workspace/screenshots/pf-neutral/dev.png
+          npm run preview:restart
+          node scripts/browser-smoke.mjs http://127.0.0.1:8081/v2/settings /workspace/screenshots/pf-neutral/built.png --baseline /workspace/screenshots/pf-neutral/dev.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pf-neutral-browser-${{ github.run_id }}
+          path: /workspace/screenshots/pf-neutral/
+          retention-days: 30
+

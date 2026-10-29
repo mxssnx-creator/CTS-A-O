@@ -1,3 +1,4 @@
+import { profitFactorRatio } from "../../src/core/metrics/profit-factor.mjs";
 // The two-window Base readout of an eval (scripts/eval-gate.mjs run with gates.baseWindows.report): per range × report
 // rule, the orders the run would keep had the rule gated Base. A trade is kept when its pair passed the rule in the
 // trade's window for the trade's range, at the trade's target (the config id's tp token / 100: a range cell keeps its
@@ -64,7 +65,7 @@ export function pfOf(rs) {
     if (v > 0) gp += v;
     else gl -= v;
   }
-  return gl < 1e-12 ? (gp > 0 ? 9 : 0) : gp / gl;
+  return profitFactorRatio(gp, gl, 9);
 }
 
 /**

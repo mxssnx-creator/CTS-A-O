@@ -14,6 +14,7 @@ import type { Gates, MicroGrid, MinimalGrid, ProtectGridSpec, RangeMinPfKey, Ran
 import type { MicroIndRule } from "./indications/micro.ts";
 import { POSITION_COST_RT, RT_COST } from "./model-cost.ts";
 import { SIGNAL_MIN_PF } from "./signal-policy.ts";
+import { profitFactorRatio } from "./metrics/profit-factor.mjs";
 
 export const MINIMAL_COORD = "Minimal Coord.";
 
@@ -467,10 +468,10 @@ export function gateMinimalPlus<
     const from = n - lastN;
     const gp = t.gp[n] - t.gp[from];
     const gl = t.gl[n] - t.gl[from];
-    const pf = gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0;
+    const pf = profitFactorRatio(gp, gl, 99);
     const allGl = t.gl[n] - t.gl[0];
     const allGp = t.gp[n] - t.gp[0];
-    const allPf = allGl > 1e-12 ? allGp / allGl : allGp > 0 ? 99 : 0;
+    const allPf = profitFactorRatio(allGp, allGl, 99);
     // the last window and the whole tape both have to clear: a hot tail on a losing book does not seat
     return pf + 1e-12 >= minPf && allPf + 1e-12 >= minPf;
   });

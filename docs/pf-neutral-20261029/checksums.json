@@ -1,0 +1,10 @@
+{
+  "evidence.tar.gz": {
+    "bytes": 2234366,
+    "sha256": "c7f0ba235bf3294599c8a8ce0c4d0f8782afd9d1a26f6534d5ecdbe98f060a40"
+  },
+  "report.html": {
+    "bytes": 812649,
+    "sha256": "dc57f652f118cc7d08cff32e8b88adf0902c524f2471f8df3cc5a017b6b6d057"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "sourceCommit": "7a05b91227320c3ba22da2b854f31a6ce8378a13",
+  "workflowRun": 40967442788,
+  "workflowResult": "success",
+  "artifactId": 12938114949,
+  "screenshotsInspected": [
+    "dev.png",
+    "dev-mobile.png",
+    "built.png",
+    "built-mobile.png"
+  ],
+  "content": "Settings form and PF-neutral explanation rendered on desktop and mobile",
+  "consoleErrors": 0,
+  "pageErrors": 0,
+  "horizontalOverflow": false,
+  "productionDivergence": false
+}

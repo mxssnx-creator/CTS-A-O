@@ -9,6 +9,7 @@
 //
 //   node --experimental-strip-types scripts/eval-families.mjs [--only engine|signal|<label substring>] [--limit N]
 //        [--feed runs/eval/feed.json] [--jobs 2]
+import { profitFactorRatio } from "../src/core/metrics/profit-factor.mjs";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync, appendFileSync } from "node:fs";
@@ -140,7 +141,7 @@ const pfOf = (rs) => {
     if (v > 0) gp += v;
     else gl -= v;
   }
-  return gl < 1e-12 ? (gp > 0 ? 4 : 0) : gp / gl;
+  return profitFactorRatio(gp, gl, 4);
 };
 
 async function processFamily(f) {

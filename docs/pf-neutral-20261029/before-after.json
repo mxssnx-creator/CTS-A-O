@@ -1,0 +1,67 @@
+{
+  "schema": "cts-pf-neutral-replay-parity-v1",
+  "before": "/workspace/scratch/b69c1e5067d8/main-audit-8s-20261029/merged-main",
+  "after": "/workspace/scratch/b69c1e5067d8/pf-neutral-final-audit",
+  "window": {
+    "startT": 1791460800000,
+    "endT": 1791547200000
+  },
+  "checks": {
+    "fundedClosedTrades": {
+      "identical": true,
+      "count": 3108,
+      "sha256": "551700fb1fa1c1c9b9595851bbb6cc56de995243e747ec19a06a97f821af33b8"
+    },
+    "virtualClosedTrades": {
+      "identical": true,
+      "count": 3108,
+      "sha256": "551700fb1fa1c1c9b9595851bbb6cc56de995243e747ec19a06a97f821af33b8"
+    },
+    "heldOrders": {
+      "identical": true,
+      "count": 8,
+      "sha256": "d923679c1babb2fa6d3b956d8a2778377e6b5c5b51a34d4f9ac8be55b24de021"
+    },
+    "closedAllocations": {
+      "identical": true,
+      "count": 3108,
+      "sha256": "418d85bab640297cbb4e9b3714464f52d6f9010b026b475746504bae32c55f49"
+    },
+    "heldAllocations": {
+      "identical": true,
+      "count": 8,
+      "sha256": "d8765b7aa93d49ea1286ba13d0f65ac3d3d4710b185eb9aece59bae21879d0b8"
+    },
+    "fundedTotals": {
+      "identical": true,
+      "count": null,
+      "sha256": "6ac3502a8c62de9af2a96c2b3d5b15136bfc67eedef70781d779454b2efd633b"
+    },
+    "basePairs": {
+      "identical": true,
+      "count": 1335,
+      "sha256": "155ac7eb04c7e633cb3291cd64fdb1c42a4b07e1cfb65ea4ee8d04c8cd4922f4"
+    },
+    "initialSelectedConfigs": {
+      "identical": true,
+      "count": null,
+      "sha256": "396d2c7562cee40dbc04662e573e316d4b6411dec5b1430f193b6a9fe345e3bc"
+    },
+    "tapeTrades": {
+      "identical": true,
+      "count": 2468,
+      "sha256": "33d0a880a5d8c1c54e7cbf4053d31abc530b40509032e4851fc62efd4b883811"
+    },
+    "validation": {
+      "identical": true,
+      "count": 24,
+      "sha256": "86b2f0afd1dbc4138b2505db1769b57a84b0ed6badaa1009d557fa8160a03ee1"
+    },
+    "engine.signalSteps": {
+      "identical": true,
+      "count": 25,
+      "sha256": "4c837a084b6ea274b954321a4ea61d5aa85ee359e2520caf1a5b08eef4393d5c"
+    }
+  },
+  "ok": true
+}
