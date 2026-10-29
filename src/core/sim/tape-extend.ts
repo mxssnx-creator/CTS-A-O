@@ -15,6 +15,7 @@ import { entrySignal } from "../bots/bots.ts";
 import { isSignalInd } from "../indications/registry.ts";
 import { tacticCooldown } from "../indications/filters.ts";
 import { ATR_PERIOD, simulateFrom, splitSides, type SimState } from "./backtest.ts";
+import { cappedExecution, stampCappedOpen } from "./capped-execution.ts";
 import {
   makeTape,
   REASONS,
@@ -39,6 +40,8 @@ export interface RunState {
   firstT: number;
   n: number;
   lastT: number;
+  /** Preserve the pricing clock separately from the indication identity; legacy seeds used the source TF. */
+  executionTfMin?: number;
   sim: SimState;
 }
 /** A resumable tape's runs, by `symbol@tf:direction`. */
@@ -71,10 +74,10 @@ function runConfig(
   const cooldown = tacticCooldown(tactics);
   const p: Protect = tp.protect;
   for (const s of seriesOf(u, tp.ind)) {
-    const bars = u.bars[s];
+    const source = u.bars[s];
     const raw = entrySignal(tp.bot, tp.ind, u.caches[s], tactics);
     if (!raw) return null;
-    const sig = evaluationSignal(u, bars, raw);
+    const sig = evaluationSignal(u, source, raw);
     // one run per direction (as buildTapes: long and short each their own slot); a one-sided signal is its own run
     const sides = splitSides(sig);
     const dirs: Array<[number, Int8Array]> =
@@ -86,33 +89,38 @@ function runConfig(
         : [[firstSide(sig), sig]];
     for (const [d, sg] of dirs) {
       if (d === 0) continue; // no entry at all: nothing to run
-      const key = `${bars.sym}@${bars.tfMin}:${d}`;
+      const view = cappedExecution(u, s, sg, p, cooldown), bars = view.bars;
+      const key = `${source.sym}@${source.tfMin}:${d}`;
       const was = prev?.runs.get(key);
       if (was) {
         // the continuation must be on the very bars it stopped on
-        if (bars.n < was.n || bars.t[0] !== was.firstT || bars.t[was.n - 1] !== was.lastT)
+        if ((was.executionTfMin ?? source.tfMin) !== bars.tfMin ||
+          bars.n < was.n || bars.t[0] !== was.firstT || bars.t[was.n - 1] !== was.lastT)
           return null;
       }
       const res = simulateFrom(
         tp.id,
         bars,
-        sg,
-        p,
-        { cost, cooldown, atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined },
+        view.signal,
+        view.protect,
+        { cost, cooldown: view.cooldown, atr: p.atr ? view.series(u.caches[s].atrEma(ATR_PERIOD)) : undefined },
         was?.sim ?? null,
       );
       for (const tr of res.trades) {
         tr.kind = tp.kind;
         trades.push(tr);
       }
-      if (res.open) open.push(res.open);
+      if (res.open) {
+        stampCappedOpen(res.open, view);
+        open.push(res.open);
+      }
       if (res.pending)
         pending.push(
           res.pendingProtect
             ? { sym: bars.sym, side: res.pending, protect: res.pendingProtect }
             : { sym: bars.sym, side: res.pending },
         );
-      runs.set(key, { firstT: bars.t[0], n: bars.n, lastT: bars.t[bars.n - 1], sim: res.state });
+      runs.set(key, { firstT: bars.t[0], n: bars.n, lastT: bars.t[bars.n - 1], executionTfMin: bars.tfMin, sim: res.state });
     }
   }
   return { trades, open, pending, resume: { runs, evaluationFromT: u.evaluationFromT } };

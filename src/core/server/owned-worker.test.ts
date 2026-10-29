@@ -22,6 +22,25 @@ const positions = (n: number): TickPosition[] =>
   }));
 
 describe("private serial realtime worker", () => {
+  it("retains deadline close reasons and exact marks across flat frames on both directions", async () => {
+    const worker = new OwnedWorker(128), M = 60_000;
+    const initial = positions(2).map((p) => ({ ...p, trail: 0, executionTfMin: 1, holdEndT: 2 * M }));
+    const units = Float64Array.of(10, 20), reference = new TickMathBook(structuredClone(initial), units, .0015, 1, false);
+    try {
+      for (let minute = 1; minute <= 3; minute++) {
+        const now = minute * M, prices = { S0: 100, S1: 100 };
+        const reply = await worker.run<{ result: TickMathResult }>({
+          type: minute === 1 ? "tick-init" : "tick-advance", prices, now,
+          ...(minute === 1 ? { positions: initial, units, cost: .0015, baseTfMin: 1, trailFree: false } : {}),
+        }, 5_000);
+        assert.deepEqual(reply.result, reference.advance(prices, now));
+        if (minute === 2) {
+          assert.equal(Object.keys(reply.result.hits ?? {}).length, 2);
+          assert.ok(Object.values(reply.result.hits!).every((hit) => hit.reason === "time"));
+        } else assert.equal(reply.result.hits, null);
+      }
+    } finally { worker.dispose(); }
+  });
   it("rejects overlap, terminates timed-out work and resumes without affecting another owner", async () => {
     const worker = new OwnedWorker(128),
       other = new OwnedWorker(128);

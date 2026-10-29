@@ -7,6 +7,7 @@
 // Selection in S1/S2 uses in-sample trades only, so S3's out-of-sample numbers stay honest.
 // Implemented as a generator so the runtime can time-slice it.
 import { BOTS, entrySignal } from "../bots/bots.ts";
+import { cappedExecution, clearCappedProjections, hasMinutePrices } from "../sim/capped-execution.ts";
 import { tacticCooldown } from "../indications/filters.ts";
 import { DEFAULT_PROTECT, PROTECT_GRID, type CoreSettings } from "../config.ts";
 import { RT_COST } from "../model-cost.ts";
@@ -278,6 +279,7 @@ export function laneInds(base: string, tfs: readonly number[]): string[] {
  * holds only the shared indicator series, not one signal per combo × series (memory stays bounded).
  */
 export function forgetCombo(u: Universe, bot: string, ind: string) {
+  clearCappedProjections(u);
   for (const s of seriesOf(u, ind)) {
     const k = u.caches[s];
     k.forgetSuffix(`combo:${bot}:${ind}`);
@@ -406,7 +408,7 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
       : "";
   const dca = p.dca && (kind === "dca" || kind === "dca-active")
     ? `|dc${p.dca.levels}s${pct(p.dca.step)}q${p.dca.stepOfTp ?? 0}g${p.dca.stopGap ?? 0.5}r${p.dca.addRatio ?? 1}${p.dca.maxDistance ? `m${pct(p.dca.maxDistance)}` : ""}` : "";
-  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}${mode}${exitFloor}${exit}${dca}`;
+  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${p.maxHoldMin !== undefined ? `|hm${p.maxHoldMin}` : ""}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}${mode}${exitFloor}${exit}${dca}`;
   return kind === "dca"
     ? `${base}|dca`
     : kind === "dca-active"
@@ -443,6 +445,7 @@ export const isTrailingKind = (kind: string): boolean =>
 const fromPct = (s: string) => +(Number(s) / 100).toFixed(6);
 
 export function parseConfigId(id: string): { bot: BotType; ind: string; protect: Protect } | null {
+  const minuteHold = /\|hm([\d.]+)(?=\||$)/.exec(id);
   const mode = /\|to(?=\||$)/.exec(id);
   const ratio = /\|ts([\d.]+)(?=\||$)/.exec(id);
   const free = /\|tf1(?=\||$)/.exec(id);
@@ -450,7 +453,7 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   const exitFloor = /\|eg([\d.]+)(?=\||$)/.exec(id);
   const ladder = /\|dc([1-4])s([\d.]+)q([\d.]+)g([\d.]+)r([\d.]+)(?:m([\d.]+))?(?=\||$)/.exec(id);
   // Remove each token once; duplicates or malformed tokens remain and fail the strict grammar below.
-  const plainId = id.replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|eg[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?:m[\d.]+)?(?=\||$)/, "");
+  const plainId = id.replace(/\|hm[\d.]+(?=\||$)/, "").replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|eg[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?:m[\d.]+)?(?=\||$)/, "");
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
@@ -464,6 +467,11 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
     trail: fromPct(m[5]),
     hold: +m[6],
   };
+  if (minuteHold) {
+    const minutes = Number(minuteHold[1]);
+    if (!Number.isFinite(minutes) || minutes < 1) return null;
+    protect.maxHoldMin = minutes;
+  }
   if (ladder) {
     if (!/\|dcaA?$/.test(id)) return null;
     const [levels, step, stepOfTp, stopGap, addRatio] = [+ladder[1], fromPct(ladder[2]), +ladder[3], +ladder[4], +ladder[5]];
@@ -616,8 +624,8 @@ export interface ComboRun {
 }
 
 /** One protect cell's identity, as the grid, Base and the tape stage compare it: `tag|tp|sl|trail|hold` ("" = Wide). */
-export const protectCellKey = (p: Pick<Protect, "tp" | "sl" | "trail" | "hold" | "tag">) =>
-  `${p.tag ?? ""}|${p.tp}|${p.sl}|${p.trail}|${p.hold}`;
+export const protectCellKey = (p: Pick<Protect, "tp" | "sl" | "trail" | "hold" | "tag" | "maxHoldMin">) =>
+  `${p.tag ?? ""}|${p.tp}|${p.sl}|${p.trail}|${p.hold}${p.maxHoldMin !== undefined ? `|hm${p.maxHoldMin}` : ""}`;
 
 /** Base result of a pair at one range's representative cell (full history). */
 export interface RangeBaseStat {
@@ -1597,7 +1605,7 @@ export function cellStats(
   // Historic Exit is a standalone indication source; engine Bot tactics/cooldown do not thin its entry history.
   const cooldown = bot === "exit" ? 0 : tacticCooldown(tactics);
   const p = laneProtect(protect, ind);
-  if (p.hold < 1) return null;
+  if (p.hold < 1 && !(p.maxHoldMin !== undefined && hasMinutePrices(u))) return null;
   const id = configId(bot, ind, p);
   const series = seriesOf(u, ind);
   if (!series.length) return null;
@@ -1622,12 +1630,13 @@ export function cellStats(
     for (const sg of splitSides(sig)) {
       // A last-bar signal can only be pending. Base reads settled closes, so an empty entry run needs no simulator
       // result or close callback; the exact signal index is shared with the nonempty protection cells.
-      if (nextEntryIndex(sg)[0] + 1 >= u.bars[s].n) continue;
+      const view = cappedExecution(u, s, sg, p, cooldown);
+      if (view.protect.hold < 1 || nextEntryIndex(view.signal)[0] + 1 >= view.bars.n) continue;
       cell.beginRun();
-      simulate(id, u.bars[s], sg, p, {
+      simulate(id, view.bars, view.signal, view.protect, {
         cost,
-        cooldown,
-        atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined,
+        cooldown: view.cooldown,
+        atr: p.atr ? view.series(u.caches[s].atrEma(ATR_PERIOD)) : undefined,
         fixedPathScope: u,
         sink,
       });
@@ -1723,7 +1732,7 @@ export function* runComboSteps(
   // Historic Exit is a standalone indication source; engine Bot tactics/cooldown do not thin its entry history.
   const cooldown = bot === "exit" ? 0 : tacticCooldown(tactics);
   if (!laneScaled) protect = laneProtect(protect, ind);
-  if (protect.hold < 1) return null;
+  if (protect.hold < 1 && !(protect.maxHoldMin !== undefined && hasMinutePrices(u))) return null;
   const id = configId(bot, ind, protect);
   const trades: Trade[] = [];
   const open: OpenPosition[] = [];
@@ -1736,13 +1745,14 @@ export function* runComboSteps(
     if (!rawSignal) return null;
     const sig = evaluationSignal(u, u.bars[s], rawSignal);
     // long and short run independently (each direction its own position slot; a one-sided signal runs once)
-    const runs = bothSides(sig, (sg) =>
-      simulate(id, u.bars[s], sg, protect, {
+    const runs = bothSides(sig, (sg) => {
+      const view = cappedExecution(u, s, sg, protect, cooldown);
+      return simulate(id, view.bars, view.signal, view.protect, {
         cost,
-        cooldown,
-        atr: protect.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined,
-      }),
-    );
+        cooldown: view.cooldown,
+        atr: protect.atr ? view.series(u.caches[s].atrEma(ATR_PERIOD)) : undefined,
+      });
+    });
     for (const res of runs) {
       for (const tr of res.trades) trades.push(tr);
       if (res.open) open.push(res.open);

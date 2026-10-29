@@ -95,7 +95,7 @@ export interface Protect {
   dca?: Pick<DcaConfig, "levels" | "step" | "stepOfTp" | "stopGap" | "addRatio" | "maxDistance">;
   /** max bars in trade (time exit at close) */
   hold: number;
-  /** Explicit range time ceiling, preserved before lane conversion; a lane longer than this is ineligible. */
+  /** Explicit wall-clock ceiling. Capped minute execution is independent of the indication lane's duration. */
   maxHoldMin?: number;
   /**
    * ATR-scaled exits (Stable-02 model): resolved at every entry from ATR(14) of the signal bar into the distances
@@ -596,6 +596,12 @@ export interface OpenPosition {
   side: Side;
   entryT: number;
   entryI: number;
+  /** Actual model price clock captured at entry; absent legacy positions retain their indication clock. */
+  executionTfMin?: number;
+  /** Captured explicit hold deadline; absent legacy positions do not infer one from current settings. */
+  holdEndT?: number;
+  /** Observed realtime close instruction, not evidence of a venue fill. */
+  hitReason?: ExitReason;
   entry: number;
   stop: number;
   target: number;

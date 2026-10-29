@@ -443,7 +443,9 @@ export function simulateAxisDesk(
   const slAtr = ax.slAtr && ax.slAtr > 0 ? ax.slAtr : 0.7;
   const ratio = snapTpRatio(ax.tpRatio ?? 2.2);
   const hold = Math.max(1, Math.round(p.hold));
-  const expiry = Math.max(1, Math.round(ax.expiry && ax.expiry > 0 ? ax.expiry : hold));
+  // The desk's legacy winning-leg extension is optional strategy behavior; an explicit wall-clock MAX is hard.
+  const hardHold = p.maxHoldMin !== undefined ? Math.max(1, Math.floor(p.maxHoldMin / bars.tfMin)) : 2 * hold;
+  const expiry = Math.min(hardHold, Math.max(1, Math.round(ax.expiry && ax.expiry > 0 ? ax.expiry : hold)));
   const minSl = Math.max(0, floor?.minSl ?? 0);
   const requestedMaxSl = floor?.maxSl && floor.maxSl > 0 ? Math.max(floor.maxSl, minSl) : Infinity;
   const maxSl = Math.min(requestedMaxSl, signal ? signalMax : Infinity);
@@ -652,7 +654,7 @@ export function simulateAxisDesk(
         close(i, side === 1 ? Math.max(o[i], target) : Math.min(o[i], target), "tp");
       else {
         const held = i - startI + 1;
-        if (held >= 2 * hold) close(i, c[i], "time");
+        if (held >= hardHold) close(i, c[i], "time");
         else {
           manage(i);
           if (held >= hold) {

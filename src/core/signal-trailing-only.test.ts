@@ -431,7 +431,7 @@ describe("Signals: additional independent Trailing only sets", () => {
 
   it("parallel workers, serialized tapes and Base cells preserve every no-TP range and held-only flag", async () => {
     const bars = [
-      barsFromCandles(SYM, 15, syntheticCandles(SYM, 15, 1800, Date.UTC(2026, 9, 1), 3)),
+      barsFromCandles(SYM, 15, syntheticCandles(SYM, 15, 288, Date.UTC(2026, 9, 1), 3)),
     ];
     const u = makeUniverse(bars);
     const pairs = [`follow|${IND}`, "follow|sig-ema-cross-m@m15"];
