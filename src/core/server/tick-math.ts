@@ -106,7 +106,10 @@ export class TickMathBook {
               );
               if (level > 0 || holdDue) {
                 p.stopHit = now;
-                p.hitPx = level > 0 ? level : px;
+                // A quote can jump past a market stop between observations. The stop is a trigger, not proof of
+                // an execution there: conservatively mark the first observed adverse quote. Targets keep their
+                // configured limit price. Neither paper mark is a venue fill or an extra modeled fee.
+                p.hitPx = level > 0 && !crossedStop(p, px) ? level : px;
                 if (!(level > 0)) p.hitReason = "time";
                 const key = `${p.cfg}|${p.sym}|${p.side > 0 ? 1 : -1}|${p.entryT}`;
                 (result.hits ??= {})[key] = { at: now, stop: p.stop, px: p.hitPx,

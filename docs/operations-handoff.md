@@ -1,3 +1,34 @@
+## 2026-10-29 — realtime stop-gap and cost follow-up
+
+Realtime stop crossings now mark the first observed adverse quote rather than an unobserved stop price; target
+limits remain at their own level. This is a paper estimate, not a venue fill. Independent long/short range siblings,
+Normal/Trailing/Trailing-only lane clocks, and 0.12%/0.15% single-cost paths for Normal, DCA, DCA Active and Axis
+are covered by bounded synthetic fixtures and runtime/worker tests. Existing hits and actual exchange fees are not
+rewritten. See the detailed audit below; this change does not complete the draft stage adapter or prove profitability.
+
+The last eight-symbol 72-hour-total replay remains Minimal validation 12/17 (70.59%, historical PF 4.07); its later
+114/114/0 opened/closed/held funded-model orders returned PF 0.353138. It predates and does not exercise the tick fix.
+
+## 2026-10-29 — Base range qualification and Axis coverage follow-up
+
+Base range expansion previously published builder-only ranges as Base-qualified when grid.baseRanges=false.
+The exact passed tags now remain separate from diagnostic construction on runtime and preset paths. Per-range
+Axis tapes also lacked build coverage statistics; those are recorded independently, with held-only exits excluded
+from kept sets. Twenty-four side/type/allSets regressions, 119 focused checks, 14 worker checks plus a new
+per-range worker parity case, 103 integration checks, 65 report checks and the stated accounting checks pass;
+typecheck and development build pass. See docs/strategy-progression-range-audit-20261029.md for exact scope.
+Some inherited focused unit fixtures used synthetic histories over the operator's 72-hour limit; do not repeat
+them without first bounding those fixtures. The new Axis-specific fixtures were then restricted to 72 hours.
+
+The frozen eight-symbol 8–9 October 24h replay at 0.12% round-trip cost, with 24h evaluation and 24h indicator
+warmup, had Base 1/8 pairs (12.5%). Initial Minimal validation was 12/17 (70.59%, historical PF 4.07); later
+funded-model execution was 114/114/0 orders and 14/14/0 positions opened/closed/held, return PF 0.353138,
+3 long/111 short. All 114 exact source/settled returns match, and 68/68 report checks pass. The 0.12% setting
+was confined to this sensitivity run: CTS-A-O's current factory model remains 0.15%. The market sample does not
+exercise a passed pair with an applicable failed sibling range, so it does not measure the range fix's market
+impact. Full processed Main/Real/Active/Live integration, a proper Real Last-N gate, wider strategy coverage,
+long/short balance and high forward PF remain unresolved. No instance or venue changed.
+
 ## 2026-10-29 — PR234 first CI found recovery-count defect; deadline follow-up included
 
 First hosted headb9c4993 failed one of1080core-shard1 tests: recovery-only held exits added an extra configured Base cell (10vs9). The assertion was correct; recovered-only cells now skip BaseConfigCounter and grid candidate stats. The existing worker/serialization regression passes with its fixture bounded to72h. Other first-head checks passed, but that head must not be merged as green.
