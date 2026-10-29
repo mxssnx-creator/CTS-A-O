@@ -6,6 +6,7 @@
 //
 //   node scripts/core-desk-presets.mjs --candidates docs/desk-candidates.json [--symbols 16] [--pre 12] [--run 24]
 //        [--windows 0,24,48] [--out docs/desk-presets] [--min-pf 1.0]
+import { profitFactorRatio } from "../src/core/metrics/profit-factor.mjs";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
@@ -86,7 +87,7 @@ for (const c of candidates) {
   const n = per.reduce((a, x) => a + x.n, 0);
   const spanH = per.length * run;
   const agg = {
-    pf: gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0,
+    pf: profitFactorRatio(gp, gl, 99),
     n,
     perDay: (n * 24) / spanH,
     wr: per.reduce((a, x) => a + x.wr * x.n, 0) / Math.max(1, n),

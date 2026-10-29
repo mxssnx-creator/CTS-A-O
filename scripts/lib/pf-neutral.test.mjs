@@ -4,6 +4,17 @@ import { PF_NEUTRAL, profitFactorRatio } from '../../src/core/metrics/profit-fac
 import { pfOf as variants } from './eval-variants.mjs';
 import { pfOf as baseRules } from './eval-base-rules.mjs';
 import { blockSplit } from './eval-orders.mjs';
+import { pfHeatStyle } from './pf-presentation.mjs';
+
+test('report heatmaps keep neutral, flat, empty and unknown samples uncoloured', () => {
+  for (const amount of [1, 1e-13, 1e-20]) {
+    assert.equal(pfHeatStyle(amount, amount, 2), '');
+    assert.match(pfHeatStyle(amount / 2, amount, 2), /--neg/);
+    assert.match(pfHeatStyle(amount * 2, amount, 2), /--pos/);
+  }
+  for (const args of [[0, 0, 2], [0, 0, 0], [1, 1, 0], [NaN, 1, 2], [1, NaN, 2]])
+    assert.equal(pfHeatStyle(...args), '');
+});
 
 test('script and engine PF agree at neutral one without discarding tiny losses', () => {
   assert.equal(PF_NEUTRAL, 1);
