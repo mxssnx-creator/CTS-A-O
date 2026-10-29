@@ -15,7 +15,7 @@ def pf(row):
 
 
 def tone(row):
-    return "unknown" if row["pf"] is None else "good" if row["pf"] >= 1.05 else "warn" if row["pf"] >= 1 else "bad"
+    return "unknown" if row["pf"] is None or row["pf"] == 1 else "good" if row["pf"] > 1 else "bad"
 
 
 kinds = list(dict.fromkeys(row["kind"] for row in data["rows"]))

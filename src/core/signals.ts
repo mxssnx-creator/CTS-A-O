@@ -13,6 +13,7 @@ import type { ExitConfigSet, Protect } from "./domain/types.ts";
 import { atrProtect } from "./sim/backtest.ts";
 import { isSignalInd, laneInd } from "./indications/registry.ts";
 import { SIGNAL_MIN_PF } from "./signal-policy.ts";
+import { profitFactorRatio } from "./metrics/profit-factor.mjs";
 import {
   SIGNAL_SOURCES,
   signalId,
@@ -759,7 +760,7 @@ export class SignalAcceptIndex {
     if (b <= a) return { n: 0, pf: 0 };
     const gp = g.gp[b] - g.gp[a];
     const gl = g.gl[b] - g.gl[a];
-    return { n: g.cn[b] - g.cn[a], pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+    return { n: g.cn[b] - g.cn[a], pf: profitFactorRatio(gp, gl) };
   }
 }
 
@@ -977,7 +978,7 @@ export class EngineSideIndex {
     if (b <= a) return { n: 0, pf: 0 };
     const gp = g.gp[b] - g.gp[a];
     const gl = g.gl[b] - g.gl[a];
-    return { n: g.n[b] - g.n[a], pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+    return { n: g.n[b] - g.n[a], pf: profitFactorRatio(gp, gl) };
   }
   /**
    * A per-indication group (engineSideAccept.perInd) decides once it holds minTrades closes in twice its window
@@ -1143,7 +1144,7 @@ export class SignalGuard {
       if (x.r > 0) gp += x.r;
       else gl -= x.r;
     }
-    const res = { n, pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+    const res = { n, pf: profitFactorRatio(gp, gl) };
     m.byHours.set(hours, res);
     return res;
   }

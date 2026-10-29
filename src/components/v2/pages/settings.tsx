@@ -2671,7 +2671,7 @@ export function SettingsPage() {
       <div className="v2-grid v2-cols-2">
         <Panel
           title="Gates"
-          sub="Return PF neutral = 1.00 · default min 1.10 · displayed PF edge = PF − 1, neutral 0"
+          sub="Return PF neutral = 1.00 · qualification uses each range’s configured minimum above 1"
           right={
             <select
               className="v2-select"

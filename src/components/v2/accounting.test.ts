@@ -10,8 +10,6 @@ import {
   paperUnitReturn,
   returnPf,
   returnPfText,
-  returnPfEdge,
-  returnPfEdgeText,
   sameDataScope,
   unitStatsPfText,
   presetMetricsPfText,
@@ -38,7 +36,6 @@ test("settled zero-return samples are flat without a PF ratio, distinct from los
   assert.equal(returnPfText(flat), "Flat (no ratio)");
   assert.equal(unitStatsPfText(flat), "Flat (no ratio)");
   assert.equal(comparisonPfText(flat), "Flat (no ratio)");
-  assert.equal(returnPfEdgeText(flat), "–");
   assert.equal(returnPfText({ ...flat, n: 0 }), "–");
   assert.equal(returnPfText({ ...flat, gl: 1 }), "0.00");
   assert.equal(unitStatsPfText({ ...flat, gl: 1 }), "0.00");
@@ -49,27 +46,6 @@ test("settled zero-return samples are flat without a PF ratio, distinct from los
   assert.equal(returnPfText({ ...execution, pf: 1, returnGp: 1, returnGl: 1, gp: 0, gl: 0 }), "1.00");
   assert.equal(returnPfText({ ...execution, returnGp: null, returnGl: null,
     gp: 0, gl: 0, pfBasis: "unavailable" }), "–");
-});
-
-test("PF edge is zero at breakeven and never relabels a losing or unknown sample positive", () => {
-  const base = { n: 4, pfBasis: "unit-net-returns", unknownReturns: 0,
-    pfConvention: "gross-return-ratio", noLoss: false, gl: 1 };
-  for (const [pf, text] of [[0, "-1.00"], [0.2, "-0.80"], [1, "0.00"], [1.5, "+0.50"]] as const) {
-    const row = { ...base, pf, gp: pf };
-    assert.equal(returnPfEdge(row), pf - 1);
-    assert.equal(returnPfEdgeText(row), text);
-    assert.equal(returnPf(row), pf, "presentation must preserve the original PF");
-  }
-  const known = { ...base, gp: 2, pf: 2 };
-  for (const patch of [{ n: 0 }, { unknownReturns: 1 }, { pfBasis: "unavailable" },
-    { gp: undefined }, { gl: 0 }, { gl: NaN }, { noLoss: true }, { pfConvention: undefined }]) {
-    assert.equal(returnPfEdge({ ...known, ...patch }), null);
-    assert.equal(returnPfEdgeText({ ...known, ...patch }), "–");
-  }
-  const noLoss = { ...known, gl: 0, pf: 4, noLoss: true, pfConvention: "no-loss-sentinel" };
-  assert.equal(returnPfEdge(noLoss), null, "the no-loss score is not a finite ratio");
-  assert.equal(returnPfEdgeText(noLoss), "No losses");
-  assert.equal(returnPfEdgeText({ ...noLoss, gp: 0 }), "–");
 });
 
 test("return PF is the primary metric and cash PF remains a separate diagnostic", () => {
@@ -216,4 +192,16 @@ test("saved preset cards require verified unit evidence while fixed research kee
   assert.equal(presetMetricsPfText("saved", { n: 2, pf: 0.2 }), "Basis unavailable");
   assert.equal(presetMetricsPfText("research", { n: 2, pf: 0.2 }), "0.20");
   assert.equal(presetMetricsPfText("saved", { ...known, pf: 4, gp: 4, gl: 1 }), "4.00");
+});
+
+// Exact neutral fill must be grey, not the former minimum ten-percent green tint.
+test("PF charts and text share one neutral value, including explicitly signed net charts", async () => {
+  const { divergeFill } = await import("./chart-colors.ts");
+  assert.equal(divergeFill(1), "var(--v-grid)");
+  assert.match(divergeFill(.9999), /var\(--v-down\)/);
+  assert.match(divergeFill(1.0001), /var\(--v-up\)/);
+  assert.equal(divergeFill(0, 0), "var(--v-grid)");
+  assert.match(divergeFill(1, 0), /var\(--v-up\)/);
+  for (const bad of [NaN, Infinity, -Infinity]) assert.equal(divergeFill(bad), "var(--v-grid)");
+  for (const span of [0, -1, NaN]) assert.equal(divergeFill(2, 1, span), "var(--v-grid)");
 });

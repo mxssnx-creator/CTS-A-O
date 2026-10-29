@@ -1,3 +1,4 @@
+import { profitFactorRatio } from "../../src/core/metrics/profit-factor.mjs";
 // Per-variant scores of an eval (operator, 13 Oct: "eval by min PF"). A variant is one trade range × trail distance ×
 // hold time × ATR protect, read from the config id's own tokens; a signal's variants are its own pair (its lanes apart,
 // never pooled). Score = the MINIMUM profit factor over the windows.
@@ -49,7 +50,7 @@ export function pfOf(rs) {
     if (v > 0) gp += v;
     else gl -= v;
   }
-  return gl < 1e-12 ? (gp > 0 ? 9 : 0) : gp / gl;
+  return profitFactorRatio(gp, gl, 9);
 }
 
 /**

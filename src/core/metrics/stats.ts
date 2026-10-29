@@ -1,6 +1,7 @@
 // Trade statistics: PF, WR, net, MDD, DDT (drawdown time), SQN, recovery.
 import { PF_NO_LOSS } from "../config.ts";
 import type { Stats } from "../domain/types.ts";
+import { profitFactorRatio } from "./profit-factor.mjs";
 
 const H = 3_600_000;
 
@@ -88,11 +89,7 @@ function statsWithUnitReturns(
 }
 
 export function profitFactor(gp: number, gl: number): number {
-  // Unknown or overflowed gross amounts are not a no-loss winner and cannot qualify a strategy.
-  if (!(Number.isFinite(gp) && Number.isFinite(gl) && gp >= 0 && gl >= 0)) return NaN;
-  if (gl === 0) return gp > 0 ? PF_NO_LOSS : 0;
-  const pf = gp / gl;
-  return Number.isFinite(pf) ? pf : NaN;
+  return profitFactorRatio(gp, gl, PF_NO_LOSS);
 }
 
 /**

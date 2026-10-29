@@ -1,3 +1,4 @@
+import { profitFactorRatio } from "../../src/core/metrics/profit-factor.mjs";
 // The orders of one causal evaluation window (scripts/eval-gate.mjs, scripts/eval-families.mjs): those its entry falls in
 // that closed, and those still open at the window's end marked to market at its last close (the engine's
 // sim.openAtEnd, dumped as openEnd: every gate, cap and volume applied). Counting only the closed ones kept a signal's
@@ -33,7 +34,8 @@ const pf4 = (rs) => {
     if (r > 0) gp += r;
     else gl -= r;
   }
-  return gl > 1e-12 ? +(gp / gl).toFixed(4) : null;
+  const pf = profitFactorRatio(gp, gl);
+  return gl > 0 && Number.isFinite(pf) ? +pf.toFixed(4) : null;
 };
 
 /**
