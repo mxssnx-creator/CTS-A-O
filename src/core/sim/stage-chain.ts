@@ -1,6 +1,7 @@
 import { processedSetKey, type ProcessedBasis, type ProcessedSetIdentity } from "./processed-set.ts";
 import {
   checkStageChainSettings, compareStageObservation, dualStageGate, negativeMainTrigger, singleStageGate, stageWindow,
+  minimalStageWindow, secondaryWindowsFor,
   type NegativeMainTrigger, type StageChainSettings, type StageGate, type StageObservation,
 } from "./stage-policy.ts";
 
@@ -54,7 +55,7 @@ interface SetRecord {
     parentMissing: number };
 }
 export interface StageChainSnapshot {
-  version: 2;
+  version: 3;
   basis: ProcessedBasis;
   settings: StageChainSettings;
   clock: number;
@@ -87,7 +88,7 @@ const totals = (): Totals => ({ openedOrders: 0, closedOrders: 0, openedPosition
 const evaluations = (): SetRecord["evaluations"] => ({ evaluated: 0, qualified: 0, insufficient: 0, unknown: 0, failed: 0, parentMissing: 0 });
 const idOf = (s: Omit<StageSet, "id">) => JSON.stringify([s.stage, s.parentSetId, processedSetKey(s.identity), s.processingId, s.variant, s.minPf, s.admissionPolicy]);
 const dualKey = (p: StageChainSettings["base"]) => JSON.stringify([p.primaryN, p.secondaryN, p.secondaryMode,
-  [...p.secondaryWindows].sort((a, b) => a - b)]);
+  [...p.secondaryWindows].sort((a, b) => a - b), p.maxShortRatio ?? .5, p.minimal ?? null]);
 const sameLineage = (a: ProcessedSetIdentity, b: ProcessedSetIdentity) =>
   processedSetKey({ ...a, side: b.side }) === processedSetKey(b);
 const observationValid = (r: StageObservation) => r && nonempty(r.orderId) && time(r.entryT) &&
@@ -157,7 +158,7 @@ export class StageChainBook {
     return this.register({ stage: "main", identity: { ...parent.identity, side: parent.identity.side === 1 ? -1 : 1 },
       parentSetId: parent.id, processingId, variant: "inverse", minPf: parent.minPf,
       admissionPolicy: JSON.stringify([this.policy.main.primaryN, this.policy.negativeMain.enabled,
-        [...this.policy.negativeMain.windows].sort((a, b) => a - b)]) });
+        [...this.policy.negativeMain.windows].sort((a, b) => a - b), this.policy.negativeMain.combination ?? "mean"]) });
   }
   real(mainSetId: string, processingId: string): StageSet {
     const parent = this.record(mainSetId).set;
@@ -223,8 +224,9 @@ export class StageChainBook {
       }
     } else this.seenAtClock.add(key);
     const policy = s.stage === "base" || s.stage === "main" ? this.policy[s.stage] : null;
-    const primaryOk = policy && stageWindow(r.history, policy.primaryN, s.minPf, entryT).state === "qualified";
-    const autoCandidates = policy && primaryOk ? policy.secondaryWindows.filter((n) =>
+    const primaryOk = policy && stageWindow(r.history, policy.primaryN, s.minPf, entryT).state === "qualified" &&
+      (!policy.minimal?.enabled || minimalStageWindow(r.history, policy.minimal, s.minPf, entryT)?.state === "qualified");
+    const autoCandidates = policy && primaryOk ? secondaryWindowsFor(policy).filter((n) =>
       stageWindow(r.history, n, s.minPf, entryT).state === "qualified") : [];
     let positions = this.heldPositions.get(setId);
     if (!positions) { positions = new Map(); this.heldPositions.set(setId, positions); }
@@ -297,13 +299,13 @@ export class StageChainBook {
   }
   summaries(): StageSetStats[] { return [...this.records.keys()].map((id) => this.summary(id)); }
   snapshot(): StageChainSnapshot {
-    return structuredClone({ version: 2, basis: this.basis, settings: this.policy, clock: this.clock,
+    return structuredClone({ version: 3, basis: this.basis, settings: this.policy, clock: this.clock,
       records: [...this.records.values()], open: [...this.open.values()], seenAtClock: [...this.seenAtClock],
       parentMissesAtClock: [...this.parentMissesAtClock] });
   }
 
   static restore(snapshot: StageChainSnapshot): StageChainBook {
-    if (!snapshot || snapshot.version !== 2 || !Number.isFinite(snapshot.clock) || snapshot.clock < -1 ||
+    if (!snapshot || snapshot.version !== 3 || !Number.isFinite(snapshot.clock) || snapshot.clock < -1 ||
       !Array.isArray(snapshot.records) || !Array.isArray(snapshot.open) || !Array.isArray(snapshot.seenAtClock) ||
       !Array.isArray(snapshot.parentMissesAtClock))
       throw new TypeError("invalid stage-chain snapshot");
@@ -347,7 +349,7 @@ export class StageChainBook {
         !Array.isArray(o.slices) || o.slices.some((x) => !nonempty(x.id) || !observationValid({ ...x, orderId: o.orderId, entryT: o.entryT }) || x.knownT > snapshot.clock) ||
         new Set(o.slices.map((x) => x.id)).size !== o.slices.length || !Array.isArray(o.autoCandidates) ||
         new Set(o.autoCandidates).size !== o.autoCandidates.length ||
-        o.autoCandidates.some((n) => !(s.stage === "base" || s.stage === "main") || !book.policy[s.stage].secondaryWindows.includes(n)))
+        o.autoCandidates.some((n) => !(s.stage === "base" || s.stage === "main") || !secondaryWindowsFor(book.policy[s.stage]).includes(n)))
         throw new TypeError("invalid held stage order");
       const p = o.proof;
       if (s.stage === "base") {

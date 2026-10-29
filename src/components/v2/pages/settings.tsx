@@ -41,6 +41,8 @@ import {
   SYMBOL_RANK_CHOICES,
 } from "@/core/config";
 import { INDICATION_KINDS, type AxisRange, type RelateSource } from "@/core/domain/types";
+import { DEFAULT_STAGE_CHAIN, SECONDARY_WINDOWS, NEGATIVE_WINDOWS, mergeStageSettings, shortWindowLimit,
+  type StageChainSettings, type DualStagePolicy } from "@/core/sim/stage-settings";
 import { BREAK_CONFIG_IDS } from "@/core/indications/break-config";
 import { INVERSE_CONFIG_IDS } from "@/core/indications/inverse-config";
 import {
@@ -325,6 +327,104 @@ const BLOCK_SOURCE_HELP: Array<[string, string]> = [
   ],
   ["type", "same strategy type (Normal, Trailing, DCA, Axis)"],
 ];
+
+export function StageWindowsSettings(props: { stages?: StageChainSettings; set: (path: string[], value: unknown) => void }) {
+  const stages = mergeStageSettings(props.stages ?? DEFAULT_STAGE_CHAIN);
+  const write = (next: StageChainSettings) => props.set(["stages"], next);
+  const update = (stage: "base" | "main", patch: Partial<DualStagePolicy>) => {
+    const next = { ...stages[stage], ...patch };
+    next.maxShortRatio = Math.max(1 / next.primaryN, next.maxShortRatio ?? .5);
+    const cap = shortWindowLimit(next);
+    next.secondaryN = Math.min(next.secondaryN, cap);
+    next.secondaryWindows = next.secondaryWindows.filter((n) => n <= cap);
+    if (!next.secondaryWindows.length) next.secondaryWindows = [next.secondaryN];
+    write({ ...stages, [stage]: next });
+  };
+  return <div className="v2-lines" style={{ gap: 16 }}>
+    <SwitchRow label="Independent processed stage sets" title="Independent processed stage sets"
+      help="Base-qualified entries create Main sets. Only their processed closes qualify Real; Real's own closes qualify Active."
+      checked={stages.enabled} onChange={(enabled) => write({ ...stages, enabled })} />
+    <div className="v2-grid v2-cols-2">
+      {(["base", "main"] as const).map((stage) => {
+        const p = stages[stage], label = stage === "base" ? "Base" : "Main", cap = shortWindowLimit(p);
+        return <div key={stage} className="v2-lines" style={{ gap: 10 }}>
+          <strong>{label} · own set history</strong>
+          <div className="v2-grid v2-cols-2">
+            <Field label={`${label} long Last-N`} hint="Completed orders; independent of the calendar span">
+              <Num int min={9} max={500} value={p.primaryN} onChange={(primaryN) => update(stage, { primaryN })} />
+            </Field>
+            <Field label={`${label} short Last-N`} hint={`At most ${cap} closes for the current long window`}>
+              <Num int min={1} max={cap} value={p.secondaryN} onChange={(secondaryN) => update(stage, { secondaryN })} />
+            </Field>
+            <Field label={`${label} maximum short/long ratio (%)`} hint="Hard ceiling50%; changing the limit also updates the selected counts">
+              <Num min={Math.ceil(100 / p.primaryN)} max={50} step={5} value={(p.maxShortRatio ?? .5) * 100}
+                onChange={(v) => update(stage, { maxShortRatio: v / 100 })} />
+            </Field>
+            <Field label={`${label} short-window mode`}>
+              <select className="v2-select" value={p.secondaryMode}
+                onChange={(e) => update(stage, { secondaryMode: e.target.value as DualStagePolicy["secondaryMode"] })}>
+                <option value="static">Static</option><option value="multiple">All selected windows</option>
+                <option value="auto">Auto · prior completed results</option>
+              </select>
+            </Field>
+          </div>
+          <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>Secondary windows for multiple / auto</div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            {SECONDARY_WINDOWS.map((n) => <label key={n} style={{ display: "flex", gap: 5, alignItems: "center" }}>
+              <input type="checkbox" aria-label={`${label} candidate Last-${n}`} checked={p.secondaryWindows.includes(n)}
+                disabled={n > cap || p.secondaryWindows.length === 1 && p.secondaryWindows[0] === n}
+                onChange={(e) => update(stage, { secondaryWindows: e.target.checked
+                  ? [...p.secondaryWindows, n].sort((a, b) => a - b) : p.secondaryWindows.filter((x) => x !== n) })} />{n}
+            </label>)}
+          </div>
+          {stage === "base" ? <>
+            <SwitchRow label="Base minimal window enabled" title="Minimal · signed recent result"
+              help="An additional signed net-return condition. Long and short windows must still clear their positive PF floor."
+              checked={p.minimal?.enabled ?? false} onChange={(enabled) => update(stage,
+                { minimal: { n: 1, polarity: "positive", ...p.minimal, enabled } })} />
+            <div className="v2-grid v2-cols-2">
+              <Field label="Base minimal Last-N" hint="One, two or three complete closes">
+                <select className="v2-select" value={p.minimal?.n ?? 1} onChange={(e) => update(stage,
+                  { minimal: { enabled: false, polarity: "positive", ...p.minimal, n: Number(e.target.value) } })}>
+                  {[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </Field>
+              <Field label="Base minimal result">
+                <select className="v2-select" value={p.minimal?.polarity ?? "positive"} onChange={(e) => update(stage,
+                  { minimal: { enabled: false, n: 1, ...p.minimal, polarity: e.target.value as "positive" | "negative" } })}>
+                  <option value="positive">Positive net</option><option value="negative">Negative net</option>
+                </select>
+              </Field>
+            </div>
+          </> : null}
+        </div>;
+      })}
+    </div>
+    <SwitchRow label="Independent inverse Main enabled" title="Separate inverse Main on negative tails"
+      help="Requires Main's positive long-window PF, then simulates the opposite direction with its own costs and exits."
+      checked={stages.negativeMain.enabled} onChange={(enabled) => write({ ...stages,
+        negativeMain: { ...stages.negativeMain, enabled } })} />
+    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      {NEGATIVE_WINDOWS.map((n) => <label key={n} style={{ display: "flex", gap: 5, alignItems: "center" }}>
+        <input type="checkbox" aria-label={`Main negative Last-${n}`} checked={stages.negativeMain.windows.includes(n)}
+          disabled={stages.negativeMain.windows.length === 1 && stages.negativeMain.windows[0] === n}
+          onChange={(e) => write({ ...stages, negativeMain: { ...stages.negativeMain, windows: e.target.checked
+            ? [...stages.negativeMain.windows, n].sort((a, b) => a - b) : stages.negativeMain.windows.filter((x) => x !== n) } })} />Last {n}
+      </label>)}
+    </div>
+    <div className="v2-grid v2-cols-2">
+      <Field label="Main negative-window combination">
+        <select className="v2-select" value={stages.negativeMain.combination ?? "mean"}
+          onChange={(e) => write({ ...stages, negativeMain: { ...stages.negativeMain, combination: e.target.value as "mean" | "all" } })}>
+          <option value="all">Each selected tail negative</option><option value="mean">Average tail mean negative</option>
+        </select>
+      </Field>
+      <Field label="Real Last-N" hint="Own Real closes qualify Active. Active mirroring adds no further Last-N gate.">
+        <Num int min={1} max={500} value={stages.realN} onChange={(realN) => write({ ...stages, realN })} />
+      </Field>
+    </div>
+  </div>;
+}
 
 const RELATE_SOURCE_HELP: Array<[RelateSource, string]> = [
   ["config", "exact config × symbol × direction; each config set has its own executed-close record"],
@@ -2668,6 +2768,10 @@ export function SettingsPage() {
         <SignalsSettings signals={s.signals} set={set} status={status?.signals} grid={s.grid} />
       </Panel>
 
+      <Panel title="Stage validation windows" sub="Own processed sets · short/long ratio at most50% · no calendar-based replay qualification">
+        <StageWindowsSettings stages={s.stages} set={set} />
+      </Panel>
+
       <div className="v2-grid v2-cols-2">
         <Panel
           title="Gates"
@@ -2812,13 +2916,13 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Base sets min PF"
-              hint="the PF from which Base builds and evaluates a pair's config sets (one floor for every range). Each set still has to clear its own stage / range minimum before it can trade, so this only widens what is computed · 0.5 – 1.5"
+              hint="Default 1.10. Base construction floor for untagged / Wide sets; tagged ranges retain their separately configured floors. Every set must pass its own later validation before execution · 0.5 – 1.5"
             >
               <Num
                 step={0.01}
                 min={0.5}
                 max={1.5}
-                value={s.gates.baseSetsMinPf ?? 1}
+                value={s.gates.baseSetsMinPf ?? s.gates.minPf}
                 onChange={(v) => set(["gates", "baseSetsMinPf"], v)}
               />
             </Field>

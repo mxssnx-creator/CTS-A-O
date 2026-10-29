@@ -13,6 +13,27 @@ import { simulateStageSource, type StageSource } from "./stage-source.ts";
 const M = 60_000;
 const protect = { tp: .02, sl: .04, trail: 0, hold: 3 };
 const axis: AxisConfig = { levels: 2, spacing: 1, ratio: 1, minDisp: .35, maxDisp: 2.6, center: 50, exits: "fixed" };
+
+test("a rejected source cannot leak its ungated last-bar pending signal into a processed order", () => {
+  const bars = (n: number) => barsFromCandles("A-USDT", 1,
+    Array.from({ length: n }, (_, i) => ({ t: i * M, o: 100, h: 100, l: 100, c: 100, v: 1 })));
+  const cfg = "follow|ema-9-21@m1|pending-fixture", book = new StageChainBook("model", DEFAULT_STAGE_CHAIN),
+    base = book.base({ baseConfigId: cfg, symbol: "A-USDT", side: 1, kind: "normal", lane: "m1", economicRevision: "v1" }, 1.1),
+    main = book.main(base.id, "main"), source = { cfg, bars: bars(2), side: 1 as const,
+      signal: new Int8Array([0, 1]), protect, kind: "normal" as const, cost: .0015 };
+  assert.equal(simulate(cfg, source.bars, source.signal, protect, { cost: .0015 }).pending, 1, "the raw signal exists");
+  const unvalidated = simulateStageSource(main, source, () => false);
+  assert.equal(unvalidated.pending, 0); assert.equal(unvalidated.pendingIntent!.state, "awaiting-validation");
+  assert.equal(unvalidated.open, null); assert.equal(unvalidated.trades.length, 0);
+  const qualified = simulateStageSource(main, source, () => false, (intent) => {
+    assert.equal(intent.entryT, 2 * M); assert.equal(Object.hasOwn(intent, "entry"), false, "no invented next-open fill");
+    return true;
+  });
+  assert.equal(qualified.pending, 1); assert.equal(qualified.open, null);
+  const next = simulateStageSource(main, { ...source, bars: bars(3), signal: new Int8Array([0, 1, 0]) }, () => false);
+  assert.equal(next.open, null); assert.equal(next.trades.length, 0, "pending qualification never bypasses actual entry admission");
+  assert.equal(simulateStageSource(main, source, () => true, () => false).pendingIntent!.state, "rejected");
+});
 function prices(side: Side) {
   const mirror = (x: number) => side === 1 ? x : 200 - x;
   return barsFromCandles("A-USDT", 1, [

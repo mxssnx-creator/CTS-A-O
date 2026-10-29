@@ -6,9 +6,11 @@ import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
 import { validVolumeRatio } from "./volume-ratio.ts";
 import { AXIS_MAX_LEVELS, AXIS_MAX_RUNG_RATIO } from "./sim/relate-volume.ts";
+import { checkStageChainSettings, checkStageSettingsPatch, mergeStageSettings } from "./sim/stage-settings.ts";
 
 /** Range checks for a settings patch (Settings page and preset dialog alike). */
 export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
+  if (s.stages !== undefined) checkStageSettingsPatch(s.stages);
   const num = (v: unknown, lo: number, hi: number, name: string) => {
     if (v === undefined) return;
     if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi)
@@ -1145,6 +1147,7 @@ export function checkRangeReplacementsComplete(grid: CoreSettings["grid"]) {
 
 export function checkMerged(cur: CoreSettings, patch: Partial<CoreSettings> | SettingsPatch) {
   const merged: Partial<CoreSettings> = {};
+  if (patch.stages !== undefined) checkStageChainSettings(mergeStageSettings(cur.stages, patch.stages));
   if (patch.grid) {
     merged.grid = mergeGridSettings(cur.grid, patch.grid);
     checkLowRangeComplete(merged.grid);

@@ -20,6 +20,7 @@ import {
   type SettingsPatch,
 } from "./config.ts";
 import { checkMerged, checkSettings } from "./settings-check.ts";
+import { mergeStageSettings, type StageChainPatch } from "./sim/stage-settings.ts";
 import { DESK_PRESETS } from "./presets.desk.ts";
 import { LIVE_COORD_PRESETS } from "./presets.live.ts";
 import { RESEARCH_PRESETS as RESEARCH_RAW } from "./presets.research.ts";
@@ -181,6 +182,16 @@ const CASES: Record<string, Case> = {
   "gates.baseRangeLastN.micro": num(0, 500, { int: true }),
   "gates.baseRangeLastN.minimal": num(0, 500, { int: true }),
   "gates.lastNFloor": num(0, 100, { int: true }),
+  ...Object.fromEntries(["base", "main"].flatMap((stage) => Object.entries({
+    primaryN: num(9, 500, { int: true }), secondaryN: num(1, 25, { int: true }),
+    secondaryMode: oneOf(["static", "multiple", "auto"]), secondaryWindows: list(1, 25, { int: true, max: 25 }),
+    maxShortRatio: oneOf([.5, .25, .1, .01, 1e-12], [0, -.1, .50001, Infinity, NaN, ".5"]),
+  }).map(([key, value]) => [`stages.${stage}.${key}`, value]))),
+  "stages.base.minimal.n": num(1, 3, { int: true }),
+  "stages.base.minimal.polarity": oneOf(["positive", "negative"]),
+  "stages.realN": num(1, 500, { int: true }),
+  "stages.negativeMain.windows": oneOf([[1], [2], [5], [10], [1, 2, 5, 10]], [[], [3], [5, 5], ["1"]]),
+  "stages.negativeMain.combination": oneOf(["mean", "all"]),
   refineTop: num(1, 100, { int: true }),
   mainTop: num(0, 100_000, { int: true }),
   evalTop: num(1, 400, { int: true }),
@@ -646,6 +657,8 @@ function applied(patch: SettingsPatch): CoreSettings {
       s.signals = mergeSignals(DEFAULT_SETTINGS.signals, v as Partial<SignalSettings>);
     else if (k === "grid")
       s.grid = mergeGridSettings(DEFAULT_SETTINGS.grid, v as GridSettingsPatch);
+    else if (k === "stages")
+      s.stages = mergeStageSettings(DEFAULT_SETTINGS.stages, v as StageChainPatch);
     else if (isObj(v) && isObj(s[k])) s[k] = { ...(s[k] as Obj), ...v };
     else s[k] = structuredClone(v);
   }

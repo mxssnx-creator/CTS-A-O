@@ -532,23 +532,23 @@ describe("sample warm-up (gates.warmup): a check that cannot be computed yet is 
     );
   });
 
-  it("Base applies range PF floors while keeping the PF 1 wide-set prefilter", async () => {
+  it("Base and ordinary range factory floors are PF 1.1, including the Wide prefilter", async () => {
     const { DEFAULT_GATES } = await import("../config.ts");
     const { baseSetsGates, passesBase } = await import("../pipeline/pipeline.ts");
     const { minPfOf } = await import("../minimal-coord.ts");
-    assert.equal(DEFAULT_GATES.baseSetsMinPf, 1, "the sets floor");
+    assert.equal(DEFAULT_GATES.baseSetsMinPf, 1.1, "the sets floor");
     assert.equal(DEFAULT_GATES.warmup, true, "the sample warm-up is on");
     const sets = baseSetsGates(DEFAULT_GATES);
-    assert.equal(sets.minPf, 1);
+    assert.equal(sets.minPf, 1.1);
     assert.deepEqual(
       sets.rangeMinPf,
       DEFAULT_GATES.rangeMinPf,
       "range floors remain active at Base",
     );
-    // a wide set at PF 1.02 passes the deliberately wider prefilter
+    // A Wide set below the factory floor cannot qualify merely because it is untagged.
     const st = { n: 40, pf: 1.02, net: 0.5, mdd: 0.1,
       baseLast: { requested: 40, n: 40, gp: 1.02, gl: 1, stop: 3.9 } };
-    assert.equal(passesBase(st, sets), true, "built and evaluated");
+    assert.equal(passesBase(st, sets), false, "below the requested Base floor");
     for (const tag of ["mc", "mn", "sh", "gn", "lg"])
       assert.equal(passesBase(st, { ...sets, minPf: minPfOf(sets, tag) }), false, tag);
     const middle = { n: 40, pf: 1.15, net: 0.5, mdd: 0.1,
@@ -557,9 +557,9 @@ describe("sample warm-up (gates.warmup): a check that cannot be computed yet is 
     assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "sh") }), true, "Short 1.10");
     assert.equal(
       passesBase(middle, { ...sets, minPf: minPfOf(sets, "gn") }),
-      false,
-      "General 1.20",
+      true,
+      "General 1.10",
     );
-    assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "lg") }), false, "Long 1.30");
+    assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "lg") }), true, "Long 1.10");
   });
 });

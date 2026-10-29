@@ -1,44 +1,12 @@
 import { profitFactor } from "../metrics/stats.ts";
-
-export const SECONDARY_WINDOWS = [5, 10, 15, 20, 25] as const;
-export type SecondaryMode = "static" | "multiple" | "auto";
-export interface DualStagePolicy {
-  primaryN: number;
-  secondaryN: number;
-  secondaryMode: SecondaryMode;
-  secondaryWindows: number[];
-}
-export interface StageChainSettings {
-  enabled: boolean;
-  base: DualStagePolicy;
-  main: DualStagePolicy;
-  /** Main's negative tail creates a new inverse Main set. It never qualifies the original direction. */
-  negativeMain: { enabled: boolean; windows: number[] };
-  realN: number;
-}
-
-const dual = (): DualStagePolicy => ({ primaryN: 50, secondaryN: 15,
-  secondaryMode: "static", secondaryWindows: [...SECONDARY_WINDOWS] });
-/** Disabled until the execution adapter can prove exact stage ownership, including held recovery. */
-export const DEFAULT_STAGE_CHAIN: StageChainSettings = {
-  enabled: false, base: dual(), main: dual(), negativeMain: { enabled: true, windows: [5, 10] }, realN: 15,
-};
+import { checkDualStagePolicy, secondaryWindowsFor, type DualStagePolicy, type MinimalStagePolicy,
+  type StageChainSettings } from "./stage-settings.ts";
+export { DEFAULT_STAGE_CHAIN, SECONDARY_WINDOWS, NEGATIVE_WINDOWS, checkStageChainSettings,
+  checkDualStagePolicy, shortWindowLimit, secondaryWindowsFor, mergeStageSettings } from "./stage-settings.ts";
+export type { StageChainSettings, DualStagePolicy, SecondaryMode, MinimalStagePolicy, StageChainPatch } from "./stage-settings.ts";
 
 const integer = (v: unknown, lo: number, hi: number): v is number =>
   typeof v === "number" && Number.isSafeInteger(v) && v >= lo && v <= hi;
-const windowsValid = (a: unknown, allowed: readonly number[]): a is number[] =>
-  Array.isArray(a) && a.length > 0 && a.every((n) => allowed.includes(n)) && new Set(a).size === a.length;
-export function checkStageChainSettings(s: StageChainSettings): void {
-  if (!s || typeof s.enabled !== "boolean" || !integer(s.realN, 9, 500) ||
-    !s.negativeMain || typeof s.negativeMain.enabled !== "boolean" || !windowsValid(s.negativeMain.windows, [5, 10]))
-    throw new TypeError("invalid stage-chain settings");
-  for (const p of [s.base, s.main]) {
-    if (!p || !integer(p.primaryN, 9, 500) || !integer(p.secondaryN, 5, 25) ||
-      !SECONDARY_WINDOWS.includes(p.secondaryN as typeof SECONDARY_WINDOWS[number]) ||
-      !["static", "multiple", "auto"].includes(p.secondaryMode) || !windowsValid(p.secondaryWindows, SECONDARY_WINDOWS))
-      throw new TypeError("invalid dual stage window policy");
-  }
-}
 
 export interface StageObservation {
   orderId: string;
@@ -68,6 +36,8 @@ export interface StageGate {
   secondary: StageWindow[];
   selectedN: number | null;
   selection: "single" | "static" | "multiple" | "auto" | "auto-fallback";
+  /** Signed recent-net condition, distinct from the positive PF required by long/short windows. */
+  minimal?: StageWindow & { polarity: MinimalStagePolicy["polarity"]; criterion: "net-sign" };
 }
 
 /** Entries see only completely closed orders whose result was available strictly before the entry. */
@@ -108,21 +78,34 @@ function combinedState(windows: readonly StageWindow[]): WindowState {
  */
 export function dualStageGate(rows: readonly StageObservation[], policy: DualStagePolicy, minPf: number, beforeT: number,
   autoScores: ReadonlyMap<number, readonly StageObservation[]> = new Map()): StageGate {
+  checkDualStagePolicy(policy);
   const primary = stageWindow(rows, policy.primaryN, minPf, beforeT);
+  const minimal = minimalStageWindow(rows, policy.minimal, minPf, beforeT);
   let selectedN = policy.secondaryN;
   let selection: StageGate["selection"] = policy.secondaryMode === "auto" ? "auto-fallback" : policy.secondaryMode;
   if (policy.secondaryMode === "auto") {
     let best: { n: number; pf: number } | undefined;
-    for (const n of [...policy.secondaryWindows].sort((a, b) => a - b)) {
+    for (const n of secondaryWindowsFor(policy).sort((a, b) => a - b)) {
       const score = stageWindow(autoScores.get(n) ?? [], policy.primaryN, minPf, beforeT);
       if (score.state === "qualified" && score.pf !== null && (!best || score.pf > best.pf)) best = { n, pf: score.pf };
     }
     if (best) { selectedN = best.n; selection = "auto"; }
   }
-  const secondary = (policy.secondaryMode === "multiple" ? policy.secondaryWindows : [selectedN])
+  const secondary = (policy.secondaryMode === "multiple" ? secondaryWindowsFor(policy) : [selectedN])
     .map((n) => stageWindow(rows, n, minPf, beforeT));
-  return { state: combinedState([primary, ...secondary]), primary, secondary,
-    selectedN: policy.secondaryMode === "multiple" ? null : selectedN, selection };
+  return { state: combinedState([primary, ...secondary, ...(minimal ? [minimal] : [])]), primary, secondary,
+    selectedN: policy.secondaryMode === "multiple" ? null : selectedN, selection, ...(minimal ? { minimal } : {}) };
+}
+
+export function minimalStageWindow(rows: readonly StageObservation[], policy: MinimalStagePolicy | undefined,
+  minPf: number, beforeT: number): StageGate["minimal"] {
+  if (!policy?.enabled) return undefined;
+  if (!integer(policy.n, 1, 3) || !["positive", "negative"].includes(policy.polarity))
+    throw new TypeError("invalid minimal signed Last-N window");
+  const w = stageWindow(rows, policy.n, minPf, beforeT);
+  const state = w.state === "unknown" || w.state === "insufficient" ? w.state
+    : w.mean !== null && (policy.polarity === "positive" ? w.mean > 0 : w.mean < 0) ? "qualified" : "failed";
+  return { ...w, state, polarity: policy.polarity, criterion: "net-sign" };
 }
 
 export function singleStageGate(rows: readonly StageObservation[], n: number, minPf: number, beforeT: number): StageGate {
@@ -143,6 +126,7 @@ export function negativeMainTrigger(rows: readonly StageObservation[], settings:
   const windows = settings.negativeMain.windows.map((n) => stageWindow(rows, n, minPf, beforeT));
   const complete = windows.every((w) => w.n === w.requestedN && w.mean !== null);
   const mean = complete ? windows.reduce((a, w) => a + w.mean!, 0) / windows.length : null;
-  return { qualified: settings.negativeMain.enabled && primary.state === "qualified" && mean !== null && mean < 0,
+  return { qualified: settings.negativeMain.enabled && primary.state === "qualified" && mean !== null &&
+      (settings.negativeMain.combination === "all" ? windows.every((w) => w.mean !== null && w.mean < 0) : mean < 0),
     primary, windows, mean };
 }

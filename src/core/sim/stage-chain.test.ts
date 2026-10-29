@@ -10,8 +10,8 @@ import { barsFromCandles } from "../market/bars.ts";
 const identity: ProcessedSetIdentity = { baseConfigId: "follow|low-range@m1|mc|normal|tp1|sl1", symbol: "A-USDT",
   side: 1, kind: "normal", lane: "coordination-a", economicRevision: "cost-and-processing-v1" };
 const settings = (): StageChainSettings => ({ ...structuredClone(DEFAULT_STAGE_CHAIN), enabled: true,
-  base: { primaryN: 9, secondaryN: 5, secondaryMode: "static", secondaryWindows: [5, 10, 15, 20, 25] },
-  main: { primaryN: 9, secondaryN: 5, secondaryMode: "static", secondaryWindows: [5, 10, 15, 20, 25] },
+  base: { primaryN: 9, secondaryN: 1, secondaryMode: "static", secondaryWindows: [1] },
+  main: { primaryN: 9, secondaryN: 1, secondaryMode: "static", secondaryWindows: [1] },
   negativeMain: { enabled: true, windows: [5] }, realN: 9 });
 const observations = (returns: Array<number | null>, from = 0): StageObservation[] => returns.map((unitReturn, n) =>
   ({ orderId: `o-${n + from}`, entryT: 2 * (n + from), exitT: 2 * (n + from) + 1,
@@ -27,18 +27,18 @@ const close = (b: StageChainBook, set: { id: string }, t: number, r: number | nu
   b.close(set.id, `order-${t}`, t, "final", t + 1, r, true);
 
 test("dual gates require full own primary and secondary windows including Last-5", () => {
-  const s = settings();
-  const good = observations(Array(9).fill(.02));
-  assert.equal(dualStageGate(good, s.base, 1.1, 20).state, "qualified");
-  assert.equal(dualStageGate(good.slice(1), s.base, 1.1, 20).state, "insufficient");
-  const recentLoss = observations([.1, .1, .1, .1, -.01, -.01, -.01, -.01, -.01]);
-  const gate = dualStageGate(recentLoss, s.main, 1.1, 20);
+  const p = { ...settings().base, primaryN: 20, secondaryN: 5, secondaryWindows: [5, 10] };
+  const good = observations(Array(20).fill(.02));
+  assert.equal(dualStageGate(good, p, 1.1, 50).state, "qualified");
+  assert.equal(dualStageGate(good.slice(1), p, 1.1, 50).state, "insufficient");
+  const recentLoss = observations([...Array(15).fill(.1), -.01, -.01, -.01, -.01, -.01]);
+  const gate = dualStageGate(recentLoss, p, 1.1, 50);
   assert.equal(gate.primary.state, "qualified"); assert.equal(gate.secondary[0].state, "failed");
   assert.equal(gate.state, "failed");
-  assert.equal(dualStageGate(observations([...Array(8).fill(.02), null]), s.main, 1.1, 20).state, "unknown");
+  assert.equal(dualStageGate(observations([...Array(19).fill(.02), null]), p, 1.1, 50).state, "unknown");
   const malformed = observations(Array(10).fill(.02));
   malformed[9].exitT = NaN;
-  assert.equal(dualStageGate(malformed, s.main, 1.1, 21).state, "unknown", "unorderable losses cannot be dropped for older wins");
+  assert.equal(dualStageGate(malformed, p, 1.1, 21).state, "unknown", "unorderable losses cannot be dropped for older wins");
 });
 
 test("primary 50 plus negative Last-5/10 requests inverse without passing the original Main gate", () => {
@@ -167,10 +167,10 @@ test("changed admission policies create new derived set identities without chang
     return { base, main, inverse, real, active };
   };
   const original = make(settings());
-  const changedBase = settings(); changedBase.base.secondaryN = 10;
+  const changedBase = settings(); changedBase.base.secondaryN = 2;
   const nextBase = make(changedBase);
   for (const key of ["base", "main", "inverse", "real", "active"] as const) assert.notEqual(nextBase[key].id, original[key].id);
-  const changedMain = settings(); changedMain.main.secondaryN = 10;
+  const changedMain = settings(); changedMain.main.secondaryN = 2;
   const nextMain = make(changedMain);
   assert.equal(nextMain.main.id, original.main.id, "the same upstream processing has the same Main history");
   assert.notEqual(nextMain.real.id, original.real.id, "Real records only this Main admission policy");
@@ -183,20 +183,20 @@ test("changed admission policies create new derived set identities without chang
 });
 
 test("multiple windows all pass; auto uses only earlier full candidate outcomes and falls back explicitly", () => {
-  const p = { ...settings().base, secondaryMode: "multiple" as const }, rows = observations(Array(50).fill(.02));
+  const p = { ...settings().base, secondaryMode: "multiple" as const, secondaryWindows: [1, 3, 4] }, rows = observations(Array(50).fill(.02));
   const multi = dualStageGate(rows, p, 1.1, 101);
   assert.equal(multi.state, "qualified"); assert.equal(multi.selectedN, null);
-  assert.deepEqual(multi.secondary.map((w) => w.requestedN), [5, 10, 15, 20, 25]);
+  assert.deepEqual(multi.secondary.map((w) => w.requestedN), [1, 3, 4]);
   const auto = { ...p, secondaryMode: "auto" as const };
   assert.equal(dualStageGate(rows, auto, 1.1, 101).selection, "auto-fallback");
-  const scores = new Map([[10, observations([.04, -.01, .04, -.01, .04, -.01, .04, -.01, .04])],
-    [5, observations([.02, -.01, .02, -.01, .02, -.01, .02, -.01, .02])],
-    [25, observations(Array(9).fill(.04), 100)]]);
+  const scores = new Map([[3, observations([.04, -.01, .04, -.01, .04, -.01, .04, -.01, .04])],
+    [1, observations([.02, -.01, .02, -.01, .02, -.01, .02, -.01, .02])],
+    [4, observations(Array(9).fill(.04), 100)]]);
   const chosen = dualStageGate(rows, auto, 1.1, 101, scores);
-  assert.equal(chosen.selectedN, 10); assert.equal(chosen.selection, "auto");
+  assert.equal(chosen.selectedN, 3); assert.equal(chosen.selection, "auto");
   assert.equal(dualStageGate(rows, auto, 1.1, 10, scores).selection, "auto-fallback", "future winning scores are unavailable");
-  scores.set(10, observations([...Array(8).fill(.04), null]));
-  assert.equal(dualStageGate(rows, auto, 1.1, 101, scores).selectedN, 5, "unknown scores never qualify an optimizer");
+  scores.set(3, observations([...Array(8).fill(.04), null]));
+  assert.equal(dualStageGate(rows, auto, 1.1, 101, scores).selectedN, 1, "unknown scores never qualify an optimizer");
 });
 
 test("partials do not manufacture complete Last-N orders and duplicate slices are rejected", () => {
@@ -335,7 +335,7 @@ test("settings validate every window and keep independently cloned defaults", ()
   checkStageChainSettings(DEFAULT_STAGE_CHAIN);
   assert.equal(DEFAULT_STAGE_CHAIN.base.primaryN, 50); assert.equal(DEFAULT_STAGE_CHAIN.main.secondaryN, 15);
   assert.equal(DEFAULT_STAGE_CHAIN.realN, 15);
-  for (const mutate of [(s: StageChainSettings) => { s.realN = 5; }, (s: StageChainSettings) => { s.base.primaryN = 8; },
+  for (const mutate of [(s: StageChainSettings) => { s.realN = 0; }, (s: StageChainSettings) => { s.base.primaryN = 8; },
     (s: StageChainSettings) => { s.main.secondaryN = 6; }, (s: StageChainSettings) => { s.main.secondaryWindows = [5, 5]; },
     (s: StageChainSettings) => { s.negativeMain.windows = [15]; }]) {
     const s = settings(); mutate(s); assert.throws(() => checkStageChainSettings(s));

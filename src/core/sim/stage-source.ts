@@ -31,8 +31,20 @@ export interface StageSourceResult {
   open: OpenPosition | null;
   pending: Side | 0;
   pendingProtect?: Protect;
+  /** A signal intent is not a filled or held order. No next-open price is fabricated for its qualification. */
+  pendingIntent?: StagePendingIntent & { state: "awaiting-validation" | "rejected" | "qualified" };
 }
 export type StageSourceAdmission = (entry: SimulationEntry & { readonly setId: string }) => boolean;
+export interface StagePendingIntent {
+  readonly setId: string;
+  readonly cfg: string;
+  readonly sym: string;
+  readonly side: Side;
+  readonly signalCloseT: number;
+  /** Expected decision clock; actual fill ownership and entry price are still unknown. */
+  readonly entryT: number;
+}
+export type StagePendingAdmission = (intent: StagePendingIntent) => boolean;
 
 /**
  * Re-run the actual strategy and protection rules on the set's direction, prices and cost.
@@ -40,7 +52,8 @@ export type StageSourceAdmission = (entry: SimulationEntry & { readonly setId: s
  * Rejected entries cannot hold the stage's position, waiting-limit or resting-rung slot.
  * This constructor is an adapter primitive, not proof of production admission or exchange execution.
  */
-export function simulateStageSource(set: StageSet, source: StageSource, admit: StageSourceAdmission): StageSourceResult {
+export function simulateStageSource(set: StageSet, source: StageSource, admit: StageSourceAdmission,
+  admitPending?: StagePendingAdmission): StageSourceResult {
   if (!["main", "real"].includes(set.stage) || set.identity.baseConfigId !== source.cfg ||
     set.identity.symbol !== source.bars.sym || set.identity.kind !== source.kind ||
     !["normal", "trailing", "trailing-only", "exit", "dca", "dca-active", "axis"].includes(source.kind) ||
@@ -73,6 +86,17 @@ export function simulateStageSource(set: StageSet, source: StageSource, admit: S
     result = simulate(source.cfg, source.bars, signal, source.protect,
       { ...source.options, cost: source.cost, cooldown: source.cooldown, admitEntry });
   }
+  let pending = result.pending, pendingIntent: StageSourceResult["pendingIntent"];
+  if (pending) {
+    const t = source.bars.t[source.bars.n - 1] + source.bars.tfMin * 60_000;
+    const intent: StagePendingIntent = { setId: set.id, cfg: source.cfg, sym: source.bars.sym,
+      side: pending, signalCloseT: t, entryT: t };
+    const allowed = admitPending ? admitPending(intent) : false;
+    if (typeof allowed !== "boolean") throw new TypeError("pending stage admission must return a boolean");
+    pendingIntent = { ...intent, state: !admitPending ? "awaiting-validation" : allowed ? "qualified" : "rejected" };
+    if (!allowed) pending = 0;
+  }
   return { setId: set.id, baseConfigId: source.cfg, parentSetId: set.parentSetId, admissionPolicy: set.admissionPolicy, ...result,
+    pending, ...(pendingIntent ? { pendingIntent } : {}),
     trades: result.trades.map((t) => ({ ...t, kind: source.kind, mult: 1 })), open: result.open ?? null };
 }

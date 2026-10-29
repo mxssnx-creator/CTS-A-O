@@ -381,6 +381,8 @@ export interface RangeOpts {
 }
 
 export interface WalkForwardOptions {
+  /** Exact immutable stage policy, derived from Settings rather than a separate pooled qualification override. */
+  stages?: import("./stage-settings.ts").StageChainSettings;
   /** Per Axis set, relative to the corresponding base volume. Captured once at entry. */
   axisVolumeFactor?: number;
   /** Historic Exit owns its range ratio; never inherits Wide or a Signal parameter range. */
@@ -873,6 +875,7 @@ export const ENGINE_SIDE_ACCEPT: SignalAccept = {
 
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
   return {
+    stages: s.stages ? structuredClone(s.stages) : undefined,
     // The execution pipeline must consume only the configs admitted by Base and the initial set evaluation.
     // Pool reselection can admit later configs whose PF was not part of that validated cohort.
     seatSet: "validated",

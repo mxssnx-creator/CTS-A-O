@@ -1,4 +1,5 @@
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
+import { checkStageChainSettings, mergeStageSettings } from "../sim/stage-settings.ts";
 import { isHistoricExitConfig } from "../exit-scope.ts";
 import { lstatSync } from "node:fs";
 import { mergeWorkerTapesGen } from "./tape-merge.ts";
@@ -1218,6 +1219,7 @@ export class CoreRuntime {
     const savedWf = migrateValidationLast12(db,
       migrateSignalHistory150(db, migrateSignalLast4Policy(db, migrateSignalEvaluationPolicy(db, migrateWfCaps(db)))));
     migrateMicroMinimalBase30(db);
+    migrateBasePf11(db);
     migrateExpandedSignalDefaults(db);
     migrateNeutralVolumeRatios(db);
     migrateDcaTwoSteps(db);
@@ -2801,6 +2803,7 @@ export class CoreRuntime {
     const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${evaluationHistorySettings(this.settings, this.wf).historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`;
     const prevCompute = computeKey(this.settings, this.wf);
     const next = mergeSettings(this.settings, patch);
+    checkStageChainSettings(next.stages);
     if (patch.grid) {
       checkLowRangeComplete(next.grid);
       checkRangeReplacementsComplete(next.grid);
@@ -8889,6 +8892,7 @@ export class CoreRuntime {
       {
         ...patch,
         gates: { ...DEFAULT_SETTINGS.gates, ...(patch.gates ?? {}) },
+        stages: mergeStageSettings(DEFAULT_SETTINGS.stages, patch.stages),
         tactics: { ...DEFAULT_SETTINGS.tactics, ...(patch.tactics ?? {}) },
         focus: patch.focus ?? [],
       },
@@ -8915,7 +8919,13 @@ export class CoreRuntime {
       ? { ...p.settings.grid, ...settings.grid,
           lowRange: mergeGridSettings(mergeGridSettings(DEFAULT_SETTINGS.grid, p.settings.grid), settings.grid).lowRange }
       : settings.grid;
-    const merged = presetSettings({ ...p.settings, ...settings, ...(gridPatch ? { grid: gridPatch } : {}) });
+    const stagePatch = settings.stages !== undefined
+      ? mergeStageSettings(mergeStageSettings(DEFAULT_SETTINGS.stages, p.settings.stages), settings.stages) : p.settings.stages;
+    const merged = presetSettings({ ...p.settings, ...settings, ...(gridPatch ? { grid: gridPatch } : {}),
+      ...(stagePatch ? { stages: stagePatch } : {}) });
+    checkStageChainSettings(mergeStageSettings(DEFAULT_SETTINGS.stages, merged.stages));
+    const stageEdited = settings.stages !== undefined && !isDeepStrictEqual(
+      mergeStageSettings(DEFAULT_SETTINGS.stages, p.settings.stages), mergeStageSettings(DEFAULT_SETTINGS.stages, merged.stages));
     const g = merged.grid;
     if (g) {
       // Presets do not carry cost and are applied on the current desk, so
@@ -8938,6 +8948,8 @@ export class CoreRuntime {
       wf: { ...p.wf, ...sanitizeWf(wf as never) },
       metrics: {
         ...p.metrics,
+        ...(stageEdited ? { pf: null, gp: undefined, gl: undefined, pfBasis: "unavailable" as const,
+          noLoss: null, pfConvention: "unavailable" as const } : {}),
         source: `${p.metrics.source} — settings edited since; run a backtest for current results`,
       },
     };
@@ -11403,6 +11415,69 @@ function migrateValidationLast12(db: CoreDb, saved: Partial<WalkForwardOptions>)
   return out;
 }
 
+/** Align former factory PF floors once. Deliberate custom floors and unrelated saved results survive. */
+export function migrateBasePf11(db: CoreDb): void {
+  if (db.kvGet("basePf11V1")) return;
+  const settings = db.kvGet<SettingsPatch>("settings"), presets = db.kvGet<Preset[]>("presets");
+  const backtests = db.kvGet<Record<string, unknown>>("presetBacktests");
+  const series = db.kvGet<Record<string, unknown>>("presetSeries");
+  const backup = structuredClone({ settings, presets, presetBacktests: backtests, presetSeries: series });
+  const formerRanges = { micro: 1.05, minimal: 1.1, short: 1.1, general: 1.2, long: 1.3 };
+  const oldDefaults: CoreSettings = { ...DEFAULT_SETTINGS,
+    gates: { ...DEFAULT_SETTINGS.gates, baseSetsMinPf: 1, rangeMinPf: formerRanges } };
+  const beforeDesk = mergeSettings(oldDefaults, backup.settings);
+  const upgrade = (s: SettingsPatch | undefined, inherited: number) => {
+    const g = s?.gates;
+    if (!g || (g.minPf ?? inherited) !== 1.1 ||
+        (g.rangeMinPf !== undefined && !isDeepStrictEqual(g.rangeMinPf, formerRanges))) return false;
+    let changed = false;
+    if (g.baseSetsMinPf === 1) { g.baseSetsMinPf = 1.1; changed = true; }
+    if (g.rangeMinPf !== undefined) { g.rangeMinPf = { ...DEFAULT_SETTINGS.gates.rangeMinPf }; changed = true; }
+    return changed;
+  };
+  let changed = upgrade(settings, DEFAULT_SETTINGS.gates.minPf);
+  const afterDesk = mergeSettings(DEFAULT_SETTINGS, settings);
+  for (const p of presets ?? []) changed = upgrade(p.settings, afterDesk.gates.minPf) || changed;
+  const beforeById = new Map([...ALL_RESEARCH_PRESETS, ...(backup.presets ?? [])].map((p) => [p.id, p]));
+  const afterById = new Map([...ALL_RESEARCH_PRESETS, ...(presets ?? [])].map((p) => [p.id, p]));
+  const signature = (desk: CoreSettings, preset: Preset) => {
+    const g = mergeSettings(desk, presetSettings(preset.settings)).gates;
+    return [g.minPf, g.baseSetsMinPf, g.rangeMinPf];
+  };
+  const affected = (id: string) => {
+    const before = beforeById.get(id), after = afterById.get(id);
+    if (!before || !after) return true;
+    try { return !isDeepStrictEqual(signature(beforeDesk, before), signature(afterDesk, after)); }
+    catch { return true; }
+  };
+  const invalid = new Set<string>();
+  for (const p of presets ?? []) if (affected(p.id)) {
+    invalid.add(p.id);
+    if (p.metrics) {
+      const { gp: _gp, gl: _gl, ...metrics } = p.metrics;
+      p.metrics = { ...metrics, pf: null, pfBasis: "unavailable", noLoss: null, pfConvention: "unavailable",
+        source: `${metrics.source ?? "Previous result"} — Base PF defaults changed; re-evaluate for current results` };
+      changed = true;
+    }
+  }
+  for (const id of new Set([...Object.keys(backtests ?? {}), ...Object.keys(series ?? {})]))
+    if (affected(id)) invalid.add(id);
+  db.tx(() => {
+    if (changed || invalid.size) db.kvSet("basePf11BackupV1", { ...backup, invalidPresetIds: [...invalid] });
+    if (changed) {
+      if (settings) db.kvSet("settings", settings);
+      if (presets) db.kvSet("presets", presets);
+    }
+    if (invalid.size) {
+      const keepBacktests = { ...backtests }, keepSeries = { ...series };
+      for (const id of invalid) { delete keepBacktests[id]; delete keepSeries[id]; }
+      if (backtests) db.kvSet("presetBacktests", keepBacktests);
+      if (series) db.kvSet("presetSeries", keepSeries);
+    }
+    db.kvSet("basePf11V1", true);
+  });
+}
+
 /** Prior cached preset PFs are not proof under the new per-range Base windows; keep a transactional backup. */
 function migrateMicroMinimalBase30(db: CoreDb): void {
   if (db.kvGet("microMinimalBase30V1")) return;
@@ -12381,6 +12456,7 @@ function mergeSettings(
     tfs: [...(base.tfs ?? DEFAULT_SETTINGS.tfs)],
     tfDays: { ...DEFAULT_SETTINGS.tfDays, ...(base.tfDays ?? {}) },
     gates: { ...base.gates },
+    stages: mergeStageSettings(base.stages),
     live: { ...base.live },
     toggles: { ...base.toggles },
     tactics: { ...base.tactics },
@@ -12406,6 +12482,7 @@ function mergeSettings(
       ...out,
       ...p,
       gates: { ...out.gates, ...(p.gates ?? {}) },
+      stages: mergeStageSettings(out.stages, p.stages),
       exitStrategy: { ...out.exitStrategy, ...(p.exitStrategy ?? {}) },
       live: { ...out.live, ...(p.live ?? {}) },
       toggles: { ...out.toggles, ...(p.toggles ?? {}) },

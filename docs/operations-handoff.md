@@ -1,3 +1,56 @@
+## 2026-10-29 — Extended window policy work in progress
+
+The operator now requests factory Base PF1.1; Base long20/30/40/50 × short5/10/15/20/25 with a hard short/long
+ceiling0.5 at both Base and Main; ongoing1/5/15/25; Base minimal1/2/3 with independent positive/negative recent-net
+conditions; negative Main1/2/5/10 and their independent combinations; full20-symbol24h/24h-prior repeats.
+Current local branch is feat/stage-window-policy-20261029, based on local6395386 / remote cb731a3374cb6575190991f4b849cf35daffd119.
+This is unfinished work, not a completed production stage adapter or measured high-PF release.
+
+Implemented locally: ordinary factory range floors and Wide/Base construction floor1.1; transactional once-only
+basePf11 migration backs up prior settings/preset caches and preserves custom policies; stages settings shared by
+Settings/API/preset editor/runtime WF; strict50% dependency checks after merging; Base signed minimal condition;
+Real Last-N1/5 permitted; negative Main all/mean combination with1/2/5/10. Base minimal negativity is a signed
+extra condition alongside positive long/short PF. Negative Main remains a separately priced inverse simulation.
+The disabled ledger snapshot is now version3 and policy identities include ratio/minimal/negative combination.
+Preset edits merge stage leaves, preserve the other stage, invalidate changed-policy PF and validate before write.
+Applying a preset resets omitted stage policy to factory defaults, preventing the prior preset's negative gate
+from leaking into a different preset. The dialog previews the same default-plus-own policy used by apply.
+
+A third draft-source defect is reproducible: simulateStageSource's last-bar pending flag bypassed the actual
+admission callback. Old source6395386 fails the new pending regression (expected0, got1). The wrapper now keeps
+unqualified pending signals in an explicit pendingIntent diagnostic, with no invented next-open price, no held
+order and no Last-N return. A separate pending-intent predicate can qualify an intent; actual entry admission
+still runs again when the next open exists. These are prototype fixes, not a proven deployed PF root cause.
+
+Current focused foundation checks pass399 tests,0 fail/skip, including Settings completeness, real Settings and
+preset APIs, atomic ratio rejection, ledger restart/held/partial proofs, all84 eligible Base long/short/minimal
+identities, signed conditions, negative tails and indexed-window scalar parity. Typecheck passes. The new
+StageWindowIndex preserves late-known/unknown chronology and falls back to scalar summation near numeric
+boundaries. A synthetic20,000-decision cached-window benchmark measured1422.74ms reference versus1.23ms index
+build +4.46ms indexed checks (250.1×); same decisions, combined process peakRSS88.3MB. This is NOT an end-to-end
+cycle-latency, lower-memory comparison or profitability measurement. Logs/results are in the scratch task root.
+
+Next actions: extract and release only the safe PF1.1 factory/migration change against current main with backup
+and full CI; freeze a separate study checkout before running the expanded matrix; complete actual persistent
+Main/Real source, pending/fill, additional/Overall, Settings activation and Active mirror adapters before enabling
+or merging #219. Current stages.enabled remains false. Never present a settings control/primitive as connected
+execution. Production cold-grid OOM/performance and full native adapter correctness are still unresolved.
+
+Planned exhaustive matrix:14 valid Base long/short pairs (six rejected by ratio) ×7 minimal modes (off +1/2/3
+positive/negative)=98 Base policies. Main long50, short1/5/15/25; Real1/5/15/25. Direct cases98×16=1568/range.
+Inverse Main tests all15 nonempty subsets of1/2/5/10 with all/mean criteria, separately simulated:47040/range.
+Total48608 cases/range before any optional follow-up. Use exact immutable source/price/admission-mask equivalence
+to share economic streams, while retaining independent policy/set IDs, counters and each gate's own predecessor.
+Normalize raw order dictionaries and policy edges rather than duplicating millions of identical order objects.
+Empty branches may be pruned only with explicit computed-coverage and scalar impossibility proof; missing work
+is unknown, never0% or a passing PF. Do not call this expanded experiment complete until executed and audited.
+
+Latest measured reference remains the old20-symbol8–9 October12:00UTC24h/24h-prior Micro15m
+Base20+15/Main15+15/Real15 cohort: Base57/4800(1.1875%), historical PF1.4124757452; Main PF0.5702814980,
+positions669/666/3 and orders5417/5412/5 O/C/H. Real438/5417(8.08566%); Active positions28/28/0,
+orders31/31/0, modeled PF0.4045290210; venue PF unavailable. The old20+15 and15+15 combinations violate the NEW
+50% short/long rule, so retain them as explicitly old-policy comparisons, not current eligible defaults.
+
 ## 2026-10-29 — Saved final report and tested ledger checkpoint
 
 The ledger regression fix is pushed at aacb8f87dd584fa2d0066502b8613ab578fe2c69 (local equivalent

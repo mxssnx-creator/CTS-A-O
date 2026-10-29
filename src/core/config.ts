@@ -1,4 +1,5 @@
 import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "./indications/micro-family.ts";
+import { DEFAULT_STAGE_CHAIN, type StageChainSettings, type StageChainPatch } from "./sim/stage-settings.ts";
 import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "./indications/low-range.ts";
 import { PROVEN_WIDE_TRAIL_PAIRS } from "./proven-wide-trail.ts";
 // CTS-A Core v2 — authoritative defaults. Every number the engine uses lives here.
@@ -84,16 +85,14 @@ export const DEFAULT_GATES: Gates = {
   // max drawdown ratio: a config's largest drawdown ÷ its net over the window (docs/block-sweep.md, DDR sweep:
   // 12 windows — PF 1.232 → 1.244, drawdown −9 %, 85 % of the orders kept; 0.5 = low drawdown, −39 % orders)
   maxDdr: 1,
-  // stage minimum PF per target range: require progressively more return margin for longer targets.
-  // These are the defaults at Base and at post-Base config evaluation; short inherits the 1.1 stage floor.
-  rangeMinPf: { micro: 1.05, minimal: 1.1, short: 1.1, general: 1.2, long: 1.3 },
+  // One factory PF floor from Base through each range's own later evaluation. Explicit custom floors survive.
+  rangeMinPf: { micro: 1.1, minimal: 1.1, short: 1.1, general: 1.1, long: 1.1 },
   minTrades: 12,
   baseLastN: 40,
   baseRangeLastN: { micro: 30, minimal: 30 },
   quorum: 0.6,
-  // Base keeps the wide/default set prefilter at PF 1.0. Configured per-range PF floors still apply at Base to each
-  // tagged cell and again at config evaluation; this widens only the untagged prefilter, never a range gate.
-  baseSetsMinPf: 1,
+  // The untagged/Wide Base prefilter uses the same factory floor as the independently evaluated range cells.
+  baseSetsMinPf: 1.1,
   // a check with too few closes to compute counts as valid until it has enough, then is judged normally
   warmup: true,
   // A partial sample still needs at least nine completed closes; zero means require the full requested sample.
@@ -314,6 +313,8 @@ export interface CoreSettings {
   /** prehistory-derived exit candidates; each candidate and direction is validated and carried independently */
   exitStrategy: ExitStrategySettings;
   gates: Gates;
+  /** Independent processed-set windows for Base, Main and Real. */
+  stages: StageChainSettings;
   /** stage-1 winners refined in stage 2 */
   refineTop: number;
   /** Base combos promoted to Main (expanded into every protect variant × sub-strategy) */
@@ -426,6 +427,8 @@ export function mergeGridSettings(base: ProtectGridSpec, patch?: GridSettingsPat
 export type SettingsPatch = {
   [K in keyof CoreSettings]?: K extends "tfDays"
     ? CoreSettings[K]
+    : K extends "stages"
+      ? StageChainPatch
     : K extends "grid"
       ? GridSettingsPatch
     : CoreSettings[K] extends readonly unknown[]
@@ -770,6 +773,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     stopMultiples: [1, 2],
   },
   gates: DEFAULT_GATES,
+  stages: DEFAULT_STAGE_CHAIN,
   refineTop: 24,
   // 0 = every Base-validated pair gets its strategy config sets (pseudo positions)
   mainTop: 0,
