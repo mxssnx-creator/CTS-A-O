@@ -1,3 +1,24 @@
+## 2026-10-29 — Ladder source admission and Axis cost guards
+
+DCA, DCA Active, Axis revert and Axis desk now accept the same optional causal entry-admission callback as
+Normal/Trailing. It runs before creating a position, waiting limit or resting ladder; denial cannot occupy the
+processed lane or impose a hypothetical cooldown. It does not change existing callers without the callback.
+Both Axis simulators now reject negative/nonfinite costs, matching Normal and DCA.
+
+The 15 new fixtures compare denied-intent execution against removing that signal before simulation, in both
+directions; the previous source failed ten ladder-admission cases and the invalid-Axis-cost case, while the four
+Normal/Trailing controls passed. With the change, 131 focused source/cursor/cost/trailing/identity/cohort tests,
+typecheck and scoped lint pass. Full release CI is recorded on the exact PR head. This is a source-construction
+primitive and a cost-input guard, not a completed production Base/Main/Real/Active adapter or profitability proof.
+No running instance, account settings, held orders or exchange positions were changed.
+
+Operator selected a separately simulated and independently validated inverse Main set for negative Last-5/10.
+The dual-window stage ledger and inverse source adapter remain in draft #219; do not enable the draft as a
+finished systemwide update. Latest measured reference remains the isolated 20-symbol Short Normal/Trailing
+10 October 00:00–12:00 UTC window with 84h prior data: Validation 15/97 (15.46%), historical PF 1.649925,
+later Validation PF 0.470553; positions 85/82/3 and orders 257/250/7 opened/closed/held. Active positions/orders
+3/3/0 at modeled PF 0. Venue-fill PF is unavailable. The new dual-window study is reported separately after audit.
+
 ## 2026-10-28 — Processed-set restart evidence hardening
 
 The stage-book prototype previously restored an Active order even when a saved Validation or Real PF or sample

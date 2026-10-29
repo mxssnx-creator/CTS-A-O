@@ -38,6 +38,7 @@ import type {
 import { atrTrailGap } from "./backtest.ts";
 import { isSignalConfig, signalStopAt, signalTrailMax } from "./trailing.ts";
 import type { SimulationCursor } from "./cursor.ts";
+import { admitSimulationEntry, type EntryAdmission } from "./entry-admission.ts";
 
 /**
  * The volume range's `vol`: realized volatility per bar = ATR ÷ price ÷ 1.6. The Stable-02 desk's quote `vol` was
@@ -93,7 +94,9 @@ export function simulateAxis(
    */
   floor?: { minSl: number; slMult?: number } | null,
   cursor?: SimulationCursor,
+  admitEntry?: EntryAdmission,
 ): AxisResult {
+  if (!(Number.isFinite(cost) && cost >= 0)) throw new RangeError("Axis round-trip cost must be finite and nonnegative");
   const { n, t, o, h, l, c, sym } = bars;
   const signal = isSignalConfig(cfg);
   const signalMax = signal ? signalTrailMax({ cfg, trailMax: p.trailMax }) : Infinity;
@@ -293,6 +296,7 @@ export function simulateAxis(
       // only back toward the axis, from a meaningful but not extreme displacement, with the axis ahead after costs —
       // judged on the signal bar's close, as live does (the next open is not known when the decision is made)
       if (!admissible(i, s, c[i])) continue;
+      if (!admitSimulationEntry(admitEntry, cfg, bars, i, s)) continue;
       const m = center[i];
       const a = atr[i];
       side = s;
@@ -424,7 +428,10 @@ export function simulateAxisDesk(
    */
   floor?: { minSl: number; minTrail: number; maxSl?: number } | null,
   cursor?: SimulationCursor,
+  /** Checked before creating resting rungs, not after an unqualified ladder blocks later signals. */
+  admitEntry?: EntryAdmission,
 ): AxisDeskResult {
+  if (!(Number.isFinite(cost) && cost >= 0)) throw new RangeError("Axis round-trip cost must be finite and nonnegative");
   const { n, t, o, h, l, c, sym } = bars;
   const signal = isSignalConfig(cfg);
   const signalMax = signal ? signalTrailMax({ cfg, trailMax: p.trailMax }) : Infinity;
@@ -666,6 +673,7 @@ export function simulateAxisDesk(
       if (!fin(m) || !fin(at) || at <= 0 || !(m > 0)) continue;
       const sp = axisSpacing(range, ax.spacing, c[i], at);
       if (!(sp > 0)) continue;
+      if (!admitSimulationEntry(admitEntry, cfg, bars, i, sig[i] > 0 ? 1 : -1)) continue;
       side = sig[i] > 0 ? 1 : -1;
       rungs = [];
       // rungs the price already stands at or beyond (long: at or above the close) would all fill at the next open

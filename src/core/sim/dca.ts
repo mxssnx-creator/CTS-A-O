@@ -10,6 +10,7 @@
 import type { Bars, DcaConfig, OpenPosition, Protect, Side, Trade } from "../domain/types.ts";
 import { isSignalConfig, signalStopAt, signalTrailMax } from "./trailing.ts";
 import type { SimulationCursor } from "./cursor.ts";
+import { admitSimulationEntry, type EntryAdmission } from "./entry-admission.ts";
 
 /** A DCA position never stacks more than 5 stages. Leg weights are measured in original base units. */
 export const DCA_MAX_STAGES = 5;
@@ -50,6 +51,8 @@ export function simulateDca(
   cost: number,
   cooldown = 0,
   cursor?: SimulationCursor,
+  /** Rejected intents occupy neither a position nor DCA Active's waiting-limit slot. */
+  admitEntry?: EntryAdmission,
 ): DcaResult {
   if (!(Number.isFinite(cost) && cost >= 0))
     throw new RangeError("DCA round-trip cost must be finite and nonnegative");
@@ -226,6 +229,7 @@ export function simulateDca(
       }
     }
     if (state === "flat" && i + 1 < n && i + 1 >= nextAllowed && sig[i] !== 0) {
+      if (!admitSimulationEntry(admitEntry, cfg, bars, i, sig[i] > 0 ? 1 : -1)) continue;
       side = sig[i] > 0 ? 1 : -1;
       ref = o[i + 1];
       if (active) {
