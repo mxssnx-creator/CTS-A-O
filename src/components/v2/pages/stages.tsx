@@ -4,6 +4,8 @@ import { coreListing, coreOverview, coreResults } from "../api-conn";
 import { signalTypeLabel, signalUnitRowKey } from "../signal-units";
 import { BaseConfigCounts } from "../base-config-counts";
 import { unitStatsPfText } from "../accounting";
+import { combineValidatedSetPf } from "../../../core/validated-set-pf";
+import { validationCohortView } from "../validation-cohort";
 import { pooledBasePfText } from "../progression";
 import { PromotionEvidence } from "../promotion-evidence";
 import { StrategyCoverageTable } from "../strategy-coverage";
@@ -53,13 +55,10 @@ export function StagesPage() {
   const strategyKinds = [
     ...new Set([...activeKinds.map((x) => x.kind), ...Object.keys(executedKinds)]),
   ].sort();
-  const activeValidationGross = activeKinds.reduce(
-    (a, x) => ({ gp: a.gp + (x.gp ?? 0), gl: a.gl + (x.gl ?? 0) }),
-    { gp: 0, gl: 0 },
-  );
-  const activeValidationNoLoss = activeValidationGross.gp > 0 && activeValidationGross.gl <= 1e-12;
-  const activeValidationPf =
-    activeValidationGross.gl > 1e-12 ? activeValidationGross.gp / activeValidationGross.gl : null;
+  const validation = validationCohortView(d.status?.postBaseValidation);
+  const activeMean = combineValidatedSetPf(activeKinds.map((x) => x.setPf));
+  const activeValidationNoLoss = activeMean?.noLoss ?? false;
+  const activeValidationPf = activeMean?.pf ?? null;
   const activeValidationCloses = activeKinds.reduce((n, x) => n + (x.validationCloses ?? 0), 0);
   const activeValidationPfText = (pf: number | null, noLoss: boolean) =>
     noLoss ? "∞ (no losses)" : fmt.pf(pf);
@@ -85,7 +84,8 @@ export function StagesPage() {
           </div>
           <div className="v2-stage">
             <div className="t">2 · Main</div>
-            <div className="n">{fmt.num(c.main)}</div>
+            <div className="n">{validation.pfText} PF</div>
+            <p>{validation.counts} validated · {fmt.frac(validation.fraction)} · {fmt.time(validation.at)} UTC. {validation.basisText}.</p>
             <p>
               In-sample return PF meets each range's effective floor (global {g.minPf}, with range
               overrides), DDT ≤ max({g.minDdtH ?? 0} h, {g.maxDdtH} h per 72 h), ≥ {g.minTrades}{" "}
@@ -94,7 +94,8 @@ export function StagesPage() {
           </div>
           <div className="v2-stage">
             <div className="t">3 · Real</div>
-            <div className="n">{realSel}</div>
+            <div className="n">{activeValidationNoLoss ? "No losses" : fmt.pf(activeValidationPf)} PF</div>
+            <p>{realSel} selected engine configs; {fmt.num(d.status?.listings?.validated)} / {fmt.num(d.status?.listings?.calculated)} validated at {fmt.time(d.status?.listings?.validation?.at)} UTC.</p>
             <p>
               {sigSel || d.status?.signals?.enabled
                 ? `${realSel} engine · ${sigSel} signal configs. `
@@ -204,8 +205,8 @@ export function StagesPage() {
                     <th>Base evaluated</th>
                     <th>Base passed</th>
                     <th>Main tapes</th>
-                    <th>Active sets / validation closes</th>
-                    <th>Active validation PF</th>
+                    <th>Validated sets / closes</th>
+                    <th>Validated set mean PF</th>
                     <th>Executed model closes</th>
                     <th>Executed model unit PF</th>
                     <th>Executed effective PF</th>
@@ -277,7 +278,7 @@ export function StagesPage() {
               </table>
             </div>
             <div className="v2-muted" style={{ marginTop: 8, fontSize: "var(--v-fs-xs)" }}>
-              Active validation PF pools the current step&apos;s admitted configs. Executed model unit PF
+              Validated set mean PF averages the current step&apos;s individually passing configs. No-loss sets are listed separately from the finite-set mean. Executed model unit PF
               removes captured size; Executed effective PF includes the additive sized returns from
               closed replay orders only. Open-at-end orders are counted separately. Exchange fill PF
               remains in Statistics → Live.
@@ -301,7 +302,7 @@ export function StagesPage() {
                   <th>Strategy</th>
                   <th className="num">Active configs</th>
                   <th className="num">Validation closes</th>
-                  <th className="num">Active validation PF</th>
+                  <th className="num">Validated set mean PF</th>
                   <th className="num">Executed model closes</th>
                   <th className="num">Executed model unit PF</th>
                   <th className="num">Executed effective PF</th>
@@ -510,9 +511,9 @@ const PAGE = 50;
 
 /**
  * The last paper step's listings (coreListing, built once per step): validated Normal / Trailing ranges and independent
- * strategy groups such as Historic Exit, with pooled validation PFs, active signal units, and proven live configs.
+ * strategy groups such as Historic Exit, with per-set validation PF means, active signal units, and proven live configs.
  */
-function SetListings(props: { minPf: number }) {
+export function SetListings(props: { minPf: number }) {
   const [kind, setKind] = useState<"validated" | "active" | "proven">("validated");
   const [group, setGroup] = useState("");
   const [lane, setLane] = useState("");
@@ -614,7 +615,7 @@ function SetListings(props: { minPf: number }) {
           {d.validation?.engineLastN || "off"}
           {` · range Last-N ${d.validation?.rangeLastN || "off"} · ${d.validation?.historyH ?? "—"}h evaluation history`}
           <div>
-            Each Active config row shows its validation window beside Executed model closes for that
+            Each validated config row shows its own historical validation window beside later executed model closes for that
             same config ID. Validation windows can overlap and differ from the full replay window.
             Exchange fills are separate and appear in Statistics → Live.
           </div>
@@ -634,7 +635,7 @@ function SetListings(props: { minPf: number }) {
                 <tr>
                   <th>Config</th>
                   <th>Range / strategy group</th>
-                  <th className="num">Active validation PF</th>
+                  <th className="num">Validated set mean PF</th>
                   <th className="num">Validation closes</th>
                   <th className="num">Validation net</th>
                   <th className="num">DDT h</th>
@@ -670,7 +671,7 @@ function SetListings(props: { minPf: number }) {
                       </Link>
                     </td>
                     <td>{x.group}</td>
-                    <td className={`num ${pfTone(x.pf, props.minPf)}`}>{fmt.pf(x.pf)}</td>
+                    <td className={`num ${pfTone(x.pf, props.minPf)}`}>{x.noLoss ? "No losses" : fmt.pf(x.pf)}</td>
                     <td className="num">{x.n}</td>
                     <td className={`num ${tone(x.net)}`}>{fmt.pct(x.net)}</td>
                     <td className="num">{fmt.num(x.ddt)}</td>

@@ -343,8 +343,20 @@ export function OverviewPage() {
           value={validation.pfText}
           className={pfTone(validation.pf, minPf)}
           sub={validation.available
-            ? `${validation.counts} engine configs · ${fmt.frac(validation.fraction)} validated · historical passing windows at ${fmt.time(validation.at)} UTC`
+            ? `${validation.counts} engine configs · ${fmt.frac(validation.fraction)} validated · historical passing windows at ${fmt.time(validation.at)} UTC · ${validation.basisText}`
             : "Passing validation snapshot unavailable"}
+        />
+        <Kpi
+          label="Executed model PF"
+          value={d.sim?.executed ? unitStatsPfText(d.sim.executed) : "–"}
+          className={pfTone(d.sim?.executed?.pf, minPf)}
+          sub={`${fmt.num(d.sim?.executed?.n)} closed model orders; all admitted losses retained`}
+        />
+        <Kpi
+          label="PF including open marks"
+          value={d.sim?.markedStats ? unitStatsPfText(d.sim.markedStats) : "–"}
+          className={pfTone(d.sim?.markedStats?.pf, minPf)}
+          sub={`${fmt.num(d.sim?.openAtEnd)} endpoint holdings marked to market; separate from closed execution`}
         />
         <Kpi
           label="Sim net (Σ trade %)"

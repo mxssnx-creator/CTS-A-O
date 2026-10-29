@@ -1,3 +1,4 @@
+import { addValidatedSetPf, emptyValidatedSetPf, validatedSetPf, validatedSetPfOf, type ValidatedSetPfAccumulator } from "./validated-set-pf.ts";
 // What the Core v2 server functions return: each page's data as a plain async function of its input (api.ts wraps
 // them as server functions; tests call them directly against a runtime). Server modules load on demand.
 import { MAX_BACKTEST_DAYS, type SettingsPatch } from "./config.ts";
@@ -36,7 +37,9 @@ function effectiveReturnReport(trades: readonly WalkForwardResult["trades"][numb
 type PrimarySimSummary = {
   orderCounts: ReturnType<typeof positionOrderCounts>;
   stats: ReturnStatsReport;
+  markedStats: ReturnStatsReport;
   sizedStats: WalkForwardResult["sizedStats"];
+  markedSizedStats: WalkForwardResult["sizedStats"];
   hourly: Array<ReturnGroup & { t: number }>;
   blocks: Array<ReturnGroup & { t: number }>;
   byConfig: Array<ReturnGroup & { id: string }>;
@@ -44,6 +47,7 @@ type PrimarySimSummary = {
   effectiveByKind: Record<string, EffectiveReturnReport>;
   bySide: { long: ReturnGroup; short: ReturnGroup };
   stable: boolean | null;
+  markedStable: boolean | null;
 };
 const primarySimMemo = new WeakMap<object, { trades: WalkForwardResult["trades"]; open: WalkForwardResult["openAtEnd"]; n: number; openN: number; summary: PrimarySimSummary }>();
 /** HMR can retain a pre-upgrade sized summary. Derive the primary basis from its orders without rewriting it. */
@@ -51,10 +55,15 @@ function primarySimSummary(sim: WalkForwardResult): PrimarySimSummary {
   const cached = primarySimMemo.get(sim);
   if (cached && cached.trades === sim.trades && cached.open === sim.openAtEnd && cached.n === (sim.trades?.length ?? 0) && cached.openN === (sim.openAtEnd?.length ?? 0)) return cached.summary;
   const outcomes = [...(sim.trades ?? []), ...(sim.openAtEnd ?? [])];
-  const stats = unitStatsOf(outcomes, sim.endT);
+  // A held endpoint mark changes equity, but has not completed an execution.
+  // Keep the primary PF on the same closed cohort as byKind/byConfig/executed.
+  const stats = unitStatsOf(sim.trades ?? [], sim.endT);
+  const markedStats = unitStatsOf(outcomes, sim.endT);
   if (!Array.isArray(sim.trades)) {
     stats.pfBasis = "unavailable";
     stats.unknownReturns = Math.max(1, sim.stats.n);
+    markedStats.pfBasis = "unavailable";
+    markedStats.unknownReturns = stats.unknownReturns;
   }
   const group = (key: (t: WalkForwardResult["trades"][number]) => string) => {
     const groups = new Map<string, WalkForwardResult["trades"]>();
@@ -69,12 +78,16 @@ function primarySimSummary(sim: WalkForwardResult): PrimarySimSummary {
   const side = (n: number) => returnGroup(unitReturnReport((sim.trades ?? []).filter((t) => t.side === n), sim.endT));
   const summary: PrimarySimSummary = {
     orderCounts: positionOrderCounts(sim.trades ?? [], sim.openAtEnd),
-    stats: unitStatsReport(stats, Array.isArray(sim.trades) ? outcomes.length : sim.stats.n), sizedStats: sim.sizedStats ?? (Array.isArray(sim.trades) ? statsOf(outcomes, sim.endT) : sim.stats),
+    stats: unitStatsReport(stats, Array.isArray(sim.trades) ? sim.trades.length : sim.stats.n),
+    markedStats: unitStatsReport(markedStats, Array.isArray(sim.trades) ? outcomes.length : sim.stats.n),
+    sizedStats: Array.isArray(sim.trades) ? statsOf(sim.trades, sim.endT) : sim.stats,
+    markedSizedStats: sim.sizedStats ?? (Array.isArray(sim.trades) ? statsOf(outcomes, sim.endT) : sim.stats),
     hourly: group((t) => String(Math.floor((t.exitT - 1) / 3_600_000) * 3_600_000))
       .map(({ key, ...s }) => ({ t: Number(key), ...s })).sort((a, b) => a.t - b.t),
     blocks, byKind, effectiveByKind, bySide: { long: side(1), short: side(-1) },
     byConfig: group((t) => t.cfg).map(({ key, ...s }) => ({ id: key, ...s })).sort((a, b) => (b.net ?? -Infinity) - (a.net ?? -Infinity)),
     stable: stats.pfBasis === "unavailable" ? null : runStable(stats, rawBlocks, sim.opts?.gates?.minPf ?? 1.05),
+    markedStable: markedStats.pfBasis === "unavailable" ? null : runStable(markedStats, rawBlocks, sim.opts?.gates?.minPf ?? 1.05),
   };
   primarySimMemo.set(sim, { trades: sim.trades, open: sim.openAtEnd, n: sim.trades?.length ?? 0, openN: sim.openAtEnd?.length ?? 0, summary });
   return summary;
@@ -182,7 +195,7 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
     const idx = selectedGroup ? (L.byGroup[selectedGroup]?.rows ?? []) : null;
     const all = idx ? idx.map((i) => L.validated[i]) : L.validated;
     rows = all.filter((x) => matchesLane(x.id) && (!data.strategy || x.kind === data.strategy) && (!q || x.id.toLowerCase().includes(q)))
-      .map((x) => ({ ...x, executed: executedSummary(x.id) }));
+      .map((x) => { const measured = validatedSetPfOf([x]); return { ...x, modelPfScore: x.pf, pf: measured.pf, noLoss: measured.noLoss, pfBasis: "unit-validation-window", executed: executedSummary(x.id) }; });
   } else if (data.kind === "active") {
     rows = L.active.filter((x) => matchesLane(`${x.bot}|${x.ind}`) &&
       (!q || `${x.bot}|${x.ind}|${x.sym}|${x.side}|${x.kind ?? "discovery"}|${x.cfg ?? ""}`.toLowerCase().includes(q)));
@@ -210,22 +223,27 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
     validatedRows = strategyValidated,
     candidateRows = strategyCandidates,
   ) => {
-    const grouped = new Map<string, { validated: number; calculated: number; gp: number; gl: number }>();
+    const grouped = new Map<string, { validated: number; calculated: number; gp: number; gl: number; setPf: ValidatedSetPfAccumulator }>();
     const get = (key: string) => {
       let v = grouped.get(key);
-      if (!v) grouped.set(key, (v = { validated: 0, calculated: 0, gp: 0, gl: 0 }));
+      if (!v) grouped.set(key, (v = { validated: 0, calculated: 0, gp: 0, gl: 0, setPf: emptyValidatedSetPf() }));
       return v;
     };
     for (const x of validatedRows) {
       const key = keyOf(x);
       if (!key || !include(key)) continue;
       const v = get(key); v.validated++; v.gp += x.gp; v.gl += x.gl;
+      addValidatedSetPf(v.setPf, x.n, x.gp, x.gl);
     }
     for (const x of candidateRows) {
       const key = candidateKey(x);
       if (key && include(key)) get(key).calculated++;
     }
-    return [...grouped].map(([key, v]) => ({ key, ...v, pf: v.gl > 1e-12 ? v.gp / v.gl : null, noLoss: v.gp > 0 && v.gl <= 1e-12 }));
+    return [...grouped].map(([key, { setPf, ...v }]) => {
+      const mean = validatedSetPf(setPf);
+      return { key, ...v, pf: mean?.pf ?? null, noLoss: mean?.noLoss ?? false, setPf: mean,
+        pooledPf: v.gl > 0 ? v.gp / v.gl : null };
+    });
   };
   const byGroup = summaries((x) => x.group, (x) => x.group).map(({ key: group, ...x }) => ({ group, ...x }));
   const byKind = summaries((x) => x.kind, (x) => x.kind, () => true, laneValidated, laneCandidates)
@@ -341,6 +359,8 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
           startT: sim.startT,
           endT: sim.endT,
           stats: primary!.stats,
+          markedStats: primary!.markedStats,
+          markedSizedStats: primary!.markedSizedStats,
           // Open-at-end orders are reported separately; this is the PF of model orders that completed execution.
           executed: sim.trades ? unitReturnReport(sim.trades, sim.endT) : null,
           effective: sim.trades ? effectiveReturnReport(sim.trades, sim.endT) : null,
@@ -399,6 +419,7 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
       activeCloses: number;
       activeGp: number;
       activeGl: number;
+      activeSetPf: ValidatedSetPfAccumulator;
       trades: WalkForwardResult["trades"];
       open: Array<{ sym: string; side: number }>;
       simOpen: Array<{ sym: string; side: number; entryT: number }>;
@@ -407,7 +428,7 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
   const row = (lane: string) => {
     let x = rows.get(lane);
     if (!x) rows.set(lane, (x = { lane, base: 0, passed: 0, tapes: 0, activeSets: 0, activeCloses: 0,
-      activeGp: 0, activeGl: 0, trades: [], open: [], simOpen: [] }));
+      activeGp: 0, activeGl: 0, activeSetPf: emptyValidatedSetPf(), trades: [], open: [], simOpen: [] }));
     return x;
   };
   for (const c of r.pipeline?.s1 ?? []) {
@@ -427,6 +448,7 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
     x.activeCloses += t.n;
     x.activeGp += t.gp;
     x.activeGl += t.gl;
+    addValidatedSetPf(x.activeSetPf, t.n, t.gp, t.gl);
   }
   const indOf = (cfg: string) => cfg.split("|")[1] ?? "";
   for (const t of r.sim?.trades ?? []) row(lab(indOf(t.cfg))).trades.push(t);
@@ -446,8 +468,10 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
         tapes: x.tapes,
         activeSets: x.activeSets,
         activeCloses: x.activeCloses,
-        activePf: x.activeGl > 1e-12 ? x.activeGp / x.activeGl : null,
-        activeNoLoss: x.activeGp > 0 && x.activeGl <= 1e-12,
+        activePf: validatedSetPf(x.activeSetPf)?.pf ?? null,
+        activeSetPf: validatedSetPf(x.activeSetPf),
+        activePooledPf: x.activeGl > 0 ? x.activeGp / x.activeGl : null,
+        activeNoLoss: validatedSetPf(x.activeSetPf)?.noLoss ?? false,
         ...returnGroup(st),
         effective,
         positions: counts.closedPositions,
@@ -571,7 +595,12 @@ export async function coreConfigData(data: ReturnType<typeof coreConfigInput>) {
         bars: t.bars,
       });
   }
-  return ser({ row, lastn, evals, trades });
+  const current = r.listings?.validated.find((x) => x.id === data.id);
+  const measured = current ? validatedSetPfOf([current]) : null;
+  const currentValidation = current ? { ...current, pf: measured!.pf, noLoss: measured!.noLoss,
+    pfBasis: "unit-validation-window", at: r.listings!.validation.at } : null;
+  const executed = unitReturnReport((r.sim?.trades ?? []).filter((x) => x.cfg === data.id), r.sim?.endT);
+  return ser({ row, lastn, evals, trades, currentValidation, executed });
 }
 
 export async function coreSimData(data: ReturnType<typeof connInput>) {
@@ -601,6 +630,8 @@ export async function coreSimData(data: ReturnType<typeof connInput>) {
       startT: sim.startT,
       endT: sim.endT,
       stats: primary.stats,
+      markedStats: primary.markedStats,
+      markedSizedStats: primary.markedSizedStats,
       sizedStats: primary.sizedStats ?? null,
       positions: primary.orderCounts.closedPositions,
       orderCounts: primary.orderCounts,
@@ -1015,11 +1046,11 @@ export async function corePresetsData(data: ReturnType<typeof connInput>) {
     gates: r.settings.gates,
     current: sim
       ? {
-          ...presetStatsView(primary!.stats, Array.isArray(sim.trades) ? sim.trades.length + (sim.openAtEnd?.length ?? 0) : sim.stats.n, "with-endpoint-marks"),
+          ...presetStatsView(primary!.markedStats, Array.isArray(sim.trades) ? sim.trades.length + (sim.openAtEnd?.length ?? 0) : sim.stats.n, "with-endpoint-marks"),
           endpointMarks: sim.openAtEnd?.length ?? 0,
           settledStats,
-          sizedStats: primary!.sizedStats ?? null,
-          stable: primary!.stats.pfBasis === "unit-net-returns" ? primary!.stable : null,
+          sizedStats: primary!.markedSizedStats ?? null,
+          stable: primary!.markedStats.pfBasis === "unit-net-returns" ? primary!.markedStable : null,
           hours: (sim.endT - sim.startT) / 3_600_000,
         }
       : null,

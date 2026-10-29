@@ -3,6 +3,7 @@ import { useState } from "react";
 import { coreResults } from "../api-conn";
 import { indicationOptionLabel } from "../indication-ui";
 import { hasNoTakeProfit } from "../signal-units";
+import { SetListings } from "./stages";
 import { BOTS } from "@/core/bots/bots";
 import { INDICATIONS } from "@/core/indications/registry";
 import {
@@ -21,6 +22,11 @@ import {
 } from "../ui";
 
 type Any = any;
+const RESULT_VIEWS = [
+  { value: 1, label: "Base" },
+  { value: 2, label: "Validated sets" },
+  { value: 3, label: "Historical evaluation" },
+];
 
 export function ResultsPage() {
   const [stage, setStage] = useState(1);
@@ -31,8 +37,7 @@ export function ResultsPage() {
   const [q, setQ] = useState("");
   const dq = useDebounced(q, 300);
   const { data, error, loading } = usePoll(
-    () =>
-      coreResults({
+    () => stage === 2 ? Promise.resolve({ rows: [], total: 0 }) : coreResults({
         data: {
           stage,
           bot: bot || undefined,
@@ -47,11 +52,17 @@ export function ResultsPage() {
     [stage, bot, ind, lane, sort, dq],
   );
   const rows = ((data as Any)?.rows ?? []) as Any[];
+  if (stage === 2) return <>
+    <Panel title="Current validated config sets" sub="Passing historical windows with their own later executed results. The historical evaluation view retains the archived calculations.">
+      <Seg label="View" value={stage} onChange={setStage} options={RESULT_VIEWS} />
+    </Panel>
+    <SetListings minPf={1} />
+  </>;
   return (
     <>
       <ErrorNote error={error} />
       <Panel
-        title="Configs"
+        title={stage === 3 ? "Historical config evaluation" : "Base configs"}
         sub={`${loading ? "loading… · " : ""}${fmt.num((data as Any)?.total)} rows · every indication × bot × protect, calculated independently`}
         right={
           <button
@@ -65,14 +76,10 @@ export function ResultsPage() {
       >
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <Seg
-            label="Stage"
+            label="View"
             value={stage}
             onChange={setStage}
-            options={[
-              { value: 1, label: "Base" },
-              { value: 2, label: "Main" },
-              { value: 3, label: "Evaluated" },
-            ]}
+            options={RESULT_VIEWS}
           />
           <select
             className="v2-select"
@@ -136,6 +143,7 @@ export function ResultsPage() {
           />
         </div>
       </Panel>
+      {stage === 3 && <p className="v2-muted">These are archived full-window model calculations, including sets that no longer validate. Current passing-set PF is in Validated sets; these historical scores cannot stand in for later executed PF.</p>}
       <Panel flush>
         {rows.length === 0 ? (
           <Empty>
@@ -153,7 +161,7 @@ export function ResultsPage() {
                   <th>config</th>
                   <th className="num">n</th>
                   <th className="num">WR</th>
-                  <th className="num">PF</th>
+                  <th className="num">{stage === 3 ? "Historical PF" : "PF"}</th>
                   <th className="num">net</th>
                   <th className="num">MDD</th>
                   <th className="num">DDT</th>

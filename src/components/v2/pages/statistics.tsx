@@ -501,7 +501,7 @@ export function StatisticsPage() {
     <Panel title="Current validated sets" sub="Passing historical validation windows only. Subsequent execution and exchange results remain in their own samples below.">
         <div className="v2-grid v2-cols-3">
           <Kpi label="Validated sets PF" value={validation.pfText} className={pfTone(validation.pf)}
-            sub="Return PF of passing windows; overlapping histories are not independent fills" />
+            sub={validation.basisText} />
           <Kpi label="Validated percentage" value={fmt.frac(validation.fraction)}
             sub={`${validation.counts} engine configs passed / evaluated`} />
           <Kpi label="Validation snapshot" value={validation.at === null ? "Unavailable" : `${fmt.time(validation.at)} UTC`}

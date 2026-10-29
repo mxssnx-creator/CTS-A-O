@@ -1,3 +1,4 @@
+import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
 import { DerivedCache } from "./derived-cache.ts";
 import { exitScopeSuffix, isHistoricExitConfig } from "../exit-scope.ts";
 import { isLowRangeInd, lowRangeGridProtects } from "../indications/low-range.ts";
@@ -2988,6 +2989,8 @@ export interface ValidationSummary {
   gp: number;
   gl: number;
   failures: Partial<Record<EvalGate, number>>;
+  /** Equal weight per passing config; never a pool-weighted PF or a no-loss score. */
+  setPf?: ValidatedSetPfAccumulator;
 }
 
 function summarizeValidation(summary: ValidationSummary | null, ev: ConfigEval, n: number, gp: number, gl: number) {
@@ -2995,6 +2998,7 @@ function summarizeValidation(summary: ValidationSummary | null, ev: ConfigEval, 
   summary.evaluated++;
   if (ev.ok) {
     summary.passed++;
+    addValidatedSetPf(summary.setPf ??= emptyValidatedSetPf(), n, gp, gl);
     summary.closes += n;
     summary.gp += gp;
     summary.gl += gl;
@@ -4546,7 +4550,7 @@ export function* selectFixedGen(
   const checks: ValidationCheck[] | null = o.recordValidation === true ? [] : null;
   const validationSummary: ValidationSummary | null =
     o.recordValidation === "summary"
-      ? { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {} }
+      ? { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {}, setPf: emptyValidatedSetPf() }
       : null;
   const basePf = new Map<string, number>();
   // the base PFs are read by beatsBase only, which judges nothing without family seats or with every config its seat
@@ -4778,7 +4782,9 @@ export function* selectGroupsGen(
     eligible += r.eligible;
     if (r.checks) checks = [...(checks ?? []), ...r.checks];
     if (r.validationSummary) {
-      validationSummary ??= { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {} };
+      validationSummary ??= { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {}, setPf: emptyValidatedSetPf() };
+      if (r.validationSummary.setPf) mergeValidatedSetPf(validationSummary.setPf!, r.validationSummary.setPf);
+      else { validationSummary.setPf!.sets += r.validationSummary.passed; validationSummary.setPf!.unavailableSets += r.validationSummary.passed; }
       for (const key of ["evaluated", "passed", "closes", "gp", "gl"] as const) validationSummary[key] += r.validationSummary[key];
       for (const key of Object.keys(r.validationSummary.failures) as Array<keyof ValidationSummary["failures"]>) validationSummary.failures[key] = (validationSummary.failures[key] ?? 0) + r.validationSummary.failures[key]!;
     }
@@ -6868,7 +6874,7 @@ export function* walkForwardGen(
     // evaluator as activation and entry, never from a pooled representative.
     const signalChecks: ValidationCheck[] = [];
     const validationSummary = sel?.validationSummary ?? (o.recordValidation === "summary"
-      ? { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {} } as ValidationSummary : null);
+      ? { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {}, setPf: emptyValidatedSetPf() } as ValidationSummary : null);
     if (o.recordValidation) {
       let checked = 0;
       for (const tp of sigTapes) {

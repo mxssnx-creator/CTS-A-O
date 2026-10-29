@@ -2,6 +2,7 @@ import { coreConfig, coreSettings } from "../api-conn";
 import { INDICATION_BY_ID, laneOf } from "@/core/indications/registry";
 import { EquityChart, NCurve } from "../charts";
 import { hasNoTakeProfit } from "../signal-units";
+import { unitStatsPfText } from "../accounting";
 import {
   downloadFile,
   Empty,
@@ -78,11 +79,19 @@ export function ConfigPage(props: { id: string }) {
           </button>
         }
       >
+        <div className="v2-grid v2-cols-2">
+          <Kpi label="Current validation PF"
+            value={d.currentValidation?.noLoss ? "No losses" : fmt.pf(d.currentValidation?.pf)}
+            className={pfTone(d.currentValidation?.pf)}
+            sub={d.currentValidation ? `${d.currentValidation.n} closes in this config's passing historical window · ${fmt.time(d.currentValidation.at)} UTC` : "This exact config is not in the current validated listing"} />
+          <Kpi label="Executed model PF" value={d.executed ? unitStatsPfText(d.executed) : "–"}
+            className={pfTone(d.executed?.pf)} sub={`${d.executed?.n ?? 0} later closed model orders for this exact config; all admitted losses retained`} />
+        </div>
         {r ? (
           <div className="v2-grid v2-cols-6">
             <Kpi label="Orders" value={r.n} sub={`WR ${fmt.ratio(r.wr)}`} />
             <Kpi
-              label="PF"
+              label="Historical config PF"
               value={fmt.pf(r.pf)}
               className={pfTone(r.pf)}
               sub={`IS ${fmt.pf(r.is_pf)}`}
