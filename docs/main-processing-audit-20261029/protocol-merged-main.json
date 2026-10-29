@@ -1,0 +1,2066 @@
+{
+  "schema": "cts-session-study-v1",
+  "id": "main-pf-8s-24plus24-20261029-merged-main",
+  "createdAt": "2026-10-29T19:59:16.636Z",
+  "symbols": [
+    "ADA-USDT",
+    "APT-USDT",
+    "ARB-USDT",
+    "ATOM-USDT",
+    "AVAX-USDT",
+    "BCH-USDT",
+    "BNB-USDT",
+    "BTC-USDT"
+  ],
+  "window": {
+    "evaluationFromT": 1791374400000,
+    "tradeStartT": 1791460800000,
+    "endT": 1791547200000,
+    "preH": 24,
+    "runH": 24
+  },
+  "liveSinceT": 1791460800000,
+  "feed": {
+    "path": "/workspace/scratch/b69c1e5067d8/main-audit-8s-20261029/feed-8-symbols-72h.json.gz",
+    "sha256": "dd17963bcec9cf285331982250ef631c47322a4a9445a969d81be3ce5f3eab50",
+    "provider": "Frozen public minute candle feed; exact 8-symbol/72h subset of original feed"
+  },
+  "source": {
+    "checkpoint": "67ccf745046c853b75f1ccb3c22e37bd783bcd24",
+    "basisCheckpoint": "67ccf745046c853b75f1ccb3c22e37bd783bcd24",
+    "files": [
+      {
+        "path": "package.json",
+        "sha256": "508fd76d65bc1147fabf1a85077cd00222efdc4df9d38af73f5564a072c231b7"
+      },
+      {
+        "path": "scripts/core-session.mjs",
+        "sha256": "dd80e17f038b95f26a3a37d2de5fe8da4961dcf48875140363dfb55ec32c582a"
+      },
+      {
+        "path": "scripts/lib/block-comparison-evidence.mjs",
+        "sha256": "dce9c749086ecf5bc3489feffa70e59c0cbdd9661049e6813a7382e744ad4531"
+      },
+      {
+        "path": "scripts/lib/block-comparison.mjs",
+        "sha256": "684e094ecad45fd8a258046d3593cda41fd407c315fe893356aa75bcc1040103"
+      },
+      {
+        "path": "scripts/lib/book-notional.mjs",
+        "sha256": "ba79608369b165cd6037f421bad4dbc366f123e7475e58775c4642a93f45cf49"
+      },
+      {
+        "path": "scripts/lib/candles.mjs",
+        "sha256": "14985016fdd8d1f1bdfe47672c00d43cf779ce1b80b2fae8a0b723f46ac5992c"
+      },
+      {
+        "path": "scripts/lib/core-test-offline-guard.cjs",
+        "sha256": "c9134defebe9e880f3da68c5c97b07550e10bd90a8413cc7b5403631141ea98d"
+      },
+      {
+        "path": "scripts/lib/endpoint-mark.mjs",
+        "sha256": "f90bd0f91d4a049e10d1d7975b460c63d93272dda6ce7dfeb1b8dc5891eb6ac2"
+      },
+      {
+        "path": "scripts/lib/eval-base-rules.mjs",
+        "sha256": "b4c3f62d65dd268838497cbc1c7edfeb2ac440a26224d6ad1d4d22ad25705a7d"
+      },
+      {
+        "path": "scripts/lib/eval-orders.mjs",
+        "sha256": "eb7001ce97878f76ad82cac524aaccbd8eb712f1d3b6546b76772e0fa918feb1"
+      },
+      {
+        "path": "scripts/lib/eval-stress.mjs",
+        "sha256": "4479ea5c4b5a9598239eea676f1077953942f8a1e6ad6cb12cdeb74e23dbdc78"
+      },
+      {
+        "path": "scripts/lib/eval-variants.mjs",
+        "sha256": "715279a2482592241ac8f92fa0334f5d119922bcc697e88c1d4dd59f90d07356"
+      },
+      {
+        "path": "scripts/lib/eval-verdict.mjs",
+        "sha256": "a7e0c172f6ff63c1e76e6ded08781ba3a01831473d6236b2945143409fc36241"
+      },
+      {
+        "path": "scripts/lib/eval-windows.mjs",
+        "sha256": "3fc4e18da6ab8da7033837f1d52ed5ab9eaa0aa8f1e44843c8cd61fc8c86994e"
+      },
+      {
+        "path": "scripts/lib/low-range-relation-comparison.mjs",
+        "sha256": "1e39e36e5464264b68c82659f88b7c2ac254b79f83122b7700407464400cc73a"
+      },
+      {
+        "path": "scripts/lib/mem-admission.mjs",
+        "sha256": "1f6c3eac6930d887e7a40416783c091f40b47ee72e55c0d03234113032be69e1"
+      },
+      {
+        "path": "scripts/lib/modeled-order-audit.mjs",
+        "sha256": "bd7f22a7386b36fdbd0ed1fe1927f3873bb9c016ad70d1fa0921ce9695bdffdf"
+      },
+      {
+        "path": "scripts/lib/ownership-halt.mjs",
+        "sha256": "f469476c840a9b13e7d5fd27daa1c933fabb62d4b9a9c952314bc644faf44ad0"
+      },
+      {
+        "path": "scripts/lib/patch-grid.mjs",
+        "sha256": "b12300c4cfd099641c37816450ccba5e6c241fe18ca3d5bf14104cdd12064866"
+      },
+      {
+        "path": "scripts/lib/pf-search-evidence.mjs",
+        "sha256": "cf0c9b7584ccae170c14049d4777e2148cab135f40d88c2852f2f5e53defe299"
+      },
+      {
+        "path": "scripts/lib/positive-types-report.mjs",
+        "sha256": "e162b4db99ecf66f4b86cfd4523da99ea203c858ebc09d2e6f47a1af834395b7"
+      },
+      {
+        "path": "scripts/lib/postbase-hourly.mjs",
+        "sha256": "993d768aa2720de3706ae2ee278f49d42900a06b1bf39989f46a1d3160dfa339"
+      },
+      {
+        "path": "scripts/lib/public-eval-feed.mjs",
+        "sha256": "685ffc24cb94cdfe4e47cc7a279133861e5d03029c9b75d7bd087ec9bc9a9fd4"
+      },
+      {
+        "path": "scripts/lib/range-study-evidence.mjs",
+        "sha256": "02ec5ff93f4d9364267f497f45fdeaecf0f5c1ac775808c96019725e764aa07e"
+      },
+      {
+        "path": "scripts/lib/range-study.mjs",
+        "sha256": "aa84f276583fa7863c9d0d95b382df589fd59b682d2efac772d86e8d817dea66"
+      },
+      {
+        "path": "scripts/lib/replay-evidence.mjs",
+        "sha256": "59eb5a567859c98b431e4012a8f074dbc7292693d5c7aab07088ce15a71c8a07"
+      },
+      {
+        "path": "scripts/lib/replay-price-audit.mjs",
+        "sha256": "315c6f2246ca2895608b2faaa4702a1006f5d5e2b4b6b2994a585803079abfe0"
+      },
+      {
+        "path": "scripts/lib/research-series.mjs",
+        "sha256": "da97905832707d297053e899ca12863bfca41fc69df5163acc311eca092ed119"
+      },
+      {
+        "path": "scripts/lib/return-evidence.mjs",
+        "sha256": "a316f44fe4a3a115a449b65d3dc11c40c806a1af73f3ab6f88561e2b67b10b7b"
+      },
+      {
+        "path": "scripts/lib/safe-network-interfaces.cjs",
+        "sha256": "40f1c2c4b8b96b11a7cbd638f36f875cba594a68fd46041ad2b7cc533888ec89"
+      },
+      {
+        "path": "scripts/lib/session-dump-bridge.mjs",
+        "sha256": "ae7bea691a4df0620c606e61ec3afd36deaa4995b377d1ee3d4ee556b2f543ad"
+      },
+      {
+        "path": "scripts/lib/session-dump.mjs",
+        "sha256": "b9bbe05300143b2f81370a6a5d522a8f1a571224db0985b33fe24cfcf2e5c0ea"
+      },
+      {
+        "path": "scripts/lib/session-feed.mjs",
+        "sha256": "4535c345d6e8cc8dafc8e8009123f0b15c3c62679899522ce938c2332ad119a2"
+      },
+      {
+        "path": "scripts/lib/session-funded-cohort.mjs",
+        "sha256": "186515102c182dafb27d3a2bd3cfb008a3ba971ccfe0eb436971acee2e5ed675"
+      },
+      {
+        "path": "scripts/lib/session-minute-book.mjs",
+        "sha256": "4b9208b0b2dd2a4733f8ff2a8949a8ecf1ec6dde5a8bd1829c84813696ab45a2"
+      },
+      {
+        "path": "scripts/lib/session-owned-returns.mjs",
+        "sha256": "e5d3a115851505f1f8bc604150b387c56334dad4110c82794ed03c87091448bd"
+      },
+      {
+        "path": "scripts/lib/session-qualification.mjs",
+        "sha256": "17c0e488cad2bdfc296032e5810ff274988b372708067c8eeefa2b712e882d4c"
+      },
+      {
+        "path": "scripts/lib/session-settings.mjs",
+        "sha256": "b3e30942540cdd8e87359174d1c0f81a2f5ebfdc4704feda7411e7c0f5f91efc"
+      },
+      {
+        "path": "scripts/lib/session-study.mjs",
+        "sha256": "c6582f6073fe3c9030dfdbee1b98fa21900d8d5a61d8b4278ec662a394567e39"
+      },
+      {
+        "path": "scripts/lib/signal-market.mjs",
+        "sha256": "561528ad226632ef1298c11e4cfdac26bc6581c549a3b4530a23a16d4c71be13"
+      },
+      {
+        "path": "scripts/lib/signal-progress.mjs",
+        "sha256": "067c820e559f998d46992683be5c77ec7dab13e8de4f29d1b296b5d902786fc7"
+      },
+      {
+        "path": "scripts/lib/signal-window-report.mjs",
+        "sha256": "a5ce12bfa50fa3ece5f57ba25cff9d5db5f28724dc46c9e068ac2af2cda30d5b"
+      },
+      {
+        "path": "scripts/lib/test-all-invocation.mjs",
+        "sha256": "e8ed6fbe26219a1d92b721faca1ae05cbb1dfaf76eb38e32d1a7e173f38803ec"
+      },
+      {
+        "path": "scripts/lib/walkforward-comparison-report.mjs",
+        "sha256": "68cc5f639626ce21232a3ff326659c62f9668fcceb3e3c557585fb69ea19709e"
+      },
+      {
+        "path": "scripts/lib/walkforward-hourly-report.mjs",
+        "sha256": "22b93b27d1fdbf2d81fe4fa80a58bb6674a8d19e40edde95f7e7dfed307fba6e"
+      },
+      {
+        "path": "src/core/account-mark.ts",
+        "sha256": "84abf58c14caf27503bc11bf8df81183b6f25651c0e6bd453b27568052e18c0e"
+      },
+      {
+        "path": "src/core/adjust.ts",
+        "sha256": "5f7204dd791b00c3d4d3698c9242e7f9bcd2dcca0789c7a8ee1874508e161ffb"
+      },
+      {
+        "path": "src/core/api-data.ts",
+        "sha256": "f7dda80eafcea396e2a86919a08fb792b7c83549006f060741c147e6ac6e303e"
+      },
+      {
+        "path": "src/core/api.ts",
+        "sha256": "09d789b37bd2152f6a14d4048b3803e2c20ac67e89a6aaeea1dadc523044dba2"
+      },
+      {
+        "path": "src/core/audit.ts",
+        "sha256": "f1a33dc0f498afa44f07718a1fc06065f1e66facc730ba515f9ccc1c95f9102c"
+      },
+      {
+        "path": "src/core/base-config-counts.ts",
+        "sha256": "189505754d63fb57672df383a663104ae7bbf898b0d854da55f159adb07ed5d1"
+      },
+      {
+        "path": "src/core/bot-stats.ts",
+        "sha256": "204d14d34f8aa6921d0fde737cbf08e875666410a1ae85cf0586915e76501df9"
+      },
+      {
+        "path": "src/core/bots/bots.ts",
+        "sha256": "9e148222598d3ef945b7118df93c41209325424bd600f1b23b1284df049e895c"
+      },
+      {
+        "path": "src/core/config.ts",
+        "sha256": "08f8773ee9d404a77ccccd61d7a01553ce946a644dc431b5fcfbfa5961cc5e79"
+      },
+      {
+        "path": "src/core/domain/types.ts",
+        "sha256": "312488688683cfd4ec340293627289347aef92263cf8a83480fa71933790d5be"
+      },
+      {
+        "path": "src/core/eval-family.ts",
+        "sha256": "72405e472974f8b1a1f9450fbd764fa5ebc00703b8a0d61ec715685311e4a9c2"
+      },
+      {
+        "path": "src/core/evals/evaluator.ts",
+        "sha256": "64c837b9c3ec9ad7757f3c78c2f87434141b18b48f2359b444a8658821016336"
+      },
+      {
+        "path": "src/core/exchange/bingx.server.ts",
+        "sha256": "47e4ed903529cd095835b6fd79f78e456f26c3d302b991c66d30161c7c9cd976"
+      },
+      {
+        "path": "src/core/exchange/bybit-budget.server.ts",
+        "sha256": "72dc7cc6df3d6d9164ffd2a22533b09effc43f192efea473b281b9ccd6bff405"
+      },
+      {
+        "path": "src/core/exchange/bybit.server.ts",
+        "sha256": "5bb86a7f63c676b40fde8458aa0aaf80275ce9d94d2d22577d473713af07e172"
+      },
+      {
+        "path": "src/core/exchange/request-budget.server.ts",
+        "sha256": "bbc253a3924fa38ef5b1fb33cd84202ea1b7480dc60e79bfab3376eb80490e8c"
+      },
+      {
+        "path": "src/core/exchange/venue-order-id.ts",
+        "sha256": "a10eeba3e7485c5c59709fee0ca07f3bd122e42c7b59398261b8dc31e07e1f4b"
+      },
+      {
+        "path": "src/core/exit-scope.ts",
+        "sha256": "f7afca84fb489f88b5e001fecc52c52dc0626f27081f1469b4ee56de23938c66"
+      },
+      {
+        "path": "src/core/exit-strategy.ts",
+        "sha256": "5873f4992138bd480662347cf45ab033894053516103ebc4f20ff6c57dbbda8f"
+      },
+      {
+        "path": "src/core/indications/break-config.ts",
+        "sha256": "4c163759a58fc985d0fca4721cdea6cccf0454a36feec79aed2755f09d1afafb"
+      },
+      {
+        "path": "src/core/indications/break.ts",
+        "sha256": "d119a91055dced95a749c81c4e929899ccd8a63da07da95cfbdfc3d32913506b"
+      },
+      {
+        "path": "src/core/indications/cache.ts",
+        "sha256": "f75792e9e7b2f74c50e59ef4f1cfbaa1a4cc7f02b0dae84f179be7ba501f48fa"
+      },
+      {
+        "path": "src/core/indications/context-default-focus.ts",
+        "sha256": "92e8f072b9e687d391156411e6ac73409cf32b962ae6406fec83051700245097"
+      },
+      {
+        "path": "src/core/indications/filters.ts",
+        "sha256": "4cdd2e4345bad7ecb9117c65a4ce09de838e6b320dbf9553b2384ad5275664aa"
+      },
+      {
+        "path": "src/core/indications/inverse-config.ts",
+        "sha256": "9040992177fcc3f47e976f6a0f967792d75aef5426a932bc37a8f9a4006ad720"
+      },
+      {
+        "path": "src/core/indications/inverse.ts",
+        "sha256": "eb4199bdd78c210f895f27ada4a2cd25f8a09ddce3849ca25be8f972a35c8f6c"
+      },
+      {
+        "path": "src/core/indications/low-range-research.ts",
+        "sha256": "9b6bafecb148c1ff5085830766e62a4a03aa4f90b42161e61cc519330cc456af"
+      },
+      {
+        "path": "src/core/indications/low-range.ts",
+        "sha256": "8b598e8c12e9720528f613a83839f6f6cbd619b662c6bddaec01a0070fb78869"
+      },
+      {
+        "path": "src/core/indications/market.ts",
+        "sha256": "62ff4c0ad4f6f9d2778d76a2be00cce51f011d304f1abde2c2e3631d4f55a3dd"
+      },
+      {
+        "path": "src/core/indications/micro-family.ts",
+        "sha256": "420e1828d2fa9b68360ef8781ffa85dedb3823371250423ffee347aa65c9c727"
+      },
+      {
+        "path": "src/core/indications/micro.ts",
+        "sha256": "a39aa60e5eb8a3b5dd674d9ca91217f895aeaeacc0973a7396b9b310f94da82f"
+      },
+      {
+        "path": "src/core/indications/range-families.ts",
+        "sha256": "7727bf1f3b92786dcdb92d87c9308df08e7aa9323b6db559b5e32166917bcc2d"
+      },
+      {
+        "path": "src/core/indications/registry.ts",
+        "sha256": "58ae9860e33381d4083e278afe442ea97d1bfb36b04da3c442a444fe15fb22b4"
+      },
+      {
+        "path": "src/core/indications/relate.ts",
+        "sha256": "e5cb00c35f6968fea8a83f3eb830389f295fd31199b76d5f57a28ef4364e4991"
+      },
+      {
+        "path": "src/core/indications/research.ts",
+        "sha256": "fabfbbc2f03ca04204cacb5b668f921fe1e30aa59ed5d0ce8470e9dbbf916ead"
+      },
+      {
+        "path": "src/core/indications/research2.ts",
+        "sha256": "8b9cba9d970bf5b1bd0661fc38f24e77f481befb5a06952e672b6662cc6289c5"
+      },
+      {
+        "path": "src/core/indications/research3.ts",
+        "sha256": "3eba19e75ef751dc3d98c1ff6019d49819b3359c3f625b0228c4b5c8f752eedd"
+      },
+      {
+        "path": "src/core/indications/research4.ts",
+        "sha256": "37ea0b5e205c3a3d2a0dac975700236b8f411eb0633d1eac4a5c05386058488d"
+      },
+      {
+        "path": "src/core/indications/research5.ts",
+        "sha256": "c438fa3e3ceeb5ac13e9a01d43e17c1a65fdf009e91ce47d87f4a214e83c27a5"
+      },
+      {
+        "path": "src/core/indications/stable02.ts",
+        "sha256": "78a1215c16495af37325a2d0be7226b216e582e57f0af17cfa73ff273b11ce87"
+      },
+      {
+        "path": "src/core/indications/stream-math.ts",
+        "sha256": "8566ef3aa323ed9abeeb1a5e0479a8faf5e343d4573d880f13a3068551b68fa4"
+      },
+      {
+        "path": "src/core/indications/tactic.ts",
+        "sha256": "560f0755b0514cdb532a6b0a016ae1a4d4c909c1d17ca0ae91b13399f3cd026e"
+      },
+      {
+        "path": "src/core/lastn/optimizer.ts",
+        "sha256": "20c992eb44d85ef3087f5a9aed2acef871670df03319804872512eac0eb8c9f3"
+      },
+      {
+        "path": "src/core/live-diff.ts",
+        "sha256": "0a0fd3640d0d84029998b838a5ecad6f7a551c7b7c64c0488bae36dab6999c1b"
+      },
+      {
+        "path": "src/core/live-labels.ts",
+        "sha256": "3e192f35d19c0962a1208a7ead951af9926b21191809d98b8d58772b7da620c4"
+      },
+      {
+        "path": "src/core/live-promote.ts",
+        "sha256": "e5057f4eb328bddac68ce5e39135fbd0cf0ab52b2d6de80a5d38e966a3dbfbb9"
+      },
+      {
+        "path": "src/core/live-record.ts",
+        "sha256": "3bc9bde2664c91d07f2c3475b13d7deb6d91303b2a33a78756766e7208dc9619"
+      },
+      {
+        "path": "src/core/live-validation.ts",
+        "sha256": "1060c847c40950798e6a813a08967301c8cab09072a03e9ea19154ad0aa9001d"
+      },
+      {
+        "path": "src/core/loss-limit.ts",
+        "sha256": "ec3f42db368392c1c665e6eb6ca1f0d7d6809471cbd729cbf229b5c48e2f6589"
+      },
+      {
+        "path": "src/core/market/bars.ts",
+        "sha256": "bd9faec5d566e954a1477866b4e817226643bb945b82257505a37861c489cf71"
+      },
+      {
+        "path": "src/core/market/bingx.ts",
+        "sha256": "5595fbfc725aaf4933db6dd3adfa93f28e2cb26de5607644cca9bca5817f1225"
+      },
+      {
+        "path": "src/core/market/candle-series.ts",
+        "sha256": "11a1ad9871449c3d08e2efd55fd5f9c3ccc7577dd91f25995ca586ebcdd493c9"
+      },
+      {
+        "path": "src/core/market/history-requirements.ts",
+        "sha256": "b9aa0b93d0e94b52f1150c3272cb74631abc5c72289eeb9417b3a38a142dc623"
+      },
+      {
+        "path": "src/core/market/klines-pace.ts",
+        "sha256": "b1b2a1f1edfeac421593c9e479a4b357e573d0b63248eafc52b31d0eac2f6252"
+      },
+      {
+        "path": "src/core/market/shared-feed.ts",
+        "sha256": "70e1183e0a90e51a803fd334ab278dedac5da184d8c74fcdacf1bd8a89f6c065"
+      },
+      {
+        "path": "src/core/market/trade-bars.ts",
+        "sha256": "54beeab02eaeae3220441e3af84a7dbd1c6432ae72df9fb990f71899f58887aa"
+      },
+      {
+        "path": "src/core/math/indicators.ts",
+        "sha256": "948c163cd7d9e18acc57a4757c698115c034ef1d657e033b1d2e1536e60ccd93"
+      },
+      {
+        "path": "src/core/metrics/stats.ts",
+        "sha256": "abf02a7141e412ede41882b5ee3b5b20b4ed24d81d1c247e6ef19a80bf864a12"
+      },
+      {
+        "path": "src/core/minimal-coord.ts",
+        "sha256": "ab8bcfd2eda295c76fe2571e09c0dfc23fd4a888365d9913262f7083f9df6802"
+      },
+      {
+        "path": "src/core/model-cost.ts",
+        "sha256": "19b825a0efb446e7800e11a3a5a4aa6866522098025ef0e72171e4cd655dac61"
+      },
+      {
+        "path": "src/core/pipeline/base-cell-stats.ts",
+        "sha256": "4e085326be3352b1566968ec83707f99ba6a8f1263581d3f2dd5700058bb2305"
+      },
+      {
+        "path": "src/core/pipeline/base-lastn.ts",
+        "sha256": "1a8edbb1ce6371de7db37b88474a0b4a3f33ca3d12e8df7708079a2118a81993"
+      },
+      {
+        "path": "src/core/pipeline/base-windows.ts",
+        "sha256": "f4f479c769b545074a13f568c1eddf7e6c83d394a1992bb71d7c399b580e61b2"
+      },
+      {
+        "path": "src/core/pipeline/pipeline.ts",
+        "sha256": "1c21572c5365345a356be4c61559f52881f89d7895a058a6a188a01d9b47254e"
+      },
+      {
+        "path": "src/core/pipeline/portfolio.ts",
+        "sha256": "f5b618fd1f91aa50eaf70efbf80bf7f0dd4f2c2cd328f995ba6be1bd2e45866e"
+      },
+      {
+        "path": "src/core/positions.ts",
+        "sha256": "a6081d0580abab8e23200af07e8197c96b8ead680700fada1dbfb1e27f1f707e"
+      },
+      {
+        "path": "src/core/positive.ts",
+        "sha256": "bb6bfe23f34afe502bd03a2bec4b20ff070b72111f43683e581cdc47f25644df"
+      },
+      {
+        "path": "src/core/prehist.ts",
+        "sha256": "24bbb71085b7fdf6a91803195d402d679638fb9847e50003f0fff6edaac22b34"
+      },
+      {
+        "path": "src/core/presets.desk.ts",
+        "sha256": "926e9f01dbc5366780aba03436046da30699107f6fd568d8635957be08d5265a"
+      },
+      {
+        "path": "src/core/presets.live.ts",
+        "sha256": "c376fbea786dfa2f1d08cf3fa9207c2d2aee6d7d07c4253b0f432d64ac2689d8"
+      },
+      {
+        "path": "src/core/presets.research.ts",
+        "sha256": "7e92ded8847f0d8200fb216443b5e0828f17f43f80faf06e7b5e55c0003465fb"
+      },
+      {
+        "path": "src/core/presets.ts",
+        "sha256": "e5445abda21d38035ddb9c36b7697ba029ef1c0e620e1e316e82c068c121a027"
+      },
+      {
+        "path": "src/core/progress.ts",
+        "sha256": "ea5f7c45236c79af64dbc2310074b06da239761b099881404e0d11749fea2aec"
+      },
+      {
+        "path": "src/core/proven-wide-trail.ts",
+        "sha256": "903cca426a696f96f0fc406e5a10c67096bae4c2191aaef82cdd152d86d13a00"
+      },
+      {
+        "path": "src/core/relation.ts",
+        "sha256": "58cd2e960d14b8f0b5da5408970fb40305d2732bff31352b97a336d3da262494"
+      },
+      {
+        "path": "src/core/reporting-stats.ts",
+        "sha256": "48ae1b035cb9f3d9cea31404d0574df63e9038256ba024c550791e2738b136b6"
+      },
+      {
+        "path": "src/core/server/base-config-job.server.ts",
+        "sha256": "439a5e417e0c5ef84786ff2d78bbadda9cc2d7de04a664f33fb5e86956382328"
+      },
+      {
+        "path": "src/core/server/boot.server.ts",
+        "sha256": "f73832b39bb2436def245ef17f36a5aa5140ca153f01000dc0d05239ea5abb20"
+      },
+      {
+        "path": "src/core/server/db.server.ts",
+        "sha256": "377551f0ff85a441da6fab1bde1f8a058355c572bae443f142fb81e102fd97be"
+      },
+      {
+        "path": "src/core/server/execution-progress.ts",
+        "sha256": "62d8a50093ba382269d2f50d44dc8c58c25503554993806d8cb5055487d600d9"
+      },
+      {
+        "path": "src/core/server/fill-fees.ts",
+        "sha256": "4846d88328fbc927bf3a62a863e9115b202470c2fb3d0cfb894676594076444f"
+      },
+      {
+        "path": "src/core/server/foreign-exit-cleanup.ts",
+        "sha256": "62876aa74cc1e5f317571b8ce182edbe49cd03e16931ffbf33464fa980479b44"
+      },
+      {
+        "path": "src/core/server/history-store.server.ts",
+        "sha256": "c181169ac7683f98f3acb99d381f6e605ea66ab7225806f118d3b3da4b693f40"
+      },
+      {
+        "path": "src/core/server/incremental.ts",
+        "sha256": "d4aa6c95b0797c2636d13b2cea079e7b1be501257e15a52548bd71000fdb8d0d"
+      },
+      {
+        "path": "src/core/server/lane-orders.ts",
+        "sha256": "dded2fdb1db1daba6619b548802322b35a504f5ab01c1cd2f58cb78622102944"
+      },
+      {
+        "path": "src/core/server/live-parent-isolation.ts",
+        "sha256": "33fbe5a29dee679ee0b3806aa2f5e01ed70cbbe782e5380eaf834e5a5ce81717"
+      },
+      {
+        "path": "src/core/server/live.server.ts",
+        "sha256": "b29e602df9296187094d941221d957e6092256906e355fd0a38ef01739d44bba"
+      },
+      {
+        "path": "src/core/server/live.ts",
+        "sha256": "62ba16f1d8401f5a1bde4fb087e09a9b116705d7ed9aa65e05d009c8ef754d6b"
+      },
+      {
+        "path": "src/core/server/loop-budget.ts",
+        "sha256": "70eca6c3203ba6b765ff88c880b914b38e053ac475848bf178d1418fc286815b"
+      },
+      {
+        "path": "src/core/server/memguard.server.ts",
+        "sha256": "e7a4cb07f3b7f078e97a98f534803e48cc365ae558524a61d4ed630176b3cff8"
+      },
+      {
+        "path": "src/core/server/minimal-plus-publication.ts",
+        "sha256": "38802bd3fe40818fdb643a22d99621afc40cc9ecfba8e885e5efe2a6ca96b182"
+      },
+      {
+        "path": "src/core/server/minute-cap-migration.server.ts",
+        "sha256": "fc0d2685452f07412fa4d53be0e82ebe3a7b4efff394a04ab9bf04af403c37d0"
+      },
+      {
+        "path": "src/core/server/orphan-exit-fence.ts",
+        "sha256": "8837058dfa36483cc0187b63215c9b8cecb394d02041b6d18059a9b04fa89271"
+      },
+      {
+        "path": "src/core/server/owned-worker.server.ts",
+        "sha256": "14453f00cc3a539aa86d57bd95f2c63ca1ee0ab084bf4c27387e2116ea236a0e"
+      },
+      {
+        "path": "src/core/server/paper-rows.ts",
+        "sha256": "2725e808119a39f813c514c16f74f6179be978c5cf2950df45f06739c02d18cc"
+      },
+      {
+        "path": "src/core/server/partition.ts",
+        "sha256": "b9e97e6131b1bcd64abcfc517e420dd98b22e0565a51818ddfcbb97fcb6c18aa"
+      },
+      {
+        "path": "src/core/server/pool.server.ts",
+        "sha256": "eb8427d46e825c3cca16386d61d9b229b1f3db57721d69cc0e87aea015d20abe"
+      },
+      {
+        "path": "src/core/server/promotion-record.server.ts",
+        "sha256": "c6757322edf432d6ef711b7cff98455b0eab5a69b9b3c052a4713b5eb31a37db"
+      },
+      {
+        "path": "src/core/server/runtime.server.ts",
+        "sha256": "843b437a36954990242bc1681ac1862c0664869b6b4e1cde140d817c1b9befd5"
+      },
+      {
+        "path": "src/core/server/stall-probe.server.ts",
+        "sha256": "3f745f7c7d7244dba3470a60aaf882f9a542fdc45a91cbb5753aa6dcfc9de6cd"
+      },
+      {
+        "path": "src/core/server/strategy-coverage.ts",
+        "sha256": "6c739354d90dc954d55f8df0080cfba934824fcdcf014428b31b49b2d738ff0d"
+      },
+      {
+        "path": "src/core/server/stream.server.ts",
+        "sha256": "6c294f2c9a77edd75302b1f3ea236bc485117cee3453f095288fe251b75a91ba"
+      },
+      {
+        "path": "src/core/server/tape-merge.ts",
+        "sha256": "5aff2c80b63feb4565e53d3e507f7a720ce12b0710d721c2891187cd73f6579b"
+      },
+      {
+        "path": "src/core/server/tapes.worker.ts",
+        "sha256": "ef7e24f2cb87c7c80a5e08cf6becc8461c73e0db4450ec4de8d53092cdf2fe9d"
+      },
+      {
+        "path": "src/core/server/tick-math.ts",
+        "sha256": "98475503e6dcf42fe4488a1abd3f6d979974eb2e2c056416bef8d179bcfdcaae"
+      },
+      {
+        "path": "src/core/server/venue-history.server.ts",
+        "sha256": "4b1e5d1dd36608f6702f76530a32ae7537823fbd9f55acd95b62986762ee95b4"
+      },
+      {
+        "path": "src/core/session-window.ts",
+        "sha256": "a2553900c9eedcf8ea2c3a2c71046825e7def284bc3a1c62990deca0002a35d3"
+      },
+      {
+        "path": "src/core/settings-check.ts",
+        "sha256": "f2c6f78c7659b63f27bf956b9a9002cac58554b037065fb00184d1e7b8921751"
+      },
+      {
+        "path": "src/core/signal-config.ts",
+        "sha256": "c506bcead1ba0802948dbdf2c41f9302135621d3a3f17b2a8d2b2f2a76a9827c"
+      },
+      {
+        "path": "src/core/signal-coordination.ts",
+        "sha256": "9b80aa116d35676bc329a205f4b1f8dbf37376c906926caacfe17300b7d64819"
+      },
+      {
+        "path": "src/core/signal-hist.ts",
+        "sha256": "79caff3967a3e20f21dedc576c30ea7936c4fb312f3d84a0a3a75da28892eaa5"
+      },
+      {
+        "path": "src/core/signal-policy.ts",
+        "sha256": "1fe9786b951baf26b05ed1e4955fcf284f587eb15e0c7ca003491775ac8dc3b9"
+      },
+      {
+        "path": "src/core/signals.ts",
+        "sha256": "daef3d7bf2dd9efecb85f1c32ddd8ace195592dcddd66869881c0936fbb3f302"
+      },
+      {
+        "path": "src/core/sim/axis.ts",
+        "sha256": "fe6254ba7eb1774dfce67d8c8c7015dfb00617c4748f1324b378c62ef786a689"
+      },
+      {
+        "path": "src/core/sim/backtest.ts",
+        "sha256": "6242e0b40b58f2505042818df6ff788a53ef5c7636899ca1cbf344b31210c019"
+      },
+      {
+        "path": "src/core/sim/block.ts",
+        "sha256": "f997d0fe84d107fa59ce4536ee53241bdb3ddd680e8dbb2a4cf6d9d00f42de5d"
+      },
+      {
+        "path": "src/core/sim/capped-execution.ts",
+        "sha256": "bb33adccabe5831b73b286244abdd6da5b74207b9b94cd220d62dfd5477e3a96"
+      },
+      {
+        "path": "src/core/sim/cursor.ts",
+        "sha256": "a802fa8565d009bee1fba8027818cecf1746b25be4f907255dac60a408488076"
+      },
+      {
+        "path": "src/core/sim/dca.ts",
+        "sha256": "76e730870c3b3f158b8eb42b44a2981216ebc7f808e51253e0fb648a4370b602"
+      },
+      {
+        "path": "src/core/sim/derived-cache.ts",
+        "sha256": "5175dbe7a229d707120da864f80295e333f4020bc6a3ea34305ebfa7ae439b22"
+      },
+      {
+        "path": "src/core/sim/entry-admission.ts",
+        "sha256": "6f84020e43042544d74168a2afe9c28f9d4d1ccbe44d325a1c28aac91c49f91c"
+      },
+      {
+        "path": "src/core/sim/exit-protection.ts",
+        "sha256": "050459480fc9fa2f542adefc39ced6283ce2b11165e40d79bc3ec13f964de87c"
+      },
+      {
+        "path": "src/core/sim/processed-set.ts",
+        "sha256": "08d643b629cce4a22a9dd257f943471651cceeb32eb7f16078143a06171c96e7"
+      },
+      {
+        "path": "src/core/sim/realtime.ts",
+        "sha256": "6e6df7689fa8af3af1e5473ca03ab42457404ea2c2e0f944eedc2226adbf01f7"
+      },
+      {
+        "path": "src/core/sim/relate-volume.ts",
+        "sha256": "fbc51726e228ece7f21a83ceb263245bdf2cf7dee31cef961d088b8c2a195298"
+      },
+      {
+        "path": "src/core/sim/report-variants.ts",
+        "sha256": "ea9c505a36c30b5528613c125b61042b90e2e2be5640c3511f91d9322ba4cf2a"
+      },
+      {
+        "path": "src/core/sim/s2coord.ts",
+        "sha256": "68daa2b14e3a6d9b62dd979411415f6f22a2fe67778a70205dd5e1932babad5c"
+      },
+      {
+        "path": "src/core/sim/symbol-directions.ts",
+        "sha256": "680d7b150c029153d83b3f7894da7d7e6f96f1fef8fdb1dfa7510f6ee8f85c99"
+      },
+      {
+        "path": "src/core/sim/tape-append.ts",
+        "sha256": "db2f4ea065275ba12c4c7422f132410c6dfc03648edfe880581b76887750a564"
+      },
+      {
+        "path": "src/core/sim/tape-extend.ts",
+        "sha256": "a47f608746b70b7f43c380e4a64e2b5470b150070e08de9a94e546da432ba28b"
+      },
+      {
+        "path": "src/core/sim/trailing.ts",
+        "sha256": "b240dfea77f18c4c08cc642e0e2b81f90c9b4aeee53215a10e08da210061570f"
+      },
+      {
+        "path": "src/core/sim/walkforward.ts",
+        "sha256": "b9b795c241d2e6526a8ca9a0082fca1b0e384ab34b55efa943a084f2c45db389"
+      },
+      {
+        "path": "src/core/sizing.ts",
+        "sha256": "c89aeefc7b4317548c30939b55d6fbf7dc951301732501e3d3a0818d26e323df"
+      },
+      {
+        "path": "src/core/statistics.ts",
+        "sha256": "9907853dd3eee54ba64ad4d510b4ba501e3d9a2f890710738018b32d3a1416a3"
+      },
+      {
+        "path": "src/core/validated-set-pf.ts",
+        "sha256": "8b2c89b41c3745f4557bb13a0eccc46f9d1d7de844f72a65096846a09a34ed45"
+      },
+      {
+        "path": "src/core/validation-progress.ts",
+        "sha256": "7d7467f977d86c88bef9dfb9a62f8bda2053fc9114835a6519459eff188ac631"
+      },
+      {
+        "path": "src/core/volume-factor.ts",
+        "sha256": "ad8b1ff41a02095f4ec771b594c540c46df90de774130b081913d0628f6268df"
+      },
+      {
+        "path": "src/core/volume-ratio.ts",
+        "sha256": "6ad04baa7605855edb8aace91b685dfedd826cfb0216a714abc4ad743acfcd51"
+      }
+    ],
+    "sha256": "5b7b4e53ce0b093458de4ebf9be6389203b5c2defd3043b4260ba9cbecc74e50"
+  },
+  "actualSettings": {
+    "adjust": {
+      "autoCost": true,
+      "enabled": true,
+      "pauseH": 12,
+      "recoverPf": 1.2,
+      "slMax": 0.03,
+      "slStep": 0.002,
+      "trailMax": 0.02,
+      "trailStep": 0.001,
+      "triggerPf": 1,
+      "window": 15
+    },
+    "armTop": 10,
+    "axis": {
+      "center": 50,
+      "centerMin": 132,
+      "exits": "managed",
+      "expiry": 0,
+      "hybrid": false,
+      "levels": 3,
+      "levelsSet": [
+        2,
+        3
+      ],
+      "maxDisp": 2.6,
+      "minDisp": 0.35,
+      "mode": "revert",
+      "ranges": [
+        "atr",
+        "linear",
+        "geo",
+        "fib"
+      ],
+      "ratio": 1,
+      "slAtr": 0.7,
+      "spacing": 0.7,
+      "tpRatio": 2.2,
+      "trailPct": 0.8,
+      "volumeFactor": 1
+    },
+    "block": {
+      "historySource": "accepted-orders",
+      "holdUntilNet": true,
+      "increase": 0.4,
+      "maxLevel": 8,
+      "maxMult": 8,
+      "minActiveLevel": 2,
+      "mode": "overall",
+      "pause": 0,
+      "ranges": {
+        "increase": [
+          0.1,
+          0.5
+        ],
+        "levels": [
+          1,
+          8
+        ],
+        "pause": [
+          0,
+          6
+        ],
+        "steps": [
+          0,
+          7
+        ],
+        "volRatio": [
+          0.1,
+          1
+        ]
+      },
+      "ratio": 0.5,
+      "signalsOwn": true,
+      "sources": {
+        "config": true,
+        "direction": true,
+        "indication": true,
+        "overall": true,
+        "symbol": true,
+        "type": true
+      },
+      "steps": 7
+    },
+    "cost": 0.0015,
+    "cycleMs": 250,
+    "dca": {
+      "addRatio": 2.5,
+      "levels": 2,
+      "maxDistance": 0.02,
+      "slOfTp": 1,
+      "step": 0.01,
+      "stopGap": 0.5
+    },
+    "disabledKinds": [],
+    "evalTop": 60,
+    "exitStrategy": {
+      "enabled": true,
+      "holdH": 24,
+      "includeCombined": true,
+      "includeMicro": true,
+      "includeRelations": true,
+      "includeTactics": true,
+      "lookbackH": 24,
+      "maxConfigsPerPair": 4,
+      "maxDdr": 1,
+      "maxSl": 0.25,
+      "maxTp": 0.2,
+      "minEntries": 30,
+      "minGreenHourShare": 0.5,
+      "minPf": 1.1,
+      "minTp": 0.006,
+      "minValidationTrades": 12,
+      "quantiles": [
+        0.6
+      ],
+      "stopMultiples": [
+        1
+      ],
+      "stopQuantiles": [
+        0.5
+      ],
+      "timeframes": [
+        1,
+        5,
+        15
+      ],
+      "trailShares": [
+        0.5
+      ],
+      "trainFraction": 0.6,
+      "volumeFactor": 1
+    },
+    "fees": {
+      "maker": 0.0002,
+      "slippage": 0.00025,
+      "taker": 0.0005
+    },
+    "focus": [
+      "follow|rsi-mom-10-25",
+      "follow|bb-walk@x4",
+      "follow|break-vol-2@x4",
+      "follow|break-atr-2@x4",
+      "follow|act-burst-2.5@x4",
+      "revert|act-chop@x4",
+      "revert|cci-14-200@x4",
+      "revert|cci-40-200@x4",
+      "revert|z-50-2.5@x4",
+      "follow|cfl-trend-50@m15",
+      "follow|htfpb-4@m15",
+      "follow|htfpb-8@m15",
+      "follow|orb-us@m15",
+      "follow|rel-str-12@m15",
+      "follow|rgm-20@m15",
+      "follow|break-mc-rel-don-5-dd24-guarded@m5",
+      "follow|inverse-known-trend-ema",
+      "follow|inverse-turn-trend-ema",
+      "follow|inverse-zscore-10",
+      "follow|inverse-impulse-10",
+      "follow|inverse-acceleration-10",
+      "follow|inverse-regression-10",
+      "follow|inverse-wick-10",
+      "follow|inverse-failed-break-10",
+      "follow|inverse-consensus-10",
+      "follow|inverse-market-residual-10",
+      "follow|inverse-rsi2-turn-10",
+      "follow|inverse-vwap-deviation-10",
+      "follow|inverse-mc-zscore-10",
+      "follow|inverse-pair-btc-spread-10",
+      "follow|micro-1-drawdown-turn-fast",
+      "follow|micro-5-drawdown-turn-fast",
+      "follow|micro-15-drawdown-turn-fast",
+      "follow|micro-1x5-drawdown-turn-fast",
+      "follow|micro-1x15-drawdown-turn-fast",
+      "follow|micro-5x15-drawdown-turn-fast",
+      "follow|micro-1x5x15-drawdown-turn-fast",
+      "follow|inverse-micro-1-drawdown-turn-fast",
+      "follow|low-range-1-edge-turn-standalone",
+      "follow|rsi-mom-14-20@m1",
+      "follow|rsi-mom-14-20@m5",
+      "follow|rsi-mom-14-20@m15",
+      "follow|rsi-mom-14-20@m30",
+      "follow|inverse-known-trend-ema@m1",
+      "follow|inverse-known-trend-ema@m5",
+      "follow|inverse-known-trend-ema@m15",
+      "follow|inverse-known-trend-ema@m30",
+      "follow|break-vol@m1",
+      "follow|break-vol@m5",
+      "follow|break-vol@m15",
+      "follow|break-vol@m30"
+    ],
+    "forceSymbols": [
+      "ADA-USDT",
+      "APT-USDT",
+      "ARB-USDT",
+      "ATOM-USDT",
+      "AVAX-USDT",
+      "BCH-USDT",
+      "BNB-USDT",
+      "BTC-USDT"
+    ],
+    "gates": {
+      "baseLastN": 40,
+      "baseRangeLastN": {
+        "micro": 30,
+        "minimal": 30
+      },
+      "baseSetsMinPf": 1.25,
+      "lastNFloor": 9,
+      "maxDdr": 1,
+      "maxDdtH": 35,
+      "minDdtH": 18,
+      "minPf": 1.25,
+      "minTrades": 12,
+      "quorum": 0.6,
+      "rangeMinPf": {
+        "general": 1.25,
+        "long": 1.5,
+        "micro": 1.05,
+        "minimal": 1.08,
+        "short": 1.12
+      },
+      "warmup": true
+    },
+    "grid": {
+      "allSets": false,
+      "baseBest": true,
+      "baseRanges": true,
+      "baseTargets": true,
+      "baseTrailCells": false,
+      "general": {
+        "minSl": 0.01,
+        "minTrail": 0.004,
+        "slOfTp": [
+          0.25,
+          1.5
+        ],
+        "tp": [
+          0.03
+        ],
+        "trailOfTp": [
+          0,
+          0.5
+        ],
+        "trailSlOfTp": 0.25,
+        "volumeFactor": 1
+      },
+      "holdH": [
+        16
+      ],
+      "long": {
+        "minSl": 0.016,
+        "minTrail": 0.006,
+        "slOfTp": [
+          0.25,
+          1.5
+        ],
+        "tp": [
+          0.046
+        ],
+        "trailOfTp": [
+          0,
+          0.5
+        ],
+        "trailSlOfTp": 0.25,
+        "volumeFactor": 1
+      },
+      "lowRange": {
+        "enabled": true,
+        "maxHoldMin": 15,
+        "slRatios": [
+          1,
+          2
+        ],
+        "step": 0.002,
+        "steps": [
+          3
+        ],
+        "trailRatios": [
+          0,
+          0.5
+        ]
+      },
+      "micro": {
+        "maxHoldMin": 15,
+        "minSl": 0.005,
+        "minSlNet": 0.002,
+        "minTrail": 0.001,
+        "slOfTp": [
+          1,
+          5
+        ],
+        "tp": [
+          0.002
+        ],
+        "tpNetOfCost": true,
+        "trailOfTp": [
+          0,
+          0.5
+        ],
+        "trailSlOfTp": 1,
+        "volumeFactor": 1
+      },
+      "minSl": 0.01,
+      "minTrail": 0.006,
+      "minimal": {
+        "minSl": 0.006,
+        "minTrail": 0.003,
+        "slOfTp": [
+          1.5,
+          3
+        ],
+        "tp": [
+          0.008
+        ],
+        "trailOfTp": [
+          0,
+          0.5
+        ],
+        "trailSlOfTp": 1,
+        "volumeFactor": 1
+      },
+      "minimalPlus": {
+        "cells": [],
+        "enabled": false,
+        "lastN": 50,
+        "minPf": 1.35,
+        "minSl": 0.001,
+        "minTrail": 0.001,
+        "slOfTp": [
+          0.5,
+          0.75,
+          1,
+          1.25,
+          1.5,
+          1.75,
+          2,
+          2.25,
+          2.5,
+          2.75,
+          3
+        ],
+        "tp": [
+          0.004,
+          0.0045,
+          0.005,
+          0.0055,
+          0.006,
+          0.0065,
+          0.007,
+          0.0075,
+          0.008,
+          0.0085,
+          0.009,
+          0.0095,
+          0.01
+        ],
+        "trailOfTp": [
+          0,
+          0.25,
+          0.5,
+          0.75
+        ],
+        "trailSlOfTp": 2.5,
+        "volumeFactor": 1
+      },
+      "rangeFit": {
+        "enabled": false
+      },
+      "rangeGate": {
+        "enabled": true,
+        "lastN": 75,
+        "minPf": 1.35
+      },
+      "short": {
+        "minSl": 0.006,
+        "minTrail": 0.002,
+        "slOfTp": [
+          1,
+          2.5
+        ],
+        "tp": [
+          0.018
+        ],
+        "trailOfTp": [
+          0,
+          0.5
+        ],
+        "trailSlOfTp": 1,
+        "volumeFactor": 1
+      },
+      "slOfTp": [
+        1,
+        2
+      ],
+      "tp": [],
+      "trailFree": false,
+      "trailOfTp": [
+        0,
+        0.5
+      ],
+      "trailStep": 1,
+      "trailingOnly": true,
+      "volumeFactor": 1
+    },
+    "historyDays": 3,
+    "live": {
+      "connId": "bingx-vst-02",
+      "enabled": false,
+      "laneOrders": false,
+      "leverage": "max",
+      "liveGroupLastN": 0,
+      "liveLastN": 25,
+      "marginMode": "cross",
+      "maxExposureX": 0,
+      "maxNotionalUsd": 0,
+      "maxPositionX": 0,
+      "maxPositions": 100,
+      "mode": "overall",
+      "notionalUsd": 6,
+      "positionMode": "hedge",
+      "ratio": 1,
+      "rebalancePct": 0.25
+    },
+    "mainTop": 0,
+    "paperBalance": 10,
+    "paperNotional": 100,
+    "pinned": [
+      "sweep|dir-vwap-240@m15c",
+      "follow|rsi-mom-21-20@m1",
+      "sweep|ema-50-100@m15c",
+      "follow|rsi-mom-21-25@m1",
+      "sweep|ema-50-100@m30",
+      "follow|r-vol-regime-m@m15",
+      "sweep|trend-ema-50-200@m15c",
+      "sweep|hma-55@m30",
+      "follow|move-swing-32@m30",
+      "follow|rsi-mom-14-20@m1",
+      "sweep|dir-emax-12-26@m30",
+      "sweep|ema-slope@m30",
+      "revert|dir-emax-5-13@m15",
+      "follow|r-connors-m@m15",
+      "sweep|macd-zero@m30",
+      "follow|ichi-cloud-20@m5c",
+      "sweep|ichi-cloud-9@m30",
+      "sweep|dir-vwap-240@m30",
+      "sweep|ema-9-21@m30",
+      "sweep|dir-emax@m30",
+      "sweep|dir-emax-5-13@m30",
+      "sweep|trend-ema-20-50@m30",
+      "sweep|ichi-tk-9@m30",
+      "follow|ema-stoch@m15"
+    ],
+    "protectFloor": {
+      "minSl": 0.005,
+      "minTrail": 0.005
+    },
+    "refineTop": 24,
+    "relate": {
+      "activeStep": 0,
+      "auto": true,
+      "enabled": false,
+      "lastN": 250,
+      "maxSl": 0.0075,
+      "maxStack": 8,
+      "minPf": 1.5,
+      "minTrades": 60,
+      "mode": "additive",
+      "ratio": 2.6,
+      "sources": {
+        "config": true,
+        "coordination": true,
+        "direction": true,
+        "indication": true,
+        "overall": true,
+        "range": true,
+        "strategy": true,
+        "symbol": true
+      },
+      "steps": 5
+    },
+    "signals": {
+      "accept": {
+        "enabled": true,
+        "hours": 48,
+        "minPf": 1.3,
+        "minTrades": 6
+      },
+      "atr": {
+        "holdBars": 3,
+        "sl": [
+          1.15
+        ],
+        "tpRatio": [
+          1.6
+        ],
+        "trail": [
+          0.8
+        ]
+      },
+      "baseGate": false,
+      "cluster": {
+        "enabled": true,
+        "lossShare": 0.6,
+        "minLosses": 8,
+        "windowMin": 60
+      },
+      "combinedVolumeFactors": {
+        "active": 1,
+        "bollinger": 1,
+        "break": 1,
+        "channel": 1,
+        "direction": 1,
+        "ema": 1,
+        "ichimoku": 1,
+        "inverse": 1,
+        "low-range": 1,
+        "macd": 1,
+        "micro": 1,
+        "move": 1,
+        "osc": 1,
+        "relate": 1,
+        "rsi": 1,
+        "sar": 1,
+        "smooth": 1,
+        "tactic": 1,
+        "trend": 1,
+        "volume": 1
+      },
+      "coordination": {
+        "count": 0,
+        "enabled": true,
+        "minSources": 3,
+        "ranges": {
+          "long": true,
+          "normal": true,
+          "short": true
+        },
+        "volumeFactor": 1
+      },
+      "count": 0,
+      "enabled": true,
+      "exits": "both",
+      "filter": {
+        "trendH": 0,
+        "volFloor": 0.003
+      },
+      "guard": {
+        "enabled": true,
+        "lastN": 12
+      },
+      "hist": {
+        "enabled": true,
+        "lookbackH": 24,
+        "minN": 30,
+        "quantiles": [
+          0.5
+        ],
+        "slOfTp": [
+          1
+        ],
+        "trailOfTp": [
+          0.5
+        ]
+      },
+      "holdH": 48,
+      "lanes": [
+        1,
+        5,
+        15,
+        30
+      ],
+      "maxOpen": 0,
+      "maxPositions": 250,
+      "minBlockShare": 0.6,
+      "minSl": 0.005,
+      "minTrades": 3,
+      "minTrail": 0.002,
+      "normal": {
+        "slOfTp": [
+          1,
+          2
+        ],
+        "tp": [
+          0.01
+        ]
+      },
+      "ownBase": true,
+      "perSymbol": 0,
+      "rangeVolumeFactors": {
+        "medium": 1,
+        "short": 1
+      },
+      "ranges": {
+        "medium": true,
+        "short": true
+      },
+      "rank": "lowdd",
+      "sideAccept": {
+        "enabled": true,
+        "hours": 24,
+        "minPf": 1.3,
+        "minTrades": 20
+      },
+      "sourceGate": {
+        "days": 2,
+        "enabled": false,
+        "minShare": 0.5,
+        "minTrades": 5
+      },
+      "sources": {
+        "ema-cross": true,
+        "macd-cross": true,
+        "rsi-reversal": true
+      },
+      "sourcesMode": "allow",
+      "strategies": {
+        "axis": false,
+        "dca": false
+      },
+      "trailMax": 0.03,
+      "trailRatios": [
+        0.5,
+        1,
+        1.5
+      ],
+      "trailing": {
+        "slOfTp": 3,
+        "tp": [
+          0.01
+        ],
+        "trailOfTp": [
+          0.5
+        ]
+      },
+      "trailingOnly": {
+        "enabled": true,
+        "sl": [
+          0.015
+        ],
+        "trail": [
+          0.005
+        ],
+        "trailStep": 1
+      },
+      "validate": true,
+      "validateH": 24
+    },
+    "sizing": {
+      "mode": "equityPct",
+      "pct": 0.001
+    },
+    "symbolRank": "market",
+    "symbols": 8,
+    "tactics": {
+      "chopRegime": false,
+      "cooldown": false,
+      "cooldownBars": 4,
+      "session": false,
+      "trendStrength": true,
+      "volRegime": true
+    },
+    "tfDays": {
+      "1": 3,
+      "5": 3,
+      "15": 3,
+      "30": 3
+    },
+    "tfMin": 1,
+    "tfs": [
+      1,
+      5,
+      15,
+      30
+    ],
+    "tickMs": 100,
+    "toggles": {
+      "axis": true,
+      "block": true,
+      "blockActive": false,
+      "dca": true,
+      "dcaActive": false,
+      "exit": true,
+      "normal": true,
+      "trailing": true
+    }
+  },
+  "actualWf": {
+    "axisVolumeFactor": 1,
+    "block": {
+      "historySource": "accepted-orders",
+      "holdUntilNet": true,
+      "increase": 0.4,
+      "maxLevel": 8,
+      "maxMult": 8,
+      "minActiveLevel": 2,
+      "mode": "overall",
+      "pause": 0,
+      "ranges": {
+        "increase": [
+          0.1,
+          0.5
+        ],
+        "levels": [
+          1,
+          8
+        ],
+        "pause": [
+          0,
+          6
+        ],
+        "steps": [
+          0,
+          7
+        ],
+        "volRatio": [
+          0.1,
+          1
+        ]
+      },
+      "ratio": 0.5,
+      "signalsOwn": true,
+      "sources": {
+        "config": true,
+        "direction": true,
+        "indication": true,
+        "overall": true,
+        "symbol": true,
+        "type": true
+      },
+      "steps": 7
+    },
+    "bots": [],
+    "causalBase": true,
+    "coord": {
+      "confirm": true,
+      "conflict": false,
+      "cooldown": "off",
+      "enabled": true,
+      "hedge": false,
+      "hedgeMinN": 10,
+      "hedgeMinPf": 2,
+      "hedgePrevOnly": false,
+      "hedgeVolumeFactor": 1,
+      "hourLock": 0,
+      "s2Increase": 0.4,
+      "s2RelVolume": false,
+      "s2Windows": false
+    },
+    "cost": 0.0015,
+    "dca": {
+      "addRatio": 2.5,
+      "levels": 2,
+      "maxDistance": 0.02,
+      "slOfTp": 1,
+      "step": 0.01,
+      "stopGap": 0.5
+    },
+    "dcaProtects": [
+      {
+        "hold": 32,
+        "sl": 0.008,
+        "tp": 0.008,
+        "trail": 0
+      },
+      {
+        "hold": 32,
+        "sl": 0.012,
+        "tp": 0.012,
+        "trail": 0
+      },
+      {
+        "hold": 32,
+        "sl": 0.026,
+        "tp": 0.026,
+        "trail": 0
+      },
+      {
+        "hold": 32,
+        "sl": 0.035,
+        "tp": 0.035,
+        "trail": 0
+      }
+    ],
+    "durableFrac": 0.75,
+    "durableSplits": 4,
+    "engineSideAccept": {
+      "enabled": false,
+      "hours": 24,
+      "minPf": 1.05,
+      "minTrades": 30
+    },
+    "exitMaxDdr": 1,
+    "exitMinGreenHourShare": 0.5,
+    "exitMinPf": 1.1,
+    "exitMinTrades": 12,
+    "exitVolumeFactor": 1,
+    "familyNeedsBase": false,
+    "familySeats": true,
+    "gates": {
+      "baseLastN": 40,
+      "baseRangeLastN": {
+        "micro": 30,
+        "minimal": 30
+      },
+      "baseSetsMinPf": 1.25,
+      "lastNFloor": 9,
+      "maxDdr": 1,
+      "maxDdtH": 35,
+      "minDdtH": 18,
+      "minPf": 1.25,
+      "minTrades": 12,
+      "quorum": 0.6,
+      "rangeMinPf": {
+        "general": 1.25,
+        "long": 1.5,
+        "micro": 1.05,
+        "minimal": 1.08,
+        "short": 1.12
+      },
+      "warmup": true
+    },
+    "guardPct": 0,
+    "indicationVolumeFactors": {
+      "combined": {
+        "active": 1,
+        "bollinger": 1,
+        "break": 1,
+        "channel": 1,
+        "direction": 1,
+        "ema": 1,
+        "ichimoku": 1,
+        "inverse": 1,
+        "low-range": 1,
+        "macd": 1,
+        "micro": 1,
+        "move": 1,
+        "osc": 1,
+        "relate": 1,
+        "rsi": 1,
+        "sar": 1,
+        "smooth": 1,
+        "tactic": 1,
+        "trend": 1,
+        "volume": 1
+      },
+      "coordination": 1
+    },
+    "laneSeats": 3,
+    "lastN": 0,
+    "lastNMinPf": 1,
+    "longH": 24,
+    "maxOpen": 0,
+    "maxPerSide": 0,
+    "maxPerSymbol": 0,
+    "maxPositions": 0,
+    "mode": "fixed",
+    "portfolio": 0,
+    "preGate": true,
+    "preH": 24,
+    "protects": [
+      {
+        "hold": 64,
+        "sl": 0.012,
+        "tag": "mn",
+        "tp": 0.008,
+        "trail": 0
+      },
+      {
+        "hold": 64,
+        "sl": 0.012,
+        "tag": "mn",
+        "tp": 0.008,
+        "trail": 0.004,
+        "trailFree": false,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.024,
+        "tag": "mn",
+        "tp": 0.008,
+        "trail": 0
+      },
+      {
+        "hold": 64,
+        "sl": 0.024,
+        "tag": "mn",
+        "tp": 0.008,
+        "trail": 0.004,
+        "trailFree": false,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.018,
+        "tag": "sh",
+        "tp": 0.018,
+        "trail": 0
+      },
+      {
+        "hold": 64,
+        "sl": 0.018,
+        "tag": "sh",
+        "tp": 0.018,
+        "trail": 0.009,
+        "trailFree": false,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.045,
+        "tag": "sh",
+        "tp": 0.018,
+        "trail": 0
+      },
+      {
+        "hold": 64,
+        "sl": 0.045,
+        "tag": "sh",
+        "tp": 0.018,
+        "trail": 0.009,
+        "trailFree": false,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.01,
+        "tag": "gn",
+        "tp": 0.03,
+        "trail": 0
+      },
+      {
+        "hold": 64,
+        "sl": 0.01,
+        "tag": "gn",
+        "tp": 0.03,
+        "trail": 0.015,
+        "trailFree": false,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.045,
+        "tag": "gn",
+        "tp": 0.03,
+        "trail": 0
+      },
+      {
+        "hold": 64,
+        "sl": 0.045,
+        "tag": "gn",
+        "tp": 0.03,
+        "trail": 0.015,
+        "trailFree": false,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.016,
+        "tag": "lg",
+        "tp": 0.046,
+        "trail": 0
+      },
+      {
+        "hold": 64,
+        "sl": 0.016,
+        "tag": "lg",
+        "tp": 0.046,
+        "trail": 0.023,
+        "trailFree": false,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.069,
+        "tag": "lg",
+        "tp": 0.046,
+        "trail": 0
+      },
+      {
+        "hold": 64,
+        "sl": 0.069,
+        "tag": "lg",
+        "tp": 0.046,
+        "trail": 0.023,
+        "trailFree": false,
+        "trailStep": 1
+      },
+      {
+        "hold": 1,
+        "maxHoldMin": 15,
+        "sl": 0.0035,
+        "tag": "mc",
+        "tp": 0.0035,
+        "trail": 0
+      },
+      {
+        "hold": 1,
+        "maxHoldMin": 15,
+        "sl": 0.0035,
+        "tag": "mc",
+        "tp": 0.0035,
+        "trail": 0.00175,
+        "trailFree": false,
+        "trailStep": 1
+      },
+      {
+        "hold": 1,
+        "maxHoldMin": 15,
+        "sl": 0.0175,
+        "tag": "mc",
+        "tp": 0.0035,
+        "trail": 0
+      },
+      {
+        "hold": 1,
+        "maxHoldMin": 15,
+        "sl": 0.0175,
+        "tag": "mc",
+        "tp": 0.0035,
+        "trail": 0.00175,
+        "trailFree": false,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.012,
+        "tag": "mn",
+        "tp": 0,
+        "trail": 0.004,
+        "trailFree": false,
+        "trailMax": 0.03,
+        "trailOnly": true,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.024,
+        "tag": "mn",
+        "tp": 0,
+        "trail": 0.004,
+        "trailFree": false,
+        "trailMax": 0.03,
+        "trailOnly": true,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.018,
+        "tag": "sh",
+        "tp": 0,
+        "trail": 0.009,
+        "trailFree": false,
+        "trailMax": 0.03,
+        "trailOnly": true,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.03,
+        "tag": "sh",
+        "tp": 0,
+        "trail": 0.009,
+        "trailFree": false,
+        "trailMax": 0.03,
+        "trailOnly": true,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.01,
+        "tag": "gn",
+        "tp": 0,
+        "trail": 0.015,
+        "trailFree": false,
+        "trailMax": 0.03,
+        "trailOnly": true,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.03,
+        "tag": "gn",
+        "tp": 0,
+        "trail": 0.015,
+        "trailFree": false,
+        "trailMax": 0.03,
+        "trailOnly": true,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.016,
+        "tag": "lg",
+        "tp": 0,
+        "trail": 0.023,
+        "trailFree": false,
+        "trailMax": 0.03,
+        "trailOnly": true,
+        "trailStep": 1
+      },
+      {
+        "hold": 64,
+        "sl": 0.03,
+        "tag": "lg",
+        "tp": 0,
+        "trail": 0.023,
+        "trailFree": false,
+        "trailMax": 0.03,
+        "trailOnly": true,
+        "trailStep": 1
+      },
+      {
+        "hold": 1,
+        "maxHoldMin": 15,
+        "sl": 0.0035,
+        "tag": "mc",
+        "tp": 0,
+        "trail": 0.00175,
+        "trailFree": false,
+        "trailMax": 0.03,
+        "trailOnly": true,
+        "trailStep": 1
+      },
+      {
+        "hold": 1,
+        "maxHoldMin": 15,
+        "sl": 0.0175,
+        "tag": "mc",
+        "tp": 0,
+        "trail": 0.00175,
+        "trailFree": false,
+        "trailMax": 0.03,
+        "trailOnly": true,
+        "trailStep": 1
+      },
+      {
+        "hold": 1,
+        "lowRangeOnly": true,
+        "maxHoldMin": 15,
+        "sl": 0.0075,
+        "tag": "sh",
+        "tp": 0,
+        "trail": 0.0055,
+        "trailFree": false,
+        "trailMax": 0.03,
+        "trailOnly": true,
+        "trailStep": 1
+      },
+      {
+        "hold": 1,
+        "lowRangeOnly": true,
+        "maxHoldMin": 15,
+        "sl": 0.0135,
+        "tag": "sh",
+        "tp": 0,
+        "trail": 0.0055,
+        "trailFree": false,
+        "trailMax": 0.03,
+        "trailOnly": true,
+        "trailStep": 1
+      },
+      {
+        "hold": 1,
+        "lowRangeOnly": true,
+        "maxHoldMin": 15,
+        "sl": 0.0075,
+        "tag": "sh",
+        "tp": 0.0075,
+        "trail": 0
+      },
+      {
+        "hold": 1,
+        "lowRangeOnly": true,
+        "maxHoldMin": 15,
+        "sl": 0.0075,
+        "tag": "sh",
+        "tp": 0.0075,
+        "trail": 0.0055,
+        "trailFree": false,
+        "trailStep": 1
+      },
+      {
+        "hold": 1,
+        "lowRangeOnly": true,
+        "maxHoldMin": 15,
+        "sl": 0.0135,
+        "tag": "sh",
+        "tp": 0.0075,
+        "trail": 0
+      },
+      {
+        "hold": 1,
+        "lowRangeOnly": true,
+        "maxHoldMin": 15,
+        "sl": 0.0135,
+        "tag": "sh",
+        "tp": 0.0075,
+        "trail": 0.0055,
+        "trailFree": false,
+        "trailStep": 1
+      }
+    ],
+    "rangeGate": {
+      "lastN": 75,
+      "minPf": 1.35
+    },
+    "rangeSeats": false,
+    "rangeVolumeFactors": {
+      "gn": 1,
+      "lg": 1,
+      "mc": 1,
+      "mn": 1,
+      "mp": 1,
+      "sh": 1,
+      "wide": 1
+    },
+    "rank": "lcb",
+    "recordValidation": true,
+    "relate": {
+      "activeStep": 0,
+      "auto": true,
+      "enabled": false,
+      "lastN": 250,
+      "maxSl": 0.0075,
+      "maxStack": 8,
+      "minPf": 1.5,
+      "minTrades": 60,
+      "mode": "additive",
+      "ratio": 2.6,
+      "sources": {
+        "config": true,
+        "coordination": true,
+        "direction": true,
+        "indication": true,
+        "overall": true,
+        "range": true,
+        "strategy": true,
+        "symbol": true
+      },
+      "steps": 5
+    },
+    "robustFrac": 0.6,
+    "seatPer": "config",
+    "seatSet": "validated",
+    "signalLongH": 24,
+    "signalRangeVolumeFactors": {
+      "medium": 1,
+      "short": 1
+    },
+    "signalValidLastN": 12,
+    "simH": 24,
+    "stepH": 1,
+    "symGate": "provenSide",
+    "symMinN": 2,
+    "toggles": {
+      "axis": true,
+      "block": true,
+      "blockActive": false,
+      "dca": true,
+      "dcaActive": false,
+      "exit": true,
+      "normal": true,
+      "trailing": true
+    },
+    "validLastN": 12
+  },
+  "account": {
+    "balance": 10,
+    "leverage": 10,
+    "sizing": {
+      "mode": "equityPct",
+      "pct": 0.001
+    }
+  },
+  "study": {
+    "scope": "Bounded diagnostic grid; one representative of every configured indication prefix family plus four explicit timeframe controls. All factory range/strategy kernels remain independently regression-tested; this is not a full parameter sweep.",
+    "maxPhysicalHours": 72,
+    "evaluatedPrehistoryHours": 24,
+    "tradingHours": 24,
+    "olderIndicatorWarmupHours": 24,
+    "signalAndExitFitHours": 24,
+    "microMaxHoldMinutes": 15,
+    "focusCount": 51,
+    "signalSources": [
+      "ema-cross",
+      "macd-cross",
+      "rsi-reversal"
+    ],
+    "gridChanges": "One TP per range, endpoint SL ratios, no-trail and 0.5 trail; independent trailing-only; Low-Range step 3. Prespecified before scoring. PF/sample/Last-N thresholds unchanged.",
+    "instrumentation": "Record causal validation checks without altering selection or execution. Variants already measured in baseline; disabled here to bound memory."
+  },
+  "policy": {
+    "qualification": "8 fixed symbols. Production-normalized thresholds, grids and sources are frozen below; study overrides must be disclosed in study metadata.",
+    "scoring": "Post-Base qualified engine execution; independently qualified exact Signal configs separately; combined funded account separately.",
+    "directions": "Both directions enabled; realized counts reported, never fabricated.",
+    "evidence": "Offline model only; no venue fills or live promotion."
+  }
+}

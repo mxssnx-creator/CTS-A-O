@@ -8,7 +8,7 @@ const { walkForward } = await import("./sim/walkforward.ts");
 const { statsOf } = await import("./metrics/stats.ts");
 const { CandleSeries } = await import("./market/candle-series.ts");
 const { liveTag } = await import("./server/live.ts");
-const { coreOverviewData, coreSimData, coreTradingData, coreConnsData, coreStatisticsData, coreStatisticsInput, coreStatusData, connInput } = await import("./api-data.ts");
+const { coreOverviewData, coreSimData, coreTradingData, coreConnsData, coreStatisticsData, coreStatisticsInput, coreStatusData, coreListingData, coreListingInput, coreConfigData, connInput } = await import("./api-data.ts");
 import type { Trade } from "./domain/types.ts";
 
 type Any = any;
@@ -41,6 +41,35 @@ test("Statistics publishes passing validation PF and percentage inputs beside un
   r.status.postBaseValidation = null;
   const unavailable = await coreStatisticsData(coreStatisticsInput({ source: "sim" })) as Any;
   assert.equal(unavailable.postBaseValidation, null, "missing validation cannot fall back to the execution aggregate");
+});
+
+test("listing, strategy and lane means weight each passing config once, keeping rejected candidates in counts only", async () => {
+  const r = fixture();
+  const ids = ["follow|rsi-mom-14-25@m1|tp1|sl1|tr0|h60|mn", "follow|rsi-mom-14-25@m1|tp2|sl1|tr0|h60|mn"];
+  const validated = ids.map((id, i) => ({ id, kind: "normal", group: "Minimal", range: "Minimal", score: 1,
+    n: i ? 100 : 10, gp: i ? 20 : 8, gl: i ? 10 : 1, pf: i ? 2 : 8, net: 1, ddt: 0 }));
+  const rejected = { id: ids[0] + "|rejected", kind: "normal", group: "Minimal" };
+  r.listings = { paperStep: 1, at: END, validated, candidates: [...validated, rejected],
+    validation: { at: END, engineLastN: 12, signalLastN: 12, entryLastN: 0, rangeLastN: 75, historyH: 24 },
+    byGroup: { Minimal: { rows: [0, 1], calculated: 3, gp: 28, gl: 11, pf: 5 } }, byRange: {}, byKind: {}, active: [], proven: null };
+  const list = await coreListingData(coreListingInput({ lane: "1m", strategy: "normal" })) as Any;
+  assert.equal(list.total, 2); assert.equal(list.calculated, 3);
+  for (const group of [list.byGroup[0], list.byRange[0], list.byKind[0]]) {
+    assert.equal(group.pf, 5); assert.equal(group.pooledPf, 28 / 11);
+    assert.equal(group.validated, 2); assert.equal(group.calculated, 3);
+    assert.equal(group.setPf.finiteSets, 2);
+  }
+  const overview = await coreOverviewData(connInput()) as Any;
+  const lane = overview.lanes.find((x: Any) => x.lane === "1m");
+  assert.equal(lane.activePf, 5); assert.equal(lane.activeSets, 2);
+  assert.equal(lane.activePooledPf, 28 / 11);
+  assert.deepEqual(list.rows.map((x: Any) => x.pf), [8, 2]);
+  r.sim!.trades = r.sim!.trades.map((x) => ({ ...x, cfg: ids[0] }));
+  const detail = await coreConfigData({ id: ids[0] }) as Any;
+  assert.equal(detail.currentValidation.pf, 8); assert.equal(detail.currentValidation.at, END);
+  assert.ok(Math.abs(detail.executed.pf - 1.36) < 1e-10, "later losses are separate from this config's high historical PF");
+  const other = await coreConfigData({ id: rejected.id }) as Any;
+  assert.equal(other.currentValidation, null); assert.equal(other.executed.n, 0, "no sibling proof or execution borrowing");
 });
 
 test("Overview, lane and connection summaries normalize retained weighted records and retain PF provenance", async () => {
@@ -80,6 +109,26 @@ test("Overview, Sim and Trading keep a position open until its last independentl
   const closed = await coreTradingData(connInput()) as Any;
   assert.deepEqual(closed.closed, { positions: 1, orders: 3 });
   assert.equal(closed.orderCounts.openedPositions, 1);assert.equal(closed.orderCounts.openOrders, 0);
+});
+
+test("closed Main PF matches its exact execution cohort while endpoint losses stay in separate marks", async () => {
+  const r = fixture();
+  const held = { ...r.sim!.trades[0], cfg: r.sim!.trades[0].cfg + "|held",
+    entryT: END - H, exitT: END, r: -.5, mult: 1, markedOpen: true,
+    stop: 95, vol: 1, mtm: -.5, entryI: 0, target: 110, peak: 100, trailOn: false };
+  r.sim!.openAtEnd = [held];
+  const overview = await coreOverviewData(connInput()) as Any;
+  const run = await coreSimData(connInput()) as Any;
+  for (const row of [overview.sim, run.sim]) {
+    assert.equal(row.stats.n, 2, "endpoint holdings are not a third settled order");
+    assert.ok(Math.abs(row.stats.pf - 1.36) < 1e-10);
+    assert.equal(row.markedStats.n, 3, "the losing endpoint mark must remain visible");
+    assert.ok(row.markedStats.pf < .03);
+    assert.equal(row.orderCounts.openOrders, 1);
+    assert.equal(row.orderCounts.settledOrders, 2);
+  }
+  assert.equal(overview.sim.stats.pf, overview.sim.executed.pf);
+  assert.equal(overview.sim.stats.pf, overview.sim.byKind.normal.pf);
 });
 
 test("unknown modeled losses preserve every close/count while whole primary summaries become unavailable", async () => {

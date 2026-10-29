@@ -130,8 +130,8 @@ const FIELDS: Record<Fn, string[]> = {
     "calculated",
     ...under("validation", ["engineLastN", "rangeLastN", "historyH"]),
     "proofOn",
-    ...under("byGroup[]", ["group", "validated", "calculated", "pf", "noLoss"]),
-    ...under("byKind[]", ["kind", "validated", "calculated", "pf", "noLoss"]),
+    ...under("byGroup[]", ["group", "validated", "calculated", "pf", "noLoss", "pooledPf", "setPf.sets", "setPf.finiteSets", "setPf.noLossSets", "setPf.unavailableSets"]),
+    ...under("byKind[]", ["kind", "validated", "calculated", "pf", "noLoss", "pooledPf", "setPf.sets", "setPf.finiteSets", "setPf.noLossSets", "setPf.unavailableSets"]),
     ...under("rows[]", ["id", "group", "range", "kind", "pf", "n", "net", "ddt", "score", "executed.n", "executed.pf", "executed.net", "executed.wr", "executed.gp", "executed.gl", "executed.noLoss", "executed.pfBasis", "executed.unknownReturns", "executed.effective.n", "executed.effective.pf", "executed.effective.net", "executed.effective.wr", "executed.effective.gp", "executed.effective.gl", "executed.effective.noLoss", "executed.effective.pfBasis", "executed.effective.unknownReturns"]),
   ],
   coreStatus: [
@@ -218,8 +218,9 @@ const FIELDS: Record<Fn, string[]> = {
     ...under("sim.hourly[]", ["t", "net", "n", "pf", ...RETURN_PROVENANCE]),
     ...under("sim.byConfig[]", ["id", "n", "pf", "net", ...RETURN_PROVENANCE]),
     ...under("wf", ["simH", "preH", "tapes", "seatSet"]),
-    ...under("status.listings", ["validated"]),
-    ...under("status.listings.byKind[]", ["kind", "validated", "calculated", "validationCloses", "gp", "gl", "pf", "noLoss"]),
+    ...under("status.listings", ["validated", "calculated", "validation.at"]),
+    ...under("status.listings.byKind[]", ["kind", "validated", "calculated", "validationCloses", "gp", "gl", "pf", "noLoss", "setPf.sets", "setPf.finiteSets", "setPf.noLossSets", "setPf.unavailableSets"]),
+    ...under("sim.markedStats", ["n", "pf", ...RETURN_PROVENANCE]),
     ...under("counts", ["base", "main", "evaluated"]),
     ...under("paper", [
       "selected",
@@ -246,6 +247,8 @@ const FIELDS: Record<Fn, string[]> = {
       "activeCloses",
       "activePf",
       "activeNoLoss",
+      "activePooledPf",
+      "activeSetPf.sets",
       "positions",
       "n",
       "pf",
@@ -315,6 +318,8 @@ const FIELDS: Record<Fn, string[]> = {
   ],
   coreConfig: [
     // pages/config.tsx
+    "currentValidation",
+    ...under("executed", ["n", "pf", ...RETURN_PROVENANCE]),
     ...under("row", [
       "n",
       "wr",
@@ -348,6 +353,7 @@ const FIELDS: Record<Fn, string[]> = {
     // pages/hourly.tsx (current settings)
     ...under("sim", ["startT", "endT", "opts.preH", "stable", "positions", "skips"]),
     ...under("sim.hourly[]", ["t", "net", "n", "pf"]),
+    ...under("sim.markedStats", ["n", "pf", ...RETURN_PROVENANCE]),
     ...under("sim.steps[]", ["t", "main", "real", "taken", "skipped"]),
     ...under("sim.stats", [
       "pf",

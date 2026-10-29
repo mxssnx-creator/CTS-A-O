@@ -1,3 +1,25 @@
+## 2026-10-29 — exact combined-source replay complete
+
+Checkpoint67ccf745046c853b75f1ccb3c22e37bd783bcd24 includes current mainad5e33a plus the PF reporting release. Frozen economic source5b7b4e53ce0b093458de4ebf9be6389203b5c2defd3043b4260ba9cbecc74e50. A fresh8-symbol24h+24h+24h indicator-only run (72hTOTAL) reproduces all2468candidate tapes,3108funded closes,8held records and every allocation exactly. PF0.273050873; Base143/1398(10.2289%),initial405/1276(31.7398%),historicalfinite mean17.399524089 plus6no-loss;positions52/49/3,orders3116/3108/8O/C/H.11.997s,531.7MiBpeakRSS. Reportchecks76/78;30m startup remains insufficient. BaseRanges=true here, so no claimed financial impact for the separately reproduced range-expansion defect.
+
+Bounded range/cost/hold/reporting/worker suites, explicit range-Axis worker test, typecheck, build and30h packaged-worker parity pass. Further full CI is skipped to honor72hTOTAL; old complete hosted passes belong tob9414ec only. Latestproof:docs/main-processing-audit-20261029/merged-main-verification.json. Main/Real persistent adapter and venue-owned execution remain unfinished/unavailable.
+
+## 2026-10-29 — reconcile concurrent Base range and realtime stop-gap release
+
+Main advanced toad5e33a while PR235 checks ran; the first merge was correctly rejected for a handoff conflict. The combined source preserves actual qualified range tags independently of diagnostic construction, repaired Axis coverage counts, adverse observed stop-gap marks and all validated-mean/closed-cohort reporting fixes. Only the handoff text conflicted. New bounded verification passes27range/worker cases,53cost/hold/Last-N/reporting cases, typecheck, development/core-worker build and the packaged worker's30h incremental/tick/stop-gap parity. Dedicated range-Axis worker coverage is recorded separately. The old complete workflows passed onb9414ec before the concurrent merge; do not label them as new-head verification.
+
+Further commits use[skip ci] to honor the operator's≤72hTOTAL limit: the inherited full workflows include18-day synthetic-market fixtures. The merged source is checked with bounded explicit suites and a new72h actual-runtime replay instead. No test result or profitability claim is invented. Previous measured8-symbolcohort remainsBase143/1398(10.2289%),initial405/1276(31.7398%),finite historicalPF17.399524089 plus6no-loss;laterfundedPF0.273050873,positions52/49/3,orders3116/3108/8O/C/H. VenuePFunavailable; refreshed replay follows on the exact combined checkpoint.
+
+## 2026-10-29 — Main PF reporting repair and actual eight-symbol audit
+
+Active release branch `fix/validated-stage-pf-20261029` starts at merged PR234/main12e1f04. Validation summaries, lane/range/type listings and dashboards now use equal-weight passing-set PF means, with no-loss/unknown counts. API Main headlines use closed execution; endpoint marks and marked sizing remain separate and visible. Neither repair changes admissions or returns.
+
+A frozen actual-runtime baseline and final repeat cover eight fixed symbols,24h prehistory+24h trading on8–9October UTC and24h additional indicator warmup (72h TOTAL). Base143/1398(10.2289%); initial config validation405/1276(31.7398%); finite historical mean17.399524089 across399sets plus6no-loss; subsequent funded PF0.273050872975075. Positions52/49/3 andorders3116/3108/8 opened/closed/held. Every funded trade, held record and allocation is identical before/after; all3108close identities and source returns match.1923ordinary cost checks pass; full actual DCA/Axis price arithmetic is not claimed from the simple-return checker. Venue PF unavailable.
+
+The report remains76/78checks:30m startup has96bars, not120; do not call this full catalogue coverage. Repeat12.29s,521.3MiBpeakRSS; baseline114switchcontrols remain available separately. Current raw Main gates passed every reconstructed entry, but3087entries had<9own-symbol/direction closes. The pending persistent own Main/Real predecessor-stage adapter in draft219 is NOT activated by this release. Do not present a high historical mean or this reporting repair as high future PF. Full HTML/heatmap,2468config listings,3108orders,protocol,raw checksummed sidecars and limits:docs/main-processing-audit-20261029.
+
+Local guarded core regressions247/247pass. Final local API contract24/24, durable paper/runtime8/8 and script/UI-helper7/7pass; typecheck, scoped lint(no errors; existing warnings only), full development/core-worker build pass. Published code checkpointd40ecf85, sealed economic sourcea069ea7d; later audit-input guards reproduce the exact recorded analysis. Hosted checks and final merge are recorded on the exact release PR. New market studies must remain≤72hTOTAL. No selected deployment or actual venue account has been identified or modified; the local preview is live-disabled.
+
 ## 2026-10-29 — realtime stop-gap and cost follow-up
 
 Realtime stop crossings now mark the first observed adverse quote rather than an unobserved stop price; target

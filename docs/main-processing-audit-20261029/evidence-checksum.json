@@ -1,0 +1,6 @@
+{
+  "file": "evidence.tar.gz",
+  "bytes": 7495887,
+  "sha256": "25ddea15703f4ab756cbeb0b8aced312c035c785993aac9fbb32f14180f4b275",
+  "scope": "Baseline, intermediate instrumentation repeat and final tested-code repeat; all raw funding/trade/tape/validation sidecars, settings, reports and failures retained."
+}
