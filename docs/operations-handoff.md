@@ -4779,3 +4779,9 @@ The automatically triggered Exit verification workflow's UI quality job also fai
 failed and was not repeated: its synthetic UI fixture configured six days of history, contrary to the current
 three-day maximum. The local source/text consistency check passed; it is not a replacement for a bounded browser
 rerun. Other core shards from that automatically started workflow were still running at the time of this note.
+
+The accidentally triggered Exit verification workflow later completed: four core inventory shards and the
+slow-runtime job passed, but the UI quality and aggregate verification jobs failed. The captured core logs confirm
+that the inherited 100h and 336h synthetic cases were repeated, and the UI fixture configured six days of history.
+Those test runs exceeded the operator's three-day limit. The missing evaluator VM binding and obsolete UI text
+assertion have since been corrected, but a compliant end-to-end browser rerun remains outstanding.
