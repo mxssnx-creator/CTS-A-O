@@ -385,7 +385,7 @@ describe(
                 .catch(() => undefined);
               await settleRequests();
               if (path === "/v2/statistics") {
-                assert.match(await page.locator("main").innerText(), /PF edge subtracts 1/);
+                assert.match(await page.locator("main").innerText(), /Return PF: 1\.00 is neutral/);
               }
               if (path === "/v2/settings") {
                 assert.match(await page.locator("main").innerText(), /classic and coordinated Signals use the Signals range/);
