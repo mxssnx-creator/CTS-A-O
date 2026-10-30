@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { readFundedSession } from './lib/session-funded-cohort.mjs';
 import { iterateSessionTapeTrades } from './lib/session-dump.mjs';
 import { parseConfigId } from '../src/core/pipeline/pipeline.ts';
-import { baseAllowsTape, configEval, configDirectionEval, configContextEval, makeTape } from '../src/core/sim/walkforward.ts';
+import { baseAllowsTape, configEval, configDirectionEval, configContextEval, makeTape, passedCellsOf } from '../src/core/sim/walkforward.ts';
 import { modeledUnitReturn } from '../src/core/metrics/stats.ts';
 
 const totals = () => ({ n: 0, gp: 0, gl: 0, unknown: 0 });
@@ -24,12 +24,27 @@ export function simpleCostCheck(t, cost, tolerance = 1e-6) {
   const error = Math.abs(actual - expected);
   return { state: Number.isFinite(error) && error <= tolerance ? 'matched' : 'failed', error, expected, actual };
 }
+/** Restore JSON-serialized Sets and reject missing cell identities instead of silently accepting them. */
+export function hydrateBaseCellProofs(wf) {
+  for (const key of ['basePassedCells', 'basePassedTrailingOnlyCells']) {
+    const source = wf[key];
+    if (source === undefined || source === null) continue;
+    assert.ok(typeof source === 'object' && !Array.isArray(source), `invalid ${key}`);
+    const entries = Object.entries(source).map(([pair, value]) => {
+      assert.ok(value && Array.isArray(value.keys) && value.keys.every(k => typeof k === 'string'), `invalid ${key} for ${pair}`);
+      return [pair, value.keys];
+    });
+    wf[key] = passedCellsOf(Object.fromEntries(entries));
+  }
+  return wf;
+}
 export async function auditMainProcessing(rawFile, bookFile, protocolFile, outPrefix) {
   const p = JSON.parse(readFileSync(protocolFile, 'utf8'));
   const { raw, trades, book, funding } = await readFundedSession(rawFile, bookFile);
   const settings = raw.settings.effective, wf = structuredClone(raw.settings.effectiveWf);
   for (const k of ['basePassed', 'exitBasePassed', 'signalBasePassed', 'baseWideLadderPairs', 'paused', 'validated'])
     if (Array.isArray(wf[k])) wf[k] = new Set(wf[k]);
+  hydrateBaseCellProofs(wf);
   assert.equal(raw.settings.effective.cost, p.actualSettings.cost);
   assert.equal(raw.window.startT, p.window.tradeStartT); assert.equal(raw.window.endT, p.window.endT);
   const byCfg = new Map(), configs = [], rows = [], issues = [];

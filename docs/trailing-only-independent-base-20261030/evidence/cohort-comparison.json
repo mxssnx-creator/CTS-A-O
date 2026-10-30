@@ -1,0 +1,14 @@
+{
+  "schema": "cts-trailing-base-cohort-comparison-v1",
+  "before": 294,
+  "after": 336,
+  "retained": 294,
+  "added": 42,
+  "removed": 0,
+  "changedUnit": 0,
+  "changedMultiplier": 0,
+  "addedKinds": {
+    "trailing-only": 42
+  },
+  "removedKinds": {}
+}

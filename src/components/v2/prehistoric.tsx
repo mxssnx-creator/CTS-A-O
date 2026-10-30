@@ -217,6 +217,30 @@ export function PrehistoricPanel(props: {
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>Score medians include the engine's no-loss score 4; that score is not a measured finite PF. The pooled column uses the passed representatives' gross return gains and losses.</div>
         </div>
       )}
+      {Array.isArray(st.baseTrailingOnlyByRange) && st.baseTrailingOnlyByRange.length > 0 && (
+        <div style={{ overflowX: "auto" }}>
+          <table className="v2-table" style={{ fontSize: "var(--v-fs-sm)" }}>
+            <caption style={{ textAlign: "left", fontWeight: 700, padding: "4px 0" }}>
+              Base Trailing-only cells · separate historical qualification
+            </caption>
+            <thead><tr><th>Range</th><th className="v2-num">Passed / evaluated</th>
+              <th className="v2-num">Passed %</th><th className="v2-num">Pooled return PF of passed</th>
+              <th className="v2-num">Unavailable</th></tr></thead>
+            <tbody>{st.baseTrailingOnlyByRange.map((r: Any) => (
+              <tr key={r.tag} className={r.enabled ? "" : "v2-muted"}>
+                <td>{r.range}{r.enabled ? "" : " (off)"}</td>
+                <td className="v2-num">{fmt.num(r.passed)} / {fmt.num(r.evaluated)}</td>
+                <td className="v2-num">{r.evaluated > 0 ? `${(100 * r.passed / r.evaluated).toFixed(2)}%` : "–"}</td>
+                <td className={`v2-num ${pfTone(r.pfPassedPooled)}`}>{r.unknownPassed ? "Basis unavailable" : pooledBasePfText(r)}</td>
+                <td className="v2-num">{fmt.num(r.unavailable)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+          <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+            Each row counts distinct effective protection cells per pair. Passed PF pools their historical unit returns; it is not execution or exchange PF.
+          </div>
+        </div>
+      )}
       {Array.isArray(st.baseWhy) && st.baseWhy.length > 0 && <div style={{ overflowX: "auto" }}>
         <table className="v2-table">
           <caption style={{ textAlign: "left", fontWeight: 700 }}>Base rejection reasons · first gate missed on the current historical sample</caption>

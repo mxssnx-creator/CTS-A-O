@@ -1267,10 +1267,11 @@ async function runEngine() {
   // (with gates.baseWindows.report set, each passing pair also carries `rules`: per report rule, its ranges and targets
   // that pass the rule too — a dump-only field the eval readers use, scripts/eval-base-rules.mjs)
   const basePairs = sessionBasePairRows(
-    rt.pipeline?.s1 ?? [],
+    [...(rt.pipeline?.s1 ?? []), ...(rt.baseSignalExitRows ?? [])],
     rt.wf.basePassedRanges ?? rt.basePairTags ?? {},
     rt.settings.grid?.baseTargets !== false,
     rt.wf.exitBasePassed,
+    rt.wf.basePassedTrailingOnlyCells,
   ).map((row) => ({ ...row, builtTags: [...(rt.basePairTags?.[row.pair] ?? [])] }));
   {
     funnel.counts = {
@@ -1522,6 +1523,7 @@ async function runEngine() {
       baseBuilt: rt.status.baseBuilt ?? 0,
       baseHistory: rt.status.baseHistory ?? [],
       baseByRange: rt.status.baseByRange ?? [],
+      baseTrailingOnlyByRange: rt.status.baseTrailingOnlyByRange ?? [],
       baseGates: rt.status.baseGates ?? [],
       baseWhy: rt.status.baseWhy ?? [],
       mainPairs: rt.status.mainPairs,

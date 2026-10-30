@@ -1,0 +1,18 @@
+✔ price audit normalizes recorded external sizing once and retains one modeled cost (1.316953ms)
+✔ unknown returns and intrinsic ladder semantics never become a successful ordinary cost check (0.29288ms)
+✔ audit restores serialized exact Base proofs and refuses missing proof identities (1.396339ms)
+✔ 12h execution report retains every close, open order, config and UTC heatmap hour (56.178102ms)
+✔ report.html preserves independent Base and funded modeled cohorts (69.069328ms)
+✔ report-n10.html preserves independent Base and funded modeled cohorts (83.663399ms)
+✔ report.html preserves the modeled cohorts and all twelve heatmap hours (40.767858ms)
+✔ report-n10.html preserves the modeled cohorts and all twelve heatmap hours (76.743843ms)
+✔ a trailing-only Base pass is reported without marking ordinary tags or Exit as passed (1.950142ms)
+✔ Base UI renders independent passed-only trailing statistics with neutral PF 1 (641.059872ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1054.588956

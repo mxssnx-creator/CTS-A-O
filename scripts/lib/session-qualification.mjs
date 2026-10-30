@@ -75,9 +75,14 @@ export function sessionQualificationEvidence(saved) {
 }
 
 /** Independent Exit Base proof cannot be inferred from ordinary range qualification or headline PF. */
-export function sessionBasePairRows(runs, pairTags, targets, exitBasePassed) {
+export function sessionBasePairRows(runs, pairTags, targets, exitBasePassed, trailingOnlyCells) {
   return basePairRows(runs, pairTags, targets).map(row => {
-    if (!row.pair.startsWith("exit|")) return row;
+    if (!row.pair.startsWith("exit|")) {
+      const keys = trailingOnlyCells?.[row.pair]?.keys;
+      if (!(keys instanceof Set) || keys.size === 0) return row;
+      const trailingOnlyTags = [...new Set([...keys].map(k => k.slice(0, k.indexOf('|'))))];
+      return { ...row, passed: true, trailingOnlyTags, trailingOnlyQualifiedCells: keys.size };
+    }
     const recorded = exitBasePassed instanceof Set;
     const passed = recorded && exitBasePassed.has(row.pair);
     return { ...row, passed, tags: passed ? ["exit"] : [],
