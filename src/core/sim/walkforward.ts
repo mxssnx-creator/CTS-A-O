@@ -103,7 +103,7 @@ import {
 } from "../metrics/stats.ts";
 import { ATR_PERIOD, simulate, splitSides, sideSignal } from "./backtest.ts";
 import { cappedExecution, cappedPriceStart, clearCappedProjections, hasMinutePrices, stampCappedOpen, type CappedExecution } from "./capped-execution.ts";
-import type { SimulationCursor, TapeContinuations, CursorResult } from "./cursor.ts";
+import { pendingFromResult, type PendingTapeEntry, type SimulationCursor, type TapeContinuations, type CursorResult } from "./cursor.ts";
 import { headBars } from "../market/bars.ts";
 import { symbolDirections } from "./symbol-directions.ts";
 import { dcaSnapshot, simulateDca } from "./dca.ts";
@@ -996,7 +996,7 @@ export interface ConfigTape {
   open: OpenPosition[];
   /** signals on the last closed bar (enter at the next open) */
   /** `protect`: an ATR protect's distances resolved for that entry (live / paper get concrete prices) */
-  pending: Array<{ sym: string; side: 1 | -1; protect?: Protect }>;
+  pending: PendingTapeEntry[];
   /**
    * Built only because paper holds it (a seat or an open position) while its pair no longer passes Base for this
    * cell's range / target / lane: it serves that position and takes no new seat. Built unfiltered and seated by the
@@ -1445,7 +1445,11 @@ export function pendingAsOpen(
     const px = priceOf(pe.sym);
     if (!(px && px > 0)) continue;
     const requested = pe.protect ?? tp.protect;
-    const q = isSignalConfig(tp.id) ? capSignalProtect(requested) : requested;
+    const q = isSignalConfig(tp.id) ? capSignalProtect(requested) : capTrailingOnlyProtect(requested);
+    if (pe.execution && (pe.execution.tfMin !== 1 || !Number.isSafeInteger(pe.execution.holdMin) ||
+      pe.execution.holdMin < 1 || !Number.isFinite(tp.protect.maxHoldMin) ||
+      pe.execution.holdMin !== Math.floor(tp.protect.maxHoldMin!)))
+      throw new RangeError("pending minute execution has invalid hold-clock provenance");
     const side = pe.side;
     const exitProtection = createExitProtection(q, px, cost);
     out.push({
@@ -1460,6 +1464,7 @@ export function pendingAsOpen(
       peak: px,
       trailOn: false,
       mtm: -cost,
+      ...(pe.execution ? { executionTfMin: pe.execution.tfMin, holdEndT: barEnd + pe.execution.holdMin * 60_000 } : {}),
       ...(exitProtection ? { exitProtection } : {}),
       ...(q.trail > 0
         ? {
@@ -2061,6 +2066,8 @@ export function* buildTapesGen(
     const initial = cappedExecution(u, s, sig, protect, rawExit ? 0 : cooldown);
     const stamp = (result: R, view: CappedExecution): R => {
       stampCappedOpen(result.open, view);
+      result.pendingExecution = result.pending && view.minute
+        ? { tfMin: view.bars.tfMin, holdMin: view.protect.hold * view.bars.tfMin } : undefined;
       return result;
     };
     const cursor = floors?.continuations?.cursor(id, initial.bars, directions.get(sig) ?? 0);
@@ -2354,7 +2361,7 @@ export function* buildTapesGen(
                 : !exitConfig && isLowRangeInd(c.ind) && !!floors?.pairTags && !cellSet
                   ? "baseCell"
                 : // only the targets of this range that passed Base
-                  !exitConfig && !p0.trailOnly && !!tps && !tps.includes(p0.tp)
+                  !exitConfig && !!tps && !tps.includes(p0.tp)
                   ? "baseTarget"
                   : !exitConfig && !!p0.tag && !!cellSet &&
                     (isLowRangeInd(c.ind) || cellTags!.has(p0.tag)) &&
@@ -2414,12 +2421,8 @@ export function* buildTapesGen(
           trades.push(tr);
         }
         if (res.open) open.push(res.open);
-        if (res.pending)
-          pending.push(
-            res.pendingProtect
-              ? { sym: u.bars[s].sym, side: res.pending, protect: res.pendingProtect }
-              : { sym: u.bars[s].sym, side: res.pending },
-          );
+        const intent = pendingFromResult(u.bars[s].sym, res);
+        if (intent) pending.push(intent);
       }
       // a range tape with fewer closes than its gate needs can never take a seat: not kept (memory) — unless it is
       // held: its open position needs the tape for its exit (dropped, the position was carried without one), so it

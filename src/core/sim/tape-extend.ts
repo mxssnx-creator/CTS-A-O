@@ -16,6 +16,7 @@ import { isSignalInd } from "../indications/registry.ts";
 import { tacticCooldown } from "../indications/filters.ts";
 import { ATR_PERIOD, simulateFrom, splitSides, type SimState } from "./backtest.ts";
 import { cappedExecution, stampCappedOpen } from "./capped-execution.ts";
+import { pendingFromResult } from "./cursor.ts";
 import {
   makeTape,
   REASONS,
@@ -26,7 +27,7 @@ import {
 } from "./walkforward.ts";
 
 /** Tape kinds that continue from a stored simulation state (Normal, Trailing and their ATR protects). */
-export const RESUME_KINDS: readonly StratKind[] = ["normal", "trailing"];
+export const RESUME_KINDS: readonly StratKind[] = ["normal", "trailing", "trailing-only"];
 /** Tape kinds rebuilt on a bounded tail in the incremental cycle (DCA, Axis; signal indications and Exit by their ind). */
 export const TAIL_REBUILD_KINDS: readonly StratKind[] = ["dca", "dca-active", "axis"];
 
@@ -114,12 +115,10 @@ function runConfig(
         stampCappedOpen(res.open, view);
         open.push(res.open);
       }
-      if (res.pending)
-        pending.push(
-          res.pendingProtect
-            ? { sym: bars.sym, side: res.pending, protect: res.pendingProtect }
-            : { sym: bars.sym, side: res.pending },
-        );
+      const intent = pendingFromResult(bars.sym, { ...res,
+        pendingExecution: view.minute && res.pending
+          ? { tfMin: bars.tfMin, holdMin: view.protect.hold * bars.tfMin } : undefined });
+      if (intent) pending.push(intent);
       runs.set(key, { firstT: bars.t[0], n: bars.n, lastT: bars.t[bars.n - 1], executionTfMin: bars.tfMin, sim: res.state });
     }
   }

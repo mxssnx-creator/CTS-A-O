@@ -88,16 +88,18 @@ export interface TrailingPosition {
   target?: number;
 }
 
-/** Restore/tick defense applies even before trailing arms and even on fixed-SL Signal positions. */
+/** Restore/tick defense applies even before trailing arms; report every protection repair to live controls. */
 export function enforceSignalPosition(p: TrailingPosition): boolean {
   if (!isBoundedTrailingPosition(p)) return false;
-  const before = p.stop;
+  const stop = p.stop, target = p.target, trail = p.trail, gap = p.trailDist,
+    only = p.trailOnly, free = p.trailFree;
   const max = positionTrailMax(p);
   p.stop = signalStopAt(p.entry, p.side, p.stop, max);
   if (p.trail !== undefined && Number.isFinite(p.trail)) p.trail = Math.min(p.trail, max);
   if (p.trailDist !== undefined && Number.isFinite(p.trailDist)) p.trailDist = Math.min(p.trailDist, max);
   if (p.trailOnly || /\|to(?=\||$)/.test(p.cfg ?? "")) { p.trailOnly = true; p.target = 0; p.trailFree = false; }
-  return p.stop !== before;
+  return !Object.is(p.stop, stop) || !Object.is(p.target, target) || !Object.is(p.trail, trail) ||
+    !Object.is(p.trailDist, gap) || p.trailOnly !== only || p.trailFree !== free;
 }
 
 /**

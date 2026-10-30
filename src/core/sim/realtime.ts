@@ -1,7 +1,7 @@
 import type { Bars } from "../domain/types.ts";
-import { makeUniverse } from "../pipeline/pipeline.ts";
+import { isPlainKind, makeUniverse } from "../pipeline/pipeline.ts";
 import { buildTapes, makeTape, type ConfigTape, type EntryFloors } from "./walkforward.ts";
-import { TapeContinuations } from "./cursor.ts";
+import { pendingFromResult, TapeContinuations } from "./cursor.ts";
 import { laneOf } from "../indications/registry.ts";
 import type { OpenPosition, Trade } from "../domain/types.ts";
 import { StreamMath } from "../indications/stream-math.ts";
@@ -222,12 +222,12 @@ export class RealtimeTapeBook {
           rows.trades.push(trade);
         }
         if (result.open) rows.open.push(result.open);
-        if (result.pending)
-          rows.pending.push({
-            sym,
-            side: result.pending,
-            ...(result.pendingProtect ? { protect: result.pendingProtect } : {}),
-          });
+        if (result.pending) {
+          // Plain strategies can open a pending position at the next bar; retain its minute clock.
+          const pending = isPlainKind(template.kind) ? pendingFromResult(sym, result)
+            : { sym, side: result.pending, ...(result.pendingProtect ? { protect: result.pendingProtect } : {}) };
+          if (pending) rows.pending.push(pending);
+        }
       }
       const tapes = [...records].map(([id, rows]) => {
         const meta = this.templates.get(id)!;

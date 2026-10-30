@@ -5418,3 +5418,15 @@ slow-runtime job passed, but the UI quality and aggregate verification jobs fail
 that the inherited 100h and 336h synthetic cases were repeated, and the UI fixture configured six days of history.
 Those test runs exceeded the operator's three-day limit. The missing evaluator VM binding and obsolete UI text
 assertion have since been corrected, but a compliant end-to-end browser rerun remains outstanding.
+
+### 30 October 2026 — trailing-only entry and proof repairs
+
+See `docs/trailing-only-audit-20261030/README.md` and both detailed HTML reports. The tested source checkpoint is local `9c19344`, sealed with source inventory SHA-256 `7bf849ea9bf2a7a932f38c00f0e03d34960c20b08515447c7160ee42b09fe71d`. Repairs preserve no-TP ATR resolution, capped pending protection, projected minute deadlines, protection-reconciliation notifications and incremental trailing-only continuation. Tagged no-TP tape construction now honors Base target proof; per-cell proof keys distinguish trailing mode/ratio/ceiling and use the actual capped lane protection. **When `grid.baseCells` is off, Base is still target-level rather than independent per protection cell; this limitation is not fixed.**
+
+Default frozen 8-symbol, 12h+12h replay: Base 120/27,242; initial engine post-Base 6/236; positions 51/46/5 and orders 307/294/13 opened/closed/held. Closed unit-return PF 3.596185, 0 trailing-only closes, exchange PF unavailable. Eight initially Base-target-allowed trailing-only configs failed the 12-close minimum. 800 candidate tapes and every funded execution/holding/allocation matched the previous run; 18 unqualified, unselected trailing-only tapes were removed. Catalog coverage 74/76; worst slice 1,767 ms.
+
+Research-only same-window minimum-trades 10 / validation Last-10: Base 151/27,242; initial engine post-Base 54/478; positions 16/8/8 and orders 2,195/2,116/79 opened/closed/held. Overall closed PF 3.900433; trailing-only 126 closes and 1 held, PF 2.646054, all long Minimal, 118 trail and 8 SL. Three populated trailing-only hours had PF below 1. This altered a shared Base gate as well as validation; it is not a default recommendation or held-out result. Both runs' exchange PF is unavailable; 74/76 coverage and >500 ms slices remain.
+
+The final bounded six-file core suite passed 69, typecheck/build passed and report tests passed 3. One earlier Signal synthetic fixture was accidentally run at 125h in violation of the three-day limit; its corrected 24h fixture passed. The production Main conflict remains 1 pass and 1 expected failing TODO, and the Base→Main→Real runtime adapter remains disabled/unfinished. Do not start x01 or claim stable live PF from these model tests.
+
+The merged trailing-only changes from main `d945940d7330788213e919a928b8d79ba56b7e33` were also combined into the disabled stage draft. Five bounded integration files passed 59 tests, including stage-chain, draft conflict path, inverse stage-source and trailing-only continuation; typecheck passed. This is integration evidence, not completion or live enablement of the persistent stage adapter.
