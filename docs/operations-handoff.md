@@ -5372,3 +5372,30 @@ non-atomic concurrent native exits, held-position cost changes, systemwide
 cost-plus-step floors, long/short-specific Base proof, real-browser visual QA,
 stable forward profitability and public publication remain unresolved. No
 live settings, venue orders or deployment were changed.
+
+### 30 October 2026 — 8-symbol, 12h + 12h execution audit
+
+See `docs/execution-audit-20261030/README.md`, the self-contained report and the frozen evidence. Base 120/27,242
+passed (0.44%); initial engine post-Base 6/236 passed (2.54%). The retrospective 12-hour funded model closed 294
+orders at PF 3.596, with 51/46/5 positions and 307/294/13 orders opened/closed/held. Exchange PF is unavailable.
+The unknown-return acceptance repair has exact baseline replay parity. Four DCA stop closes accounted for 91.5%
+of unit gross losses, and two hours had settled PF below 1. Coverage failed 2 of 76 checks; worst processing slice
+was 1,954 ms. A controlled coordination conflict exposes raw-tape evidence being used instead of own processed
+predecessor results. The regression is intentionally one pass and one failing TODO; the persistent stage runtime
+adapter remains unfinished/disabled. No x01 live promotion is justified by this evidence.
+
+#### Stage draft follow-up (30 October 2026)
+
+On this **disabled draft**, `processed-main-conflict-draft.test.ts` repeats the same bounded conflict example with
+explicit Base Last-12 and the draft `lastNOnly` processed-validation mode. Fourteen conflict-rejected winning
+candidates do not enter the own processed sample; after twelve accepted target losses the next two target entries
+are rejected by `processedValidation`. Both assertions pass. A preliminary fixture with factory Minimal Base
+Last-30 had only twelve own historical closes and produced zero selected configs and no trades; that empty result
+was not counted as a fix. The Last-12 fixture change is a test input, not a change to production defaults.
+
+This is useful evidence for one opt-in legacy mode only. Its admitted results are still sourced from raw candidate
+tapes, which cannot recover entries suppressed because a rejected candidate occupied the upstream simulated slot.
+The `StageChainBook` and `simulateStageSource` remain primitives without the production runtime adapter, persistent
+stage publication or complete paper/live ownership. Keep the stage chain disabled and retain the failing production
+regression until a causal, per-stage resimulation and complete runtime integration solve it. The single controlled
+case is not a market-profitability or x01-readiness claim.

@@ -465,7 +465,17 @@ function sliceClock(ms = 8): () => boolean {
   };
 }
 
-type AcceptColumns = { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array };
+type AcceptColumns = { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array; invalid?: Uint32Array };
+/** Unknown observations stay in their window, but stop affecting later windows once they expire. */
+function windowHasInvalid(indices: Uint32Array | undefined, from: number, to: number): boolean {
+  if (!indices) return false;
+  let lo = 0, hi = indices.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (indices[mid] < from) lo = mid + 1; else hi = mid;
+  }
+  return lo < indices.length && indices[lo] < to;
+}
 type AcceptSymbols = { syms: string[]; slots: Uint32Array };
 type LazyAcceptSource = { tp: AcceptTape; counts: Int32Array; symbols: AcceptSymbols };
 const acceptSymbolsCache = new WeakMap<readonly string[], AcceptSymbols>();
@@ -583,6 +593,7 @@ export class SignalAcceptIndex {
             cn: Int32Array;
             next: number;
             seen: Set<number> | null;
+            invalid?: number[];
           }
         | undefined
       > = new Array(counts.length);
@@ -601,9 +612,11 @@ export class SignalAcceptIndex {
         const x = cols[symbols.slots[tp.symI[i]] * 2 + (tp.side[i] > 0 ? 1 : 0)]!;
         const j = x.next++;
         const r = +tp.r[i];
+        const finite = Number.isFinite(r);
         x.t[j] = tp.exitT[i];
-        x.gp[j + 1] = x.gp[j] + (r > 0 ? r : 0);
-        x.gl[j + 1] = x.gl[j] + (r > 0 ? 0 : -r);
+        if (!finite) (x.invalid ??= []).push(j);
+        x.gp[j + 1] = x.gp[j] + (finite && r > 0 ? r : 0);
+        x.gl[j + 1] = x.gl[j] + (finite && r < 0 ? -r : 0);
         const entry = tp.entryT ? +tp.entryT[i] : 0;
         const first = !x.seen?.has(entry);
         x.seen?.add(entry);
@@ -611,12 +624,13 @@ export class SignalAcceptIndex {
         if ((i & 8191) === 8191 && clock()) yield 0;
       }
       for (const slot of slots) {
-        const { t, gp, gl, cn } = cols[slot]!;
+        const { t, gp, gl, cn, invalid } = cols[slot]!;
         this.groups.set(acceptKey(tp.ind, symbols.syms[slot >> 1], slot % 2 ? 1 : -1, tp.kind, tp.id), {
           t,
           gp,
           gl,
           cn,
+          ...(invalid ? { invalid: Uint32Array.from(invalid) } : {}),
         });
       }
       if (clock()) yield 0;
@@ -670,15 +684,18 @@ export class SignalAcceptIndex {
       const gl = new Float64Array(c.n + 1);
       // (counts: integers, 4 B each)
       const cn = new Int32Array(c.n + 1);
+      let invalid: number[] | undefined;
       // an entry counts at its first close (causal: the later closes of its other configs add no count); keyed by
       // its lane indication and entry time as numbers (a string per close before)
       const seen = new Map<number, Set<number>>();
       for (let j = 0; j < c.n; j++) {
         const i = order[j];
         const r = c.r[i];
+        const finite = Number.isFinite(r);
         t[j] = c.t[i];
-        gp[j + 1] = gp[j] + (r > 0 ? r : 0);
-        gl[j + 1] = gl[j] + (r > 0 ? 0 : -r);
+        if (!finite) (invalid ??= []).push(j);
+        gp[j + 1] = gp[j] + (finite && r > 0 ? r : 0);
+        gl[j + 1] = gl[j] + (finite && r < 0 ? -r : 0);
         let first = true;
         if (c.ii[i] >= 0) {
           let es = seen.get(c.ii[i]);
@@ -688,7 +705,7 @@ export class SignalAcceptIndex {
         }
         cn[j + 1] = cn[j] + (first ? 1 : 0);
       }
-      this.groups.set(k, { t, gp, gl, cn });
+      this.groups.set(k, { t, gp, gl, cn, ...(invalid ? { invalid: Uint32Array.from(invalid) } : {}) });
       // the group's scratch columns are done with: released now, not with the whole set at the end (60 B a close)
       cols.delete(k);
       if (clock()) yield 0;
@@ -718,18 +735,22 @@ export class SignalAcceptIndex {
       t: new Float64Array(n), gp: new Float64Array(n + 1), gl: new Float64Array(n + 1), cn: new Int32Array(n + 1),
     };
     const seen = tp.entryT ? new Set<number>() : null;
+    let invalid: number[] | undefined;
     let j = 0;
     for (let i = 0; i < tp.n; i++) {
       if (symbols.slots[tp.symI[i]] !== symI || (tp.side[i] > 0 ? 1 : -1) !== side) continue;
       const r = +tp.r[i], entry = tp.entryT ? +tp.entryT[i] : 0;
+      const finite = Number.isFinite(r);
       columns.t[j] = tp.exitT[i];
-      columns.gp[j + 1] = columns.gp[j] + (r > 0 ? r : 0);
-      columns.gl[j + 1] = columns.gl[j] + (r > 0 ? 0 : -r);
+      if (!finite) (invalid ??= []).push(j);
+      columns.gp[j + 1] = columns.gp[j] + (finite && r > 0 ? r : 0);
+      columns.gl[j + 1] = columns.gl[j] + (finite && r < 0 ? -r : 0);
       columns.cn[j + 1] = columns.cn[j] + (seen?.has(entry) ? 0 : 1);
       seen?.add(entry);
       j++;
     }
-    const bytes = columns.t.byteLength + columns.gp.byteLength + columns.gl.byteLength + columns.cn.byteLength;
+    if (invalid) columns.invalid = Uint32Array.from(invalid);
+    const bytes = columns.t.byteLength + columns.gp.byteLength + columns.gl.byteLength + columns.cn.byteLength + (columns.invalid?.byteLength ?? 0);
     while (this.cached.size && (this.cached.size >= ACCEPT_CACHE_GROUPS || this.cachedBytes + bytes > ACCEPT_CACHE_BYTES)) {
       const first = this.cached.keys().next().value!;
       this.cachedBytes -= this.cached.get(first)!.bytes;
@@ -759,6 +780,7 @@ export class SignalAcceptIndex {
     const a = above(t - hours * 3_600_000);
     const b = above(t);
     if (b <= a) return { n: 0, pf: 0 };
+    if (windowHasInvalid(g.invalid, a, b)) return { n: g.cn[b] - g.cn[a], pf: NaN };
     const gp = g.gp[b] - g.gp[a];
     const gl = g.gl[b] - g.gl[a];
     return { n: g.cn[b] - g.cn[a], pf: profitFactorRatio(gp, gl) };
@@ -791,8 +813,10 @@ export function acceptOnWindow(
   o: { minPf: number; hours: number; minTrades: number },
 ): boolean {
   const s = stats(o.hours);
+  if (!(s.pf >= 0)) return false;
   if (s.n >= o.minTrades) return s.pf >= o.minPf;
   const w = stats(o.hours * 2);
+  if (!(w.pf >= 0)) return false;
   return w.n < o.minTrades || w.pf >= o.minPf;
 }
 
@@ -812,8 +836,11 @@ export function acceptPreferExchange(
   o: { minPf: number; hours: number; minTrades: number },
   sim: () => boolean,
 ): boolean {
-  if (ex && ex.stats(key, t, o.hours).n >= o.minTrades)
-    return acceptOnWindow((h) => ex.stats(key, t, h), o);
+  if (ex) {
+    const own = ex.stats(key, t, o.hours);
+    if (!(own.pf >= 0)) return false;
+    if (own.n >= o.minTrades) return acceptOnWindow((h) => ex.stats(key, t, h), o);
+  }
   return sim();
 }
 
@@ -872,7 +899,7 @@ export class EngineSideIndex {
   }
   private groups = new Map<
     string,
-    { h: Float64Array; gp: Float64Array; gl: Float64Array; n: Float64Array }
+    { h: Float64Array; gp: Float64Array; gl: Float64Array; n: Float64Array; invalid?: Float64Array }
   >();
   /** Extend the hourly record with strictly newer closes, retaining every earlier candidate and hour. */
   *append(tapes: readonly SideTape[]): Generator<number, void> {
@@ -894,15 +921,21 @@ export class EngineSideIndex {
         gp: new Float64Array(n + 1),
         gl: new Float64Array(n + 1),
         n: new Float64Array(n + 1),
+        ...((old.invalid || extra.invalid) ? { invalid: new Float64Array(n + 1) } : {}),
       };
       next.h.set(old.h);
       for (const col of ["gp", "gl", "n"] as const) next[col].set(old[col]);
+      if (old.invalid) next.invalid!.set(old.invalid);
       for (let i = 0; i < extra.h.length; i++) {
         const j = old.h.length - overlap + i;
         next.h[j] = extra.h[i];
         for (const col of ["gp", "gl", "n"] as const) {
           const before = overlap && i === 0 ? old[col][old.h.length] : next[col][j];
           next[col][j + 1] = before + extra[col][i + 1] - extra[col][i];
+        }
+        if (next.invalid) {
+          const before = overlap && i === 0 ? (old.invalid?.[old.h.length] ?? 0) : next.invalid[j];
+          next.invalid[j + 1] = before + (extra.invalid ? extra.invalid[i + 1] - extra.invalid[i] : 0);
         }
       }
       this.groups.set(key, next);
@@ -912,7 +945,7 @@ export class EngineSideIndex {
   // (the index is shared — cached per tape set, by the simulation and the live step alike — so it never holds the
   // exchange record itself: the live step's guard passes it per call)
   *fill(tapes: readonly SideTape[]): Generator<number, void> {
-    const acc = new Map<string, Map<number, [number, number, number]>>();
+    const acc = new Map<string, Map<number, [number, number, number, number]>>();
     const clock = sliceClock();
     for (const tp of tapes) {
       if (isSignalInd(tp.ind)) continue;
@@ -928,8 +961,9 @@ export class EngineSideIndex {
           let g = acc.get(k);
           if (!g) acc.set(k, (g = new Map()));
           let b = g.get(h);
-          if (!b) g.set(h, (b = [0, 0, 0]));
-          if (r > 0) b[0] += r;
+          if (!b) g.set(h, (b = [0, 0, 0, 0]));
+          if (!Number.isFinite(r)) b[3]++;
+          else if (r > 0) b[0] += r;
           else b[1] -= r;
           b[2]++;
         }
@@ -945,6 +979,7 @@ export class EngineSideIndex {
         gp: new Float64Array(m + 1),
         gl: new Float64Array(m + 1),
         n: new Float64Array(m + 1),
+        ...(hs.some((hour) => g.get(hour)![3] > 0) ? { invalid: new Float64Array(m + 1) } : {}),
       };
       for (let j = 0; j < m; j++) {
         const b = g.get(hs[j])!;
@@ -952,6 +987,7 @@ export class EngineSideIndex {
         x.gp[j + 1] = x.gp[j] + b[0];
         x.gl[j + 1] = x.gl[j] + b[1];
         x.n[j + 1] = x.n[j] + b[2];
+        if (x.invalid) x.invalid[j + 1] = x.invalid[j] + b[3];
       }
       this.groups.set(k, x);
       // The prefix columns replace this group's boxed hourly buckets. Release each
@@ -977,6 +1013,7 @@ export class EngineSideIndex {
     const a = first(cur - Math.max(1, Math.round(hours)));
     const b = first(cur); // buckets before the entry's own hour
     if (b <= a) return { n: 0, pf: 0 };
+    if (g.invalid && g.invalid[b] - g.invalid[a] > 0) return { n: g.n[b] - g.n[a], pf: NaN };
     const gp = g.gp[b] - g.gp[a];
     const gl = g.gl[b] - g.gl[a];
     return { n: g.n[b] - g.n[a], pf: profitFactorRatio(gp, gl) };
@@ -1160,7 +1197,10 @@ export class SignalGuard {
     const l = this.lists.get(key);
     if (!l || l.length < n) return false;
     let s = 0;
-    for (let i = l.length - n; i < l.length; i++) s += l[i];
+    for (let i = l.length - n; i < l.length; i++) {
+      if (!Number.isFinite(l[i])) return true;
+      s += l[i];
+    }
     return s / n < 0;
   }
   /**

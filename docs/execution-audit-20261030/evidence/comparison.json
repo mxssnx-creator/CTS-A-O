@@ -1,0 +1,67 @@
+{
+  "schema": "cts-pf-neutral-replay-parity-v1",
+  "before": "/workspace/scratch/b69c1e5067d8/execution12-20261030/full-focus-baseline",
+  "after": "/workspace/scratch/b69c1e5067d8/execution12-20261030/full-focus",
+  "window": {
+    "startT": 1791504000000,
+    "endT": 1791547200000
+  },
+  "checks": {
+    "fundedClosedTrades": {
+      "identical": true,
+      "count": 294,
+      "sha256": "8598a8d949f9eed2ad45b717779906f9290267c1a51decd20c20e8052a653d00"
+    },
+    "virtualClosedTrades": {
+      "identical": true,
+      "count": 294,
+      "sha256": "8598a8d949f9eed2ad45b717779906f9290267c1a51decd20c20e8052a653d00"
+    },
+    "heldOrders": {
+      "identical": true,
+      "count": 13,
+      "sha256": "c1b9cfe4f78c5e8504c09fa69e070f123e221894651e87af67793fca69f4d6f1"
+    },
+    "closedAllocations": {
+      "identical": true,
+      "count": 294,
+      "sha256": "2d22e828b88284b63fd37c81bd3bcb16358c73336a9db9b7c841f111430f645d"
+    },
+    "heldAllocations": {
+      "identical": true,
+      "count": 13,
+      "sha256": "4693d0a74dea94c18e6304b8032b0aafeed0835a8def9a034edc44a2094a5585"
+    },
+    "fundedTotals": {
+      "identical": true,
+      "count": null,
+      "sha256": "ea7c704578351a2d98bc029a84648b70686265a6cf4d31157b24a64b002a444b"
+    },
+    "basePairs": {
+      "identical": true,
+      "count": 27200,
+      "sha256": "8b5b64b9d16ce47b06d6fc8299e2f157a0eb2f7858f9f2d84659a61a55392ee2"
+    },
+    "initialSelectedConfigs": {
+      "identical": true,
+      "count": null,
+      "sha256": "592cb9311080e2bf0b7a9707afbf0fc77ea631f7a2d42f4a634cd7f2662aaa84"
+    },
+    "tapeTrades": {
+      "identical": true,
+      "count": 818,
+      "sha256": "3ad3f85875b00aab7fe5d7a702db4aa164200427d7498ba3d30c3847253d5b5e"
+    },
+    "validation": {
+      "identical": true,
+      "count": 12,
+      "sha256": "e99538b9afd57de5430b80af9ffc48e364d8c6973f90231c736738fe1faa9e0c"
+    },
+    "engine.signalSteps": {
+      "identical": true,
+      "count": 1,
+      "sha256": "d6d6e1949f8e33a57109b93e8681b2261fb0be818fb7f3acda403194518e70be"
+    }
+  },
+  "ok": true
+}
