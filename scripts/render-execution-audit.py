@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Render a self-contained, bounded-DOM report from an exact CTS session/audit bundle."""
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -10,7 +11,16 @@ audit = json.loads((source / 'main-audit.json').read_text())
 raw = json.loads((source / 'raw.json').read_text())
 session = json.loads((source / 'session.json').read_text())
 parity = json.loads((source / 'parity.json').read_text())
-comparison = json.loads((source / 'comparison.json').read_text())
+qualified_path = source / 'qualified-parity.json'
+qualified = json.loads(qualified_path.read_text()) if qualified_path.exists() else None
+protocol = json.loads((source / 'protocol.json').read_text())
+diagnostic = protocol.get('study', {}).get('experiment', '').startswith('retrospective diagnostic only:')
+if qualified and (qualified['retainedIdentical'] != qualified['afterTapes'] or
+                  qualified['baselineTapes'] - qualified['afterTapes'] != len(qualified['removed']) or
+                  any(r['baseAllowed'] for r in qualified['removed']) or
+                  any(not x['identical'] for x in qualified['stages'].values())):
+    raise ValueError('qualified baseline comparison is incomplete')
+comparison = ({'ok': True} if qualified else {'ok': None} if diagnostic else json.loads((source / 'comparison.json').read_text()))
 orders = [json.loads(x) for x in (source / 'main-audit-orders.jsonl').read_text().splitlines() if x]
 key = lambda x: (x['cfg'], x.get('sym', x.get('symbol')), x['side'], x['entryT'], x['exitT'])
 trades = {}
@@ -33,7 +43,8 @@ data = {'study':audit['study'], 'window':audit['window'], 'counts':audit['counts
   'baseEvaluated':raw['engine']['baseEvaluated'], 'basePassed':raw['engine']['basePassed'],
   'baseByRange':raw['engine']['baseByRange'], 'evalAfterBase':session['evalAfterBase'], 'evalStats':session['evalStats'],
   'parity': {k:parity[k] for k in ('ok','matched','missingCount','mismatchCount')},
-  'comparisonOk':comparison['ok'], 'resources':json.loads((source / 'resources.json').read_text())}
+  'comparisonOk':comparison['ok'], 'qualifiedComparison':qualified, 'diagnosticExperiment':protocol.get('study') if diagnostic else None,
+  'resources':json.loads((source / 'resources.json').read_text())}
 encoded = json.dumps(data, separators=(',', ':'), ensure_ascii=False, allow_nan=False).replace('<', '\\u003c')
 template = r'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>CTS-A-O · 12-hour execution audit</title>
 <style>
@@ -63,6 +74,37 @@ paginator('config',D.configs,xs=>table('configs',['Config','Kind','Range','Base 
 paginator('order',O,xs=>table('orders',['Config','Symbol','Side','Entry UTC','Exit UTC','Entry price','Exit price','Hold min','Reason','Unit return %','Size ×','Legacy checks'],xs.map(x=>[x.cfg,x.symbol,x.side===1?'long':'short',time(x.entryT),time(x.exitT),fmt(x.entry,6),fmt(x.exit,6),x.holdMinutes,x.reason,fmt(x.unitReturn*100,4),fmt(x.externalMultiplier,3),x.failures.length?x.failures.join(','):'passed'])));
 table('open',['Config','Symbol','Side','Entry UTC','Entry price','Marked return','Size ×'],D.open.map(x=>[x.cfg,x.sym,x.side===1?'long':'short',time(x.entryT),fmt(x.entry,6),fmt(x.mtmR*100,4)+'%',fmt(x.mult,3)]));document.getElementById('download').onclick=()=>{const a=el('a'),url=URL.createObjectURL(new Blob([O.map(x=>JSON.stringify(x)).join('\n')+'\n'],{type:'application/x-ndjson'}));a.href=url;a.download='cts-model-settled-orders.jsonl';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};document.getElementById('provenance').textContent=JSON.stringify({study:D.study,parity:D.parity,baselineComparison:D.comparisonOk,resources:D.resources},null,2);
 </script></body></html>'''
+if qualified or diagnostic:
+    if qualified and len(configs) != qualified['afterTapes']:
+        raise ValueError('report config count differs from qualified tape comparison')
+    if diagnostic:
+        trailing = [o for o in orders if o['kind'] == 'trailing-only']
+        trail_closes = sum(o['reason'] == 'trail' for o in trailing)
+        stop_closes = sum(o['reason'] == 'sl' for o in trailing)
+        template = template.replace('Eight symbols · Prehistory:', '<strong>Research-only comparison: Base/config minimum closes 10 and validation Last-10 instead of 12; these are not the default settings.</strong> Eight symbols · Prehistory:')
+        template = template.replace('Long-side closes: 294; short-side closes: 0.',
+            f"Long-side closes: {sum(o['side'] == 1 for o in orders)}; short-side closes: {sum(o['side'] == -1 for o in orders)}.")
+        template = template.replace('All 294 funded-model settled orders matched the same exact source identities and returns after removing the external sizing multiplier once. Baseline and repaired code produced identical selections, candidate histories, closes, allocations and holdings in this window; the unknown-return fix is not the cause of this window’s PF. 110 ordinary trailing closes were price/cost checked;',
+            f"All {len(orders)} funded-model settled orders matched their exact source identities and returns after removing the external sizing multiplier once. This is a changed-gate experiment, not an identical-settings parity comparison. {audit['ordinaryCostChecked']} ordinary closes were price/cost checked;")
+        template = template.replace('Four DCA stop-loss closes account for 0.338536 of 0.369983 total modeled unit gross losses (91.5%). This identifies where losses occurred in this sample; it does not establish why the market moved or prove the cause of other PF drops. No time exit occurred.',
+            f'This research-only run is not a live recommendation. Trailing-only had {len(trailing)} modeled closes: {trail_closes} trailing exits and {stop_closes} stop exits. Its historical and execution PFs are different cohorts; inspect the hourly heatmap.')
+    else:
+        template = template.replace('Baseline and repaired code produced identical selections, candidate histories, closes, allocations and holdings in this window; the unknown-return fix is not the cause of this window’s PF.',
+            f"The baseline and repaired code produced identical funded closes, allocations, holdings, Base pairs, initial selection and validation steps. Of {qualified['baselineTapes']} baseline tapes, {qualified['retainedIdentical']} were retained identically and {len(qualified['removed'])} unselected, unqualified trailing-only tapes were removed. This comparison does not establish the cause of this window’s PF.")
+    timing = re.search(r'worst slice of the last 60 s (\d+) ms', (source / 'run.log').read_text())
+    if not timing:
+        raise ValueError('run log is missing worst processing slice')
+    peak = data['resources']['peakChildRssKiB'] / 1024
+    template = template.replace('Worst reported processing slice: 1,954 ms; target: &lt;500 ms. Peak RSS: 642.1 MiB.',
+        f'Worst reported processing slice: {int(timing.group(1)):,} ms; target: &lt;500 ms. Peak child RSS: {peak:.1f} MiB.')
+    template = template.replace('These are the 818 recorded post-Base tapes', f"These are the {len(configs)} recorded post-Base tapes")
+    no_tp_base = [c for c in configs if c['kind'] == 'trailing-only' and c['initialBaseAllowed']]
+    no_tp_pass = sum(c['initial']['ok'] for c in no_tp_base)
+    message = (f'At the initial snapshot, {no_tp_pass}/{len(no_tp_base)} Base-target-allowed trailing-only configs passed. {len(trailing)} later modeled orders closed; their execution PF appears in the strategy table. This is not exchange PF.' if diagnostic else
+        'At the initial snapshot, 0/8 Base-target-allowed trailing-only configs passed: each had 8–11 closes against the 12-close minimum. No trailing-only modeled orders closed in this window; their execution PF is unavailable.')
+    template = template.replace('<h2>All calculated config tapes</h2>', f'<h2>All calculated config tapes</h2><p>{message}</p>')
+    template = template.replace('baselineComparison:D.comparisonOk,resources:D.resources',
+        'baselineQualifiedComparison:D.qualifiedComparison,diagnosticExperiment:D.diagnosticExperiment,resources:D.resources')
 target.parent.mkdir(parents=True, exist_ok=True)
 target.write_text(template.replace('__DATA__', encoded))
 print(json.dumps({'file':str(target),'orders':len(orders),'configs':len(configs),'bytes':target.stat().st_size}))

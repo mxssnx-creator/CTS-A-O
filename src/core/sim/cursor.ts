@@ -7,6 +7,24 @@ export interface CursorResult {
   open?: OpenPosition | null;
   pending: Side | 0;
   pendingProtect?: Protect;
+  /** Captured only when this signal was simulated on a minute-projected execution series. */
+  pendingExecution?: PendingExecution;
+}
+
+export interface PendingExecution { tfMin: number; holdMin: number }
+export interface PendingTapeEntry {
+  sym: string;
+  side: Side;
+  protect?: Protect;
+  execution?: PendingExecution;
+}
+
+/** Preserve the simulator's own pending entry, including its execution-clock provenance. */
+export function pendingFromResult(sym: string, result: CursorResult): PendingTapeEntry | null {
+  if (!result.pending) return null;
+  return { sym, side: result.pending,
+    ...(result.pendingProtect ? { protect: result.pendingProtect } : {}),
+    ...(result.pendingExecution ? { execution: { ...result.pendingExecution } } : {}) };
 }
 
 /** A private, append-only simulator continuation. Revisit one boundary bar so its pending signal can enter
