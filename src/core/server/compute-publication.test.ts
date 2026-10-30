@@ -17,7 +17,7 @@ after(async () => {
   await closePool();
 });
 const statusFields = [
-  "basePassed", "baseBuilt", "baseEvaluated", "baseHistory", "baseByRange", "baseGates", "baseWhy", "strategyCoverage",
+  "basePassed", "baseBuilt", "baseEvaluated", "baseHistory", "baseByRange", "baseTrailingOnlyByRange", "baseGates", "baseWhy", "strategyCoverage",
 ] as const;
 const fields = [
   "basePassed",
@@ -26,6 +26,7 @@ const fields = [
   "basePassedTargets",
   "baseWideLadderPairs",
   "basePassedCells",
+  "basePassedTrailingOnlyCells",
   "family",
   "signalBasePassed",
   "paused",
@@ -45,6 +46,7 @@ type Inner = {
   gen: number;
   fastArgs: unknown;
   basePairTags: unknown;
+  baseSignalExitRows: unknown;
   inc: unknown;
   incTail: unknown;
 };
@@ -94,6 +96,7 @@ function fixture() {
     basePassedTargets: { "follow|old-current@m1": { mc: [0.01] } },
     baseWideLadderPairs: new Set(["follow|old-current@m1"]),
     basePassedCells: { "follow|old-current@m1": { tags: new Set(["mc"]), keys: new Set(["mc|0.01|0.01|0|60"]) } },
+    basePassedTrailingOnlyCells: { "follow|old-current@m1": { tags: new Set(["mc"]), keys: new Set(["mc|0|0.01|0.005|60|to"]) } },
     family: ["old current family"],
     signalBasePassed: new Set(["follow|sig-old@m1"]),
     signalGuardN: 77,
@@ -111,6 +114,7 @@ function fixture() {
   inner.incTail = { current: true };
   inner.fastArgs = { current: true };
   inner.basePairTags = { current: ["mc"] };
+  inner.baseSignalExitRows = [{ current: true }];
   return {
     rt,
     inner,
@@ -119,6 +123,7 @@ function fixture() {
     oldIncTail: inner.incTail,
     oldFast: inner.fastArgs,
     oldTags: inner.basePairTags,
+    oldSignalExitRows: inner.baseSignalExitRows,
     oldStatus: Object.fromEntries(statusFields.map((k) => [k, rt.status[k]])),
   };
 }
@@ -147,6 +152,7 @@ function assertCurrent(f: ReturnType<typeof fixture>) {
     f.oldTags,
     "unfinished compute changed current range provenance",
   );
+  assert.equal(f.inner.baseSignalExitRows, f.oldSignalExitRows, "unfinished compute changed Signal Exit Base rows");
 }
 
 test("a failed compute cannot withdraw active Base/config qualifications before publishing new tapes", async () => {
