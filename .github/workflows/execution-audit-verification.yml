@@ -1,0 +1,38 @@
+name: Bounded execution audit verification
+on:
+  push:
+    branches: ['fix/execution-lane-audit-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: execution-audit-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  bounded:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CTS_CORE_AUTOSTART: '0'
+      CTS_CORE_LIVE: '0'
+      CTS_CORE_STATE: off
+      CTS_CORE_MARKET: synthetic
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck -- --pretty false
+      - name: Independent bounded core regressions
+        run: node scripts/test-core.mjs src/core/signal-unknown-windows.test.ts src/core/signal-accept-index.test.ts src/core/signal-proof-provenance.test.ts src/core/live-record.test.ts src/core/sim/engine-side.test.ts src/core/sim/micro-cost-trailing-audit.test.ts src/core/sim/processed-set.test.ts src/core/micro-order-identity.test.ts src/core/sim/minute-hold-execution.test.ts src/core/exchange/bybit.test.ts
+      - name: Confirm unresolved Main-stage reproduction remains visible
+        run: |
+          set -o pipefail
+          node scripts/test-core.mjs src/core/sim/processed-main-conflict.test.ts | tee /tmp/main-conflict.log
+          grep -q 'todo 1' /tmp/main-conflict.log
+      - run: node --test scripts/render-execution-audit.test.mjs
+      - run: env -u DATABASE_URL npm run build

@@ -92,3 +92,11 @@ The operator explicitly authorizes fixes, tests, backups, regular GitHub push/me
   validation windows and show passed/evaluated percentage and the snapshot clock. Keep subsequent model, owned
   paper and exchange PF separately labeled; never delete a previously admitted order's later loss because its set
   no longer validates. Empty/missing validation cannot borrow an execution PF or fabricate a passing ratio.
+
+- **Operator update, 30 October 2026:** For market trading simulations use exactly eight symbols, 12 hours
+  evaluated prehistory and 12 hours trading; do not silently add earlier market history. The independent
+  12+12-hour replay in `docs/execution-audit-20261030` is retrospective, not a live-readiness proof. A
+  coordination-conflict regression reproduces candidate-versus-processed-set contamination, and the persistent
+  Base → Main → Real adapter is not integrated. Keep that regression visible as an expected failure and do not
+  start x01 until the adapter, coverage, performance, ownership, venue reconciliation and forward checks pass.
+  Report historical validation and modeled execution separately; never assert stable PF from a selected window.

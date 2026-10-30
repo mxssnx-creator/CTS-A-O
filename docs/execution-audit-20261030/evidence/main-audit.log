@@ -1,0 +1,1 @@
+{"ok":true,"entryChecks":294,"issues":0,"missing":0,"ordinaryCostChecked":110,"maxCostError":8.182483007650176e-8,"initialSelection":{"sets":6,"passing":6,"finiteSets":2,"noLossSets":4,"finiteMeanPf":55.80600903890412},"readiness":{"contextClosesBelow9":232,"minimumDirectionCloses":12,"minimumContextCloses":1}}
