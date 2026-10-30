@@ -5405,3 +5405,10 @@ The automatically triggered Exact Signal PR workflow's offline checks failed bec
 `profitFactorRatio` binding. The test VM now receives the real helper. The previously failing case, all 12 cases
 in that file, and 20 adjacent bounded evaluator/PF tests pass locally. This is a test-harness repair, not a change
 in trade calculations. Its diagnostic workflow failure remains recorded on the earlier commit.
+
+The automatically triggered Exit verification workflow's UI quality job also failed at a stale
+`/PF edge subtracts 1/` expectation on desktop and phone. Its captured page text displayed the correct
+`Return PF: 1.00 is neutral` message. The UI assertion now checks that text. The captured browser run still
+failed and was not repeated: its synthetic UI fixture configured six days of history, contrary to the current
+three-day maximum. The local source/text consistency check passed; it is not a replacement for a bounded browser
+rerun. Other core shards from that automatically started workflow were still running at the time of this note.
