@@ -56,6 +56,32 @@ function rows(xs: ReadonlyArray<readonly [number, number, number, number]>): Bar
 }
 
 describe("signal historic trailing configs", () => {
+  it("qualifies the last 12 own closes even when older results and a short time window conflict", () => {
+    const losing: Array<[number, number, number, number]> = [[100,100,100,100],[100,100.1,95,95],[100,100,100,100],
+      [100,100,100,100],[100,100,100,100],[100,100,100,100],[100,100,100,100],[100,100,100,100]];
+    const winning: Array<[number, number, number, number]> = [[100,100,100,100],[100,104,99.9,103],[100,100,100,100],
+      [100,100,100,100],[100,100,100,100],[100,100,100,100],[100,100,100,100],[100,100,100,100]];
+    const b = rows(Array.from({ length: 52 * 8 }, (_, i) => (i < 40 * 8 ? losing : winning)[i % 8]));
+    const ind = "sig-ema-cross-s@m15", pair = `follow|${ind}`;
+    const make = (bars = b) => {
+      const u = makeUniverse([bars]);
+      u.caches[0].memo(`combo:follow:${ind}`, () => Int8Array.from({ length: bars.n }, (_, i) => i % 8 === 0 ? 1 : 0));
+      return u;
+    };
+    const sig = signalSettings({ holdH: 1, filter: { trendH: 0, volFloor: 0 },
+      hist: { enabled: true, minN: 30, lookbackH: 1, quantiles: [0.5], slOfTp: [1], trailOfTp: [] } });
+    const v = { cost: .002, minPf: 1.5, minTrades: 12, lastN: 12, maxDdr: 1 };
+    const u = make();
+    assert.deepEqual(signalHistProtects(u, [pair], sig, null, u.nowT, v), {}, "the legacy 1h gate excludes the older fitting sample");
+    assert.ok(signalHistProtects(make(), [pair], sig, null, u.nowT, { ...v, lastNOnly: true })[pair]?.length,
+      "the independent current 12 closes pass despite the older losses");
+    assert.deepEqual(signalHistProtects(make(), [pair], sig, null, u.nowT, { ...v, lastN: 8, lastNOnly: true }), {},
+      "a sample of eight cannot qualify");
+    const reversed = rows(Array.from({ length: 52 * 8 }, (_, i) => (i < 40 * 8 ? winning : losing)[i % 8]));
+    assert.deepEqual(signalHistProtects(make(reversed), [pair], sig, null, u.nowT, { ...v, lastNOnly: true }), {},
+      "older wins cannot qualify a config whose recent closes lose");
+  });
+
   it("keeps the pooled fitting sample separate from each config's own close minimum", () => {
     const cycle: Array<[number, number, number, number]> = [[100,100,100,100],[100,104,99.9,103],[103,105,102,104],[104,104,101,102],
       [102,103,100,100],[100,100,100,100],[100,100,100,100],[100,100,100,100]];
@@ -286,7 +312,7 @@ describe("signal historic trailing configs", () => {
     const stricter = signalHistValidationOf(cost, { ...DEFAULT_SETTINGS.gates, minPf: 1.1, baseSetsMinPf: 1.8, maxDdr: 0 });
     assert.equal(stage.minPf, 1.5); assert.equal(stricter.minPf, 1.8);
     try {
-      for (const validation of [stage, stricter, { ...stage, minPf: 1e9 }]) {
+      for (const validation of [stage, stricter, { ...stage, minPf: 1e9 }, { ...stage, lastN: 12, lastNOnly: true }]) {
         const local = signalHistProtects(u, pairs, sig, null, u.nowT, validation);
         const [remote] = await runOnWorkers<SignalHistReply>([{ type: "signal-hist", bars, pairs, sig, tactics: null, cutT: u.nowT, validation }], 1, 60_000);
         assert.deepEqual(remote.pairProtects, local, "workers retain the same own-context history and Last-N PF contract");

@@ -1,0 +1,15 @@
+✔ price audit normalizes recorded external sizing once and retains one modeled cost (1.220273ms)
+✔ unknown returns and intrinsic ladder semantics never become a successful ordinary cost check (0.216908ms)
+✔ audit restores serialized exact Base proofs and refuses missing proof identities (1.456479ms)
+✔ report.html preserves independent Base and funded modeled cohorts (39.331569ms)
+✔ report-n10.html preserves independent Base and funded modeled cohorts (109.478341ms)
+✔ a trailing-only Base pass is reported without marking ordinary tags or Exit as passed (6.067103ms)
+✔ Base UI renders independent passed-only trailing statistics with neutral PF 1 (1182.018264ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1657.044515

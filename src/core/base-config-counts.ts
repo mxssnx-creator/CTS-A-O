@@ -8,7 +8,7 @@ import { baseLastNForRange, baseLastNOf } from "./pipeline/base-lastn.ts";
 import { SIGNAL_MIN_PF, SIGNAL_VALID_LAST_N } from "./signal-policy.ts";
 
 export type BaseConfigCountOptions = {
-  gates: Pick<Gates, "minPf" | "minTrades" | "maxDdr" | "rangeMinPf" | "baseLastN" | "baseRangeLastN" | "lastNFloor" | "lossPrior">;
+  gates: Pick<Gates, "minPf" | "minTrades" | "maxDdr" | "rangeMinPf" | "baseLastN" | "baseRangeLastN" | "lastNFloor" | "lossPrior" | "lastNOnly">;
   cost: number;
   cutT: number;
   fromT: number;
@@ -121,7 +121,12 @@ export class BaseConfigCounter {
     row.evaluated++;
     // The floor is a return ratio from actual gross gains/losses. In particular, a no-loss sample's finite display
     // sentinel is not used to decide whether that sample clears the PF floor.
-    const returnPf = stats.gl > 0 ? stats.gp / stats.gl : stats.gp > 0 ? Infinity : 0;
+    const ratio = (gp: number, gl: number) => gl > 0 ? gp / gl : gp > 0 ? Infinity : 0;
+    const basePf = (s: typeof stats) => {
+      if (!o.gates.lastNOnly) return ratio(s.gp, s.gl);
+      const last = s.baseLast;
+      return last && !last.invalid && last.n === last.requested && last.requested >= 9 ? ratio(last.gp, last.gl) : 0;
+    };
     if (ind.startsWith("sig-")) {
       const groups = new Map<string, TradeLike[]>();
       for (const tr of closed) {
@@ -137,10 +142,13 @@ export class BaseConfigCounter {
         history.baseLast = baseLastNOf(xs, gates.baseLastN, Math.max(0, protect.sl) * 100);
         return { history, last: statsOf(required > 0 ? xs.slice(-required) : xs, o.cutT) };
       });
-      if (contexts.some(({ history, last }) => history.n >= o.gates.minTrades && last.n >= required && history.pf >= row.floorPf && last.pf >= row.floorPf)) row.pfPassed++;
-      if (contexts.some(({ history, last }) => last.n >= required && passesBase(history, { ...gates, minPf: row.minPf }) && passesBase(last, { ...o.gates, baseLastN: 0, minTrades: required > 0 ? required : o.gates.minTrades, minPf: row.minPf }))) row.passed++;
+      if (contexts.some(({ history, last }) => history.n >= o.gates.minTrades && last.n >= required &&
+        basePf(history) >= row.floorPf && ratio(last.gp, last.gl) >= row.floorPf)) row.pfPassed++;
+      if (contexts.some(({ history, last }) => last.n >= required && passesBase(history, { ...gates, minPf: row.minPf }) &&
+        passesBase(last, { ...o.gates, lastNOnly: false, baseLastN: 0, maxDdr: o.gates.lastNOnly ? 0 : o.gates.maxDdr,
+          minTrades: required > 0 ? required : o.gates.minTrades, minPf: row.minPf }))) row.passed++;
     } else {
-      if (returnPf >= row.floorPf) row.pfPassed++;
+      if (basePf(stats) >= row.floorPf) row.pfPassed++;
     // The complete gate matches the running engine, including its disclosed no-loss score convention.
       if (passesBase(stats, { ...gates, minPf: row.minPf })) row.passed++;
     }

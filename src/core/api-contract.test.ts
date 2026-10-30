@@ -616,6 +616,7 @@ const FIELDS: Record<Fn, string[]> = {
       "maxPositions",
       "rebalancePct",
       "liveLastN",
+      "realLastN",
     ]),
     ...under("wf", [
       "mode",

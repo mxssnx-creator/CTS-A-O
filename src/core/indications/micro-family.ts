@@ -4,8 +4,9 @@ import type { IndicationSpec } from "./registry.ts";
 import type { SeriesCache } from "./cache.ts";
 import { RT_COST } from "../model-cost.ts";
 import { tacticState } from "./tactic.ts";
+import { INTRADAY_SUBSETS, intradayAnchor } from "./intraday-timeframes.ts";
 
-export const MICRO_SUBSETS = [[1], [5], [15], [1, 5], [1, 15], [5, 15], [1, 5, 15]] as const;
+export const MICRO_SUBSETS = INTRADAY_SUBSETS;
 export const MICRO_PROFILES = [
   { id: "fast", window: 12, stretch: 1, residual: 1.25, activity: 1.4, recovery: 0.12 },
   { id: "selective", window: 24, stretch: 1.6, residual: 1.8, activity: 1.8, recovery: 0.25 },
@@ -66,8 +67,8 @@ export const isMicroCalculationInd = (id: string) =>
   isMicroFamilyInd(id) || id.startsWith("inverse-micro-");
 export const INVERSE_MICRO_CONFIG_IDS = MICRO_CONFIG_IDS.map((id) => `inverse-${id}`);
 export function microAnchorTf(id: string): number | null {
-  const match = /^(?:inverse-)?micro-(1x5x15|1x15|1x5|5x15|15|5|1)-/.exec(id);
-  return match ? Number(match[1].split("x")[0]) : null;
+  const match = /^(?:inverse-)?micro-([\dx]+)-/.exec(id);
+  return match ? intradayAnchor(match[1]) : null;
 }
 
 type Frame = {

@@ -1,14 +1,7 @@
 /** Lightweight Break identities and routing metadata; safe for client-side settings and reporting imports. */
-export const BREAK_TIMEFRAMES = [1, 5, 15] as const;
-export const BREAK_SUBSETS = [
-  [1],
-  [5],
-  [15],
-  [1, 5],
-  [1, 15],
-  [5, 15],
-  [1, 5, 15],
-] as const;
+import { INTRADAY_SUBSETS, INTRADAY_TIMEFRAMES, LEGACY_INTRADAY_SUBSETS } from "./intraday-timeframes.ts";
+export const BREAK_TIMEFRAMES = INTRADAY_TIMEFRAMES;
+export const BREAK_SUBSETS = INTRADAY_SUBSETS;
 
 export const BREAK_CORES = [
   { id: "don", label: "Donchian break", microOnly: false, optIn: false },
@@ -97,7 +90,7 @@ export const BREAK_CONFIG_IDS = BREAK_SUBSETS.flatMap((tfs) =>
   ),
 );
 /** Preserve the frozen 60 default Micro identities; experimental sources require an explicit selection. */
-export const BREAK_DEFAULT_MICRO_CONFIG_IDS = BREAK_SUBSETS.flatMap((tfs) =>
+export const BREAK_DEFAULT_MICRO_CONFIG_IDS = LEGACY_INTRADAY_SUBSETS.flatMap((tfs) =>
   Math.min(...tfs) < 5 ? [] : BREAK_CORES.flatMap((core) =>
     core.optIn ? [] : BREAK_DRAWDOWN_WINDOWS.flatMap((ddWindow) =>
       BREAK_PROFILES.map((profile) => breakConfigId(core.id, tfs, ddWindow.id, profile.id, true)),

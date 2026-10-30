@@ -143,9 +143,10 @@ describe("coordination volume factors", () => {
       makeTape(active, "follow", activeInd, P, "normal", [SYM], activeTrades, [], []),
       makeTape(hedge, "follow", hedgeInd, P, "normal", [SYM], hedgeTrades, [], []),
     ];
-    const run = (hedgeVolumeFactor: number, combinedFactors = false) =>
+    const run = (hedgeVolumeFactor: number, combinedFactors = false, lastNOnly = false, hedgeEnabled = true) =>
       walkForward(u, tapes, {
         ...base,
+        ...(lastNOnly ? { gates: { ...base.gates, lastNOnly: true }, validLastN: 12 } : {}),
         ...(combinedFactors ? {
           toggles: { ...base.toggles, block: true },
           block: { ...base.block, maxLevel: 1, ratio: 0.2, signalsOwn: true },
@@ -156,19 +157,19 @@ describe("coordination volume factors", () => {
           ...base.coord!,
           enabled: true,
           confirm: true,
-          hedge: true,
+          hedge: hedgeEnabled,
           hedgeMinN: 1,
           hedgeMinPf: 1.1,
           hedgeVolumeFactor,
           ...(combinedFactors ? { s2RelVolume: true, s2Increase: 0.05 } : {}),
         },
-        signalValidLastN: undefined,
+        signalValidLastN: lastNOnly ? 12 : undefined,
         signalRank: {
           ...DEFAULT_SIGNALS,
           count: 1,
           minTrades: 1,
           rank: "net",
-          validate: false,
+          validate: lastNOnly,
           guard: { ...DEFAULT_SIGNALS.guard, enabled: false },
           cluster: { ...DEFAULT_SIGNALS.cluster, enabled: false },
         },
@@ -196,5 +197,12 @@ describe("coordination volume factors", () => {
     assert.ok(Math.abs(combined.mult! - Math.min(8, 1.2 * combined.coordVol! * 3 * 1.6 * 1.8)) < 1e-12);
     assert.ok(combined.mult! <= 8, "the aggregate external sizing ceiling still applies to coordinated Signal entries");
     assert.ok(Math.abs(combined.r / combined.mult! - 0.01) < 1e-12, "unit returns exclude every external sizing factor");
+
+    const recentOn = run(1.6, false, true, true);
+    const recentOff = run(1.6, false, true, false);
+    assert.ok(recentOn.signalSteps?.some((step) => step.keys.length), "the comparison contains active Signals");
+    assert.deepEqual(recentOn.signalSteps, recentOff.signalSteps, "negative-hour hedges cannot add unranked contexts");
+    assert.deepEqual(recentOn.trades, recentOff.trades, "hedge selection cannot affect recent-only execution");
+    assert.equal(recentOn.hedgeEnd, undefined, "live continuation receives no negative-hour hedge list");
   });
 });

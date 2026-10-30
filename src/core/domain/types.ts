@@ -740,6 +740,8 @@ export interface EvalResult {
 }
 
 export interface Gates {
+  /** Internal rollout flag: qualification uses only each configuration's completed Last-N returns. */
+  lastNOnly?: boolean;
   /** stage minimum PF; the runtime keeps it within 1.05–1.50 (a value outside is snapped to the nearest bound) */
   minPf: number;
   /** maximum drawdown time (hours over a 72 h window); kept within 2–35 h by the runtime */

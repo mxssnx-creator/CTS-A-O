@@ -1,3 +1,9 @@
+## 2026-10-29 — stage WIP combined with merged PF-neutral release
+
+Main PR #239 is merged at `af8a790ab7ea6eb6813971c1bfe6f96cdee9dffe`, with exact release tree `aa1c348f68827f0810e761d6b82bd207008c1d0e`. This development branch retains that release and the independent Last-N audit alongside the prior stage prototype. Only handoff prose conflicted; both histories are preserved. The combined chain/source/settings/PF/report regressions pass 48/48 in 3.02s and typecheck passes. `DEFAULT_STAGE_CHAIN.enabled` remains false and is explicitly checked. This is not activation or completion of the persistent production adapter.
+
+The latest measured release cohort is unchanged: eight symbols, 8–9 October 2026 12:00 UTC, 24h trading + 24h evaluated prehistory + 24h indicator warmup. Base 143/1398 (10.23%), initial configs 405/1276 (31.74%), finite passing historical PF 17.3995 plus six no-loss sets; later funded-model PF 0.2731. Positions 52/49/3 and orders 3116/3108/8 opened/closed/held. Exchange PF is unavailable; this is not a fresh stage-enabled profitability run. Preserve the 72h total study limit.
+
 ## 2026-10-29 — PF neutral-one repair verified on combined Main
 
 Published source `7a05b91227320c3ba22da2b854f31a6ce8378a13` includes concurrent PR #237 / Main `d677b05`. Local tree-identical checkpoint `a397ef1c0d5c681ca6f13cc755822a2de6026695`; economic/report SHA256 `67a8752724b5371a9953f1ff19ada5cfcd7fc9685dabd8554507105bbb9463c5`. Final documentation-only commit does not change tested source. Bounded hosted run 40967442788 passes typecheck, selected core/script/display/CLI/report regressions, full production/core-worker build and desktop/mobile development/production Settings rendering. All four screenshots inspected: actual form, no console/page errors, no horizontal overflow or baseline divergence. The smoke gate waits for real content; its earlier loading-shell pass is not sufficient UI proof.
@@ -7,6 +13,13 @@ PF 1 is neutral, not a required replacement for every measurement. Removed absol
 Final frozen 8-symbol replay: 24h trading 8–9 October 12:00 UTC, 24h evaluated prehistory, 24h indicator-only warmup (72h TOTAL), 0.15% modeled round trip. Base 143/1398 (10.2289%), initial 405/1276 (31.7398%), finite historical mean 17.399524089 plus 6 no-loss; subsequent closed model PF 0.273050873. Positions 52/49/3, orders 3116/3108/8 opened/closed/held. 11.826s, 558.8 MiB peak RSS. All 2,468 candidate histories, 24 validation steps, 25 Signal selection snapshots, 3,108 funded closes, 8 held orders and every allocation exactly match prior Main; all 3,108 source/funded returns reconcile. Coverage remains 76/78 (30m startup 96/120 bars; 13/16 categories). Never label this exhaustive catalogue coverage or profitable forward performance. Full protocol/raw sidecars/HTML/checks: `docs/pf-neutral-20261029`.
 
 The broader forward-PF issue and persistent Main→Real→Active runtime adapter remain unresolved. The combined stage WIP stays disabled; this repair is not a completed stage integration. Venue PF and a selected production deployment remain unavailable. Preview uses synthetic market data with live exchange execution disabled. An unnecessary optional-variant attempt was cancelled and is not counted as verification. User's 72h TOTAL bound remains mandatory; default legacy full workflows were not run because they include longer market histories.
+
+## 2026-10-29 — final combined checkpoint preserves merged PR235 and concurrent fixes
+
+This unmerged stage-development checkpoint now includes mainc58fa3528f5728097f25b264e7adcc32806d27ba (PR235), including the concurrent Base range qualification, Axis coverage and realtime stop-gap fixes fromad5e33a. The final merge conflicted only in handoff prose.66focused processed-set/chain/source,minute-cap,validated-PF/listing tests pass in1.989s; typecheck passes. stages.enabled=false is explicitly verified. Earlier broader combined checks were81/81 plus32API/durable-paper checks before the concurrent range/stop-gap merge. No new combined-default market profitability is claimed.
+
+The latest measured main-release8-symbol8–9October cohort has Base143/1398(10.2289%),initial405/1276(31.7398%),finite historical mean17.399524089 plus6no-loss;fundedPF0.273050873,positions52/49/3,orders3116/3108/8O/C/H. Refreshed exact-main source67ccf745 reproduces all2468source tapes,3108funded closes and every allocation;11.997s,531.7MiBpeakRSS,76/78coverage checks(30m startup insufficient). VenuePFunavailable. Full persistent independent Main/Real/Overall/Active/Live integration remains unfinished. Keep new studies≤72hTOTAL.
+
 
 ## 2026-10-29 — exact combined-source replay complete
 
@@ -19,6 +32,12 @@ Bounded range/cost/hold/reporting/worker suites, explicit range-Axis worker test
 Main advanced toad5e33a while PR235 checks ran; the first merge was correctly rejected for a handoff conflict. The combined source preserves actual qualified range tags independently of diagnostic construction, repaired Axis coverage counts, adverse observed stop-gap marks and all validated-mean/closed-cohort reporting fixes. Only the handoff text conflicted. New bounded verification passes27range/worker cases,53cost/hold/Last-N/reporting cases, typecheck, development/core-worker build and the packaged worker's30h incremental/tick/stop-gap parity. Dedicated range-Axis worker coverage is recorded separately. The old complete workflows passed onb9414ec before the concurrent merge; do not label them as new-head verification.
 
 Further commits use[skip ci] to honor the operator's≤72hTOTAL limit: the inherited full workflows include18-day synthetic-market fixtures. The merged source is checked with bounded explicit suites and a new72h actual-runtime replay instead. No test result or profitability claim is invented. Previous measured8-symbolcohort remainsBase143/1398(10.2289%),initial405/1276(31.7398%),finite historicalPF17.399524089 plus6no-loss;laterfundedPF0.273050873,positions52/49/3,orders3116/3108/8O/C/H. VenuePFunavailable; refreshed replay follows on the exact combined checkpoint.
+
+## 2026-10-29 — combined stage checkpoint includes validated PF release
+
+This unmerged checkpoint combines WIPf5b51d4 with tested release PR235/headb9414ec. Only the leading runtime imports and handoff text conflicted; both policies are retained. Combined typecheck and81focused processed-set/chain/source/window,independent30m,settings,minute-hold/tick,validation/listing tests pass in3.875s. Factory stages.enabled remainsfalse. The persistent independent Main/Real/Overall/Active adapter is still unfinished; this checkpoint does not certify stage profitability or venue execution.
+
+New measured isolated-release cohort:8–9October UTC,eightfixedsymbols,24h evaluated prehistory+24h trading+24h older indicator warmup(72hTOTAL). Base143/1398(10.2289%),initial validation405/1276(31.7398%),finite historical mean17.399524089 plus6no-loss sets;later funded PF0.273050873. Positions52/49/3 andorders3116/3108/8O/C/H. All3108own-source returns and before/after allocations match;reportcoverage76/78,30m startup insufficient. Final isolated repeat12.29s,521.3MiBpeakRSS. These are main-release settings, not a fresh combined-default forward run;venuePF unavailable. New raw market studies must remain≤72hTOTAL.
 
 ## 2026-10-29 — Main PF reporting repair and actual eight-symbol audit
 
@@ -63,20 +82,43 @@ long/short balance and high forward PF remain unresolved. No instance or venue c
 
 ## 2026-10-29 — PR234 first CI found recovery-count defect; deadline follow-up included
 
-First hosted headb9c4993 failed one of1080core-shard1 tests: recovery-only held exits added an extra configured Base cell (10vs9). The assertion was correct; recovered-only cells now skip BaseConfigCounter and grid candidate stats. The existing worker/serialization regression passes with its fixture bounded to72h. Other first-head checks passed, but that head must not be merged as green.
+## 2026-10-29 — PR234 MERGED, both complete workflows green; independent checkpoint preserved
 
-Realtime audit also reproduced flat-price expiry waiting for compute. Explicit capped positions now capture holdEndT, tick workers/fallback wake at its deadline, and observed time/price/reason persist through own-order hit keys and rebuild. No quote means unresolved price, not a fabricated fill; an existingTP/SL instruction is not overwritten. Original held deadlines survive current-grid changes.141focused regressions passed before the counter follow-up; fresh20symbol72h stress has identical full1280context rows/checksum,0.556s,75.3MiB sampledheap,218.8MiB maxRSS under256MiB heapcap. Detailed follow-up:docs/minute-cap-execution-20261029/realtime-deadlines.md. Updated combined verification PASSED169focused regressions in10.106s, typecheck and full development/core-worker build; hosted rerun pending.
+PR234 (https://github.com/mxssnx-creator/CTS-A-O/pull/234) is MERGED as main12e1f04490eb658e67b2f61c21ea21183406a755. Corrected releasehead98718231e4d035d6d6a010d7f4456a53ff54fbf3, treeebdde718da96d584a5c1e14ac726e9406f6d25aa passed BOTH complete workflows:Exit40922839729(all4core partitions,slow-runtime,quality/browser/app/build) and Exact40922839837. The earlierb9c4993 failure is superseded; its recovery-only Base-counter bug was fixed without weakening the assertion or PF gates. Before/after backups exist. Isolated tests169/169,typecheck/full worker build pass.
 
-Financial cohort unchanged:8–9Oct20symbolMicro step3 Normal/Trailing,24h prehistory,oldPF1.1 policy. Base10/4800(0.20833%),historicalPF1.2052314969;MainPF0.6173282875;positions307/305/2,orders1585/1583/2O/C/H;Real0/1585;Active/venuePF unavailable. Full new stage adapter/Overall/venue mapping remains unfinished and unmerged; no high-PF guarantee. New market studies remain≤72h TOTAL.
+This separate combined checkpoint retains draft219, own-model-source recovery and independent30m catalogue, plus ALL merged minute/deadline/counter repairs.70own-stream/timeframe/deadline/worker checks and typecheck pass; a fresh20symbol72h audit agrees on all1280contexts,32aggregates and checksum48fc55fa059d1c03e339233a3a0103a557bf6502c8be80fb1d8c414eb3fa22ee (0.570s,72.4MiB sampledheap,186.5MiB maxRSS under256MiB cap). It remains UNMERGED and stages.enabled=false: full persistent Main/Real/Overall/Active-to-Live integration is unfinished. Do not treat source registration or raw-kernel passes as proof of high forwardPF.
 
-## 2026-10-29 — isolated capped-minute execution repair verified on main233
+CSV export reconciliation passed all25752records:25637closes,65held,50unfilled intents, every1280context count, all15min hard caps and blank unknown intent fill fields. Report JavaScript parses; local DOM/browser report QA was unavailable (jsdom/Chromium missing); hosted app/browser checks passed. No identified venue account or production deployment was changed.
 
-This isolated release starts from maina25b0c5 (PR233) and contains only the capped execution/hold repair and its evidence. It does NOT include draft219, the independent30m catalogue, or the new persistent stage adapter. Shared minute execution fixes subbar caps discarded ashold0 and distinct caps sharing IDs; exact hm config/cell identity, own source ATR/Axis projections, realtime held clock/restart provenance, legacy exit-only recovery, hard Axis Desk maxima and known-minute statistics labels are tested. Backed-up proof/count migration preserves settings, held positions and realized ledgers.
+Latest qualified-stage market cohort remains unchanged:8–9Oct2026,20symbols,Low-Range step3Micro Normal/Trailing,1/5/15m,24h prehistory,oldPF1.1 policy,Base40+15/Main50+15/Real15. Base10/4800(0.20833%),historicalPF1.2052314969;MainPF0.6173282875;positions307/305/2,orders1585/1583/2O/C/H;Real0/1585;Active/venuePF unavailable. No stable high-PF claim. New studies must remain≤72h including prehistory. Preserve pre-existing untracked archive temp files.
 
-Combined-checkpoint verification:126 focused offline tests passed; typecheck/scoped lint pass.20symbol72h TOTAL raw kernel audit:640tapes,1280contexts,25637closed modeled orders,65held,50intents;240Base/execution count/net parity checks;0.639s,67.1MiB sampledheap,192.6MiB maxRSS under256MiB heapcap. HTML/JSON/fullorderCSV:docs/minute-cap-execution-20261029. Isolated-tree verification PASSED:126focused tests,8.645s; typecheck and full development/core-worker build pass; independent72h rerun has identical checksum, all1280context rows and32aggregates. Hosted PR checks remain pending. The local complete-suite attempt was interrupted at a legacy18day fixture and is not passing evidence.
+## 2026-10-29 — combined deadline/counter follow-up; isolated PR234 checks running
 
-Latest qualified-stage market evidence remains8–9Oct20symbolMicro step3 Normal/Trailing,24h prehistory,oldPF1.1 policy:Base10/4800(0.20833%),historicalPF1.2052314969;MainPF0.6173282875;positions307/305/2,orders1585/1583/2O/C/H;Real0/1585;Active/venuePF unavailable. This kernel repair does not demonstrate stable high forwardPF or complete Main/Real/Overall/Live integration. No identified venue account or deployment was changed. New market/stress studies must remain≤72hours including prehistory.
+PR234 head98718231e4d035d6d6a010d7f4456a53ff54fbf3 contains the isolated minute repair plus captured realtime deadlines and recovery-only counter fix. Its first headb9c4993 had one correct CI failure (recovery added an extra configured Base cell); code was corrected and the existing regression bounded to72h.169combined focused isolated regressions pass,10.106s, plus typecheck/full development/core-worker build. New hosted runs40922839729 and40922839837 are pending. Backup main-before-minute-caps-20261029-a25b0c5 exists; no merge yet.
 
+This checkpoint has combined the same follow-up into draft219 + processed-stream recovery + independent30m sources, resolving only the handoff conflict. Combined-tree verification PASSED70focused own-stream/timeframe/deadline/worker tests in4.976s and typecheck. Its fresh20symbol72h audit agrees on all1280context rows,32aggregates and the exact closed-order checksum (0.570s,72.4MiB sampledheap,186.5MiB maxRSS under256MiB heapcap). Realtime expiry captures original holdEndT and persists observed time/price/reason; no valid quote means no invented fill. Previously observedTP/SL remains authoritative. Recovery-only exits neither add Base-config candidates nor supply fresh Base proof. The full persistent stage adapter remains unfinished; keep stages.enabled=false.
+
+Latest measured qualified-stage cohort unchanged:8–9Oct2026,20symbolMicro step3 Normal/Trailing,24h prehistory,oldPF1.1 policy. Base10/4800(0.20833%),historicalPF1.2052314969;MainPF0.6173282875;positions307/305/2,orders1585/1583/2O/C/H;Real0/1585;Active/venuePF unavailable. Raw20symbol72h execution audit remains checksum48fc55fa059d1c03e339233a3a0103a557bf6502c8be80fb1d8c414eb3fa22ee; no high-forward-PF or venue profitability claim.
+
+## 2026-10-29 — capped-minute repair tested; prepare isolated release
+
+The former subbar-hold defect below is repaired in this combined worktree, not yet merged. Shared capped execution uses own minute prices after completed source signals; config/cell IDs retain explicit hm minutes. Base/Tape parity, minute continuation/restart, held execution-clock provenance, legacy exact-ID recovery and UI minute labels are tested. Further regressions found realtime trailing using the old indication clock and Axis Desk overriding explicit max hold with its2× winning extension; both repaired. Selective transactional proof/count retirement preserves held books and realized losses.
+
+126 focused offline regressions passed in8.006s; typecheck and scoped lint pass (existing warnings only). New20symbol72h TOTAL raw kernel audit:640tapes,1280contexts,25637closes,65held,50intents;240Base/execution parity checks;0.639s,67.1MiB sampledheap,192.6MiB maxRSS with256MiB heap cap. Detailed HTML/JSON/orderCSV in docs/minute-cap-execution-20261029. It is unfiltered kernel evidence, not qualified-stage profitability. The local complete-suite invocation was interrupted in the old18day lifecycle fixture and is NOT passing evidence.
+
+Financial progression unchanged:8–9Oct20symbolMicro step3 Normal/Trailing,24h prehistory,oldPF1.1 policy,Base40+15/Main50+15/Real15. Base10/4800(0.20833%),historicalPF1.2052314969;MainPF0.6173282875;positions307/305/2,orders1585/1583/2O/C/H;Real0/1585;Active/venuePF unavailable. Do not claim stable high forwardPF. Full persistent new stage adapter/Overall/Active-to-Live work remains unfinished; retain stages.enabled=false and do not merge the broad draft checkpoints as a completed adapter. Isolate the minute repair onto main233, then verify that isolated tree before release.
+
+## 2026-10-29 — PF floor233 merged; combined independent stage/30m checkpoint
+
+PR233 is MERGED at maina25b0c535b9f7e2bb07f1ffb42fae1579454b9c4. BOTH complete workflows pass on exact releaseheadc28de7088987fbb6853e480b36c8e724d7ad3bec: Exit40901643289 and Exact40901643268. Backup branches before/after-range-pf-floors-20261029 exist. The initial CI failures described below were fixed and rerun successfully; do not confuse their older failing heads with this verified release. Local Playwright download failed; hosted application/browser checks pass. No actual account/deployment was reloaded.
+
+This worktree combines that main with draft219, model-stream recovery(local73ca432,remote9605462) and independent timeframe work(local57b685d). Retain stages.enabled=false. The own-stage production adapter/Active-to-Live mapping remains unfinished. 30m source calculations now support all15 subsets across Micro/Relate/Break, plus Inverse/Low-Range30m eligibility. New Low-Range/Inverse combined keys usec30; oldc keys preserve their original math. Focus migration recognizes empty-as-all and retires affected custom bare-source proofs without changing their selection.54 focused checks pass, plus46 related checks; production build/typecheck/scoped lint pass before this merge. New20-symbol72h source stress:165520calculations/304930320values,19.626s,max sampled heap93.04MiB,process peak RSS285.34MiB,checksum2de94a6051c5699fafac566742f1e84e885c63709fa222819b25f149789b6c7f. It is source calculation evidence only.
+
+NEW CONCRETE HOLD DEFECT:laneProtect(maxHoldMin15,indication30m) produces hold0; runCombo/Base and buildTapes drop that cell. Do not round up to30m. Correct minute execution must be shared by Base and every strategy kernel, with sparse completed-source signal projection, exact wall-clock hold identity/config parsing, projected own ATR/Axis center, cooldown time scaling, minute-price cursor continuation and held ownership. maxHoldMin is currently NOT serialized in configId; different requested subbar holds collapse to the same h token. Add regressions before changing this. Legacy research with no minute prices must remain explicit; missing price coverage cannot borrow another symbol or silently certify coarse execution as minute/funded.
+
+Financial cohort unchanged underOLD PF1.1 policy:20symbols,Low-Range step3 Normal/Trailing,8Oct12:00–9Oct12:00UTC,24h prehistory,1/5/15m indications and1m execution,Base40+15/Main50+15/Real15. Base10/4800(0.2083%),historical PF1.205231; subsequent Main PF0.617328,positions307/305/2 and orders1585/1583/2 opened/closed/held. Real0/1585(0%); ActivePF unavailable; venue/funded fills unverified. Personal Context retrieved no actual CTS-A-O URL/Bybit connection or independent separate-chat branch beyond the known merged work/draft219. Do not use another CTS project. All new studies capped at72h TOTAL including prehistory.
+
+---
 ## 2026-10-29 — PF floor release233: full inventory findings reconciled
 
 PR233 initial remoteheadb6bcbd9e994de2139231287c0e264e5c80462044 has the exact tested local tree ofe530061. Initial full local core inventory:4680tests,4668pass,10fail,2skip. All ten failures came from the requested threshold change or inherited fixture policies; each is now corrected and retested (66checks across the affected source/Base/migration files,69Block/walkforward checks, and the actual processing lifecycle case). The lifecycle case freezes its original PF1.1 policy rather than pretending every family passes the new stricter defaults on its synthetic market. New defaults remain covered independently, with no production gate weakened. Report minimums retain insertion-order coverage using the Wide Tactic/ordinary difference and explicitly assert equal Micro1.05 minima. Session1check and comparison3checks pass. Final typecheck/scoped lint pass; production build rerun is recorded in the release checks. Initial CI40897831759/40897831763 failed on the old assertions; do not call those runs passing. A revised exact-head CI is required before merge.
@@ -103,6 +145,302 @@ The latest measured financial cohort is unchanged and used the OLD PF1.1 policy:
 Separately, the unmerged stage branch has red/green actual walkForward regressions for an execution gate that stops learning after rejecting entries, and funding caps that hide upstream model losses. Own qualified source streams now continue before downstream PF/funding checks, preserving own slots, overlaps, unknowns and accepted-Real markers.70 focused checks and27 bounded-window/source checks pass. A48h synthetic stress(24hpre+24htrade,20symbols) passes6720contexts/2419200sourceorders in73.515s; sampled batch-end heap219MiB/RSS619MiB. This is mechanic evidence only; full persistent Main/Real production adapter and venue mapping remain pending in draft219. A further benchmark change releases each batch in a function scope and removes quadratic verification; its new performance measurement is pending.
 
 ---
+
+## 2026-10-29 — Merged PF defaults; audited stage and execution-price matrices
+
+PR232 is MERGED at remote main a50a10e297654f6f90a731d8f269ffde7bcf2d94. Exact release head39486d2ea05f23014586faedb072ddf281842d03 passed BOTH complete workflows: Exit40836024858 and Exact Signal40836024856. Before/after backups are backup/main-before-base-pf11-defaults-20261029 and backup/main-after-base-pf11-defaults-20261029. Ordinary Base/Wide/range floors now1.1, with transactional backups, preserved custom settings and selective cache retirement. No real account/order was manually changed.
+
+Current combined economic source is remote5061d45b679d409d03bffe38d5b88fde2bd43003 (locald22074f, economic files frozen at7844ba2). Both full workflows pass: Exact40840408265 and Exit40840408251. Main232 is an additional parent; the local merge preserves both histories and reconciles only comment/archived-option conflicts. Merge parity6 checks pass. Additional focused runs pass52 stage/source/default/native checks and361 Settings/API/completeness checks. Typecheck and scoped lint pass. The safe merged Settings preview passed desktop/mobile with Live disabled and synthetic market.
+
+The new study covers exactly20symbols,8Oct12:00–9Oct12:00UTC (14:00–14:00Vienna), separate24h/48h prehistory, Low-Range step3 Normal/Trailing, independent1/5/15m indication lanes. Base long20/30/40/50 × short5/10/15/20/25 has14 valid pairs and6 explicitly invalid >50% pairs. Seven minimal modes give98 independent Base policies. Main long50 with short1/5/15/25; Real1/5/15/25; direct plus all30 separately priced inverse-trigger variants (all15 nonempty subsets of1/2/5/10 × all/mean). That is48608 cases/range/warmup,291648 per pricing model. No future day/hour result selects a gate; all decisions use only own closed predecessor orders.
+
+A fidelity gap was found: the first harness used1m input but priced higher-lane exits on their own5/15m OHLC bars. It is retained as the lane OHLC CONTROL, not minute execution. The corrected minute harness projects each completed lane signal to the next1m open and prices TP/SL/trailing/hold exits on1m candles. Hold counts are minute units independent of indication timeframe. Both paths keep costs once, exact contexts and all raw evidence. The independent minute verifier also checks signal-clock alignment and minute TP/SL/gap/trailing/hold paths. This harness correction is NOT a claim that the legacy production builder was converted.
+
+All12 matrix audits pass:583296 combinations,57600 context/model checks,74010493 scalar windows,256401216 gate decisions and4951350 checked model closes (these are audit counts across parameter policies, NOT funded fills). Minute-only audits account for291648 cases,37013068 scalar windows,128198540 decisions and2488620 closes. Every branch has a price simulation or an independently verified no-primary-pass certificate. Equal masks share economics only within one exact context; identities and denominators remain separate. All Real/Active cohorts are empty/unavailable. No positive stable executed default was found.
+
+Reference below is Base40+15 / Main50+15 / Real15, minimal off, direct; it is NOT the factory default or an untouched holdout. Counts are opened/closed/held; PF is later unit-return PF after the0.15% cost.
+
+| Prehistory | Range | Base pass/evaluated | Historical PF | Later Main PF | Main positions O/C/H | Main orders O/C/H |
+|---|---|---|---|---|---|---|
+| 24h | mc | 10/4800 (0.2083%) | 1.205231 | 0.617328 | 307/305/2 | 1585/1583/2 |
+| 24h | mn | 10/4800 (0.2083%) | 1.239100 | 0.632294 | 278/275/3 | 1749/1744/5 |
+| 24h | sh | 6/4800 (0.1250%) | 1.244173 | 0.674219 | 249/245/4 | 1629/1614/15 |
+| 48h | mc | 12/4800 (0.2500%) | 1.204062 | 0.621473 | 336/333/3 | 1669/1665/4 |
+| 48h | mn | 14/4800 (0.2917%) | 1.228854 | 0.643526 | 326/323/3 | 1957/1952/5 |
+| 48h | sh | 17/4800 (0.3542%) | 1.237607 | 0.657859 | 351/346/5 | 2887/2870/17 |
+
+Minute Micro24h reference: Real0/1585 (0%); Active0/0/0 positions and orders, PF unavailable. Main exits:501TP,414SL,97trail,571time. The earlier lane OHLC control had487TP/399SL/89trail/557time, gross price PF1.089173→net0.622714 with the correct single cost. Correct minute pricing changes the outcome to0.617328, not high PF. No loss or admitted order is removed from later statistics because its set stops qualifying.
+
+Fixed locations: stage-policy.ts stageObservationAvailability/stageWindow count already observed equal-clock closes before the next decision; stage-chain.ts records immutable event sequences and restart proofs (snapshotv4); stage-source.ts prevents rejected last-bar pending flags from becoming owned orders. Future/current-entry results remain unavailable. Settings/presets save independent50% ratios and signed minimal/negative policies; their UI now explicitly labels the execution integration as draft.
+
+UNFINISHED production work: persistent Base-linked Main and Main-linked Real source streams, complete pending/partial-fill ownership/restart, placement of additional/Overall controls, true minute pricing for all legacy higher-lane simulator paths, and final Active→Live proof mapping without an extra Last-N remain required before enabling/merging219. The new Settings flag is not an installed production adapter. Legacy walkforward.ts configEval/original tapes and accepted-close ProcessedValidationBook still need that integration; merely flipping warmup false would create a cold-start freeze. Do not claim this scope completed or infer venue PF. Actual CTS-A-O deployment/selected connection remains unidentified in connected project context; do not probe CTS-K-N.
+
+Saved evidence: minute archive libfile_dcf6cf363e008191b3f239749ae7ec45; lane control archive libfile_2271c4ede10c8191a747406ae4ef38d7; paired-clock archive libfile_d69d6835ec2c8191b5ddabc6ceaadaa2. The new comparison HTML updates native report libfile_9c5b14262bbc81919d30974c323d3b53 after full browser QA. Previous archives/report versions remain preserved. Financial data artifacts stay outside git; reproducer scripts and this handoff are in git.
+
+One combined-render attempt lost its exec transport after three normalized datasets and produced no accepted artifact. The replacement generator keeps the prior compressed bundle opaque instead of retaining two decoded data graphs while building the next; it preserves every row in independently indexed bundles. Do not call the failed render a pass. Final browser QA PASSES12 datasets,1176 Base selections,5952 variant/window selections and1656224 listed-order checks, with CSV/search/pagination, zero console errors and both viewports. Comparison HTML is9.3MB; its decoded graphs stay separately indexed by price path.
+
+---
+## 2026-10-29 — Observed-close ordering fix and CI fixture reconciliation
+
+Draft ledger regression reproduced: a Main loss already observed at the next entry's timestamp was excluded by
+the strict timestamp filter, allowing an older win to qualify Real. The new book uses explicit observation event
+order (snapshot version4, independent policy fingerprint). A close observed before the next decision counts;
+future/current-entry outcomes do not. Ambiguous equal-clock evidence stays unknown. Restart rejects conflicting
+events or altered frozen proofs. Standalone historical helpers retain an explicit strict-clock mode for archived
+studies; new research must record closed-bar phase0 before next-open decision phase1, without shifting prices.
+This is a proven draft-ledger defect, not yet a demonstrated deployed-runtime PF root cause.
+
+All48 targeted stage/source/index/lifecycle checks pass, including scalar/index parity across changing sequences,
+late/unknown results, restart and held-order protection. Typecheck passes. Full CI on prior foundation73b3 failed
+because old fixtures inherited the requested PF default changes; separate default release#232 now has29 passing
+default/range/migration/lifecycle checks,2 actual-runtime checks and3 comparison checks. Its archived candidate
+lifecycle hash is unchanged after explicitly pinning former economic inputs. Runtime tests now compare actual
+Base-qualified ranges/windows and count only the economically matching published replacement, not an abandoned
+compute. The construction prefilter warning remains visible. Remote release sourcea12b0de6c4997852e0230add0537bd15627bb85d
+is awaiting complete CI; do not merge before green. New financial matrix still pending; old measured PF is unchanged.
+
+## 2026-10-29 — Extended window policy work in progress
+
+The operator now requests factory Base PF1.1; Base long20/30/40/50 × short5/10/15/20/25 with a hard short/long
+ceiling0.5 at both Base and Main; ongoing1/5/15/25; Base minimal1/2/3 with independent positive/negative recent-net
+conditions; negative Main1/2/5/10 and their independent combinations; full20-symbol24h/24h-prior repeats.
+Current local branch is feat/stage-window-policy-20261029, based on local6395386 / remote cb731a3374cb6575190991f4b849cf35daffd119.
+This is unfinished work, not a completed production stage adapter or measured high-PF release.
+
+Implemented locally: ordinary factory range floors and Wide/Base construction floor1.1; transactional once-only
+basePf11 migration backs up prior settings/preset caches and preserves custom policies; stages settings shared by
+Settings/API/preset editor/runtime WF; strict50% dependency checks after merging; Base signed minimal condition;
+Real Last-N1/5 permitted; negative Main all/mean combination with1/2/5/10. Base minimal negativity is a signed
+extra condition alongside positive long/short PF. Negative Main remains a separately priced inverse simulation.
+The disabled ledger snapshot is now version3 and policy identities include ratio/minimal/negative combination.
+Preset edits merge stage leaves, preserve the other stage, invalidate changed-policy PF and validate before write.
+Applying a preset resets omitted stage policy to factory defaults, preventing the prior preset's negative gate
+from leaking into a different preset. The dialog previews the same default-plus-own policy used by apply.
+
+A third draft-source defect is reproducible: simulateStageSource's last-bar pending flag bypassed the actual
+admission callback. Old source6395386 fails the new pending regression (expected0, got1). The wrapper now keeps
+unqualified pending signals in an explicit pendingIntent diagnostic, with no invented next-open price, no held
+order and no Last-N return. A separate pending-intent predicate can qualify an intent; actual entry admission
+still runs again when the next open exists. These are prototype fixes, not a proven deployed PF root cause.
+
+Current focused foundation checks pass399 tests,0 fail/skip, including Settings completeness, real Settings and
+preset APIs, atomic ratio rejection, ledger restart/held/partial proofs, all84 eligible Base long/short/minimal
+identities, signed conditions, negative tails and indexed-window scalar parity. Typecheck passes. The new
+StageWindowIndex preserves late-known/unknown chronology and falls back to scalar summation near numeric
+boundaries. A synthetic20,000-decision cached-window benchmark measured1422.74ms reference versus1.23ms index
+build +4.46ms indexed checks (250.1×); same decisions, combined process peakRSS88.3MB. This is NOT an end-to-end
+cycle-latency, lower-memory comparison or profitability measurement. Logs/results are in the scratch task root.
+
+Next actions: extract and release only the safe PF1.1 factory/migration change against current main with backup
+and full CI; freeze a separate study checkout before running the expanded matrix; complete actual persistent
+Main/Real source, pending/fill, additional/Overall, Settings activation and Active mirror adapters before enabling
+or merging #219. Current stages.enabled remains false. Never present a settings control/primitive as connected
+execution. Production cold-grid OOM/performance and full native adapter correctness are still unresolved.
+
+Planned exhaustive matrix:14 valid Base long/short pairs (six rejected by ratio) ×7 minimal modes (off +1/2/3
+positive/negative)=98 Base policies. Main long50, short1/5/15/25; Real1/5/15/25. Direct cases98×16=1568/range.
+Inverse Main tests all15 nonempty subsets of1/2/5/10 with all/mean criteria, separately simulated:47040/range.
+Total48608 cases/range before any optional follow-up. Use exact immutable source/price/admission-mask equivalence
+to share economic streams, while retaining independent policy/set IDs, counters and each gate's own predecessor.
+Normalize raw order dictionaries and policy edges rather than duplicating millions of identical order objects.
+Empty branches may be pruned only with explicit computed-coverage and scalar impossibility proof; missing work
+is unknown, never0% or a passing PF. Do not call this expanded experiment complete until executed and audited.
+
+Latest measured reference remains the old20-symbol8–9 October12:00UTC24h/24h-prior Micro15m
+Base20+15/Main15+15/Real15 cohort: Base57/4800(1.1875%), historical PF1.4124757452; Main PF0.5702814980,
+positions669/666/3 and orders5417/5412/5 O/C/H. Real438/5417(8.08566%); Active positions28/28/0,
+orders31/31/0, modeled PF0.4045290210; venue PF unavailable. The old20+15 and15+15 combinations violate the NEW
+50% short/long rule, so retain them as explicitly old-policy comparisons, not current eligible defaults.
+
+## 2026-10-29 — Saved final report and tested ledger checkpoint
+
+The ledger regression fix is pushed at aacb8f87dd584fa2d0066502b8613ab578fe2c69 (local equivalent
+bc32939511498979e38303ce059de490a5bfecf2, exact tree8b99dab96d803048156ee52d58c69a58fd5f8e44).
+All48 focused tests, local production build, typecheck and scoped lint pass. Both complete workflows pass
+exact sourceaacb8f87dd584fa2d0066502b8613ab578fe2c69: Exact Signal40818563184 and Exit verification40818563179,
+including quality/browser, all four core partitions, slow-runtime and the final verify job. The core inventory
+has4760 tests:4758 pass,0 fail,2 skipped; both separately scheduled long runtime tests pass. The two core skips
+are the pre-existing mixed-operation storm and background prior-days preset backtest tests; they are not claimed
+as covered. Quality's eight skips concern absent template app-env/brand-skill fixtures. Quality reports
+777 passes/8 skips among785 script/browser checks and87 app/component passes; repository lint retains47 warnings
+and0 errors, while the scoped ledger/report lint has no warnings/errors. These CI checks are functional evidence,
+not venue fills or profitable trading proof. Draft #219 stays disabled and unmerged as a full-system fix.
+Main was rechecked against2cdae8fd747fb4a817bfdc01a773a029652b09fc and is unchanged after merged #230/#231.
+
+The HTML report replacement succeeded as version1 with the same stable file identity:
+https://chatgpt.com/library?file_id=libfile_594f2a56ae788191b7d24e6f1a4a958d&account_id=personal
+Its9736671 bytes have SHA256 ad7fe60871749d11d227de0b66826cf0c2136794ec356f3355d00ba0f7df0a14.
+The new complete Main15/25 sensitivity archive also saved successfully:
+https://chatgpt.com/library?file_id=libfile_f971b0bbcfd881919d17fc8ec8606de4&account_id=personal
+Its339858110 bytes have SHA256 ee11f88b92842d4a28af3638ba08324aeb086b005f51ba4d098742e1e5eec5a0.
+It retains all six accepted study directories, full raw decisions, protocols, independent audits/traces,
+report QA/manifest and the before/after regression logs. Financial study source remains4cbee1a4ea11a0d800c593f53aacd11f472006a1;
+the later ledger fix is identified separately. Rejected first-attempt Micro metadata is not included among
+the accepted six studies. Original grid and paired-hold archives remain unchanged and linked below.
+
+The final report was visually inspected on desktop/mobile and passes240 original selections/1440 listings
+and48 sensitivity selections/288 listings with no console errors or page overflow. The reference20-symbol
+8–9 October12:00UTC24h/24h-prior Micro15m Base20+15/Main15+15/Real15 cohort is unchanged: Base57/4800
+(1.1875%), historical PF1.4124757452; Main PF0.5702814980, positions669/666/3 and orders5417/5412/5
+opened/closed/held. Real438/5417(8.08566%); Active positions28/28/0, orders31/31/0 and modeled PF0.4045290210.
+Venue PF is unavailable. The final pipeline is not established profitable; missing production adapters and
+the actual deployed CTS-A-O target/selected connection remain blockers. No production instance or venue order
+was manually changed. Do not mistake these isolated research results for all strategy families or funded fills.
+
+## 2026-10-29 — Processed-parent denominator and retry identity regressions
+
+The disabled draft StageChainBook had two reproducible ledger defects. An intent without its exact accepted
+Main/Real parent was counted as a failed validation, diluting the processed-parent percentage with raw intents.
+It also consumed the entry identity before the parent check, so an early child attempt could block the actual
+processed child when its parent arrived later at the same clock. These are prototype defects, not a demonstrated
+root cause in the deployed CTS-A-O runtime. Both new regressions fail on local parent6d92e9a77bf93086c170e5c440646e3323f40ffe
+(remote4cbee1a4ea11a0d800c593f53aacd11f472006a1): evaluated10 rather than0, and duplicate-stage-entry.
+
+The fix keeps outside-parent intents in a separate, deduplicated parentMissing diagnostic. Only an actual
+parent-eligible gate decision consumes its identity or validation denominator; a genuinely failed gate still
+deduplicates. Snapshot version2 persists and checks both identities and counters; this unreleased prototype
+rejects version1 rather than reinterpreting its mixed counters. Execution summaries now expose a positive
+no-loss flag and unavailable finite PF instead of reporting the gate sentinel4 as measured execution PF.
+Flat and unknown results remain distinct. The report labels passed/parent-eligible entries and keeps missing
+parent attempts separate. Its archived older experiment evaluated/percent fields include all source attempts;
+the displayed eligible denominator is evaluated minus parentMissing. Financial returns and archived evidence
+are unchanged. New source studies must retain that field distinction.
+
+All48 stage/source/ladder tests pass after the fix, including partial closes, restart proof, held identity,
+separate inverse simulation, raw-parent retries and flat/no-loss/unknown PF. Typecheck and scoped lint pass.
+Browser checks pass240 original selections/1440 listings and48 sensitivity selections/288 listings, including
+the corrected Real denominator, desktop/mobile layout, search, pagination, six heatmap modes and six hold rows.
+Both complete workflows also passed the previous remote4cbee1a4ea11a0d800c593f53aacd11f472006a1 checkpoint
+(Exact Signal40816779797 and Exit verification40816779805); final ledger-source CI is a separate later check.
+
+The measured20-symbol8–9 October12:00UTC24h/24h-prior Micro15m Base20+15/Main15+15/Real15 cohort is unchanged:
+Base57/4800(1.1875%), historical PF1.4124757452; later Main PF0.5702814980, positions669/666/3 and
+orders5417/5412/5 opened/closed/held. Real438/5417(8.08566%). Active positions28/28/0 and orders31/31/0
+have modeled PF0.4045290210. These unallocated model orders are not funded paper or venue fills; venue PF
+is unavailable. Production adapters, actual runtime discovery and the high-forward-PF requirement remain
+unresolved. Reporting or ledger repairs do not make a losing subsequent sample profitable.
+
+## 2026-10-29 — Main primary15/25 sensitivity reaches Active but still loses
+
+The follow-up independently tests Main primary15/25 with secondary15/25, Base20+15 or50+15 and Real15/25,
+on the same20 symbols and8 October12:00 to9 October12:00 UTC trading period with24h prior candles. Micro15m,
+Minimal30m andShort60m each run both primary values: six studies,28,800 context checks and48 cases. These
+are separate sensitivity policies, not a default migration. All six own-predecessor scalar/price/identity audits
+and Base/Main entry-parity traces pass:7,198,582 windows and1,253,037 price returns,46,748 matched-entry checks
+with identical economics and no silently lost qualified Main entries. Source strategy behavior is unchanged.
+The first Micro attempts retained an incorrect descriptive primary50 phrase in inverseRule while the declared
+numerical policy was15/25; they are preserved as rejected metadata attempts. Corrected v2 studies were fully
+rerun and independently audited; only those v2 Micro records are used in the report and accepted evidence.
+
+For Base20+15 / Main15+15 / Real15:
+
+| Range / hold | Initial Base pass / historical PF | Later Main PF | Real passed / matched Main entries | Real positions O/C/H | Real orders O/C/H | Active positions O/C/H | Active orders O/C/H | Active model PF |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Micro15m | 57/4800 (1.1875%) /1.412476 |0.570281 |438/5417 (8.0857%) |146/146/0 |438/438/0 |28/28/0 |31/31/0 |0.404529 |
+| Minimal30m |78/4800 (1.625%) /1.439734 |0.655576 |641/7651 (8.37799%) |146/146/0 |641/641/0 |14/14/0 |25/25/0 |0.433250 |
+| Short60m |94/4800 (1.958333%) /1.435241 |0.681702 |741/8473 (8.7454%) |164/161/3 |741/735/6 |15/15/0 |31/31/0 |0.317460 |
+
+These Active orders are unallocated model mirrors, not actual funded ownership or exchange fills. Venue PF is
+unavailable. With Main25+15 / Real15 the corresponding Active counts/PFs are Micro13/13/0 at0.742965,
+Minimal0/0/0 unavailable, andShort5/5/0 at0. No finite Active PF across all48 sensitivity cases exceeds1.
+Thus the primary50 count requirement explains much of the empty original grid, but lowering N does not fix
+profitability. Correct own-stage histories and high entry-time historical PF do not make later price returns
+identical to the validation window. Do not hide these losses, choose a profitable-looking empty default or claim
+a completed high-PF fix. Additional hold/trailing/native-lane checks pass175 tests, extending the earlier60.
+
+The saved HTML report is updated with all48 sensitivity cases, every processed order and its own prior gate,
+phase/group statistics and separate positions/orders. Browser verification covers240 original grid selections,
+1440 original stage listings plus48 sensitivity selections and288 sensitivity listings, with no console errors.
+The original grid/hold evidence remains valid and unchanged; sensitivity evidence is a separate archive.
+Both full workflows passed combined source664f3afad40a93b415df31d1901028bd9f113acf before this research-only
+follow-up. Merged reporting release #231 remains at2cdae8fd747fb4a817bfdc01a773a029652b09fc.
+
+Deployment discovery remains blocked: current connected Vercel personal and team projects filtered by the exact
+mxssnx-creator/CTS-A-O repository return no project, and prior project context supplies no exact CTS-A-O runtime
+URL/address. Do not substitute the separate CTS-K-N deployment. No actual CTS-A-O production order/exit log or
+venue-filled PF has been inspected. The actual deployed CTS-A-O URL and selected connection are needed to trace
+that runtime's Main/exit behavior. The separate production adapter blockers below remain open; #219 is draft.
+
+Current report: https://chatgpt.com/library?file_id=libfile_594f2a56ae788191b7d24e6f1a4a958d&account_id=personal
+Original full Micro evidence: https://chatgpt.com/library?file_id=libfile_322e10627a748191ae3e47a624bdf612&account_id=personal
+Original full Minimal evidence: https://chatgpt.com/library?file_id=libfile_236cc319843c8191867151719e63248b&account_id=personal
+Original full Short evidence: https://chatgpt.com/library?file_id=libfile_329f117f3e1481919edbe4d302aaf139&account_id=personal
+Paired Micro hold evidence: https://chatgpt.com/library?file_id=libfile_a6dfd5c3c9b481918717e2e5b5a019d6&account_id=personal
+
+## 2026-10-29 — 24h window grid, hold attribution and validated statistics release
+
+The requested 20-symbol 24h trading / 24h prehistory test is complete on the cached minute feed. Trading is
+8 October 2026 12:00 to 9 October 12:00 UTC (14:00 to 14:00 Vienna). Three independently reported Low-Range
+Normal/Trailing studies use Micro15m, Minimal30m and Short60m holds, 1/5/15m source lanes, step3 protection,
+0.15% modeled round-trip cost and min PF1.1. Base primary20/30/40/50 × secondary5/10/15/20/25 is crossed with
+Main primary50 + secondary15/25 and Real15/25: 80 cases/range, 14,400 contexts, 240 cases. These are isolated
+source/stage models without additional/Overall volume adjustments, funded allocation, production paper or venue
+fills. Base/Main/Real source reconstruction and gate checks do not establish a production adapter.
+
+Independent scalar audits pass 35,247,459 windows and 798,197 price-return checks across the three ranges,
+including exact parent/policy identities, chronology, costs once, sides, kinds, held counts and all 24 hourly bins.
+The exact baseline source/verifier is GitHub commit 34b25cb4b3d9a9299a3fdd6ec47176ef68e36477. A later generalized
+verifier supports the fixed hold follow-ups without changing the scalar calculations; each audit retains its
+own verifier SHA256. Full JSONL decisions, protocols, summaries, independent audits and traces are preserved.
+
+Base50+15 / Main50+15 / Real15 (initial historical checkpoint versus later new-entry results):
+
+| Range / hold | Base passed / evaluated | Historical primary PF | Later Main PF | Main positions O/C/H | Main orders O/C/H | Real passed / matched |
+| --- | --- | --- | --- | --- | --- | --- |
+| Micro15m | 2/4800 (0.041667%) | 1.146332 | 0.546209 | 191/190/1 | 697/696/1 | 0/697 |
+| Minimal30m | 2/4800 (0.041667%) | 1.353634 | 0.637442 | 197/194/3 | 802/798/4 | 0/802 |
+| Short60m | 0/4800 (0%) | unavailable | 0.679603 | 168/165/3 | 735/730/5 | 0/735 |
+
+New Base contexts can qualify later, so zero initial Short acceptance does not imply zero all-day Main orders.
+Real source orders occur in other tested cells (maximum aggregated opened orders30 Micro,7 Minimal,11 Short),
+but no case reaches an Active order. Every Active position/order count is0/0/0; Active and venue PF unavailable.
+There is no measured best Active default. The highest observed Main-only PF in each range is still below1:
+Micro0.677697 at Base40+10 (1386 closes); Minimal0.701427 at20+5 (6128); Short0.758647 at20+5 (5951).
+Do not present those exploratory Main rankings as profitable settings or relax the required histories.
+
+Across the three grids, 181,874 matched-entry checks find identical Base/Main entry/exit prices, close clocks,
+reasons, durations, directions and net returns. No qualified Main entry is silently lost. Another3306 accepted
+entries use an independently freed Main slot after an earlier raw intent was rejected. Counts across window
+policies overlap and are not unique venue fills. This isolated model has no cross-strategy Exit controller;
+its measured PF drop therefore occurs without such a collision. The runtime Exit-isolation and own-exit suites
+also pass. Production additional/Overall/venue paths still require their separate complete integration audit.
+
+Paired Micro hold follow-ups use the same period/source with Base20+15 and50+15, Main50+15 and Real15. Both
+30m and60m studies pass independent scalar and entry-parity audits (4800 contexts and2 cases each). For Base20+15:
+
+| Hold | Initial Base pass | Historical PF | Later Main PF | Main positions O/C/H | Main orders O/C/H | Timed closes |
+| --- | --- | --- | --- | --- | --- | --- |
+| 15m | 57/4800 (1.1875%) | 1.412476 | 0.570281 | 669/666/3 | 5417/5412/5 | 2515 |
+| 30m | 78/4800 (1.625%) | 1.439734 | 0.655576 | 541/533/8 | 7651/7619/32 | 2186 |
+| 60m | 94/4800 (1.958333%) | 1.435241 | 0.681702 | 423/409/14 | 8473/8397/76 | 1117 |
+
+The15m timed-close subset has net PF0.218788; its277 trailing closes PF0.061530. Gross price PF1.044708 for all
+Base20+15 Main closes becomes net PF0.570281 after one legitimate0.15% cost deduction. TP closes are recorded;
+1426 TP closes are positive after cost. Longer holds improve this Main diagnostic but remain below neutral;
+all follow-up Active positions/orders are0/0/0. No hold or Last-N default is promoted from these empty Active cohorts.
+
+The self-contained HTML report lists every grid cell, all14,400 contexts, all processed order cohorts, six
+heatmap metrics, hourly curves, Long/Short and kind/timeframe groups, close reasons, hold distributions, source
+parity and paired holds. Browser checks pass240 selections and1440 stage listings, search, pagination, all
+heatmap modes and the six hold comparison rows. A mobile select overflow was found and fixed. Desktop/mobile
+screenshots were inspected. The report separates passing historical PF from subsequent processed execution.
+
+Reporting fix #231 is merged at2cdae8fd747fb4a817bfdc01a773a029652b09fc after both full workflows pass exact
+head b3bc36674f7aac98e23d0faeea10bad48b5857c7; remote main backups exist before and after. Overview leads with
+passing historical validation PF plus percentage. Statistics shows that same timestamped snapshot separately,
+even without an execution report. Actual model/owned/venue results keep all admitted losses. Fifty focused
+reporting/admission checks,60 protection/Exit/source/stage checks,39 promotion checks, typecheck/lint/build pass.
+The deep dev/built app check passes both viewports with real local APIs, synthetic market and live/autostart off;
+external fonts/platform chrome were network fixtures. The earlier fixed-one-second smoke hit restricted external
+requests/loading and is not relabeled a successful clean smoke. No account, native order or deployed instance
+was manually changed or reloaded.
+
+Remaining production blockers in the older stage-architecture section still apply. Draft #219 stays disabled and
+unmerged as an end-to-end fix until genuine persistent Main/Real streams, additional/Overall processing,
+pending/partial fills, held recovery, Settings/UI stage controls and final Active-to-Live ownership are wired.
+The measured future PF is losing/empty; neither the reporting change nor a passing historical gate proves high
+future execution PF. Do not drop losses or replace processed history with a raw Base/sibling pool.
+
 ## 2026-10-29 — Ordinary Base PF1.1 factory release
 
 The requested factory floor is now1.1 for ordinary Micro/Minimal/Short/General/Long and Wide/Base construction.
@@ -151,6 +489,98 @@ improve Active results. A paired hold follow-up and the detailed heatmap are rec
 The isolated release passed 50 reporting/admission checks and typecheck/scoped lint; exact full CI is recorded
 on its PR. No database, deployed instance, selected account or venue order was manually changed.
 
+
+## 2026-10-29 — Promotion fixture chronology regression
+
+Final draft checkpoint 0350b278b28a1ea49164e38b0bdc0e048ffa3e4a passed Exact Signal, quality and slow-runtime,
+but core shard 2 failed one paper-admission fixture. A deterministic 01:55 UTC clock reproduced the failure:
+fixture adoption used module time minus one hour while its custom exit used the hour boundary minus ten
+minutes, placing adoption after exit during the last ten minutes of an hour. Production correctly treated
+that impossible ownership as unknown. Fixtures now declare adoption at their explicit synthetic entry and
+exercise closes ten and seventy minutes before the boundary. A separate database regression retains the
+actual guard: adoption after exit fails the effective Last-N window until the ownership clock is corrected.
+The production gate and its unknown-evidence behavior are unchanged. Both promotion files pass all 39 checks,
+including the deterministic late-hour reproduction. Market results and production integration blockers in
+the following section remain unchanged. This fixture repair is not an explanation for the measured PF drop.
+
+## 2026-10-29 — Separate inverse Main and dual-window processed sets (draft)
+
+The operator explicitly selected a separate inverse set. The new draft StageChainBook creates distinct Base,
+Main, inverse Main, Real and Active identities and order histories. Main's negative Last-5/10 trigger requires
+its positive primary window first, then creates the opposite direction with its own simulated prices, stops,
+TP/trailing/hold handling and cost. It never negates a parent's return or admits the original losing direction.
+Every later gate reads its immediate predecessor's own complete processed orders. Derived identities capture
+upstream admission policy; changing a gate cannot silently inherit that derived set's older policy history.
+Base/Main default to primary 50 plus secondary 15; secondary static, multiple-all and causal auto support 5/10/15/20/25.
+Auto trains only on earlier completed candidate-gate outcomes and falls back to the explicit static setting while
+insufficient. Real uses one Last-15. Each Base's PF floor is inherited throughout its chain. Partial contributions
+form one complete Last-N order only on final closure; unknowns, late availability, equal-time boundaries,
+duplicate events and frozen restart proofs fail closed. Held Active ownership survives later gate failure and
+has no further mirror Last-N gate in this primitive.
+
+This is not connected to production. DEFAULT_STAGE_CHAIN.enabled remains false until proper ownership,
+pending-fill recovery and the production adapter exist. It is not a new Settings control or a settings migration.
+Source simulation supports Normal, Trailing, trailing-only, Historic Exit, DCA, DCA Active and both Axis modes;
+45 focused tests pass, including the independent inverse sources and stage sequence. Typecheck/scoped lint pass.
+Both full GitHub workflows passed the draft source checkpoint 75952718d92520e1603d75e5b61a25c5f87b9c66
+(tree 0307d81191e21f471eca15408d35f384984d0d45); the additional trailing-only/Exit fixtures are in the following
+checkpoint. The 131 source/cursor/cost/trailing/identity/cohort checks and production build passed for merged
+PR #230. Main is 23de9129179713eb2973f2673279e23c209f7f97; remote backups exist immediately before and after it.
+No deployed instance, selected account, database, held position or native order was changed.
+
+Three offline studies each use 20 symbols, 1/5/15m, Low-Range step 3 Normal/Trailing, modeled 0.15% round-trip
+cost, 84h prior candles and 10 October 2026 00:00–12:00 UTC (02:00–14:00 Vienna). Micro has a 15m hold,
+Minimal 30m and Short 60m. Base/Main primary N is 50, secondary N is swept independently over 5/10/15/20/25
+(25 combinations per range); Real N is 15. These exclude funding, additional/Overall adjustments, production
+paper and venue fills. Each source/stage is independently simulated and only preceding own completed orders
+are evaluated; source-slot rejection happens before holding. Full source and admission-policy identities are
+independently checked in the final run. Results exactly match the earlier numerical experiments after adding
+those identities. An initial Short summary omitted held orders from group counts; it was rejected and rerun.
+
+Default secondary 15/15 results (counts are opened / closed / held):
+
+| Range / hold | Base at start | Historical primary PF | Later Main PF | Main positions | Main orders | Real qualified / matched Main entries |
+| --- | --- | --- | --- | --- | --- | --- |
+| Micro / 15m | 7/4800 (0.145833%) | 1.238320 | 0.602622 | 77/76/1 | 351/345/6 | 0/351 |
+| Minimal / 30m | 31/4800 (0.645833%) | 1.280751 | 0.566864 | 96/93/3 | 554/542/12 | 0/554 |
+| Short / 60m | 37/4800 (0.770833%) | 1.283424 | 0.698001 | 107/99/8 | 840/816/24 | 0/840 |
+
+At the historical checkpoint Main qualified 0/7, 0/31 and 0/37 Base-qualified contexts; historical Main PF is
+unavailable. Later Real and inverse Main are empty across all 75 combinations. Active positions/orders are
+0/0/0 in every case; their PF and venue-fill PF are unavailable. At default secondary 15, the largest own Main
+samples before matched entries are respectively 19/50, 23/50 and 30/50. Across the Short sweep the maximum is
+35/50. This explains why Main secondary N does not change Real execution here: the primary window is not ready.
+More own processed history is necessary; do not substitute a raw Base pool, shrink N, call empty PF positive,
+or select a supposedly best default from these empty Active cohorts. The older Last-40/12/12 study used a
+different cohort and cannot be used as a same-sample improvement comparison.
+
+The independent scalar audit checked 14,400 contexts, 75 combinations, 5,548,127 windows and 1,191,143 price
+returns, including costs once, chronology, parent sets, both directions, independent kind/timeframe groups and
+held counts. Report controls were checked in a Node VM/DOM harness across 75 selections and 450 stage cohorts,
+with 14,400 context rows and 8,293 order listing rows; this is not a browser rendering test. The report includes
+all combinations, independent Long/Short and type/timeframe views, full config IDs, exact entry/exit listings,
+returns, reasons, durations and promotion counts. The evidence archive contains all JSONL decisions, hashes and
+an immutable GitHub source reference; repository code is retained in GitHub rather than duplicated in the archive.
+
+Detailed report: https://chatgpt.com/library?file_id=libfile_bac60a1ae4208191bd757d34835ae4d4&account_id=personal
+Complete experiment evidence (333 MiB compressed): https://chatgpt.com/library?file_id=libfile_5065aad8c0948191a64fb7c28945f7da&account_id=personal
+
+Production integration still required before draft #219 can be enabled or merged as the requested fix:
+1. Construct and persist genuine Main/Real processed streams from exact published Base provenance, all strategy
+   families and own admission/close events, rather than the current initial raw-tape Validation path.
+2. Apply additional processing at Main and Overall processing at Real exactly once, including cost/volume/stack
+   accounting and independent accepted-order feedback.
+3. Reconcile pending/resting/partial fills, late fees, protected legacy holds, restart identities and actual owned
+   quantities across all source types. An optional source hook alone does not establish funded execution.
+4. Admit paper/system Active ownership only from final Real proof, then mirror it without livePromotionGate's
+   extra Last-N qualification; retain static venue/account risk controls and held protection.
+5. Wire Settings/UI and backed-up migrations, count-driven older-history requests for insufficient processed
+   samples, complete stage/position/order statistics and a full system simulation. The cached 20-symbol feed
+   covers only the studied 96h; longer 20-symbol evidence is not present here.
+6. Resolve the earlier full-grid memory abort and finish the complete additional/Overall-strategy and funded
+   venue checks. Positive or stable end-execution PF remains unproved; these isolated losing/empty results do not
+   establish profitability, a best hold setting or a best secondary-N default.
+
 ## 2026-10-29 — Ladder source admission and Axis cost guards
 
 DCA, DCA Active, Axis revert and Axis desk now accept the same optional causal entry-admission callback as
@@ -172,14 +602,68 @@ finished systemwide update. Latest measured reference remains the isolated 20-sy
 later Validation PF 0.470553; positions 85/82/3 and orders 257/250/7 opened/closed/held. Active positions/orders
 3/3/0 at modeled PF 0. Venue-fill PF is unavailable. The new dual-window study is reported separately after audit.
 
-## 2026-10-28 — Processed-set restart evidence hardening
+## 2026-10-28 — Exploratory hold-time comparison
 
-The stage-book prototype previously restored an Active order even when a saved Validation or Real PF or sample
-count was malformed. Its saved open entries now include their entry-time Last-N policy and floor, and restore
-checks both verdicts and the resulting stage. Version 2 snapshots reject version 1 because those old snapshots
-lack the policy needed to prove admission. This code is not yet wired to production; any future integration must
-provide protected recovery of actual legacy held positions and pending orders without manufacturing Active proof.
-No forward profitability or venue execution claim follows from these tests.
+For 10 October 00:00–12:00 UTC and 84h prior market data, nine isolated Low-Range Normal/Trailing cases compare
+Micro, Minimal and Short at max holds 15/30/60 minutes. Each uses 20 symbols, 1/5/15m, step 3 and 0.15% modeled
+round-trip cost; Micro/Minimal Base Last-30 and Short Last-40; Validation/Real Last-12. Micro and Minimal use the
+same protection distances and Base N in this narrow study, producing identical numeric results on separate IDs.
+This is a previously examined period, not a fresh holdout, funded paper or exchange execution.
+
+Micro and Minimal, respectively for 15/30/60 minutes: initial Validation passed 8/62 (12.90%, historical PF
+1.679245), 15/106 (14.15%, PF 1.470579), 18/162 (11.11%, PF 1.569612). Later Validation settled 313/365/455
+orders at PF 0.663583/0.547707/0.609401. Active orders were 26/26/0, 19/19/0, 23/23/0 opened/closed/held at PF
+0.371178/0.087017/0.235294; Active positions 17/17/0, 15/15/0, 18/18/0. The 15-minute case has eight time exits,
+twelve stops and six TP closes. Short 15 produced no Active closes, Short 30 one stop loss (PF 0), and Short 60
+the three stop losses below (PF 0). No Last-12/Last-12 hold case with settled Active orders achieved PF 1. Across
+all 225 gate combinations, eight cases were above PF 1 or had no losses, with only one to six closes each;
+Micro/Minimal results duplicate the same economics. Do not promote a hold default from these exploratory results;
+per-step automatic optimization and production integration remain unfinished.
+
+Independent accounting checked all 43,200 contexts, 17,836 Post-Base entries, 225 Validation/Real combinations
+and 146,845 individual decision windows. Repeated cases match the first run; Short 60 matches the earlier study.
+An additional independent audit checked all 17,370 settled Post-Base orders: modeled return matches entry/exit
+price less cost once, TP and SL fills match their own configured distances, no duration exceeds its cap and all
+time exits occur at the cap. This is not a native trailing, paper allocation or venue-fill verification; the audit
+is on research-only branch commit a4d1f3f349ec1c10cdf7b54aca3dab7f90d87605.
+Another 56 focused offline tests passed for independent Exit, paper exit ownership, Signal trailing-only,
+trail floors, modeled costs and tick/bar trailing ratchets; these fixtures are not live exchange evidence.
+The research-only source is f1bfcbc1e9caa3bd5c01661ade0457a24c6163b3, which lowers Last-8 only for comparison
+and must not be merged. Per-case context and order listings, group outcomes and hashes:
+https://chatgpt.com/library?file_id=libfile_58912b63d1ac8191b4166dd8dd5d7bd7&account_id=personal .
+Complete per-case JSONL and all 225 gate cases, including individual decision-window evidence:
+https://chatgpt.com/library?file_id=libfile_ff701491a514819189e45a1c58050581&account_id=personal .
+
+## 2026-10-28 — Draft processed-set restore evidence hardening
+
+The stage-book prototype's old restore accepted an Active open entry with missing, zero or malformed PF/sample
+evidence. Four independent regressions reproduced that defect. Draft snapshots now freeze each entry's actual
+Validation N, Real N and PF floor, check those against both saved verdicts and their resulting stage on restore,
+and reject inconsistent evidence. Snapshots are version 2; version 1 lacks frozen admission policy and is rejected
+instead of silently certifying legacy opens. This primitive is not connected to the production position book;
+before any real integration, design an explicit protected recovery/migration path that retains actual held
+positions and pending orders without treating unknown legacy admission as a new Active proof.
+
+## 2026-10-28 — Offline Validation/Real Last-N comparison including experimental 8
+
+The isolated 20-symbol Short Low-Range Normal/Trailing model for 10 October 00:00–12:00 UTC used 84h of prior
+market data, 1/5/15m, protection step 3, 60m hold and modeled 0.15% round-trip cost. Its 97/4800 exact Base
+contexts passed Last-40. At the window start, Validation Last-8/12/15/20/25 passed respectively 23/97 (23.71%),
+15/97 (15.46%), 11/97 (11.34%), 2/97 (2.06%) and 1/97 (1.03%), historical PF 1.953401/1.649925/1.394317/
+1.254707/1.132080. The Last-8 policy is research-only; the released minimum remains nine.
+
+With Real Last-12 in that same study, Validation Last-8 produced 407/390/17 opened/closed/held orders at later
+modeled PF 0.653364 and 94/89/5 positions; 21/407 passed Real, producing 21/21/0 Active orders and 19/19/0
+positions, PF 0.284285. Last-12 produced 257/250/7 Validation orders at PF 0.470553, positions 85/82/3; Real
+passed 3/257, and Active orders and positions were each 3/3/0 at PF 0. Last-15/20/25 produced no Active closes,
+so their Active PF is unavailable. Across all 25 tested Validation/Real combinations, eight had Active closes
+and none reached PF 1. These are isolated model results, not funded paper or exchange fills. The test does not
+include other ranges, types, portfolio allocation or Block/Relate. A separate scalar/accounting verifier checked
+all 4800 contexts, 1808 entries, 25 cases and 13,945 individual prior-decision windows; all 25 cases match the
+first comparison, and the 16 cases shared with the earlier study match exactly. The evidence-rich source is
+research-only commit 707602bd8d2f969d1eab03600790d91323d1767a. Its deliberately lowered research minimum must not
+be merged into production. Full listings, per-decision source windows and protocol hashes:
+https://chatgpt.com/library?file_id=libfile_214219a88e008191a2895242d617a542&account_id=personal .
 
 ## 2026-10-28 — Processed-set same-time boundary correction
 
@@ -191,38 +675,171 @@ tests also cover both gates, batches larger than Last-N and restore. This primit
 it does not establish production stage parity, live fills or a profitable forward PF. CI and release status are
 recorded on the exact GitHub PR head; no deployment or account settings changed.
 
-## 2026-10-28 — Causal processed-set primitives (not wired to production)
+## 2026-10-28 — Equal-time paper admission boundary (draft)
 
-Added a tested stage-book primitive for independent Base-linked post-Base, Validation and Active histories, and an
-optional causal simulator admission hook that keeps a rejected hypothetical entry from occupying its position
-slot. Neither primitive changes production selection or Live mirroring by itself. Their caller must preserve the
-Base admission, causal event order, economic revision and actual return provenance. Systemwide integration,
-durable paper positions, exchange reconciliation and multi-leg owned returns remain unfinished in draft PR #219.
+The draft Last-N-only paper gate previously included a held close at the very same timestamp as a new entry.
+Actual `stepPaper` regressions independently reproduced both a losing close wrongly rejecting an otherwise
+qualified entry and a winning close wrongly qualifying an otherwise losing entry. The draft now reads strictly
+earlier owned closes at entry; pending, persisted and ambiguous rows follow the same boundary, and cached windows
+advance correctly at the next timestamp. Inclusive post-close reporting remains separate. This corrects an
+ordering defect in the incomplete draft, not the still-unwired Base-linked stage chain or Active-to-Live mirror.
 
-In the 20-symbol isolated Short Normal/Trailing model for 2026-10-10 00:00–12:00 UTC, with 84h of preceding market
-data and 4800 exact contexts, 97 passed Base and 15/97 (15.46%) passed Validation Last-12 at historical return PF
-1.649925. Subsequent Validation had 250 modeled closes at PF 0.470553 (positions 85/82/3, orders 257/250/7 opened /
-closed / held). Real Last-12 admitted three Active modeled orders, all stop losses; Active PF was 0 (positions and
-orders each 3/3/0). No venue-fill PF was measured. The study excludes portfolio allocation, Block/Relate, actual
-paper funding and other strategy ranges/types. Details and individual rows: https://chatgpt.com/library?file_id=libfile_b83f3dcf3b688191830596a6dbedf2aa&account_id=personal
+## 2026-10-28 — Causal staged-set prototype and source-slot investigation
 
-The older-source full-grid 20-symbol job exited 134 at the JavaScript heap limit before producing results. The
-focused primitive, simulator and resume tests, typecheck, lint and independent study-accounting checks passed.
-No live orders, settings or deployment were changed; a high forward PF is not established.
+PR #227 merged the separately tested causal stage-book and optional source-admission primitives into main at
+`78ac0c2dbd0f1abf7f9787f4718cda3585852aa3`. Both complete GitHub verification workflows passed. They are still not
+wired into the production paper/Live flow; this draft merges the main-branch work without asserting completion.
 
-## 2026-10-28 — Validation defaults and preserved prior evidence
+The Last-N-only paper draft now incorporates a held position's exact known close into a later same-step entry's
+own window before the close is flushed to SQLite. It retains original adoption price/allocation and cost, excludes
+future and sibling closes, deduplicates an already persisted identical row, and treats conflicting duplicates as
+unknown. An actual paper-step regression reproduces both outcomes: an earlier same-step loss vetoes the new entry
+and an earlier same-step win can qualify it; the original source failed the loss case. This fixes one ordering
+defect in the draft, not the pending three-stage paper/Active or Live mirror integration.
 
-Fresh Signal and Exit defaults use Last-12, the partial-sample floor is nine and Base defaults to Last-40. A one-time
-transaction backs up saved settings, walk-forward options, presets and cached reports before upgrading undersized
-saved samples. It preserves stricter saved choices, retires affected or unidentifiable preset caches and marks their
-old PF unavailable. Explicit optional entry filters set to zero remain off. Direct later settings and preset changes
-can still select undersized samples; the requested complete Last-N-only policy remains unfinished in draft PR #219.
-Historic Exit candidate fitting and holdout, loaded-history retention, live promotion and per-step hold controls
-still require further work. No sustained funded PF or exchange-fill PF has been demonstrated.
+The current operator requires a separately tracked set of actually processed positions for each exact Base
+configuration, with each later gate reading its immediately preceding stage; final Active positions are mirrored
+without another exchange Last-N validation. The existing draft below does not yet meet that contract: its initial
+Validation still consults the original tape, its warm-up can enter the existing paper book, and native Live applies
+another promotion gate. Do not enable or merge it as a completed fix.
 
-The cached 2026-10-09 12:00 UTC Low-Range Short screen has 25/90 validated historical contexts at unit PF 2.891881.
-Its separate later model has 37 closes at PF 0.963800, with 17/17/0 positions and 37/37/0 orders opened/closed/held.
-Those retrospective results are not live qualification rules or exchange fills.
+`ProcessedSetBook` is a separately tested prototype, not yet wired into the production pipeline. It keys Base config,
+symbol, side, kind, coordination lane and economic revision; it records separate post-Base, Validation and Active
+closes, requires full known Last-N windows, preserves partial slices and held admissions through snapshot/restore,
+and separates return-based statistics from open marks. It needs integration with real paper ownership, all close
+and admission paths, persistent revisions, source construction and the existing live-mode reconciliation. DCA/Axis need
+leg-level owned return evidence. Actual Live mirroring and all-strategy behavior remain unverified.
+
+The unconditional source simulator holds its one position slot even when a downstream gate would reject that
+hypothetical entry, hiding later signals. The new optional `admitEntry` hook rejects before occupying the slot;
+four focused tests cover long/short, explicit invalid decisions and resume. It is used only by the research script
+so far, not the production tape builders. With 84h history in this bounded Short study, the reprocessed sample
+has 43 new exact entry identities and nine absent identities versus the old source-tape sample (1808 vs 1774
+post-Base entries); these are modeled comparisons, not venue orders.
+
+Latest causal, isolated 20-symbol Short Low-Range Normal/Trailing study: 1/5/15m, 0.15% modeled round-trip
+cost, configured hold 60 minutes, 4800 exact contexts, market history from 2026-10-06 12:00 UTC, evaluated at
+2026-10-10 00:00 UTC, later window through 12:00 UTC. Last-40 Base passed 97/4800; Last-12 Validation passed
+15/97 (15.46%) at historical return PF 1.649925. Of 1808 later post-Base modeled orders, Validation passed
+257/1808 (14.21%); the 250 closed Validation orders had return PF 0.470553 (positions 85/82/3 and orders
+257/250/7 opened/closed/held). Real Last-12 passed 3/257 (1.17%); those three Active modeled orders closed at
+PF 0 (positions 3/3/0 and orders 3/3/0). All three were FIL-USDT long Trailing stop losses at 6, 14 and 24
+minutes, each -0.9% after cost. These were not exchange fills or funded paper executions. The Base-processed
+model was 123/112/11 positions and 1808/1748/60 orders, return PF 0.636643. At only 12h prior input,
+0/4800 passed Base at the window start; no Active order was modeled. Percentages have different denominators.
+The study includes standalone/trend source relations only, not portfolio allocation, Block/Relate, every strategy,
+or a production replay. A separate independent verifier checked all 98 Validation/Real combinations, every source
+context and the stored Last-12 evidence. Both history files retain line-by-line entries and gate verdicts in
+`/workspace/scratch/b69c1e5067d8/cts-causal-processed-sets-20261028-final/`. The separately saved detailed report is
+https://chatgpt.com/library?file_id=libfile_b83f3dcf3b688191830596a6dbedf2aa&account_id=personal .
+
+The separate older-source 20-symbol full-grid job did not finish: after 3,969 seconds and 16% of the strategy-tape
+phase, Node reached its approximately 4 GiB heap limit while deserializing a worker message and exited 134. Its
+log is `/workspace/scratch/b69c1e5067d8/cts-12h-20-symbols-20261028/adjust-on.log`; no full-grid PF or adjusted-off
+comparison exists. Investigate bounded worker responses and heap-aware admission before another full-grid attempt.
+The focused simulator/book suite passed 66 tests, the study-accounting verifier passed, typecheck passed and
+scoped lint passed. No running deployment, exchange account or live order was changed.
+
+## 2026-10-28 — Processed-order qualification checkpoint (draft, not deployed)
+
+The latest operator instruction places all Last-N admission checks before a position becomes Active. The exchange
+must mirror that final accepted Active position without applying an additional Last-N gate. The present draft still
+applies the Real window during native promotion and therefore contradicts this instruction; it is not ready to
+merge. Move that check to Active admission, persist exact Base-linked acceptance provenance, and reconcile existing
+pending orders and held positions without treating unknown legacy provenance as a new validated entry.
+
+The operator clarified that after Base, continuous validation must follow each exact configuration's processed
+orders, not rejected or raw candidate results. A controlled simulation reproduced both directions of the bug:
+rejected wins kept a context open after 12 processed losses; rejected losses vetoed a context whose 12 processed
+orders won. The Last-N-only draft now freezes each context's initial Base/validation proof at the simulation
+generation cut and feeds a bounded cfg × symbol × side × kind processed book only as accepted modeled orders close.
+Open marks do not count. A context with fewer than its requested processed closes remains explicitly in warm-up;
+a complete losing or unknown own sample blocks new orders, while held orders continue to their own exits.
+Selection and Real integration, persistent incremental state, every strategy and UI reporting still need a full
+audit. The policy remains OFF in the released runtime and must not be described as a systemwide fix yet.
+The simulator's processed book is currently per-run and bootstraps from the generation's initial Base proof; it
+does not yet restore each actual paper lane's settled validation record across recomputes. The paper gate does
+read its persistent book, and the exact same-step held-close case is fixed above; other close paths and a complete
+paginated processed-set UI need verification. The native Real producer for genuine Bybit fills remains unintegrated.
+
+The draft's paper Last-N path reads its own settled paper-book rows, not simulated orders the paper book never held.
+The exact lane, side, adoption price, known allocation and original cost are required; missing evidence stays
+unknown. Real Last-12 separately compares executable return PF (paper-price estimate or externally validated venue
+evidence); dollar-weighted PF is shown only as a separate reconciliation. Multi-leg DCA/Axis paper results remain
+unknown because the existing book does not preserve leg prices and quantities. In the draft Last-N-only path,
+native promotion judges the handled return window and the separate Real window; model-only outcomes remain a
+clearly labeled diagnostic. Historical Exit fitting/holdout remains time-partitioned, source construction can
+still be based on representative Base cells, and automatic sufficient-history backfill is not implemented.
+
+Latest bounded 20-symbol Short Low-Range research probe: 120 Normal/Trailing configurations × 20 symbols × two
+directions = 4,800 contexts, 1/5/15m candles, 0.15% modeled round-trip cost. With 60 hours of available prior data
+(2026-10-07 12:00–10-10 00:00 UTC), 77/4,800 passed their own Base Last-40; 56/77 (72.73%) passed Validation
+Last-12, historical return PF 1.770927. On the subsequent 2026-10-10 00:00–12:00 UTC modeled window there were
+618 closes at PF 0.732385, positions 139/133/6 and orders 630/618/12 opened/closed/held. All closes matched their
+own source tape and entry context. Last-10, 15, 20, 25, 30 and 35 all had forward PF below 1; 5 and 8 are currently
+unsupported by the minimum-nine policy. At 12 hours of prior input, 0/4,800 contexts passed Base. The Real gate,
+actual paper funding and exchange fills were not replayed or measured. The partial-study HTML is stored in the
+Library as `libfile_e7d76e766b808191b13bc944938da982`; its source protocol and detailed rows are also locally in
+`/workspace/scratch/b69c1e5067d8/cts-frozen-processed-study-20261028`. The full-grid baseline is a separate,
+still-running older-source computation, not proof of these changes.
+
+PRs #220–#226 were merged after their CI checks. PR #226 carries Micro/Minimal Base Last-30, its settings, migration
+and cache invalidation. The combined processing work remains a draft; do not enable,
+merge or claim persistent high PF until the unfinished integrations and real execution checks have passed.
+
+## 2026-10-28 — Exit isolation and Last-12 checkpoint
+
+CTS-A-O PR #220 isolates Historic Exit coordination by config and was merged after GitHub's complete Exit
+verification and Exact Signal workflows passed. PR #221 makes preset market-history errors visible and stops new
+batch dispatch after a failure; it also passed both workflows and was merged. The Last-N-only branch integrates
+both changes; it remains a draft and its policy flag remains off.
+
+PR #222 additionally isolates the model and paper order/position cap counters by exact Exit config and lane,
+including Signal-sourced Exit, and keeps Exit out of ordinary Signal open counts. The affected Exit inherits the
+source class's configured cap values; shared account and venue safety controls remain unchanged. Full and fast
+paper tests and a complete capped walk-forward test passed. It was merged after complete GitHub verification.
+PR #224 separates finite Exit seats by tactic, direction and standalone/combined lane and tests pending-entry
+capacity; PR #223 separately proposes the saved Last-12 migration. Both are awaiting their full verification.
+
+The draft now defaults Signal and Exit validation to Last-12 and the partial-sample floor to nine, with Base Last-40.
+A once-only SQLite transaction backs up saved settings, walk-forward options, presets and their cached reports,
+upgrades undersized saved samples, preserves stricter choices, retires affected/unidentifiable preset caches, and
+marks old preset PF unavailable. Tests cover rollback and preservation of an unaffected preset. Explicit optional
+entry gates set to zero remain off; direct later settings changes still require a complete policy audit. The
+Last-N-only path enforces its own full requested sample and rejects samples below nine, but is not yet enabled.
+
+Historic Exit candidate fitting and holdout still use elapsed-time partitions; the current live cut and the causal
+simulation cut are not yet independently rebuilt. History retention, direct settings/preset overrides, live
+promotion, the requested per-step hold controls and all strategy types require further work before enabling the
+new policy. Do not claim a stable positive funded PF. The cached 2026-10-09 12:00 UTC Low-Range Short screen has
+25/90 validated historical contexts at unit PF 2.891881; its separate later model has 37 closes at PF 0.963800,
+with 17/17/0 positions and 37/37/0 orders opened/closed/held. No exchange-fill PF was measured.
+
+## 2026-10-28 — Last-N-only prototype, not enabled
+
+An optional `gates.lastNOnly` prototype evaluates completed Base and exact
+config/direction/Signal-context closes by their requested Last-N sample rather
+than time-window performance. It requires at least nine and the complete
+configured sample, keeps symbol/direction isolation, uses strictly prior closes,
+and aligns Base diagnostic PF with the qualifying sample. Its simulated/native
+entry coordination paths bypass the hourly loss guard, selected feedback
+windows and coordination cooldown while this explicit flag is set. Other
+time-based gates remain unaudited. The flag remains unset by default and is not migrated
+into runtime settings. This is a checkpoint, not a release or PF claim.
+
+Before enabling: audit Historic Exit fitting and holdout, Signal history,
+retention and revalidation, live promotion and each remaining hour-based gate;
+apply backed-up Base-40/Validation-12 settings including saved overrides and
+all strategy paths; test real stage and order transitions, held protection,
+performance and reporting. Base currently proves representative pair/range
+cells, not necessarily every independent ladder or Signal config. Insufficient
+history must remain insufficient. Venue fills and sustained PF are unmeasured.
+
+Separately, CTS-G PR #110 aligned general entry signals and guarded batch
+errors; PRs #111 and #112 retained unconfirmed fills as pending and extended
+polling to additions and closes. Those changes are in a different repository
+and do not change CTS-A-O execution. Review CTS-G's provisional execution-price
+fallback before presenting venue returns as fully measured.
 
 ## 2026-10-28 — Bybit cooldown and shared-budget hardening
 
@@ -4767,6 +5384,22 @@ was 1,954 ms. A controlled coordination conflict exposes raw-tape evidence being
 predecessor results. The regression is intentionally one pass and one failing TODO; the persistent stage runtime
 adapter remains unfinished/disabled. No x01 live promotion is justified by this evidence.
 
+#### Stage draft follow-up (30 October 2026)
+
+On this **disabled draft**, `processed-main-conflict-draft.test.ts` repeats the same bounded conflict example with
+explicit Base Last-12 and the draft `lastNOnly` processed-validation mode. Fourteen conflict-rejected winning
+candidates do not enter the own processed sample; after twelve accepted target losses the next two target entries
+are rejected by `processedValidation`. Both assertions pass. A preliminary fixture with factory Minimal Base
+Last-30 had only twelve own historical closes and produced zero selected configs and no trades; that empty result
+was not counted as a fix. The Last-12 fixture change is a test input, not a change to production defaults.
+
+This is useful evidence for one opt-in legacy mode only. Its admitted results are still sourced from raw candidate
+tapes, which cannot recover entries suppressed because a rejected candidate occupied the upstream simulated slot.
+The `StageChainBook` and `simulateStageSource` remain primitives without the production runtime adapter, persistent
+stage publication or complete paper/live ownership. Keep the stage chain disabled and retain the failing production
+regression until a causal, per-stage resimulation and complete runtime integration solve it. The single controlled
+case is not a market-profitability or x01-readiness claim.
+
 The automatically triggered Exact Signal PR workflow's offline checks failed because the PF-neutral test
 `scripts/eval-unit-basis.test.mjs` evaluates extracted helper functions in a VM without supplying their imported
 `profitFactorRatio` binding. The test VM now receives the real helper. The previously failing case, all 12 cases
@@ -4796,6 +5429,8 @@ Research-only same-window minimum-trades 10 / validation Last-10: Base 151/27,24
 
 The final bounded six-file core suite passed 69, typecheck/build passed and report tests passed 3. One earlier Signal synthetic fixture was accidentally run at 125h in violation of the three-day limit; its corrected 24h fixture passed. The production Main conflict remains 1 pass and 1 expected failing TODO, and the Base→Main→Real runtime adapter remains disabled/unfinished. Do not start x01 or claim stable live PF from these model tests.
 
+The merged trailing-only changes from main `d945940d7330788213e919a928b8d79ba56b7e33` were also combined into the disabled stage draft. Five bounded integration files passed 59 tests, including stage-chain, draft conflict path, inverse stage-source and trailing-only continuation; typecheck passed. This is integration evidence, not completion or live enablement of the persistent stage adapter.
+
 ### 30 October 2026 — independent Trailing-only Base proofs
 
 `docs/trailing-only-independent-base-20261030/README.md` and the two reports supersede the trailing-only target-level limitation in the immediately preceding entry. Ordinary no-TP cells now have independent per-pair/lane/protection Base proofs and passed-only range statistics even when general `baseCells` is off; a passing no-TP cell cannot qualify Normal/ladder siblings. Held-only management survives a failed or absent proof. Signal and Historic Exit remain separate. Signal Exit Base rows now appear in the session listing; the two market runs' 132/27,242 and 166/27,242 headline counts exactly match their pair listings. Normal and TP-trailing still use target-level proof when `baseCells` is off; no-TP Base proof is pooled across symbols and directions.
@@ -4803,3 +5438,5 @@ The final bounded six-file core suite passed 69, typecheck/build passed and repo
 Final default 8-symbol 12h+12h modeled replay: Base 132/27,242, initial post-Base 8/251; positions 47/42/5 and orders 354/336/18 opened/closed/held, closed unit PF 3.696049. Trailing-only had 42 closes and 5 held, PF 4.436781, all long Minimal. Minimal no-TP Base cells passed 35/48,024; 41,600 lacked usable closes. Micro passed 0/9,384, all unavailable. All 294 previous default closes and their unit returns/multipliers remain, plus 42 no-TP closes. Some no-TP hours were below PF 1; exchange PF unavailable.
 
 Research-only Last-10/minimum-closes-10, also changing the shared Base minimum: Base 166/27,242, initial post-Base 61/460; positions 14/6/8 and orders 2,534/2,445/89; total closed PF 3.923037, no-TP 455 closes/11 held, PF 3.632104, all long Minimal. Some hours lost. Neither run establishes stable PF, short performance, full catalog coverage or venue results. Both scored 74/76 coverage; worst processing slices 1,819/1,644 ms. 88 bounded core and 10 reporting/UI/audit tests, typecheck and production build passed at source `671fb79` (source seal in report). One earlier 125h Signal fixture exceeded the three-day limit and was corrected/rerun at 24h. The persistent processed-stage adapter is disabled, the Main conflict still has one expected failing TODO, and x01 must not be started on this evidence.
+
+Main `9f054c30250b5998fef173da8d11e6c93ef0f646` (independent Trailing-only Base proofs, PR 246) is integrated into the disabled stage draft. The merge also preserves draft Last-N-only semantics: the no-TP passed PF pool uses the qualifying recent window rather than full-history returns. Seven bounded combined-stage core files passed 90 tests, seven report/UI/audit checks passed, and typecheck passed. This does not complete or enable the processed-stage runtime adapter.

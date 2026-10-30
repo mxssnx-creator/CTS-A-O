@@ -172,8 +172,8 @@ describe(
       for (const p of declared) {
         for (let i = 0; i < n; i++) {
           const entryT = now - (n - i) * 2000, exitT = entryT + 1000, unitR = i % 2 ? .016 : -.008;
-          rt.db.run("INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,held_at,at,unit_r,owned_notional_usd) VALUES (?,?,?,?,?,?,1,'time',?,?,?,10)",
-            p.cfg, p.sym, p.side, entryT, exitT, unitR, entryT, now, unitR);
+          rt.db.run("INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,held_at,at,unit_r,owned_notional_usd,entry,held_px,exit) VALUES (?,?,?,?,?,?,1,'time',?,?,?,10,100,100,?)",
+            p.cfg, p.sym, p.side, entryT, exitT, unitR, entryT, now, unitR, 100 * (1 + p.side * unitR));
         }
         assert.equal(rt.livePromotionGate(p).ok, true, `exact two-axis proof for ${executionRecordKey(p.cfg, p.sym, p.side)}: ${JSON.stringify(rt.livePromotionGate(p))}`);
       }

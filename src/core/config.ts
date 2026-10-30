@@ -1,4 +1,5 @@
 import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "./indications/micro-family.ts";
+import { DEFAULT_STAGE_CHAIN, type StageChainSettings, type StageChainPatch } from "./sim/stage-settings.ts";
 import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "./indications/low-range.ts";
 import { PROVEN_WIDE_TRAIL_PAIRS } from "./proven-wide-trail.ts";
 // CTS-A Core v2 — authoritative defaults. Every number the engine uses lives here.
@@ -28,7 +29,7 @@ export const MAX_EXCHANGE_POSITIONS = 100;
 /** One systemwide ceiling for Block, Relate, coordination, and other external sizing groups. */
 export const MAX_EXTERNAL_STACK = 8;
 /** Bounded settings payload, including every independent Micro/Inverse source and the ordinary catalog. */
-export const MAX_FOCUS_PAIRS = 2000;
+export const MAX_FOCUS_PAIRS = 4000;
 
 /** Normalize legacy, unset, or oversized exchange limits without allowing the account cap to be bypassed. */
 export function exchangePositionLimit(value?: number): number {
@@ -312,6 +313,8 @@ export interface CoreSettings {
   /** prehistory-derived exit candidates; each candidate and direction is validated and carried independently */
   exitStrategy: ExitStrategySettings;
   gates: Gates;
+  /** Independent processed-set windows for Base, Main and Real. */
+  stages: StageChainSettings;
   /** stage-1 winners refined in stage 2 */
   refineTop: number;
   /** Base combos promoted to Main (expanded into every protect variant × sub-strategy) */
@@ -424,6 +427,8 @@ export function mergeGridSettings(base: ProtectGridSpec, patch?: GridSettingsPat
 export type SettingsPatch = {
   [K in keyof CoreSettings]?: K extends "tfDays"
     ? CoreSettings[K]
+    : K extends "stages"
+      ? StageChainPatch
     : K extends "grid"
       ? GridSettingsPatch
     : CoreSettings[K] extends readonly unknown[]
@@ -528,6 +533,8 @@ export interface LiveSettings {
    * Zero disables paper deactivation, not strict live evidence (minTrades still applies). Held exits stay managed.
    */
   liveLastN?: number;
+  /** Independent Real gate for each config, symbol and direction's own executable-price paper P&L. */
+  realLastN?: number;
   /** minimum PF over the live last N (default: the stage min PF) */
   liveMinPf?: number;
   /**
@@ -766,6 +773,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     stopMultiples: [1, 2],
   },
   gates: DEFAULT_GATES,
+  stages: DEFAULT_STAGE_CHAIN,
   refineTop: 24,
   // 0 = every Base-validated pair gets its strategy config sets (pseudo positions)
   mainTop: 0,
@@ -856,6 +864,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     positionMode: "hedge",
     leverage: "max",
     liveLastN: 25,
+    realLastN: 12,
     liveGroupLastN: 0,
   },
   signals: DEFAULT_SIGNALS,

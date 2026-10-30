@@ -2,13 +2,14 @@
 import type { IndicationSpec } from "./registry.ts";
 import type { LowRangeGrid, Protect } from "../domain/types.ts";
 import { RT_COST } from "../model-cost.ts";
+import { INTRADAY_TIMEFRAMES } from "./intraday-timeframes.ts";
 import {
   DEFAULT_LOW_RANGE_POLICY, LOW_RANGE_IDS, LOW_RANGE_METHODS, LOW_RANGE_RELATIONS, LOW_RANGE_WINDOWS,
   lowRangeProtects, lowRangeState,
 } from "./low-range-research.ts";
 
 export { LOW_RANGE_IDS, LOW_RANGE_METHODS, LOW_RANGE_RELATIONS, LOW_RANGE_WINDOWS };
-export const LOW_RANGE_TIMEFRAMES = [1, 5, 15] as const;
+export const LOW_RANGE_TIMEFRAMES = INTRADAY_TIMEFRAMES;
 export const isLowRangeInd = (id: string) => id.startsWith("low-range-");
 
 /** Candidate calculation is registered; protection cells remain opt-in until forward validation supports them. */

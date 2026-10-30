@@ -179,7 +179,7 @@ export function qualifyExitBase(
     full: Pick<Stats, "n" | "pf" | "net" | "mdd" | "baseLast">;
   }>,
   settings: Pick<ExitStrategySettings, "minPf">,
-  gates: { minPf: number; minTrades: number; maxDdr?: number; baseLastN?: number; lastNFloor?: number; lossPrior?: boolean },
+  gates: { minPf: number; minTrades: number; maxDdr?: number; baseLastN?: number; lastNFloor?: number; lossPrior?: boolean; lastNOnly?: boolean },
 ): { evaluated: Set<string>; passed: Set<string>; rejected: number } {
   const evaluated = new Set<string>();
   const passed = new Set<string>();

@@ -92,10 +92,10 @@ function reclaimContext(b: Bars): { reclaim8: Int8Array; don8: Int8Array } {
 describe("Break indication family", () => {
   it("registers every breakout source, timeframe subset, profile and eligible Micro alias", () => {
     const specs = breakSpecs();
-    assert.equal(specs.length, 156);
-    assert.equal(BREAK_CONFIG_IDS.length, 156);
-    assert.equal(new Set(BREAK_CONFIG_IDS).size, 156);
-    assert.equal(BREAK_SUBSETS.length, 7);
+    assert.equal(specs.length, 348);
+    assert.equal(BREAK_CONFIG_IDS.length, 348);
+    assert.equal(new Set(BREAK_CONFIG_IDS).size, 348);
+    assert.equal(BREAK_SUBSETS.length, 15);
     assert.equal(BREAK_CORES.length, 6);
     assert.equal(BREAK_PROFILES.length, 2);
     assert.deepEqual(BREAK_DRAWDOWN_WINDOWS.map((x) => x.bars), [24, 48]);
@@ -104,7 +104,7 @@ describe("Break indication family", () => {
     for (const spec of specs) {
       assert.equal(INDICATION_BY_ID.get(spec.id)?.kind, "break", spec.id);
       assert.equal(spec.kind, "break", spec.id);
-      assert.equal(breakAnchorTf(spec.id), Number(spec.id.match(/^break-(?:mc-)?rel-(?:don|squeeze|retest|don8|retest8|reclaim8)-(1|5|15)(?:x(?:5|15))*-dd(?:24|48)-(?:guarded|balanced)$/)?.[1]));
+      assert.equal(breakAnchorTf(spec.id), Number(spec.id.match(/^break-(?:mc-)?rel-(?:don|squeeze|retest|don8|retest8|reclaim8)-(1|5|15|30)(?:x(?:5|15|30))*-dd(?:24|48)-(?:guarded|balanced)$/)?.[1]));
       assert.equal(isBreakMicroInd(spec.id), spec.id.startsWith("break-mc-rel-"));
       assert.equal(isMicroInd(spec.id), spec.id.startsWith("break-mc-rel-"));
     }
@@ -113,8 +113,8 @@ describe("Break indication family", () => {
   it("routes each config only on its anchor lane and honors the Micro floor", () => {
     const focus = BREAK_CONFIG_IDS.map((id) => `follow|${id}`);
     const combos = allCombos(focus, [], [1, 5, 15, 30], 5);
-    assert.equal(combos.length, 156);
-    assert.equal(new Set(combos.map((x) => x.ind)).size, 156);
+    assert.equal(combos.length, 348);
+    assert.equal(new Set(combos.map((x) => x.ind)).size, 348);
     for (const combo of combos) {
       const lane = laneOf(combo.ind);
       assert.equal(lane.combined, false, combo.ind);
@@ -152,22 +152,23 @@ describe("Break indication family", () => {
     assert.notEqual(orderCfgKey(don), orderCfgKey(squeeze));
   });
 
-  it("registers reclaim as twelve opt-in Micro configs without changing the sixty default Break identities", () => {
+  it("registers reclaim as28 opt-in Micro configs without changing the sixty default Break identities", () => {
     const optional = breakSpecs().filter((x) => x.id.includes("-rel-reclaim8-"));
-    const expected = ["5", "15", "5x15"].flatMap((tf) => ["24", "48"].flatMap((dd) =>
+    const expected = ["5", "15", "5x15", "30", "5x30", "15x30", "5x15x30"].flatMap((tf) => ["24", "48"].flatMap((dd) =>
       ["guarded", "balanced"].map((profile) => `break-mc-rel-reclaim8-${tf}-dd${dd}-${profile}`),
     ));
     assert.deepEqual(optional.map((x) => x.id).sort(), expected.sort());
     assert.equal(BREAK_DEFAULT_MICRO_CONFIG_IDS.length, 60);
-    assert.deepEqual(BREAK_DEFAULT_MICRO_CONFIG_IDS, BREAK_CONFIG_IDS.filter((x) => isBreakMicroInd(x) && !x.includes("-rel-reclaim8-")));
+    assert.deepEqual(BREAK_DEFAULT_MICRO_CONFIG_IDS, BREAK_CONFIG_IDS.filter((x) => isBreakMicroInd(x) &&
+      !x.includes("-rel-reclaim8-") && !/-[\dx]*30-dd/.test(x)));
     assert.equal(BREAK_MICRO_FOCUS_17OCT.length, 60);
     assert.ok(DEFAULT_SETTINGS.focus.every((x) => !x.includes("-rel-reclaim8-")), "registration cannot promote a new source into existing defaults");
     const combos = allCombos(expected.map((id) => `follow|${id}`), [], [1, 5, 15, 30], 5);
-    assert.equal(combos.length, 12);
+    assert.equal(combos.length, 28);
     for (const combo of combos) {
       const lane = laneOf(combo.ind);
       assert.equal(lane.tf, breakAnchorTf(lane.base));
-      assert.ok(lane.tf === 5 || lane.tf === 15);
+      assert.ok(lane.tf === 5 || lane.tf === 15 || lane.tf === 30);
       const key = `follow|${combo.ind}|normal|tp0.5|sl0.2`;
       assert.equal(orderCfgKey(key), key);
       assert.notEqual(orderCfgKey(key), orderCfgKey(key.replace("reclaim8", "retest8")));
@@ -265,7 +266,7 @@ describe("Break indication family", () => {
     const specs = breakSpecs();
     for (const tfs of BREAK_SUBSETS) {
       const tf = Math.min(...tfs);
-      const n = tf === 1 ? 1_500 : 600;
+      const n = Math.floor(4320 / tf);
       const up = new SeriesCache(breakoutBars(`UP-${tfs.join("x")}`, tf, n));
       const dn = new SeriesCache(breakoutBars(`DN-${tfs.join("x")}`, tf, n, -1));
       for (const core of BREAK_CORES) {

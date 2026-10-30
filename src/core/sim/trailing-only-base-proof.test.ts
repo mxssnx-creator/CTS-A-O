@@ -6,7 +6,7 @@ import { DEFAULT_LOW_RANGE_GRID } from "../indications/low-range.ts";
 import { barsFromCandles } from "../market/bars.ts";
 import { baseRangeProtects, baseRuns, cellStats, completeBaseRangeProtects, configId,
   laneProtect, makeUniverse, protectCellKey, REF_TF } from "../pipeline/pipeline.ts";
-import { runPipelineSync, trailingOnlyBaseCountsGen } from "../pipeline/pipeline.ts";
+import { rangeBaseStats, runPipelineSync, trailingOnlyBaseCountsGen } from "../pipeline/pipeline.ts";
 import { closePool, runOnWorkers } from "../server/pool.server.ts";
 import { basePass } from "../server/runtime.server.ts";
 import { capTrailingOnlyProtect } from "./trailing.ts";
@@ -144,4 +144,17 @@ test("Minimal Plus generated trailing-only cells match the executable grid", () 
   const keys = (ps: Protect[]) => ps.filter((p) => p.tag === "mp").map(protectCellKey).sort();
   assert.deepEqual(keys(completeBaseRangeProtects(g, cost)), keys(protectGrid(REF_TF, g, cost)));
   assert.ok(completeBaseRangeProtects(g, cost).some((p) => p.tag === "mp" && p.trailOnly));
+});
+
+test("draft Last-N-only no-TP statistics report the same recent window that qualified", () => {
+  const pre = makeUniverse(bars(12 * 60)), candidate = candidates[0], proof: string[] = [];
+  const recent = cellStats(pre, "follow", IND, candidate, cost, null, undefined, 12)!;
+  assert.ok(recent.baseLast && recent.baseLast.n === 12 && recent.n > 12);
+  const counts: Record<string, { evaluated: number; passed: number; unavailable: number;
+    passedGp: number; passedGl: number; unknownPassed: number }> = {};
+  rangeBaseStats(pre, "follow", IND, [candidate], cost, null, undefined, false, () => true, 1,
+    undefined, undefined, undefined, 12, true, { micro: 12, minimal: 12 }, proof, counts);
+  assert.equal(proof.length, 1); assert.equal(counts.mn.passed, 1);
+  assert.equal(counts.mn.passedGp, recent.baseLast.gp); assert.equal(counts.mn.passedGl, recent.baseLast.gl);
+  assert.notEqual(counts.mn.passedGp, recent.gp, "the displayed pool cannot silently switch to full-history returns");
 });

@@ -39,28 +39,28 @@ import type { Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
 
 const end = Date.UTC(2026, 9, 1);
-function fixture() {
+function fixture(minutes = 4320) {
   return ["A", "B", "C"].flatMap((sym) => {
-    const candles = syntheticCandles(sym, 1, 2700, end, 17);
-    return [1, 5, 15].map((tf) => ({
+    const candles = syntheticCandles(sym, 1, minutes, end, 17);
+    return [1, 5, 15, 30].map((tf) => ({
       ...barsFromCandles(`${sym}-USDT`, tf, resample(candles, 1, tf)),
-      lanes: [1, 5, 15],
+      lanes: [1, 5, 15, 30],
     }));
   });
 }
 after(() => closePool());
 describe("first-class Micro", () => {
   it("registers every method/profile/subset once and computes only its own anchor", () => {
-    assert.equal(MICRO_CONFIG_IDS.length, 490);
-    assert.equal(new Set(MICRO_CONFIG_IDS).size, 490);
+    assert.equal(MICRO_CONFIG_IDS.length, 1050);
+    assert.equal(new Set(MICRO_CONFIG_IDS).size, 1050);
     for (const id of MICRO_CONFIG_IDS) assert.equal(INDICATION_BY_ID.get(id)?.kind, "micro");
     const combos = allCombos(
       MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
       [],
-      [1, 5, 15],
+      [1, 5, 15, 30],
     );
-    assert.equal(combos.length, 490);
-    assert.equal(new Set(combos.map((c) => c.ind)).size, 490);
+    assert.equal(combos.length, 1050);
+    assert.equal(new Set(combos.map((c) => c.ind)).size, 1050);
     assert.ok(
       combos.every((c) => !c.ind.endsWith("c")),
       "explicit subsets never spawn duplicate combined lanes",
@@ -69,7 +69,7 @@ describe("first-class Micro", () => {
       allCombos(
         MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
         ["micro"],
-        [1, 5, 15],
+        [1, 5, 15, 30],
       ).length,
       0,
     );
@@ -123,7 +123,7 @@ describe("first-class Micro", () => {
     }
   });
   it("adds independent OHLC breakout ranges, activity and failed-auction calculations on every anchor and side", () => {
-    for (const tf of [1, 5, 15])
+    for (const tf of [1, 5, 15, 30])
       for (const side of [1, -1]) {
         const input = (
           last: Partial<{ o: number; h: number; l: number; c: number; v: number }>,
@@ -204,11 +204,12 @@ describe("first-class Micro", () => {
   });
   it("preserves every original Micro signal bit while adding independent techniques", () => {
     // Captured independently from source 47d70d8 on this exact fixture; 308 original IDs × three symbols.
-    const bars = fixture(),
+    const bars = fixture(2700).filter((b) => b.tfMin !== 30),
       u = makeUniverse(bars),
       hash = createHash("sha256");
     const specs = microFamilySpecs().filter(
       (s) =>
+        !s.id.split("-")[1].split("x").includes("30") &&
         !/-(flow-break|trend-reclaim|market-continuation|direction-persist|break-channel(?:-short|-wide|-activity|-failure)?|break-close-tactic|break-retest-tactic|activity-acceleration-relative|break-retest-market)-(fast|selective)$/.test(
           s.id,
         ),
@@ -297,14 +298,14 @@ describe("first-class Micro", () => {
       .picks.map((p) => p.id)
       .sort();
     const own = tapes.filter((_, i) => i % 2 === 0);
-    assert.equal(selected.length, 980);
+    assert.equal(selected.length, 2100);
     assert.deepEqual(
       selected,
       selectFixed(own, now, o)
         .picks.map((p) => p.id)
         .sort(),
     );
-    assert.equal(new Set(tapes.map((t) => t.id)).size, 1960);
+    assert.equal(new Set(tapes.map((t) => t.id)).size, 4200);
   });
   it("matches prefix-only universes for all subsets and leaves no-market relations neutral", () => {
     const bars = fixture(),
@@ -390,13 +391,14 @@ describe("first-class Micro", () => {
     const u = makeUniverse(fixture());
     const settings = {
       ...DEFAULT_SETTINGS.exitStrategy,
+      timeframes: [1, 5, 15, 30],
       includeTactics: false,
       includeRelations: false,
       includeMicro: true,
     };
-    const combos = allCombos(MICRO_CONFIG_IDS.map((id) => `follow|${id}`), [], [1, 5, 15]);
+    const combos = allCombos(MICRO_CONFIG_IDS.map((id) => `follow|${id}`), [], [1, 5, 15, 30]);
     const pairs = exitStrategyPairs(combos, u, settings);
-    assert.equal(pairs.length, 490);
+    assert.equal(pairs.length, 1050);
     assert.ok(pairs.every((pair) => pair.startsWith("exit|micro-") && !pair.endsWith("c")));
     assert.equal(exitStrategyPairs([], u, settings).length, 0);
     assert.equal(exitStrategyPairs(combos, u, settings, ["micro"]).length, 0);
@@ -410,7 +412,7 @@ describe("first-class Micro", () => {
       const combos = allCombos(
         [...MICRO_CONFIG_IDS, ...INVERSE_MICRO_CONFIG_IDS].map((id) => `follow|${id}`),
         [],
-        [1, 5, 15],
+        [1, 5, 15, 30],
       );
       const grid = {
         ...DEFAULT_SETTINGS.grid,

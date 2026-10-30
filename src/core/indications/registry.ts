@@ -1281,6 +1281,8 @@ export interface Lane {
   base: string;
   tf: number | null;
   combined: boolean;
+  /** New30m confirmation is a distinct lane; legacy Low-Range/Inverse c lanes retain their original math. */
+  confirmation30?: true;
 }
 
 export function laneOf(ind: string): Lane {
@@ -1288,10 +1290,10 @@ export function laneOf(ind: string): Lane {
   // match and an object per call (x02, 8 Oct allocation profile)
   let l = laneMemo.get(ind);
   if (l) return l;
-  const m = /^(.*)@m(\d+)(c?)$/.exec(ind);
+  const m = /^(.*)@m(\d+)(c(?:30)?)?$/.exec(ind);
   l = Object.freeze(
     m
-      ? { base: m[1], tf: +m[2], combined: m[3] === "c" }
+      ? { base: m[1], tf: +m[2], combined: Boolean(m[3]), ...(m[3] === "c30" ? { confirmation30: true as const } : {}) }
       : { base: ind, tf: null, combined: false },
   );
   if (laneMemo.size > 200_000) laneMemo.clear();
@@ -1300,8 +1302,8 @@ export function laneOf(ind: string): Lane {
 }
 const laneMemo = new Map<string, Lane>();
 
-export const laneInd = (base: string, tf: number, combined = false) =>
-  `${base}@m${tf}${combined ? "c" : ""}`;
+export const laneInd = (base: string, tf: number, combined = false, confirmation30 = false) =>
+  `${base}@m${tf}${combined ? confirmation30 ? "c30" : "c" : ""}`;
 
 /** Factors (× tf) of the higher ladder timeframes a combined lane must agree with. */
 export const higherFactors = (tf: number, ladder: readonly number[] = TF_LADDER) =>
@@ -1310,7 +1312,7 @@ export const higherFactors = (tf: number, ladder: readonly number[] = TF_LADDER)
 /** Short lane label for tables: "15m", "5m+" (combined). */
 export const laneLabel = (ind: string) => {
   const l = laneOf(ind);
-  return l.tf === null ? "" : `${l.tf}m${l.combined ? "+" : ""}`;
+  return l.tf === null ? "" : `${l.tf}m${l.confirmation30 ? "+30m" : l.combined ? "+" : ""}`;
 };
 
 export function indicationState(id: string, k: SeriesCache): Int8Array | null {
@@ -1318,12 +1320,14 @@ export function indicationState(id: string, k: SeriesCache): Int8Array | null {
   if (lane.tf !== null) {
     if (lane.base === "none") return null;
     if (!lane.combined) return indicationState(lane.base, k);
+    if (lane.confirmation30 && k.b.lanes && !k.b.lanes.includes(30)) return new Int8Array(k.b.n);
     // the higher enabled lanes (Bars.lanes): the ones laneInds generated the lane from, not the fixed ladder
     const ladder = isLowRangeInd(lane.base)
-      ? (k.b.lanes ?? LOW_RANGE_TIMEFRAMES).filter((tf) => (LOW_RANGE_TIMEFRAMES as readonly number[]).includes(tf))
+      ? (k.b.lanes ?? LOW_RANGE_TIMEFRAMES).filter((tf) =>
+          (LOW_RANGE_TIMEFRAMES as readonly number[]).includes(tf) && (lane.confirmation30 || tf !== 30))
       : isInverseInd(lane.base)
       ? (k.b.lanes ?? INVERSE_TIMEFRAMES).filter((tf) =>
-          (INVERSE_TIMEFRAMES as readonly number[]).includes(tf),
+          (INVERSE_TIMEFRAMES as readonly number[]).includes(tf) && (lane.confirmation30 || tf !== 30),
         )
       : k.b.lanes;
     const f = higherFactors(k.b.tfMin, ladder);

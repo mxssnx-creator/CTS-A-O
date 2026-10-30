@@ -51,7 +51,7 @@ test("actual range Base cells calculate their own requested windows", () => {
   const tactics = { ...DEFAULT_SETTINGS.tactics, session: false, volRegime: false, trendStrength: false, cooldown: false };
   const g = DEFAULT_SETTINGS.gates;
   const out = rangeBaseStats(u, "follow", ind, protects, DEFAULT_SETTINGS.cost, tactics, undefined, false,
-    rangeCellPass(g, ind), 1, undefined, undefined, undefined, g.baseLastN, g.baseRangeLastN)!;
+    rangeCellPass(g, ind), 1, undefined, undefined, undefined, g.baseLastN, false, g.baseRangeLastN)!;
   for (const p of protects) {
     const n = p.tag === "sh" ? 40 : 30;
     assert.equal(out[p.tag].baseLast?.requested, n);

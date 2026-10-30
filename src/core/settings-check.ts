@@ -6,9 +6,11 @@ import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
 import { validVolumeRatio } from "./volume-ratio.ts";
 import { AXIS_MAX_LEVELS, AXIS_MAX_RUNG_RATIO } from "./sim/relate-volume.ts";
+import { checkStageChainSettings, checkStageSettingsPatch, mergeStageSettings } from "./sim/stage-settings.ts";
 
 /** Range checks for a settings patch (Settings page and preset dialog alike). */
 export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
+  if (s.stages !== undefined) checkStageSettingsPatch(s.stages);
   const num = (v: unknown, lo: number, hi: number, name: string) => {
     if (v === undefined) return;
     if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi)
@@ -106,6 +108,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
         if (value !== undefined) { num(value, 0, 500, `${key} Base last-N`); int(value, `${key} Base last-N`); }
       }
     }
+    if (s.gates.lastNOnly !== undefined && typeof s.gates.lastNOnly !== "boolean")
+      throw new Error("Last-N-only validation (gates.lastNOnly): true or false");
     if (s.gates.warmup !== undefined && typeof s.gates.warmup !== "boolean")
       throw new Error("sample warm-up (gates.warmup): true or false");
     if (s.gates.minGreen !== undefined)
@@ -160,6 +164,10 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       throw new Error("live mode must be overall or entries");
     num(s.live.ratio, 0.1, 500, "control ratio"); // the caps (per position, exposure, risk budget) bound the size
     if (s.live.liveLastN !== undefined) num(s.live.liveLastN, 0, 200, "live last N");
+    if (s.live.realLastN !== undefined) {
+      num(s.live.realLastN, 9, 200, "Real last N");
+      int(s.live.realLastN, "Real last N");
+    }
     if (s.live.liveMinPf !== undefined) num(s.live.liveMinPf, 0, 10, "live min PF");
     if (s.live.engineProofN !== undefined) {
       num(s.live.engineProofN, 0, 1000, "engine proof closes");
@@ -1139,6 +1147,7 @@ export function checkRangeReplacementsComplete(grid: CoreSettings["grid"]) {
 
 export function checkMerged(cur: CoreSettings, patch: Partial<CoreSettings> | SettingsPatch) {
   const merged: Partial<CoreSettings> = {};
+  if (patch.stages !== undefined) checkStageChainSettings(mergeStageSettings(cur.stages, patch.stages));
   if (patch.grid) {
     merged.grid = mergeGridSettings(cur.grid, patch.grid);
     checkLowRangeComplete(merged.grid);

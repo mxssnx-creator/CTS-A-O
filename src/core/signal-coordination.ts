@@ -41,7 +41,7 @@ function fromBase36(value: string): bigint | null {
 }
 
 function stripLane(ind: string): string {
-  return ind.replace(/@m\d+c?$/, "");
+  return ind.replace(/@m\d+(?:c(?:30)?)?$/, "");
 }
 
 /** A stable, compact identity for one ratio band × source pool × parameter-range mix. */
