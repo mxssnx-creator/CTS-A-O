@@ -1,0 +1,11 @@
+✔ 12h execution report retains every close, open order, config and UTC heatmap hour (32.237577ms)
+✔ report.html preserves the modeled cohorts and all twelve heatmap hours (19.039265ms)
+✔ report-n10.html preserves the modeled cohorts and all twelve heatmap hours (47.176754ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 165.738204

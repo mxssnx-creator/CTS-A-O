@@ -6,6 +6,7 @@ import { makeUniverse, type Universe } from "../pipeline/pipeline.ts";
 import { barsOfSeries, resampleTailBars, type CandleSeries } from "../market/candle-series.ts";
 import { extendTape, isResumable, seedTape, type TapeResume } from "../sim/tape-extend.ts";
 import type { ConfigTape } from "../sim/walkforward.ts";
+import { isDeepStrictEqual } from "node:util";
 
 /**
  * `old` grown by the lane bars that closed since its last bar, read from the 1m (srcMin) candles: the same series
@@ -143,10 +144,16 @@ function sameTape(a: ConfigTape, b: ConfigTape): boolean {
   if (a.n !== b.n || a.id !== b.id) return false;
   if (a.n && (a.exitT[a.n - 1] !== b.exitT[b.n - 1] || a.rs[a.n] !== b.rs[b.n] || a.r2[a.n] !== b.r2[b.n])) return false;
   if (a.open.length !== b.open.length || a.pending.length !== b.pending.length) return false;
+  // A pending signal's resolved protection and execution clock are part of its ownership proof.
+  if (!isDeepStrictEqual(a.pending, b.pending)) return false;
   for (let i = 0; i < a.open.length; i++) {
     const x = a.open[i];
     const y = b.open[i];
-    if (x.sym !== y.sym || x.side !== y.side || x.entryT !== y.entryT || x.entry !== y.entry || x.stop !== y.stop || x.target !== y.target) return false;
+    if (x.sym !== y.sym || x.side !== y.side || x.entryT !== y.entryT || x.entry !== y.entry ||
+      x.stop !== y.stop || x.target !== y.target || x.executionTfMin !== y.executionTfMin ||
+      x.holdEndT !== y.holdEndT || x.trail !== y.trail || x.trailDist !== y.trailDist ||
+      x.trailOnly !== y.trailOnly || x.trailFree !== y.trailFree || x.trailMax !== y.trailMax ||
+      !isDeepStrictEqual(x.exitProtection, y.exitProtection)) return false;
   }
   return true;
 }

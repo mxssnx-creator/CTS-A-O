@@ -82,7 +82,7 @@ import { buildPortfolio, type Portfolio } from "./portfolio.ts";
 import { baseWindowsPlan, judgeBaseWindows, type BaseWindowsPlan } from "./base-windows.ts";
 import { baseCellAccumulator } from "./base-cell-stats.ts";
 import { baseLastNForRange, baseLastNOf, passesBaseLastN } from "./base-lastn.ts";
-import { trailingOnlyProtects } from "../sim/trailing.ts";
+import { SIGNAL_STOP_LIMIT, capTrailingOnlyProtect, trailingOnlyProtects } from "../sim/trailing.ts";
 
 export interface Universe {
   bars: Bars[];
@@ -624,9 +624,11 @@ export interface ComboRun {
   ruleTps?: Array<Record<string, number[]>>;
 }
 
-/** One protect cell's identity, as the grid, Base and the tape stage compare it: `tag|tp|sl|trail|hold` ("" = Wide). */
-export const protectCellKey = (p: Pick<Protect, "tp" | "sl" | "trail" | "hold" | "tag" | "maxHoldMin">) =>
-  `${p.tag ?? ""}|${p.tp}|${p.sl}|${p.trail}|${p.hold}${p.maxHoldMin !== undefined ? `|hm${p.maxHoldMin}` : ""}`;
+/** The effective protection policy proved by Base; preserve legacy keys for the default policy. */
+export const protectCellKey = (p: Pick<Protect, "tp" | "sl" | "trail" | "hold" | "tag" | "maxHoldMin" | "trailOnly" | "trailStep" | "trailFree" | "trailMax">) =>
+  `${p.tag ?? ""}|${p.tp}|${p.sl}|${p.trail}|${p.hold}${p.maxHoldMin !== undefined ? `|hm${p.maxHoldMin}` : ""}` +
+  `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}` +
+  `${p.trail > 0 && p.trailFree ? "|tf1" : ""}${p.trailMax !== undefined && !(p.trailOnly && p.trailMax === SIGNAL_STOP_LIMIT) ? `|tm${p.trailMax}` : ""}`;
 
 /** Base result of a pair at one range's representative cell (full history). */
 export interface RangeBaseStat {
@@ -1563,8 +1565,11 @@ export function rangeBaseStats(
     const k = p.tag ?? "";
     const prev = out[k];
     // Every range proof must name the lane cell actually simulated, including its converted hold.
-    if (cellsOut && k && pass && pass(k, cand))
-      cellsOut.push(protectCellKey(laneProtect(p, ind)));
+    if (cellsOut && k && pass && pass(k, cand)) {
+      const lane = laneProtect(p, ind);
+      // The executable tape caps no-TP protection after lane scaling; publish that same effective cell.
+      cellsOut.push(protectCellKey(capTrailingOnlyProtect(lane)));
+    }
     if (tpsOut && k && pass && pass(k, cand)) {
       const xs = (tpsOut[k] ??= []);
       if (!xs.includes(p.tp)) xs.push(p.tp);

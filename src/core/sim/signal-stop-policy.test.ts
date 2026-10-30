@@ -158,10 +158,12 @@ describe("Signal 2% stop policy and independent peak ratios", () => {
   });
 
   it("applies the actual cap after lane scaling and feedback in every tape", () => {
-    const cs=syntheticCandles("S-USDT",15,500,Date.UTC(2026,9,18),2);
-    const u=makeUniverse([barsFromCandles("S-USDT",15,cs)]);
+    // 288 completed 5m bars cover exactly 24h, and still exercise a non-reference lane's scaling.
+    const ind=IND.replace("@m15","@m5");
+    const cs=syntheticCandles("S-USDT",5,288,Date.UTC(2026,9,18),2);
+    const u=makeUniverse([barsFromCandles("S-USDT",5,cs)]);
     const protects=signalProtects(signalSettings({trailRatios:[0.5,0.75,1]}));
-    const ts=buildTapes(u,protects,0.0015,undefined,new Set(["follow|"+IND]),null,null,{minSl:0.05,minTrail:0.05});
+    const ts=buildTapes(u,protects,0.0015,undefined,new Set(["follow|"+ind]),null,null,{minSl:0.05,minTrail:0.05});
     assert.ok(ts.length>0); assert.equal(new Set(ts.map(t=>t.id)).size,ts.length);
     for(const tp of ts) {
       assert.ok(tp.protect.sl<=0.03); assert.ok(tp.protect.trail<=0.03);

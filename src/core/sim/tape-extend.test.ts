@@ -60,10 +60,11 @@ function same(a: ConfigTape, b: ConfigTape, what: string) {
 
 describe("kind policy", () => {
   it("resume kinds and tail-rebuild kinds are explicit", () => {
-    assert.deepEqual([...RESUME_KINDS], ["normal", "trailing"]);
+    assert.deepEqual([...RESUME_KINDS], ["normal", "trailing", "trailing-only"]);
     assert.deepEqual([...TAIL_REBUILD_KINDS], ["dca", "dca-active", "axis"]);
     assert.equal(isResumable({ kind: "normal", ind: "trend-ema@m15" }), true);
     assert.equal(isResumable({ kind: "trailing", ind: "trend-ema@m15" }), true);
+    assert.equal(isResumable({ kind: "trailing-only", ind: "trend-ema@m15" }), true);
     assert.equal(isResumable({ kind: "dca", ind: "trend-ema@m15" }), false);
     assert.equal(isResumable({ kind: "axis", ind: "trend-ema@m15" }), false);
     assert.equal(isResumable({ kind: "normal", ind: "sig-x" }), false);

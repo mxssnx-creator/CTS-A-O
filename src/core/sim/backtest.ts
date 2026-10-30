@@ -98,7 +98,14 @@ export function resolveAtrProtect(p: Protect, atrFrac: number, tfMin = REF_TF): 
   // the target follows the (floored) stop at its ratio, and never falls below 3 × the round-trip cost on any lane
   // (a low-ATR 15m entry gave targets below the cost: every target exit a loss)
   const tp = Math.max(sl * a.tpRatio, LANE_MIN.tp);
-  const out: Protect = { tp: r6(tp), sl: r6(sl), trail: 0, hold: p.hold };
+  // ATR resolution replaces the distance recipe, not the order's no-TP policy or its captured ceiling.
+  // A missing flag here would manufacture a take-profit on a trailing-only entry.
+  const out: Protect = {
+    tp: p.trailOnly ? 0 : r6(tp), sl: r6(sl), trail: 0, hold: p.hold,
+    ...(p.trailOnly ? { trailOnly: true } : {}),
+    ...(p.trailMax !== undefined ? { trailMax: p.trailMax } : {}),
+    ...(p.maxHoldMin !== undefined ? { maxHoldMin: p.maxHoldMin } : {}),
+  };
   if (a.trail && a.trail > 0) {
     const arm = lo(ATR_TRAIL_ARM * a.sl * f, LANE_MIN.trail);
     let gap = lo(atrTrailGap(a.trail) * a.sl * f, LANE_MIN.trail);
@@ -398,7 +405,7 @@ function simCore(
   const atr = p.atr ? (opt.atr ?? atrEma(h, l, c, ATR_PERIOD)) : null;
   const resolve = (i: number) => {
     const resolved = resolveAtrProtect(p, atr![i] / c[i], bars.tfMin);
-    return signal ? capSignalProtect(resolved) : resolved;
+    return signal ? capSignalProtect(resolved) : capTrailingOnlyProtect(resolved);
   };
   const nx = nextEntryIndex(sig);
 
