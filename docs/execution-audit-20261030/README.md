@@ -68,8 +68,15 @@ entries. Baseline/after parity on that run describes an empty execution cohort a
   denominators, report rendering, filtering and 12-hour heatmap without connecting to an exchange.
 - The controlled Main-stage fixture is **1 pass, 1 TODO expected failure** in
   `evidence/execution-audit-main-reproducer.log`.
-- A previously run 247-case legacy baseline batch inadvertently included two synthetic fixtures with 100h/336h
-  history. It was not repeated and must not be represented as compliant with the user's 72-hour maximum.
+- The 247-case legacy baseline batch inadvertently included two synthetic fixtures with 100h/336h history.
+  The automatically triggered Exit verification PR workflow subsequently ran the full core inventory, including
+  those two fixtures again; its synthetic UI fixture configured six days. These executions exceeded the operator's
+  three-day maximum and must not be represented as compliant. They were not intentionally repeated locally.
+- GitHub's dedicated bounded verification passed. The accidentally triggered broad workflow's four core shards
+  and slow-runtime job passed, but its UI quality job failed on the missing PF-helper binding and an obsolete
+  PF-minus-one text assertion. The bindings and assertion were corrected in subsequent PRs; the six-day browser
+  fixture was not rerun, so a compliant end-to-end browser pass remains outstanding. The separate Exact Signal
+  workflow also failed on that same missing binding; its market research jobs were skipped.
 
 `evidence/feed-8-symbols-24h.json.gz` SHA-256:
 `bd4b66e09c65b990082ccc56dfd2624fd18815d01767a315dc002dfa0f6f02b0`.
