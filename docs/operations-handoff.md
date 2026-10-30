@@ -4766,3 +4766,9 @@ of unit gross losses, and two hours had settled PF below 1. Coverage failed 2 of
 was 1,954 ms. A controlled coordination conflict exposes raw-tape evidence being used instead of own processed
 predecessor results. The regression is intentionally one pass and one failing TODO; the persistent stage runtime
 adapter remains unfinished/disabled. No x01 live promotion is justified by this evidence.
+
+The automatically triggered Exact Signal PR workflow's offline checks failed because the PF-neutral test
+`scripts/eval-unit-basis.test.mjs` evaluates extracted helper functions in a VM without supplying their imported
+`profitFactorRatio` binding. The test VM now receives the real helper. The previously failing case, all 12 cases
+in that file, and 20 adjacent bounded evaluator/PF tests pass locally. This is a test-harness repair, not a change
+in trade calculations. Its diagnostic workflow failure remains recorded on the earlier commit.
