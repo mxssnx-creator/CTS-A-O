@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { Script } from "node:vm";
+import { profitFactorRatio } from "../src/core/metrics/profit-factor.mjs";
 import { guardedStressStats, stressPricingEvidence, unitReturnEvidence } from "./lib/eval-stress.mjs";
 import { botStatsFromRows, botFamilyOf, eventBar } from "../src/core/bot-stats.ts";
 import { positiveTypesReport } from "./lib/positive-types-report.mjs";
@@ -73,7 +74,7 @@ test("each evaluator PF helper rejects unknown numeric evidence before it can be
   const guards = [pfOf, ...sources.map(({ file, pattern, name }) => {
     const code = readFileSync(new URL(file, import.meta.url), "utf8").match(pattern)?.[0];
     assert.ok(code);
-    return new Script(`${code}; ${name}`).runInNewContext();
+    return new Script(`${code}; ${name}`).runInNewContext({ profitFactorRatio });
   })];
   for (const pf of guards) {
     assert.equal(pf([0.04, -0.02]), 2);
