@@ -1,0 +1,215 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> build
+> node scripts/with-app-env.mjs vite build && npm run build:core-worker && npm run db:migrate
+
+[nitro:vercel] ℹ Using nodejs24.x runtime.
+[nitro:vercel] ℹ Using web entry format.
+Both esbuild and oxc options were set. oxc options will be used and esbuild options will be ignored. The following esbuild options were set: `{ legalComments: 'none' }`
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 1968 modules transformed.
+rendering chunks...
+.vercel/output/static/assets/styles-CdEqoLKk.css              34.33 kB
+.vercel/output/static/assets/stages-VGiAo2Qg.js                0.07 kB
+.vercel/output/static/assets/market-hjJbRty6.js                0.07 kB
+.vercel/output/static/assets/trading-CWaRx4Uo.js               0.07 kB
+.vercel/output/static/assets/settings-lqJkxY5q.js              0.07 kB
+.vercel/output/static/assets/useRouter-VhwLfQSd.js             0.15 kB
+.vercel/output/static/assets/model-cost-BGXH0XjV.js            0.30 kB
+.vercel/output/static/assets/progression-DygnuQpx.js           0.85 kB
+.vercel/output/static/assets/progress-C-M_JKOX.js              0.93 kB
+.vercel/output/static/assets/bots-BxbyHAaK.js                  1.16 kB
+.vercel/output/static/assets/minimal-coord-iDZCDKap.js         1.42 kB
+.vercel/output/static/assets/indication-ui-D2TVBjXw.js         1.53 kB
+.vercel/output/static/assets/execution-summary-BWL_S3NA.js     1.54 kB
+.vercel/output/static/assets/validation-cohort-DPSlDXpz.js     1.78 kB
+.vercel/output/static/assets/strategy-coverage-C_WpDwWw.js     1.79 kB
+.vercel/output/static/assets/matrix-fUQPT05Y.js                2.35 kB
+.vercel/output/static/assets/signal-units-Bbfv6umU.js          2.69 kB
+.vercel/output/static/assets/compare-sI5RDtpO.js               3.84 kB
+.vercel/output/static/assets/promotion-evidence-DQq8zp1U.js    4.42 kB
+.vercel/output/static/assets/results-DVuZx4Bd.js               5.51 kB
+.vercel/output/static/assets/hourly-B6iOXch8.js                5.78 kB
+.vercel/output/static/assets/config._id-DwRJXSao.js            5.99 kB
+.vercel/output/static/assets/config-d4aHItss.js                8.83 kB
+.vercel/output/static/assets/v2-CtFE8DD4.js                    9.44 kB
+.vercel/output/static/assets/relate-BqYY12ue.js                9.91 kB
+.vercel/output/static/assets/link-CkKc5ylV.js                 11.26 kB
+.vercel/output/static/assets/preset-settings-oJIs07Z_.js      11.80 kB
+.vercel/output/static/assets/engine-BpMc_GmY.js               12.20 kB
+.vercel/output/static/assets/prehistoric-IZY3MZI4.js          12.57 kB
+.vercel/output/static/assets/signal-config-CaJ9vjPK.js        14.76 kB
+.vercel/output/static/assets/v2-SsOCgO5r.js                   17.10 kB
+.vercel/output/static/assets/charts-DAJvWbX9.js               17.14 kB
+.vercel/output/static/assets/trading-DWQ_1pOA.js              18.27 kB
+.vercel/output/static/assets/ui-BYUfoX8L.js                   18.76 kB
+.vercel/output/static/assets/presets-C1hP7y37.js              19.56 kB
+.vercel/output/static/assets/statistics-3sSVYvzw.js           23.79 kB
+.vercel/output/static/assets/stages-wH1Xuwt8.js               30.58 kB
+.vercel/output/static/assets/jsx-runtime-D6cXz5cu.js          41.58 kB
+.vercel/output/static/assets/low-range-fKg4HNcy.js            45.16 kB
+.vercel/output/static/assets/registry-DR8oiNG2.js             92.28 kB
+.vercel/output/static/assets/settings-Bxq1FRKU.js            142.75 kB
+.vercel/output/static/assets/index-BeCXHyj5.js               351.66 kB
+
+✓ built in 7.09s
+[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 6.9s of this 7.1s build (98%).
+The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+  - @tailwindcss/vite:generate:build transform (92%, 6.5s, 1 call)
+Additional hook time came from the hooks below and from hooks under 1s.
+2 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+  - tanstack-start-core:import-protection resolveId (5774 calls)
+  - tanstack-start-core::server-fn:client transform (15 calls)
+See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+
+vite v8.2.2 building ssr environment for production...
+transforming...
+✓ 252 modules transformed.
+rendering chunks...
+node_modules/.nitro/vite/services/ssr/assets/styles-CdEqoLKk.css                      34.33 kB
+node_modules/.nitro/vite/services/ssr/assets/start-DeWYR9gU.js                         0.17 kB
+node_modules/.nitro/vite/services/ssr/assets/stages-IrNFCrI0.js                        0.19 kB
+node_modules/.nitro/vite/services/ssr/assets/market-B44eerme.js                        0.19 kB
+node_modules/.nitro/vite/services/ssr/assets/trading-BoNQukis.js                       0.20 kB
+node_modules/.nitro/vite/services/ssr/assets/settings-CmyW5JUB.js                      0.20 kB
+node_modules/.nitro/vite/services/ssr/assets/empty-plugin-adapters-Bdfm-bDJ.js         0.25 kB
+node_modules/.nitro/vite/services/ssr/assets/rolldown-runtime-D7D4PA-g.js              0.36 kB
+node_modules/.nitro/vite/services/ssr/assets/validation-cohort-DoyPCLbU.js             1.51 kB
+node_modules/.nitro/vite/services/ssr/assets/progression-BUW_uSrV.js                   1.77 kB
+node_modules/.nitro/vite/services/ssr/assets/execution-summary-Cb2slIdK.js             2.53 kB
+node_modules/.nitro/vite/services/ssr/assets/strategy-coverage-cBB7tANb.js             2.83 kB
+node_modules/.nitro/vite/services/ssr/assets/signal-units-CTgalqgD.js                  3.13 kB
+node_modules/.nitro/vite/services/ssr/assets/indication-ui-cZjGGZBP.js                 3.94 kB
+node_modules/.nitro/vite/services/ssr/assets/matrix-DW8ZsEQf.js                        3.94 kB
+node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-BXqbZn22.js    4.63 kB
+node_modules/.nitro/vite/services/ssr/assets/sizing-BPwrfpDj.js                        4.67 kB
+node_modules/.nitro/vite/services/ssr/assets/progress-HPmQ_PqK.js                      5.27 kB
+node_modules/.nitro/vite/services/ssr/assets/promotion-evidence-Db89Ytnm.js            5.57 kB
+node_modules/.nitro/vite/services/ssr/assets/compare-Dm0Fty7y.js                       6.53 kB
+node_modules/.nitro/vite/services/ssr/assets/api-CCksydPh.js                           8.85 kB
+node_modules/.nitro/vite/services/ssr/assets/results-DpsnRttm.js                       9.25 kB
+node_modules/.nitro/vite/services/ssr/assets/v2-CPNBZxxT.js                            9.75 kB
+node_modules/.nitro/vite/services/ssr/assets/hourly-B9ERlHLa.js                        9.92 kB
+node_modules/.nitro/vite/services/ssr/assets/config._id-h86rJVIg.js                    9.98 kB
+node_modules/.nitro/vite/services/ssr/assets/live-record-COkVo1fx.js                  10.56 kB
+node_modules/.nitro/vite/services/ssr/assets/live-validation-C8WEM8z8.js              14.86 kB
+node_modules/.nitro/vite/services/ssr/assets/prehistoric-CSZ4gTcz.js                  19.43 kB
+node_modules/.nitro/vite/services/ssr/assets/engine-DbTAU9Cw.js                       20.03 kB
+node_modules/.nitro/vite/services/ssr/assets/preset-settings-CqGySie1.js              20.07 kB
+node_modules/.nitro/vite/services/ssr/assets/router-Dd1yCzDN.js                       21.60 kB
+node_modules/.nitro/vite/services/ssr/assets/minimal-coord-MxPP_udy.js                23.16 kB
+node_modules/.nitro/vite/services/ssr/assets/trading-BGKiSYCY.js                      27.46 kB
+node_modules/.nitro/vite/services/ssr/assets/v2-D6MFYpIE.js                           27.63 kB
+node_modules/.nitro/vite/services/ssr/assets/ui-Dm3oRoQP.js                           28.47 kB
+node_modules/.nitro/vite/services/ssr/assets/charts-DTnxMHeg.js                       28.97 kB
+node_modules/.nitro/vite/services/ssr/assets/presets-FwfSBMGh.js                      30.95 kB
+node_modules/.nitro/vite/services/ssr/assets/statistics-Dhi5CGeA.js                   31.12 kB
+node_modules/.nitro/vite/services/ssr/assets/bingx.server-CqYEZ5-u.js                 34.78 kB
+node_modules/.nitro/vite/services/ssr/assets/statistics-337mjJb1.js                   36.15 kB
+node_modules/.nitro/vite/services/ssr/assets/presets-DzU5xf_W.js                      37.17 kB
+node_modules/.nitro/vite/services/ssr/assets/stages-y56tklUf.js                       47.76 kB
+node_modules/.nitro/vite/services/ssr/assets/live-C-DdaBsH.js                         50.02 kB
+node_modules/.nitro/vite/services/ssr/assets/api-data-BQN73aQh.js                     58.06 kB
+node_modules/.nitro/vite/services/ssr/index.js                                        79.61 kB
+node_modules/.nitro/vite/services/ssr/assets/pipeline-B4btT49w.js                    187.40 kB
+node_modules/.nitro/vite/services/ssr/assets/settings-L0fDxbAu.js                    223.83 kB
+node_modules/.nitro/vite/services/ssr/assets/registry-CUpC_GbG.js                    302.97 kB
+node_modules/.nitro/vite/services/ssr/assets/live.server-DiDMZKdk.js                 308.98 kB
+node_modules/.nitro/vite/services/ssr/assets/reporting-stats-BCzUOJ4x.js             329.55 kB
+node_modules/.nitro/vite/services/ssr/assets/runtime.server-B4YSlVAi.js              626.07 kB
+
+✓ built in 6.86s
+[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 6.7s of this 6.9s build (98%).
+The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+  - @tailwindcss/vite:generate:build transform (95%, 6.5s, 1 call)
+Additional hook time came from the hooks below and from hooks under 1s.
+2 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+  - tanstack-start-core:import-protection resolveId (816 calls)
+  - tanstack-start-core::server-fn:ssr transform (14 calls)
+See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+
+
+[nitro] ◐ Building [Nitro] (preset: vercel, compatibility: 2026-10-30)
+[nitro] ✔ Generated public .vercel/output/static
+vite v8.2.2 building nitro environment for production...
+transforming...
+✓ 2057 modules transformed.
+rendering chunks...
+.vercel/output/functions/__server.func/_ssr/start-DeWYR9gU.mjs                      0.16 kB
+.vercel/output/functions/__server.func/_ssr/stages-IrNFCrI0.mjs                     0.24 kB
+.vercel/output/functions/__server.func/_ssr/market-B44eerme.mjs                     0.24 kB
+.vercel/output/functions/__server.func/_ssr/trading-BoNQukis.mjs                    0.24 kB
+.vercel/output/functions/__server.func/_ssr/settings-CmyW5JUB.mjs                   0.24 kB
+.vercel/output/functions/__server.func/_ssr/empty-plugin-adapters-Bdfm-bDJ.mjs      0.25 kB
+.vercel/output/functions/__server.func/_ssr/rolldown-runtime-D7D4PA-g.mjs           0.43 kB
+.vercel/output/functions/__server.func/_chunks/ssr-renderer.mjs                     1.01 kB
+.vercel/output/functions/__server.func/_libs/hookable.mjs                           1.18 kB
+.vercel/output/functions/__server.func/_ssr/validation-cohort-DoyPCLbU.mjs          1.57 kB
+.vercel/output/functions/__server.func/_runtime.mjs                                 1.58 kB
+.vercel/output/functions/__server.func/_ssr/progression-BUW_uSrV.mjs                1.83 kB
+.vercel/output/functions/__server.func/_ssr/execution-summary-Cb2slIdK.mjs          2.88 kB
+.vercel/output/functions/__server.func/_ssr/signal-units-CTgalqgD.mjs               3.16 kB
+.vercel/output/functions/__server.func/_ssr/strategy-coverage-cBB7tANb.mjs          3.43 kB
+.vercel/output/functions/__server.func/_ssr/indication-ui-cZjGGZBP.mjs              4.00 kB
+.vercel/output/functions/__server.func/_ssr/matrix-DW8ZsEQf.mjs                     4.44 kB
+.vercel/output/functions/__server.func/_tanstack-start-manifest_v-BXqbZn22.mjs      4.71 kB
+.vercel/output/functions/__server.func/_ssr/progress-HPmQ_PqK.mjs                   5.34 kB
+.vercel/output/functions/__server.func/_ssr/promotion-evidence-Db89Ytnm.mjs         6.59 kB
+.vercel/output/functions/__server.func/_ssr/compare-Dm0Fty7y.mjs                    7.71 kB
+.vercel/output/functions/__server.func/_ssr/api-CCksydPh.mjs                        8.79 kB
+.vercel/output/functions/__server.func/_libs/h3-v2+rou3.mjs                         9.87 kB
+.vercel/output/functions/__server.func/_ssr/live-record-COkVo1fx.mjs               10.56 kB
+.vercel/output/functions/__server.func/_ssr/results-DpsnRttm.mjs                   11.08 kB
+.vercel/output/functions/__server.func/_ssr/v2-CPNBZxxT.mjs                        11.45 kB
+.vercel/output/functions/__server.func/_libs/lucide-react.mjs                      11.50 kB
+.vercel/output/functions/__server.func/_ssr/hourly-B9ERlHLa.mjs                    11.81 kB
+.vercel/output/functions/__server.func/_ssr/config._id-h86rJVIg.mjs                11.85 kB
+.vercel/output/functions/__server.func/_libs/tanstack__history.mjs                 12.52 kB
+.vercel/output/functions/__server.func/_ssr/live-validation-C8WEM8z8.mjs           14.51 kB
+.vercel/output/functions/__server.func/_ssr/router-Dd1yCzDN.mjs                    21.19 kB
+.vercel/output/functions/__server.func/_ssr/prehistoric-CSZ4gTcz.mjs               22.29 kB
+.vercel/output/functions/__server.func/_libs/h3+rou3+srvx.mjs                      22.66 kB
+.vercel/output/functions/__server.func/_ssr/preset-settings-CqGySie1.mjs           23.05 kB
+.vercel/output/functions/__server.func/_ssr/engine-DbTAU9Cw.mjs                    24.19 kB
+.vercel/output/functions/__server.func/_ssr/ui-Dm3oRoQP.mjs                        29.81 kB
+.vercel/output/functions/__server.func/_libs/@tanstack/router-core+[...].mjs       29.96 kB
+.vercel/output/functions/__server.func/_ssr/statistics-Dhi5CGeA.mjs                31.08 kB
+.vercel/output/functions/__server.func/_ssr/charts-DTnxMHeg.mjs                    32.09 kB
+.vercel/output/functions/__server.func/_ssr/v2-D6MFYpIE.mjs                        32.28 kB
+.vercel/output/functions/__server.func/_ssr/trading-BGKiSYCY.mjs                   33.20 kB
+.vercel/output/functions/__server.func/index.mjs                                   33.25 kB
+.vercel/output/functions/__server.func/_ssr/bingx.server-CqYEZ5-u.mjs              34.72 kB
+.vercel/output/functions/__server.func/_ssr/presets-FwfSBMGh.mjs                   35.02 kB
+.vercel/output/functions/__server.func/_ssr/presets-DzU5xf_W.mjs                   37.10 kB
+.vercel/output/functions/__server.func/_ssr/statistics-337mjJb1.mjs                41.94 kB
+.vercel/output/functions/__server.func/_ssr/live-C-DdaBsH.mjs                      49.95 kB
+.vercel/output/functions/__server.func/_ssr/stages-y56tklUf.mjs                    55.24 kB
+.vercel/output/functions/__server.func/_ssr/api-data-BQN73aQh.mjs                  58.24 kB
+.vercel/output/functions/__server.func/_ssr/ssr.mjs                                77.20 kB
+.vercel/output/functions/__server.func/_libs/zod.mjs                              160.01 kB
+.vercel/output/functions/__server.func/_ssr/settings-L0fDxbAu.mjs                 248.71 kB
+.vercel/output/functions/__server.func/_ssr/live.server-DiDMZKdk.mjs              308.53 kB
+.vercel/output/functions/__server.func/_chunks/live.server.mjs                    355.41 kB
+.vercel/output/functions/__server.func/_ssr/runtime.server-B4YSlVAi.mjs           624.26 kB
+.vercel/output/functions/__server.func/_libs/@tanstack/react-router+[...].mjs     778.59 kB
+.vercel/output/functions/__server.func/_ssr/reporting-stats-BCzUOJ4x.mjs          843.74 kB
+.vercel/output/functions/__server.func/_chunks/boot.server.mjs                  1,562.69 kB
+
+✓ built in 462ms
+ℹ Generated .vercel/output/nitro.json
+
+[nitro] ✔ You can preview this build using npx vite preview
+[nitro] ✔ You can deploy this build using npx nitro deploy --prebuilt
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> build:core-worker
+> node scripts/build-core-worker.mjs
+
+[core-worker] packaged cts-core-worker.mjs in /workspace/scratch/b69c1e5067d8/CTS-A-O-trailing-base/.vercel/output/functions/__server.func
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> db:migrate
+> node scripts/migrate.mjs
+
+[migrate] DATABASE_URL not set — skipping (the PGLite fallback migrates itself).

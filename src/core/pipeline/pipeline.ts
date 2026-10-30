@@ -623,6 +623,10 @@ export interface ComboRun {
    * what rangeTps' targets would build. The tape stage then builds only these cells.
    */
   rangeCells?: string[];
+  /** Independently passed no-TP cells, even when the general Base-cell option is off. */
+  trailingOnlyCells?: string[];
+  /** Candidate-cell counts and passed-return sums for the separate no-TP Base cohort, by range. */
+  trailingOnlyStats?: Record<string, TrailingOnlyBaseCount>;
   /**
    * Base, with Gates.baseWindows.report set: per report rule (its index), the targets of each range whose cells pass
    * today's Base AND the rule — a subset of rangeTps (the readout of what the rule would let the tape stage build)
@@ -648,6 +652,36 @@ export interface RangeBaseStat {
   /** the cell against Gates.baseWindows (set only while it is) */
   bw?: BaseWindowsResult;
   baseLast?: BaseLastNStats;
+}
+
+export interface TrailingOnlyBaseCount {
+  evaluated: number;
+  passed: number;
+  unavailable: number;
+  passedGp: number;
+  passedGl: number;
+  unknownPassed: number;
+}
+
+/** Aggregate only exact no-TP Base cells, retaining unavailable samples and passed gross returns separately. */
+export function* trailingOnlyBaseCountsGen(
+  runs: readonly Pick<ComboRun, "bot" | "ind" | "trailingOnlyStats">[],
+  eligible: (bot: string, ind: string, tag: string) => boolean = () => true,
+): Generator<number, Array<TrailingOnlyBaseCount & { tag: string }>> {
+  const rows = new Map<string, TrailingOnlyBaseCount>();
+  let processed = 0;
+  for (const r of runs) {
+    if (processed > 0 && processed % BASE_DIAGNOSTIC_BATCH === 0) yield processed;
+    processed++;
+    for (const [tag, st] of Object.entries(r.trailingOnlyStats ?? {})) {
+      if (!eligible(r.bot, r.ind, tag)) continue;
+      let row = rows.get(tag);
+      if (!row) { row = { evaluated: 0, passed: 0, unavailable: 0, passedGp: 0, passedGl: 0, unknownPassed: 0 }; rows.set(tag, row); }
+      row.evaluated += st.evaluated; row.passed += st.passed; row.unavailable += st.unavailable;
+      row.passedGp += st.passedGp; row.passedGl += st.passedGl; row.unknownPassed += st.unknownPassed;
+    }
+  }
+  return [...rows].map(([tag, st]) => ({ tag, ...st }));
 }
 
 /**
@@ -714,6 +748,16 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
     (tp, k, tr, h, minSl, minTrail, slEval) => emit(tp, k, tr, h, minSl, minTrail, "mc", slEval),
     cost,
   );
+  // Minimal Plus cells are supplied by its own optimizer and must use the same hold and floors as protectGrid.
+  const plus = g.minimalPlus;
+  if (plus && plus.enabled && plus.cells?.length)
+    for (const c of plus.cells) for (const h of g.holdH) {
+      const p: Protect = { tp: c.tp, sl: Math.max(g.minSlEval ?? EVAL_MIN_SL, c.sl), trail: c.trail,
+        hold: Math.max(2, Math.round((h * 60) / REF_TF)), tag: "mp",
+        ...(c.trail > 0 ? { trailStep: g.trailStep ?? 1, trailFree: g.trailFree ?? false } : {}) };
+      const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.maxHoldMin ?? ""}|${p.tag}`;
+      if (!seen.has(key)) { seen.add(key); out.push(p); }
+    }
   const lowRange = g.short ? lowRangeGridProtects(g.lowRange, cost, REF_TF) : [];
   if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
   out.push(...lowRange);
@@ -1018,7 +1062,7 @@ export function basePairRows(
     rules?: BaseRuleTags[];
   }> = [];
   for (const r of s1) {
-    if (isSignalInd(r.ind)) continue;
+    if (isSignalInd(r.ind) && r.bot !== "exit") continue;
     const pair = `${r.bot}|${r.ind}`;
     const tags = pairTags[pair];
     const row: (typeof out)[number] = {
@@ -1579,6 +1623,8 @@ export function rangeBaseStats(
   baseLastN = 0,
   lastNOnly = false,
   baseRangeLastN?: Gates["baseRangeLastN"],
+  trailingOnlyCellsOut?: string[],
+  trailingOnlyStatsOut?: Record<string, TrailingOnlyBaseCount>,
 ): Record<string, RangeBaseStat> | undefined {
   if (!protects.length) return undefined;
   // a lane-less indication (a research tool, a legacy preset) trades the base timeframe: the same expression
@@ -1588,17 +1634,47 @@ export function rangeBaseStats(
   const lowRangeInd = isLowRangeInd(laneOf(ind).base);
   const bw = windows ? { plan: windows.plan, fromT: laneFromT(u, ind) } : undefined;
   const out: Record<string, RangeBaseStat> = {};
+  const seenNoTp = new Set<string>();
   for (const p of protects) {
     if ((p.lowRangeOnly === true) !== lowRangeInd) continue;
     if (p.tag && laneTf < (minTf?.[p.tag] ?? 0)) continue;
     if (!microIndFits(microOwnInds, p.tag, microInd, isMicroFamilyInd(ind))) continue;
+    const k = p.tag ?? "";
+    const noTpKey = p.trailOnly && trailingOnlyCellsOut
+      ? protectCellKey(capTrailingOnlyProtect(laneProtect(p, ind))) : undefined;
+    if (noTpKey && seenNoTp.has(noTpKey)) continue;
+    if (noTpKey) seenNoTp.add(noTpKey);
+    let noTpStats: TrailingOnlyBaseCount | undefined;
+    if (noTpKey && trailingOnlyStatsOut) {
+      noTpStats = trailingOnlyStatsOut[k] ??= { evaluated: 0, passed: 0, unavailable: 0,
+        passedGp: 0, passedGl: 0, unknownPassed: 0 };
+      noTpStats.evaluated++;
+    }
     // the cell's whole-history stats only (cellStats = runCombo(…).full, without its per-symbol and in-sample work)
     const requested = baseLastNForRange({ baseLastN, baseRangeLastN }, p.tag ?? "");
     const cand = cellStats(u, bot, ind, p, cost, tactics, bw, requested);
-    if (!cand) continue;
+    if (!cand) { if (noTpStats) noTpStats.unavailable++; continue; }
+    const reportedNoTp = !noTpStats ? null : lastNOnly ? baseReportedStats(cand, { minPf: 0, minTrades: 0,
+      baseLastN: requested, lastNOnly: true }) :
+      Number.isSafeInteger(cand.n) && cand.n > 0 && Number.isFinite(cand.net) && Number.isFinite(cand.pf) ? cand : null;
+    if (noTpStats && !reportedNoTp) noTpStats.unavailable++;
     // several cells of one range (Base at every config): a passing cell first, then the higher net
-    const k = p.tag ?? "";
     const prev = out[k];
+    // An independently qualified no-TP strategy must neither lend its outcome to a positive-TP range nor
+    // depend on that range's representative winner. Its own exact cell proof is published separately.
+    if (p.trailOnly && trailingOnlyCellsOut) {
+      if (pass && pass(k, cand)) {
+        trailingOnlyCellsOut.push(noTpKey!);
+        if (noTpStats) {
+          noTpStats.passed++;
+          if (reportedNoTp && Number.isFinite(reportedNoTp.gp) && Number.isFinite(reportedNoTp.gl) &&
+              reportedNoTp.gp! >= 0 && reportedNoTp.gl! >= 0) {
+            noTpStats.passedGp += reportedNoTp.gp!; noTpStats.passedGl += reportedNoTp.gl!;
+          } else noTpStats.unknownPassed++;
+        }
+      }
+      continue;
+    }
     // Every range proof must name the lane cell actually simulated, including its converted hold.
     if (cellsOut && k && pass && pass(k, cand)) {
       const lane = laneProtect(p, ind);
@@ -1942,6 +2018,8 @@ export function baseRuns(
 ): ComboRun[] {
   const completeRangeProtects = typeof completeRangeProtectsOrCells === "boolean" ? [] : completeRangeProtectsOrCells;
   if (typeof completeRangeProtectsOrCells === "boolean") cells = completeRangeProtectsOrCells;
+  const noTp = completeRangeProtects.filter((p) => p.trailOnly);
+  const ordinaryProtects = noTp.length ? [...rangeProtects.filter((p) => !p.trailOnly), ...noTp] : rangeProtects;
   // two-window Base (gates.baseWindows; null while unset: nothing more is computed)
   const plan = gates?.lastNOnly ? null : baseWindowsPlan(gates);
   const out: ComboRun[] = [];
@@ -1968,6 +2046,8 @@ export function baseRuns(
         // signal pairs never use range cells (they take their own configs): no range runs for them
         const tps: Record<string, number[]> = {};
         const cellKeys: string[] | undefined = cells || isLowRangeInd(c.ind) ? [] : undefined;
+        const noTpCells: string[] | undefined = noTp.length ? [] : undefined;
+        const noTpStats: Record<string, TrailingOnlyBaseCount> | undefined = noTp.length ? {} : undefined;
         const engine = !isSignalInd(c.ind) && c.bot !== "exit";
         const ruleTps = plan && engine ? baseRunWindows(u, r, plan) : undefined;
         const ranges = !engine
@@ -1978,7 +2058,7 @@ export function baseRuns(
               c.ind,
               completeRangeProtects.length && (isMicroFamilyInd(c.ind) || isInverseInd(c.ind) || isLowRangeInd(c.ind))
                 ? completeRangeProtects
-                : rangeProtects,
+                : ordinaryProtects,
               cost,
               tactics,
               rangeMinTf,
@@ -1991,10 +2071,13 @@ export function baseRuns(
               gates?.baseLastN ?? 0,
               gates?.lastNOnly === true,
               gates?.baseRangeLastN,
+              noTpCells,
+              noTpStats,
             );
         if (ranges) r.ranges = ranges;
         if (Object.keys(tps).length) r.rangeTps = tps;
         if (cellKeys?.length) r.rangeCells = cellKeys;
+        if (engine && noTpCells) { r.trailingOnlyCells = noTpCells; r.trailingOnlyStats = noTpStats; }
         if (ruleTps) r.ruleTps = ruleTps;
         out.push(packed ? { ...slim(r), bySym: JSON.stringify(r.bySym) } : slim(r));
       }
@@ -2034,6 +2117,10 @@ export function* runPipeline(
         ...additionalCombos,
       ];
   const s1: ComboRun[] = pre ? [...pre.s1] : [];
+  const completeProtects = pre ? [] : completeBaseRangeProtects(s.grid, cost);
+  const noTp = completeProtects.filter((p) => p.trailOnly);
+  const representatives = pre ? [] : baseRangeProtects(s.grid, cost);
+  const ordinaryProtects = noTp.length ? [...representatives.filter((p) => !p.trailOnly), ...noTp] : representatives;
   // two-window Base (gates.baseWindows; null while unset), exactly as baseRuns (the workers' path)
   const plan = s.gates.lastNOnly ? null : baseWindowsPlan(s.gates);
   for (let i = 0; i < combos.length; i++) {
@@ -2056,13 +2143,15 @@ export function* runPipeline(
       const tps: Record<string, number[]> = {};
       const ruleTps = plan ? baseRunWindows(u, r, plan) : undefined;
       const cellKeys: string[] | undefined = g.baseCells === true || isLowRangeInd(c.ind) ? [] : undefined;
+      const noTpCells: string[] | undefined = noTp.length ? [] : undefined;
+      const noTpStats: Record<string, TrailingOnlyBaseCount> | undefined = noTp.length ? {} : undefined;
       const ranges = rangeBaseStats(
         u,
         c.bot,
         c.ind,
         isMicroFamilyInd(c.ind) || isInverseInd(c.ind) || isLowRangeInd(c.ind)
-          ? completeBaseRangeProtects(g as CoreSettings["grid"], cost)
-          : baseRangeProtects(g, cost),
+          ? completeProtects
+          : ordinaryProtects,
         cost,
         s.tactics,
         rangeMinTfOf(g),
@@ -2075,10 +2164,13 @@ export function* runPipeline(
         s.gates.baseLastN ?? 0,
         s.gates.lastNOnly === true,
         s.gates.baseRangeLastN,
+        noTpCells,
+        noTpStats,
       );
       if (ranges) r.ranges = ranges;
       if (Object.keys(tps).length) r.rangeTps = tps;
       if (cellKeys?.length) r.rangeCells = cellKeys;
+      if (noTpCells) { r.trailingOnlyCells = noTpCells; r.trailingOnlyStats = noTpStats; }
       if (ruleTps) r.ruleTps = ruleTps;
     }
     if (r) s1.push(slim(r));

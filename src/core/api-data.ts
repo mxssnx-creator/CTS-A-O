@@ -313,6 +313,7 @@ export async function coreStatusData(data: ReturnType<typeof connInput>) {
     basePassed: st.basePassed,
     baseBuilt: st.baseBuilt ?? 0,
     baseByRange: st.baseByRange ?? [],
+    baseTrailingOnlyByRange: st.baseTrailingOnlyByRange ?? [],
     postBaseValidation: st.postBaseValidation ?? null,
     baseWhy: st.baseWhy ?? [],
     baseGates: st.baseGates ?? [],

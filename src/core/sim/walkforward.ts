@@ -528,6 +528,8 @@ export interface WalkForwardOptions {
    * Unset = the pair / range level.
    */
   basePassedCells?: Readonly<Record<string, PassedCells>>;
+  /** Per-pair exact no-TP Base proofs. Present empty means no new trailing-only entry is qualified. */
+  basePassedTrailingOnlyCells?: Readonly<Record<string, PassedCells>>;
   /** V's ids (seatSet "validated"): given, or evaluated once at the run's start (WalkForwardResult.validated) */
   validated?: ReadonlySet<string>;
   /**
@@ -1718,6 +1720,8 @@ export type EntryFloors = {
    * and the Wide grid keep the pair / target level. Absent = off.
    */
   pairCells?: Record<string, readonly string[]>;
+  /** Exact no-TP Base proofs for the tape builder; absent only on legacy/research callers. */
+  pairTrailingOnlyCells?: Record<string, readonly string[]>;
   /**
    * Pairs in Main only because the paper book holds one of their configs (they did not pass Base): only the held ids are
    * built — no Wide / range cell, no DCA, no Axis (a pair without Base entry used to build its whole grid).
@@ -1784,6 +1788,7 @@ export function floorsForPairs(floors: EntryFloors): (pairs: readonly string[]) 
     ...(floors.pairTags ? { pairTags: pick(floors.pairTags, pairs) } : {}),
     ...(floors.pairTps ? { pairTps: pick(floors.pairTps, pairs) } : {}),
     ...(floors.pairCells ? { pairCells: pick(floors.pairCells, pairs) } : {}),
+    ...(floors.pairTrailingOnlyCells ? { pairTrailingOnlyCells: pick(floors.pairTrailingOnlyCells, pairs) } : {}),
     ...(floors.pairProtects ? { pairProtects: pick(floors.pairProtects, pairs) } : {}),
     ...(floors.heldIds ? { heldIds: new Set(pairs.flatMap((k) => held.get(k) ?? [])) } : {}),
     ...(floors.heldOnlyIds
@@ -2285,6 +2290,7 @@ export function* buildTapesGen(
     const cellKeys = floors?.pairCells?.[pairKey];
     const cellSet = cellKeys ? new Set(cellKeys) : null;
     const cellTags = cellKeys ? new Set(cellKeys.map((k) => k.slice(0, k.indexOf("|")))) : null;
+    const noTpCells = floors?.pairTrailingOnlyCells ? new Set(floors.pairTrailingOnlyCells[pairKey] ?? []) : null;
     const microInd = isMicroInd(laneOf(c.ind).base);
     const own = floors?.pairProtects?.[`${c.bot}|${c.ind}`];
     const recovered = recoveredPlain.get(pairKey) ?? [];
@@ -2356,14 +2362,19 @@ export function* buildTapesGen(
             : // (an untagged Wide cell reads the "wide" entry: grid.wideMinTf)
               !exitConfig && laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0)
               ? "laneFloor"
-              : !exitConfig && !!tagsOk && !tagsOk.includes(p0.tag ?? "")
+              : !exitConfig && !!tagsOk && !tagsOk.includes(p0.tag ?? "") &&
+                !(p0.trailOnly && !!noTpCells && noTpCells.has(protectCellKey(p)))
                 ? "baseRange"
-                : !exitConfig && isLowRangeInd(c.ind) && !!floors?.pairTags && !cellSet
+                : !exitConfig && isLowRangeInd(c.ind) && !!floors?.pairTags && !cellSet &&
+                  !(p0.trailOnly && !!noTpCells)
                   ? "baseCell"
                 : // only the targets of this range that passed Base
-                  !exitConfig && !!tps && !tps.includes(p0.tp)
+                  !exitConfig && !!tps && !(p0.trailOnly && !!noTpCells) && !tps.includes(p0.tp)
                   ? "baseTarget"
-                  : !exitConfig && !!p0.tag && !!cellSet &&
+                  : !exitConfig && !isSignalInd(c.ind) && p0.trailOnly && !!noTpCells &&
+                    !noTpCells.has(protectCellKey(p))
+                    ? "baseCell"
+                  : !exitConfig && !!p0.tag && !!cellSet && !(p0.trailOnly && !!noTpCells) &&
                     (isLowRangeInd(c.ind) || cellTags!.has(p0.tag)) &&
                     // Proofs identify the actual lane cell, including feedback. A source cell cannot prove
                     // a different hold or adjusted protection unless that exact cell also passed Base.
@@ -2891,12 +2902,15 @@ export function baseAllowsTape(
     | "baseWideLadderPairs"
     | "exitBasePassed"
     | "basePassedCells"
+    | "basePassedTrailingOnlyCells"
   >,
   /** An inverted research seat executes its mirror's tape but retains the source seat's qualification. */
   pair = `${tp.bot}|${tp.ind}`,
 ): boolean {
   if (tp.kind === "exit") return !o.exitBasePassed || o.exitBasePassed.has(pair);
   if (o.basePassed && !o.basePassed.has(pair)) return false;
+  if (tp.protect.trailOnly && !isSignalInd(tp.ind) && o.basePassedTrailingOnlyCells)
+    return o.basePassedTrailingOnlyCells[pair]?.keys.has(protectCellKey(tp.protect)) ?? false;
   const ranges = o.basePassedRanges?.[pair];
   if (o.basePassedRanges && !ranges?.length) return false;
   // With Axis perRange off, an admitted pair's independent untagged ladders are not the plain Wide config.
@@ -4385,6 +4399,7 @@ function selSig(o: WalkForwardOptions): string {
     objId(o.baseWideLadderPairs),
     o.seatSet === "validated" ? objId(o.validated) : 0,
     objId(o.basePassedCells),
+    objId(o.basePassedTrailingOnlyCells),
     JSON.stringify(o.toggles ?? null),
     o.signalOwnBase ? 1 : 0,
     o.seatPer ?? "",
@@ -4416,11 +4431,13 @@ export function passedCellsOf(pairCells: Readonly<Record<string, readonly string
 /** Whether a tape's cell is one its pair's Base passed (true without cells for the pair / its range: the pair level decides). */
 export function cellAllowed(
   tp: Pick<ConfigTape, "bot" | "ind" | "protect"> & Partial<Pick<ConfigTape, "kind">>,
-  o: Pick<WalkForwardOptions, "basePassedCells">,
+  o: Pick<WalkForwardOptions, "basePassedCells" | "basePassedTrailingOnlyCells">,
   pair = `${tp.bot}|${tp.ind}`,
 ): boolean {
   // Historic Exit has a separate Base proof; a same-pair ordinary cell must never decide its admission.
   if (tp.kind === "exit") return true;
+  if (tp.protect.trailOnly && !isSignalInd(tp.ind) && o.basePassedTrailingOnlyCells)
+    return o.basePassedTrailingOnlyCells[pair]?.keys.has(protectCellKey(tp.protect)) ?? false;
   const c = o.basePassedCells?.[pair];
   const tag = tp.protect.tag;
   if (!c) return !o.basePassedCells || !isLowRangeInd(tp.ind);

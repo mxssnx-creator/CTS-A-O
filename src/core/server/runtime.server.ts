@@ -161,6 +161,7 @@ import {
   baseRangeCountsGen,
   baseGateSensitivityGen,
   baseRangeWhyGen,
+  trailingOnlyBaseCountsGen,
   BASE_GATE_VARIANTS,
   meanPf,
   pooledPf,
@@ -171,6 +172,7 @@ import {
   pairBuildTags,
   rangeAppliesTo,
   type BaseRangeCount,
+  type TrailingOnlyBaseCount,
   baseRangeProtects,
   completeBaseRangeProtects,
   laneInds,
@@ -694,6 +696,8 @@ export interface RuntimeStatus {
   tapesReleased?: number;
   /** after the Base PF evaluation, per range type (Wide, Micro … Long, Signals): sets evaluated / passed and PF */
   baseByRange?: Array<BaseRangeCount & { range: string; enabled: boolean }>;
+  /** Exact independently evaluated trailing-only cells, separate from representative pair statistics. */
+  baseTrailingOnlyByRange?: Array<TrailingOnlyBaseCount & { tag: string; range: string; enabled: boolean; pfPassedPooled: number | null }>;
   /** Exact causal Base config counts, separate from the representative pair counts above. */
   baseConfigs?: BaseConfigSummary;
   /** counts of the listings of the last paper step (CoreRuntime.listings; the pages page through coreListing) */
@@ -1144,6 +1148,8 @@ export class CoreRuntime {
   memFallback = 0;
   /** ranges each pair passed in the last Base ("" = the default protect / wide grid) */
   basePairTags: Record<string, string[]> = {};
+  /** Signal-sourced Historic Exit Base rows accompany their independently published qualification. */
+  baseSignalExitRows: ComboRun[] = [];
   private memClean = 0;
   private memPressured = false;
   private memSoftNoted = false;
@@ -1257,6 +1263,8 @@ export class CoreRuntime {
     this.wf = {
       ...defaultWalkForward(this.settings),
       ...pickWf(savedWf),
+      // No independent no-TP proof has been published after restart yet. Existing positions remain managed.
+      basePassedTrailingOnlyCells: {},
       // Production/runtime execution always consumes the validated set V, including after loading a saved legacy pool.
       seatSet: "validated",
     };
@@ -2860,6 +2868,7 @@ export class CoreRuntime {
       basePassed: this.wf.basePassed,
       baseQualificationT: this.wf.baseQualificationT,
       basePassedCells: this.wf.basePassedCells,
+      basePassedTrailingOnlyCells: next.grid.trailingOnly === true ? (this.wf.basePassedTrailingOnlyCells ?? {}) : {},
       exitBasePassed: this.wf.exitBasePassed,
       basePassedRanges: this.wf.basePassedRanges,
       basePassedTargets: this.wf.basePassedTargets,
@@ -4257,6 +4266,7 @@ export class CoreRuntime {
       | "baseBuilt"
       | "baseEvaluated"
       | "baseByRange"
+      | "baseTrailingOnlyByRange"
       | "baseGates"
       | "baseWhy"
       | "baseHistory"
@@ -4612,6 +4622,7 @@ export class CoreRuntime {
       pairTags,
       pairTps,
       pairCells,
+      pairTrailingOnlyCells,
       added: baseBuilt,
       addedKeys,
     } = basePass(engineS1, s, applies, famNarrow ? evalFams : null);
@@ -4681,6 +4692,8 @@ export class CoreRuntime {
     // Cell qualification publishes with the rest of the economic cohort below.
     wf.basePassedCells = s.grid?.baseCells === true || s.grid?.lowRange?.enabled === true
       ? passedCellsOf(qualifiedCells) : undefined;
+    wf.basePassedTrailingOnlyCells = s.grid?.trailingOnly === true
+      ? passedCellsOf(pairTrailingOnlyCells) : {};
     wf.family = evalFams && !famNarrow ? evalFams.map((f) => f.label) : undefined;
     // Signals processing: the active signals and every signal pair still holding a position take the signal
     // configs, never the engine's protect grid
@@ -5171,7 +5184,8 @@ export class CoreRuntime {
       const label = "Base diagnostics · ranges, gates and reasons";
       const rangeWork = engineRuns.length * (1 + ALL_RANGE_TAGS.length);
       const gateWork = engineRuns.length * (1 + BASE_GATE_VARIANTS.length);
-      const totalWork = Math.max(1, rangeWork * 2 + gateWork);
+      const otherWork = rangeWork * 2 + gateWork;
+      const totalWork = Math.max(1, otherWork + (s.grid?.trailingOnly === true ? engineRuns.length : 0));
       const eligible = (ind: string, tag: string) => rangeAppliesTo(ind, tag, applies);
       this.startStage("Tapes", label);
       const rangeCounts = await this.drive(
@@ -5233,6 +5247,15 @@ export class CoreRuntime {
       );
       if (gen !== this.gen) return;
       nextStatus.baseWhy = why.filter((x) => enabled(x.tag));
+      const noTp = s.grid?.trailingOnly === true
+        ? await this.drive("Base trailing-only cells", trailingOnlyBaseCountsGen(engineRuns,
+            (bot, ind, tag) => eligible(ind, tag) && (!famNarrow || familyTags(evalFams!, bot, ind, [tag]).includes(tag))),
+            (n) => this.setStage("Tapes", otherWork + n, totalWork, label), gen)
+        : [];
+      if (gen !== this.gen) return;
+      nextStatus.baseTrailingOnlyByRange = noTp.map((x) => ({ ...x,
+        range: RANGE_LABEL[x.tag as keyof typeof RANGE_LABEL] ?? (x.tag || "Wide"), enabled: enabled(x.tag),
+        pfPassedPooled: x.unknownPassed === 0 && x.passedGl > 0 ? x.passedGp / x.passedGl : null }));
       this.setStage("Tapes", totalWork, totalWork, label);
       // Base totals include Signal representatives only when their representative Base gate is enabled; the Signals
       // range row remains an independent diagnostic either way.
@@ -5430,6 +5453,7 @@ export class CoreRuntime {
       pairTags,
       pairTps,
       pairCells,
+      ...(s.grid?.trailingOnly === true ? { pairTrailingOnlyCells } : {}),
       ...(wf.seatSet === "validated"
         ? { heldPairsOnly: heldUnpassedPairs }
         : {}),
@@ -5503,6 +5527,7 @@ export class CoreRuntime {
             pairTags,
             pairTps,
             pairCells,
+            ...(s.grid?.trailingOnly === true ? { pairTrailingOnlyCells } : {}),
             heldIds,
             microOwnInds: microOwnInds(s.grid),
             onlyIds: carriedHeld.ids,
@@ -5613,6 +5638,7 @@ export class CoreRuntime {
           pairTags,
           pairTps,
           pairCells,
+          ...(s.grid?.trailingOnly === true ? { pairTrailingOnlyCells } : {}),
           heldIds,
           microOwnInds: microOwnInds(s.grid),
         },
@@ -5744,6 +5770,7 @@ export class CoreRuntime {
       basePassed: wf.basePassed,
       baseQualificationT: wf.gates?.lastNOnly ? sim.startT : undefined,
       basePassedCells: wf.basePassedCells,
+      basePassedTrailingOnlyCells: wf.basePassedTrailingOnlyCells,
       exitBasePassed: wf.exitBasePassed,
       basePassedRanges: wf.basePassedRanges,
       basePassedTargets: wf.basePassedTargets,
@@ -5765,6 +5792,7 @@ export class CoreRuntime {
     this.buildStats = rangePublication.buildStats;
     this.fastArgs = nextFastArgs;
     this.basePairTags = pairTags;
+    this.baseSignalExitRows = signalExitBaseRuns;
     this.pipeline = pipeline;
     this.lastUniverse = u;
     this.inc = null;
@@ -7920,6 +7948,7 @@ export class CoreRuntime {
     exitBaseEvaluated: number;
     pairCells: Record<string, readonly string[]>;
     qualifiedCells: Record<string, readonly string[]>;
+    pairTrailingOnlyCells: Record<string, readonly string[]>;
   }> {
     const rangeProtects = baseRangeProtects(s.grid, s.cost);
     const completeRangeProtects = completeBaseRangeProtects(s.grid, s.cost);
@@ -8002,7 +8031,7 @@ export class CoreRuntime {
     // in combo order (as the engine's S1), whichever path computed them
     const runs = [...combos, ...exitCombos, ...signalExitCombos].flatMap((c) => byPair.get(`${c.bot}|${c.ind}`) ?? []);
     const engineRuns = runs.filter((r) => r.bot !== EXIT_BOT);
-    const { passed, qualified, qualifiedTags, qualifiedTps, qualifiedCells, wideLadderPairs, pairTags, pairTps, pairCells } = basePass(
+    const { passed, qualified, qualifiedTags, qualifiedTps, qualifiedCells, wideLadderPairs, pairTags, pairTps, pairCells, pairTrailingOnlyCells } = basePass(
       engineRuns,
       s,
     );
@@ -8021,6 +8050,7 @@ export class CoreRuntime {
       pairTags,
       pairTps,
       pairCells,
+      pairTrailingOnlyCells,
       exitBasePassed: exitBase.passed,
       exitBaseEvaluated: exitBase.evaluated.size,
     };
@@ -8281,13 +8311,14 @@ export class CoreRuntime {
     const exitLookBars = exitU?.series.map(beforeT) ?? [];
     const signalExitLookBars = signalU.series.map(beforeT);
     const base = await this.presetBase(job, s, combos, lookBars, exitCombos, exitLookBars, signalExitCombos, signalExitLookBars);
-    const { main, pairTags, pairTps, pairCells } = base;
+    const { main, pairTags, pairTps, pairCells, pairTrailingOnlyCells } = base;
     wf.basePassed = new Set([...base.qualified, ...base.exitBasePassed]);
     wf.exitBasePassed = base.exitBasePassed;
     wf.basePassedRanges = base.qualifiedTags;
     wf.basePassedTargets = base.qualifiedTps;
     wf.basePassedCells = s.grid.baseCells === true || s.grid.lowRange?.enabled === true
       ? passedCellsOf(base.qualifiedCells) : undefined;
+    wf.basePassedTrailingOnlyCells = s.grid.trailingOnly === true ? passedCellsOf(pairTrailingOnlyCells) : {};
     wf.baseWideLadderPairs = base.wideLadderPairs;
     this.checkBacktest(job);
     job.stage = "Tapes";
@@ -8300,6 +8331,7 @@ export class CoreRuntime {
       pairTags,
       pairTps,
       ...(pairCells ? { pairCells } : {}),
+      ...(s.grid.trailingOnly === true ? { pairTrailingOnlyCells } : {}),
       microOwnInds: microOwnInds(s.grid),
     };
     let tapes: ConfigTape[] = [];
@@ -12319,6 +12351,8 @@ export function basePass(
   pairTps: Record<string, Record<string, readonly number[]>>;
   /** grid.baseCells: per pair, the passed cells of the ranges it passed (protectCellKey); absent while the option is off */
   pairCells: Record<string, readonly string[]>;
+  /** No-TP candidates require an exact passed Base cell even while ordinary cells use target-level proof. */
+  pairTrailingOnlyCells: Record<string, readonly string[]>;
   /** Actual passed cells, retained separately when allSets builds extra diagnostic candidates. */
   qualifiedCells: Record<string, readonly string[]>;
   added: number;
@@ -12328,6 +12362,7 @@ export function basePass(
   const pairTags: Record<string, string[]> = {};
   const qualifiedTags: Record<string, string[]> = {};
   const pairCells: Record<string, readonly string[]> = {};
+  const pairTrailingOnlyCells: Record<string, readonly string[]> = {};
   const cellsOn = s.grid?.baseCells === true;
   const setsGates = baseSetsGates(s.gates);
   // per pair, the range targets whose Base cells passed: the tape stage builds only those (baseTargets, on by
@@ -12341,11 +12376,18 @@ export function basePass(
     let tags = setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS);
     // a family's pair builds only the sets of its own range (the other ranges of the pair are other families)
     if (evalFams) tags = familyTags(evalFams, r.bot, r.ind, tags);
-    if (!tags.length) return false;
+    // No-TP cells are a separate strategy cohort. A passing cell may qualify without making ordinary or ladder
+    // siblings eligible, and an ordinary range pass cannot serve as proof for a failing no-TP cell.
+    let noTpTags = s.grid?.trailingOnly === true
+      ? [...new Set((r.trailingOnlyCells ?? []).map((k) => k.slice(0, k.indexOf("|"))))]
+          .filter((tag) => rangeAppliesTo(r.ind, tag, applies)) : [];
+    if (evalFams) noTpTags = familyTags(evalFams, r.bot, r.ind, noTpTags);
+    const noTpProof = (r.trailingOnlyCells ?? []).filter((k) => noTpTags.includes(k.slice(0, k.indexOf("|"))));
+    if (!tags.length && !noTpProof.length) return false;
     qualifiedTags[`${r.bot}|${r.ind}`] = [...tags];
     // the ranges built: the passed ones, or (baseRanges off) every range that applies, the unpassed ones with every
     // target (pairTps lists only the passed ranges' targets)
-    let built = pairBuildTags(r.ind, tags, ALL_RANGE_TAGS, applies, rangesOn);
+    let built = tags.length ? pairBuildTags(r.ind, tags, ALL_RANGE_TAGS, applies, rangesOn) : [];
     if (evalFams && !rangesOn) built = familyTags(evalFams, r.bot, r.ind, built);
     pairTags[`${r.bot}|${r.ind}`] = built;
     if (targetsOn && r.rangeTps) {
@@ -12358,6 +12400,8 @@ export function basePass(
       const keep = r.rangeCells.filter((k) => tags.includes(k.slice(0, k.indexOf("|"))));
       if (keep.length) pairCells[`${r.bot}|${r.ind}`] = keep;
     }
+    if (s.grid?.trailingOnly === true)
+      pairTrailingOnlyCells[`${r.bot}|${r.ind}`] = noTpProof;
     return true;
   });
   const qualified = [...passed];
@@ -12371,7 +12415,7 @@ export function basePass(
   const wideLadderPairs = new Set(
     qualified
       .map((r) => `${r.bot}|${r.ind}`)
-      .filter((pair) => !s.axis.perRange || qualifiedTags[pair].includes("")),
+      .filter((pair) => qualifiedTags[pair].length > 0 && (!s.axis.perRange || qualifiedTags[pair].includes(""))),
   );
   // grid.allSets (measurement): every indication builds its complete config sets — its best pair at Base (bot ×
   // lane, passed or not) and every pair that passed build every range they apply to, every target × stop × trail
@@ -12403,7 +12447,7 @@ export function basePass(
       }
     }
   }
-  return { passed, qualified, qualifiedTags, qualifiedTps, qualifiedCells, wideLadderPairs, pairTags, pairTps, pairCells, added, addedKeys };
+  return { passed, qualified, qualifiedTags, qualifiedTps, qualifiedCells, wideLadderPairs, pairTags, pairTps, pairCells, pairTrailingOnlyCells, added, addedKeys };
 }
 
 /** Paper deactivation and native admission preserve the same indication/range floor. */
