@@ -1,0 +1,107 @@
+[core-tests] offline Node transport guard; 1 files; concurrency 1; compute workers 1
+✖ eager, lazy and generic Signal indexes retain unknown returns only in their own window (4.009686ms)
+✖ Engine side windows and same-hour append recover when unknown evidence ages out (1.317494ms)
+✖ unknown evidence cannot use a sparse-window or exchange-to-model warmup pass (0.455118ms)
+✖ the exact Signal guard cannot approve a complete window containing an unknown return (0.399086ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 0
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 308.01033
+
+✖ failing tests:
+
+test at src/core/signal-unknown-windows.test.ts:15:1
+✖ eager, lazy and generic Signal indexes retain unknown returns only in their own window (4.009686ms)
+  AssertionError [ERR_ASSERTION]: old unknown must expire
+  + actual - expected
+
+    {
+      n: 2,
+  +   pf: NaN
+  -   pf: 2
+    }
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b69c1e5067d8/CTS-A-O-execution-audit/src/core/signal-unknown-windows.test.ts:21:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: { n: 2, pf: NaN },
+    expected: { n: 2, pf: 2 },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/signal-unknown-windows.test.ts:26:1
+✖ Engine side windows and same-hour append recover when unknown evidence ages out (1.317494ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    {
+      n: 3,
+  +   pf: NaN
+  -   pf: 2
+    }
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b69c1e5067d8/CTS-A-O-execution-audit/src/core/signal-unknown-windows.test.ts:34:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { n: 3, pf: NaN },
+    expected: { n: 3, pf: 2 },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/signal-unknown-windows.test.ts:39:1
+✖ unknown evidence cannot use a sparse-window or exchange-to-model warmup pass (0.455118ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  true !== false
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b69c1e5067d8/CTS-A-O-execution-audit/src/core/signal-unknown-windows.test.ts:41:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/signal-unknown-windows.test.ts:47:1
+✖ the exact Signal guard cannot approve a complete window containing an unknown return (0.399086ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  false !== true
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b69c1e5067d8/CTS-A-O-execution-audit/src/core/signal-unknown-windows.test.ts:50:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

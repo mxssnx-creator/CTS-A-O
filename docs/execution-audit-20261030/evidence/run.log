@@ -1,0 +1,7 @@
+post-Base modeled-execution replay gate starts 2026-10-09T00:00:00.000Z · config last-N 25 · group last-N 0
+session: 8 symbols · 12h pre-historic · 12h simulated · tactics default · min PF 1.25 · focus all · toggles {"normal":true,"trailing":true,"exit":true,"block":true,"blockActive":false,"dca":true,"dcaActive":false,"axis":true}
+  [0 s] computing Base 0% (job 10%) Base on 1 cores · 42324 combos · symbols 8/8 · computes 0 · paper on #0 · rss 151 MB
+[core-v2] compute #1 done in 17220 ms · sim PF including 13 open marks: 3.09 n 307 · loop max 1993 ms (worst slice of the last 60 s 1954 ms in Tapes, 3 over 40 ms)
+  paper step on compute #1: 4 paper/current selected configs (0 s after the compute)
+  compute #1 over 8 symbols (8 loaded of 8, 8 asked) after 17 s
+checks: 74/76 ok — FAILED: coverage: every combo evaluated at Base (engine + signal + independent Exit); coverage: every indication kind evaluated
