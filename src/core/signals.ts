@@ -1059,6 +1059,18 @@ function trimBefore(l: Array<{ t: number }>, cut: number) {
   if (k > 0) l.splice(0, k);
 }
 
+/** Settlement delivery may be delayed. Window scans/pruning require exit order,
+ * even when an older close arrives after the newest one. Normal appends stay O(1). */
+function insertClose<T extends { t: number }>(rows: T[], value: T): void {
+  if (!rows.length || rows[rows.length - 1].t <= value.t) { rows.push(value); return; }
+  let lo = 0, hi = rows.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (rows[mid].t <= value.t) lo = mid + 1; else hi = mid;
+  }
+  rows.splice(lo, 0, value);
+}
+
 export class SignalGuard {
   /**
    * the acceptance record from the signal tapes (set by the run, the live step and the audit alike); without it the
@@ -1128,10 +1140,12 @@ export class SignalGuard {
     population: "signals" | "coordination" = "signals",
     clusterEvidence = true,
   ) {
+    if (exitT !== undefined && (!Number.isFinite(exitT) || exitT < 0))
+      throw new RangeError("invalid Signal close timestamp");
     if (clusterEvidence && exitT !== undefined && this.firstOnset(`cluster:${population}`, onset, exitT)) {
-      this.closed.push({ t: exitT, r, side: side > 0 ? 1 : side < 0 ? -1 : 0, population });
+      insertClose(this.closed, { t: exitT, r, side: side > 0 ? 1 : side < 0 ? -1 : 0, population });
       // trimmed by time, never by count: the cluster window (≤ 720 min) must always see every close inside it
-      if (this.closed.length > 20_000) trimBefore(this.closed, exitT - CLUSTER_KEEP_MS);
+      if (this.closed.length > 20_000) trimBefore(this.closed, this.closed[this.closed.length - 1].t - CLUSTER_KEEP_MS);
     }
     const l = this.lists.get(key);
     if (l) {
@@ -1146,13 +1160,14 @@ export class SignalGuard {
    */
   addAccept(key: string, r: number, exitT: number, onset?: string) {
     if (this.acceptIndex && !isSideAcceptKey(key)) return;
+    if (!Number.isFinite(exitT) || exitT < 0) throw new RangeError("invalid Signal acceptance timestamp");
     const x: { t: number; r: number; o?: false } = { t: exitT, r };
     if (!this.firstOnset(key, onset, exitT)) x.o = false;
     const l = this.accepted.get(key);
     if (l) {
-      l.push(x);
+      insertClose(l, x);
       // trimmed by time, never by count: a busy group passed 1000 closes inside a 336 h acceptance window
-      if (l.length > 2000) trimBefore(l, exitT - ACCEPT_KEEP_MS);
+      if (l.length > 2000) trimBefore(l, l[l.length - 1].t - ACCEPT_KEEP_MS);
     } else this.accepted.set(key, [x]);
     this.acceptMemo.delete(key);
   }
