@@ -9,7 +9,9 @@ import { configId, laneProtect, makeUniverse, protectCellKey, rangeBaseStats } f
 import { baseAllowsTape, buildTapes, cellAllowed, defaultWalkForward, execDecision, passedCellsOf } from "./walkforward.ts";
 import { trailingOnlyProtects } from "./trailing.ts";
 
-const cost = DEFAULT_SETTINGS.cost;
+// Pin the original four-decimal-compatible feedback grid. Arbitrary precise
+// current costs and non-narrowing feedback are covered by low-range-integration.
+const cost = 0.0015;
 const tf = 1;
 const ind = "low-range-12-failed-break-standalone@m1";
 const pair = `follow|${ind}`;

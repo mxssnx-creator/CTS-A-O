@@ -52,6 +52,9 @@ jobs:
   core-tests:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    env:
+      # Each shard runs files serially. Two bounded compute workers use the hosted runner's cores.
+      CTS_CORE_TEST_WORKERS: "2"
     strategy:
       fail-fast: false
       matrix:

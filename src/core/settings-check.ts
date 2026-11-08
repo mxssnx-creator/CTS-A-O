@@ -112,7 +112,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       num(s.gates.minGreen, 0, 1, "minimum hourly success (green-hour share)");
     if (s.gates.stepPf !== undefined) {
       const p = s.gates.stepPf;
-      if (!p || typeof p !== "object" || typeof p.enabled !== "boolean") throw new Error("step PF: enabled, ratio and max required");
+      if (!p || typeof p !== "object" || Array.isArray(p)) throw new Error("step PF: settings object required");
+      if (p.enabled !== undefined && typeof p.enabled !== "boolean") throw new Error("step PF enabled: true or false");
       num(p.ratio, 0.1, 1.5, "step PF ratio");
       num(p.max, 1, 2, "step PF maximum");
     }

@@ -93,6 +93,8 @@ export function rangeStudyIdentityUniverse(p, profile) {
   // The runtime always keeps the 1m data lane; exact focus still limits outcomes to the32 fixed15m IDs.
   const settings = normalizeLanes(deepStudyMerge(deepStudyMerge(DEFAULT_SETTINGS, p.commonSettings), profile.settings));
   const wf = deepStudyMerge(defaultWalkForward(settings), sanitizeWf({ preH: p.preH, simH: p.runH, ...p.commonWf, ...profile.wf }));
+  // A fresh stopped runtime has no accepted trailing-only Base cells yet.
+  wf.basePassedTrailingOnlyCells = {};
   const ids = new Map();
   for (const pair of p.focus) {
     const [bot, ind] = pair.split("|");

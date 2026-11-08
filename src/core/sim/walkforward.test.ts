@@ -271,6 +271,7 @@ describe('fixed selection respects min PF', () => {
     assert.ok(picks[0].window.net > 0);
   });
   it('last-N uses min PF, not only the neutral floor', () => {
+    // Isolate the explicit scalar minimum; step-derived admission is covered in step-pf.test.ts.
     const tp = row('recent', 'pairA', [
       // Full config validation passes independently; only the four-close execution tail changes the decision.
       ...Array.from({ length: 20 }, (_, i) => [-30 + i, 0.01] as [number, number]),
@@ -283,7 +284,7 @@ describe('fixed selection respects min PF', () => {
       ...o,
       lastN: 4,
       lastNMinPf: 1,
-      gates: { ...o.gates, minPf: 1.1 },
+      gates: { ...o.gates, minPf: 1.1, stepPf: { ...o.gates.stepPf!, enabled: false } },
       toggles: { ...o.toggles, normal: true, block: false },
     });
     assert.equal(pass.ok, true);
@@ -291,7 +292,7 @@ describe('fixed selection respects min PF', () => {
       ...o,
       lastN: 4,
       lastNMinPf: 1,
-      gates: { ...o.gates, minPf: 1.2 },
+      gates: { ...o.gates, minPf: 1.2, stepPf: { ...o.gates.stepPf!, enabled: false } },
       toggles: { ...o.toggles, normal: true, block: false },
     });
     assert.equal(fail.ok, false);

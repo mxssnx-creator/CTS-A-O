@@ -34,6 +34,7 @@ import {
   STRATEGY_PRESETS,
   TF_CHOICES,
   type CoreSettings,
+  mergeGateSettings,
   type SettingsPatch,
 } from "../config.ts";
 import { checkLowRangeComplete, checkRangeReplacementsComplete, checkSettings } from "../settings-check.ts";
@@ -8870,7 +8871,7 @@ export class CoreRuntime {
     this.updateSettings(
       {
         ...patch,
-        gates: { ...DEFAULT_SETTINGS.gates, ...(patch.gates ?? {}) },
+        gates: mergeGateSettings(DEFAULT_SETTINGS.gates, patch.gates),
         tactics: { ...DEFAULT_SETTINGS.tactics, ...(patch.tactics ?? {}) },
         focus: patch.focus ?? [],
       },
@@ -12500,7 +12501,7 @@ function mergeSettings(
     out = {
       ...out,
       ...p,
-      gates: { ...out.gates, ...(p.gates ?? {}) },
+      gates: mergeGateSettings(out.gates, p.gates),
       exitStrategy: { ...out.exitStrategy, ...(p.exitStrategy ?? {}) },
       live: { ...out.live, ...(p.live ?? {}) },
       toggles: { ...out.toggles, ...(p.toggles ?? {}) },

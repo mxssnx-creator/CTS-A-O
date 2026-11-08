@@ -51,7 +51,7 @@ test("all 28 Retest/Tactic profile, subset and mirror identities have actual ons
     assert.ok(long > 0 && short > 0, `${id}: long ${long}, short ${short}`);
 });
 
-test("112 context identities join the ordinary factory focus without changing any original source state", () => {
+test("112 context identities retain the ordinary families at the current opportunity cost", () => {
   assert.equal(MICRO_CONFIG_IDS.filter(child).length, 56);
   assert.equal(PRE_CONTEXT_FOCUS_21OCT.length, 1079);
   const lowRangeFocus = DEFAULT_SETTINGS.focus.filter((id) => id.startsWith("follow|low-range-"));
@@ -71,9 +71,10 @@ test("112 context identities join the ordinary factory focus without changing an
         h.update(spec.fn(k));
         cases++;
       }
-  // Generated independently from the complete pre-change module at procedure checkpoint41c9689.
+  // Original-family snapshot with the requested 0.176% opportunity-cost threshold.
+  // Source algorithms are unchanged; the prior 0.15% snapshot no longer applies.
   assert.equal(cases, 1302);
-  assert.equal(h.digest("hex"), "f922d86a5aebf8dfb55d0c4c7d322920a38b08727f880508ff19fcd6ee6d2ccf");
+  assert.equal(h.digest("hex"), "a3f4058c2b6be136967207aadf0edfc117f64e0dfbb4eea67c203660123d3381");
 });
 
 test("every child requires a nonzero causal parent/context agreement and both directions actually fire", () => {

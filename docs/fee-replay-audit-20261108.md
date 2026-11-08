@@ -29,7 +29,7 @@ CTS-G's isolated Micro run constrained TP and trailing ranges and disabled the s
 
 CTS-G native Pulse parent management was driven offline on an explicit OHLC tick path for all 17 selected entries: 17/17 exit reasons and exit minutes match. Tick-market fills and fee-only settlement estimates differ from barrier-fill paper prices, and those differences are retained. This is not complete account-level, funding, Block lifecycle or exchange-fill parity. Axis replay now keeps held parents in continuation slots and orders last-N/loss streaks by settlement.
 
-CTS-G cached replay with hourly diagnostic sampling took 7 seconds versus 38 seconds cold; closed and held lists match. A later fresh-cache stage-statistics check took 21 seconds under different concurrency. CTS-A-O final compute took 185.0 seconds, total 189 seconds, with a 562ms worst foreground slice; it does not establish a strict sub-500ms cycle. CTS-A synthetic Minimal/Axis/Axis+Block results are 1/6/9 closes and PF 0/0.8453/0.8099, taking about 3.33/2.02/1.97 seconds.
+CTS-G cached replay with hourly diagnostic sampling took 7 seconds versus 38 seconds cold; closed and held lists match. A later fresh-cache stage-statistics check took 21 seconds under different concurrency. CTS-A-O final production-source rerun took 181.5 seconds to compute and 186 seconds total, with a 554ms worst foreground slice; it does not establish a strict sub-500ms cycle. CTS-A synthetic Minimal/Axis/Axis+Block results are 1/6/9 closes and PF 0/0.8453/0.8099, taking about 3.33/2.02/1.97 seconds.
 
 No profitable preset is promoted. Complete causal processed-stage runtime integration in CTS-A-O, complete timestamped exchange replay in CTS-A, account-feasible sizing, Micro/Signals coverage and consistently positive marked results remain outstanding. No future PF guarantee follows from these tests.
 
@@ -48,4 +48,18 @@ New `gates.stepPf` settings expose enabled/ratio/max, default true/0.2/2 for new
 Stable-02 relation volume now matches each entry's symbol/direction/indication/type/config keys. Global relation summaries are diagnostic, not the multiplier of an unrelated entry.
 Validation: 122 focused tests passed after the changes. A separate processed-stage/ownership suite passed 99 tests with one explicit existing TODO: persistent processed Main → Real is not integrated into the runtime. That failed causal predecessor fixture remains visible. These changes do not establish complete runtime/live parity or high executed PF. A high settled PF with negative marked equity is not a successful preset.
 
-The CI independent-config suite passed 80/80 after replacing a strict floating-point equality for estimated fees with a 1e-15 tolerance. Confirmed-zero checks stay exact. The final native run is `ao-stage-verified`, not an earlier zero-output or intermediate step-policy run.
+The CI independent-config suite passed 80/80 after replacing a strict floating-point equality for estimated fees with a 1e-15 tolerance. Confirmed-zero checks stay exact. The final native run is `ao-publish-verified`; its totals and every hourly economic result exactly match `ao-stage-verified`. It is not an earlier zero-output or intermediate step-policy run.
+
+## CI follow-up and settings persistence
+
+Partial edits to `gates.stepPf` now merge leaf values, preserving enabled/ratio/max siblings and unrelated gates. New research preparations use the dynamic default cost; sealed historical studies still reject changed cost assumptions rather than silently reprice them.
+
+The affected regression group passes 427 checks. Base-cell metadata/range parity passes 39; startup, freshness and cost-setting tests pass 25. The API contract checks pass while preserving their original qualification policy. The startup test no longer requires a position when all selected entries are stale/inactive: real computed outcomes and rejection reasons are asserted, and cold-start admission is checked non-vacuously against actual tape candidates. No admission gate was weakened.
+
+The original full-catalog test timed out on both the unchanged base revision and the new source. Its bounded 72h replacement retains the complete catalog and every row/stage assertion and passed in 68s on two workers. The hosted core shards now run two bounded compute workers with serial files. This is test infrastructure, not a production cycle-time guarantee.
+
+Coverage denominators: engine 2,240/2,404 configured combinations, Signals 663/884, total 2,903/3,288. Missing evaluations (385) are not successful PF outcomes. A 49h physical feed with 48h timeframe settings cannot initialize a 30m series requiring 120 bars. Both native coverage checks remain failed; all-kind market coverage is not established.
+
+The complete 72h processing fixture passes all six checks, including all 128 toggle combinations, every indication's eligible lanes, per-strategy tape counts and single-charge cost arithmetic. It took 347 seconds locally with two compute workers. The 35 relation/Last-N/candidate-lifetime checks also pass; the immutable lifecycle seal remains unchanged after explicitly freezing its original fee budget and excluding the later step-PF option from archived inputs.
+
+Final book/Axis/long-short/cost lifecycle group passes 96 checks. The finite synthetic market has no admitted Axis configuration, so its absence is asserted against the actual stage seats rather than forcing an order. Independent declared-input cases still require simultaneous Axis configurations to execute, correct long/short exits, captured volume factors and single-charge costs. This is functional evidence, not a profitable Axis market result.

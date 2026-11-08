@@ -42,7 +42,7 @@ export function researchCells(protocol) {
     sha256(JSON.stringify(protects)) !== FROZEN_PROTECTS_SHA256
   )
     throw new Error("Frozen protects differ from the predeclared research grid");
-  if (protocol.model.roundTripCost !== RT_COST) throw new Error("Frozen model must be resealed at the canonical 0.15% round trip; archived outcomes are unchanged");
+  if (protocol.model.roundTripCost !== RT_COST) throw new Error(`Frozen model must be resealed at the current ${(RT_COST * 100).toFixed(3)}% fee model; archived outcomes are unchanged`);
   const floors = protocol.preOutcomeModelClarification?.signalFloors;
   if (stable(floors ?? {}) !== stable(FROZEN_SIGNAL_FLOORS))
     throw new Error("Frozen Signal floors differ from the predeclared research floors");

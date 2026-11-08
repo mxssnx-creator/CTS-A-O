@@ -2,6 +2,7 @@ import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "./indications/micro-
 import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "./indications/low-range.ts";
 import { PROVEN_WIDE_TRAIL_PAIRS } from "./proven-wide-trail.ts";
 // CTS-A Core v2 — authoritative defaults. Every number the engine uses lives here.
+import { DEFAULT_STEP_PF } from "./step-pf.ts";
 import type {
   AxisConfig,
   BlockConfig,
@@ -422,11 +423,24 @@ export function mergeGridSettings(base: ProtectGridSpec, patch?: GridSettingsPat
 }
 
 /** A settings patch: every group (grid, gates, live, block …) may be partial — it is merged into the current values. */
+export type GateSettingsPatch = Omit<Partial<CoreSettings["gates"]>, "stepPf"> & {
+  stepPf?: Partial<import("./step-pf.ts").StepPfRules>;
+};
+export function mergeGateSettings(base: CoreSettings["gates"], patch?: GateSettingsPatch): CoreSettings["gates"] {
+  if (patch?.stepPf !== undefined && (!patch.stepPf || typeof patch.stepPf !== "object" || Array.isArray(patch.stepPf)))
+    throw new Error("step PF: settings object required");
+  const { stepPf, ...rest } = patch ?? {};
+  return { ...base, ...rest, ...(stepPf === undefined ? {} : {
+    stepPf: { ...DEFAULT_STEP_PF, ...base.stepPf, ...stepPf },
+  }) };
+}
 export type SettingsPatch = {
   [K in keyof CoreSettings]?: K extends "tfDays"
     ? CoreSettings[K]
     : K extends "grid"
       ? GridSettingsPatch
+    : K extends "gates"
+      ? GateSettingsPatch
     : CoreSettings[K] extends readonly unknown[]
       ? CoreSettings[K]
       : CoreSettings[K] extends object

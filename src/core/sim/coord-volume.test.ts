@@ -111,7 +111,8 @@ describe("coordination volume factors", () => {
       });
     const configured = run(0.05);
     const capped = run(0.5);
-    assert.equal(configured.trades[1].coordVol, 1.3);
+    // All eight own relation keys match, including this symbol and symbol-side.
+    assert.equal(configured.trades[1].coordVol, 1 + 8 * 0.05);
     assert.equal(capped.trades[1].coordVol, 1.8, "relation volume remains capped at 1.8×");
     assert.ok(capped.trades.every((x) => (x.mult ?? 1) <= 8 + 1e-9), "the existing Block total ceiling remains in force");
   });

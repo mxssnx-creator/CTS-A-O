@@ -16,6 +16,19 @@ import {
 const formerModel = { cost: 0.002, fees: { taker: 0.0005, maker: 0.0002, slippage: 0.0005 } };
 const runtimes: CoreRuntime[] = [];
 afterEach(() => { for (const runtime of runtimes.splice(0)) runtime.dispose(); });
+
+it("step PF leaf edits preserve enabled, ratio, maximum and unrelated gate settings", () => {
+  const { runtime } = fixture(undefined, 38);
+  runtime.updateSettings({ gates: { stepPf: { enabled: true, ratio: 0.35, max: 1.6 } } });
+  const minPf = runtime.settings.gates.minPf;
+  runtime.updateSettings({ gates: { stepPf: { ratio: 0.4 } } });
+  assert.deepEqual(runtime.settings.gates.stepPf, { enabled: true, ratio: 0.4, max: 1.6 });
+  runtime.updateSettings({ gates: { stepPf: { enabled: false } } });
+  assert.deepEqual(runtime.settings.gates.stepPf, { enabled: false, ratio: 0.4, max: 1.6 });
+  assert.equal(runtime.settings.gates.minPf, minPf);
+  assert.deepEqual(runtime.wf.gates?.stepPf, runtime.settings.gates.stepPf);
+});
+
 function fixture(settings?: SettingsPatch, version = 33, presets?: unknown[]) {
   const db = new CoreDb(":memory:");
   db.kvSet("wfCapsV", version);

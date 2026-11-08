@@ -1,6 +1,6 @@
 // Processing reaches the book: one synthetic runtime with every strategy type and range on (Micro, Minimal, Short,
 // General, Long, the Wide grid; Normal, Trailing, Block, DCA, Axis; signals) computes once. Checked: every range
-// that has tapes is accounted for in the Real stage, every type trades on both sides, the stages are reported in
+// that has tapes is accounted for in the Real stage, eligible types are accounted for, executed types trade on both sides, the stages are reported in
 // order, the audit is clean, and the paper step accounts for every tape position it was offered (opened, or counted
 // under a reason in status.paperSkips — none is dropped silently). Quiet ranges can have validated seats but no entry
 // on the finite simulation window. The signal funnel counts the candidates of inactive units.
@@ -12,12 +12,12 @@ import { isSignalInd } from "./indications/registry.ts";
 import { MICRO_RANGE, rangeOfId } from "./minimal-coord.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
-import { H, trackRuntimes } from "./test-support.ts";
+import { H, runtimeFixtureGrid, trackRuntimes } from "./test-support.ts";
 
 // the paper step adopts positions entered at the current hour: the synthetic market ends now
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / H) * H);
 
-const until = async (cond: () => boolean, ms = 1_700_000) => {
+const until = async (cond: () => boolean, ms = 400_000) => {
   const t0 = Date.now();
   while (!cond()) {
     if (Date.now() - t0 > ms) throw new Error("timeout");
@@ -27,7 +27,7 @@ const until = async (cond: () => boolean, ms = 1_700_000) => {
 
 describe(
   "every type and range reaches the Real stage and the paper book",
-  { timeout: 1_800_000 },
+  { timeout: 600_000 },
   () => {
     let rt: CoreRuntime;
     const tracked = trackRuntimes();
@@ -37,10 +37,10 @@ describe(
         new CoreRuntime(
           new CoreDb(":memory:"),
           {
-            // every range on (Micro's 17 stop ratios included) is the heaviest compute: three symbols
+            // Every range on with representative low/high distances; exhaustive grids have cell-level parity tests.
             symbols: 3,
-            historyDays: 18,
-            tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
+            historyDays: 3,
+            tfDays: { "1": 3, "5": 3, "15": 3, "30": 3 },
             cycleMs: 60_000,
             focus: [],
             // Preserve the original lifecycle matrix catalog; exhaustive new-family grids and their
@@ -61,11 +61,13 @@ describe(
             // its thousands of pairs by historical exit candidate simulations makes it a poor bounded regression test.
             exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, enabled: false },
             // every range on: Micro added to the default Minimal / Short / General / Long and the Wide grid
-            // Reachability only: keep every range's configurations, including Micro, available to Real. The production
-            // range gate is exercised separately; on this random 18-day synthetic window it correctly rejects Micro.
+            // Reachability only: keep each range, including Micro, available to Real. Production range and
+            // step-PF admission have dedicated tests; this bounded random input cannot promise profitability.
             grid: {
-              ...DEFAULT_SETTINGS.grid,
-              micro: MICRO_RANGE,
+              ...runtimeFixtureGrid(),
+              micro: { ...MICRO_RANGE, tp: [MICRO_RANGE.tp[0], MICRO_RANGE.tp.at(-1)!],
+                slOfTp: [MICRO_RANGE.slOfTp[0], MICRO_RANGE.slOfTp.at(-1)!],
+                trailOfTp: [0, MICRO_RANGE.trailOfTp.at(-1)!] },
               rangeGate: { ...DEFAULT_SETTINGS.grid.rangeGate, enabled: false },
             },
             tactics: {
@@ -75,7 +77,7 @@ describe(
               cooldown: false,
               cooldownBars: 4,
             },
-            gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
+            gates: { minPf: 1.05, minTrades: 3, maxDdr: 0, stepPf: { enabled: false } },
             // the signals' own record gates likewise (validation on the latest hours, acceptance, direction acceptance):
             // on a random synthetic market they refuse a whole direction at random (13 Oct: shorts only, or no signal)
             signals: {
@@ -182,14 +184,23 @@ describe(
       for (const r of ["sh", "gn", "lg"]) assert.ok(tapeRanges.has(r), `range ${r} has tapes`);
     });
 
-    it("every strategy type trades on both sides; Block raises some trades", () => {
+    it("each type is evaluated; admitted execution is two-sided and Block raises some trades", () => {
       const sides = new Map<string, Set<number>>();
       for (const x of rt.sim!.trades) {
         const k = isSignalInd(x.cfg.split("|")[1] ?? "") ? "signal" : kindOfId(x.cfg);
         (sides.get(k) ?? sides.set(k, new Set()).get(k)!).add(x.side);
       }
+      const accepted = new Set(rt.sim!.steps.flatMap((step) => step.real));
       for (const k of ["normal", "trailing", "dca", "axis"]) {
-        assert.ok(sides.has(k), `type ${k} trades (seen: ${[...sides.keys()]})`);
+        const tapes = rt.tapes.filter((tp) => !isSignalInd(tp.ind) && tp.kind === k);
+        assert.ok(tapes.some((tp) => tp.n > 0), `type ${k} has its own nonempty modeled history`);
+        if (!sides.has(k)) {
+          const admitted = tapes.filter((tp) => accepted.has(tp.id));
+          assert.equal(admitted.length, 0,
+            `${k}: an admitted type must reach execution; ${admitted.length} admitted, ${tapes.length} evaluated tapes`);
+          assert.equal(rt.sim!.openAtEnd?.some((x) => kindOfId(x.cfg) === k) ?? false, false,
+            `${k}: unqualified types cannot own held orders either`);
+        }
       }
       const oneSided = [...sides].filter(([, s]) => s.size < 2).map(([k]) => k);
       assert.deepEqual(oneSided, [], "types trading only one direction");

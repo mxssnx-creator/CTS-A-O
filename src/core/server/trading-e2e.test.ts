@@ -1,5 +1,6 @@
 import { PREVIOUS_DEFAULT_FOCUS_17OCT as LEGACY_FIXTURE_FOCUS } from "../config.ts";
-// The actual synthetic engine fills its paper book, but cold-start history does not waive strict live proof.
+// The actual synthetic engine computes its own paper book, but cold-start history does not waive strict live proof.
+// A book may be empty when all currently selected tape entries are old or inactive; startup never adopts them late.
 // A separate, explicitly declared synthetic accepted/funded history tests the real runtime's promotion and live
 // control mechanics on a simulated hedge-mode venue (one stop per position side, as BingX). Checked over
 // several steps: the venue converges on the control targets, every own position carries its own stop on its own
@@ -109,8 +110,9 @@ describe(
         changePct: 0,
       }));
       for (const p of prices) ex.px.set(p.sym, p.last);
-      // the paper book fills on the runtime's tick
-      await until(() => engineRt.paper.positions.length > 0, 120_000).catch(() => undefined);
+      // Wait for the paper calculation, not a promised position. Fee/step-PF changes legitimately select
+      // different configurations; their remaining tape entries can all be stale or inactive at cold start.
+      await until(() => engineRt.paper.selected.length > 0 && engineRt.paper.trades.length > 0, 20_000);
       engineRt.stop();
       engineRt.settings.live = {
         ...engineRt.settings.live,
@@ -185,15 +187,24 @@ describe(
     const step = () => stepLive(rt, [], rt.generation, ex);
 
     it("the actual engine produced its unchanged paper book", () => {
-      assert.ok(computedPaper.length > 0, "paper positions after the first compute");
+      assert.ok(engineRt.paper.selected.length > 0, "the engine selected its own configurations");
+      assert.ok(engineRt.paper.trades.length > 0, "the engine produced settled modeled outcomes");
       assert.equal(engineRt.paper.positions, computedPaper);
-      const sides = new Set(computedPaper.map((p) => p.side));
-      assert.ok(sides.size >= 1);
+      assert.ok(computedPaper.every((p) => p.side === 1 || p.side === -1));
+      const candidates = engineRt.tapes.filter((tp) => engineRt.paper.selected.includes(tp.id)).flatMap((tp) => tp.open);
+      assert.ok(candidates.length > 0, "the unchanged tapes contain actual candidate entries");
+      // Empty does not mean stuck: each rejection remains visible, and stale entries must never be adopted.
+      if (!computedPaper.length)
+        assert.ok(Object.values(engineRt.status.paperSkips ?? {}).some((n) => n > 0), "empty book has explicit entry rejections");
+      const cutoff = Date.now() - Math.max(1, engineRt.wf.stepH) * H;
+      for (const p of computedPaper) assert.ok(p.entryT >= cutoff, "cold start did not adopt an old tape entry");
     });
 
     it("the actual engine cold start lacks strict history and opens no live exposure", async () => {
       const sim = engineRt.sim;
-      const gates = computedPaper.map((p) => engineRt.livePromotionGate(p));
+      const candidates = engineRt.tapes.filter((tp) => engineRt.paper.selected.includes(tp.id)).flatMap((tp) => tp.open);
+      assert.ok(candidates.length > 0, "cold-start proof is checked on real candidates even when the paper book is empty");
+      const gates = candidates.map((p) => engineRt.livePromotionGate(p));
       assert.ok(gates.every((g) => !g.ok), "a fresh engine book has no complete exact two-axis proof");
       assert.ok(gates.every((g) => g.execution?.n === 0), "no owned history is invented for paper positions");
       await stepLive(engineRt, [], engineRt.generation, ex);

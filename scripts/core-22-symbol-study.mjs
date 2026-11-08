@@ -5,6 +5,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { RT_COST } from "../src/core/model-cost.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const H = 3_600_000, M = 60_000;
@@ -148,7 +149,7 @@ export function validateStudyFeed(feed, symbols, window) {
 }
 
 /** Materialize through the production constructor/update path, before any engine is started. */
-export async function studyRuntimeSettings(symbols, window, laneHistoryDays, { cost = 0.0015, variant = "baseline" } = {}) {
+export async function studyRuntimeSettings(symbols, window, laneHistoryDays, { cost = RT_COST, variant = "baseline" } = {}) {
   process.env.CTS_CORE_STATE = "off"; process.env.CTS_CORE_AUTOSTART = "0"; process.env.CTS_CORE_LIVE = "0";
   await import("./lib/core-test-offline-guard.cjs");
   const [{ DEFAULT_SETTINGS }, { CoreRuntime }, { CoreDb }, { BREAK_CONFIG_IDS, breakAnchorTf }, { SIGNAL_VALID_LAST_N }] = await Promise.all([
@@ -160,7 +161,9 @@ export async function studyRuntimeSettings(symbols, window, laneHistoryDays, { c
   if (!["baseline", "reclaim8"].includes(variant)) throw new Error("Study variant must be baseline or reclaim8");
   if (!Number.isFinite(cost) || cost < 2 * settings.fees.taker || cost > 0.02) throw new Error("Modeled round-trip cost must cover unchanged taker fees and be at most2%");
   settings.cost = cost;
+  // Explicit study cost is represented by an absolute allowance, not a competing fee ratio.
   settings.fees.slippage = cost / 2 - settings.fees.taker;
+  delete settings.fees.slippageRatio;
   if (variant === "reclaim8") settings.focus.push(...BREAK_CONFIG_IDS.filter((id) => id.includes("-mc-rel-reclaim8-")).map((id) => `follow|${id}@m${breakAnchorTf(id)}`));
   const neededDays = Math.ceil((window.endT - window.indicatorStartT) / (24 * H));
   laneHistoryDays ??= neededDays;
@@ -345,7 +348,7 @@ export async function studyMain(argv) {
   if (mode === "prepare") {
     const source = path.resolve(arg("feed", "")), output = path.resolve(arg("out", ""));
     if (!arg("feed") || !arg("out") || fs.existsSync(output)) throw new Error("prepare requires existing --feed and a NEW --out directory");
-    const count = Number(arg("symbols", "22")), variant = arg("variant", "baseline"), cost = Number(arg("cost", "0.0015"));
+    const count = Number(arg("symbols", "22")), variant = arg("variant", "baseline"), cost = Number(arg("cost", String(RT_COST)));
     if (![20, 22].includes(count)) throw new Error("--symbols must be20 or22");
     if (!["baseline", "reclaim8"].includes(variant)) throw new Error("--variant must be baseline or reclaim8");
     const endT = Date.parse(arg("end-at", count === 20 ? "2026-10-16T21:00:00Z" : "2026-10-17T21:00:00Z")), window = studyWindow(endT), loaded = read(source);
@@ -364,7 +367,7 @@ export async function studyMain(argv) {
       actualExecution: false, live: false, newNetworkRequests: 0 };
     writeNew(path.join(output, "protocol.json"), p); console.log(studyJson({ prepared: true, protocol: path.join(output, "protocol.json"), cases: cases.map((x) => x.id) })); return;
   }
-  if (!["run", "compare"].includes(mode) || !arg("protocol")) throw new Error("Usage: core-22-symbol-study.mjs prepare --feed feed.json --out NEW_DIRECTORY --symbols 20|22 --variant baseline|reclaim8 [--end-at ISO] [--cost 0.0015] [--lane-history-days 11] | run --protocol protocol.json --case baseline-20|baseline-22|reclaim8-20|reclaim8-22 | compare --protocol protocol.json");
+  if (!["run", "compare"].includes(mode) || !arg("protocol")) throw new Error("Usage: core-22-symbol-study.mjs prepare --feed feed.json --out NEW_DIRECTORY --symbols 20|22 --variant baseline|reclaim8 [--end-at ISO] [--cost FRACTION] [--lane-history-days 11] | run --protocol protocol.json --case baseline-20|baseline-22|reclaim8-20|reclaim8-22 | compare --protocol protocol.json");
   const file = path.resolve(arg("protocol")), frozen = read(file), p = frozen.data, dir = path.dirname(file);
   verifyStudySources(p);
   if (mode === "compare") {

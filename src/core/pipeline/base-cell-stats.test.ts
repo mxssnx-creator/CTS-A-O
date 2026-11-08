@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { BaseCellAccumulator, baseCellAccumulator } from "./base-cell-stats.ts";
-import { cellStats, makeUniverse, passesBase, runCombo } from "./pipeline.ts";
+import { cellStats, laneProtect, makeUniverse, passesBase, runCombo } from "./pipeline.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { statsOf, type TradeLike } from "../metrics/stats.ts";
@@ -128,7 +128,7 @@ describe("Base cell chronological statistics buffer", () => {
       const sig = new Int8Array(b.n);
       sig[b.n - 1] = side;
       u.caches[0].memo("combo:follow:rsi-mid@m15", () => sig);
-      assert.deepEqual(cellStats(u, "follow", "rsi-mid@m15", p, 0.002), { n: 0, pf: 0, net: 0, mdd: 0 });
+      assert.deepEqual(cellStats(u, "follow", "rsi-mid@m15", p, 0.002), { n: 0, pf: 0, net: 0, mdd: 0, stepPct: 0.8 });
       const ordinary = runCombo(u, "follow", "rsi-mid@m15", p, 0.002, 1)!;
       assert.equal(ordinary.full.n, 0);
       assert.equal(ordinary.pending.length, side ? 1 : 0, "pending entries remain independent of Base settled counts");
@@ -155,9 +155,11 @@ describe("Base cell chronological statistics buffer", () => {
             const actual = cellStats(u, bot, ind, p, 0.002, { ...DEFAULT_SETTINGS.tactics, cooldown: true });
             const expected = runCombo(u, bot, ind, p, 0.002, 1, { ...DEFAULT_SETTINGS.tactics, cooldown: true })!.full;
             closes += expected.n;
+            const lane = laneProtect(p, ind);
+            const stepPct = (lane.trailOnly ? lane.trail : lane.tp) * 100;
             assert.deepEqual(actual, expected.n
-              ? { n: expected.n, pf: expected.pf, net: expected.net, mdd: expected.mdd, gp: expected.gp, gl: expected.gl }
-              : { n: 0, pf: expected.pf, net: 0, mdd: 0 });
+              ? { n: expected.n, pf: expected.pf, net: expected.net, mdd: expected.mdd, gp: expected.gp, gl: expected.gl, stepPct }
+              : { n: 0, pf: expected.pf, net: 0, mdd: 0, stepPct });
           }
     }
     assert.ok(closes > 100, "parity exercises settled trades as well as empty cells");

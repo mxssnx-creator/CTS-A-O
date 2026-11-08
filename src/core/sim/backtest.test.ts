@@ -13,8 +13,8 @@ function mk(rows: Array<[number, number, number, number]>): Candle[] {
 const P: Protect = { tp: 0.01, sl: 0.01, trail: 0, hold: 50 };
 
 describe("cost", () => {
-  it("round-trip cost is the authoritative 0.15% per notional", () => {
-    assert.equal(RT_COST, 0.0015);
+  it("fallback cost is two 0.08% taker fees plus 10% fee-relative slippage", () => {
+    assert.equal(RT_COST, 0.00176);
   });
 });
 

@@ -379,10 +379,11 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
 
   it("computes on the synthetic feed and publishes every stage", async () => {
     const rt = mk();
-    // This one case intentionally verifies the complete engine indication/lane catalog.
-    rt.updateSettings({ focus: [] });
+    // Exercise the complete indication/lane catalog on bounded history. The former 18-day fixture also
+    // times out on the unchanged base revision; long-history continuation has separate parity coverage.
+    rt.updateSettings({ focus: [], historyDays: 3, tfDays: { "1": 3, "5": 3, "15": 3, "30": 3 } });
     rt.start();
-    await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running", 400_000);
     assert.equal(rt.status.source, "synthetic");
     assert.ok(rt.pipeline && rt.sim && rt.tapes.length > 0);
     assert.ok(Number(rt.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM results")?.n) > 300);
