@@ -161,14 +161,14 @@ it("charges actual measured zero and only estimates a missing or legacy fee leg"
   ];
   assert.equal(liveTrades(rows, 3)[0].r, 0);
   assert.equal(liveTrades(rows, 3)[0].unitR, 0);
-  assert.equal(
-    liveTrades(
+  const unknownFeeReturn = liveTrades(
       rows.map((x) => ({ ...x, feeKnown: null })),
       3,
-    )[0].r,
-    -RT_COST,
-  );
-  assert.equal(liveTrades([rows[0], { ...rows[1], feeKnown: 0 }], 3)[0].r, -RT_COST / 2);
+    )[0].r;
+  // Notional multiplication/division may add one floating-point ULP. The
+  // measured-zero assertions above remain exact; unknown costs use a tight tolerance.
+  assert.ok(Math.abs(unknownFeeReturn + RT_COST) < 1e-15);
+  assert.ok(Math.abs(liveTrades([rows[0], { ...rows[1], feeKnown: 0 }], 3)[0].r + RT_COST / 2) < 1e-15);
 });
 
 it("measured live cost includes confirmed free fills while legacy zero rows remain unmeasured", () => {
