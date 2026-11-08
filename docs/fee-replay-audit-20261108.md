@@ -63,3 +63,19 @@ Coverage denominators: engine 2,240/2,404 configured combinations, Signals 663/8
 The complete 72h processing fixture passes all six checks, including all 128 toggle combinations, every indication's eligible lanes, per-strategy tape counts and single-charge cost arithmetic. It took 347 seconds locally with two compute workers. The 35 relation/Last-N/candidate-lifetime checks also pass; the immutable lifecycle seal remains unchanged after explicitly freezing its original fee budget and excluding the later step-PF option from archived inputs.
 
 Final book/Axis/long-short/cost lifecycle group passes 96 checks. The finite synthetic market has no admitted Axis configuration, so its absence is asserted against the actual stage seats rather than forcing an order. Independent declared-input cases still require simultaneous Axis configurations to execute, correct long/short exits, captured volume factors and single-charge costs. This is functional evidence, not a profitable Axis market result.
+
+## Replay heartbeat and first-hour progress
+
+A 12-symbol, 24h replay reached Real but repeatedly returned to Base before completing
+its first hour. Cooperative helper slices did real work without advancing the hourly
+progress percentage, and the driver did not refresh the heartbeat. The 180-second
+watchdog therefore retired a healthy generation. The generator driver now records
+liveness for every owned yield without inventing completed hours, and rejects obsolete
+generations before they can refresh the heartbeat or publish a result.
+
+The deterministic regression advances the clock by 181 seconds between helper slices:
+the current generation remains alive with zero completed-hour progress. A second test
+proves obsolete work cannot refresh the replacement's heartbeat. Together with preset
+cancellation and comparison ownership, 35 checks passed. This fix does not complete
+the separate accepted-predecessor Main-to-Real integration, improve economic PF, or
+establish full simulation/live parity. The 24h replay is being measured separately.
