@@ -1,3 +1,4 @@
+import { protectStepPct } from "./step-pf.ts";
 // Exact configured-cell accounting for the full Base calculation. Returns are already net of the supplied cost;
 // the counter never simulates, subtracts cost again, promotes a cell, or substitutes a sibling's qualification.
 import type { Gates, Protect } from "./domain/types.ts";
@@ -8,7 +9,7 @@ import { baseLastNForRange, baseLastNOf } from "./pipeline/base-lastn.ts";
 import { SIGNAL_MIN_PF, SIGNAL_VALID_LAST_N } from "./signal-policy.ts";
 
 export type BaseConfigCountOptions = {
-  gates: Pick<Gates, "minPf" | "minTrades" | "maxDdr" | "rangeMinPf" | "baseLastN" | "baseRangeLastN" | "lastNFloor" | "lossPrior">;
+  gates: Pick<Gates, "minPf" | "minTrades" | "maxDdr" | "rangeMinPf" | "baseLastN" | "baseRangeLastN" | "lastNFloor" | "lossPrior" | "stepPf">;
   cost: number;
   cutT: number;
   fromT: number;
@@ -26,6 +27,8 @@ export interface BaseConfigCountRow {
   passed: number;
   notEvaluated: Record<string, number>;
   minPf: number;
+  /** Per-cell policy can differ within this aggregate. */
+  minPfMax?: number;
   floorPf: number;
   cost: number;
   cutT: number;
@@ -46,7 +49,7 @@ export class BaseConfigCounter {
   constructor(options: BaseConfigCountOptions) {
     this.options = {
       ...options,
-      gates: { ...options.gates, rangeMinPf: { ...options.gates.rangeMinPf },
+      gates: { ...options.gates, ...(options.gates.stepPf ? { stepPf: { ...options.gates.stepPf } } : {}), rangeMinPf: { ...options.gates.rangeMinPf },
         ...(options.gates.baseRangeLastN ? { baseRangeLastN: { ...options.gates.baseRangeLastN } } : {}) },
     };
   }
@@ -88,6 +91,9 @@ export class BaseConfigCounter {
       };
       this.counts.set(key, row);
     }
+    const cellMinPf = Math.max(FLOOR_PF, minPfOf(o.gates, tag, ind, protectStepPct(protect)));
+    row.minPfMax = Math.max(row.minPfMax ?? row.minPf, cellMinPf);
+    row.minPf = row.configured === 0 ? cellMinPf : Math.min(row.minPf, cellMinPf);
     row.configured++;
     const skip = (reason: string) => {
       row.notEvaluated[reason] = (row.notEvaluated[reason] ?? 0) + 1;
@@ -138,11 +144,11 @@ export class BaseConfigCounter {
         return { history, last: statsOf(required > 0 ? xs.slice(-required) : xs, o.cutT) };
       });
       if (contexts.some(({ history, last }) => history.n >= o.gates.minTrades && last.n >= required && history.pf >= row.floorPf && last.pf >= row.floorPf)) row.pfPassed++;
-      if (contexts.some(({ history, last }) => last.n >= required && passesBase(history, { ...gates, minPf: row.minPf }) && passesBase(last, { ...o.gates, baseLastN: 0, minTrades: required > 0 ? required : o.gates.minTrades, minPf: row.minPf }))) row.passed++;
+      if (contexts.some(({ history, last }) => last.n >= required && passesBase(history, { ...gates, minPf: cellMinPf }) && passesBase(last, { ...o.gates, baseLastN: 0, minTrades: required > 0 ? required : o.gates.minTrades, minPf: cellMinPf }))) row.passed++;
     } else {
       if (returnPf >= row.floorPf) row.pfPassed++;
     // The complete gate matches the running engine, including its disclosed no-loss score convention.
-      if (passesBase(stats, { ...gates, minPf: row.minPf })) row.passed++;
+      if (passesBase(stats, { ...gates, minPf: cellMinPf })) row.passed++;
     }
     row.closes += stats.n;
     row.gp += stats.gp;

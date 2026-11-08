@@ -38,7 +38,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
         throw new Error(`forced symbol ${String(x)}: like XRP or XRP-USDT`);
   }
   num(s.live?.minStopPct, 0.001, 0.2, "minimum stop");
-  num(s.cost, 0, MAX_MODEL_RT_COST, "modeled round-trip cost (maximum 0.15%)");
+  num(s.cost, 0, MAX_MODEL_RT_COST, "modeled round-trip cost (fraction)");
   num(s.armTop, 1, 40, "armTop");
   num(s.mainTop, 0, 100_000, "mainTop");
   if (s.grid?.minSlEval !== undefined) num(s.grid.minSlEval, 0.0005, 0.05, "grid.minSlEval");
@@ -110,6 +110,12 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       throw new Error("sample warm-up (gates.warmup): true or false");
     if (s.gates.minGreen !== undefined)
       num(s.gates.minGreen, 0, 1, "minimum hourly success (green-hour share)");
+    if (s.gates.stepPf !== undefined) {
+      const p = s.gates.stepPf;
+      if (!p || typeof p !== "object" || typeof p.enabled !== "boolean") throw new Error("step PF: enabled, ratio and max required");
+      num(p.ratio, 0.1, 1.5, "step PF ratio");
+      num(p.max, 1, 2, "step PF maximum");
+    }
     if (s.gates.rangeMinPf !== undefined) {
       if (typeof s.gates.rangeMinPf !== "object" || s.gates.rangeMinPf === null)
         throw new Error("range min PF: an object per range");
@@ -490,7 +496,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
   if (s.fees) {
     num(s.fees.taker, 0, 0.01, "taker fee");
     num(s.fees.maker, 0, 0.01, "maker fee");
-    num(s.fees.slippage, 0, 0.02, "slippage");
+    num(s.fees.slippage, 0, 0.02, "legacy absolute slippage");
+    num(s.fees.slippageRatio, 0, 10, "slippage fee ratio");
   }
   if (s.adjust) {
     const a = s.adjust;
@@ -1160,7 +1167,7 @@ export function checkMerged(cur: CoreSettings, patch: Partial<CoreSettings> | Se
     // Match updateSettings: explicit cost wins; a fee-only patch derives and
     // bounds the cost after merging its components with the current settings.
     const cost = patch.fees && patch.cost === undefined
-      ? boundedModelCost(+roundTripCostFromFees({ ...cur.fees, ...patch.fees }).toFixed(5))
+      ? boundedModelCost(roundTripCostFromFees({ ...cur.fees, ...patch.fees }))
       : boundedModelCost(patch.cost ?? cur.cost);
     checkGridVariantBudget(merged.grid ?? cur.grid, cost);
   }

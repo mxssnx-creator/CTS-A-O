@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { progressText } from "@/core/progress";
 import { SIGNAL_VALID_LAST_N } from "@/core/signal-policy";
-import { boundedModelCost, DEFAULT_MODEL_FEES, MAX_MODEL_RT_COST } from "@/core/model-cost";
+import { boundedModelCost, roundTripCostFromFees, DEFAULT_MODEL_FEES, MAX_MODEL_RT_COST } from "@/core/model-cost";
 import { MICRO_CONFIG_IDS, MICRO_METHODS } from "@/core/indications/micro-family";
 import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "@/core/indications/low-range";
 import { sizeText } from "@/core/live-labels";
@@ -2691,6 +2691,20 @@ export function SettingsPage() {
           }
         >
           <div className="v2-grid v2-cols-2">
+            <Field label="PF per target step" hint="Floor = 1 + target percent × ratio on the 0.1% grid. Stricter range floors remain; Signals keep their own policy.">
+              <select aria-label="PF per target step" className="v2-select" value={s.gates.stepPf?.enabled ? "on" : "off"}
+                onChange={(e) => set(["gates", "stepPf"], { ratio: 0.2, max: 2, ...s.gates.stepPf, enabled: e.target.value === "on" })}>
+                <option value="on">Enabled</option><option value="off">Range floors only</option>
+              </select>
+            </Field>
+            <Field label="Step PF ratio" hint="0.1–1.5; 0.2% target × 0.2 gives PF 1.04 before the range floor.">
+              <input aria-label="Step PF ratio" className="v2-input" type="number" min="0.1" max="1.5" step="0.05" value={s.gates.stepPf?.ratio ?? 0.2}
+                onChange={(e) => set(["gates", "stepPf"], { enabled: false, max: 2, ...s.gates.stepPf, ratio: Number(e.target.value) })} />
+            </Field>
+            <Field label="Step PF maximum" hint="Caps the step rule only; a stricter configured range floor still applies.">
+              <input aria-label="Step PF maximum" className="v2-input" type="number" min="1" max="2" step="0.05" value={s.gates.stepPf?.max ?? 2}
+                onChange={(e) => set(["gates", "stepPf"], { enabled: false, ratio: 0.2, ...s.gates.stepPf, max: Number(e.target.value) })} />
+            </Field>
             <Field label="Min PF" hint="1.05 – 1.50">
               <select
                 className="v2-select"
@@ -3180,7 +3194,7 @@ export function SettingsPage() {
           sub="Modeled round-trip cost: 2 × (taker + slippage), capped at 0.15%, deducted once per closed funded unit. Actual exchange fees remain separate."
         >
           <div className="v2-grid v2-cols-3">
-            <Field label="Taker fee (%)" hint="BingX standard 0.05">
+            <Field label="Fallback taker fee (%)" hint="BingX standard 0.05">
               <Num
                 pct
                 step={0.001}
@@ -3189,37 +3203,32 @@ export function SettingsPage() {
                 value={s.fees?.taker ?? 0.0005}
                 onChange={(v) => {
                   set(["fees", "taker"], v);
-                  set(["cost"], boundedModelCost(+(2 * (v + (s.fees?.slippage ?? DEFAULT_MODEL_FEES.slippage))).toFixed(5)));
+                  set(["cost"], roundTripCostFromFees({ ...DEFAULT_MODEL_FEES, ...s.fees, taker: v }));
                 }}
               />
             </Field>
-            <Field label="Maker fee (%)" hint="limit fills (reference)">
+            <Field label="Fallback maker fee (%)" hint="limit fills (reference)">
               <Num
                 pct
                 step={0.001}
                 min={0}
                 max={0.01}
-                value={s.fees?.maker ?? 0.0002}
+                value={s.fees?.maker ?? DEFAULT_MODEL_FEES.maker}
                 onChange={(v) => set(["fees", "maker"], v)}
               />
             </Field>
-            <Field label="Slippage (%)" hint="per side, market orders">
-              <Num
-                pct
-                step={0.001}
-                min={0}
-                max={0.02}
-                value={s.fees?.slippage ?? DEFAULT_MODEL_FEES.slippage}
+            <Field label="Slippage / fee ratio" hint="0.1 means 10% of the applicable fee">
+              <Num step={0.05} min={0} max={10}
+                value={s.fees?.slippageRatio ?? DEFAULT_MODEL_FEES.slippageRatio}
                 onChange={(v) => {
-                  set(["fees", "slippage"], v);
-                  set(["cost"], boundedModelCost(+(2 * ((s.fees?.taker ?? DEFAULT_MODEL_FEES.taker) + v)).toFixed(5)));
-                }}
-              />
+                  set(["fees", "slippageRatio"], v);
+                  set(["cost"], roundTripCostFromFees({ ...DEFAULT_MODEL_FEES, ...s.fees, slippageRatio: v }));
+                }} />
             </Field>
           </div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 6 }}>
             Round trip deducted per position: <strong>{((s.cost ?? 0) * 100).toFixed(3)} %</strong>.
-            Auto-cost may use measured fills up to the 0.15% model ceiling. Net paper returns are not charged again; actual owned fees remain uncapped.
+            Exchange schedules update modeled cost. Unknown rates use the configured fallback. Measured fill prices already include slippage; actual fees are charged once.
           </div>
         </Panel>
         <Panel

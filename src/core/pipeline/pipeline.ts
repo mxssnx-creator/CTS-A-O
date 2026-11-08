@@ -1,3 +1,4 @@
+import { protectStepPct } from "../step-pf.ts";
 import { profitFactorRatio } from "../metrics/profit-factor.mjs";
 // Progressive pipeline over a universe of symbols:
 //   S1 coarse    every bot × indication with the default protect
@@ -296,7 +297,7 @@ export interface Combo {
 /** Base gate: a config set is evaluated and promoted to Main only with PF ≥ min PF, positive net and enough trades. */
 export function passesBase(
   st: { n: number; pf: number; net: number; mdd?: number; bw?: BaseWindowsResult; baseLast?: BaseLastNStats },
-  g: { minPf: number; minTrades: number; maxDdr?: number; baseLastN?: number; lastNFloor?: number; lossPrior?: boolean },
+  g: { minPf: number; minTrades: number; maxDdr?: number; baseLastN?: number; lastNFloor?: number; lossPrior?: boolean; stepPf?: Gates["stepPf"] },
 ): boolean {
   // Fail closed on invalid source/aggregate returns even when the optional drawdown ratio is disabled.
   // A nonfinite numerator or gross-loss underflow must not turn into a high-PF winning Base pass.
@@ -636,6 +637,8 @@ export const protectCellKey = (p: Pick<Protect, "tp" | "sl" | "trail" | "hold" |
 
 /** Base result of a pair at one range's representative cell (full history). */
 export interface RangeBaseStat {
+  /** Exact configured TP or trailing activation percent used by the step PF policy. */
+  stepPct?: number;
   n: number;
   pf: number;
   net: number;
@@ -992,7 +995,7 @@ export function basePassTags(
 ): string[] {
   if (r.ind && isLowRangeInd(laneOf(r.ind).base)) {
     const sh = r.ranges?.sh;
-    return sh && passesBase(sh, { ...g, minPf: minPfOf(g, "sh", r.ind) }) ? ["sh"] : [];
+    return sh && passesBase(sh, { ...g, minPf: minPfOf(g, "sh", r.ind, sh.stepPct) }) ? ["sh"] : [];
   }
   const out: string[] = [];
   const own = new Set(Object.keys(r.ranges ?? {}));
@@ -1004,7 +1007,7 @@ export function basePassTags(
         out.push(t);
   }
   for (const [tag, st] of Object.entries(r.ranges ?? {}))
-    if (passesBase(st, { ...g, baseLastN: baseLastNForRange(g, tag), minPf: minPfOf(g, tag, r.ind) })) out.push(tag);
+    if (passesBase(st, { ...g, baseLastN: baseLastNForRange(g, tag), minPf: minPfOf(g, tag, r.ind, st.stepPct) })) out.push(tag);
   return out;
 }
 
@@ -1018,7 +1021,7 @@ export function rangeCellPass(
   ind?: string,
 ): (tag: string, st: RangeBaseStat) => boolean {
   const g = baseSetsGates(gates);
-  return (tag, st) => passesBase(st, { ...g, baseLastN: baseLastNForRange(g, tag), minPf: minPfOf(g, tag, ind) });
+  return (tag, st) => passesBase(st, { ...g, baseLastN: baseLastNForRange(g, tag), minPf: minPfOf(g, tag, ind, st.stepPct) });
 }
 
 export function baseSetsGates<G extends Gates>(g: G): G {
@@ -1194,7 +1197,7 @@ export interface BaseRangeCount {
 }
 
 const BASE_DIAGNOSTIC_BATCH = 128;
-type BaseReportingGates = { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"];
+type BaseReportingGates = { stepPf?: Gates["stepPf"]; minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"];
   baseLastN?: number; baseRangeLastN?: Gates["baseRangeLastN"]; lastNFloor?: number; lossPrior?: boolean;
   baseWindows?: Gates["baseWindows"] };
 
@@ -1256,7 +1259,7 @@ export function* baseRangeCountsGen(
       const ownGates = own ? { ...g, baseLastN: baseLastNForRange(g, tag) } : g;
       // EMPTY_STATS carries pf: 0 for gate arithmetic, but an empty close sample has no measured PF.
       if (st.n > 0) pf.push(st.pf);
-      const ownMin = minPfOf(g, tag, r.ind);
+      const ownMin = minPfOf(g, tag, r.ind, own?.stepPct);
       appliedMin = Math.min(appliedMin, ownMin);
       const ok = own
         ? passesBase(own, { ...ownGates, minPf: ownMin })
@@ -1370,7 +1373,7 @@ export function* baseGateSensitivityGen(
           )) ||
         Object.entries(r.ranges ?? {}).some(
           ([t, st]) =>
-            eligible(r.ind, t) && passesBase(st, { ...gg, baseLastN: baseLastNForRange(gg, t), minPf: minPfOf(gg, t, r.ind) }),
+            eligible(r.ind, t) && passesBase(st, { ...gg, baseLastN: baseLastNForRange(gg, t), minPf: minPfOf(gg, t, r.ind, st.stepPct) }),
         );
       if (inAny) anyRange++;
     }
@@ -1447,7 +1450,7 @@ export function* baseRangeWhyGen(
       const st = own ?? r.full;
       const ownGates = own ? { ...g, baseLastN: baseLastNForRange(g, tag) } : g;
       // no own cell: judged at the default protect against both minimums (as baseRangeCounts)
-      const minPf = minPfOf(g, tag, r.ind);
+      const minPf = minPfOf(g, tag, r.ind, own?.stepPct);
       const need = own || !tag ? minPf : Math.max(minPfOf(g, "", r.ind), minPf);
       // the gates exactly as passesBase reads them
       const miss: BaseGate[] = [];
@@ -1723,6 +1726,7 @@ export function cellStats(
     }
   }
   const st: RangeBaseStat = cell.stats(baseLastN, Math.max(0, p.sl) * 100);
+  st.stepPct = protectStepPct(p);
   if (bw) {
     // the closes in exit order (statsOf's order: exit, then entry; stable), for the windows
     const n = wRr.length;
@@ -2190,7 +2194,7 @@ export function* runPipeline(
   for (let i = 0; i < chosen.length; i++) {
     const r = chosen[i];
     // each config is held to its own range's minimum PF (as at Base), not the stage minimum alone
-    const gr = { ...g, minPf: minPfOf(g, r.protect.tag, r.ind) };
+    const gr = { ...g, minPf: minPfOf(g, r.protect.tag, r.ind, protectStepPct(r.protect)) };
     const ln = optimizeLastN(r.id, r.trades, { gates: gr, splitT: u.splitT, nowT: u.nowT });
     const ev = evaluateConfig(r.id, r.trades, { gates: gr, nowT: u.nowT, bestN: ln.bestN });
     tapes.set(r.id, r.trades);
@@ -2218,7 +2222,7 @@ export function* runPipeline(
   const finalScore = (x: RankedConfig) => {
     const is = x.lastN ? scoreStats(x.lastN.is, 3) : 0;
     const ok =
-      x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag, x.ind) ? 1 : 0;
+      x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag, x.ind, protectStepPct(x.protect)) ? 1 : 0;
     return ok * 1000 + is;
   };
   ranked.sort((a, b) => finalScore(b) - finalScore(a));
@@ -2226,7 +2230,7 @@ export function* runPipeline(
   // Portfolio of bots: validated configs, combined greedily for green hours at a high order count.
   const cands = ranked
     .filter(
-      (x) => x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag, x.ind),
+      (x) => x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag, x.ind, protectStepPct(x.protect)),
     )
     .map((x) => ({ id: x.id, trades: tapes.get(x.id) ?? [], bestN: x.lastN!.bestN }));
   const portfolio = buildPortfolio(cands, {

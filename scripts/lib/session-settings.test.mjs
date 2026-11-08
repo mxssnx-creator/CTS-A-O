@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { sessionSettingsEvidence } from "./session-settings.mjs";
+import { sessionSettingsEvidence, sessionSignalsEnabled } from "./session-settings.mjs";
+
+test("signal report coverage follows effective overrides, including an explicit off setting", () => {
+  assert.equal(sessionSignalsEnabled({ signals: true, effective: { signals: { enabled: false } } }), false);
+  assert.equal(sessionSignalsEnabled({ signals: false, effective: { signals: { enabled: true } } }), true);
+  assert.equal(sessionSignalsEnabled({ signals: true }), true, "legacy dumps retain their recorded flag");
+  assert.equal(sessionSignalsEnabled({ signals: { enabled: false } }), false);
+});
 
 test("preserves complete normalized replay controls and serializes Base cohort metadata", () => {
   const settings = { cost: .0015, fees: { taker: .0005, slippage: .00025 }, grid: { micro: { tp: [.001, .002], slOfTp: [1, 2], trailOfTp: [0, .5] } },

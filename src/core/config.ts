@@ -85,6 +85,7 @@ export const DEFAULT_GATES: Gates = {
   // 12 windows — PF 1.232 → 1.244, drawdown −9 %, 85 % of the orders kept; 0.5 = low drawdown, −39 % orders)
   maxDdr: 1,
   // Operator 29 Oct: each range keeps its own floor through Base and subsequent evaluation.
+  stepPf: { enabled: true, ratio: 0.2, max: 2 },
   rangeMinPf: { micro: 1.05, minimal: 1.08, short: 1.12, general: 1.25, long: 1.5 },
   minTrades: 12,
   baseLastN: 40,
@@ -306,7 +307,7 @@ export interface CoreSettings {
   /** effective round-trip position cost (fraction); = 2 × (taker fee + slippage per side) */
   cost: number;
   /** cost components as on the exchange (per side, fractions) */
-  fees: { taker: number; maker: number; slippage: number };
+  fees: { taker: number; maker: number; slippage: number; slippageRatio?: number };
   /** live-feedback auto-adjuster (last N positions per strategy config set) */
   adjust: AdjustSettings;
   /** prehistory-derived exit candidates; each candidate and direction is validated and carried independently */

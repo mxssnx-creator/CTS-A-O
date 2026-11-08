@@ -57,7 +57,7 @@ import {
   writeSessionDump,
 } from "./lib/session-dump.mjs";
 import { BOOK_NOTIONAL_EPS_USD, normalizedBookNotional } from "./lib/book-notional.mjs";
-import { sessionSettingsEvidence } from "./lib/session-settings.mjs";
+import { sessionSettingsEvidence, sessionSignalsEnabled } from "./lib/session-settings.mjs";
 import { studyWithRequestedWindow } from "./lib/session-study.mjs";
 import {
   sessionAllocation,
@@ -1392,7 +1392,7 @@ async function runEngine() {
           : { provider: "BingX", market: "swap", timeframe: "1m" },
       tactics: tacticsMode,
       tacticsSet: s.tactics,
-      signals: signalsOn,
+      signals: s.signals.enabled,
       desk: deskFile ?? null,
       deskWhy: desk?.why ?? null,
       allOn: flag("all-on"),
@@ -1705,7 +1705,8 @@ if (arg("dump")) {
 }
 
 // ── 2. the book: sizing, minute equity, hours ─────────────────────────────────────────────────────────────────
-const { preH, runH, tactics: tacticsMode, signals: signalsOn } = raw.settings;
+const { preH, runH, tactics: tacticsMode } = raw.settings;
+const signalsOn = sessionSignalsEnabled(raw.settings);
 const symbols = raw.symbols.length;
 const trades = raw.trades;
 const startT = raw.window.startT;
@@ -3343,7 +3344,7 @@ if (cov) {
         rows.reduce((n, [, row]) => n + row.activeConfigs, 0));
     }
   }
-  if (raw.settings.signals?.enabled !== false && raw.settings.signals?.trailingOnly?.enabled) {
+  if (signalsOn && (raw.settings.effective?.signals ?? raw.settings.signals)?.trailingOnly?.enabled) {
     const n = Object.entries(signalTapes)
       .filter(([k]) => k.startsWith("trailing-only|"))
       .reduce((a, [, v]) => a + v.configs, 0);
@@ -3359,7 +3360,7 @@ if (cov) {
       check(`coverage: range ${tag} active tapes match kept sets`, kept, active);
     }
   }
-  if (raw.settings.signals)
+  if (signalsOn)
     check("coverage: signal combos evaluated", 1, (cov.byKind.signal?.evaluated ?? 0) > 0 ? 1 : 0);
   // config sets: every grid cell of every indication × range × type is accounted for (built, or not built with its
   // reason), and every built one is kept or dropped for too few closes
@@ -3423,7 +3424,7 @@ if (cov) {
       Number(n > 0),
     );
   }
-  if (raw.settings.signals && raw.settings.signals.enabled !== false) {
+  if (signalsOn) {
     const n = byTag.get("sig") ?? 0;
     const expected = (takenByRange.sig ?? 0) > 0;
     check("execution: signal output matches accepted entries", Number(expected), Number(n > 0));

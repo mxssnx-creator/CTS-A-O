@@ -53,7 +53,7 @@ const opts = (rangeMinPf?: WalkForwardOptions["gates"]["rangeMinPf"]): WalkForwa
   const o = defaultWalkForward(DEFAULT_SETTINGS);
   return {
     ...o,
-    gates: { ...o.gates, minPf: 1.05, minGreen: 0, rangeMinPf },
+    gates: { ...o.gates, minPf: 1.05, minGreen: 0, rangeMinPf, stepPf: { enabled: false, ratio: .2, max: 2 } },
     toggles: { normal: true, trailing: true, block: false, blockActive: false, dca: true, dcaActive: false, axis: true },
     symGate: undefined,
     coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
@@ -289,3 +289,22 @@ describe("min PF on every execution path", () => {
     assert.ok(!["signalValid", "lastN"].includes(why(execDecision(good, NOW, so, ctx))));
   });
 });
+
+ it("per-step PF applies to selection, independent per-entry last-N and cache revisions",()=>{
+  const small=tape("gn",46,1), wide=tape("gn",46,3.2);
+  const o=opts({general:1.05});o.gates={...o.gates,stepPf:{enabled:true,ratio:.2,max:2}};
+  assert.equal(configEval(small,t,o).ok,true);
+  assert.equal(configEval(wide,t,o).ok,false);
+  assert.deepEqual(ids(selectFixed([small,wide],t,o)),[small.id]);
+  const relaxed={...o,gates:{...o.gates,stepPf:{enabled:false,ratio:.2,max:2}}};
+  assert.equal(configEval(wide,t,relaxed).ok,true);
+  assert.equal(execDecision(wide,t,{...o,lastN:50},{sym:"AAA-USDT",side:1}).ok,false);
+ });
+
+ it("Base tag proof and reported cell floor use that cell's step policy",()=>{
+  const gates={...DEFAULT_SETTINGS.gates,minTrades:1,baseLastN:0,maxDdr:0,rangeMinPf:{minimal:1.08},
+    stepPf:{enabled:true,ratio:.2,max:2}};
+  const sample={n:20,pf:1.2,net:.2,mdd:0,gp:1.2,gl:1,stepPct:3.2};
+  assert.equal(rangeCellPass(gates,"ema@m1")("mn",sample),false);
+  assert.deepEqual(basePassTags({ind:"ema@m1",full:{...sample,n:0} as never,ranges:{mn:sample}},gates),[]);
+ });

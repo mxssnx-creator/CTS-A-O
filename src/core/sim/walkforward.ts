@@ -1,3 +1,4 @@
+import { protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
 import { DerivedCache } from "./derived-cache.ts";
 import { exitScopeSuffix, isHistoricExitConfig } from "../exit-scope.ts";
@@ -4156,7 +4157,7 @@ function minPfForTape(
   o: Pick<WalkForwardOptions, "gates" | "exitMinPf">,
 ): number {
   return Math.max(
-    minPfOf(o.gates, tp.kind === "exit" ? undefined : tp.protect.tag, tp.ind),
+    minPfOf(o.gates, tp.kind === "exit" ? undefined : tp.protect.tag, tp.ind, protectStepPct(tp.protect)),
     isSignalInd(tp.ind) ? (o.gates.baseSetsMinPf ?? 0) : 0,
     tp.kind === "exit" ? (o.exitMinPf ?? 0) : 0,
   );
@@ -4346,6 +4347,7 @@ function selSig(o: WalkForwardOptions): string {
     o.rangeSeats ? 1 : 0,
     o.gates.minPf,
     JSON.stringify(o.gates.rangeMinPf ?? null),
+    JSON.stringify(o.gates.stepPf ?? null),
     o.exitMinTrades ?? "",
     o.exitMinPf ?? "",
     o.exitMinGreenHourShare ?? "",
@@ -7144,7 +7146,7 @@ export function* walkForwardGen(
         if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
         // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
         const stackCap = blockStackCap(o.block);
-        const cv = ownS2 ? Math.min(ownS2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
+        const cv = ownS2 ? Math.min(ownS2.volumeFor(tr.entryT, { cfg: tr.cfg, ind: tp.ind, sym: tr.sym, side: tr.side, kind: tp.kind, type: tp.kind }), Math.max(1, stackCap / dec.vol)) : 1;
         const baseExecutionMult = dec.vol * cv * vf * hedgeVol * rangeVol;
         const relationCap = relateExternalStackCap(o.relate?.maxStack ?? MAX_EXTERNAL_STACK, tp.kind, tp.protect);
         const combined = combineRelateStack(baseExecutionMult, o.relate?.enabled ? (dec.relateVol ?? 1) : 1, relationCap);
