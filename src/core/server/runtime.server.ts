@@ -4100,7 +4100,9 @@ export class CoreRuntime {
     };
     try {
       for (;;) {
+        if (runGen !== this.gen) throw new Error("superseded by a newer loop generation");
         const r = gen.next();
+        if (runGen !== this.gen) throw new Error("superseded by a newer loop generation");
         const now = performance.now();
         if (now - stepT > maxStep) {
           maxStep = now - stepT;
@@ -4116,6 +4118,10 @@ export class CoreRuntime {
           };
           return r.value;
         }
+        // A negative simulation yield is completed work inside the current hour, not a
+        // completed hour. Keep its liveness separate from the coarse progress fraction.
+        // Otherwise a large first selection is restarted after 180s despite yielding.
+        this.status.heartbeat = Date.now();
         onStep(r.value);
         const el = performance.now() - slice;
         if (el > SLICE_MS) {
