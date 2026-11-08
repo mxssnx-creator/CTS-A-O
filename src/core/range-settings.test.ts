@@ -104,7 +104,7 @@ describe("range settings are complete and the same for every range", () => {
     );
   });
 
-  it("a range's own evaluation stop floor builds the cells the global floor forbids", () => {
+  it("a range's legacy evaluation floor cannot lower the overall stop floor", () => {
     const tp = 0.004;
     const grid = {
       ...DEFAULT_SETTINGS.grid,
@@ -129,7 +129,7 @@ describe("range settings are complete and the same for every range", () => {
     );
     // with the range's own floor the tighter cell is buildable, so the range has a stop under the global floor
     assert.ok(
-      stopsOf(own).some((sl) => sl < EVAL_MIN_SL - 1e-9),
+      stopsOf(own).every((sl) => sl >= EVAL_MIN_SL - 1e-9),
       `own floor kept ${stopsOf(own)}`,
     );
   });

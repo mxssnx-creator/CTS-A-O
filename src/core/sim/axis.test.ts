@@ -292,7 +292,7 @@ describe("axis: desk mode (Stable-02 ladder)", () => {
     );
   };
 
-  it("desk helpers: slDist, TP ratio snap, SL ≤ TP ÷ ratio", () => {
+  it("desk helpers keep the requested target when an SL floor exceeds TP / ratio", () => {
     assert.equal(deskSlDist(1, 1, 0.7), 0.42);
     assert.equal(deskSlDist(1, 10, 0.2), 0.35);
     assert.equal(deskSlDist(1, 10, 0.7), 0.7);
@@ -300,7 +300,7 @@ describe("axis: desk mode (Stable-02 ladder)", () => {
     assert.equal(snapTpRatio(9), 3);
     const lv = deskLevels(100, 1, 5, 4, 2);
     assert.equal(lv.tp, 104);
-    assert.equal(lv.sl, 98, "stop capped at the target distance ÷ ratio");
+    assert.equal(lv.sl, 95, "initial stop floor is independent of the target ratio");
     const sh = deskLevels(100, -1, 1, 2, 2);
     assert.equal(sh.sl, 101);
     assert.equal(sh.tp, 98);
@@ -424,7 +424,7 @@ describe("axis: desk mode (Stable-02 ladder)", () => {
     assert.ok(Math.abs(at(5).stop - 98.65) < 1e-9);
   });
 
-  it("stop floors (protectFloor / minSl) widen the desk stop, the target follows at its ratio", () => {
+  it("stop floors widen the desk stop without widening the requested target", () => {
     const r = run(
       [
         [100, 100.2, 99.8, 100],
@@ -433,9 +433,9 @@ describe("axis: desk mode (Stable-02 ladder)", () => {
       {},
       { floor: { minSl: 0.01, minTrail: 0 } },
     );
-    // SL = max(0.42, 1 % of the rung price 99) = 0.99, TP = 2 × 0.99
+    // SL = max(0.42, 1% of 99) = 0.99; requested TP remains 2 × 0.42.
     assert.ok(Math.abs(r.open!.stop - 98.01) < 1e-9, `${r.open!.stop}`);
-    assert.ok(Math.abs(r.open!.target - 100.98) < 1e-9);
+    assert.ok(Math.abs(r.open!.target - 99.84) < 1e-9);
   });
 
   it("hybrid: the Stable-02 trail follows the close once the move reaches 0.95 × stop distance", () => {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
+import { minimumStopFraction } from "../protection-policy.ts";
 import { DEFAULT_SETTINGS, RT_COST, type SettingsPatch } from "../config.ts";
 import { liveTrades, type LedgerRow } from "../statistics.ts";
 import { DEFAULT_MODEL_FEES, MAX_MODEL_RT_COST, roundTripCostFromFees } from "../model-cost.ts";
@@ -67,13 +68,14 @@ describe("modeled position cost defaults and migration", () => {
     assert.equal(runtime.settings.cost, 0.001, "lower explicit modeled costs remain authoritative");
   });
 
-  it("omitted Micro helper costs use the model default while configured range distances keep their fixed basis", () => {
+  it("omitted Micro helper costs use the model default while targets keep their fixed basis and the initial SL floor follows costs", () => {
     assert.equal(microPriceTp(0.002, MICRO_RANGE), +(0.002 + RT_COST).toFixed(8));
     assert.equal(microSlFloor({ minSlNet: 0.002 }), +(0.002 + RT_COST).toFixed(8));
     assert.equal(rangeTpLabel(0.002 + RT_COST, "mc"), "0.38 % (net 0.20 %)");
     const netRange = { tp: [0.0015, 0.002, 0.003], minNetOfCost: 1 };
     assert.deepEqual(microNetTps(netRange), [0.002, 0.003]);
     assert.deepEqual(microNetTps(netRange, 0.002), [0.002, 0.003]);
+    const floor = minimumStopFraction(RT_COST);
     const targets: number[] = [];
     const original = structuredClone(MICRO_RANGE);
     forEachMicro({ holdH: [1], micro: MICRO_RANGE }, (tp, sl, trail) => {
@@ -85,11 +87,11 @@ describe("modeled position cost defaults and migration", () => {
     assert.deepEqual(MICRO_TP, [0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008]);
     assert.deepEqual([MINIMAL_RANGE, SHORT_RANGE, GENERAL_RANGE, LONG_RANGE, MINIMAL_PLUS_RANGE]
       .map((range) => [range.tp[0], range.tp.at(-1), range.minSl, range.minTrail]), [
-      [0.008, 0.016, 0.006, 0.003],
-      [0.018, 0.028, 0.006, 0.002],
-      [0.03, 0.044, 0.01, 0.004],
-      [0.046, 0.064, 0.016, 0.006],
-      [0.004, 0.01, 0.001, 0.001],
+      [0.008, 0.016, floor, 0.003],
+      [0.018, 0.028, floor, 0.002],
+      [0.03, 0.044, floor, 0.004],
+      [0.046, 0.064, floor, 0.006],
+      [0.004, 0.01, floor, 0.001],
     ]);
     assert.equal(microPriceTp(0.002, MICRO_RANGE, 0.002), 0.004, "explicit historical model costs remain unchanged");
   });
@@ -130,7 +132,7 @@ describe("modeled position cost defaults and migration", () => {
     for (const settings of alternatives) {
       const before = structuredClone(settings);
       const { db } = fixture(settings);
-      assert.deepEqual(db.kvGet("settings"), before);
+      assert.deepEqual(db.kvGet("settings"), { ...before, minSlDistancePct: 0.1 });
     }
     const { runtime } = fixture(structuredClone(formerModel), 34);
     assert.equal(runtime.settings.cost, formerModel.cost, "saved custom model costs are never silently discounted");

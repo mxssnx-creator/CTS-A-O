@@ -63,7 +63,7 @@ describe("Signals: independent protection discovery", () => {
       minTrail: sig.minTrail,
       signalReferenceGrid: true,
     });
-    assert.equal(tapes.length, 81, "five wider Normal requests alias after the 2% stop cap");
+    assert.equal(tapes.length, 103, "70 Normal requests form 59 effective cells after the 2% stop cap");
     assert.equal(new Set(tapes.map((tp) => tp.id)).size, tapes.length);
     assert.ok(tapes.filter((tp) => tp.kind === "trailing-only").some((tp) => tp.n >= 3));
     assert.ok(
@@ -169,10 +169,10 @@ describe("Signals: independent protection discovery", () => {
       requested.map((p) => adjustProtect(laneProtect(p, `sig-ema-cross-s@m${tf}`), sig));
     const unique = (tf: number) =>
       new Set(effective(tf).map((p) => configId("follow", `sig-ema-cross-s@m${tf}`, p)));
-    assert.equal(requested.length, 86);
+    assert.equal(requested.length, 114);
     assert.deepEqual(
       [1, 5, 15, 30].map((tf) => unique(tf).size),
-      [86, 86, 86, 86],
+      [114, 114, 114, 114],
     );
     assert.equal(
       new Set(
@@ -251,7 +251,7 @@ describe("Signals: independent protection discovery", () => {
         ["normal", "trailing", "trailing-only"].map(
           (kind) => remote.tapes.filter((tp) => tp.kind === kind).length,
         ),
-        [37, 35, 9], // distinct effective protections after the initial-stop cap
+        [59, 35, 9], // distinct effective protections after the initial-stop cap
       );
     } finally {
       closePool();

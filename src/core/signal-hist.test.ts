@@ -378,7 +378,7 @@ describe("signal historic trailing configs", () => {
   it("historic fitting stays on beside the complete expanded standard percent/ATR and multi-trailing grid", () => {
     assert.equal(DEFAULT_SIGNALS.hist.enabled, true);
     const protects = signalProtects(signalSettings({ enabled: true }));
-    assert.equal(protects.length, 207);
+    assert.equal(protects.length, 235);
     assert.ok(protects.some(p => p.atr));
     assert.ok(protects.some(p => p.trailOnly));
     assert.deepEqual(new Set(protects.filter(p => p.trail).map(p => p.trailStep ?? 1)), new Set([0.5, 1, 1.5]));

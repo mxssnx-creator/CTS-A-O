@@ -567,19 +567,7 @@ export function SignalsSettings(props: {
             onChange={(v) => set(["sourceGate", "minTrades"], v)}
           />
         </Field>
-        <Field
-          label="Signal stop floor (%)"
-          hint="no signal config's stop closer than this (every lane, % and ATR exits)"
-        >
-          <Num
-            pct
-            step={0.05}
-            min={0}
-            max={0.1}
-            value={g.minSl ?? 0.005}
-            onChange={(v) => set(["minSl"], v)}
-          />
-        </Field>
+        <p className="v2-hint">Initial stops use the overall minimum SL above costs.</p>
         <Field
           label="Signal trailing floor (%)"
           hint="no signal config's trailing distance closer than this"
@@ -1637,23 +1625,8 @@ export function RangeEditor(props: {
           )}
           {props.k === "micro" && (
             <Field
-              label="Min SL net of the position cost (%)"
-              hint="Micro's stop floor: this net floor plus the configured round-trip cost (0.20 % + the default 0.15 % = 0.35 %). It stands in for Min SL and the evaluation floor below, so no Micro cell is evaluated or traded with a tighter stop. Live, the exchange's own minimum stop distance per symbol still applies on top · 0 = off (Min SL applies)"
-            >
-              <Num
-                pct
-                step={0.01}
-                min={0}
-                max={0.05}
-                value={s.minSlNet ?? 0}
-                onChange={(v) => props.set(p("minSlNet"), v || undefined)}
-              />
-            </Field>
-          )}
-          {props.k === "micro" && (
-            <Field
               label="Base on the best cell"
-              hint="Micro's own switch for the grid-wide 'Base at every config': each target × stops 1 / 1.75 / 2.5 / 3.5 / 5 × target, best cell kept (off: the one middle cell) — every set still has to pass its own checks before it trades"
+              hint="Micro's own switch for the grid-wide 'Base at every config': each target × all configured stop ratios, best cell kept (off: the one middle cell) — every set still has to pass its own checks before it trades"
             >
               <Switch
                 label="Micro best-cell Base"
@@ -1682,19 +1655,7 @@ export function RangeEditor(props: {
               />
             </Field>
           )}
-          <Field
-            label="Min SL (%)"
-            hint="this range's own stop floor (the wide-grid floor does not apply)"
-          >
-            <Num
-              pct
-              step={0.01}
-              min={0}
-              max={0.2}
-              value={s.minSl ?? 0}
-              onChange={(v) => props.set(p("minSl"), v)}
-            />
-          </Field>
+          <p className="v2-hint">Initial stops use the overall minimum SL above costs.</p>
           <Field label="Min trail (%)" hint="this range's own trailing floor">
             <Num
               pct
@@ -1705,19 +1666,7 @@ export function RangeEditor(props: {
               onChange={(v) => props.set(p("minTrail"), v)}
             />
           </Field>
-          <Field
-            label="Min SL, evaluation (%)"
-            hint="this range's own evaluation stop floor, in place of the grid-wide one. The grid floor is a blanket 0.5 %: a range whose targets sit below it can only be evaluated with a stop wider than its target, which caps reward:risk below 1 · 0 = the grid floor"
-          >
-            <Num
-              pct
-              step={0.01}
-              min={0}
-              max={0.05}
-              value={(s as { minSlEval?: number }).minSlEval ?? 0}
-              onChange={(v) => props.set(p("minSlEval"), v || undefined)}
-            />
-          </Field>
+          <p className="v2-hint">Initial stops use the overall minimum SL above costs.</p>
           <Field
             label="Base at this range's own cell"
             hint="on: Base judges a pair for this range at the range's own cells; off: at the default protect (TP 2.6 %), which is far from a short range's target · unset = the range's default (Micro and Minimal on, the others follow best-cell Base)"
@@ -4177,7 +4126,7 @@ export function SettingsPage() {
             >
               <List pct allowEmpty value={s.grid.tp} onChange={(v) => set(["grid", "tp"], v)} />
             </Field>
-            <Field label="SL × TP (max ratio 2–2.5)">
+            <Field label="SL × TP (0.25–2.5, step 0.25)">
               <List value={s.grid.slOfTp} onChange={(v) => set(["grid", "slOfTp"], v)} />
             </Field>
             <Field label="Trail share of TP (0 = off)">
@@ -4193,15 +4142,7 @@ export function SettingsPage() {
                   onChange={(v) => set(["grid", "minTrail"], v)}
                 />
               </Field>
-              <Field label="Min SL (%)" hint="0 – 20">
-                <Num
-                  pct
-                  min={0}
-                  max={0.2}
-                  value={s.grid.minSl}
-                  onChange={(v) => set(["grid", "minSl"], v)}
-                />
-              </Field>
+              <p className="v2-hint">Initial stops use the overall minimum SL above costs.</p>
               <Field
                 label="Base trailed cells"
                 hint="Base measures every range cell at trail 0; on, it also measures one trailed cell per target (the middle trail at the middle stop), so a target whose edge needs a trailing stop can pass Base too · one extra Base cell per target"
@@ -4232,19 +4173,7 @@ export function SettingsPage() {
                   onChange={(v) => set(["grid", "baseRanges"], v)}
                 />
               </Field>
-              <Field
-                label="Min SL, evaluation (%)"
-                hint="the minimum stop of EVERY evaluated config — every grid cell, Base cell, DCA rung and Axis desk floor is held to it (a tighter stop sits inside the spread and noise) · 0.1 – 5"
-              >
-                <Num
-                  pct
-                  step={0.1}
-                  min={0.001}
-                  max={0.05}
-                  value={s.grid.minSlEval ?? 0.005}
-                  onChange={(v) => set(["grid", "minSlEval"], v)}
-                />
-              </Field>
+              <p className="v2-hint">Initial stops use the overall minimum SL above costs.</p>
               <Field label="Hold (h)">
                 <List value={s.grid.holdH} onChange={(v) => set(["grid", "holdH"], v)} />
               </Field>
@@ -4270,16 +4199,15 @@ export function SettingsPage() {
             </div>
             <div className="v2-grid v2-cols-2">
               <Field
-                label="Stop floor, every lane (%)"
-                hint="no config's stop closer than this after lane scaling (1m / 5m included)"
+                label="Minimum SL above costs (%)"
+                hint="Initial SL adds this net price distance to modeled costs. TP keeps its requested distance; trailing may tighten after entry."
               >
                 <Num
-                  pct
-                  step={0.05}
-                  min={0}
-                  max={0.1}
-                  value={s.protectFloor?.minSl ?? 0.005}
-                  onChange={(v) => set(["protectFloor", "minSl"], v)}
+                  step={0.1}
+                  min={0.1}
+                  max={1}
+                  value={s.minSlDistancePct ?? 0.1}
+                  onChange={(v) => set(["minSlDistancePct"], v)}
                 />
               </Field>
               <Field

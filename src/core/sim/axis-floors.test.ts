@@ -1,6 +1,7 @@
 // Managed revert Axis (the default Axis mode, x01's) honours the stop floors and the live-feedback adjuster: its
 // derived stop (≈ 0.2-0.3 % of price at a low ATR) is floored at max(EVAL_MIN_SL, protectFloor.minSl, the set's
 // adjust minSl) and widened by the set's slMult, as desk mode floors its stops (bug hunt, 13 Oct).
+import { minimumStopFraction } from "../protection-policy.ts";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { simulateAxis } from "./axis.ts";
@@ -72,17 +73,17 @@ describe("axis revert (managed): stop floors and the live-feedback adjuster", ()
     return out;
   };
 
-  it("buildTapes: every managed revert stop-out (one leg) is at least the stop floor (0.5 %) from the average entry", () => {
+  it("buildTapes: one-leg managed stops respect the current cost-plus-net floor", () => {
     const ts = revert(null);
     assert.ok(ts.length > 0 && ts.every((t) => t.id.includes("|ax-")), ts[0]?.id);
     const d = slDists(ts);
     assert.ok(d.length > 0, "some stop-outs");
-    const below = d.filter((x) => x < 0.005 - 1e-6);
+    const below = d.filter((x) => x < minimumStopFraction(0.002) - 1e-6);
     assert.equal(below.length, 0, `stop-outs below the floor: ${below.slice(0, 5).map((x) => x.toFixed(5))}`);
     for (const t of ts)
       for (const o of t.open) {
         const sd = o.side * (o.entry - o.stop);
-        assert.ok(sd <= 0 || sd >= 0.005 * o.entry - 1e-9, `open stop ${sd}`);
+        assert.ok(sd <= 0 || sd >= minimumStopFraction(0.002) * o.entry - 1e-9, `open stop ${sd}`);
       }
   });
 

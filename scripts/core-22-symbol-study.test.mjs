@@ -184,8 +184,11 @@ test("feed validation rejects missing bars, extra symbols and omitted ranking hi
 
 test("preflight uses production complete nested ladders and unchanged gates with explicit loading coverage", async () => {
   const { DEFAULT_SETTINGS } = await import("../src/core/config.ts");
+  const { normalizeLanes } = await import("../src/core/server/runtime.server.ts");
   const x = await studyRuntimeSettings(STUDY_SYMBOLS, studyWindow());
-  assert.deepEqual(x.settings.grid, DEFAULT_SETTINGS.grid);
+  assert.deepEqual(x.settings.grid, normalizeLanes(DEFAULT_SETTINGS).grid);
+  assert.equal(x.settings.grid.micro.minSlNet, .001);
+  assert.equal(x.settings.grid.micro.minSl, x.settings.cost + .001);
   assert.deepEqual(x.settings.gates, DEFAULT_SETTINGS.gates);
   assert.deepEqual(x.settings.tfDays, { 1: 11, 5: 11, 15: 11, 30: 11 });
   assert.deepEqual(x.settings.forceSymbols, STUDY_SYMBOLS);
@@ -203,6 +206,9 @@ test("preflight uses production complete nested ladders and unchanged gates with
   assert.ok(JSON.stringify(x.commandWf).length < 1024, "derived grid stays in frozen evidence rather than oversized argv");
   await assert.rejects(studyRuntimeSettings(STUDY_SYMBOLS, studyWindow(), 10), /at least11/);
   await assert.rejects(studyRuntimeSettings(STUDY_SYMBOLS, studyWindow(), undefined, { cost: 0.0009 }), /taker fees/);
+  const higherCost = await studyRuntimeSettings(STUDY_SYMBOLS, studyWindow(), undefined, { cost: .002 });
+  assert.equal(higherCost.settings.grid.micro.minSl, .003);
+  assert.deepEqual(higherCost.settings.grid.micro.slOfTp, x.settings.grid.micro.slOfTp);
   const reclaim = await studyRuntimeSettings(STUDY_SYMBOLS, studyWindow(), undefined, { variant: "reclaim8" });
   assert.equal(reclaim.settings.focus.length, x.settings.focus.length + 12);
   assert.deepEqual(reclaim.settings.focus.slice(0, x.settings.focus.length), x.settings.focus);

@@ -1554,6 +1554,16 @@ describe(
     });
 
     it("coreListing: the paper step's validated groups, a group's own rows, paged; active units; bad input refused", async () => {
+      // Paging/shape uses an explicit listing fixture, independent of whether the synthetic market currently qualifies.
+      const savedListings = rt.listings!;
+      const validated = Array.from({length: 12}, (_, i) => ({
+        id: `follow|ema-9-21@m1|tp${1 + i / 10}|sl0.5|tr0|h60|mn`, group: "Minimal", range: "Minimal",
+        kind: "normal", score: 12 - i, pf: 1.5, n: 12, net: .06, ddt: 0, gp: .18, gl: .12,
+      }));
+      const pool = {rows: validated.map((_,i) => i), gp: 2.16, gl: 1.44, pf: 1.5, calculated: 12};
+      rt.listings = {...savedListings, validated, candidates: validated.map(({id,group,kind}) => ({id,group,kind})),
+        byGroup: {Minimal: {...pool}}, byRange: {Minimal: {...pool}}, byKind: {normal: {...pool}}};
+      try {
       const all = (await read("coreListing", () =>
         api.coreListingData(api.coreListingInput({ kind: "validated", limit: 5 })),
       )) as {
@@ -1627,6 +1637,7 @@ describe(
         rt.listings!.active = savedActive;
       }
       assert.throws(() => api.coreListingInput({ kind: "everything" }), /kind/);
+      } finally { rt.listings = savedListings; }
     });
 
     it("coreMarket", async () => {

@@ -31,11 +31,11 @@ export function lowRangeSpecs(): IndicationSpec[] {
 }
 
 /** Exact same effective cells are supplied to Base and tape construction. */
-export function lowRangeGridProtects(grid: LowRangeGrid | undefined, cost = RT_COST, tfMin = 15): Protect[] {
+export function lowRangeGridProtects(grid: LowRangeGrid | undefined, cost = RT_COST, tfMin = 15, minSlDistancePct = 0.1): Protect[] {
   if (!grid?.enabled) return [];
   if (!(Number.isFinite(grid.maxHoldMin) && grid.maxHoldMin >= 1 && Number.isFinite(tfMin) && tfMin > 0))
     throw new RangeError("invalid Low-Range hold/timeframe");
-  return lowRangeProtects({ step: grid.step, cost, steps: grid.steps, slRatios: grid.slRatios,
+  return lowRangeProtects({ step: grid.step, cost, minSlDistancePct, steps: grid.steps, slRatios: grid.slRatios,
     trailRatios: grid.trailRatios, tags: ["sh"] }).map((p) => ({
       ...p, lowRangeOnly: true, hold: Math.floor(grid.maxHoldMin / tfMin), maxHoldMin: grid.maxHoldMin,
     }));

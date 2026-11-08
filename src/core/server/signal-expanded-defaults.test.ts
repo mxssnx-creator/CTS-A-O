@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { afterEach, it } from "node:test";
 import { DEFAULT_SIGNALS, PRE_EXPANDED_SIGNAL_SOURCES, SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
 import { signalCombos, signalProtects } from "../signals.ts";
+import { SL_TP_RATIOS, minimumStopFraction } from "../protection-policy.ts";
+import { DEFAULT_SETTINGS } from "../config.ts";
 import { checkSettings } from "../settings-check.ts";
 import { CoreDb } from "./db.server.ts";
 import { CoreRuntime } from "./runtime.server.ts";
@@ -34,6 +36,9 @@ it("fresh Expanded defaults match the verified source/grid catalog with own Last
   const rt = open();
   const recorded = JSON.parse(readFileSync(new URL("../../../docs/signals-coverage-20261023/receipts/final/all-sources/protocol.json", import.meta.url), "utf8"));
   const expected = recorded.actualSettings.signals;
+  expected.minSl = minimumStopFraction(DEFAULT_SETTINGS.cost, .1);
+  expected.normal.slOfTp = [...SL_TP_RATIOS];
+  expected.trailing.slOfTp = 1;
   expected.guard.lastN = 12;
   expected.hist.lookbackH = 150;
   expected.coordination.volumeFactor = 1; // Operator neutral-sizing default; archived receipt stays immutable.

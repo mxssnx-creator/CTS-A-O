@@ -1,3 +1,4 @@
+import { EVAL_MIN_SL } from "./minimal-coord.ts";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { DEFAULT_SETTINGS } from "./config.ts";
@@ -61,7 +62,7 @@ const replay = (p: Protect, b: Bars, side: Side) =>
   simulate(id(p), b, Int8Array.of(side, ...new Array(b.n - 1).fill(0)), p, { cost: COST });
 
 describe("range Base, grid and actual simulated protection agree", () => {
-  it("every non-Micro range's own evaluation floor replaces the global floor in normal and trailing cells", () => {
+  it("every non-Micro range's own evaluation floor may raise the global floor in normal and trailing cells", () => {
     for (const [name, tag] of PLAIN)
       for (const minSlEval of [undefined, 0.002, 0.02]) {
         const g = grid(name, {
@@ -74,7 +75,7 @@ describe("range Base, grid and actual simulated protection agree", () => {
         assert.ok(base.some((p) => p.trail === 0) && base.some((p) => p.trail > 0));
         for (const p of base) assert.ok(actualIds.has(id(p)), `${name} Base ${id(p)} missing from actual grid`);
         assert.deepEqual([...new Set(actual.map((p) => p.sl))].sort((a, b) => a - b),
-          minSlEval === 0.002 ? [0.002, 0.004] : [minSlEval ?? 0.005]);
+          minSlEval === 0.02 ? [0.02] : [0.003, 0.004]);
       }
   });
 
@@ -102,7 +103,7 @@ describe("range Base, grid and actual simulated protection agree", () => {
           const trade = result.trades[0];
           assert.equal(trade.reason, minSlEval < 0.005 ? "sl" : "time");
           assert.equal(trade.exitT, START + (minSlEval < 0.005 ? 2 : 3) * TF);
-          const exit = minSlEval < 0.005 ? 100 * (1 - side * minSlEval) : b.c[2];
+          const exit = minSlEval < 0.005 ? 100 * (1 - side * actual.sl) : b.c[2];
           assert.ok(Math.abs(trade.exit - exit) < 1e-10);
           assert.ok(Math.abs(trade.r - (side * (exit - 100) / 100 - COST)) < 1e-12);
         }
@@ -144,9 +145,9 @@ describe("range Base, grid and actual simulated protection agree", () => {
       { minSl: undefined, minTrail: undefined, minSlEval: undefined, stop: 0.01, trail: 0.006 },
       { minSl: undefined, minTrail: undefined, minSlEval: 0.002, stop: 0.01, trail: 0.006 },
       { minSl: undefined, minTrail: undefined, minSlEval: 0.02, stop: 0.02, trail: 0.006 },
-      { minSl: 0, minTrail: 0, minSlEval: 0.002, stop: 0.002, trail: 0.002 },
+      { minSl: 0, minTrail: 0, minSlEval: 0.002, stop: 0.003, trail: 0.002 },
       { minSl: 0.015, minTrail: 0.009, minSlEval: undefined, stop: 0.015, trail: 0.009 },
-      { minSl: 0.001, minTrail: 0.001, minSlEval: undefined, stop: 0.005, trail: 0.002 },
+      { minSl: 0.001, minTrail: 0.001, minSlEval: undefined, stop: 0.003, trail: 0.002 },
     ];
     for (const [name, tag] of PLAIN)
       for (const c of cases) {
@@ -171,7 +172,7 @@ describe("range Base, grid and actual simulated protection agree", () => {
     micro.minTrail = 0.006;
     const actual = protectGrid(15, micro, COST).filter((p) => p.tag === "mc");
     assert.deepEqual(baseRangeProtects(micro, COST).filter((p) => p.tag === "mc"), actual);
-    assert.equal(actual[0].sl, 0.001);
+    assert.equal(actual[0].sl, 0.003);
     assert.equal(actual[1].trail * 0.5, 0.0005);
   });
 
