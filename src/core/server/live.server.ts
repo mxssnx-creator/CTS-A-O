@@ -1,3 +1,5 @@
+import { parseCommission, type FeeSnapshot } from "../fee-policy.ts";
+import { roundTripCostFromFees } from "../model-cost.ts";
 // Live stage executor (BingX perpetual swap, self-contained client in ../exchange). Own CTSB tags only, so other
 // sessions on the same account (e.g. CTSA) never see these tickets as theirs and this adapter never touches theirs.
 //
@@ -371,6 +373,7 @@ export interface ExchangeClient {
   /** `fresh`: a book shared with other processes is only reused when read after `notBefore` and within `maxAgeMs` */
   book(fresh?: { notBefore: number; maxAgeMs: number }): Promise<BookView>;
   contracts(): Promise<Map<string, bx.ContractSpec>>;
+  commission?(symbol: string): Promise<{ maker: number; taker: number } | null>;
   order(p: Record<string, string | number>): Promise<unknown>;
   cancel(venueSymbol: string, orderId: string): Promise<boolean>;
   setPositionMode?(mode: "hedge" | "oneway"): Promise<void>;
@@ -721,6 +724,8 @@ export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
     },
     book: (fresh) => bx.fetchBook(network, connId, fresh),
     contracts: () => bx.fetchContracts(network),
+    commission: async (symbol) => parseCommission("bingx", { code: 0,
+      data: await bx.signed(network, connId, "GET", "/openApi/swap/v2/user/commissionRate", { symbol }) }),
     order: (p) => bx.signed(network, connId, "POST", "/openApi/swap/v2/trade/order", p),
     cancel: (sym, id) => bx.cancelOrder(network, connId, sym, id, { propagateNotSent: true }),
     setPositionMode: (mode) => bx.setPositionMode(network, connId, mode),
@@ -7449,6 +7454,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       });
     }
     refreshVenueHistory(rt, ex);
+    void refreshVenueFees(rt, ex);
     // Market replies often omit commission on VST. Reconcile one symbol per 30s only after all protection and
     // ownership work. Read failures keep the fee explicitly unknown and never reverse a confirmed order fill.
     if (ex.feeHistory && Date.now() - (Lm.feeSyncAt ?? 0) >= 30_000 && alive()) {
@@ -7529,4 +7535,55 @@ function done(rt: CoreRuntime, status: LiveStatus, reason: string, ex?: Exchange
   liveKvSet(rt.db, "liveStatus", status);
   rt.emit?.("live");
   return status;
+}
+
+// Per-runtime/account snapshots. One nonblocking read per second, one-hour refresh;
+// unknown/stale selected symbols always participate at the configured fallback.
+const feeSchedules = new WeakMap<CoreRuntime, { scope: string; next: number; busy: boolean; rates: Map<string, FeeSnapshot>; published?: string }>();
+export async function refreshVenueFees(rt: CoreRuntime, ex: ExchangeClient, now = Date.now()) {
+  if (!ex.commission || !ex.hasKeys() || rt.status.source !== "bingx") return;
+  const scope = clientCacheFingerprint(ex), conn = rt.settings.live.connId;
+  let state = feeSchedules.get(rt);
+  if (!state || state.scope !== scope) {
+    state = { scope, next: 0, busy: false, rates: new Map() }; feeSchedules.set(rt, state);
+  }
+  const symbols = [...rt.candles.keys()];
+  if (!symbols.length) return;
+  const publishBudget = () => {
+    if (feeSchedules.get(rt) !== state || clientCacheFingerprint(ex) !== scope || rt.settings.live.connId !== conn) return;
+    try {
+      const fees = rt.settings.fees;
+      const effective = symbols.map(symbol => {
+        const row = state!.rates.get(symbol);
+        const fresh = row && now >= row.at && now - row.at <= 7_200_000;
+        return { symbol, maker: fresh ? row.maker : fees.maker,
+          taker: fresh ? row.taker : fees.taker,
+          source: fresh ? "account-rate" : "configured-estimate", at: fresh ? row.at : null };
+      });
+      const cost = Math.max(...effective.map(row => roundTripCostFromFees({ ...fees, taker: row.taker })));
+      const identity = JSON.stringify({ cost, effective });
+      if (identity !== state!.published) {
+        rt.db.kvSet("feeSchedule", { scope, at: now, cost, symbols: effective });
+        state!.published = identity;
+      }
+      if (Math.abs(cost - rt.settings.cost) > 1e-12) rt.updateSettings({ cost });
+    } catch { state!.next = now + 60_000; }
+  };
+  // Cached rates still need re-pricing when the selected universe, fallback,
+  // ratio or freshness changes. Those updates must not wait for an API read.
+  publishBudget();
+  if (state.busy || now < state.next) return;
+  const symbol = symbols.find(s => now - (state!.rates.get(s)?.at ?? 0) >= 3_600_000);
+  if (!symbol) return;
+  state.busy = true; state.next = now + 1000;
+  try {
+    const rates = await ex.commission(symbol);
+    if (feeSchedules.get(rt) !== state || clientCacheFingerprint(ex) !== scope || rt.settings.live.connId !== conn) return;
+    if (rates && [rates.maker, rates.taker].every(r => Number.isFinite(r) && r >= 0 && r <= .05))
+      state.rates.set(symbol, { ...rates, exchange: "bingx", account: scope, symbol, at: now });
+    else state.next = now + 60_000;
+
+  } catch { state.next = now + 60_000; }
+  finally { state.busy = false; }
+  publishBudget();
 }

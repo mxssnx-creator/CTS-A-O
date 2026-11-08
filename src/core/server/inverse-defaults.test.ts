@@ -55,7 +55,7 @@ test("Inverse joins the factory Focus and upgrades only the former factory selec
       runtime.settings.disabledKinds.includes("inverse"),
       "a deliberately disabled type stays disabled",
     );
-    assert.equal(db.kvGet("wfCapsV"), 37);
+    assert.equal(db.kvGet("wfCapsV"), 38);
     const presets = db.kvGet<Array<{ settings: { focus: string[] } }>>("presets")!;
     assert.deepEqual(presets[0].settings.focus, DEFAULT_SETTINGS.focus);
     assert.deepEqual(presets[1].settings.focus, ["follow|ema-9-21"]);
@@ -84,7 +84,7 @@ test("the published 102-identity factory selection upgrades at v37 without chang
     assert.deepEqual(presets[0].settings.focus, DEFAULT_SETTINGS.focus);
     assert.deepEqual(presets[1].settings.focus, ["follow|inverse-math-zscore-20"]);
     assert.deepEqual(presets[2].settings.focus, []);
-    assert.equal(db.kvGet("wfCapsV"), 37);
+    assert.equal(db.kvGet("wfCapsV"), 38);
   } finally {
     runtime.dispose();
   }

@@ -16,6 +16,19 @@ import {
 const formerModel = { cost: 0.002, fees: { taker: 0.0005, maker: 0.0002, slippage: 0.0005 } };
 const runtimes: CoreRuntime[] = [];
 afterEach(() => { for (const runtime of runtimes.splice(0)) runtime.dispose(); });
+
+it("step PF leaf edits preserve enabled, ratio, maximum and unrelated gate settings", () => {
+  const { runtime } = fixture(undefined, 38);
+  runtime.updateSettings({ gates: { stepPf: { enabled: true, ratio: 0.35, max: 1.6 } } });
+  const minPf = runtime.settings.gates.minPf;
+  runtime.updateSettings({ gates: { stepPf: { ratio: 0.4 } } });
+  assert.deepEqual(runtime.settings.gates.stepPf, { enabled: true, ratio: 0.4, max: 1.6 });
+  runtime.updateSettings({ gates: { stepPf: { enabled: false } } });
+  assert.deepEqual(runtime.settings.gates.stepPf, { enabled: false, ratio: 0.4, max: 1.6 });
+  assert.equal(runtime.settings.gates.minPf, minPf);
+  assert.deepEqual(runtime.wf.gates?.stepPf, runtime.settings.gates.stepPf);
+});
+
 function fixture(settings?: SettingsPatch, version = 33, presets?: unknown[]) {
   const db = new CoreDb(":memory:");
   db.kvSet("wfCapsV", version);
@@ -29,9 +42,9 @@ function fixture(settings?: SettingsPatch, version = 33, presets?: unknown[]) {
 }
 
 describe("modeled position cost defaults and migration", () => {
-  it("fresh defaults use the coherent 0.15% round-trip fee and slippage model", () => {
+  it("fresh defaults use the 0.08% taker plus 10% fee-relative slippage model", () => {
     const { runtime } = fixture();
-    assert.equal(RT_COST, 0.0015);
+    assert.ok(Math.abs(RT_COST - 0.00176) < 1e-15);
     assert.equal(DEFAULT_SETTINGS.cost, RT_COST);
     assert.deepEqual(DEFAULT_SETTINGS.fees, DEFAULT_MODEL_FEES);
     assert.equal(roundTripCostFromFees(DEFAULT_SETTINGS.fees), RT_COST);
@@ -47,26 +60,27 @@ describe("modeled position cost defaults and migration", () => {
     const { runtime } = fixture();
     const changedFees = { ...DEFAULT_MODEL_FEES, taker: 0.0006 };
     runtime.updateSettings({ fees: changedFees });
-    assert.equal(runtime.settings.cost, MAX_MODEL_RT_COST);
+    assert.ok(Math.abs(runtime.settings.cost - roundTripCostFromFees(changedFees)) < 1e-15);
     runtime.updateSettings({ cost: 0.0021, fees: DEFAULT_MODEL_FEES });
-    assert.equal(runtime.settings.cost, MAX_MODEL_RT_COST);
+    assert.equal(runtime.settings.cost, 0.0021);
     runtime.updateSettings({ cost: 0.001 });
     assert.equal(runtime.settings.cost, 0.001, "lower explicit modeled costs remain authoritative");
   });
 
   it("omitted Micro helper costs use the model default while configured range distances keep their fixed basis", () => {
-    assert.equal(microPriceTp(0.002, MICRO_RANGE), 0.0035);
-    assert.equal(microSlFloor({ minSlNet: 0.002 }), 0.0035);
-    assert.equal(rangeTpLabel(0.0035, "mc"), "0.35 % (net 0.20 %)");
+    assert.equal(microPriceTp(0.002, MICRO_RANGE), +(0.002 + RT_COST).toFixed(8));
+    assert.equal(microSlFloor({ minSlNet: 0.002 }), +(0.002 + RT_COST).toFixed(8));
+    assert.equal(rangeTpLabel(0.002 + RT_COST, "mc"), "0.38 % (net 0.20 %)");
     const netRange = { tp: [0.0015, 0.002, 0.003], minNetOfCost: 1 };
-    assert.deepEqual(microNetTps(netRange), netRange.tp);
+    assert.deepEqual(microNetTps(netRange), [0.002, 0.003]);
     assert.deepEqual(microNetTps(netRange, 0.002), [0.002, 0.003]);
     const targets: number[] = [];
     const original = structuredClone(MICRO_RANGE);
     forEachMicro({ holdH: [1], micro: MICRO_RANGE }, (tp, sl, trail) => {
       if (sl === 1 && trail === 0) targets.push(tp);
     });
-    assert.deepEqual(targets, [0.0035, 0.0045, 0.0055, 0.0065, 0.0075, 0.0085, 0.0095]);
+    assert.equal(targets.length, 7);
+    targets.forEach((t, i) => assert.ok(Math.abs(t - (0.002 + i * 0.001 + RT_COST)) < 1e-12));
     assert.deepEqual(MICRO_RANGE, original, "cost helpers cannot rewrite the configured net target distances");
     assert.deepEqual(MICRO_TP, [0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008]);
     assert.deepEqual([MINIMAL_RANGE, SHORT_RANGE, GENERAL_RANGE, LONG_RANGE, MINIMAL_PLUS_RANGE]
@@ -90,7 +104,7 @@ describe("modeled position cost defaults and migration", () => {
     assert.equal(runtime.settings.cost, RT_COST);
     assert.deepEqual(runtime.settings.fees, DEFAULT_SETTINGS.fees);
     assert.equal(runtime.settings.symbols, 7);
-    assert.equal(db.kvGet<number>("wfCapsV"), 37);
+    assert.equal(db.kvGet<number>("wfCapsV"), 38);
     const presets = db.kvGet<Array<{ id: string; settings: SettingsPatch; wf: unknown; metrics: unknown }>>("presets")!;
     assert.deepEqual(presets[0], {
       id: "factory", settings: { cost: RT_COST, fees: DEFAULT_SETTINGS.fees }, wf: { lastN: 25 },
@@ -119,8 +133,8 @@ describe("modeled position cost defaults and migration", () => {
       assert.deepEqual(db.kvGet("settings"), before);
     }
     const { runtime } = fixture(structuredClone(formerModel), 34);
-    assert.equal(runtime.settings.cost, MAX_MODEL_RT_COST, "saved model choices respect the current operator ceiling; durable provenance is preserved");
-    assert.deepEqual(runtime.settings.fees, formerModel.fees);
+    assert.equal(runtime.settings.cost, formerModel.cost, "saved custom model costs are never silently discounted");
+    assert.deepEqual(runtime.settings.fees, { ...formerModel.fees, slippageRatio: undefined });
   });
 
   it("uses the canonical default only for unmeasured ledger fees and preserves measured fill costs", () => {
@@ -128,13 +142,21 @@ describe("modeled position cost defaults and migration", () => {
       { coid: "TAGNa", sym: "A-USDT", side: 1, kind: "O", qty: 1, px: 100, status: "ok", at: 1 },
       { coid: "TAGXb", sym: "A-USDT", side: 1, kind: "X", qty: 1, px: 100, status: "ok", at: 2 },
     ];
-    assert.equal(liveTrades(rows, 3)[0].r, -RT_COST);
+    assert.ok(Math.abs(liveTrades(rows, 3)[0].r + RT_COST) < 1e-15);
     assert.equal(liveTrades(rows, 3, formerModel.cost)[0].r, -formerModel.cost, "explicit historical costs remain explicit");
     const measured = rows.map((row) => ({ ...row, fee: 0.04, feeKnown: 1 }));
     assert.equal(liveTrades(measured, 3)[0].r, -0.0008);
     assert.deepEqual(liveTrades(measured, 3), liveTrades(measured, 3, formerModel.cost));
     const free = measured.map((row) => ({ ...row, fee: 0 }));
     assert.equal(liveTrades(free, 3)[0].r, 0, "confirmed zero commissions do not receive modeled replacement fees");
-    assert.equal(liveTrades(free.map((row) => ({ ...row, feeKnown: null })), 3)[0].r, -RT_COST);
+    assert.ok(Math.abs(liveTrades(free.map((row) => ({ ...row, feeKnown: null })), 3)[0].r + RT_COST) < 1e-15);
   });
+});
+
+it("migrates only the exact former factory fee tuple and keeps its backup", () => {
+  const old = { cost: .0015, fees: { taker: .0005, maker: .0002, slippage: .00025 } };
+  const { db, runtime } = fixture(structuredClone(old), 37);
+  assert.equal(runtime.settings.cost, RT_COST);
+  assert.deepEqual(runtime.settings.fees, DEFAULT_MODEL_FEES);
+  assert.deepEqual(db.kvGet<{settings: unknown}>("feePolicyBeforeV38")?.settings, old);
 });

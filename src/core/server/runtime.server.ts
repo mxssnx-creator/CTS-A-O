@@ -1,3 +1,4 @@
+import { protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, validatedSetPf, type ValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
 import { migrateMinuteCaps } from "./minute-cap-migration.server.ts";
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
@@ -33,6 +34,7 @@ import {
   STRATEGY_PRESETS,
   TF_CHOICES,
   type CoreSettings,
+  mergeGateSettings,
   type SettingsPatch,
 } from "../config.ts";
 import { checkLowRangeComplete, checkRangeReplacementsComplete, checkSettings } from "../settings-check.ts";
@@ -2826,7 +2828,7 @@ export class CoreRuntime {
     // limits on the MERGED settings (a patch alone could bypass them across several saves)
     // position cost follows its components when they are edited (taker fee + slippage per side, × 2)
     if (patch.fees && patch.cost === undefined)
-      next.cost = boundedModelCost(+roundTripCostFromFees(next.fees).toFixed(5));
+      next.cost = boundedModelCost(roundTripCostFromFees(next.fees));
     // a high ceiling, not a working limit (operator: process freely): it only catches a grid that would not fit in
     // memory at all
     checkGridVariantBudget(next.grid, next.cost);
@@ -7447,7 +7449,8 @@ export class CoreRuntime {
     );
     const ind = lane.cfg.split("|")[1] ?? "";
     const minPf = Math.max(
-      liveMinPfOf(this.settings, rangeOfId(lane.cfg), ind, kindOfId(lane.cfg)),
+      liveMinPfOf(this.settings, rangeOfId(lane.cfg), ind, kindOfId(lane.cfg),
+        parseConfigId(lane.cfg)?.protect ? protectStepPct(parseConfigId(lane.cfg)!.protect) : undefined),
       (this.settings.live.engineProofN ?? 0) > 0 && !isSignalInd(ind)
         ? (this.settings.live.engineProofPf ?? ENGINE_PROOF_PF)
         : 0,
@@ -8868,7 +8871,7 @@ export class CoreRuntime {
     this.updateSettings(
       {
         ...patch,
-        gates: { ...DEFAULT_SETTINGS.gates, ...(patch.gates ?? {}) },
+        gates: mergeGateSettings(DEFAULT_SETTINGS.gates, patch.gates),
         tactics: { ...DEFAULT_SETTINGS.tactics, ...(patch.tactics ?? {}) },
         focus: patch.focus ?? [],
       },
@@ -9796,7 +9799,7 @@ export class CoreRuntime {
       const mk = JSON.stringify([x.id, sym, side, at]);
       let g = cache ? lvMemo.get(mk) : undefined;
       // A Live floor can tighten the matching stage floor, never relax it.
-      const minPf = liveMinPfOf(this.settings, x.protect.tag, x.ind, x.kind);
+      const minPf = liveMinPfOf(this.settings, x.protect.tag, x.ind, x.kind, protectStepPct(x.protect));
       if (!g) {
         const model = lvExact.get(executionRecordKey(x.id, sym, side));
         g = {
@@ -11513,7 +11516,7 @@ function migrateMicroMinimalBase30(db: CoreDb): void {
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 37) return saved;
+  if (v >= 38) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -11933,7 +11936,7 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       )
         return false;
       settings.cost = DEFAULT_SETTINGS.cost;
-      settings.fees = { ...fees, slippage: DEFAULT_SETTINGS.fees.slippage };
+      settings.fees = { ...DEFAULT_SETTINGS.fees };
       return true;
     };
     migrateModeledCost(st);
@@ -11997,9 +12000,31 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       if (changed) db.kvSet("presets", presets);
     }
   }
+  if (v < 38) {
+    const moveFactory = (settings: SettingsPatch | undefined) => {
+      if (settings?.cost !== .0015 || settings.fees?.taker !== .0005 ||
+          settings.fees?.maker !== .0002 || settings.fees?.slippage !== .00025 ||
+          settings.fees?.slippageRatio !== undefined) return false;
+      settings.cost = DEFAULT_SETTINGS.cost;
+      settings.fees = { ...DEFAULT_SETTINGS.fees };
+      return true;
+    };
+    const presets = db.kvGet<Preset[]>("presets");
+    db.kvSet("feePolicyBeforeV38", { settings: structuredClone(st), presets: structuredClone(presets) });
+    moveFactory(st);
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const preset of presets) if (moveFactory(preset.settings)) {
+        changed = true;
+        if (preset.metrics) preset.metrics = { ...preset.metrics, pf: null, pfBasis: "unavailable", noLoss: null,
+          pfConvention: "unavailable", source: "Fee model changed; re-evaluate" };
+      }
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 37);
+  db.kvSet("wfCapsV", 38);
   return out;
 }
 
@@ -12366,8 +12391,9 @@ export function liveMinPfOf(
   tag?: string,
   ind?: string,
   kind?: string,
+  stepPct?: number,
 ): number {
-  return Math.max(minPfOf(s.gates, kind === "exit" ? undefined : tag, ind), s.live.liveMinPf ?? 0,
+  return Math.max(minPfOf(s.gates, kind === "exit" ? undefined : tag, ind, stepPct), s.live.liveMinPf ?? 0,
     kind === "exit" ? (s.exitStrategy?.minPf ?? 0) : 0);
 }
 
@@ -12475,7 +12501,7 @@ function mergeSettings(
     out = {
       ...out,
       ...p,
-      gates: { ...out.gates, ...(p.gates ?? {}) },
+      gates: mergeGateSettings(out.gates, p.gates),
       exitStrategy: { ...out.exitStrategy, ...(p.exitStrategy ?? {}) },
       live: { ...out.live, ...(p.live ?? {}) },
       toggles: { ...out.toggles, ...(p.toggles ?? {}) },
@@ -12490,7 +12516,9 @@ function mergeSettings(
       axis: { ...out.axis, ...(p.axis ?? {}) },
       grid: mergeGridSettings(out.grid, p.grid),
       protectFloor: { ...out.protectFloor, ...(p.protectFloor ?? {}) },
-      fees: { ...out.fees, ...(p.fees ?? {}) },
+      fees: { ...out.fees, ...(p.fees ?? {}),
+        // Saved legacy absolute allowances keep their meaning; new defaults use a fee ratio.
+        ...(p.fees?.slippage !== undefined && p.fees?.slippageRatio === undefined ? { slippageRatio: undefined } : {}) },
       adjust: { ...out.adjust, ...(p.adjust ?? {}) },
       signals: mergeSignals(out.signals, p.signals),
       sizing: sizingSettings({ ...out.sizing, ...(p.sizing ?? {}) }),

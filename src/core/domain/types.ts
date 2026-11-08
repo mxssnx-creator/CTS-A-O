@@ -740,6 +740,8 @@ export interface EvalResult {
 }
 
 export interface Gates {
+  /** Optional manual step floor, shared across Base and downstream windows; stricter range floors remain. */
+  stepPf?: import("../step-pf.ts").StepPfRules;
   /** stage minimum PF; the runtime keeps it within 1.05–1.50 (a value outside is snapped to the nearest bound) */
   minPf: number;
   /** maximum drawdown time (hours over a 72 h window); kept within 2–35 h by the runtime */

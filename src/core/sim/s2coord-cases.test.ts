@@ -229,3 +229,12 @@ describe("Stable-02 relation volume: more cases", () => {
     assert.equal(c.snapshot(10 * H).factor, 0);
   });
 });
+
+ it("entry relation volume uses only matching major/minor keys, independent of global winners",()=>{
+  const c=new S2Coord(REL); const own={cfg:"a|first@m1|tp1",sym:"A",side:1,ind:"first@m1",kind:"normal"};
+  c.close({...own,r:.01});
+  assert.ok(c.volumeFor(0,own)>1);
+  assert.equal(c.volumeFor(0,{cfg:"b|other@m5|tp2",sym:"B",side:-1,ind:"other@m5",kind:"exit"}),1);
+  const sibling=c.volumeFor(0,{...own,cfg:"a|first@m1|tp2"});
+  assert.ok(sibling<c.volumeFor(0,own),"a sibling cannot receive the winning exact cfg relation");
+ });

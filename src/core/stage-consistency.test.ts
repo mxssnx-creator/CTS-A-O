@@ -64,8 +64,8 @@ describe("stage consistency: one config, the same at every stage", () => {
     const gn: Protect = { tp: 0.03, sl: 0.01, trail: 0.0075, hold, tag: "gn" };
     // Long: 23× = 4.6 %, stop 0.25× = 1.15 % under its 1.6 % floor, trail ¾ = 3.45 %
     const lg: Protect = { tp: 0.046, sl: 0.016, trail: 0.0345, hold, tag: "lg" };
-    // Micro keeps the historical 0.20 % range-construction basis, then adds the current 0.15 % execution cost:
-    // 0.20 % net target + 0.15 % cost = 0.35 % price target. Its stop floor follows the same net-floor + live-cost rule.
+    // Micro keeps the historical 0.20% range basis and adds the 0.176% fee allowance.
+    // The price target and stop floor both become 0.376%.
     const mcTp = microPriceTp(MICRO_TP[0], MICRO_RANGE, RT_COST);
     const mc: Protect = { tp: mcTp, sl: microSlFloor(MICRO_RANGE, RT_COST)!, trail: MICRO_RANGE.minTrail!, hold, tag: "mc" };
     for (const p of [mn, sh, gn, lg, mc]) assert.ok(has(p), `${p.tag} ${JSON.stringify(p)} in the grid`);
@@ -75,8 +75,8 @@ describe("stage consistency: one config, the same at every stage", () => {
       [0.003, 0.006, 0.01, 0.016, 0.002, 0.001],
     );
     assert.equal(RANGE_COST_BASIS, 0.002, "range geometry is intentionally frozen at its historical basis");
-    assert.equal(mc.tp, 0.0035, "Micro price target adds current round-trip cost to the frozen net target");
-    assert.equal(mc.sl, 0.0035, "Micro stop floor adds current round-trip cost to its configured net floor");
+    assert.equal(mc.tp, 0.00376, "Micro price target adds current round-trip cost to the frozen net target");
+    assert.equal(mc.sl, 0.00376, "Micro stop floor adds current round-trip cost to its configured net floor");
     // Base's plain cells are the grid's plain cells (same rounding): Minimal 0.8 % at 1.5×, Micro 0.35 % at 1×
     const base = baseRangeProtects(grid, RT_COST);
     for (const p of [{ ...mn, trail: 0 }, { ...mc, trail: 0 }])

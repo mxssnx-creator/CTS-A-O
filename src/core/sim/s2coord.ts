@@ -70,6 +70,17 @@ const symSide = (sym: string, side: number) => `${sym}|${side > 0 ? 1 : -1}`;
 const MAJOR = new Set(["ind", "kind", "side", "book"]);
 const MINOR = new Set(["cfg", "sub"]);
 
+export interface S2Relation { cfg?: string; ind?: string; sym: string; side: number; kind?: string; type?: string }
+export function s2RelationKeys(x: S2Relation): string[] {
+  const [bot, cfgInd] = (x.cfg ?? "").split("|");
+  const ind = x.ind ?? cfgInd ?? "";
+  const side = x.side > 0 ? "long" : "short";
+  const kind = x.type ?? x.kind ?? "normal";
+  return [`sym:${x.sym}`, `side:${side}`, `leg:${x.sym}:${side}`, `ind:${ind}`,
+    ...(x.cfg ? [`cfg:${x.cfg}`] : []), `kind:${kind}`,
+    ...(bot && x.cfg ? [`book:${bot}`] : []), `sub:${ind}:${kind}`];
+}
+
 export class S2Coord {
   private o: S2CoordSettings;
   /** windows per symbol × direction (`sym|±1`) */
@@ -78,6 +89,7 @@ export class S2Coord {
   private symLast = new Map<string, number[]>();
   private rel = new Map<string, Win[]>();
   private factor = 0;
+  private qualified: Array<{ key: string; pf: number; net: number }> = [];
   private evalAt = -Infinity;
   constructor(o: S2CoordSettings) {
     this.o = o;
@@ -105,20 +117,7 @@ export class S2Coord {
       if (l.length > 24) l.shift();
     }
     if (this.o.relVolume) {
-      const [bot, cfgInd] = (x.cfg ?? "").split("|");
-      const ind = x.ind ?? cfgInd ?? "";
-      const side = x.side === 1 ? "long" : "short";
-      const kind = x.type ?? x.kind ?? "normal";
-      const keys = [
-        `sym:${x.sym}`,
-        `side:${side}`,
-        `leg:${x.sym}:${side}`,
-        `ind:${ind}`,
-        ...(x.cfg ? [`cfg:${x.cfg}`] : []),
-        `kind:${kind}`,
-        ...(bot && x.cfg ? [`book:${bot}`] : []),
-        `sub:${ind}:${kind}`,
-      ];
+      const keys = s2RelationKeys(x);
       for (const k of keys) {
         let ws = this.rel.get(k);
         if (!ws)
@@ -169,15 +168,28 @@ export class S2Coord {
           best = { key, pf: w.lastPf, net: w.lastNet, n: w.n };
       if (best && best.pf >= this.o.minPf) cands.push(best);
     }
+    this.qualified = cands;
+    return this.factorOf(cands);
+  }
+
+  private factorOf(cands: Array<{ key: string; pf: number; net: number }>, scoped = false): number {
     const byPrefix = new Map<string, { key: string; pf: number }>();
     for (const c of cands) {
       const p = c.key.split(":")[0];
-      if (MAJOR.has(p) && (!byPrefix.has(p) || c.pf > byPrefix.get(p)!.pf)) byPrefix.set(p, c);
+      if ((MAJOR.has(p) || (scoped && (p === "sym" || p === "leg"))) && (!byPrefix.has(p) || c.pf > byPrefix.get(p)!.pf)) byPrefix.set(p, c);
     }
     const picks = new Set<string>([...byPrefix.values()].map((c) => c.key));
     for (const c of cands) if (MINOR.has(c.key.split(":")[0])) picks.add(c.key);
     const winners = Math.min(8, picks.size);
     return Math.min(Math.max(0, this.o.maxMult - 1), winners * this.o.ratio);
+  }
+
+  /** Exact entry context. Global winning config relations never size an unrelated order. */
+  volumeFor(t: number, entry: S2Relation): number {
+    if (!this.o.relVolume) return 1;
+    this.volume(t); // refresh the bounded relation snapshot on its normal cadence
+    const keys = new Set(s2RelationKeys(entry));
+    return 1 + this.factorOf(this.qualified.filter((x) => keys.has(x.key)), true);
   }
 
   snapshot(t: number) {

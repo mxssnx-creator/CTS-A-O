@@ -1343,8 +1343,9 @@ const small = {
     cooldown: false,
     cooldownBars: 4,
   },
-  // This API paging fixture requires a nonempty synthetic cohort; Base Last-N has its own parity tests.
-  gates: { minPf: 1.05, minTrades: 3, maxDdr: 0, baseLastN: 0 },
+  // Freeze this API paging fixture's original qualification policy so it exercises nonempty row shapes.
+  // Base Last-N and the stricter new step-PF policy have independent admission tests.
+  gates: { minPf: 1.05, minTrades: 3, maxDdr: 0, baseLastN: 0, stepPf: { enabled: false } },
   signals: {
     ...signalSettings({
       exits: "pct",

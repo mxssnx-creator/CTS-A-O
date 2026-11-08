@@ -8,6 +8,10 @@ import { trackRuntimes } from "../test-support.ts";
 import { upsertPreset, type Preset } from "../presets.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 
+// This fixture asserts one routine slot plus its one priority allowance. Do not inherit
+// the larger compute budget used by the catalogue shards: that leaves the third call runnable.
+process.env.CTS_CORE_WORKERS = "1";
+
 type Job = NonNullable<CoreRuntime["backtestJob"]>;
 type Inner = {
   sliced<T, R>(gen: Generator<T, R>, step: (v: T) => void, job?: Job): Promise<R>;

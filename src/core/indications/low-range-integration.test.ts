@@ -99,8 +99,8 @@ describe("Low-Range Short integration", () => {
     const cells = lowRangeGridProtects(fine, cost);
     const p = cells.find((x) => x.trail > 0)!;
     const noTrail = cells.find((x) => x.trail === 0)!;
-    assert.equal(p.sl, 0.003511);
-    assert.equal(p.trail, 0.005522);
+    assert.equal(p.sl, 0.003771);
+    assert.equal(p.trail, 0.005782);
     const ind = `${IND}@m1`, pair = `follow|${ind}`;
     for (const cell of [p, noTrail, trailingOnlyProtects([p])[0]]) {
       const kind = cell.trailOnly ? "trailing-only" : cell.trail > 0 ? "trailing" : "normal";

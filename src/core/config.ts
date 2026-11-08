@@ -2,6 +2,7 @@ import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "./indications/micro-
 import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "./indications/low-range.ts";
 import { PROVEN_WIDE_TRAIL_PAIRS } from "./proven-wide-trail.ts";
 // CTS-A Core v2 — authoritative defaults. Every number the engine uses lives here.
+import { DEFAULT_STEP_PF } from "./step-pf.ts";
 import type {
   AxisConfig,
   BlockConfig,
@@ -85,6 +86,7 @@ export const DEFAULT_GATES: Gates = {
   // 12 windows — PF 1.232 → 1.244, drawdown −9 %, 85 % of the orders kept; 0.5 = low drawdown, −39 % orders)
   maxDdr: 1,
   // Operator 29 Oct: each range keeps its own floor through Base and subsequent evaluation.
+  stepPf: { enabled: true, ratio: 0.2, max: 2 },
   rangeMinPf: { micro: 1.05, minimal: 1.08, short: 1.12, general: 1.25, long: 1.5 },
   minTrades: 12,
   baseLastN: 40,
@@ -306,7 +308,7 @@ export interface CoreSettings {
   /** effective round-trip position cost (fraction); = 2 × (taker fee + slippage per side) */
   cost: number;
   /** cost components as on the exchange (per side, fractions) */
-  fees: { taker: number; maker: number; slippage: number };
+  fees: { taker: number; maker: number; slippage: number; slippageRatio?: number };
   /** live-feedback auto-adjuster (last N positions per strategy config set) */
   adjust: AdjustSettings;
   /** prehistory-derived exit candidates; each candidate and direction is validated and carried independently */
@@ -421,11 +423,24 @@ export function mergeGridSettings(base: ProtectGridSpec, patch?: GridSettingsPat
 }
 
 /** A settings patch: every group (grid, gates, live, block …) may be partial — it is merged into the current values. */
+export type GateSettingsPatch = Omit<Partial<CoreSettings["gates"]>, "stepPf"> & {
+  stepPf?: Partial<import("./step-pf.ts").StepPfRules>;
+};
+export function mergeGateSettings(base: CoreSettings["gates"], patch?: GateSettingsPatch): CoreSettings["gates"] {
+  if (patch?.stepPf !== undefined && (!patch.stepPf || typeof patch.stepPf !== "object" || Array.isArray(patch.stepPf)))
+    throw new Error("step PF: settings object required");
+  const { stepPf, ...rest } = patch ?? {};
+  return { ...base, ...rest, ...(stepPf === undefined ? {} : {
+    stepPf: { ...DEFAULT_STEP_PF, ...base.stepPf, ...stepPf },
+  }) };
+}
 export type SettingsPatch = {
   [K in keyof CoreSettings]?: K extends "tfDays"
     ? CoreSettings[K]
     : K extends "grid"
       ? GridSettingsPatch
+    : K extends "gates"
+      ? GateSettingsPatch
     : CoreSettings[K] extends readonly unknown[]
       ? CoreSettings[K]
       : CoreSettings[K] extends object

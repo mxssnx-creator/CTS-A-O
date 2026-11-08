@@ -38,10 +38,10 @@ it("trailing-only cells retain distinct minute caps until the exact lane hold is
     assert.notEqual(configId("follow", ind, lane[0]), configId("follow", ind, lane[1]));
   }
 });
-it("charges a flat long or short exactly 0.15% once and caps runtime model overrides", () => {
-  assert.equal(MAX_MODEL_RT_COST, 0.0015);
-  assert.equal(RT_COST, MAX_MODEL_RT_COST);
-  assert.equal(boundedModelCost(0.004), MAX_MODEL_RT_COST);
+it("charges the configured cost once and never discounts higher exchange costs", () => {
+  assert.equal(MAX_MODEL_RT_COST, 1);
+  assert.ok(Math.abs(RT_COST - .00176) < 1e-15);
+  assert.equal(boundedModelCost(0.004), .004);
   assert.equal(boundedModelCost(0.001), 0.001);
   const b = bars(Array.from({ length: 5 }, () => [100, 100, 100, 100]));
   for (const side of [1, -1]) {
@@ -52,7 +52,7 @@ it("charges a flat long or short exactly 0.15% once and caps runtime model overr
       { tp: 0.01, sl: 0.01, trail: 0, hold: 2 },
       { cost: RT_COST },
     ).trades[0];
-    assert.equal(trade.r, -0.0015);
+    assert.equal(trade.r, -RT_COST);
     assert.equal(trade.entry, trade.exit);
   }
 });
@@ -135,7 +135,7 @@ it("arms from the peak, never loosens a stop, applies updates next bar, and resp
     assert.equal(trade.reason, "trail");
     assert.equal(trade.exitT, t0 + 4 * M);
     assert.equal(trade.exit, side === 1 ? 102 : 98);
-    assert.ok(Math.abs(trade.r - 0.0185) < 1e-12);
+    assert.ok(Math.abs(trade.r - (0.02 - RT_COST)) < 1e-12);
     for (const ratio of [0.25, 0.5, 1]) {
       const state = { side, entry: 100, peak: 100, stop: 100 * (1 - side * 0.015), trailOn: false };
       ratchetTrail(state, 0.01, 0.01 * ratio, side === 1 ? 102 : 100, side === -1 ? 98 : 100);

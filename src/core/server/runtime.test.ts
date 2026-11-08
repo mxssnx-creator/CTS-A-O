@@ -379,10 +379,11 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
 
   it("computes on the synthetic feed and publishes every stage", async () => {
     const rt = mk();
-    // This one case intentionally verifies the complete engine indication/lane catalog.
-    rt.updateSettings({ focus: [] });
+    // Exercise the complete indication/lane catalog on bounded history. The former 18-day fixture also
+    // times out on the unchanged base revision; long-history continuation has separate parity coverage.
+    rt.updateSettings({ focus: [], historyDays: 3, tfDays: { "1": 3, "5": 3, "15": 3, "30": 3 } });
     rt.start();
-    await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running", 400_000);
     assert.equal(rt.status.source, "synthetic");
     assert.ok(rt.pipeline && rt.sim && rt.tapes.length > 0);
     assert.ok(Number(rt.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM results")?.n) > 300);
@@ -1287,7 +1288,7 @@ describe("sizing default migration", () => {
     );
     assert.equal(rt.wf.coord?.hedgeVolumeFactor, 1.6);
     assert.equal((rt.wf.coord as unknown as Record<string, unknown>)?.s2VolumeFactor, undefined);
-    assert.equal(db.kvGet<number>("wfCapsV"), 37);
+    assert.equal(db.kvGet<number>("wfCapsV"), 38);
 
     const customDb = new CoreDb(":memory:");
     customDb.kvSet("wfCapsV", 26);
@@ -1325,7 +1326,7 @@ describe("sizing default migration", () => {
     assert.equal(upgradedCap.settings.live.maxPositionX, 0);
     assert.equal(upgradedCap.settings.live.maxNotionalUsd, 0);
     assert.deepEqual(upgradedCap.settings.sizing, { mode: "equityPct", pct: 0.002 });
-    assert.equal(capDb.kvGet<number>("wfCapsV"), 37);
+    assert.equal(capDb.kvGet<number>("wfCapsV"), 38);
 
     const previousDefaultDb = new CoreDb(":memory:");
     previousDefaultDb.kvSet("wfCapsV", 34);
@@ -1334,7 +1335,7 @@ describe("sizing default migration", () => {
     previousDefaultDb.kvSet("settings", previousDefault);
     const upgradedDefault = new CoreRuntime(previousDefaultDb, undefined, { market: "synthetic" });
     assert.deepEqual(upgradedDefault.settings.sizing, { mode: "equityPct", pct: 0.002 });
-    assert.equal(previousDefaultDb.kvGet<number>("wfCapsV"), 37);
+    assert.equal(previousDefaultDb.kvGet<number>("wfCapsV"), 38);
     upgradedDefault.dispose();
   });
 });

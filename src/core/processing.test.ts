@@ -237,8 +237,10 @@ describe("processing through the stages, every strategy type, every toggle combi
       new CoreDb(":memory:"),
       {
         symbols: 4,
-        historyDays: 18,
-        tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
+        // Complete catalog and all 128 toggle combinations, on a bounded 72-hour synthetic market.
+        // This is a lifecycle/ownership matrix; long-history continuation is checked independently.
+        historyDays: 3,
+        tfDays: { "1": 3, "5": 3, "15": 3, "30": 3 },
         cycleMs: 60_000,
         focus: [],
         // Preserve the original lifecycle matrix catalog; exhaustive new-family grids and their
@@ -248,7 +250,7 @@ describe("processing through the stages, every strategy type, every toggle combi
         mainTop: 24,
         // Freeze the lifecycle/toggle matrix's original qualification policy. New factory floors are
         // tested separately; a stricter factory gate cannot promise every family wins on this fixture.
-        gates: { minPf: 1.1, baseSetsMinPf: 1.1,
+        gates: { minPf: 1.1, baseSetsMinPf: 1.1, stepPf: { enabled: false },
           rangeMinPf: { micro: 1.1, minimal: 1.1, short: 1.1, general: 1.1, long: 1.1 } },
         grid,
         // This 128-toggle matrix exercises the ordinary range/DCA/Axis pipeline. Keep its former Signal

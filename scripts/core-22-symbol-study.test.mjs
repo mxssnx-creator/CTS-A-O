@@ -190,8 +190,11 @@ test("preflight uses production complete nested ladders and unchanged gates with
   assert.deepEqual(x.settings.tfDays, { 1: 11, 5: 11, 15: 11, 30: 11 });
   assert.deepEqual(x.settings.forceSymbols, STUDY_SYMBOLS);
   assert.deepEqual(x.settings.sizing, DEFAULT_SETTINGS.sizing);
-  assert.equal(x.settings.cost, 0.0015);
-  assert.deepEqual(x.settings.fees, { ...DEFAULT_SETTINGS.fees, slippage: 0.00025 });
+  assert.equal(x.settings.cost, 0.00176);
+  assert.equal(x.settings.fees.taker, 0.0008);
+  assert.equal(x.settings.fees.maker, 0.0005);
+  assert.ok(Math.abs(x.settings.fees.slippage - 0.00008) < 1e-15);
+  assert.equal(x.settings.fees.slippageRatio, undefined);
   assert.equal(x.wf.preH, 24); assert.equal(x.wf.longH, 24); assert.equal(x.wf.simH, 24);
   assert.equal(x.wf.validLastN, 15); assert.equal(x.wf.signalValidLastN, 12);
   assert.equal(x.wf.causalBase, true); assert.equal(x.wf.recordValidation, true);

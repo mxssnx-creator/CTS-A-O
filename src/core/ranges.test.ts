@@ -512,7 +512,8 @@ test("Base cell stats are runCombo's whole-history stats exactly, for every rang
       // (gp / gl as well: the pooled PF after Base sums them, 63ef6c5)
       assert.deepEqual(
         a,
-        r ? { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd, gp: r.full.gp, gl: r.full.gl } : null,
+        r ? { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd, gp: r.full.gp, gl: r.full.gl,
+          stepPct: (p.trailOnly ? laneProtect(p, ind).trail : laneProtect(p, ind).tp) * 100 } : null,
         `${bot}|${ind} ${JSON.stringify(p)}`,
       );
       compared++;

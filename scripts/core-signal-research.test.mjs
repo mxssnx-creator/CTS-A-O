@@ -10,6 +10,7 @@ import { buildTapes, filterEntries } from "../src/core/sim/walkforward.ts";
 import { configId, laneProtect, makeUniverse } from "../src/core/pipeline/pipeline.ts";
 import { capSignalProtect } from "../src/core/sim/trailing.ts";
 import { DEFAULT_TACTICS } from "../src/core/config.ts";
+import { RT_COST } from "../src/core/model-cost.ts";
 import { tacticCooldown } from "../src/core/indications/filters.ts";
 import { maskEntries } from "./core-tactic-research.mjs";
 import {
@@ -27,7 +28,7 @@ import {
 const protocol = JSON.parse(
   readFileSync(new URL("../docs/signal-research-protocol-20261016.json", import.meta.url)),
 );
-protocol.model.roundTripCost = 0.0015; // new synthetic protocol; archived source stays immutable
+protocol.model.roundTripCost = RT_COST; // new synthetic protocol; archived source stays immutable
 const MIN = 60_000;
 const START = Math.floor(1_790_000_000_000 / (30 * MIN)) * 30 * MIN;
 const candles = (n = 4800) =>
