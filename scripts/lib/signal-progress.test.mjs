@@ -24,8 +24,8 @@ it("captures every configured cell separately from actual tapes, active units an
   const rt = { settings: { signals: sig, tfs: [15] }, tapes: [tape], wf: {}, buildStats: [] };
   const p = captureSignalProgress(rt, sim, H, 2 * H);
   assert.equal(p.combos.length, 1);
-  assert.equal(p.configs.length, 60, "the actual 3% cap merges aliases; raw requests remain separate");
-  assert.equal(p.requestedConfigs.length, 86);
+  assert.equal(p.configs.length, 72, "the actual 3% cap merges aliases; raw requests remain separate");
+  assert.equal(p.requestedConfigs.length, 114);
   assert.equal(p.configs.filter((x) => x.built).length, 1);
   const row = p.configs.find((x) => x.id === id);
   assert.equal(row.sides[1].pre.n, 1);
@@ -41,8 +41,8 @@ it("accounts for every raw requested cell while deduplicating identical effectiv
   const sig = signalSettings({ exits: "pct", trailRatios: [1], sourcesMode: "allow", sources: { "ema-cross": true }, ranges: { short: true, medium: false }, lanes: [1], hist: { enabled: false } });
   const rt = { settings: { signals: sig, tfs: [1] }, tapes: [], wf: {}, buildStats: [], fastArgs: { sig: { floors: { minSl: sig.minSl, minTrail: sig.minTrail } }, adjust: {} } };
   const p = captureSignalProgress(rt, { trades: [] }, H, 2 * H);
-  assert.equal(p.requestedConfigs.length, 86);
-  assert.equal(p.configs.length, 85, "effective capped identities match the one-minute builder");
+  assert.equal(p.requestedConfigs.length, 114);
+  assert.equal(p.configs.length, 112, "effective capped identities match the one-minute builder");
   const requested = p.requestedConfigs.filter((x) => x.kind === "trailing-only"), effective = p.configs.filter((x) => x.kind === "trailing-only");
   assert.equal(requested.length, 9); assert.equal(effective.length, 9);
   assert.equal(effective.reduce((n, x) => n + x.requestedAliases.length, 0), 9);

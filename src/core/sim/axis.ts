@@ -400,8 +400,6 @@ export function deskLevels(entry: number, side: Side, sl0: number, tp0: number, 
   if (side === -1 && sl <= entry) sl = entry * 1.005;
   if (side === 1 && tp <= entry) tp = entry * 1.005;
   if (side === -1 && tp >= entry) tp = entry * 0.995;
-  const tpD = Math.abs(tp - entry);
-  if (Math.abs(entry - sl) > tpD / r + 1e-12) sl = entry - (side * tpD) / r;
   return { sl, tp };
 }
 
@@ -557,7 +555,7 @@ export function simulateAxisDesk(
     if (fin(at) && at > 0) {
       const sp = Math.max(rangeSp, at * Math.max(ax.spacing, 0.2) * 0.01);
       const sl0 = slAt(deskSlDist(at, sp, slAtr), a);
-      const lv = deskLevels(a, side, sl0, sl0 * ratio, ratio);
+      const lv = deskLevels(a, side, sl0, deskSlDist(at, sp, slAtr) * ratio, ratio);
       tighten(lv.sl);
       target = side === 1 ? Math.max(target, lv.tp) : Math.min(target, lv.tp);
     }
@@ -565,10 +563,7 @@ export function simulateAxisDesk(
     slD = Math.abs(stop - a);
     // SL ≤ TP ÷ ratio, only for a stop still on the loss side (the desk's |sl − avg| cap would pull a stop that
     // trails in profit back behind the entry: never loosened here)
-    if (side * (a - stop) > 0 && slD > tpD / ratio + 1e-12) {
-      stop = a - (side * tpD) / ratio;
-      slD = tpD / ratio;
-    }
+    // An initial stop floored above the requested ratio stays valid; trailing can still tighten it.
     // the trail arms at 0.95 × the stop distance and then holds its gap: the stop distance AT ARMING × atrTrailGap.
     // Derived from the stop distance after each trail step, the gap shrank with every step until the stop sat on
     // the close (every hybrid exit at about −cost)
@@ -623,7 +618,7 @@ export function simulateAxisDesk(
         legs.push({ px, w: rungW });
       } else {
         const slUse = Math.max(rg.sl0, slD);
-        const tpUse = Math.max(rg.tp0, tpD, slUse * ratio);
+        const tpUse = Math.max(rg.tp0, tpD);
         legs.push({ px, w: rungW });
         const lv = deskLevels(avg(), side, slUse, tpUse, ratio);
         if (tighten(lv.sl)) rested = false;
@@ -691,14 +686,14 @@ export function simulateAxisDesk(
         }
         if (through && !rungs.length) {
           const sl1 = slAt(deskSlDist(at, sp, slAtr), c[i]);
-          rungs.push({ px: c[i], sl0: sl1, tp0: sl1 * ratio });
+          rungs.push({ px: c[i], sl0: sl1, tp0: deskSlDist(at, sp, slAtr) * ratio });
         }
         const sl0 = slAt(deskSlDist(at, sp, slAtr), px);
-        rungs.push({ px, sl0, tp0: sl0 * ratio });
+        rungs.push({ px, sl0, tp0: deskSlDist(at, sp, slAtr) * ratio });
       }
       if (through && !rungs.length) {
         const sl1 = slAt(deskSlDist(at, sp, slAtr), c[i]);
-        rungs.push({ px: c[i], sl0: sl1, tp0: sl1 * ratio });
+        rungs.push({ px: c[i], sl0: sl1, tp0: deskSlDist(at, sp, slAtr) * ratio });
       }
       nextRung = 0;
       placedI = i;
@@ -746,6 +741,6 @@ export function simulateAxisDesk(
     trades,
     pending: last > 0 ? 1 : -1,
     open,
-    pendingProtect: { tp: r6((sl0 * ratio) / px), sl: r6(sl0 / px), trail: 0, hold },
+    pendingProtect: { tp: r6((deskSlDist(la, axisSpacing(range, ax.spacing, px, la), slAtr) * ratio) / px), sl: r6(sl0 / px), trail: 0, hold },
   };
 }

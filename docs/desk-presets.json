@@ -1,7 +1,7 @@
 [
   {
     "id": "default",
-    "label": "Desk default · ranges gated",
+    "label": "Desk default \u00b7 ranges gated",
     "info": "The engine defaults with the range gate (last 50 closes at PF 1.35) and the horizon fit.",
     "settings": {
       "grid": {
@@ -747,7 +747,7 @@
   },
   {
     "id": "combined",
-    "label": "Combined · every range gated + Block",
+    "label": "Combined \u00b7 every range gated + Block",
     "info": "Short, minimal and micro ranges with their own seats, each through the range gate and the horizon fit, with Block.",
     "settings": {
       "grid": {
@@ -803,23 +803,16 @@
             0.004
           ],
           "slOfTp": [
-            1,
+            0.25,
+            0.5,
+            0.75,
+            1.0,
             1.25,
             1.5,
             1.75,
-            2,
+            2.0,
             2.25,
-            2.5,
-            2.75,
-            3,
-            3.25,
-            3.5,
-            3.75,
-            4,
-            4.25,
-            4.5,
-            4.75,
-            5
+            2.5
           ],
           "trailOfTp": [
             0,
@@ -1070,8 +1063,8 @@
   },
   {
     "id": "all-configs",
-    "label": "All configs · highest frequency",
-    "info": "Every indication × bot, every range (gated), every strategy (Normal, Trailing, Block, DCA, Axis). Measured and set at 8 symbols (every combo on more symbols needs more memory).",
+    "label": "All configs \u00b7 highest frequency",
+    "info": "Every indication \u00d7 bot, every range (gated), every strategy (Normal, Trailing, Block, DCA, Axis). Measured and set at 8 symbols (every combo on more symbols needs more memory).",
     "symbols": 8,
     "settings": {
       "focus": [],
@@ -1128,23 +1121,16 @@
             0.004
           ],
           "slOfTp": [
-            1,
+            0.25,
+            0.5,
+            0.75,
+            1.0,
             1.25,
             1.5,
             1.75,
-            2,
+            2.0,
             2.25,
-            2.5,
-            2.75,
-            3,
-            3.25,
-            3.5,
-            3.75,
-            4,
-            4.25,
-            4.5,
-            4.75,
-            5
+            2.5
           ],
           "trailOfTp": [
             0,
@@ -1870,8 +1856,8 @@
   },
   {
     "id": "block-overall-8x",
-    "label": "Block Overall · 8× stack",
-    "info": "Every source (overall, symbol, direction, indication) its own Block: 8 levels, Active from 2, ratio 0.5, each source up to 7× extra, stack ≤ 8×, 7 volume steps (one lot each). General + Long ranges (Minimal / Short lose after costs).",
+    "label": "Block Overall \u00b7 8\u00d7 stack",
+    "info": "Every source (overall, symbol, direction, indication) its own Block: 8 levels, Active from 2, ratio 0.5, each source up to 7\u00d7 extra, stack \u2264 8\u00d7, 7 volume steps (one lot each). General + Long ranges (Minimal / Short lose after costs).",
     "settings": {
       "toggles": {
         "normal": true,
@@ -2113,8 +2099,8 @@
   },
   {
     "id": "block-shared-8x",
-    "label": "Block shared · 8× stack",
-    "info": "The strongest source raises the volume: 4 levels, Active from 1, ratio 0.5, stack ≤ 8×, 7 volume steps. General + Long ranges.",
+    "label": "Block shared \u00b7 8\u00d7 stack",
+    "info": "The strongest source raises the volume: 4 levels, Active from 1, ratio 0.5, stack \u2264 8\u00d7, 7 volume steps. General + Long ranges.",
     "settings": {
       "toggles": {
         "normal": true,
@@ -2356,8 +2342,8 @@
   },
   {
     "id": "block-additive-8x",
-    "label": "Block additive · 8× stack",
-    "info": "The sources add their levels: 4 levels, Active from 1, ratio 1, stack ≤ 4×, 7 volume steps (best pooled PF of the 8× sweep). General + Long ranges.",
+    "label": "Block additive \u00b7 8\u00d7 stack",
+    "info": "The sources add their levels: 4 levels, Active from 1, ratio 1, stack \u2264 4\u00d7, 7 volume steps (best pooled PF of the 8\u00d7 sweep). General + Long ranges.",
     "settings": {
       "toggles": {
         "normal": true,
@@ -2600,7 +2586,7 @@
   {
     "id": "general-long",
     "label": "General + Long ranges",
-    "info": "Only the ranges that carry the edge after costs: General 16–22× and Long 24–32× position cost; Normal + Trailing, no Block volume.",
+    "info": "Only the ranges that carry the edge after costs: General 16\u201322\u00d7 and Long 24\u201332\u00d7 position cost; Normal + Trailing, no Block volume.",
     "settings": {
       "toggles": {
         "normal": true,
@@ -2825,8 +2811,8 @@
   },
   {
     "id": "heatmap-wide-tight",
-    "label": "Wide targets · tight stops (heatmap)",
-    "info": "The heatmap leaders: TP 6–8 % with SL 0.5–0.75 × TP, trailing off / 0.5 / 0.75 (sim PF 1.37–1.51, positive in 5–6 of 6 windows); ranges off.",
+    "label": "Wide targets \u00b7 tight stops (heatmap)",
+    "info": "The heatmap leaders: TP 6\u20138 % with SL 0.5\u20130.75 \u00d7 TP, trailing off / 0.5 / 0.75 (sim PF 1.37\u20131.51, positive in 5\u20136 of 6 windows); ranges off.",
     "settings": {
       "toggles": {
         "normal": true,
@@ -3071,8 +3057,8 @@
   },
   {
     "id": "heatmap-wide-tight-block",
-    "label": "Wide targets · tight stops + Block Overall",
-    "info": "The heatmap leaders (TP 6–8 %, SL 0.5–0.75 × TP) with Block Overall at 8× stack.",
+    "label": "Wide targets \u00b7 tight stops + Block Overall",
+    "info": "The heatmap leaders (TP 6\u20138 %, SL 0.5\u20130.75 \u00d7 TP) with Block Overall at 8\u00d7 stack.",
     "settings": {
       "toggles": {
         "normal": true,
@@ -3334,8 +3320,8 @@
   },
   {
     "id": "high-orders",
-    "label": "High order count · every evaluated config",
-    "info": "The defaults with relaxed gates: no 50-close seat validation, no live last-N, min PF 1.05, symbol gate in veto mode, DDR 1. 12 windows: 4× the orders and 2.5× the net of the defaults, at PF 1.35 instead of 1.81 and a larger drawdown.",
+    "label": "High order count \u00b7 every evaluated config",
+    "info": "The defaults with relaxed gates: no 50-close seat validation, no live last-N, min PF 1.05, symbol gate in veto mode, DDR 1. 12 windows: 4\u00d7 the orders and 2.5\u00d7 the net of the defaults, at PF 1.35 instead of 1.81 and a larger drawdown.",
     "settings": {
       "gates": {
         "minPf": 1.05,

@@ -1,3 +1,4 @@
+import { DEFAULT_MIN_SL_DISTANCE_PCT, SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
 import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "./indications/micro-family.ts";
 import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "./indications/low-range.ts";
 import { PROVEN_WIDE_TRAIL_PAIRS } from "./proven-wide-trail.ts";
@@ -46,7 +47,7 @@ export const DEFAULT_PROTECT: Protect = { tp: 0.026, sl: 0.039, trail: 0, hold: 
 /** Main-stage refinement grid (fractions). SL is expressed relative to TP; trail relative to TP (0 = off). */
 export const PROTECT_GRID = {
   tp: [0.018, 0.026, 0.035, 0.05],
-  slOfTp: [1, 1.5],
+  slOfTp: SL_TP_RATIOS,
   trail: [0, 0.4],
   hold: [12, 32],
 } as const;
@@ -280,6 +281,8 @@ export const DEFAULT_ADJUST: AdjustSettings = {
 };
 
 export interface CoreSettings {
+  /** Net initial SL percent added to modeled round-trip costs. */
+  minSlDistancePct?: number;
   /** hard floors of every engine config's stop and trailing distance after lane scaling (fractions; 0.005 = 0.5 %) */
   protectFloor: { minSl: number; minTrail: number };
   /** base candle timeframe in minutes: 1m (every lane is derived from it) */
@@ -788,8 +791,9 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   armTop: 10,
   paperNotional: 100,
   paperBalance: 1000,
-  // every config's stop and trailing distance at least 0.5 % of price (after lane scaling)
-  protectFloor: { minSl: 0.005, minTrail: 0.005 },
+  // Initial SL uses the shared cost-plus-distance policy; trailing has its own activation/gap rules.
+  minSlDistancePct: DEFAULT_MIN_SL_DISTANCE_PCT,
+  protectFloor: { minSl: minimumStopFraction(RT_COST), minTrail: 0.005 },
   sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
   tactics: DEFAULT_TACTICS,
@@ -813,10 +817,10 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     // untagged Wide configs use the normal volume unless their own factor is changed
     volumeFactor: 1,
     tp: [],
-    slOfTp: [1, 2],
+    slOfTp: SL_TP_RATIOS,
     trailOfTp: [0, 0.5],
     minTrail: 0.006,
-    minSl: 0.01,
+    minSl: minimumStopFraction(RT_COST),
     holdH: [16, 24],
     trailStep: 1,
     trailFree: false,

@@ -100,9 +100,9 @@ describe("no silent caps", () => {
     assert.ok(GRID_VARIANTS_MAX >= 20_000, String(GRID_VARIANTS_MAX));
   });
 
-  it("Micro stops start at ratio 1.0 of the price target (which already carries the round-trip cost)", async () => {
+  it("Micro stops start at ratio 0.25 of the price target (which already carries the round-trip cost)", async () => {
     const { MICRO_SL, MICRO_RANGE, microPriceTp, EVAL_MIN_SL } = await import("./minimal-coord.ts");
-    assert.equal(Math.min(...MICRO_SL), 1, "the tightest Micro stop ratio");
+    assert.equal(Math.min(...MICRO_SL), 0.25, "the tightest Micro stop ratio");
     assert.equal(MICRO_RANGE.tpNetOfCost, true, "Micro targets are net of the cost");
     // a 0.1 % net target at the 0.2 % cost is a 0.3 % price target; its ratio-1 stop is 0.3 %, floored at 0.5 %
     const tp = microPriceTp(0.001, MICRO_RANGE, 0.002);
@@ -165,7 +165,7 @@ describe("Base trailed cells (grid.baseTrailCells)", () => {
     const targets = new Set(plain.map((p) => `${p.tag}|${p.tp}`));
     assert.equal(trailed.length, targets.size, `one per target (${trailed.length} vs ${targets.size})`);
     assert.equal(withTrail.length, plain.length + trailed.length, "the plain cells are all still there");
-    for (const p of trailed) assert.ok(p.sl >= 0.005 - 1e-9, `the stop floor still applies: ${p.sl}`);
+    for (const p of trailed) assert.ok(p.sl >= 0.00276 - 1e-9, `the stop floor still applies: ${p.sl}`);
   });
 });
 
@@ -175,7 +175,7 @@ describe("stop floor", () => {
     const { baseRangeProtects } = await import("./pipeline/pipeline.ts");
     const { EVAL_MIN_SL } = await import("./minimal-coord.ts");
     const { DEFAULT_SETTINGS, DEFAULT_DCA, DEFAULT_AXIS } = await import("./config.ts");
-    assert.equal(EVAL_MIN_SL, 0.005);
+    assert.ok(Math.abs(EVAL_MIN_SL - (0.00176 + 0.001)) < 1e-12);
     const g = {
       ...DEFAULT_SETTINGS.grid,
       micro: { tp: [0.002, 0.003], slOfTp: [0.25, 0.5, 1], trailOfTp: [0, 0.5], minSl: 0.0001, minTrail: 0.0005 },
@@ -188,7 +188,7 @@ describe("stop floor", () => {
       ["DCA rungs", dcaProtectGrid(15, DEFAULT_DCA)],
     ] as const) {
       assert.ok(ps.length > 0, what);
-      const low = ps.filter((p) => p.sl < EVAL_MIN_SL - 1e-9);
+      const low: { sl: number }[] = ps.filter((p) => p.sl < EVAL_MIN_SL - 1e-9);
       assert.deepEqual(low, [], `${what}: ${JSON.stringify(low.slice(0, 3))}`);
     }
     // the Axis variants derive from the DCA rungs, so they carry the floor too
@@ -378,21 +378,21 @@ describe("protect grid", () => {
     const trailingOnly = allCells.filter((p) => p.trailOnly);
     assert.ok(trailingOnly.length > 0);
     assert.ok(trailingOnly.every((p) => p.tp === 0 && p.sl <= 0.03 && p.trail > 0));
-    assert.equal(gridVariants(g), 1704 + 952 + trailingOnly.length);
+    assert.equal(gridVariants(g), 2640 + 544 + trailingOnly.length);
     assert.ok(gridVariants(g) <= GRID_VARIANTS_MAX);
     const cells = allCells.filter((p) => !p.trailOnly);
     // the floors fold no two cells of the four ranges into one: every combination is its own config; Micro's stop floor
     // (0.2 % net + cost) folds its tightest stops of the smallest targets (952 distinct at 2–5× cost, micro-range.test.ts)
-    assert.equal(cells.filter((p) => p.tag !== "mc").length, 1704);
-    assert.equal(cells.filter((p) => p.tag === "mc").length, 952);
+    assert.equal(cells.filter((p) => p.tag !== "mc").length, 2640);
+    assert.equal(cells.filter((p) => p.tag === "mc").length, 544);
     // trailing cells: three widths, the stop at least the range's trailing floor (1× Minimal / Short, 0.25× General /
     // Long: every stop of their ladder)
-    for (const [tag, floor] of [["mn", 1], ["sh", 1], ["gn", 0.25], ["lg", 0.25]] as const) {
+    for (const [tag, floor] of [["mn", 0.25], ["sh", 0.25], ["gn", 0.25], ["lg", 0.25]] as const) {
       const tr = cells.filter((p) => p.tag === tag && p.trail > 0);
       assert.ok(tr.length > 0, tag);
       assert.ok(new Set(tr.map((p) => +(p.trail / p.tp).toFixed(3))).size >= 3, `${tag} trail widths`);
       for (const p of tr) {
-        assert.ok(p.sl + 1e-9 >= floor * p.tp, `${tag} stop ${p.sl} not ≥ ${floor}× ${p.tp}`);
+        assert.ok(p.sl + 0.00005 + 1e-9 >= floor * p.tp, `${tag} stop ${p.sl} differs by more than the stored price quantum from ${floor}× ${p.tp}`);
         assert.equal(p.trailStep, 1);
       }
       // a stop of 1× and more is never inside the trail (Minimal / Short keep that)
@@ -420,7 +420,7 @@ describe("protect grid", () => {
         short: {
           ...SHORT_RANGE,
           tp: Array.from({ length: 12 }, (_, i) => +(0.006 + i * 0.001).toFixed(4)),
-          slOfTp: Array.from({ length: 12 }, (_, i) => +(1 + i * 0.2).toFixed(2)),
+          slOfTp: Array.from({ length: 10 }, (_, i) => (i + 1) * 0.25),
           trailOfTp: [0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
         },
       },
@@ -431,7 +431,7 @@ describe("protect grid", () => {
           grid: {
             ...g,
             tp: Array.from({ length: 60 }, (_, i) => +(0.01 + i * 0.001).toFixed(4)),
-            slOfTp: Array.from({ length: 30 }, (_, i) => +(1 + i * 0.1).toFixed(2)),
+            slOfTp: Array.from({ length: 30 }, (_, i) => +(.25 + i * .075).toFixed(3)),
             trailOfTp: Array.from({ length: 20 }, (_, i) => +(i * 0.05).toFixed(2)),
             holdH: [4, 8, 16, 24, 48],
           },

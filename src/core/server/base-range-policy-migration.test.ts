@@ -9,6 +9,7 @@ function dbWithPresets() {
   for (const key of ["signalEvaluation100V1", "signalLast4V1", "signalHistory150V1", "validationLast12V1", "basePf11V1", "rangePfFloors20261029V1", "ddtMax35"])
     db.kvSet(key, true);
   db.kvSet("wfCapsV", 37);
+  db.kvSet("minimumProtectionPolicy20261108", true);
   const metrics = { pf: 2, pfBasis: "unit-net-returns", gp: 2, gl: 1, n: 20, net: 1,
     perDay: 1, wr: .5, greenHours: .5, period: "old", source: "old" };
   const presets = [

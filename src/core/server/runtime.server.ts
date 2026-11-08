@@ -1,6 +1,8 @@
+import { minimumStopFraction, normalizeMinSlDistancePct } from "../protection-policy.ts";
 import { protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, validatedSetPf, type ValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
 import { migrateMinuteCaps } from "./minute-cap-migration.server.ts";
+import { migrateMinimumProtectionPolicy } from "./protection-policy-migration.server.ts";
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
 import { isHistoricExitConfig } from "../exit-scope.ts";
 import { lstatSync } from "node:fs";
@@ -1239,6 +1241,7 @@ export class CoreRuntime {
     migrateMicroBreakoutFocus(db);
     migrateMicroContextFocus(db);
     migrateHistoricExitOptIn(db);
+    migrateMinimumProtectionPolicy(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
     if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {
@@ -2836,7 +2839,7 @@ export class CoreRuntime {
     // 2-35 h. Everything else the sanitiser touches is taken as asked.
     next.gates.minPf = Math.min(1.5, Math.max(1.05, next.gates.minPf));
     next.gates.maxDdtH = Math.min(35, Math.max(2, next.gates.maxDdtH));
-    this.settings = next;
+    this.settings = normalizeLanes(next);
     // Tightening the builder's ladder policy applies immediately to new admissions on the carried cohort.
     // Relaxing it waits for fresh Base/tapes rather than inventing eligibility from a settings toggle.
     let baseWideLadderPairs = this.wf.baseWideLadderPairs;
@@ -12414,7 +12417,7 @@ export function restrictHeldBasePairs(
 function protectFloors(s: CoreSettings, rangeFitCutT?: number): EntryFloors {
   const fit = s.grid?.rangeFit;
   return {
-    minSl: s.protectFloor?.minSl ?? DEFAULT_SETTINGS.protectFloor.minSl,
+    minSl: minimumStopFraction(s.cost, s.minSlDistancePct),
     minTrail: s.protectFloor?.minTrail ?? DEFAULT_SETTINGS.protectFloor.minTrail,
     // range cells fitted to the indication's horizon only when the fit is on; every computed tape is kept (the
     // gates decide the seats; a tape that cannot seat yet still shows in the evaluation and statistics)
@@ -12547,8 +12550,19 @@ export function normalizeLanes(s: CoreSettings): CoreSettings {
     .sort((a, b) => a - b);
   const tfDays: Record<string, number> = { ...DEFAULT_SETTINGS.tfDays, ...(s.tfDays ?? {}) };
   for (const k of Object.keys(tfDays)) tfDays[k] = Math.min(45, Math.max(1, Math.round(tfDays[k])));
+  const minSlDistancePct = normalizeMinSlDistancePct(s.minSlDistancePct);
+  const minSl = minimumStopFraction(s.cost, minSlDistancePct);
+  const grid = { ...s.grid, minSl, minSlEval: minSl };
+  for (const key of ["micro", "minimal", "short", "general", "long"] as const) {
+    const r = grid[key];
+    if (r) grid[key] = { ...r, minSl, minSlEval: minSl, ...(key === "micro" ? { minSlNet: minSlDistancePct / 100 } : {}) };
+  }
   return {
     ...s,
+    minSlDistancePct,
+    protectFloor: { ...s.protectFloor, minSl },
+    signals: { ...s.signals, minSl },
+    grid,
     tfMin: 1,
     tfs,
     tfDays,

@@ -1,4 +1,5 @@
-// Signals processing: sources, combos, the 42 Normal + 35 Trailing configs, the active ranking, the last-8 guard,
+import { SL_TP_RATIOS } from "./protection-policy.ts";
+// Signals processing: sources, combos, the 70 Normal + 35 Trailing configs, the active ranking, the last-8 guard,
 // settings and the engine running with signals on.
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -134,29 +135,29 @@ describe("signals: sources and combos", () => {
     const normal = protects.filter((p) => p.trail === 0);
     const trailing = protects.filter((p) => p.trail > 0 && !p.trailOnly);
     const trailingOnly = protects.filter((p) => p.trailOnly);
-    assert.equal(trailingOnly.length, 570, "independent capped no-TP hold candidates");
+    assert.equal(trailingOnly.length, 759, "independent capped no-TP hold candidates");
     assert.ok(trailingOnly.every((p) => p.tp === 0 && p.sl <= 0.03 && p.trail <= 0.03));
-    assert.equal(protects.length, 2100 + trailingOnly.length);
-    assert.equal(normal.length, 750, "300 existing + 450 new Normal protections");
-    assert.equal(trailing.length, 1350, "900 existing + 450 new 48 h Trailing protections");
+    assert.equal(protects.length, 3360 + trailingOnly.length);
+    assert.equal(normal.length, 1200, "independent Normal target/SL/hold protections");
+    assert.equal(trailing.length, 2160, "independent Trailing target/SL/hold protections");
     assert.deepEqual([...new Set(normal.map((p) => p.hold))].sort((a, b) => a - b), [48, 64, 96, 128, 192]);
     assert.deepEqual([...new Set(trailing.map((p) => p.hold))].sort((a, b) => a - b), [64, 96, 192]);
   });
 
-  it("builds all 42 Normal + 35 capped Trailing configs beside nine independent Trailing only sets", () => {
+  it("builds all 70 Normal + 35 capped Trailing configs beside nine independent Trailing only sets", () => {
     const p = signalProtects({ ...on, exits: "pct" });
     const normal = p.filter((x) => x.trail === 0);
     const trailing = p.filter((x) => x.trail > 0 && !x.trailOnly);
-    assert.equal(normal.length, 42);
+    assert.equal(normal.length, 70);
     assert.equal(trailing.length, 35);
-    assert.equal(new Set(p.map((x) => `${x.tp}|${x.sl}|${x.trail}`)).size, 86, "all distinct");
+    assert.equal(new Set(p.map((x) => `${x.tp}|${x.sl}|${x.trail}`)).size, 114, "all distinct");
     for (const x of p) assert.ok((x.trailOnly ? x.tp === 0 : x.tp >= 0.01) && x.hold > 0);
     assert.deepEqual(on.normal.tp, [0.01, 0.015, 0.025, 0.03, 0.04, 0.05, 0.06]);
-    assert.deepEqual(on.normal.slOfTp, [0.5, 0.75, 1, 1.5, 2, 3]);
+    assert.deepEqual(on.normal.slOfTp, [...SL_TP_RATIOS]);
     assert.deepEqual(on.trailing.tp, [0.01, 0.015, 0.03, 0.04, 0.05, 0.06, 0.08]);
     assert.deepEqual(on.trailing.trailOfTp, [0.2, 0.3, 0.4, 0.6, 0.8]);
     assert.equal(on.minTrail, 0.002, "the 1 % TP × 0.2 trail remains eligible");
-    for (const x of trailing) assert.ok(x.sl >= 2 * x.tp - 1e-9, "trailing stops at 2 × target");
+    for (const x of trailing) assert.ok(Math.abs(x.sl - x.tp) < 1e-9, "trailing initial stops use the configured 1 × target");
   });
 
   it("deactivates trails whose effective gap is below the configured minimum", () => {
@@ -177,9 +178,9 @@ describe("signals: sources and combos", () => {
     const pct = signalProtects({ ...on, exits: "pct" });
     const atr = signalProtects({ ...on, exits: "atr" });
     const both = signalProtects({ ...on, exits: "both" });
-    assert.equal(pct.length, 86);
+    assert.equal(pct.length, 114);
     assert.equal(atr.length, 27);
-    assert.equal(both.length, 104, "percent + ATR + nine additional Trailing only sets");
+    assert.equal(both.length, 132, "percent + ATR + nine additional Trailing only sets");
     assert.ok(pct.every((x) => !x.atr) && atr.every((x) => x.atr || x.trailOnly));
     assert.equal(atr.filter((x) => x.atr && x.trail > 0).length, 9);
     // Stable-02 max hold: 3 × 15m bars
@@ -676,7 +677,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     const sel = new Set(rt.paper.selected);
     for (const t of sigTapes)
       if (signalSeatSymbols(t, rt.wf.signalActive!).size) assert.ok(sel.has(t.id), t.id);
-    // 42 Normal + 35 capped Trailing + nine Trailing-only configs per percent-mode signal pair; ATR adds 18 in ATR /
+    // 70 Normal + 35 capped Trailing + nine Trailing-only configs per percent-mode signal pair; ATR adds 18 in ATR /
     // both mode. Coordinators use their own enabled range grid and historic additions qualify independently.
     const sourcePairs = st.pairs - (st.coordinationPairs ?? 0);
     const pct = sourcePairs * signalProtects(rt.settings.signals).length + (st.coordinationPairs ?? 0) * signalCoordinationProtects(rt.settings.grid, rt.settings.cost, rt.settings.signals.coordination.ranges, rt.settings.signals).length;
@@ -700,7 +701,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
         );
         continue;
       }
-      assert.ok(t.protect.sl >= 0.005 - 1e-9, `${t.id} sl ${t.protect.sl}`);
+      assert.ok(t.protect.sl >= rt.settings.protectFloor.minSl - 1e-9, `${t.id} sl ${t.protect.sl}`);
       // Historic Exit uses its separately configured protection floor, not the engine grid floor.
       const signalTrailFloor = isSignalInd(t.ind)
         ? DEFAULT_SIGNALS.minTrail

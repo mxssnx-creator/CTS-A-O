@@ -109,15 +109,15 @@ describe("Low-Range research candidate", () => {
   });
   it("uses all requested stop ratios and preserves cost-aware hard floors", () => {
     assert.deepEqual(LOW_RANGE_STEPS, [2, 3, 4, 5, 6]);
-    assert.equal(LOW_RANGE_SL_RATIOS.length, 13);
-    assert.equal(LOW_RANGE_SL_RATIOS[0], 0.5);
-    assert.equal(LOW_RANGE_SL_RATIOS.at(-1), 3.5);
+    assert.equal(LOW_RANGE_SL_RATIOS.length, 10);
+    assert.equal(LOW_RANGE_SL_RATIOS[0], 0.25);
+    assert.equal(LOW_RANGE_SL_RATIOS.at(-1), 2.5);
     const cost = 0.0015, step = 0.002;
     for (const n of LOW_RANGE_STEPS) for (const sl of LOW_RANGE_SL_RATIOS) {
       const p = lowRangeProtects({ step, cost, steps: [n], slRatios: [sl], trailRatios: [0, 0.25], tags: ["mc"] });
       assert.equal(p.length, 2);
       assert.equal(p[0].tp, +(cost + n * step).toFixed(9));
-      assert.equal(p[0].sl, +(cost + Math.max(step, n * step * sl)).toFixed(9));
+      assert.equal(p[0].sl, +Math.max((cost + n * step) * sl, cost + .001).toFixed(9));
       assert.ok(p[1].trail >= cost + 2 * step - 1e-12);
       assert.equal(p[1].trailStep, 1);
     }
@@ -127,7 +127,7 @@ describe("Low-Range research candidate", () => {
     const fine = lowRangeProtects({ step: 0.00200000004, cost: 0.00150000004,
       steps: [2], slRatios: [0.5], trailRatios: [0.5], tags: ["mc"] })[0];
     assert.ok(fine.tp >= 0.00150000004 + 2 * 0.00200000004);
-    assert.ok(fine.sl >= 0.00150000004 + 0.00200000004);
+    assert.ok(fine.sl >= Math.max((0.00150000004 + 2 * 0.00200000004) * .5, 0.00150000004 + .001));
     assert.ok(fine.trail >= 0.00150000004 + 2 * 0.00200000004);
   });
   it("deducts modeled cost once for target and stop on both sides", () => {

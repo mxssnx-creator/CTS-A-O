@@ -20,7 +20,7 @@ test("partial Low-Range API saves preserve every configured sibling, reject inva
   G.__ctsCoreRuntime = rt;
   try {
     const custom = { enabled: false, step: 0.003, steps: [2, 4, 6],
-      slRatios: [0.5, 1.25, 3.5], trailRatios: [0, 0.5], maxHoldMin: 90 };
+      slRatios: [0.25, 1.25, 2.5], trailRatios: [0, 0.5], maxHoldMin: 90 };
     rt.updateSettings({ grid: { lowRange: custom } });
     const input = saveCoreSettingsInput({ settings: { grid: { lowRange: { enabled: true } } } });
     await saveCoreSettingsData(input);
@@ -33,18 +33,18 @@ test("partial Low-Range API saves preserve every configured sibling, reject inva
     assert.deepEqual(rt.settings.grid.lowRange, { ...custom, enabled: true, steps: [3, 5], maxHoldMin: 75 });
     assert.deepEqual(db.kvGet<{ grid: { lowRange: unknown } }>("settings")?.grid.lowRange, rt.settings.grid.lowRange);
     const before = structuredClone(rt.settings.grid.lowRange);
-    for (const patch of [{ step: 0 }, { maxHoldMin: 1.5 }, { steps: [2.5] }, { slRatios: [0.49] },
+    for (const patch of [{ step: 0 }, { maxHoldMin: 1.5 }, { steps: [2.5] }, { slRatios: [0.24] },
       { trailRatios: [1.01] }, { enabled: "yes" }, { steps: [] }, { slRatios: ["1"] }, null]) {
       assert.throws(() => saveCoreSettingsInput({ settings: { grid: { lowRange: patch as never } } }));
       assert.deepEqual(rt.settings.grid.lowRange, before);
     }
-    assert.throws(() => rt.updateSettings({ grid: { lowRange: { slRatios: [0.4] } } }));
+    assert.throws(() => rt.updateSettings({ grid: { lowRange: { slRatios: [2.75] } } }));
     assert.deepEqual(rt.settings.grid.lowRange, before, "an invalid direct update is atomic");
 
     // The new targeted merge does not change the documented one-level replacement of other range objects.
     const short = { ...SHORT_RANGE, minTf: 5, tp: [0.012] };
     await saveCoreSettingsData(saveCoreSettingsInput({ settings: { grid: { short } } }));
-    assert.deepEqual(rt.settings.grid.short, short);
+    assert.deepEqual(rt.settings.grid.short, {...short, minSlEval: rt.settings.cost + (rt.settings.minSlDistancePct ?? .1) / 100});
     assert.deepEqual(rt.settings.grid.lowRange, before);
     await saveCoreSettingsData(saveCoreSettingsInput({ settings: { grid: { short: false } } }));
     assert.equal(rt.settings.grid.short, false);
@@ -111,7 +111,7 @@ test("editing and applying a preset merges Low-Range leaves while preserving its
     assert.deepEqual(updated.settings.grid?.tp, saved.settings.grid.tp);
     await presetActionData(presetActionInput({ action: "apply", id: saved.id }));
     assert.deepEqual(rt.settings.grid.lowRange, { ...custom, enabled: true });
-    assert.deepEqual(rt.settings.grid.short, short);
+    assert.deepEqual(rt.settings.grid.short, {...short, minSlEval: rt.settings.cost + (rt.settings.minSlDistancePct ?? .1) / 100});
   } finally {
     if (previous) G.__ctsCoreRuntime = previous; else delete G.__ctsCoreRuntime;
     rt.dispose(); db.db.close();

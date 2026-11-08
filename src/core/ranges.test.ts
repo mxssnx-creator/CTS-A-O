@@ -1,3 +1,4 @@
+import { SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS } from "./config.ts";
@@ -44,9 +45,9 @@ test("the position-cost ranges: Minimal 4–8× step 0.5, Short 9–14×, Genera
   assert.deepEqual(mult(GENERAL_RANGE), [15, 16, 17, 18, 19, 20, 21, 22]);
   assert.deepEqual(mult(LONG_RANGE), [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
   // stops: Minimal 1.5–3, Short 1–2.5, General / Long 0.25–1.5, step 0.25
-  assert.deepEqual([...MINIMAL_RANGE.slOfTp], [1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]);
-  assert.deepEqual([...SHORT_RANGE.slOfTp], [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5]);
-  for (const r of [GENERAL_RANGE, LONG_RANGE]) assert.deepEqual([...r.slOfTp], [0.25, 0.5, 0.75, 1, 1.25, 1.5]);
+  assert.deepEqual([...MINIMAL_RANGE.slOfTp], [...SL_TP_RATIOS]);
+  assert.deepEqual([...SHORT_RANGE.slOfTp], [...SL_TP_RATIOS]);
+  for (const r of [GENERAL_RANGE, LONG_RANGE]) assert.deepEqual([...r.slOfTp], [...SL_TP_RATIOS]);
   // three trailing distances in every range (a whole-target trail arms only as the target fills: the plain cell)
   for (const r of [MINIMAL_RANGE, SHORT_RANGE, GENERAL_RANGE, LONG_RANGE])
     assert.deepEqual([...r.trailOfTp], [0, 0.25, 0.5, 0.75]);
@@ -80,16 +81,16 @@ test("every TP × SL × Trail × hold of every range is its own config, at the r
           for (const h of g.holdH) {
             // a trailing cell's stop is at least trailSlOfTp × the target; every stop at least the range's floor
             const kk = tr > 0 ? Math.max(k, r.trailSlOfTp ?? 2) : k;
-            const sl = r4(Math.max(0.005, r.minSl ?? 0, tp * kk));
+            const sl = Math.max(minimumStopFraction(DEFAULT_SETTINGS.cost), r4(Math.max(minimumStopFraction(DEFAULT_SETTINGS.cost), r.minSl ?? 0, tp * kk)));
             const trail = tr > 0 ? r4(Math.max((r.minTrail ?? 0) / (g.trailStep ?? 1), tp * tr)) : 0;
             const hold = Math.max(2, Math.round((h * 60) / 15));
             assert.ok(keys.has(`${tp}|${sl}|${trail}|${hold}`), `${tag} ${tp} × ${k} × ${tr} × ${h}h`);
           }
   }
   // General's tightest cell: 3.0 % target, 0.25× = 0.75 % held at its 1.0 % floor, trailing a quarter (0.75 %)
-  assert.ok(cells.some((p) => p.tag === "gn" && p.tp === 0.03 && p.sl === 0.01 && p.trail === 0.0075));
+  assert.ok(cells.some((p) => p.tag === "gn" && p.tp === 0.03 && p.sl === 0.0075 && p.trail === 0.0075));
   // Long's widest: 6.4 % target, 1.5× = 9.6 % stop, trail three quarters (4.8 %)
-  assert.ok(cells.some((p) => p.tag === "lg" && p.tp === 0.064 && p.sl === 0.096 && p.trail === 0.048));
+  assert.ok(cells.some((p) => p.tag === "lg" && p.tp === 0.064 && p.sl === 0.16 && p.trail === 0.048));
 });
 
 test("every range tags its cells: minimal mn, short sh, general gn, long lg, micro mc; the wide grid stays untagged", () => {
@@ -378,7 +379,7 @@ test("Base, one middle cell per range (baseBest off): each enabled range against
   // the middle TP and the middle stop ratio, no trail, 16 h in 15m bars
   assert.equal(mn.tp, 0.012);
   // middle of MINIMAL_SL 1.5 … 3 step 0.25 (index 3): 2.25× the 1.2 % target
-  assert.equal(mn.sl, 0.027);
+  assert.equal(mn.sl, 0.015);
   assert.equal(mn.trail, 0);
   assert.equal(mn.hold, 64);
   const st = (pf: number) => ({ n: 40, pf, net: 5, mdd: 1 }) as never;

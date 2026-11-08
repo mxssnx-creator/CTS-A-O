@@ -1,3 +1,4 @@
+import { SL_TP_RATIOS, minimumStopFraction } from "../protection-policy.ts";
 import { protectStepPct } from "../step-pf.ts";
 import { profitFactorRatio } from "../metrics/profit-factor.mjs";
 // Progressive pipeline over a universe of symbols:
@@ -687,6 +688,7 @@ export function* trailingOnlyBaseCountsGen(
  */
 /** Complete grid at the reference timeframe, matching protectGrid's cells, rounding and floors exactly. */
 export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number): Protect[] {
+  const slFloor = g.minSlEval ?? minimumStopFraction(cost);
   const out: Protect[] = [],
     seen = new Set<string>();
   const emit = (
@@ -714,7 +716,7 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
     const digits = tag === "mc" ? 6 : 4;
     const p: Protect = {
       tp: tag === "mc" ? +tp.toFixed(6) : tp,
-      sl: distanceAtFloor(tp * k, Math.max(slEval ?? g.minSlEval ?? EVAL_MIN_SL, minSl), digits),
+      sl: distanceAtFloor(tp * k, Math.max(slEval ?? slFloor, minSl, slFloor), digits),
       trail: tr > 0 ? trailAtFloor(tp * tr, minTrail, g.trailStep ?? 1, digits) : 0,
       hold: Math.max(holdFloorBars(range), Math.round((h * 60) / REF_TF)),
       ...(tag ? { tag } : {}),
@@ -722,7 +724,10 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
     };
     // The Wide caps resolve before identity/deduplication, as in the executable grid.
     if (!tag) {
-      if (g.maxSl && g.maxSl > 0) p.sl = Math.min(p.sl, g.maxSl);
+      if (g.maxSl && g.maxSl > 0) {
+        if (g.maxSl + 1e-12 < Math.max(slEval ?? slFloor, minSl, slFloor)) return;
+        p.sl = Math.min(p.sl, g.maxSl);
+      }
       if (g.maxTrail && g.maxTrail > 0) p.trail = Math.min(p.trail, g.maxTrail);
     }
     if (p.trail > 0) {
@@ -749,13 +754,13 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
   const plus = g.minimalPlus;
   if (plus && plus.enabled && plus.cells?.length)
     for (const c of plus.cells) for (const h of g.holdH) {
-      const p: Protect = { tp: c.tp, sl: Math.max(g.minSlEval ?? EVAL_MIN_SL, c.sl), trail: c.trail,
+      const p: Protect = { tp: c.tp, sl: Math.max(slFloor, c.sl), trail: c.trail,
         hold: Math.max(2, Math.round((h * 60) / REF_TF)), tag: "mp",
         ...(c.trail > 0 ? { trailStep: g.trailStep ?? 1, trailFree: g.trailFree ?? false } : {}) };
       const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.maxHoldMin ?? ""}|${p.tag}`;
       if (!seen.has(key)) { seen.add(key); out.push(p); }
     }
-  const lowRange = g.short ? lowRangeGridProtects(g.lowRange, cost, REF_TF) : [];
+  const lowRange = (g.short ? lowRangeGridProtects(g.lowRange, cost, REF_TF) : []).map((p) => ({...p, sl: Math.max(slFloor, p.sl)}));
   if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
   out.push(...lowRange);
   return out;
@@ -787,7 +792,7 @@ export function baseRangeProtects(
   /** round-trip cost (settings.cost): Micro's net targets become price targets (tpNetOfCost) */
   cost?: number,
 ): Protect[] {
-  const slFloor = g.minSlEval ?? EVAL_MIN_SL;
+  const slFloor = g.minSlEval ?? minimumStopFraction(cost ?? RT_COST);
   const mid = <T,>(xs: readonly T[]) => xs[Math.floor((xs.length - 1) / 2)];
   const holdAll = Math.max(2, Math.round(((g.holdH?.[0] ?? 16) * 60) / REF_TF));
   const out: Protect[] = [];
@@ -811,7 +816,7 @@ export function baseRangeProtects(
     // rounded as the grid rounds the range's cells (protectGrid: 4 decimals, Micro 6): with stop steps of 0.25 a
     // target × stop has 5–6 decimals, and Base validated a 2.025 % stop the grid builds as 2.03 %
     const digits = tag === "mc" ? 6 : 4;
-    const floorR = net ?? (r as { minSlEval?: number }).minSlEval ?? slFloor;
+    const floorR = Math.max(slFloor, net ?? (r as { minSlEval?: number }).minSlEval ?? slFloor);
     // Match the actual grid: ordinary ranges inherit its optional floors, while Micro has its own fallbacks.
     const minSlR = net ?? r.minSl ?? (tag === "mc" ? 0.001 : (g.minSl ?? 0));
     const minTrailR = r.minTrail ?? (tag === "mc" ? 0.0005 : (g.minTrail ?? 0));
@@ -968,7 +973,7 @@ type CoordRangeLike = {
  * a stop that never reaches the tape stage. 5× since MICRO_SL
  * reaches 5 (operator, 6 Oct): Micro earned only with stops well beyond its target (reward:risk 0.29–0.36).
  */
-export const MICRO_BASE_SL: readonly number[] = [1, 1.75, 2.5, 3.5, 5];
+export const MICRO_BASE_SL: readonly number[] = SL_TP_RATIOS;
 
 /**
  * Micro's Base stop ratios from its configured ladder (audit 13 Oct, C15: the fixed MICRO_BASE_SL validated stops a
@@ -976,10 +981,7 @@ export const MICRO_BASE_SL: readonly number[] = [1, 1.75, 2.5, 3.5, 5];
  * when it has five ratios or fewer, else five spread over it, its smallest and largest included.
  */
 export function microBaseSl(ladder: readonly number[]): number[] {
-  const L = [...new Set(ladder)].sort((a, b) => a - b);
-  if (MICRO_BASE_SL.every((k) => L.includes(k))) return [...MICRO_BASE_SL];
-  if (L.length <= 5) return L;
-  return [...new Set([0, 1, 2, 3, 4].map((i) => L[Math.round((i * (L.length - 1)) / 4)]))];
+  return [...new Set(ladder)].sort((a, b) => a - b);
 }
 
 /**

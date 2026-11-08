@@ -1,3 +1,4 @@
+import { minimumStopFraction } from "../protection-policy.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_AXIS, DEFAULT_DCA } from "../config.ts";
@@ -58,8 +59,8 @@ for (const kind of ["normal", "trailing", "trailing-only", "dca", "dca-active", 
         const ax = axisVariants(axis, [protect])[0].ax;
         const center = numeric(u.caches[1].ema(3)), atr = numeric(u.caches[1].atr(14));
         const result = kind === "axis-desk"
-          ? simulateAxisDesk(tape.id, prices, sig, ep, ax, center, atr, cost, 0, { minSl: .005, minTrail: 0 })
-          : simulateAxis(tape.id, prices, sig, ep, ax, center, atr, cost, 0, { minSl: .005 });
+          ? simulateAxisDesk(tape.id, prices, sig, ep, ax, center, atr, cost, 0, { minSl: minimumStopFraction(cost), minTrail: 0 })
+          : simulateAxis(tape.id, prices, sig, ep, ax, center, atr, cost, 0, { minSl: minimumStopFraction(cost) });
         expected.push(...result.trades);
       } else if (kind === "dca" || kind === "dca-active")
         expected.push(...simulateDca(tape.id, prices, sig, ep, dca, kind === "dca-active", cost).trades);

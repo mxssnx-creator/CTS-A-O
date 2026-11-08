@@ -274,7 +274,9 @@ describe("processing through the stages, every strategy type, every toggle combi
     }
     rt.start();
     try {
-      await until(() => rt.status.computes >= 1 && rt.status.state === "running" && rt.audit !== null);
+      // The full catalog passed in 249s on two workers; allow a bounded cold-start
+      // budget on one-worker test hosts while retaining the suite's 900s deadline.
+      await until(() => rt.status.computes >= 1 && rt.status.state === "running" && rt.audit !== null, 800_000);
     } catch (error) {
       throw new Error(`processing fixture failed: ${error instanceof Error ? error.message : error}; ${JSON.stringify({
         state: rt.status.state, stage: rt.status.stage, computes: rt.status.computes,

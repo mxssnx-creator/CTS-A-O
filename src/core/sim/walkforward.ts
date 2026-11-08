@@ -1,3 +1,5 @@
+import { RT_COST } from "../model-cost.ts";
+import { minimumStopFraction } from "../protection-policy.ts";
 import { protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
 import { DerivedCache } from "./derived-cache.ts";
@@ -744,10 +746,15 @@ export function protectGrid(
   cost?: number,
 ): Protect[] {
   // the evaluation's minimum stop (settings.grid.minSlEval, default EVAL_MIN_SL)
-  const slFloor = g.minSlEval ?? EVAL_MIN_SL;
+  const slFloor = g.minSlEval ?? minimumStopFraction(cost ?? RT_COST);
   const out: Protect[] = [];
   const seen = new Set<string>();
   const push = (p: Protect) => {
+    p.sl = Math.max(slFloor, p.sl);
+    if (!p.tag && g.maxSl && g.maxSl > 0) {
+      if (g.maxSl + 1e-12 < Math.max(slFloor, g.minSl ?? 0)) return;
+      p.sl = Math.min(p.sl, g.maxSl);
+    }
     if (p.trail > 0) {
       p.trailStep = g.trailStep ?? 1;
       p.trailFree = g.trailFree ?? false;
@@ -782,7 +789,7 @@ export function protectGrid(
       tp,
       // A range's own evaluation floor replaces the grid-wide floor, exactly as its Base cells do. The Wide grid
       // (no tag) caps its stop / trailing distance at grid.maxSl / grid.maxTrail when set.
-      sl: capAt(distanceAtFloor(tp * k, Math.max(slEval ?? slFloor, minSl), 4), tag ? undefined : g.maxSl),
+      sl: distanceAtFloor(tp * k, Math.max(slEval ?? slFloor, minSl, slFloor), 4),
       // the floor is on the trailing distance (trail × trailStep), not on the arming move
       trail: tr > 0 ? capAt(trailAtFloor(tp * tr, minTrail, g.trailStep ?? 1, 4), tag ? undefined : g.maxTrail) : 0,
       hold: Math.max(
@@ -839,7 +846,7 @@ export function protectGrid(
           ...(c.trail > 0 ? { trailStep: g.trailStep ?? 1, trailFree: g.trailFree ?? false } : {}),
         });
   }
-  const lowRange = g.short ? lowRangeGridProtects(g.lowRange, cost, tfMin) : [];
+  const lowRange = (g.short ? lowRangeGridProtects(g.lowRange, cost, tfMin) : []).map((p) => ({ ...p, sl: Math.max(slFloor, p.sl) }));
   if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
   out.push(...lowRange);
   return out;
@@ -856,7 +863,7 @@ export function dcaProtectGrid(
   const tps = dca?.tp?.length ? dca.tp : [0.008, 0.012, 0.026, 0.035];
   return tps.map((tp) => ({
     tp,
-    sl: +Math.max(minSlEval ?? EVAL_MIN_SL, tp * (dca?.slOfTp ?? (tp < 0.02 ? 2 : 1.5))).toFixed(4),
+    sl: distanceAtFloor(tp * (dca?.slOfTp ?? (tp < 0.02 ? 2 : 1.5)), minSlEval ?? EVAL_MIN_SL, 6),
     trail: 0,
     hold,
   }));
@@ -2552,7 +2559,7 @@ export function* buildTapesGen(
         // desk stops / trails: the configured floors and the set's live-feedback floors (as adjustProtect)
         const af = adjust?.[`${c.bot}|${c.ind}|axis`];
         const deskFloor = {
-          minSl: Math.max(EVAL_MIN_SL, floors?.minSl ?? 0, af?.minSl ?? 0),
+          minSl: Math.max(minimumStopFraction(cost), floors?.minSl ?? 0, af?.minSl ?? 0),
           minTrail: Math.max(floors?.minTrail ?? 0, af?.minTrail ?? 0),
         };
         // managed revert stops (derived from the step, ≈ 0.2-0.3 % at a low ATR) are held to the same floors and take
@@ -6314,9 +6321,10 @@ export function tapeRetentionHours(s: CoreSettings, o: WalkForwardOptions, tf: n
 export function bestFirst(
   picks: ReadonlyArray<{ id: string; score: number }>,
   o: Pick<WalkForwardOptions, "signalActive" | "bestFirst">,
+  engineRank?: ReadonlyMap<string, number>,
 ): (tp: ConfigTape, sym: string, side?: number) => number {
   if (o.bestFirst === false) return () => 0;
-  const rank = new Map(
+  const rank = engineRank ?? new Map(
     [...picks].sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1)).map((p, i) => [p.id, i]),
   );
   const sigRank = new Map([...(o.signalActive ?? [])].map((k, i) => [k, i]));
@@ -6515,6 +6523,32 @@ export function* signalEntryQueueGen(
     yield -3;
   }
   return queue;
+}
+
+/** Drain due entries only. Selection changes at the hour; entry timestamps never move with it. */
+export function* scheduledEngineEntriesGen(
+  queue: ExitHeap<SignalEntryCursor>, endT: number, selected: ReadonlySet<string>, markT: number,
+): Generator<number, Array<{ tr: Trade; tp: ConfigTape }>> {
+  const out: Array<{ tr: Trade; tp: ConfigTape }> = [];
+  let visited = 0;
+  while (queue.peekT() < endT) {
+    const c = queue.pop()!;
+    const tp = c.tp, accept = selected.has(tp.id);
+    while (c.nextT < endT) {
+      const i = c.order[c.next++];
+      c.nextT = c.next < c.order.length ? tp.entryT[c.order[c.next]] : Infinity;
+      if (accept) out.push({ tr: tradeAt(tp, i), tp });
+      if (++visited % 2048 === 0) yield -6;
+    }
+    while (c.nextOpen < c.openOrder.length && tp.open[c.openOrder[c.nextOpen]].entryT < endT) {
+      const op = tp.open[c.openOrder[c.nextOpen++]];
+      if (accept) out.push({ tr: markedOpenTrade(tp, op, markT), tp });
+    }
+    const nextT = nextSignalEntryT(c);
+    if (Number.isFinite(nextT)) queue.push(nextT, c);
+    if (++visited % 32 === 0) yield -6;
+  }
+  return out;
 }
 
 const bump = (m: Map<string, number>, k: string, d: number) => {
@@ -6824,6 +6858,7 @@ export function* walkForwardGen(
   const markOpen = stopT === endT;
   // Four bytes per closed/open entry plus one small cursor per tape with an entry in this run.
   const signalEntries = yield* signalEntryQueueGen(sigTapes, startT, stopT, markOpen);
+  const engineEntries = yield* signalEntryQueueGen(allEngine, startT, stopT, markOpen);
   let held = new Set<string>();
   // re-evaluating more often than one bar cannot change anything: the step is at least one bar
   const barH = (u.baseTf ?? u.bars[0]?.tfMin ?? 60) / 60;
@@ -6944,6 +6979,13 @@ export function* walkForwardGen(
       if (exits) rangeRow("exit").validated += exits;
     }
     const stepEnd = Math.min(stopT, t + stepH * H);
+    const engineRank = new Map([...picks].sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1)).map((p, i) => [p.id, i]));
+    const selectedEntries = new Set<string>();
+    for (const p of picks) {
+      const tid = o.invertSeats ? mirrorId(p.id) : p.id;
+      if (tid && byId.has(tid)) selectedEntries.add(tid);
+      else invertMissing++;
+    }
     // Reporting/selection cadence does not determine candle precision or candidate memory. Process one minute
     // at a time, with the same stable entry ordering, and release the completed batch before assembling the next.
     const batchMs = sigTapes.length ? 60_000 : stepH * H;
@@ -6954,32 +6996,9 @@ export function* walkForwardGen(
         stepOpts = { ...o, signalActive: all };
         recordSignalStep(batchT, all);
       }
-      const prio = bestFirst(picks, stepOpts);
+      const prio = bestFirst(picks, stepOpts, engineRank);
       const batchEnd = Math.min(stepEnd, batchT + batchMs);
-      const cands: Array<{ tr: Trade; tp: ConfigTape }> = [];
-      let pi = 0;
-      for (const p of picks) {
-        if (++pi % 32 === 0) yield -6;
-        // contrarian execution (wf.invertSeats): the seat's entries on its mirror's tape
-        const tid = o.invertSeats ? mirrorId(p.id) : p.id;
-        const tp = tid ? byId.get(tid) : undefined;
-        if (!tp) {
-          if (batchT === t) invertMissing++;
-          continue;
-        }
-        // a trade entering in [t, t + step) exits at or after t: the scan starts at the first exit ≥ t (exit order) and
-        // stops where even the tape's longest hold cannot reach back into the step (every later exit is later still)
-        const exitCap = batchEnd + maxHoldOf(tp);
-        for (let i = lowerBound(tp.exitT, batchT); i < tp.n; i++) {
-          if (tp.exitT[i] >= exitCap) break;
-          const e = tp.entryT[i];
-          if (e >= batchT && e < batchEnd) cands.push({ tr: tradeAt(tp, i), tp });
-        }
-        if (markOpen)
-          for (const op of tp.open)
-            if (op.entryT >= batchT && op.entryT < batchEnd)
-              cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
-      }
+      const cands = yield* scheduledEngineEntriesGen(engineEntries, batchEnd, selectedEntries, stopT);
       let mergedSignals = 0;
       while (signalEntries.peekT() < batchEnd) {
         const cursor = signalEntries.pop()!;

@@ -72,7 +72,7 @@ test("actual stopped runtime settings remain default-positive and retain full ex
   assert.equal(p.actualSettings.cost, RT_COST);
   assert.ok(p.actualSettings.focus.length > 30);
   assert.ok(p.actualSettings.grid.micro.tp.length > 5);
-  assert.ok(p.actualSettings.grid.micro.slOfTp.length > 10);
+  assert.deepEqual(p.actualSettings.grid.micro.slOfTp, Array.from({ length: 10 }, (_, i) => (i + 1) / 4));
   assert.ok(p.positiveCoordWarnings.length > 0);
   assert.equal(p.actualSettings.gates.baseSetsMinPf, 1.25);
   assert.ok(p.positiveCoordWarnings.every((x) => x.includes("Axis is off") ||

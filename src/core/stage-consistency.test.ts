@@ -61,9 +61,9 @@ describe("stage consistency: one config, the same at every stage", () => {
     // Short: 9× = 1.8 %, stop 1× = 1.8 %, trail ½ = 0.9 %
     const sh: Protect = { tp: 0.018, sl: 0.018, trail: 0.009, hold, tag: "sh" };
     // General: 15× = 3 %, stop 0.25× = 0.75 % under its 1 % floor, trail ¼ = 0.75 %
-    const gn: Protect = { tp: 0.03, sl: 0.01, trail: 0.0075, hold, tag: "gn" };
+    const gn: Protect = { tp: 0.03, sl: 0.0075, trail: 0.0075, hold, tag: "gn" };
     // Long: 23× = 4.6 %, stop 0.25× = 1.15 % under its 1.6 % floor, trail ¾ = 3.45 %
-    const lg: Protect = { tp: 0.046, sl: 0.016, trail: 0.0345, hold, tag: "lg" };
+    const lg: Protect = { tp: 0.046, sl: 0.0115, trail: 0.0345, hold, tag: "lg" };
     // Micro keeps the historical 0.20% range basis and adds the 0.176% fee allowance.
     // The price target and stop floor both become 0.376%.
     const mcTp = microPriceTp(MICRO_TP[0], MICRO_RANGE, RT_COST);
@@ -72,11 +72,11 @@ describe("stage consistency: one config, the same at every stage", () => {
     // the floors used above are the ranges' own
     assert.deepEqual(
       [MINIMAL_RANGE.minTrail, SHORT_RANGE.minSl, GENERAL_RANGE.minSl, LONG_RANGE.minSl, MICRO_RANGE.minSlNet, MICRO_RANGE.minTrail],
-      [0.003, 0.006, 0.01, 0.016, 0.002, 0.001],
+      [0.003, RT_COST + .001, RT_COST + .001, RT_COST + .001, .001, .001],
     );
     assert.equal(RANGE_COST_BASIS, 0.002, "range geometry is intentionally frozen at its historical basis");
     assert.equal(mc.tp, 0.00376, "Micro price target adds current round-trip cost to the frozen net target");
-    assert.equal(mc.sl, 0.00376, "Micro stop floor adds current round-trip cost to its configured net floor");
+    assert.equal(mc.sl, 0.00276, "Micro stop floor adds current round-trip cost to its configured net floor");
     // Base's plain cells are the grid's plain cells (same rounding): Minimal 0.8 % at 1.5×, Micro 0.35 % at 1×
     const base = baseRangeProtects(grid, RT_COST);
     for (const p of [{ ...mn, trail: 0 }, { ...mc, trail: 0 }])

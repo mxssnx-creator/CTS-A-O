@@ -111,7 +111,7 @@ test("Inverse standard and Micro identities use the complete production TP/SL/tr
       const symbols = new Set(cells.flatMap((t) => [...t.symI].map((i) => t.syms[i])));
       assert.deepEqual([...sides].sort(), [-1, 1], `${tag} ${kind}: both directions actually close`);
       assert.equal(symbols.size, 20, `${tag} ${kind}: every symbol actually closes`);
-      assert.ok(cells.every((t) => t.protect.tp > 0 && t.protect.sl + 1e-12 >= (tag === "mc" ? 0.0035 : 0.005) && !t.protect.trailOnly));
+      assert.ok(cells.every((t) => t.protect.tp > 0 && t.protect.sl + 1e-12 >= DEFAULT_SETTINGS.protectFloor.minSl && !t.protect.trailOnly));
     }
   }
 });

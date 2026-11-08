@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_PROTECT } from "../config.ts";
-import { makeTape, signalEntryQueueGen, nextSignalEntryT, type ConfigTape } from "../sim/walkforward.ts";
+import { makeTape, signalEntryQueueGen, nextSignalEntryT, scheduledEngineEntriesGen, tradeAt, markedOpenTrade, type ConfigTape } from "../sim/walkforward.ts";
 import { TapeHistoryStore } from "./history-store.server.ts";
 
 const M = 60_000, start = 1_000_000, stop = start + 12 * 60 * M;
@@ -57,6 +57,33 @@ test("stored Signal scheduling keeps every due close/open and boundary with no i
       }
       assert.equal(queue.size, 0);
       assert.ok(store.stats.reads < 30, `complete 12h schedule used ${store.stats.reads} history reads`);
+    } finally { store.close(); }
+  }
+});
+
+
+test("engine scheduler matches independent minute scans across changing selected lanes and stored histories", () => {
+  for (const markOpen of [false, true]) {
+    const store = new TapeHistoryStore({ cacheBytes: 1 });
+    try {
+      const raw = Array.from({length: 3}, (_, i) => fixture(`engine-${i}`));
+      const tapes = raw.map(t => store.append(t));
+      const queue = drain(signalEntryQueueGen(tapes, start, stop, markOpen));
+      const key = (tr: ReturnType<typeof tradeAt>) => JSON.stringify(tr);
+      for (let minute = 0; minute < 720; minute++) {
+        const from = start + minute * M, to = from + M;
+        const selected = new Set(raw.filter((_, i) => (Math.floor(minute / 60) + i) % 3 !== 0).map(t => t.id));
+        const expected = raw.filter(t => selected.has(t.id)).flatMap(tp => [
+          ...Array.from({length: tp.n}, (_, i) => i).filter(i => tp.entryT[i] >= from && tp.entryT[i] < to).map(i => tradeAt(tp, i)),
+          ...(markOpen ? tp.open.filter(op => op.entryT >= from && op.entryT < to).map(op => markedOpenTrade(tp, op, stop)) : []),
+        ]);
+        const before = store.stats.reads;
+        const actual = drain(scheduledEngineEntriesGen(queue, to, selected, stop)).map(x => x.tr);
+        assert.deepEqual(actual.map(key).sort(), expected.map(key).sort(), `minute ${minute}, open ${markOpen}`);
+        if (![0,5,71,550,600,700,719].includes(minute)) assert.equal(store.stats.reads, before);
+      }
+      assert.equal(queue.size, 0);
+      assert.ok(store.stats.reads < 40, `12h engine schedule: ${store.stats.reads} reads`);
     } finally { store.close(); }
   }
 });

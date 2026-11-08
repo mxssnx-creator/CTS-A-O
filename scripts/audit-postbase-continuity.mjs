@@ -173,6 +173,20 @@ const tapes = drain(
   ),
 );
 console.log(`Tapes ${tapes.length}; running all admitted configurations together`);
+// Record actual bounded input and candidate settlements even when final gates admit no orders.
+// A window-integrity audit must not depend on a historical fixture remaining profitable.
+const boundedInputAudit = {
+  sourceEndT: feedEndT,
+  latestBarCloseT: bars.reduce((t, b) => Math.max(t, b.n ? b.t[b.n - 1] + b.tfMin * 60_000 : 0), 0),
+  scoredCandidateCloses: 0,
+  latestCandidateCloseT: 0,
+};
+for (const tp of tapes) for (let i = 0; i < tp.n; i++) {
+  boundedInputAudit.latestCandidateCloseT = Math.max(boundedInputAudit.latestCandidateCloseT, tp.exitT[i]);
+  if (tp.exitT[i] > startT && tp.exitT[i] <= endT) boundedInputAudit.scoredCandidateCloses++;
+}
+assert.ok(boundedInputAudit.latestBarCloseT <= endT, "no input bar closes beyond the audit endpoint");
+assert.ok(boundedInputAudit.latestCandidateCloseT <= endT, "no calculated settlement exceeds the audit endpoint");
 if (arg("diagnose-hourly", "false") === "true") {
   const hours = Array.from({ length: 7 }, (_, i) => ({ t: startT + i * H, checked: 0, passing: 0, failures: {} }));
   const violations = [];
@@ -537,6 +551,7 @@ const result = {
   ),
   baseQualifiedRanges: base.qualifiedTags,
   tapes: tapes.length,
+  boundedInputAudit,
   settled: summary(sim.trades),
   executedConfigs: new Set(sim.trades.map((t) => t.cfg)).size,
   validationSteps,

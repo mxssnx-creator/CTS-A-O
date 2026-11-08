@@ -1,3 +1,4 @@
+import { MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, SL_TP_MIN, SL_TP_MAX } from "./protection-policy.ts";
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
 import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, MAX_EXTERNAL_STACK, MAX_FOCUS_PAIRS, mergeGridSettings, type CoreSettings, type SettingsPatch } from "./config.ts";
 import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "./model-cost.ts";
@@ -41,6 +42,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
   num(s.cost, 0, MAX_MODEL_RT_COST, "modeled round-trip cost (fraction)");
   num(s.armTop, 1, 40, "armTop");
   num(s.mainTop, 0, 100_000, "mainTop");
+  if (s.minSlDistancePct !== undefined) num(s.minSlDistancePct, MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, "minimum SL above costs");
   if (s.grid?.minSlEval !== undefined) num(s.grid.minSlEval, 0.0005, 0.05, "grid.minSlEval");
   if (s.grid?.baseTargets !== undefined && typeof s.grid.baseTargets !== "boolean")
     throw new Error("grid base targets: on / off");
@@ -649,7 +651,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     if (s.dca.addRatio !== undefined) num(s.dca.addRatio, 0.1, 2.5, "dca addition (original base units)");
     if (s.dca.stepOfTp !== undefined) num(s.dca.stepOfTp, 0, 5, "dca step (× target)");
     if (s.dca.stopGap !== undefined) num(s.dca.stopGap, 0, 5, "dca stop gap (steps)");
-    if (s.dca.slOfTp !== undefined) num(s.dca.slOfTp, 0.25, 5, "dca stop (× target)");
+    if (s.dca.slOfTp !== undefined) num(s.dca.slOfTp, SL_TP_MIN, SL_TP_MAX, "dca stop (× target)");
     if (s.dca.tp !== undefined) {
       if (!Array.isArray(s.dca.tp) || s.dca.tp.length > 12)
         throw new Error("dca targets: up to 12");
@@ -667,7 +669,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     // the wide grid may be empty (the position-cost ranges cover its targets)
     if (!(Array.isArray(s.grid.tp) && s.grid.tp.length === 0))
       list(s.grid.tp, 0.002, 0.2, "grid TP");
-    list(s.grid.slOfTp, 0.2, 5, "grid SL×TP");
+    list(s.grid.slOfTp, SL_TP_MIN, SL_TP_MAX, "grid SL×TP");
     list(s.grid.trailOfTp, 0, 1, "grid trail share");
     list(s.grid.holdH, 0.25, 72, "grid hold");
     num(s.grid.minTrail, 0, 0.1, "min trail");
@@ -723,7 +725,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       if (!r || typeof r !== "object") return;
       const g = r as { tp?: unknown; slOfTp?: unknown; trailOfTp?: unknown };
       list(g.tp, 0.002, 0.2, `${name} TP`);
-      list(g.slOfTp, 0.2, 5, `${name} SL×TP`);
+      list(g.slOfTp, SL_TP_MIN, SL_TP_MAX, `${name} SL×TP`);
       list(g.trailOfTp, 0, 1, `${name} trail share`);
       rangeShared(r, name);
       microOnly(r, name);
@@ -761,7 +763,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       int(lowRange.maxHoldMin, "Low-Range maximum hold");
       for (const [xs, lo, hi, label] of [
         [lowRange.steps, 2, 6, "Low-Range target steps"],
-        [lowRange.slRatios, 0.5, 3.5, "Low-Range stop ratios"],
+        [lowRange.slRatios, SL_TP_MIN, SL_TP_MAX, "Low-Range stop ratios"],
         [lowRange.trailRatios, 0, 1, "Low-Range trailing ratios"],
       ] as const) {
         if (xs === undefined) continue;
@@ -784,7 +786,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       };
       // tp: the net target after the round-trip cost (tpNetOfCost, default on) or the price target itself
       wide(micro.tp, 0.001, 0.2, "micro TP", 16);
-      wide(micro.slOfTp, 0.5, 5, "micro SL×TP", 24);
+      wide(micro.slOfTp, SL_TP_MIN, SL_TP_MAX, "micro SL×TP", 24);
       if (micro.tpNetOfCost !== undefined && typeof micro.tpNetOfCost !== "boolean")
         throw new Error("micro tpNetOfCost: true or false");
 
@@ -930,10 +932,10 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
         throw new Error("signal lanes: any of 1, 5, 15, 30 (minutes)");
     }
     list(g.normal?.tp, 0.002, 0.2, "signal Normal TP");
-    list(g.normal?.slOfTp, 0.2, 5, "signal Normal SL×TP");
+    list(g.normal?.slOfTp, SL_TP_MIN, SL_TP_MAX, "signal Normal SL×TP");
     list(g.trailing?.tp, 0.002, 0.2, "signal Trailing TP");
     list(g.trailing?.trailOfTp, 0.05, 1, "signal trail share");
-    num(g.trailing?.slOfTp, 0.2, 5, "signal Trailing SL×TP");
+    num(g.trailing?.slOfTp, SL_TP_MIN, SL_TP_MAX, "signal Trailing SL×TP");
     if (g.trailRatios !== undefined) {
       list(g.trailRatios, 0.1, 2, "signal peak-gap ratios");
       if (g.trailRatios.length > 64 || new Set(g.trailRatios).size !== g.trailRatios.length)
@@ -975,7 +977,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       bool(g.hist.enabled, "signal historic trailing configs");
       list(g.hist.quantiles, 0.2, 0.95, "signal historic target quantile");
       list(g.hist.trailOfTp, 0.1, 0.95, "signal historic trail share");
-      list(g.hist.slOfTp, 0.25, 5, "signal historic SL×TP");
+      list(g.hist.slOfTp, SL_TP_MIN, SL_TP_MAX, "signal historic SL×TP");
       num(g.hist.minN, 5, 1000, "signal historic entries needed");
       num(g.hist.lookbackH ?? 0, 0, 720, "signal historic lookback (hours; 0 = the whole history)");
       int(g.hist.minN, "signal historic entries needed");

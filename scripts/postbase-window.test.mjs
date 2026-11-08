@@ -17,7 +17,11 @@ test("older post-Base replay windows cannot report settlements from later input 
     const result = JSON.parse(readFileSync(join(out, "result.json")));
     const trades = JSON.parse(gunzipSync(readFileSync(join(out, "executions.json.gz"))));
     assert.ok(result.baseQualified > 0 && result.tapes > 0);
-    assert.ok(trades.length > 0, "the cached fixture exercises actual settled post-Base orders");
+    assert.ok(result.boundedInputAudit.sourceEndT > endT, "the archive really contains future bars");
+    assert.ok(result.boundedInputAudit.scoredCandidateCloses > 0, "actual calculated settlements exercise the scored window even if current gates admit none");
+    assert.equal(result.boundedInputAudit.latestBarCloseT, endT);
+    assert.ok(result.boundedInputAudit.latestCandidateCloseT <= endT);
+    assert.equal(result.settled.n, trades.length);
     assert.ok(trades.every((x) => x.exitT <= endT));
     assert.ok(result.hourly.every((x) => x.t >= result.startT && x.t < endT));
     assert.equal(result.hourlyAudit.hourly.length, 6);

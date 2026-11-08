@@ -12,6 +12,7 @@ import {
   selectFixed,
   type ConfigTape,
 } from "./sim/walkforward.ts";
+import { SL_TP_RATIOS } from "./protection-policy.ts";
 import { DEFAULT_SIGNALS } from "./signal-config.ts";
 import { auditState } from "./audit.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
@@ -410,8 +411,8 @@ describe("bug-hunt regressions", () => {
     assert.equal(b.settings.signals.accept.hours, 72);
     assert.equal(b.wf.signalValidLastN, 15);
   });
-  it("General / Long stop ratios 0.25–1.5 step 0.25 (operator, 13 Oct), on trailing cells too; the cell cap holds", async () => {
-    const ladder = [0.25, 0.5, 0.75, 1, 1.25, 1.5];
+  it("General / Long stop ratios 0.25–2.5 step 0.25, on trailing cells too; the cell cap holds", async () => {
+    const ladder = [...SL_TP_RATIOS];
     assert.deepEqual([...GENERAL_RANGE.slOfTp], ladder);
     assert.deepEqual([...LONG_RANGE.slOfTp], ladder);
     const g = DEFAULT_SETTINGS.grid;
@@ -430,7 +431,7 @@ describe("bug-hunt regressions", () => {
     // every TP × SL × Trail (13 Oct): a trailing cell takes every stop of the ladder (trailSlOfTp 0.25)
     assert.deepEqual([...trailed].sort((a, b) => a - b), ladder);
   });
-  it("v21: General / Long on the former default ladder [0.5, 0.75, 1] move to 0.25–1.5; a chosen ladder stays", () => {
+  it("v21: General / Long on the former default ladder [0.5, 0.75, 1] move to the current ladder; a chosen ladder stays", () => {
     const old = new CoreDb(":memory:");
     old.kvSet("wfCapsV", 20);
     old.kvSet("settings", {
@@ -441,8 +442,8 @@ describe("bug-hunt regressions", () => {
     });
     const a = new CoreRuntime(old, undefined, { market: "synthetic" });
     const ga = a.settings.grid;
-    assert.deepEqual(ga.general && [...ga.general.slOfTp], [0.25, 0.5, 0.75, 1, 1.25, 1.5]);
-    assert.deepEqual(ga.long && [...ga.long.slOfTp], [0.25, 0.5, 0.75, 1, 1.25, 1.5]);
+    assert.deepEqual(ga.general && [...ga.general.slOfTp], [...SL_TP_RATIOS]);
+    assert.deepEqual(ga.long && [...ga.long.slOfTp], [...SL_TP_RATIOS]);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 20);
     mine.kvSet("settings", {
@@ -468,8 +469,8 @@ describe("bug-hunt regressions", () => {
     const mult = (xs: readonly number[] | undefined) => (xs ?? []).map((x) => +(x / 0.002).toFixed(6));
     assert.ok(ga.minimal && ga.short && ga.general && ga.long);
     assert.deepEqual(mult(ga.minimal.tp), [4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8]);
-    assert.deepEqual([...ga.minimal.slOfTp], [1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]);
-    assert.deepEqual([...ga.short.slOfTp], [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5]);
+    assert.deepEqual([...ga.minimal.slOfTp], [...SL_TP_RATIOS]);
+    assert.deepEqual([...ga.short.slOfTp], [...SL_TP_RATIOS]);
     assert.deepEqual(mult(ga.general.tp), [15, 16, 17, 18, 19, 20, 21, 22]);
     assert.deepEqual(mult(ga.long.tp), [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
     for (const r of [ga.minimal, ga.short, ga.general, ga.long]) assert.deepEqual([...r.trailOfTp], [0, 0.25, 0.5, 0.75]);
