@@ -27,5 +27,6 @@ jobs:
           --test --test-concurrency=2 src/core/sim/processed-set.test.ts
           src/core/step-pf.test.ts src/core/server/demo-market.test.ts
           src/core/exchange/keys.test.ts
+          src/core/server/last-n-samples.test.ts src/core/server/strategy-coverage.test.ts
       - run: node --test scripts/core-live-report.test.mjs
       - run: npm run build:dev

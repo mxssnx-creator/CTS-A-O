@@ -4194,6 +4194,15 @@ function validationLastNForTape(
   return tp.kind === "exit" ? (o.exitMinTrades ?? validLastNOf(tp, o)) : validLastNOf(tp, o);
 }
 
+/** Requested counts for sample diagnostics; partial-window waivers never change these numbers. */
+export function sampleWindowsForTape(tp: ConfigTape, o: WalkForwardOptions): Record<string, number> {
+  return {
+    validation: validationLastNForTape(tp, o),
+    entry: isSignalInd(tp.ind) ? signalEntryLastNOf(tp, o) : (rangeOptsOf(o, tp)?.lastN ?? o.lastN),
+    range: o.rangeGate && tapeRangeGateOn(o.rangeGate, tp) ? o.rangeGate.lastN : 0,
+  };
+}
+
 function configEvalAt(
   tp: ConfigTape,
   t: number,

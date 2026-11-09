@@ -1,3 +1,9 @@
+## 2026-11-09 — own-context sample coverage
+
+Completed-cohort Progress now publishes sample counts and percentages for exact config/symbol/direction contexts, separately from PF validation. Empty, short, corrupt and carried contexts remain visible; publication uses existing cancellation/revision guards. See `docs/verification/sample-coverage-20261109.md` for tests and denominators. The persistent processed Main→Real adapter remains unfinished and its conflict TODO remains visible.
+
+No new market or venue PF. Current-policy post-Base PF/validated percentage remain unavailable. Unchanged OLD 8–9 October cohort: Base 143/1,398 (10.2289%); post-Base 405/1,276 (31.7398%), finite historical mean PF 17.399524089 plus six no-loss contexts; later funded-model PF 0.273050873. Positions 52/49/3, orders 3,116/3,108/8 O/C/H. No account start or deployment.
+
 ## 2026-11-09 — Last-N expansion, negative filters and demo network audit
 
 See `docs/verification/lastn-negative-20261109.md` for exact scope, test evidence and remaining integration. The publication PR identifies the tested source; later release metadata must not imply a deployment. No current-policy CTS-A-O market or venue PF was measured. The standalone processed-book extension does not complete the native persistent adapter or draft #219. Preserve the visible conflict TODO.

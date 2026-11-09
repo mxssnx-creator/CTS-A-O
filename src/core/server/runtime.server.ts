@@ -8,6 +8,7 @@ import { isHistoricExitConfig } from "../exit-scope.ts";
 import { lstatSync } from "node:fs";
 import { mergeWorkerTapesGen } from "./tape-merge.ts";
 import { strategyCoverageGen, type StrategyCoverage } from "./strategy-coverage.ts";
+import { lastNSamplesGen } from "./last-n-samples.ts";
 import { validationProgressOf, type ValidationProgress } from "../validation-progress.ts";
 // Core v2 continuous runtime. One per server process (globalThis singleton).
 //
@@ -5812,6 +5813,7 @@ export class CoreRuntime {
       return;
     // Count the exact finished cohort, not the temporary worker inputs or a partially built next cohort.
     const strategyCoverage = await drive("Strategy coverage", strategyCoverageGen(tapes), () => undefined, gen);
+    const lastNSamples = await drive("Last-N sample coverage", lastNSamplesGen(tapes, sim.endT, wf), () => undefined, gen);
     // the realtime entry step stands aside while the new tapes and run replace the old ones, until the full paper
     // step has seated on them (it re-checks the hold at every slice)
     if (
@@ -5830,7 +5832,7 @@ export class CoreRuntime {
     )
       return;
     const appliedSettingsAt = this.status.settingsAt;
-    nextStatus.strategyCoverage = { ...strategyCoverage, completedAt: Date.now(), through: sim.endT };
+    nextStatus.strategyCoverage = { ...strategyCoverage, lastNSamples, completedAt: Date.now(), through: sim.endT };
     // No yield between the execution qualifiers, realtime rebuild inputs and their matching data publication.
     // Keep the previous complete snapshot usable until this point, including when a worker/compute fails.
     this.resetRealtime("qualified research cohort replaced");

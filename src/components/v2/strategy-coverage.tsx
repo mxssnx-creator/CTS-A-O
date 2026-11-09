@@ -29,5 +29,16 @@ export function StrategyCoverageTable({ coverage }: { coverage?: StrategyCoverag
       })}</tbody>
     </table>
     <p className="v2-muted">Counts include held-only and carried tapes; carried tapes use an earlier compute. A tape is not an admitted, funded or venue order. Block and Relate are execution adjustments, not separate tape types. The current progress stage may be building the next cohort.</p>
+    <h3>Last-N sample coverage</h3>
+    {coverage.lastNSamples ? <>
+      <p className="v2-muted">Exact config × symbol × direction candidate histories before {fmt.time(coverage.lastNSamples.at)} UTC. Empty and losing contexts remain counted. These counts do not establish PF validation or processed Main/Real admission. Held-only configs are excluded; carried evidence is unavailable.</p>
+      <table className="v2-table"><thead><tr><th>Type / range</th><th>Window</th><th>N</th><th>Enough samples</th><th>Short</th><th>Unknown</th></tr></thead>
+        <tbody>{coverage.lastNSamples.rows.map((r) => <tr key={JSON.stringify([r.kind,r.range,r.window,r.n])}>
+          <td>{labels[r.kind] ?? r.kind} / {r.range}</td><td>{r.window}</td><td>{r.n || "off"}</td>
+          <td>{r.n <= 0 ? "Disabled" : r.pct === null ? "Unavailable" : `${r.usable}/${r.contexts - r.disabled} (${r.pct.toFixed(1)}%)`}</td>
+          <td>{r.insufficient}</td><td>{r.unknown}</td>
+        </tr>)}</tbody>
+      </table>
+    </> : <p className="v2-muted">Sample coverage is unavailable until the next compute completes.</p>}
   </div>;
 }
