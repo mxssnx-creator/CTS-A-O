@@ -97,6 +97,35 @@ test("partial slices are unique and restart retains entry decisions and open own
   assert.throws(() => book.close(identity, "held", 36, "fill-3", 39, .01, true), /no matching/);
 });
 
+test("partial fills cannot manufacture a complete Last-N parent window", () => {
+  let book = new ProcessedSetBook("paper", 12);
+  book.acceptPostBase(identity, "one-parent", 0, policy);
+  for (let n = 1; n <= 9; n++) book.close(identity, "one-parent", 0, `part-${n}`, n, .002, false);
+  assert.deepEqual(book.verdict(identity, "postBase", 9, 1.1), { state: "insufficient", n: 0, pf: null });
+  assert.equal(book.summary(identity)!.stages.postBase.returnPf, null);
+  book = ProcessedSetBook.restore(JSON.parse(JSON.stringify(book.snapshot())));
+  book.close(identity, "one-parent", 0, "last", 10, -.028, true);
+  assert.equal(book.verdict(identity, "postBase", 9, 1.1).n, 1);
+  const s = book.summary(identity)!.stages.postBase;
+  assert.equal(s.closedOrders, 1); assert.equal(s.settledSlices, 10);
+  assert.equal(s.returnPf, 0, "one net-losing parent is one loss, not nine winners and one loser");
+  assert.ok(Math.abs(s.grossLoss - .01) < 1e-12);
+  assert.equal(s.grossProfit, 0);
+});
+
+test("partial losses and unknowns remain attached to their own final parent", () => {
+  let book = new ProcessedSetBook("model", 9);
+  for (let n = 0; n < 8; n++) enterAndClose(book, identity, 2 * n, .01);
+  book.acceptPostBase(identity, "unknown-parent", 16, policy);
+  book.close(identity, "unknown-parent", 16, "unknown-part", 17, null, false);
+  book = ProcessedSetBook.restore(JSON.parse(JSON.stringify(book.snapshot())));
+  assert.equal(book.verdict(identity, "postBase", 9, 1.1).state, "insufficient");
+  book.close(identity, "unknown-parent", 16, "final", 18, .05, true);
+  assert.equal(book.verdict(identity, "postBase", 9, 1.1).state, "unknown");
+  assert.equal(book.summary(identity)!.stages.postBase.unknownReturns, 1);
+  assert.equal(book.summary(identity)!.stages.postBase.returnPf, null);
+});
+
 test("future information, duplicate opens, invalid policies and corrupt snapshots fail closed", () => {
   const book = new ProcessedSetBook("paper", 9);
   book.acceptPostBase(identity, "one", 10, policy);

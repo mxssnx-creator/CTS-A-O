@@ -27,7 +27,7 @@ interface Close {
   sliceId: string;
   entryT: number;
   exitT: number;
-  /** Actual, already cost-adjusted unit return. Null is an observation with unknown return. */
+  /** Complete parent net unit return, summed from its own settled contributions. */
   unitReturn: number | null;
 }
 interface SetRows {
@@ -65,9 +65,11 @@ export interface ProcessedOpen {
   stage: ProcessedStage;
   /** Already settled slices for this still-open order, preventing repeated cumulative updates. */
   slices: string[];
+  /** Sum of settled net contributions on the original parent notional. Null retains any unknown slice. */
+  settledUnitReturn: number | null;
 }
 export interface ProcessedSetSnapshot {
-  version: 2;
+  version: 3;
   basis: ProcessedBasis;
   capacity: number;
   clock: number;
@@ -202,13 +204,16 @@ export class ProcessedSetBook {
     rows.evaluations.validation[validation.state]++;
     if (real) rows.evaluations.real[real.state]++;
     for (let i = 0; i <= stages.indexOf(stage); i++) rows.counts[stages[i]].openedOrders++;
-    const opened: ProcessedOpen = { identity: { ...identity }, entryId, entryT, policy: { ...policy }, validation, real, stage, slices: [] };
+    const opened: ProcessedOpen = { identity: { ...identity }, entryId, entryT, policy: { ...policy }, validation, real, stage, slices: [], settledUnitReturn: 0 };
     this.open.set(key, opened);
     this.seenAtClock.add(key);
     return structuredClone(opened);
   }
 
-  /** A partial close counts once; a final close removes the held order only after recording its own slice. */
+  /**
+   * Each slice is a net contribution on the same original parent notional (including its cost once).
+   * Partial fills are tracked but are not Last-N samples; the complete parent contributes once at final close.
+   */
   close(identity: ProcessedSetIdentity, entryId: string, entryT: number, sliceId: string, exitT: number,
     unitReturn: number | null, final: boolean): void {
     if (!nonempty(entryId) || !nonempty(sliceId) || (unitReturn !== null && !Number.isFinite(unitReturn)) ||
@@ -218,10 +223,16 @@ export class ProcessedSetBook {
     if (!held) throw new Error("processed close has no matching open entry");
     if (held.slices.includes(sliceId)) throw new Error("duplicate processed close slice");
     this.advance(exitT);
-    const row: Close = { entryId, sliceId, entryT, exitT, unitReturn };
+    const sum = held.settledUnitReturn === null || unitReturn === null ? null : held.settledUnitReturn + unitReturn;
+    held.settledUnitReturn = sum !== null && Number.isFinite(sum) ? sum : null;
+    const row: Close = { entryId, sliceId, entryT, exitT, unitReturn: held.settledUnitReturn };
     const rows = this.rows(identity);
     const lastStage = stages.indexOf(held.stage);
     for (let i = 0; i <= lastStage; i++) {
+      const stats = rows.counts[stages[i]];
+      stats.settledSlices++;
+      if (!final) continue;
+      stats.closedOrders++;
       const history = rows[stages[i]];
       history.push(row);
       // Preserve the latest full prior window separately from this timestamp's closes. A batch of
@@ -239,12 +250,9 @@ export class ProcessedSetBook {
       }
       const currentCount = history.length - currentStart;
       if (currentCount > this.capacity) history.splice(currentStart, currentCount - this.capacity);
-      const stats = rows.counts[stages[i]];
-      stats.settledSlices++;
-      if (final) stats.closedOrders++;
-      if (unitReturn === null) stats.unknownReturns++;
-      else if (unitReturn > 0) stats.grossProfit += unitReturn;
-      else stats.grossLoss -= unitReturn;
+      if (row.unitReturn === null) stats.unknownReturns++;
+      else if (row.unitReturn > 0) stats.grossProfit += row.unitReturn;
+      else stats.grossLoss -= row.unitReturn;
       if (!Number.isFinite(stats.grossProfit) || !Number.isFinite(stats.grossLoss)) {
         stats.aggregateUnknown = true;
         // Keep snapshots JSON-safe without pretending an overflow is a measured finite result.
@@ -268,7 +276,7 @@ export class ProcessedSetBook {
     const byStage = {} as ProcessedSetSummary["stages"];
     for (const stage of stages) {
       const c = rows.counts[stage];
-      const pf = c.settledSlices && !c.unknownReturns && !c.aggregateUnknown
+      const pf = c.closedOrders && !c.unknownReturns && !c.aggregateUnknown
         ? profitFactor(c.grossProfit, c.grossLoss) : null;
       byStage[stage] = { ...c, heldOrders: c.openedOrders - c.closedOrders,
         returnPf: pf !== null && Number.isFinite(pf) ? pf : null };
@@ -278,13 +286,13 @@ export class ProcessedSetBook {
   }
 
   snapshot(): ProcessedSetSnapshot {
-    return structuredClone({ version: 2 as const, basis: this.basis, capacity: this.capacity, clock: this.clock,
+    return structuredClone({ version: 3 as const, basis: this.basis, capacity: this.capacity, clock: this.clock,
       sets: [...this.sets.values()], open: [...this.open.values()], seenAtClock: [...this.seenAtClock] });
   }
 
   /** Restore only structurally consistent books; corrupted state is not turned into qualification evidence. */
   static restore(snapshot: ProcessedSetSnapshot): ProcessedSetBook {
-    if (!snapshot || snapshot.version !== 2 || !Number.isFinite(snapshot.clock) || snapshot.clock < -1 ||
+    if (!snapshot || snapshot.version !== 3 || !Number.isFinite(snapshot.clock) || snapshot.clock < -1 ||
       !Array.isArray(snapshot.sets) || !Array.isArray(snapshot.open) || !Array.isArray(snapshot.seenAtClock))
       throw new TypeError("invalid processed-set snapshot");
     const book = new ProcessedSetBook(snapshot.basis, snapshot.capacity);
@@ -298,8 +306,8 @@ export class ProcessedSetBook {
         const c = set.counts?.[stage];
         if (!c || ![c.openedOrders, c.closedOrders, c.settledSlices, c.unknownReturns].every(Number.isSafeInteger) ||
           c.openedOrders < 0 || c.closedOrders < 0 || c.closedOrders > c.openedOrders ||
-          c.settledSlices < c.closedOrders || c.settledSlices < rows.length || c.unknownReturns < 0 ||
-          c.unknownReturns > c.settledSlices || !Number.isFinite(c.grossProfit) || c.grossProfit < 0 ||
+          c.settledSlices < c.closedOrders || c.closedOrders < rows.length || c.unknownReturns < 0 ||
+          c.unknownReturns > c.closedOrders || !Number.isFinite(c.grossProfit) || c.grossProfit < 0 ||
           !Number.isFinite(c.grossLoss) || c.grossLoss < 0 || typeof c.aggregateUnknown !== "boolean")
           throw new TypeError("invalid processed totals");
         let prior = -1;
@@ -345,7 +353,9 @@ export class ProcessedSetBook {
           : item.real === null && item.stage === "postBase");
       if (!nonempty(item.entryId) || !Number.isFinite(item.entryT) || item.entryT < 0 || item.entryT > snapshot.clock ||
         !stages.includes(item.stage) || !Array.isArray(item.slices) || item.slices.some((s) => !nonempty(s)) ||
-        new Set(item.slices).size !== item.slices.length || !book.sets.has(processedSetKey(item.identity)) ||
+        new Set(item.slices).size !== item.slices.length ||
+        (item.settledUnitReturn !== null && !Number.isFinite(item.settledUnitReturn)) ||
+        (!item.slices.length && item.settledUnitReturn !== 0) || !book.sets.has(processedSetKey(item.identity)) ||
         book.open.has(key) || !decisionValid)
         throw new TypeError("invalid processed open entry");
       book.open.set(key, structuredClone(item));

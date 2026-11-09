@@ -1,3 +1,9 @@
+## 2026-11-09 — complete-parent Last-N accounting
+
+The isolated processed-stage book previously counted partial slices as complete Last-N observations. Nine partial fills of one still-open parent could qualify a nine-parent window. It now accumulates the parent's net contributions through restart and appends one sample only on final settlement. Unknown slices remain unknown; same-time causality and held Active ownership remain intact. Snapshot schema is research version 3; ambiguous version 2 evidence is refused. See `docs/verification/processed-parent-partials-20261109.md`.
+
+Both new regressions reproduced the bug; all 18 processed-book tests pass. This is an accounting primitive repair, not integration of the persistent Base→Main→Real runtime adapter. The conflict TODO and draft #219 remain open. Current-policy and venue PF remain unavailable. Unchanged OLD 8–9 October cohort: Base 143/1398 (10.2289%), post-Base 405/1276 (31.7398%), finite historical mean PF 17.399524089 plus six no-loss contexts; later funded-model PF 0.273050873, positions 52/49/3 and orders 3116/3108/8 opened/closed/held. No account was started.
+
 ## 2026-11-09 — preserve actual PF policy bounds in Base statistics
 
 Follow-up to local cancellation checkpoint `124b2bbe5330a34a00a8a5085cf5ca2e02ebd8f0` / published
