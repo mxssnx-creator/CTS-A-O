@@ -432,3 +432,45 @@ describe("flatten sends market orders", () => {
     }
   });
 });
+
+describe("confirmed demo flatten", () => {
+  it("retains protection after an accepted close that has not filled", async () => {
+    const { flattenWith } = await import("./core-live-report.mjs");
+    const saved = process.env.CTS_CORE_LIVE; process.env.CTS_CORE_LIVE = "1";
+    const cancelled = []; const now = Date.now();
+    const entry = { ...o("TEST_E", "BUY", "LONG", 2), orderId: "1", time: now - 1000 };
+    const stop = { id: "2", clientOrderId: "TEST_S", venueSymbol: "SAND-USDT", side: "long", type: "STOP_MARKET" };
+    try {
+      await assert.rejects(flattenWith({
+        signed: async (_n, _c, method, path) => path.endsWith("allOrders") ? { orders: [entry] }
+          : method === "POST" ? { orderId: "3" } : [{ symbol: "SAND-USDT", positionSide: "LONG", positionAmt: "2" }],
+        fetchBook: async () => ({ orders: [stop] }),
+        cancelOrder: async (...args) => { cancelled.push(args); },
+      }, "bingx-vst-02", "TEST_", { from: now - 2000 }), /closure pending/);
+      assert.equal(cancelled.length, 0);
+    } finally { if (saved === undefined) delete process.env.CTS_CORE_LIVE; else process.env.CTS_CORE_LIVE = saved; }
+  });
+
+  it("cancels a resting entry first and closes only its own share of a merged leg", async () => {
+    const { flattenWith } = await import("./core-live-report.mjs");
+    const saved = process.env.CTS_CORE_LIVE; process.env.CTS_CORE_LIVE = "1";
+    const calls = []; const now = Date.now(); let filled = false;
+    const entries = [{ ...o("TEST_E", "BUY", "LONG", 2), orderId: "1", time: now - 1000 },
+      { ...o("OTHER_E", "BUY", "LONG", 3), orderId: "2", time: now - 1000 }];
+    const orders = [ { id: "3", clientOrderId: "TEST_L", venueSymbol: "SAND-USDT", side: "long", type: "LIMIT" },
+      { id: "4", clientOrderId: "TEST_S", venueSymbol: "SAND-USDT", side: "long", type: "STOP_MARKET" },
+      { id: "5", clientOrderId: "OTHER_S", venueSymbol: "SAND-USDT", side: "long", type: "STOP_MARKET" } ];
+    try {
+      const n = await flattenWith({
+        signed: async (_net, _conn, method, path, params) => {
+          if (path.endsWith("allOrders")) return { orders: filled ? [...entries, { ...o("TEST_C", "SELL", "LONG", 2), orderId: "6", time: now }] : entries };
+          if (method === "POST") { calls.push(["close", params.quantity]); filled = true; return {}; }
+          return [{ symbol: "SAND-USDT", positionSide: "LONG", positionAmt: filled ? "3" : "5" }];
+        },
+        fetchBook: async () => ({ orders }),
+        cancelOrder: async (_n, _c, _s, id) => { calls.push(["cancel", id]); },
+      }, "bingx-vst-02", "TEST_", { from: now - 2000 });
+      assert.equal(n, 1); assert.deepEqual(calls, [["cancel", "3"], ["close", 2], ["cancel", "4"]]);
+    } finally { if (saved === undefined) delete process.env.CTS_CORE_LIVE; else process.env.CTS_CORE_LIVE = saved; }
+  });
+});

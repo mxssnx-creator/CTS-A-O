@@ -512,14 +512,14 @@ const RANGE_MIN_PF_KEY: Readonly<Record<RangeTag, RangeMinPfKey>> = {
  * stage minimum. Short is never below 1.1; older saved settings below that floor remain readable. Untagged
  * configs (Wide, the signals) keep their own stage minimum.
  */
-export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf" | "stepPf">, tag: string | null | undefined, ind?: string, stepPct?: number): number {
+export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf" | "stepPf">, tag: string | null | undefined, ind?: string, stepPct?: number, slRatio?: number): number {
   // A coordination Signal may borrow tagged protection distances. Its economic range is still Signals;
   // the ordinary range's PF floor must neither raise nor lower its independent stage floor.
   if (ind?.startsWith("sig-")) return Math.max(SIGNAL_MIN_PF, gates.minPf);
   const key = tag ? RANGE_MIN_PF_KEY[tag as RangeTag] : undefined;
   const v = key ? gates.rangeMinPf?.[key] : undefined;
   const configured = typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;
-  const min = stepPfFloor(tag === "sh" ? Math.max(1.1, configured) : configured, stepPct, gates.stepPf);
+  const min = stepPfFloor(tag === "sh" ? Math.max(1.1, configured) : configured, stepPct, gates.stepPf, slRatio);
   // Tagged research families use the same independent range floor as ordinary indications. The former
   // hard-coded 1.1 silently overrode requested Micro/Minimal floors at every downstream stage.
   return ind && (ind.startsWith("low-range-") || ind.startsWith("micro-") || ind.startsWith("inverse-") || ind.startsWith("tactic-") || ind.startsWith("relate-") || ind.startsWith("break-rel-") || ind.startsWith("break-mc-rel-"))

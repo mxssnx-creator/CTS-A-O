@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ProcessedSetBook, processedSetKey, type ProcessedSetIdentity } from "./processed-set.ts";
+import { negativeLastN } from "../negative-last-n.ts";
 
 const identity: ProcessedSetIdentity = { baseConfigId: "follow|ema|short|normal|tp1|sl1", symbol: "A-USDT",
   side: 1, kind: "normal", lane: "independent", economicRevision: "cost-and-settings-v1" };
@@ -11,6 +12,27 @@ const enterAndClose = (book: ProcessedSetBook, i: ProcessedSetIdentity, at: numb
   book.close(i, id, at, "final", at + 1, r, true);
   return admission;
 };
+
+test("processed negative windows retain losses, reject only later admission and survive restart",()=>{
+ let book=new ProcessedSetBook("model",20);
+ for(let n=0;n<18;n++)enterAndClose(book,identity,2*n,.02);
+ book.acceptPostBase(identity,"held-through-dip",36,policy);
+ enterAndClose(book,identity,38,-.001);
+ const guarded={...policy,negativeFilter:negativeLastN({windows:[1,3],mode:"any"})};
+ const entry=book.acceptPostBase(identity,"new-after-dip",40,guarded);
+ assert.equal(entry.stage,"postBase");assert.ok(entry.validation.pf!>1);
+ assert.equal(entry.validation.blockedBy,"negative-filter");
+ const corrupt=book.snapshot();
+ const pending=corrupt.open.find(x=>x.entryId==="new-after-dip")!;
+ pending.validation.state="qualified";
+ assert.throws(()=>ProcessedSetBook.restore(corrupt),/invalid processed open/);
+ book=ProcessedSetBook.restore(JSON.parse(JSON.stringify(book.snapshot())));
+ assert.deepEqual(book.activePositions().map(x=>x.entryId),["held-through-dip"]);
+ book.close(identity,"new-after-dip",40,"final",41,-.002,true);
+ assert.equal(book.summary(identity)!.stages.postBase.closedOrders,20);
+ assert.equal(book.verdict({...identity,symbol:"B-USDT"},"postBase",9,1.1,42,guarded.negativeFilter).state,"insufficient");
+ assert.throws(()=>book.acceptPostBase(identity,"bad",42,{...guarded,negativeFilter:{windows:[21],mode:"any",maxPf:1}}));
+});
 
 test("Validation and Real use consecutive processed sets and require complete own windows", () => {
   const book = new ProcessedSetBook("paper", 12);
@@ -132,7 +154,7 @@ test("future information, duplicate opens, invalid policies and corrupt snapshot
   assert.throws(() => book.acceptPostBase(identity, "one", 10, policy), /duplicate/);
   assert.throws(() => book.close(identity, "one", 10, "bad", 9, .01, true), /invalid/);
   assert.throws(() => book.acceptPostBase(identity, "old", 9, policy), /chronological/);
-  assert.throws(() => book.acceptPostBase(identity, "bad", 11, { ...policy, realN: 8 }), /policy/);
+  assert.throws(() => book.acceptPostBase(identity, "bad", 11, { ...policy, realN: 0 }), /policy/);
   const snap = book.snapshot();
   snap.open[0].stage = "active";
   assert.throws(() => ProcessedSetBook.restore(snap), /invalid processed open/);
@@ -211,4 +233,23 @@ test("restart retains the entry policy and refuses legacy snapshots without it",
   const legacy = structuredClone(snapshot) as unknown as { version: number };
   legacy.version = 1;
   assert.throws(() => ProcessedSetBook.restore(legacy as never), /invalid processed-set snapshot/);
+});
+
+
+test("parallel major/minor policies keep own stages, full windows and restart identities", () => {
+  let b = new ProcessedSetBook("paper", 20);
+  const lanes = [{id:"major",role:"major" as const,validationN:5,realN:3,minPf:1.1},
+    {id:"minor",role:"minor" as const,validationN:2,realN:1,minPf:1.05}];
+  for (let i=0;i<5;i++) {
+    const opened=b.acceptParallelPostBase(identity,`p${i}`,i*2,lanes);
+    if (i===4) {assert.equal(opened[0].stage,"postBase");assert.equal(opened[1].stage,"active");}
+    for (const row of opened) b.close(row.identity,row.entryId,row.entryT,"final",i*2+1,.01,true);
+  }
+  b=ProcessedSetBook.restore(JSON.parse(JSON.stringify(b.snapshot())));
+  const next=b.acceptParallelPostBase(identity,"next",10,lanes);
+  assert.equal(next[0].stage,"validated");assert.equal(next[1].stage,"active");
+  const edited=b.acceptParallelPostBase(identity,"edited",11,[{...lanes[1],realN:2}]);
+  assert.equal(edited[0].stage,"postBase");
+  const before=b.snapshot();assert.throws(()=>b.acceptParallelPostBase(identity,"bad",12,[lanes[0],lanes[0]]));
+  assert.deepEqual(b.snapshot(),before,"invalid duplicate policy must not partially mutate the book");
 });

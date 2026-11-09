@@ -392,48 +392,69 @@ export async function accountIncome(network, conn, from, to = Date.now()) {
   return out;
 }
 
-export async function flatten(conn, tag, { from = Date.now() - 24 * 3_600_000, allowMainnet = false } = {}) {
+export async function flatten(conn, tag, options = {}) {
+  return flattenWith(bx, conn, tag, options);
+}
+
+/** Dependency boundary also exercises real ownership and confirmation behavior offline. */
+export async function flattenWith(api, conn, tag, { from = Date.now() - 24 * 3_600_000, allowMainnet = false } = {}) {
   const network = conn === "bingx-x01" ? "mainnet" : "testnet";
-  // this sends market orders: the same switch that arms the desk must be set, on demo hosts too
   if (process.env.CTS_CORE_LIVE !== "1") throw new Error("--flatten sends orders: set CTS_CORE_LIVE=1 to run it");
   if (network === "mainnet" && !allowMainnet) throw new Error("--flatten is for demo connections only");
+  if (typeof tag !== "string" || !tag.trim()) throw new Error("ownership tag required");
   const T = tag.toUpperCase();
-  const { own: net, others } = netByTag(await history(network, conn, from, Date.now()), T);
-  // positions first: closing never waits on the open-orders endpoint (the one rate limits pause); the own stops
-  // are cancelled after, when open orders can be read (a stop left on a flat side has nothing to close)
-  const raw = await bx.signed(network, conn, "GET", "/openApi/swap/v2/user/positions", {});
-  let closed = 0;
-  const failed = [];
-  for (const p of raw ?? []) {
+  const validPositions = rows => {
+    if (!Array.isArray(rows) || rows.some(p => !p || typeof p.symbol !== "string" || !p.symbol || !["LONG", "SHORT"].includes(p.positionSide) || p.positionAmt == null || p.positionAmt === "" || !Number.isFinite(Number(p.positionAmt))))
+      throw new Error("positions unavailable or malformed; protections retained");
+    return rows;
+  };
+  const ownOrder = o => String(o.clientOrderId ?? "").toUpperCase().startsWith(T) && o.id;
+  const control = o => /STOP|TAKE_PROFIT|TRAILING/.test(String(o.type ?? "").toUpperCase());
+  const book = await api.fetchBook(network, conn);
+  if (!Array.isArray(book.orders)) throw new Error("open orders unavailable; flatten cannot prevent a late entry");
+  // Cancel resting entries first. Protective orders remain until the owned leg is confirmed closed.
+  for (const o of book.orders) if (ownOrder(o) && !control(o)) await api.cancelOrder(network, conn, o.venueSymbol, o.id);
+  const hist = () => historyWith(api.signed, network, conn, from, Date.now());
+  const { own: net, others } = netByTag(await hist(), T);
+  const raw = await api.signed(network, conn, "GET", "/openApi/swap/v2/user/positions", {});
+  validPositions(raw);
+  const attempted = new Set();
+  try {
+  for (const p of raw) {
     const k = `${p.symbol}|${p.positionSide}`;
     const qty = closableQty(Math.abs(num(p.positionAmt)), net.get(k) ?? 0, others.get(k) ?? 0);
     if (!(qty > 0)) continue;
-    // each position on its own: one the exchange refuses (a thin book's price floor) never stops the others
+    attempted.add(k);
     try {
-      await bx.signed(network, conn, "POST", "/openApi/swap/v2/trade/order", {
-        symbol: p.symbol,
-        side: p.positionSide === "LONG" ? "SELL" : "BUY",
-        positionSide: p.positionSide,
-        type: "MARKET",
-        quantity: qty,
-        clientOrderID: `${T}C${Date.now().toString(36)}`,
+      await api.signed(network, conn, "POST", "/openApi/swap/v2/trade/order", {
+        symbol: p.symbol, side: p.positionSide === "LONG" ? "SELL" : "BUY", positionSide: p.positionSide,
+        type: "MARKET", quantity: qty, clientOrderID: `${T}C${Date.now().toString(36)}${attempted.size.toString(36)}`,
       });
-      closed++;
-    } catch (e) {
-      failed.push(`${p.symbol} ${p.positionSide}: ${e instanceof Error ? e.message : e}`);
-    }
+    } catch { /* A failed response may have filled. Reconcile before any retry or control cancellation. */ }
   }
-  try {
-    const book = await bx.fetchBook(network, conn);
-    for (const o of book.orders)
-      if (String(o.clientOrderId ?? "").toUpperCase().startsWith(T) && o.id)
-        await bx.cancelOrder(network, conn, o.venueSymbol, o.id);
-  } catch (e) {
-    process.stderr.write(`flatten ${T}: own stops not cancelled yet (${e instanceof Error ? e.message : e})\n`);
+  const after = await api.signed(network, conn, "GET", "/openApi/swap/v2/user/positions", {});
+  validPositions(after);
+  const finalNet = netByTag(await hist(), T);
+  const unresolved = new Set();
+  for (const p of after) {
+    const k = `${p.symbol}|${p.positionSide}`;
+    if (closableQty(Math.abs(num(p.positionAmt)), finalNet.own.get(k) ?? 0, finalNet.others.get(k) ?? 0) > 0) unresolved.add(k);
   }
-  // the caller retries: positions already closed are flat on the exchange then and are not sent again
-  if (failed.length) throw new Error(`closed ${closed}, not closed: ${failed.join("; ")}`);
-  return closed;
+  const finalBook = await api.fetchBook(network, conn);
+  if (!Array.isArray(finalBook.orders)) throw new Error("final open orders unavailable; protections retained");
+  for (const o of finalBook.orders) {
+    if (!o.venueSymbol || !["long", "short"].includes(o.side)) continue;
+    const key = `${o.venueSymbol}|${String(o.side).toUpperCase()}`;
+    if (ownOrder(o) && control(o) && !unresolved.has(key)) await api.cancelOrder(network, conn, o.venueSymbol, o.id);
+  }
+  if (unresolved.size) throw new Error(`owned closure pending; protections retained: ${[...unresolved].join(", ")}`);
+  return attempted.size;
+  } catch (error) {
+    // A POST may still fill after a failed read. Callers must reconcile its client ID,
+    // never retry the whole flatten and send an additional close blindly.
+    if (attempted.size) error.noCloseRetry = true;
+    throw error;
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

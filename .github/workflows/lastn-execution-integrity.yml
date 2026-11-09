@@ -1,0 +1,32 @@
+name: Last-N and demo execution integrity
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_COMPARE: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - name: Bounded affected core tests, offline
+        run: >-
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types
+          --test --test-concurrency=2 src/core/sim/processed-set.test.ts
+          src/core/step-pf.test.ts src/core/server/demo-market.test.ts
+          src/core/exchange/keys.test.ts
+          src/core/server/last-n-samples.test.ts src/core/server/strategy-coverage.test.ts
+      - run: node --test scripts/core-live-report.test.mjs
+      - run: npm run build:dev

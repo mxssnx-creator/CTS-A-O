@@ -11,6 +11,7 @@ export interface StrategyCoverageRow {
 }
 
 export interface StrategyCoverage {
+  lastNSamples?: import("./last-n-samples.ts").LastNSamples;
   completedAt: number;
   through: number;
   total: number;

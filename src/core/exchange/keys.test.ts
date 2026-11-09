@@ -62,4 +62,24 @@ describe("connection keys", () => {
     assert.ok(HOSTS.testnet.every((h) => h.includes("open-api-vst.bingx")));
     assert.ok(HOSTS.mainnet.every((h) => !h.includes("vst")));
   });
+
+  it("a mismatched connection/network is rejected before GET, POST or DELETE dispatch", async () => {
+    clear();
+    process.env.BINGX_X01_API_KEY = "fixture";
+    process.env.BINGX_X01_SECRET = "fixture";
+    const previous = globalThis.fetch;
+    let dispatched = 0;
+    globalThis.fetch = (async () => {
+      dispatched++;
+      return new Response(JSON.stringify({ code: 0, data: [] }));
+    }) as typeof fetch;
+    try {
+      for (const [network, conn] of [["mainnet", "bingx-vst-02"], ["mainnet", "bingx-vst-01"], ["testnet", "bingx-x01"]] as const) {
+        for (const method of ["GET", "POST", "DELETE"] as const) {
+          await assert.rejects(signed(network, conn, method, "/openApi/swap/v2/trade/order"), /connection.*network/i);
+        }
+      }
+      assert.equal(dispatched, 0);
+    } finally { globalThis.fetch = previous; }
+  });
 });

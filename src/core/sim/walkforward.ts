@@ -4164,7 +4164,7 @@ function minPfForTape(
   o: Pick<WalkForwardOptions, "gates" | "exitMinPf">,
 ): number {
   return Math.max(
-    minPfOf(o.gates, tp.kind === "exit" ? undefined : tp.protect.tag, tp.ind, protectStepPct(tp.protect)),
+    minPfOf(o.gates, tp.kind === "exit" ? undefined : tp.protect.tag, tp.ind, protectStepPct(tp.protect), tp.protect.tp > 0 ? tp.protect.sl / tp.protect.tp : undefined),
     isSignalInd(tp.ind) ? (o.gates.baseSetsMinPf ?? 0) : 0,
     tp.kind === "exit" ? (o.exitMinPf ?? 0) : 0,
   );
@@ -4192,6 +4192,15 @@ function validationLastNForTape(
   o: Pick<WalkForwardOptions, "validLastN" | "signalValidLastN" | "exitMinTrades" | "rangeOpts">,
 ): number {
   return tp.kind === "exit" ? (o.exitMinTrades ?? validLastNOf(tp, o)) : validLastNOf(tp, o);
+}
+
+/** Requested counts for sample diagnostics; partial-window waivers never change these numbers. */
+export function sampleWindowsForTape(tp: ConfigTape, o: WalkForwardOptions): Record<string, number> {
+  return {
+    validation: validationLastNForTape(tp, o),
+    entry: isSignalInd(tp.ind) ? signalEntryLastNOf(tp, o) : (rangeOptsOf(o, tp)?.lastN ?? o.lastN),
+    range: o.rangeGate && tapeRangeGateOn(o.rangeGate, tp) ? o.rangeGate.lastN : 0,
+  };
 }
 
 function configEvalAt(

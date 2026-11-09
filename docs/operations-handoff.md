@@ -1,3 +1,15 @@
+## 2026-11-09 — own-context sample coverage
+
+Completed-cohort Progress now publishes sample counts and percentages for exact config/symbol/direction contexts, separately from PF validation. Empty, short, corrupt and carried contexts remain visible; publication uses existing cancellation/revision guards. See `docs/verification/sample-coverage-20261109.md` for tests and denominators. The persistent processed Main→Real adapter remains unfinished and its conflict TODO remains visible.
+
+No new market or venue PF. Current-policy post-Base PF/validated percentage remain unavailable. Unchanged OLD 8–9 October cohort: Base 143/1,398 (10.2289%); post-Base 405/1,276 (31.7398%), finite historical mean PF 17.399524089 plus six no-loss contexts; later funded-model PF 0.273050873. Positions 52/49/3, orders 3,116/3,108/8 O/C/H. No account start or deployment.
+
+## 2026-11-09 — Last-N expansion, negative filters and demo network audit
+
+See `docs/verification/lastn-negative-20261109.md` for exact scope, test evidence and remaining integration. The publication PR identifies the tested source; later release metadata must not imply a deployment. No current-policy CTS-A-O market or venue PF was measured. The standalone processed-book extension does not complete the native persistent adapter or draft #219. Preserve the visible conflict TODO.
+
+Unchanged OLD October 8–9 cohort: Base 143/1,398 (10.2289%); post-Base 405/1,276 (31.7398%), finite historical mean PF 17.399524089 plus six no-loss contexts; later funded-model PF 0.273050873, positions 52/49/3 and orders 3,116/3,108/8 opened/closed/held. Current-policy and venue PF remain unavailable. The separate CTS-G x02 interrupted demo was flattened; CTS-A-O was not started. No x01 start.
+
 ## 2026-11-09 — complete-parent Last-N accounting
 
 The isolated processed-stage book previously counted partial slices as complete Last-N observations. Nine partial fills of one still-open parent could qualify a nine-parent window. It now accumulates the parent's net contributions through restart and appends one sample only on final settlement. Unknown slices remain unknown; same-time causality and held Active ownership remain intact. Snapshot schema is research version 3; ambiguous version 2 evidence is refused. See `docs/verification/processed-parent-partials-20261109.md`.

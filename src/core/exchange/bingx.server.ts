@@ -18,6 +18,12 @@ export const HOSTS: Record<Network, readonly string[]> = {
   testnet: ["https://open-api-vst.bingx.com", "https://open-api-vst.bingx.pro"],
 };
 
+export function assertConnectionNetwork(network: Network, conn: ConnId): void {
+  const expected = conn === "bingx-x01" ? "mainnet"
+    : conn === "bingx-vst-01" || conn === "bingx-vst-02" ? "testnet" : null;
+  if (!expected || network !== expected) throw new Error("Connection network contradicts its pinned environment");
+}
+
 const TIMEOUT_MS = 10_000;
 // Match the bounded transport budget: a valid request can spend more than five seconds in transit (observed
 // on VST). Re-signing with the same five-second window only repeats that refusal. This does not retry an
@@ -116,6 +122,7 @@ export async function signed(
   path: string,
   params: Record<string, string | number> = {},
 ): Promise<unknown> {
+  assertConnectionNetwork(network, conn);
   const { apiKey, secret } = keysFor(conn);
   if (!apiKey || !secret) throw new Error(`no API keys for ${conn}`);
   // during a ban nothing is sent: calls made while banned keep the account's limit tripped
@@ -666,6 +673,7 @@ const accountCache = new Map<string, { at: number; snap: AccountSnapshot }>();
 
 /** Credential-scoped identity for caches and shared books; never persist or expose the API key itself. */
 function cacheScope(network: Network, conn: ConnId): string {
+  assertConnectionNetwork(network, conn);
   return createHash("sha256").update(network).update("\0").update(conn).update("\0").update(keysFor(conn).apiKey).digest("hex");
 }
 function checkCacheScope(network: Network, conn: ConnId, scope: string): void {
