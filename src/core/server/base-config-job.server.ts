@@ -12,7 +12,9 @@ export interface BaseConfigSummary {
   cutT: number;
   fromT: number;
   cost: number;
-  floorPf: number;
+  /** Bounds of the observed row policies; no row evidence is explicitly unknown. */
+  floorPf: number | null;
+  floorPfMax?: number | null;
   totalPairs: number;
   population: "focusedIndicationCandidates";
   admittedPairs: number;
@@ -128,6 +130,8 @@ export function mergeBaseConfigRows(
       into.push({ ...row, notEvaluated: { ...row.notEvaluated } });
       continue;
     }
+    x.minPfMax = Math.max(x.minPfMax ?? x.minPf, row.minPfMax ?? row.minPf);
+    x.minPf = Math.min(x.minPf, row.minPf);
     for (const k of [
       "configured",
       "evaluated",
@@ -153,6 +157,17 @@ export function mergeBaseConfigRows(
       a.tag.localeCompare(b.tag) ||
       a.kind.localeCompare(b.kind),
   );
+}
+
+function floorBounds(rows: readonly BaseConfigCountRow[]): Pick<BaseConfigSummary, "floorPf" | "floorPfMax"> {
+  if (!rows.length || rows.some(row => !Number.isFinite(row.floorPf) || row.floorPf <= 1))
+    return { floorPf: null, floorPfMax: null };
+  let floorPf = Infinity, floorPfMax = -Infinity;
+  for (const row of rows) {
+    floorPf = Math.min(floorPf, row.floorPf);
+    floorPfMax = Math.max(floorPfMax, row.floorPf);
+  }
+  return { floorPf, floorPfMax };
 }
 
 /** One bounded worker message at a time. A superseded reply is discarded before any row/status publication. */
@@ -183,6 +198,7 @@ export class BaseConfigJobRunner {
     this.snapshot = {
       summary: {
         ...value.summary,
+        ...floorBounds(value.rows),
         state: "cancelled",
         reason: "restartRequired",
         updatedAt: Date.now(),
@@ -227,7 +243,8 @@ export class BaseConfigJobRunner {
         cutT,
         fromT,
         cost,
-        floorPf: 1.1,
+        floorPf: null,
+        floorPfMax: null,
         population: "focusedIndicationCandidates",
         admittedPairs: job.admittedPairKeys?.length ?? 0,
         admittedPairKeys: [...(job.admittedPairKeys ?? [])],
@@ -400,6 +417,7 @@ export class BaseConfigJobRunner {
       }
       for (const k of ["configured", "evaluated", "pfPassed", "passed"] as const)
         state.summary[k] = state.rows.reduce((n, r) => n + r[k], 0);
+      Object.assign(state.summary, floorBounds(state.rows));
       state.summary.state = state.summary.donePairs === job.pairs.length ? "complete" : "partial";
       if (state.summary.state === "complete" && !state.summary.configured)
         state.summary.reason = "noConfigs";
