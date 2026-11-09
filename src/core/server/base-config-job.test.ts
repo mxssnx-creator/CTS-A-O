@@ -1,6 +1,6 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { BaseConfigJobRunner, baseConfigJobKey, type BaseConfigJob, type BaseConfigSnapshot } from "./base-config-job.server.ts";
+import { BaseConfigJobRunner, baseConfigJobKey, mergeBaseConfigRows, type BaseConfigJob, type BaseConfigSnapshot } from "./base-config-job.server.ts";
 import { closePool, runOnWorkers, shareBars, type BaseConfigChunkMessage, type BaseConfigChunkReply } from "./pool.server.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { makeUniverse } from "../pipeline/pipeline.ts";
@@ -51,6 +51,52 @@ const runnerOf = (patch: Partial<ConstructorParameters<typeof BaseConfigJobRunne
 });
 
 describe("exact background Base config counts", { timeout: 60_000 }, () => {
+  it("chunked PF thresholds match direct per-step aggregation in either chunk order", () => {
+    const policy = { ...options, gates: { minPf: 1.05, minTrades: 2, maxDdr: 0,
+      rangeMinPf: { micro: 1.05 }, stepPf: { enabled: true, ratio: .2, max: 2 } } };
+    const cells = [.004, .02].map(tp => ({ tp, sl: .004, trail: 0, hold: 12, tag: "mc" as const }));
+    const direct = new BaseConfigCounter(policy);
+    const chunks = cells.map(p => {
+      const part = new BaseConfigCounter(policy);
+      // Empty samples still have a known configured cell policy; they never become profitable observations.
+      direct.record("follow", "ema-9-21@m1", p, "normal", []);
+      part.record("follow", "ema-9-21@m1", p, "normal", []);
+      return part.rows();
+    });
+    assert.equal(direct.rows()[0].minPf, 1.08);
+    assert.equal(direct.rows()[0].minPfMax, 1.4);
+    for (const order of [chunks, [...chunks].reverse()]) {
+      const merged: ReturnType<BaseConfigCounter["rows"]> = [];
+      for (const rows of order) mergeBaseConfigRows(merged, rows);
+      assert.deepEqual(merged, direct.rows());
+    }
+  });
+
+  it("summary reports the observed range floors and keeps pending or empty policy unknown", async () => {
+    const runner = runnerOf({ run: async m => {
+      const reply = skippedReply(m);
+      return { ...reply, rows: reply.rows.map(row => ({ ...row, floorPf: 1.05, minPf: 1.3, minPfMax: 1.4 })) };
+    } });
+    try {
+      runner.request(jobOf({ protects: protects.slice(0, 1), kinds: ["normal"], dcaOpt: undefined }));
+      assert.equal(runner.snapshot!.summary.floorPf, null, "no worker policy has been observed yet");
+      await until(() => runner.snapshot?.summary.state === "complete");
+      assert.equal(runner.snapshot!.summary.floorPf, 1.05, "a fixed 1.1 must not replace the row's floor");
+      assert.equal(runner.snapshot!.summary.floorPfMax, 1.05);
+      const saved = structuredClone(runner.snapshot!);
+      saved.rows.push({ ...saved.rows[0], ind: "independent-long@m15", tag: "lg", floorPf: 1.5, minPf: 1.7 });
+      // Old snapshots may contain the former hard-coded summary; derive only from their actual retained rows.
+      saved.summary.floorPf = 1.1;
+      runner.restore(saved);
+      assert.equal(runner.snapshot!.summary.floorPf, 1.05);
+      assert.equal(runner.snapshot!.summary.floorPfMax, 1.5);
+      runner.request(jobOf({ key: "empty", pairs: [] }));
+      assert.equal(runner.snapshot!.summary.state, "complete");
+      assert.equal(runner.snapshot!.summary.floorPf, null);
+      assert.equal(runner.snapshot!.summary.floorPfMax, null);
+    } finally { runner.cancel("fixture cleanup"); }
+  });
+
   it("bounded worker chunks equal the full builder including horizon fitting, all types and range Axis exactly once", async () => {
     const job = jobOf();
     const counter = new BaseConfigCounter(options);

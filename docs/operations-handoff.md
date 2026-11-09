@@ -1,3 +1,18 @@
+## 2026-11-09 — preserve actual PF policy bounds in Base statistics
+
+Follow-up to local cancellation checkpoint `124b2bbe5330a34a00a8a5085cf5ca2e02ebd8f0` / published
+`65c481ad1ca846c2ff9603801984b147f3080794`. The worker-chunk merger now preserves both minimum and maximum
+per-step PF thresholds. A direct-counter reproduction formerly reported actual 1.08–1.40 thresholds as
+1.08–1.08. The summary's hard-coded 1.1 floor is replaced with observed floor bounds; pending, empty and
+invalid evidence remain null. Restored summaries derive bounds from retained rows. No gate or default changed.
+Both new regressions were red before the fix; all 30 Base counter/job/step-policy tests pass afterward.
+See `docs/verification/base-pf-bounds-20261109.md` and the release evidence for final build/hosted results.
+
+No new market PF or account start. Unchanged OLD 8–9 October cohort: Base 143/1,398 (10.2289%); post-Base
+405/1,276 (31.7398%), finite historical mean PF 17.399524089 plus six no-loss contexts; subsequent funded-model
+PF 0.273050873. Positions 52/49/3, orders 3,116/3,108/8 opened/closed/held. Current-policy and venue PF unavailable;
+persistent Base→Main→Real admission and forward profitability remain unresolved.
+
 ## 2026-11-09 — cancellation across every owned research phase
 
 Source extends the tree-identical local `9a157d8efa045cade07ea15cc287897da666491c` / published
