@@ -1323,7 +1323,8 @@ export class CoreRuntime {
       ready: () => this.paperStepped && !this.stopped,
       memoryOkay: () => !this.memPressured,
       available: () => workersAvailable() && !this.workersBroken,
-      run: async (message) => (await runOnWorkers<BaseConfigChunkReply>([message], 1, 60_000))[0],
+      run: async (message, signal) =>
+        (await runOnWorkers<BaseConfigChunkReply>([message], 1, 60_000, undefined, false, signal))[0],
       publish: (snapshot) => {
         this.baseConfigs = snapshot;
         this.status.baseConfigs = snapshot.summary;
@@ -1825,13 +1826,15 @@ export class CoreRuntime {
     return task;
   }
   /** Resolves once no paper step runs (the full and the realtime step never interleave their slices). */
-  private async paperIdle(timeoutMs = 30_000): Promise<void> {
+  private async paperIdle(timeoutMs = 30_000, signal?: AbortSignal): Promise<void> {
     const gen = this.gen,
       until = performance.now() + timeoutMs;
     while (this.paperRunning) {
+      signal?.throwIfAborted();
       if (gen !== this.gen || this.stopped)
         throw new Error("paper wait canceled by runtime generation");
       if (performance.now() >= until) {
+        this.cancelCompute("stalled paper generation");
         this.researchAbort?.abort(new Error("research canceled: stalled paper generation"));
         this.gen++;
         this.paperOwner = null;
@@ -2573,6 +2576,7 @@ export class CoreRuntime {
 
   /** Stop now: the in-flight cycle is abandoned at its next yield (a new generation), nothing half-published. */
   stop() {
+    this.cancelCompute("runtime stopped");
     this.resetRealtime("runtime stopped");
     this.cancelBacktests("backtest canceled: runtime stopped");
     this.baseConfigRunner.cancel("stopped");
@@ -2602,6 +2606,7 @@ export class CoreRuntime {
    */
   dispose() {
     this.disposed = true;
+    this.cancelCompute("runtime disposed");
     this.cancelBacktests("backtest canceled: runtime disposed");
     if (!this.stopped) this.stop();
     for (const t of [this.stallTimer, this.healer, this.memTimer]) if (t) clearInterval(t);
@@ -2669,6 +2674,7 @@ export class CoreRuntime {
       !onWorkers &&
       Date.now() - this.status.heartbeat > Math.max(180_000, this.settings.cycleMs * 8);
     if (stale) {
+      this.cancelCompute("watchdog generation replaced");
       this.db.event("warn", "watchdog: loop stale, starting a new generation");
       this.baseConfigRunner.cancel("newGeneration");
       this.cancelCompare("new generation");
@@ -2720,6 +2726,7 @@ export class CoreRuntime {
       "tickSentBook",
       "realtimeLearning",
       "researchAbort",
+      "computeAbort",
       "tickerMetadata",
     ])
       if (self[field] === undefined) self[field] = null;
@@ -2950,7 +2957,7 @@ export class CoreRuntime {
       !recompute
         ? "settings updated — live only, the compute keeps its results"
         : this.busy
-          ? "settings updated — applied after the running compute"
+          ? "settings updated — replacing obsolete research"
           : "settings updated",
     );
     this.emit("settings");
@@ -2963,8 +2970,9 @@ export class CoreRuntime {
     this.kick();
   }
 
-  /** Re-run the compute stages on the next cycle, now (or right after the running one). */
+  /** Cancel obsolete discovery and run the current revision on the next cycle. */
   kick() {
+    this.cancelCompute("research revision requested");
     this.resetRealtime("research revision requested");
     this.dirty = true;
     this.settingsStale = true;
@@ -4067,6 +4075,7 @@ export class CoreRuntime {
     gen: Generator<T, R>,
     onStep: (v: T) => void,
     runGen = this.gen,
+    signal?: AbortSignal,
   ): Promise<R> {
     const t0 = performance.now();
     let slice = t0;
@@ -4103,6 +4112,7 @@ export class CoreRuntime {
     };
     try {
       for (;;) {
+        signal?.throwIfAborted();
         if (runGen !== this.gen) throw new Error("superseded by a newer loop generation");
         const r = gen.next();
         if (runGen !== this.gen) throw new Error("superseded by a newer loop generation");
@@ -4130,6 +4140,7 @@ export class CoreRuntime {
         if (el > SLICE_MS) {
           maxSlice = Math.max(maxSlice, el);
           await yieldNow();
+          signal?.throwIfAborted();
           if (runGen !== this.gen) throw new Error("superseded by a newer loop generation");
           // A burst can cross V8's independent ceiling between one-second RAM samples. Recheck at bounded
           // generator slice boundaries so a research abort can preserve the previous complete live cohort.
@@ -4168,11 +4179,15 @@ export class CoreRuntime {
     wf: WalkForwardOptions,
     gen: number,
     progress: (value: number) => void,
+    signal?: AbortSignal,
   ): Promise<WalkForwardResult> {
+    signal?.throwIfAborted();
     if (this.market !== "bingx" || this.replay || !workersAvailable() || this.workersBroken)
-      return await this.drive("Simulation", walkForwardGen(u, tapes, wf), progress, gen);
+      return await this.drive("Simulation", walkForwardGen(u, tapes, wf), progress, gen, signal);
     const controller = new AbortController(),
       owner = {};
+    const cancel = () => controller.abort(signal?.reason);
+    signal?.addEventListener("abort", cancel, { once: true });
     const estimate = compareTapeBytes(tapes);
     this.researchAbort = controller;
     const check = () => {
@@ -4222,6 +4237,7 @@ export class CoreRuntime {
       };
       return result.sim;
     } finally {
+      signal?.removeEventListener("abort", cancel);
       if (this.researchAbort === controller) this.researchAbort = null;
       await retireOwnedIdleWorkers(owner);
       transfer?.close();
@@ -4229,21 +4245,36 @@ export class CoreRuntime {
   }
 
   async compute(gen = this.gen) {
+    this.cancelCompute("new computation");
+    const controller = new AbortController();
+    this.computeAbort = controller;
+    const owner = {};
     const history = new BoundedHistory();
     const publication = { done: false };
     try {
-      await this.computeWithHistory(gen, history, publication);
+      await this.computeWithHistory(gen, history, publication, controller.signal, owner);
+    } catch (error) {
+      // Replacement/stop is normal control flow. The requesting action already keeps the next revision dirty;
+      // never turn its cancellation into an in-process fallback, error backoff or partly published cohort.
+      if (!controller.signal.aborted || error !== controller.signal.reason) throw error;
     } finally {
+      if (this.computeAbort === controller) this.computeAbort = null;
+      await retireOwnedIdleWorkers(owner);
       // Published lazy tapes retain their owner. Superseded/failed work releases its private files immediately.
       if (!publication.done) history.close();
     }
   }
 
-  private async computeWithHistory(gen: number, history: BoundedHistory, publication: { done: boolean }) {
+  private async computeWithHistory(
+    gen: number, history: BoundedHistory, publication: { done: boolean },
+    signal: AbortSignal, computeWorkerOwner: object,
+  ) {
     const t0 = performance.now();
     // Foreground workers are no longer needed once every tape is received. Release only this compute's idle
     // threads before the in-process Real allocation; another runtime can claim a worker at every message handoff.
-    const computeWorkerOwner = {};
+    const drive = <T, R>(name: string, generator: Generator<T, R>, step: (value: T) => void, runGen = gen) =>
+      this.drive(name, generator, step, runGen, publication.done ? undefined : signal);
+    signal.throwIfAborted();
     this.dirty = false;
     this.status.state = "computing";
     // the job's bar: a compute after this cycle's backfill batch continues it, otherwise it starts at 0
@@ -4261,7 +4292,7 @@ export class CoreRuntime {
     this.emit("state");
     this.touchPrehist();
     this.loop.reset();
-    // snapshot: a settings change during this compute applies to the next one
+    // Snapshot: a material settings change cancels this attempt and schedules its own revision.
     const s = this.settings;
     const computeRevision = computeKey(s, this.wf);
     // Result counters describe the last published cohort, not an unfinished attempt. Progress has its own stage.
@@ -4305,6 +4336,7 @@ export class CoreRuntime {
       allBars.push(...laneSeriesOf(sym, cs, s, 0, strategyH));
       if (sigEnabled(s)) signalBars.push(...signalLaneSeriesOf(sym, cs, s, wf));
       await yieldNow();
+      signal.throwIfAborted();
       if (gen !== this.gen) return;
     }
     if (
@@ -4454,11 +4486,12 @@ export class CoreRuntime {
             if (gen === this.gen) this.setStage("Base", fraction, 1, baseLabel);
           },
           false,
-          undefined,
+          signal,
           computeWorkerOwner,
           undefined,
           60 * 60_000,
         );
+        signal.throwIfAborted();
         if (gen !== this.gen) return;
         // a reply of another shape (a worker file newer / older than this module) is refused: in-process
         if (!res.every((r) => Array.isArray(r?.runsJson)))
@@ -4473,6 +4506,7 @@ export class CoreRuntime {
               else fresh.set(k, [x]);
             }
             await yieldNow();
+            signal.throwIfAborted();
             if (gen !== this.gen) return;
           }
         // this compute's results, the rest from the cache, in combo order (only the current combos are kept)
@@ -4493,11 +4527,12 @@ export class CoreRuntime {
           mainMs: nodePerf.eventLoopUtilization(eluB).active,
         };
       } catch (err) {
+        signal.throwIfAborted();
         if (gen !== this.gen) return;
         this.workersFailed(err, "Base");
       }
     }
-    const pipeline = await this.drive(
+    const pipeline = await drive(
       "Pipeline",
       runPipeline(uStage, { ...s, focus: baseFocus(s) }, pre, exitCombos, signalStageU),
       (p: PipelineProgress) => {
@@ -4529,15 +4564,17 @@ export class CoreRuntime {
               if (gen === this.gen) this.setStage("Tapes", fraction, 1, label);
             },
             false,
-            undefined,
+            signal,
             computeWorkerOwner,
           );
+          signal.throwIfAborted();
           if (gen !== this.gen) return;
           if (!replies.every((reply) => Array.isArray(reply?.runsJson)))
             throw new Error("unexpected Signal Exit Base worker reply (module version mismatch?)");
           signalExitBaseRuns = replies.flatMap((reply) => reply.runsJson.flatMap((chunk) => JSON.parse(chunk) as ComboRun[]));
           signalExitBaseComplete = true;
         } catch (err) {
+          signal.throwIfAborted();
           if (gen !== this.gen) return;
           this.workersFailed(err, "Signal Exit Base");
         }
@@ -4562,7 +4599,7 @@ export class CoreRuntime {
           }
           return runs;
         };
-        signalExitBaseRuns = await this.drive(
+        signalExitBaseRuns = await drive(
           "Signal Exit Base",
           local(),
           (progress) => this.setStage("Tapes", progress.done, progress.total, label),
@@ -4577,7 +4614,8 @@ export class CoreRuntime {
     await this.persistPipeline(pipeline, gen, {
       engine: uStage.series, signals: signalStageU.series, evaluationFromT: this.evaluationFromT,
       cost: s.cost, tactics: s.tactics, grid: s.grid,
-    });
+    }, signal);
+    signal.throwIfAborted();
 
     // walk-forward tapes on the recent tail: warm-up + long window + simulated run
     // + the warm-up the active tactics need (e.g. the 2-week volatility rank) before their first valid signal
@@ -4780,6 +4818,7 @@ export class CoreRuntime {
     const standard = signalProtects(sig);
     try {
       if (s.exitStrategy.enabled && exitFitPairs.length) {
+        signal.throwIfAborted();
         if (gen !== this.gen) return;
         if (this.memPressured)
           throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
@@ -4873,9 +4912,10 @@ export class CoreRuntime {
                   if (gen === this.gen) this.setStage("Tapes", fraction, 1, label);
                 },
                 false,
-                undefined,
+                signal,
                 computeWorkerOwner,
               );
+              signal.throwIfAborted();
               if (gen !== this.gen) return;
               if (this.memPressured)
                 throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
@@ -4909,6 +4949,7 @@ export class CoreRuntime {
                 slowest: `${n} workers · ${parts.length} bounded chunks of at most 16 pairs`,
               };
             } catch (err) {
+              signal.throwIfAborted();
               if (gen !== this.gen) return;
               this.workersFailed(err, "Exit history");
             }
@@ -4938,7 +4979,7 @@ export class CoreRuntime {
               try {
                 Object.assign(
                   history,
-                  await this.drive(
+                  await drive(
                     "Exit history",
                     g,
                     () => this.setStage("Tapes", 0, 1, labelBase),
@@ -5010,6 +5051,7 @@ export class CoreRuntime {
       // each signal's historic trailing configs (signal-hist.ts) from the stage's history (causal: before the run start),
       // computed between ticks; a held historic config whose distances moved since keeps its own tape
       if (sig.enabled && sig.hist.enabled && sigPairs.size) {
+        signal.throwIfAborted();
         if (gen !== this.gen) return;
         if (this.memPressured)
           throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
@@ -5044,9 +5086,10 @@ export class CoreRuntime {
                 if (gen === this.gen) this.setStage("Tapes", fraction, 1, label);
               },
               false,
-              undefined,
+              signal,
               computeWorkerOwner,
             );
+            signal.throwIfAborted();
             if (gen !== this.gen) return;
             if (this.memPressured)
               throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
@@ -5082,6 +5125,7 @@ export class CoreRuntime {
               slowest: `${n} cores · ${parts.length} replies`,
             };
           } catch (err) {
+            signal.throwIfAborted();
             if (gen !== this.gen) return;
             this.workersFailed(err, "Signal history");
           }
@@ -5100,7 +5144,7 @@ export class CoreRuntime {
             signalHistDiagnostics,
           );
           try {
-            hist = await this.drive(
+            hist = await drive(
               "Signal history",
               g,
               (p) => this.setStage("Tapes", p.done, p.total, histLabel),
@@ -5193,12 +5237,13 @@ export class CoreRuntime {
       const totalWork = Math.max(1, otherWork + (s.grid?.trailingOnly === true ? engineRuns.length : 0));
       const eligible = (ind: string, tag: string) => rangeAppliesTo(ind, tag, applies);
       this.startStage("Tapes", label);
-      const rangeCounts = await this.drive(
+      const rangeCounts = await drive(
         "Base ranges",
         baseRangeCountsGen(engineRuns, setsGates, ALL_RANGE_TAGS, eligible),
         (n) => this.setStage("Tapes", n, totalWork, label),
         gen,
       );
+      signal.throwIfAborted();
       if (gen !== this.gen) return;
       const rows: NonNullable<RuntimeStatus["baseByRange"]> = rangeCounts.map((x) => ({
         ...x,
@@ -5236,27 +5281,30 @@ export class CoreRuntime {
       }
       nextStatus.baseByRange = rows;
       // what each Base gate would admit, from the same results (no recompute)
-      nextStatus.baseGates = await this.drive(
+      nextStatus.baseGates = await drive(
         "Base gate sensitivity",
         baseGateSensitivityGen(engineRuns, setsGates, ALL_RANGE_TAGS, BASE_GATE_VARIANTS, eligible),
         (n) => this.setStage("Tapes", rangeWork + n, totalWork, label),
         gen,
       );
+      signal.throwIfAborted();
       if (gen !== this.gen) return;
       // per range, the gate each failing pair misses (closes, net, PF, drawdown ratio)
-      const why = await this.drive(
+      const why = await drive(
         "Base gate reasons",
         baseRangeWhyGen(engineRuns, setsGates, ALL_RANGE_TAGS, eligible),
         (n) => this.setStage("Tapes", rangeWork + gateWork + n, totalWork, label),
         gen,
       );
+      signal.throwIfAborted();
       if (gen !== this.gen) return;
       nextStatus.baseWhy = why.filter((x) => enabled(x.tag));
       const noTp = s.grid?.trailingOnly === true
-        ? await this.drive("Base trailing-only cells", trailingOnlyBaseCountsGen(engineRuns,
+        ? await drive("Base trailing-only cells", trailingOnlyBaseCountsGen(engineRuns,
             (bot, ind, tag) => eligible(ind, tag) && (!famNarrow || familyTags(evalFams!, bot, ind, [tag]).includes(tag))),
             (n) => this.setStage("Tapes", otherWork + n, totalWork, label), gen)
         : [];
+      signal.throwIfAborted();
       if (gen !== this.gen) return;
       nextStatus.baseTrailingOnlyByRange = noTp.map((x) => ({ ...x,
         range: RANGE_LABEL[x.tag as keyof typeof RANGE_LABEL] ?? (x.tag || "Wide"), enabled: enabled(x.tag),
@@ -5366,7 +5414,7 @@ export class CoreRuntime {
               if (gen === this.gen) this.setStage(stage, fraction, 1, tapeLabel);
             },
             false,
-            undefined,
+            signal,
             computeWorkerOwner,
             async (reply, _index, signal) => {
               let slice = performance.now();
@@ -5387,10 +5435,11 @@ export class CoreRuntime {
               return reply;
             },
           );
+          signal.throwIfAborted();
           if (gen !== this.gen) return null;
           // A reply can contain hundreds of thousands of opens. Yield during interning and bucket flattening so
           // execution and protection checks can run, while preserving exactly the former pair/reply order.
-          const merged = await this.drive("Tape merge", mergeWorkerTapesGen(res, order), () => undefined, gen);
+          const merged = await drive("Tape merge", mergeWorkerTapesGen(res, order), () => undefined, gen);
           if (floors.buildStats)
             for (const r of res) mergeBuildStats(floors.buildStats, r.buildStats ?? []);
           workerTapes = merged;
@@ -5411,6 +5460,7 @@ export class CoreRuntime {
             mainMs: nodePerf.eventLoopUtilization(eluT).active,
           };
         } catch (err) {
+          signal.throwIfAborted();
           if (gen !== this.gen) return null;
           // Storage failures cannot silently switch to an unbounded fallback or publish an incomplete cohort.
           if (err instanceof HistoryStorageError || this.memPressured) throw err;
@@ -5420,7 +5470,7 @@ export class CoreRuntime {
       if (workerTapes) return workerTapes;
       if (!pairs.size) return [];
       this.startStage(signalStage ? "Signals" : "Tapes", `${what} · ${pairs.size} pairs`);
-      return await this.drive(
+      return await drive(
         "Tapes",
         buildTapesGen(tapeUniverse, protects, s.cost, dcaFor, pairs, s.tactics, adjustNow, {
           ...floors, tapeSink: history.retain,
@@ -5439,7 +5489,8 @@ export class CoreRuntime {
     // partial processing (memory): while the new tapes are built, the previous set keeps only what live can act on
     // during the compute — and, under a memory fallback, the ranges this compute does not rebuild (carried, carryTags)
     this.startStage("Tapes", "preparing: slimming the previous tapes");
-    await this.slimTapes(carryTags, gen);
+    await this.slimTapes(carryTags, gen, signal);
+    signal.throwIfAborted();
     // every set's completeness: grid cells per indication × range × type, built / kept / not built and why
     const buildStats = new Map<string, TapeBuildStat>();
     // validated-only processing builds nothing it cannot seat: a held pair that did not pass Base only its held ids, and no
@@ -5599,6 +5650,7 @@ export class CoreRuntime {
     // Await physical exit, not just removal from the pool. Transferred tape arenas remain main-owned; only worker
     // heaps/caches are released. Ownership is rechecked synchronously by the pool, so foreign reuse is preserved.
     await retireOwnedIdleWorkers(computeWorkerOwner);
+    signal.throwIfAborted();
     if (gen !== this.gen) return;
     if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
     // Worker scratch and shared-input references are dead at this phase boundary. Collect once here instead
@@ -5741,7 +5793,8 @@ export class CoreRuntime {
           `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · engine ${wf.preH}h pre / Last-${wf.validLastN ?? 0}${sig.enabled ? ` · Signals ${signalHistoryHours(wf)}h / Last-${wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN ?? 0}` : ""} · entry Last-${wf.lastN}`,
         );
       }
-    });
+    }, signal);
+    signal.throwIfAborted();
     if (
       gen !== this.gen ||
       computeRevision !== computeKey(this.settings, this.wf) ||
@@ -5749,7 +5802,7 @@ export class CoreRuntime {
     )
       return;
     // Count the exact finished cohort, not the temporary worker inputs or a partially built next cohort.
-    const strategyCoverage = await this.drive("Strategy coverage", strategyCoverageGen(tapes), () => undefined, gen);
+    const strategyCoverage = await drive("Strategy coverage", strategyCoverageGen(tapes), () => undefined, gen);
     // the realtime entry step stands aside while the new tapes and run replace the old ones, until the full paper
     // step has seated on them (it re-checks the hold at every slice)
     if (
@@ -5759,7 +5812,8 @@ export class CoreRuntime {
     )
       return;
     this.fastHold = true;
-    await this.paperIdle();
+    await this.paperIdle(30_000, signal);
+    signal.throwIfAborted();
     if (
       gen !== this.gen ||
       computeRevision !== computeKey(this.settings, this.wf) ||
@@ -5803,6 +5857,8 @@ export class CoreRuntime {
     this.incTail = nextIncTail;
     this.tapes = tapes;
     publication.done = true;
+    // The complete cohort now owns its histories. Finish its reporting even if new research is requested.
+    if (this.computeAbort?.signal === signal) this.computeAbort = null;
     if (history.store) {
       const h = history.store.stats;
       this.status.phases["History storage"] = {
@@ -5928,13 +5984,13 @@ export class CoreRuntime {
       };
       Object.assign(
         sigStatus,
-        await this.drive("Signal status", sigSummary(), () => undefined, gen),
+        await drive("Signal status", sigSummary(), () => undefined, gen),
       );
     }
     this.phase("Persist sim", () => this.persistSim(sim));
     this.phase("Auto preset", () => this.autoPreset(s, wf, sim));
     // the pre-historic stats in slices (one pass over every simulated trade per slice)
-    const prehist = await this.drive(
+    const prehist = await drive(
       "Prehistoric",
       prehistStatsGen(sim.trades, sim.startT, sim.endT),
       () => undefined,
@@ -6105,6 +6161,10 @@ export class CoreRuntime {
   } | null = null;
   private compareAbort: AbortController | null = null;
   private researchAbort: AbortController | null = null;
+  private computeAbort: AbortController | null = null;
+  private cancelCompute(reason: string) {
+    this.computeAbort?.abort(new Error(`compute canceled: ${reason}`));
+  }
   private compareRetryAt = 0;
   private cancelCompare(reason: string) {
     const pending = this.compareAbort || this.compareInput;
@@ -6335,6 +6395,7 @@ export class CoreRuntime {
     rows: Iterable<[string, Array<string | number | null>]>,
     gen: number,
     chunk = 1500,
+    signal?: AbortSignal,
   ) {
     const db = this.db;
     let n = 0;
@@ -6350,6 +6411,7 @@ export class CoreRuntime {
           db.db.exec("COMMIT");
           maxSlice = Math.max(maxSlice, performance.now() - slice);
           await yieldNow();
+          signal?.throwIfAborted();
           if (gen !== this.gen) throw new Error("superseded by a newer loop generation");
           slice = performance.now();
           db.db.exec("BEGIN");
@@ -6367,7 +6429,7 @@ export class CoreRuntime {
     return Math.max(maxSlice, performance.now() - slice);
   }
 
-  private async persistPipeline(o: PipelineOutput, gen: number, detail: NonNullable<CoreRuntime["baseDetail"]>) {
+  private async persistPipeline(o: PipelineOutput, gen: number, detail: NonNullable<CoreRuntime["baseDetail"]>, signal?: AbortSignal) {
     const t0 = performance.now();
     const now = Date.now();
     const db = this.db;
@@ -6506,7 +6568,8 @@ export class CoreRuntime {
           ];
       }
     }
-    const maxSlice = await this.writeChunked(rows(), gen);
+    const maxSlice = await this.writeChunked(rows(), gen, 1500, signal);
+    signal?.throwIfAborted();
     const ts = performance.now();
     db.shadowSwap(TABLES);
     // Detail reconstruction belongs to these published database rows, including their causal cutoff and the
@@ -9076,6 +9139,7 @@ export class CoreRuntime {
   private async slimTapes(
     carryTags: ReadonlySet<string> = new Set(),
     gen = this.gen,
+    signal?: AbortSignal,
   ): Promise<void> {
     if (!this.tapes.length) return;
     const keep = new Set<string>(this.paper.selected ?? []);
@@ -9095,8 +9159,9 @@ export class CoreRuntime {
     let compact: ConfigTape[] = [];
     if (kept.length)
       try {
-        compact = await this.drive("Slim", compactByCarryGen(kept), () => undefined, gen);
+        compact = await this.drive("Slim", compactByCarryGen(kept), () => undefined, gen, signal);
       } catch (err) {
+        signal?.throwIfAborted();
         // memory pressure: the compaction is what frees memory — finished in one piece rather than aborted (an
         // aborted one kept the full set, and every next compute started under the same pressure); superseded: the
         // newer compute compacts
@@ -9108,6 +9173,7 @@ export class CoreRuntime {
             break;
           }
       }
+    signal?.throwIfAborted();
     this.tapes = compact;
     // the acceptance record stays the full set's (the simulation's), and is not rebuilt on the live tick
     carryGuardIndices(full, this.tapes);

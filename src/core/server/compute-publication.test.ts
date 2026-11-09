@@ -309,6 +309,38 @@ test("timing-only settings changes do not discard a completed economic calculati
   assert.notEqual(f.inner.fastArgs, f.oldFast);
 });
 
+test("same-generation replacement closes the local research generator and the latest revision completes", async () => {
+  const f = fixture(), drive = f.inner.drive.bind(f.rt), generation = f.inner.gen;
+  let steps = 0, closed = false, replaced = false;
+  f.inner.drive = async (name, ...args) => {
+    if (name !== "Pipeline") return drive(name, ...args);
+    function* work() {
+      try {
+        for (let i = 0; i < 10_000; i++) { steps++; yield i; }
+        throw new Error("obsolete generator continued to completion");
+      } finally { closed = true; }
+    }
+    return drive(name, work(), () => {
+      if (steps === 3) {
+        replaced = true;
+        f.rt.updateSettings({ gates: { minPf: f.rt.settings.gates.minPf + 0.01 } });
+      }
+    }, args[2], args[3]);
+  };
+  await f.rt.compute();
+  assert.ok(replaced && closed);
+  assert.equal(steps, 3, "do not drain a canceled local generator or restart it as fallback");
+  assert.equal(f.inner.gen, generation, "held-position processing keeps its generation");
+  assert.equal(f.rt.status.computes, 0);
+  assertCurrent(f);
+  f.inner.drive = drive;
+  await f.rt.compute();
+  assert.equal(f.rt.status.computes, 1);
+  assert.equal(f.rt.status.appliedSettingsAt, f.rt.status.settingsAt);
+  assert.equal(f.rt.status.pending, false);
+  assert.equal(f.rt.status.error, null);
+});
+
 for (const change of ["timing", "live", "unchanged"] as const)
   test(`${change} settings cannot cancel a partially completed exact Base sweep`, async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });

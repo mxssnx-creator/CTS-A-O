@@ -174,6 +174,46 @@ describe("exact background Base config counts", { timeout: 60_000 }, () => {
     assert.equal(runner.snapshot!.summary.doneChunks, 0);
   });
 
+  it("cancels unfinished owned count work before replacing or stopping its job", async () => {
+    let active = 0, firstStarted = false, lastSignal: AbortSignal | undefined;
+    const runner = runnerOf({
+      run: (message, signal) => {
+        lastSignal = signal;
+        active++;
+        firstStarted = true;
+        return new Promise<BaseConfigChunkReply>((resolve, reject) => {
+          const finish = () => { active--; reject(signal.reason); };
+          if (signal?.aborted) finish();
+          else signal?.addEventListener("abort", finish, { once: true });
+          if (message.options.cost === .002) {
+            signal?.removeEventListener("abort", finish);
+            active--; resolve(skippedReply(message));
+          }
+        });
+      },
+    });
+    try {
+      runner.request(jobOf());
+      await until(() => firstStarted);
+      const previous = lastSignal;
+      runner.request(jobOf({ key: "new-economic-policy", settingsAt: 2,
+        common: { ...common, cost: .002, options: { ...options, cost: .002 } } }));
+      assert.equal(previous?.aborted, true, "replacing the job aborts its old worker call");
+      await until(() => runner.snapshot?.summary.state === "complete");
+      assert.equal(active, 0);
+      assert.equal(runner.snapshot!.summary.key, "new-economic-policy");
+      assert.ok(runner.snapshot!.rows.every(row => row.cost === .002));
+      firstStarted = false;
+      runner.request(jobOf({ key: "last-job", settingsAt: 3 }));
+      await until(() => firstStarted);
+      runner.cancel("stopped");
+      assert.equal(lastSignal?.aborted, true, "stop aborts its current count worker too");
+      await until(() => active === 0);
+      assert.equal(runner.snapshot!.summary.state, "cancelled");
+      assert.equal(runner.snapshot!.summary.doneChunks, 0);
+    } finally { runner.cancel("fixture cleanup"); }
+  });
+
   it("clears identities after a completed partial slice when the same pair is replaced", async () => {
     let foreground = false;
     const messages: BaseConfigChunkMessage[] = [];

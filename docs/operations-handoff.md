@@ -1,3 +1,24 @@
+## 2026-11-09 — cancellation across every owned research phase
+
+Source extends the tree-identical local `9a157d8efa045cade07ea15cc287897da666491c` / published
+`360d5f823c2b36420e99c51ef8f679abdb614211` checkpoint on main `6d845cfdd1701e3f69d51a4de0e79360e31e1abe`.
+Base, Exit/Signal history, tapes, Real and background Base counts now receive scoped cancellation. Stop,
+disposal, resync and economic settings replacement remove old running/queued work without changing another
+owner's job, turning cancellation into fallback, or changing held quantities/stops. Timing-only updates keep work.
+The four actual-runtime reproductions and the background count reproduction were red before the fixes.
+See `docs/verification/compute-cancellation-20261109.md` for the contract and commands.
+
+115 focused checks pass; typecheck and production/core-worker build pass; scoped lint has no errors (five existing
+warnings). The unchanged slow storm now passes in 493.613s under its original 900s ceiling. Micro/context,
+identity, costs and stage checks remain 37 passes plus the visible processed-predecessor TODO. Hosted validation,
+the remaining slow check and publication metadata are recorded separately; do not claim unobserved checks passed.
+
+No new CTS-A-O market PF or live deployment. Unchanged OLD 8–9 October cohort: Base 143/1,398 (10.2289%);
+post-Base 405/1,276 (31.7398%), historical finite mean PF 17.399524089 plus six no-loss contexts; subsequent
+funded-model PF 0.273050873. Positions 52/49/3 and orders 3,116/3,108/8 opened/closed/held. Current-policy
+post-Base PF and venue PF unavailable. Persistent Base→Main→Real adapter, forward performance and native live
+reconciliation remain unfinished; the worker fix does not establish those. No default or x01 start changed.
+
 ## 2026-11-08 — initial protection policy and low-step integrity
 
 Tested code checkpoint `76719756e2ea84277c51e149cd0019488ad782d9` (with replay scheduler `a03f4662e4d1fba190ce8489ae14841897df7323`). The publication commit may add only this handoff. Initial SL is now at least modeled round-trip costs plus the global 0.1–1.0% net minimum (default 0.1%); TP stays at its requested distance. Ten SL/TP ratios run from 0.25 to 2.5. Runtime normalization and a transactional backed-up settings migration synchronize ordinary ranges, Low-Range, Signals, DCA and Axis while preserving owned positions and retiring stale candidate metrics.

@@ -162,6 +162,7 @@ export class BaseConfigJobRunner {
   private epoch = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private running = false;
+  private controller: AbortController | null = null;
   private chunkIndex = 0;
   private planBase: CountPlanBase | null = null;
   private plans = new Map<string, CountPlan>();
@@ -170,7 +171,7 @@ export class BaseConfigJobRunner {
     ready: () => boolean;
     memoryOkay: () => boolean;
     available: () => boolean;
-    run: (message: BaseConfigChunkMessage) => Promise<BaseConfigChunkReply>;
+    run: (message: BaseConfigChunkMessage, signal: AbortSignal) => Promise<BaseConfigChunkReply>;
     publish: (snapshot: BaseConfigSnapshot) => void;
   };
   constructor(deps: BaseConfigJobRunner["deps"]) {
@@ -199,6 +200,7 @@ export class BaseConfigJobRunner {
     )
       return;
     this.epoch++;
+    this.controller?.abort(new Error("Base counts canceled: replacement job"));
     this.job = job;
     this.seenPair = "";
     this.seen = [];
@@ -249,6 +251,7 @@ export class BaseConfigJobRunner {
   }
   cancel(reason: string): void {
     this.epoch++;
+    this.controller?.abort(new Error(`Base counts canceled: ${reason}`));
     this.job = null;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
@@ -325,6 +328,8 @@ export class BaseConfigJobRunner {
       return;
     }
     this.running = true;
+    const controller = new AbortController();
+    this.controller = controller;
     try {
       // Completed slices carry only identities across requests, never trade arrays or mutable simulator caches.
       const pairIndex = state.summary.donePairs;
@@ -354,6 +359,7 @@ export class BaseConfigJobRunner {
       const seen = this.seenPair === pair ? this.seen : [];
       state.summary.state = "running";
       this.publish();
+      controller.signal.throwIfAborted();
       const reply = await this.deps.run({
         ...job.common,
         protects: chunk.protects,
@@ -363,7 +369,7 @@ export class BaseConfigJobRunner {
         type: "base-config-count",
         pair,
         seen,
-      });
+      }, controller.signal);
       if (epoch !== this.epoch || this.job !== job) return;
       if (reply.rows.some((r) => `${r.bot}|${r.ind}` !== pair))
         throw new Error("Base count worker returned another pair's rows");
@@ -406,6 +412,7 @@ export class BaseConfigJobRunner {
         this.publish();
       }
     } finally {
+      if (this.controller === controller) this.controller = null;
       this.running = false;
       if (epoch === this.epoch && ["complete", "error", "disabled"].includes(state.summary.state)) {
         this.job = null;
