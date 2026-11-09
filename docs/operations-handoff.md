@@ -1,3 +1,21 @@
+## 2026-11-09 — native processed replay integration
+
+Published code `27c7ad6fb52f611a3a2773270a61abe1b3721157`, tested tree
+`07095875861314e24e20398fa44c7768f5764a25` (local code `4d69a1d2481b60e05d8b0c66fd1043c6d7d0595d`).
+Native walk-forward now supports opt-in processed Main/Real parent windows with causal admissions/settlements.
+The conflict fixture passes in this mode: 14 rejected winning siblings never enter the 14-loss own processed
+record. Ninety bounded checks pass; one TODO explicitly retains the unfinished persistent paper/venue adapter.
+Types and production/core-worker build pass locally and in hosted run 42621109498 on the published code.
+The later release commit changes documentation only. See `docs/verification/processed-replay-20261109.md` for exact
+scope, coverage denominators and limits. Native paper/pending paths fail closed for the experimental option
+while held protection stays intact. No default activation, deployment, account start or profitable preset promotion.
+
+Current-policy market post-Base PF/validated percentage and venue PF remain unavailable. Unchanged OLD
+8–9 October cohort: Base 143/1,398 (10.2289%), post-Base 405/1,276 (31.7398%), historical finite mean
+PF 17.399524089 plus six no-loss contexts; later funded-model PF 0.273050873. Positions 52/49/3,
+orders 3,116/3,108/8 O/C/H. The native persistent adapter, per-stage independent protection resimulation,
+negative-Main inverse lanes, paper/venue ownership/reconciliation and forward acceptance remain unfinished.
+
 ## 2026-11-09 — own-context sample coverage
 
 Completed-cohort Progress now publishes sample counts and percentages for exact config/symbol/direction contexts, separately from PF validation. Empty, short, corrupt and carried contexts remain visible; publication uses existing cancellation/revision guards. See `docs/verification/sample-coverage-20261109.md` for tests and denominators. The persistent processed Main→Real adapter remains unfinished and its conflict TODO remains visible.
