@@ -58,7 +58,7 @@ function fixture() {
     book.acceptPostBase(identity, order, row.entryT, policy);
     book.close(identity, order, row.entryT, "final", row.exitT, row.r, true);
   }
-  return { tape, options, decisionTime, simulation, executed, book, identity };
+  return { tape, tapes: [tape, other], universe, options, decisionTime, simulation, executed, book, identity };
 }
 
 test("own processed Last-12 retains the admitted losses and excludes conflict-rejected siblings", () => {
@@ -71,10 +71,18 @@ test("own processed Last-12 retains the admitted losses and excludes conflict-re
   assert.equal(configDirectionEval(f.tape, f.decisionTime, f.options, 1).ok, true);
 });
 
-test("Main must use the processed predecessor before admitting another losing order", {
-  todo: "Persistent processed Main → Real runtime adapter is not yet wired to walkForward or paper/live admission",
-}, () => {
+test("native processed replay excludes conflict-rejected wins from Main and Real", () => {
   const f = fixture();
-  assert.equal(f.executed.some((row) => row.entryT === f.decisionTime), false,
+  const native = walkForward(f.universe, f.tapes, { ...f.options, processedStages: { validationN: 12, realN: 12 } });
+  assert.equal(native.trades.some(row => row.cfg === f.tape.id && row.entryT === f.decisionTime), false,
     "a raw-candidate pass must not override the exact processed set's failed Last-12");
+  const own = native.processedStages!.sets.find(row => row.identity.baseConfigId === f.tape.id)!;
+  assert.equal(own.stages.postBase.closedOrders, 14);
+  assert.equal(own.stages.postBase.returnPf, 0);
+  assert.equal(own.evaluations.validation.failed, 2);
+  assert.equal(own.stages.validated.openedOrders, 0);
+  assert.equal(own.stages.active.openedOrders, 0);
+  assert.equal(native.skips.conflict, 14, "rejected winning siblings never enter a processed set");
 });
+
+test.todo("Persistent owned paper/venue Main → Real integration remains separate from opt-in modeled replay");

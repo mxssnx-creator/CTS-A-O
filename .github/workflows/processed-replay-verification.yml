@@ -1,0 +1,35 @@
+name: Processed replay verification
+on:
+  push:
+    branches: ['codex/processed-runtime-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_COMPARE: "0"
+      CTS_CORE_TEST_CONCURRENCY: "2"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - name: Bounded native, worker and ownership regressions
+        run: >-
+          node scripts/test-core.mjs
+          src/core/sim/processed-set.test.ts src/core/sim/processed-main-conflict.test.ts
+          src/core/sim/processed-replay.test.ts src/core/sim/bounded-lastn-audit.test.ts
+          src/core/sim/admission-cohort.test.ts src/core/server/processed-admission-boundary.test.ts
+          src/core/server/paper-validation-independence.test.ts src/core/server/paper-held-capacity.test.ts
+          src/core/server/paper-unit-runtime.test.ts src/core/server/last-n-samples.test.ts
+          src/core/server/stage-lifecycle.test.ts
+      - run: npm run build

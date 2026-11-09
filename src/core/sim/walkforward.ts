@@ -1,4 +1,6 @@
 import { RT_COST } from "../model-cost.ts";
+import { ProcessedReplay, type ProcessedReplayPolicy, type ProcessedReplayReport } from "./processed-replay.ts";
+import type { ProcessedOpen } from "./processed-set.ts";
 import { minimumStopFraction } from "../protection-policy.ts";
 import { protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
@@ -384,6 +386,8 @@ export interface RangeOpts {
 }
 
 export interface WalkForwardOptions {
+  /** Opt-in native model stages; full own-parent windows, no raw-history bootstrap. Paper/live fail closed. */
+  processedStages?: ProcessedReplayPolicy;
   /** Per Axis set, relative to the corresponding base volume. Captured once at entry. */
   axisVolumeFactor?: number;
   /** Historic Exit owns its range ratio; never inherits Wide or a Signal parameter range. */
@@ -3066,6 +3070,8 @@ export interface StepLog {
 }
 
 export interface WalkForwardResult {
+  /** Own processed-stage evidence, separately labeled from raw historical validation and funded returns. */
+  processedStages?: ProcessedReplayReport;
   startT: number;
   /** seatSet "validated": the validated set V the run selected from (ids), evaluated at startT */
   validated?: string[];
@@ -5515,10 +5521,13 @@ export function execDecision(
     relate?: RelateBook | null;
     /** Complete current external base, resolved from the Block decision before Relate sizes the entry. */
     relateBase?: (blockVolume: number) => number;
+    /** Internal replay collection path; it must apply the processed verdict before publishing execution. */
+    processedBase?: boolean;
     sym: string;
     side: number;
   },
 ): ExecDecision {
+  if (o.processedStages && !ctx?.processedBase) return { ok: false, why: "processedUnavailable" };
   const tg = o.toggles;
   const applyRelate = (decision: Extract<ExecDecision, { ok: true }>): ExecDecision => {
     if (!o.relate?.enabled) return decision;
@@ -5678,6 +5687,7 @@ export function execDecision(
   const lastN = isSignalInd(tp.ind) ? signalEntryLastNOf(tp, o) : engineN;
   if (
     !probed &&
+    !o.processedStages &&
     !(ctx && isSignalInd(tp.ind)
       ? signalLastNOk(
           tp,
@@ -6722,6 +6732,9 @@ export function* walkForwardGen(
   tapes: readonly ConfigTape[],
   o: WalkForwardOptions,
 ): Generator<number, WalkForwardResult> {
+  const processed = o.processedStages ? new ProcessedReplay(o.processedStages, o.cost) : null;
+  const processedOpen = new Map<Trade, ProcessedOpen>();
+  const processedFloor = (tp: ConfigTape) => Math.max(o.lastNMinPf, minPfForTape(tp, o));
   const byId = new Map(tapes.map((t) => [t.id, t]));
   const indicationVolumeFactors = new Map(
     tapes.map((tp) => [tp.id, volumeFactorForStrategy(tp, o)]),
@@ -6843,6 +6856,16 @@ export function* walkForwardGen(
     while (open.size && open.peekT() <= t) {
       const x = open.pop()!;
       counts.add(x, -1);
+      const owned = processedOpen.get(x);
+      if (owned) {
+        // An endpoint mark is held exposure, never a completed Last-N observation.
+        if (!x.markedOpen) processed!.settle(owned, x.exitT, unitReturn(x));
+        processedOpen.delete(x);
+        if (owned.stage !== "active") {
+          if (++settled % 32 === 0) yield -2;
+          continue;
+        }
+      }
       const k = Math.floor(x.exitT / H);
       let hours = hourNet;
       if (isHistoricExitConfig(x.cfg, x.kind)) {
@@ -7143,6 +7166,7 @@ export function* walkForwardGen(
         const dec = why
           ? null
           : execDecision(tp, tr.entryT, stepOpts, {
+              processedBase: !!processed,
               book,
               guard,
               direction,
@@ -7166,8 +7190,11 @@ export function* walkForwardGen(
           skipR(skipName(why), tr.r);
           continue;
         }
-        // All account-independent Real entry gates passed. Do not stamp candidates held back by any earlier gate.
-        fx.accepted = true;
+        // Only actual Base-processed admissions enter this book. Conflict/cap/strategy rejects never lend proof.
+        const stage = processed?.enter(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp));
+        const active = !stage || stage.stage === "active";
+        // Accepted Real feedback excludes warm-up orders that have not cleared both processed windows.
+        fx.accepted = active;
         delete fx.relateShadow;
         if (dec.blockAttribution) fx.blockAttribution = dec.blockAttribution;
         // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
@@ -7219,11 +7246,21 @@ export function* walkForwardGen(
           const ck = crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT);
           crowd.set(ck, (crowd.get(ck) ?? 0) + 1);
         }
-        if (x.markedOpen) openAtEnd.push(x);
-        else trades.push(x);
-        taken++;
-        rangeRow(stepRange(x.cfg)).taken++;
-        net += x.r * 100;
+        if (stage) processedOpen.set(x, stage);
+        if (active) {
+          if (x.markedOpen) openAtEnd.push(x);
+          else trades.push(x);
+          taken++;
+          rangeRow(stepRange(x.cfg)).taken++;
+          net += x.r * 100;
+        } else {
+          // Keep processing the predecessor after a failed/short window so it can causally recover.
+          const reason = stage!.validation.state !== "qualified"
+            ? `processed:validation:${stage!.validation.state}` : `processed:real:${stage!.real!.state}`;
+          skipped++;
+          skip(skipName(reason), tr.side, tr.cfg);
+          skipR(skipName(reason), tr.r);
+        }
         open.push(x.exitT, x);
         counts.add(x, 1);
       }
@@ -7334,6 +7371,14 @@ export function* walkForwardGen(
     : undefined;
   return {
     startT,
+    ...(processed ? { processedStages: processed.report(stopT, (function* () {
+      for (const tp of [...allEngine, ...sigTapes]) {
+        if (tp.heldOnly) continue;
+        const minPf = processedFloor(tp);
+        for (const sym of new Set(tp.syms)) for (const side of [1, -1] as const)
+          yield { identity: processed.identity(tp, sym, side, minPf), minPf };
+      }
+    })()) } : {}),
     ...(validatedIds ? { validated: [...validatedIds] } : {}),
     endT: stopT,
     opts: rest,
