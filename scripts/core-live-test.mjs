@@ -46,6 +46,7 @@ if (mainnet && maxLoss === 0 && !(maxLossPct > 0))
   process.stderr.write(`${name}: no loss limit (--max-loss 0, operator's choice) — the free-margin floor still applies\n`);
 const hasLossLimitArg = () => maxLoss > 0 || maxLossPct > 0;
 const hours = Number(arg("hours", 6));
+const closeAtEnd = !mainnet && arg("close-at-end", "no") === "yes";
 const everyMin = Number(arg("every", 5));
 const symbols = Number(arg("symbols", 16));
 const notional = Number(arg("notional", 10));
@@ -806,7 +807,12 @@ const stop = async (why) => {
   // Live off stops the control (held positions keep their exchange stops); a loss limit, a mainnet desk or a
   // signal also closes the tag's own positions (only the quantity this tag filled, never another system's)
   rt.updateSettings({ live: { ...rt.settings.live, enabled: false } });
-  if (why !== "restart" && (why === "max loss" || mainnet || why === "SIGTERM" || why === "SIGINT"))
+  rt.stop();
+  // A timed-out wait does not cancel an accepted order. Retain protections until its
+  // ownership has settled instead of racing a flatten against an in-flight entry.
+  while (!(await rt.liveSettled(20_000)))
+    process.stderr.write(`${name}: stop waiting for in-flight live ownership\n`);
+  if (why !== "restart" && (why === "max loss" || mainnet || why === "SIGTERM" || why === "SIGINT" || closeAtEnd))
     for (let i = 0; i < 3; i++) {
       try {
         const n = await flatten(conn, tag, { from: t0 - 60_000, allowMainnet: mainnet });
@@ -814,6 +820,10 @@ const stop = async (why) => {
         process.stderr.write(`${name}: ${why} — closed ${n} own position(s)\n`);
         break;
       } catch (e) {
+        if (e?.noCloseRetry) {
+          process.stderr.write(`${name}: close confirmation pending (${e}); protections retained, no duplicate close\n`);
+          break;
+        }
         process.stderr.write(`${name}: closing own positions failed (${e}) — retrying\n`);
         await new Promise((r) => setTimeout(r, 5000 * (i + 1)));
       }

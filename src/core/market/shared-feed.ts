@@ -1,6 +1,6 @@
 // One market feed for every runtime in the process (one runtime per exchange connection). The connections trade
-// the same BingX market data: identical requests made at the same time are sent once and the answer is shared,
-// so running x01, vst-01 and vst-02 side by side does not triple the REST load (and the exchange's IP limits).
+// one environment's BingX market data: identical requests for the same host are sent once and shared.
+// The two VST connections can share data; mainnet and VST must never share their prices or candles.
 // Every caller gets its own copy of the candles (a runtime appends to its arrays).
 import { fetchHistory, fetchKlines, fetchTickers } from "./bingx.ts";
 import type { Candle } from "../domain/types.ts";

@@ -4164,7 +4164,7 @@ function minPfForTape(
   o: Pick<WalkForwardOptions, "gates" | "exitMinPf">,
 ): number {
   return Math.max(
-    minPfOf(o.gates, tp.kind === "exit" ? undefined : tp.protect.tag, tp.ind, protectStepPct(tp.protect)),
+    minPfOf(o.gates, tp.kind === "exit" ? undefined : tp.protect.tag, tp.ind, protectStepPct(tp.protect), tp.protect.tp > 0 ? tp.protect.sl / tp.protect.tp : undefined),
     isSignalInd(tp.ind) ? (o.gates.baseSetsMinPf ?? 0) : 0,
     tp.kind === "exit" ? (o.exitMinPf ?? 0) : 0,
   );

@@ -77,6 +77,8 @@ import type { RealtimeTapeGroup } from "../sim/realtime.ts";
 import { appendTape } from "../sim/tape-append.ts";
 import { diffPositions, diffTrades, type WrittenPos } from "./paper-rows.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
+import { bindConnectionFeed, connectionMarket } from "../market/connection-feed.ts";
+import { pinMarketHistory } from "./market-identity.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
 import { adjustTrades, evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
 import { prehistStatsGen, type PrehistStats } from "../prehist.ts";
@@ -1143,6 +1145,7 @@ export class CoreRuntime {
   private priceStream: (() => PriceStream) | null = () => new PriceStream();
   /** market data functions (injectable for recovery tests) */
   private feed: MarketFeed;
+  private readonly marketIdentity: string | null;
   private healer: ReturnType<typeof setInterval> | null = null;
   private errorsInRow = 0;
   /** memory guard (memguard.server.ts): compute fallback level 0–2 and the clean computes since the last step */
@@ -1217,15 +1220,20 @@ export class CoreRuntime {
     this.conn = opts.conn;
     this.replay = !!opts.replay;
     if (opts.snapshotPath !== undefined) this.snapshotPath = opts.snapshotPath;
-    // runtimes of the app read the market through the shared feed (one request for every connection)
+    // Share requests only within one venue environment; demo prices can differ from mainnet.
     const shared = opts.conn ? sharedFeed() : null;
-    this.feed = {
+    const source = {
       tickers: shared ? shared.tickers : fetchTickers,
       history: shared ? shared.history : fetchHistory,
       klines: shared ? shared.klines : fetchKlines,
+    };
+    this.feed = {
+      ...(opts.conn ? bindConnectionFeed(source, opts.conn) : source),
       ...(opts.feed ?? {}),
     };
     this.market = opts.market ?? "bingx";
+    this.marketIdentity = opts.conn && this.market === "bingx" && !opts.feed ? connectionMarket(opts.conn).rest : null;
+    if (opts.conn) this.priceStream = () => new PriceStream(connectionMarket(opts.conn!).stream);
     if (opts.priceStream !== undefined) this.priceStream = opts.priceStream;
     this.db = db;
     // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
@@ -3796,6 +3804,7 @@ export class CoreRuntime {
   }
 
   private loadCandlesFromDb() {
+    if (this.marketIdentity) pinMarketHistory(this.db, this.marketIdentity);
     // row by row into each symbol's columns (db.all held every row as a dictionary object at once: ~1 GB of heap on
     // each desk start); the same candles and the same symbol order (the universe's order follows it), each series sized
     // by its count (a builder grows past a count that moved)
