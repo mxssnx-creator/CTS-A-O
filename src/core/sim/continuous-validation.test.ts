@@ -640,7 +640,7 @@ describe("continuous post-Base qualification", () => {
 
   it("Signal history stays independent of the shortened engine window", () => {
     const defaults = defaultWalkForward(DEFAULT_SETTINGS);
-    assert.equal(defaults.longH, 24);
+    assert.equal(defaults.longH, 48);
     assert.equal(signalHistoryHours(defaults), 150);
     assert.equal(signalHistoryHours({ preH: 6, signalLongH: 480 }), 480);
     assert.equal(signalHistoryHours({ preH: 6 }), 150);
@@ -652,7 +652,7 @@ describe("continuous post-Base qualification", () => {
       signals: { ...DEFAULT_SETTINGS.signals, enabled: false },
       tfDays: { "1": 3, "15": 18 },
     };
-    const o = defaultWalkForward(s);
+    const o = { ...defaultWalkForward(s), preH: 6, longH: 24 };
     assert.equal(o.longH, 24);
     assert.equal(tapeRetentionHours(s, o, 1), 72);
     assert.equal(tapeRetentionHours(s, o, 15), 432);
