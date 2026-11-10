@@ -23,10 +23,13 @@ jobs:
       - run: npm run typecheck
       - name: Bounded affected core tests, offline
         run: >-
-          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types
-          --test --test-concurrency=2 src/core/sim/processed-set.test.ts
+          node scripts/test-core.mjs src/core/sim/processed-set.test.ts
           src/core/step-pf.test.ts src/core/server/demo-market.test.ts
           src/core/exchange/keys.test.ts
           src/core/server/last-n-samples.test.ts src/core/server/strategy-coverage.test.ts
-      - run: node --test scripts/core-live-report.test.mjs
+          src/core/base-config-counts.test.ts src/core/pipeline/base-cell-stats.test.ts
+          src/core/pipeline/step-sl-pf.test.ts src/core/server/evaluation-history.test.ts
+          src/core/server/range-pf-floors.test.ts
+      - name: Transport and rendered coverage component
+        run: node --test scripts/core-live-report.test.mjs scripts/strategy-coverage-ui.test.mjs
       - run: npm run build:dev

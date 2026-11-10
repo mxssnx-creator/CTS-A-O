@@ -1,3 +1,11 @@
+## 2026-11-10 — 48h history and exact policy readiness
+
+On source base `057f9d1`, ordinary fresh defaults now evaluate 48h; Signal/Exit 150h and explicit saved/custom settings remain independent. Progress exposes own config/symbol/direction history readiness beside separate Last-N windows, including empty contexts and unknown evidence. Bounded illustrative coverage rises 1/8 (12.5%) to 2/8 (25%); this is a deterministic fixture, not a market result. Base and native live gates now retain the configured SL-ratio PF floor already used by modeled walk-forward. See `docs/verification/history-readiness-20261110.md` for exact denominators, tests and the oversize inherited-test correction.
+
+The opt-in modeled processed replay is retained. Persistent owned paper/venue stage admission, independent stage protection resimulation and negative-Main inverse lanes remain unfinished; the visible TODO is preserved. Current-policy market post-Base PF/validated percentage and venue PF remain unavailable. Unchanged OLD 8–9 October: Base 143/1,398 (10.2289%), post-Base 405/1,276 (31.7398%), historical finite mean PF 17.399524089 plus six no-loss sets, later funded-model PF 0.273050873; positions 52/49/3 and orders 3,116/3,108/8 O/C/H. No account start, deployment or profitable preset promotion.
+
+Tested economic source is published at `4b5470661fb367a282934121548318b8febfd653`, tree `a804222fd91e78fbf10a9521f18ce6efac8c8cf5`; the follow-up changes only CI boundaries and documentation. Frozen 12-symbol candidate history readiness is 852/960 (88.75%) at 24h and 950/960 (98.9583%) at 48h, with 1,920 scalar context and 80 causal-prefix checks, zero mismatches. This is neither post-Base validation nor executed PF. The bounded release core command passes 73 tests; transport/rendered component checks pass 29; typecheck/build pass. Legacy Exit and exact Signal workflows retain their full assertions but require manual dispatch after their >72h fixtures are bounded. The active PR gate runs the affected bounded history/PF/processed/transport checks. No venue session was started.
+
 ## 2026-11-09 — native processed replay integration
 
 Published code `27c7ad6fb52f611a3a2773270a61abe1b3721157`, tested tree

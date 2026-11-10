@@ -1,5 +1,5 @@
 import { minimumStopFraction, normalizeMinSlDistancePct } from "../protection-policy.ts";
-import { protectStepPct } from "../step-pf.ts";
+import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, validatedSetPf, type ValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
 import { migrateMinuteCaps } from "./minute-cap-migration.server.ts";
 import { migrateMinimumProtectionPolicy } from "./protection-policy-migration.server.ts";
@@ -7424,7 +7424,7 @@ export class CoreRuntime {
         signalLastN: this.wf.rangeOpts?.sig?.validLastN ?? this.wf.signalValidLastN ?? 0,
         entryLastN: this.wf.lastN,
         rangeLastN: this.wf.rangeGate?.lastN ?? 0,
-        historyH: this.wf.longH,
+        historyH: Math.max(this.wf.longH, this.wf.preH),
       },
       byRange,
       byGroup,
@@ -7531,9 +7531,10 @@ export class CoreRuntime {
       this.settings.live.engineProofN ?? 0,
     );
     const ind = lane.cfg.split("|")[1] ?? "";
+    const protect = parseConfigId(lane.cfg)?.protect;
     const minPf = Math.max(
       liveMinPfOf(this.settings, rangeOfId(lane.cfg), ind, kindOfId(lane.cfg),
-        parseConfigId(lane.cfg)?.protect ? protectStepPct(parseConfigId(lane.cfg)!.protect) : undefined),
+        protect ? protectStepPct(protect) : undefined, protect ? protectSlRatio(protect) : undefined),
       (this.settings.live.engineProofN ?? 0) > 0 && !isSignalInd(ind)
         ? (this.settings.live.engineProofPf ?? ENGINE_PROOF_PF)
         : 0,
@@ -9885,7 +9886,7 @@ export class CoreRuntime {
       const mk = JSON.stringify([x.id, sym, side, at]);
       let g = cache ? lvMemo.get(mk) : undefined;
       // A Live floor can tighten the matching stage floor, never relax it.
-      const minPf = liveMinPfOf(this.settings, x.protect.tag, x.ind, x.kind, protectStepPct(x.protect));
+      const minPf = liveMinPfOf(this.settings, x.protect.tag, x.ind, x.kind, protectStepPct(x.protect), protectSlRatio(x.protect));
       if (!g) {
         const model = lvExact.get(executionRecordKey(x.id, sym, side));
         g = {
@@ -12478,8 +12479,9 @@ export function liveMinPfOf(
   ind?: string,
   kind?: string,
   stepPct?: number,
+  slRatio?: number,
 ): number {
-  return Math.max(minPfOf(s.gates, kind === "exit" ? undefined : tag, ind, stepPct), s.live.liveMinPf ?? 0,
+  return Math.max(minPfOf(s.gates, kind === "exit" ? undefined : tag, ind, stepPct, slRatio), s.live.liveMinPf ?? 0,
     kind === "exit" ? (s.exitStrategy?.minPf ?? 0) : 0);
 }
 

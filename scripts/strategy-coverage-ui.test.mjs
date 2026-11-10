@@ -35,3 +35,20 @@ test("Progress shows actual strategy/source counts and held/carry provenance ind
   assert.match(html, /not an admitted, funded or venue order/);
   assert.match(html, /Block and Relate are execution adjustments/);
 });
+
+test("sample coverage renders exact denominators, evaluation hours and the pending persistent adapter", () => {
+  const coverage = { completedAt: 1, through: 1, total: 2, byKind: {},
+    lastNSamples: { at: 1, rows: [
+      { kind: "normal", range: "mc", source: "engine", window: "history", n: 3, historyH: 48,
+        contexts: 8, disabled: 0, usable: 2, insufficient: 6, unknown: 0, pct: 25 },
+      { kind: "normal", range: "none", source: "signals", window: "history", n: 4, historyH: 150,
+        contexts: 4, disabled: 0, usable: 0, insufficient: 0, unknown: 4, pct: null },
+    ] } };
+  const html = renderToStaticMarkup(React.createElement(StrategyCoverageTable, { coverage }));
+  assert.match(html,/history · 48h/);
+  assert.match(html,/2\/8 \(25\.0%\)/);
+  assert.match(html,/history · 150h/);
+  assert.match(html,/Unavailable/);
+  assert.match(html,/Persistent paper\/venue stage coverage is unavailable while its adapter is pending/);
+  assert.match(html,/do not establish PF validation/);
+});

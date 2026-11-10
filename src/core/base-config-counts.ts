@@ -1,4 +1,4 @@
-import { protectStepPct } from "./step-pf.ts";
+import { protectSlRatio, protectStepPct } from "./step-pf.ts";
 // Exact configured-cell accounting for the full Base calculation. Returns are already net of the supplied cost;
 // the counter never simulates, subtracts cost again, promotes a cell, or substitutes a sibling's qualification.
 import type { Gates, Protect } from "./domain/types.ts";
@@ -49,7 +49,7 @@ export class BaseConfigCounter {
   constructor(options: BaseConfigCountOptions) {
     this.options = {
       ...options,
-      gates: { ...options.gates, ...(options.gates.stepPf ? { stepPf: { ...options.gates.stepPf } } : {}), rangeMinPf: { ...options.gates.rangeMinPf },
+      gates: { ...options.gates, ...(options.gates.stepPf ? { stepPf: structuredClone(options.gates.stepPf) } : {}), rangeMinPf: { ...options.gates.rangeMinPf },
         ...(options.gates.baseRangeLastN ? { baseRangeLastN: { ...options.gates.baseRangeLastN } } : {}) },
     };
   }
@@ -91,7 +91,7 @@ export class BaseConfigCounter {
       };
       this.counts.set(key, row);
     }
-    const cellMinPf = Math.max(FLOOR_PF, minPfOf(o.gates, tag, ind, protectStepPct(protect)));
+    const cellMinPf = Math.max(FLOOR_PF, minPfOf(o.gates, tag, ind, protectStepPct(protect), protectSlRatio(protect)));
     row.minPfMax = Math.max(row.minPfMax ?? row.minPf, cellMinPf);
     row.minPf = row.configured === 0 ? cellMinPf : Math.min(row.minPf, cellMinPf);
     row.configured++;

@@ -1,29 +1,8 @@
 name: Exact Signal study
 
 on:
-  pull_request:
-    paths:
-      - .github/workflows/exact-signal-study.yml
-      - scripts/run-exact-signal-study.mjs
-      - scripts/run-exact-signal-study.test.mjs
-      - scripts/studies/baseline-2860c3f.patch
-      - scripts/studies/baseline-2860c3f.json
-      - docs/simulations/exact-signal-22-study-20261017.md
-      - scripts/build-public-eval-feed.mjs
-      - scripts/build-public-eval-feed.test.mjs
-      - scripts/lib/public-eval-feed.mjs
-      - scripts/freeze-session-study.mjs
-      - scripts/audit-session-study.mjs
-      - scripts/audit-session-study.test.mjs
-      - scripts/lib/session-study.mjs
-      - scripts/lib/session-study.test.mjs
-      - scripts/lib/session-dump.mjs
-      - scripts/lib/session-dump.test.mjs
-      - scripts/core-session.mjs
-      - scripts/core-session.test.mjs
-      - src/core/**
-      - package.json
-      - package-lock.json
+  # Frozen archival study and legacy independent-config fixtures include >72h tapes.
+  # Current PR validation is the bounded lastn-execution-integrity.yml workflow.
   workflow_dispatch:
 
 permissions:

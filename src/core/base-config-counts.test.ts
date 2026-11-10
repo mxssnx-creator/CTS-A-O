@@ -17,6 +17,20 @@ const trades = (returns: readonly number[], offset = 0): TradeLike[] =>
   returns.map((r, i) => ({ r, entryT: offset + i * 10, exitT: offset + i * 10 + 5 }));
 
 describe("full Base configured-cell counts", () => {
+  it("uses each protection's SL ratio PF floor without borrowing a sibling's lower policy", () => {
+    const count = new BaseConfigCounter(options({ gates: { minPf: 1.05, minTrades: 2,
+      stepPf: { enabled: true, ratio: .2, max: 2, bySlRatio: { "0.5": 1.6, "1": 1.2 } } } }));
+    for (const sl of [.005, .01])
+      count.record("follow", "ema-9-21@m1", { ...P, sl, tag: "mc" }, "normal", trades([.015, -.01]));
+    const [row] = count.rows();
+    assert.equal(row.configured, 2);
+    assert.equal(row.evaluated, 2);
+    assert.equal(row.pfPassed, 2, "raw PF remains an explicitly separate measurement");
+    assert.equal(row.passed, 1, "only the lower-floor exact SL config passes PF 1.5");
+    assert.equal(row.minPf, 1.2);
+    assert.equal(row.minPfMax, 1.6);
+  });
+
   it("uses each cell's recent Base closes without borrowing an older winning history", () => {
     const count = new BaseConfigCounter(options({ cutT: 1000,
       gates: { minPf: 1.1, minTrades: 2, maxDdr: 0, baseLastN: 4, lastNFloor: 2 } }));

@@ -1,5 +1,5 @@
 import { SL_TP_RATIOS, minimumStopFraction } from "../protection-policy.ts";
-import { protectStepPct } from "../step-pf.ts";
+import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { profitFactorRatio } from "../metrics/profit-factor.mjs";
 // Progressive pipeline over a universe of symbols:
 //   S1 coarse    every bot × indication with the default protect
@@ -597,7 +597,7 @@ export interface ComboRun {
   protect: Protect;
   stage: 1 | 2;
   trades: Trade[];
-  full: Stats;
+  full: Stats & Pick<Partial<RangeBaseStat>, "stepPct" | "slRatio" | "slRatioKnown">;
   is: Stats;
   score: number;
   /** per symbol; a worker sends it pre-serialized (a JSON string is cheap to receive, 50 objects per run are not) */
@@ -640,6 +640,10 @@ export const protectCellKey = (p: Pick<Protect, "tp" | "sl" | "trail" | "hold" |
 export interface RangeBaseStat {
   /** Exact configured TP or trailing activation percent used by the step PF policy. */
   stepPct?: number;
+  /** Effective configured stop relative to this representative cell's own TP. */
+  slRatio?: number;
+  /** True also for a freshly evaluated no-TP cell, where SL/TP is deliberately undefined. */
+  slRatioKnown?: true;
   n: number;
   pf: number;
   net: number;
@@ -991,25 +995,25 @@ export function microBaseSl(ladder: readonly number[]): number[] {
 export function basePassTags(
   r: Pick<ComboRun, "full" | "ranges"> & Partial<Pick<ComboRun, "ind">>,
   g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"]; baseLastN?: number; baseRangeLastN?: Gates["baseRangeLastN"];
-    lastNFloor?: number; lossPrior?: boolean },
+    lastNFloor?: number; lossPrior?: boolean; stepPf?: Gates["stepPf"] },
   /** every range tag of the grid; one without its own Base cell passes with the default protect */
   allTags: readonly string[] = [],
 ): string[] {
   if (r.ind && isLowRangeInd(laneOf(r.ind).base)) {
     const sh = r.ranges?.sh;
-    return sh && passesBase(sh, { ...g, minPf: minPfOf(g, "sh", r.ind, sh.stepPct) }) ? ["sh"] : [];
+    return sh && baseSlPolicyKnown(g, sh, r.ind) && passesBase(sh, { ...g, minPf: minPfOf(g, "sh", r.ind, sh.stepPct, sh.slRatio) }) ? ["sh"] : [];
   }
   const out: string[] = [];
   const own = new Set(Object.keys(r.ranges ?? {}));
-  if (passesBase(r.full, { ...g, minPf: minPfOf(g, "", r.ind) })) {
+  if (baseSlPolicyKnown(g, r.full, r.ind) && passesBase(r.full, { ...g, minPf: minPfOf(g, "", r.ind, r.full.stepPct, r.full.slRatio) })) {
     out.push("");
     // a range without its own Base cell is judged on the default cell, but against its own range minimum
     for (const t of allTags)
-      if (t && !own.has(t) && passesBase(r.full, { ...g, minPf: minPfOf(g, t, r.ind) }))
+      if (t && !own.has(t) && passesBase(r.full, { ...g, minPf: minPfOf(g, t, r.ind, r.full.stepPct, r.full.slRatio) }))
         out.push(t);
   }
   for (const [tag, st] of Object.entries(r.ranges ?? {}))
-    if (passesBase(st, { ...g, baseLastN: baseLastNForRange(g, tag), minPf: minPfOf(g, tag, r.ind, st.stepPct) })) out.push(tag);
+    if (baseSlPolicyKnown(g, st, r.ind) && passesBase(st, { ...g, baseLastN: baseLastNForRange(g, tag), minPf: minPfOf(g, tag, r.ind, st.stepPct, st.slRatio) })) out.push(tag);
   return out;
 }
 
@@ -1023,7 +1027,14 @@ export function rangeCellPass(
   ind?: string,
 ): (tag: string, st: RangeBaseStat) => boolean {
   const g = baseSetsGates(gates);
-  return (tag, st) => passesBase(st, { ...g, baseLastN: baseLastNForRange(g, tag), minPf: minPfOf(g, tag, ind, st.stepPct) });
+  return (tag, st) => baseSlPolicyKnown(g, st, ind) && passesBase(st, { ...g, baseLastN: baseLastNForRange(g, tag), minPf: minPfOf(g, tag, ind, st.stepPct, st.slRatio) });
+}
+
+/** Legacy cached proofs cannot silently waive a configured SL-specific policy. */
+function baseSlPolicyKnown(g: Pick<Gates, "stepPf">, st: object, ind?: string): boolean {
+  if (ind?.startsWith("sig-") || !g.stepPf?.enabled || !Object.keys(g.stepPf.bySlRatio ?? {}).length) return true;
+  const proof = st as Partial<RangeBaseStat>;
+  return proof.slRatioKnown === true || (Number.isFinite(proof.slRatio) && proof.slRatio! > 0);
 }
 
 export function baseSetsGates<G extends Gates>(g: G): G {
@@ -1261,12 +1272,12 @@ export function* baseRangeCountsGen(
       const ownGates = own ? { ...g, baseLastN: baseLastNForRange(g, tag) } : g;
       // EMPTY_STATS carries pf: 0 for gate arithmetic, but an empty close sample has no measured PF.
       if (st.n > 0) pf.push(st.pf);
-      const ownMin = minPfOf(g, tag, r.ind, own?.stepPct);
+      const ownMin = minPfOf(g, tag, r.ind, st.stepPct, st.slRatio);
       appliedMin = Math.min(appliedMin, ownMin);
-      const ok = own
+      const ok = baseSlPolicyKnown(g, st, r.ind) && (own
         ? passesBase(own, { ...ownGates, minPf: ownMin })
-        : passesBase(r.full, { ...g, minPf: minPfOf(g, "", r.ind) }) &&
-          (!tag || passesBase(r.full, { ...g, minPf: ownMin }));
+        : passesBase(r.full, { ...g, minPf: minPfOf(g, "", r.ind, r.full.stepPct, r.full.slRatio) }) &&
+          (!tag || passesBase(r.full, { ...g, minPf: ownMin })));
       if (ok) {
         pfOk.push(st.pf);
         stOk.push(st);
@@ -1361,7 +1372,7 @@ export function* baseGateSensitivityGen(
       if (processed > 0 && processed % BASE_DIAGNOSTIC_BATCH === 0) yield processed;
       processed++;
       evaluated++;
-      const atDefault = passesBase(r.full, { ...gg, minPf: minPfOf(gg, "", r.ind) });
+      const atDefault = baseSlPolicyKnown(gg, r.full, r.ind) && passesBase(r.full, { ...gg, minPf: minPfOf(gg, "", r.ind, r.full.stepPct, r.full.slRatio) });
       if (atDefault) {
         passed++;
         pf.push(r.full.pf);
@@ -1371,11 +1382,11 @@ export function* baseGateSensitivityGen(
           allTags.some(
             (t) =>
               !t ||
-              (eligible(r.ind, t) && passesBase(r.full, { ...gg, minPf: minPfOf(gg, t, r.ind) })),
+              (eligible(r.ind, t) && passesBase(r.full, { ...gg, minPf: minPfOf(gg, t, r.ind, r.full.stepPct, r.full.slRatio) })),
           )) ||
         Object.entries(r.ranges ?? {}).some(
           ([t, st]) =>
-            eligible(r.ind, t) && passesBase(st, { ...gg, baseLastN: baseLastNForRange(gg, t), minPf: minPfOf(gg, t, r.ind, st.stepPct) }),
+            eligible(r.ind, t) && baseSlPolicyKnown(gg, st, r.ind) && passesBase(st, { ...gg, baseLastN: baseLastNForRange(gg, t), minPf: minPfOf(gg, t, r.ind, st.stepPct, st.slRatio) }),
         );
       if (inAny) anyRange++;
     }
@@ -1452,13 +1463,13 @@ export function* baseRangeWhyGen(
       const st = own ?? r.full;
       const ownGates = own ? { ...g, baseLastN: baseLastNForRange(g, tag) } : g;
       // no own cell: judged at the default protect against both minimums (as baseRangeCounts)
-      const minPf = minPfOf(g, tag, r.ind, own?.stepPct);
-      const need = own || !tag ? minPf : Math.max(minPfOf(g, "", r.ind), minPf);
+      const minPf = minPfOf(g, tag, r.ind, st.stepPct, st.slRatio);
+      const need = own || !tag ? minPf : Math.max(minPfOf(g, "", r.ind, r.full.stepPct, r.full.slRatio), minPf);
       // the gates exactly as passesBase reads them
       const miss: BaseGate[] = [];
       if (!(Number.isSafeInteger(st.n) && st.n >= g.minTrades)) miss.push("closes");
       if (!(Number.isFinite(st.net) && (st.net > 0 || need < 1))) miss.push("net");
-      if (!(Number.isFinite(st.pf) && st.pf >= need)) miss.push("pf");
+      if (!baseSlPolicyKnown(g, st, r.ind) || !(Number.isFinite(st.pf) && st.pf >= need)) miss.push("pf");
       if ((st.mdd !== undefined && !(Number.isFinite(st.mdd) && st.mdd >= 0)) ||
           ddrFails(st.mdd, st.net, g.maxDdr)) miss.push("ddr");
       if (win && st.bw?.gate === false) miss.push("windows");
@@ -1729,6 +1740,9 @@ export function cellStats(
   }
   const st: RangeBaseStat = cell.stats(baseLastN, Math.max(0, p.sl) * 100);
   st.stepPct = protectStepPct(p);
+  const slRatio = protectSlRatio(p);
+  st.slRatioKnown = true;
+  if (slRatio !== undefined) st.slRatio = slRatio;
   if (bw) {
     // the closes in exit order (statsOf's order: exit, then entry; stable), for the windows
     const n = wRr.length;
@@ -1870,7 +1884,8 @@ export function* runComboSteps(
   // in-sample = closed before the split (a trade straddling the split is not in-sample)
   const isTrades = trades.filter((t) => t.exitT <= u.splitT);
   const is = statsOf(isTrades, u.splitT);
-  const full = statsOf(trades, u.nowT);
+  const full = { ...statsOf(trades, u.nowT), stepPct: protectStepPct(protect),
+    slRatio: protectSlRatio(protect), slRatioKnown: true as const };
   const baseLast = baseLastNOf(trades, baseLastN, Math.max(0, protect.sl) * 100);
   if (baseLast) full.baseLast = baseLast;
   return {
@@ -2196,7 +2211,7 @@ export function* runPipeline(
   for (let i = 0; i < chosen.length; i++) {
     const r = chosen[i];
     // each config is held to its own range's minimum PF (as at Base), not the stage minimum alone
-    const gr = { ...g, minPf: minPfOf(g, r.protect.tag, r.ind, protectStepPct(r.protect)) };
+    const gr = { ...g, minPf: minPfOf(g, r.protect.tag, r.ind, protectStepPct(r.protect), protectSlRatio(r.protect)) };
     const ln = optimizeLastN(r.id, r.trades, { gates: gr, splitT: u.splitT, nowT: u.nowT });
     const ev = evaluateConfig(r.id, r.trades, { gates: gr, nowT: u.nowT, bestN: ln.bestN });
     tapes.set(r.id, r.trades);
@@ -2224,7 +2239,7 @@ export function* runPipeline(
   const finalScore = (x: RankedConfig) => {
     const is = x.lastN ? scoreStats(x.lastN.is, 3) : 0;
     const ok =
-      x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag, x.ind, protectStepPct(x.protect)) ? 1 : 0;
+      x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag, x.ind, protectStepPct(x.protect), protectSlRatio(x.protect)) ? 1 : 0;
     return ok * 1000 + is;
   };
   ranked.sort((a, b) => finalScore(b) - finalScore(a));
@@ -2232,7 +2247,7 @@ export function* runPipeline(
   // Portfolio of bots: validated configs, combined greedily for green hours at a high order count.
   const cands = ranked
     .filter(
-      (x) => x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag, x.ind, protectStepPct(x.protect)),
+      (x) => x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag, x.ind, protectStepPct(x.protect), protectSlRatio(x.protect)),
     )
     .map((x) => ({ id: x.id, trades: tapes.get(x.id) ?? [], bestN: x.lastN!.bestN }));
   const portfolio = buildPortfolio(cands, {

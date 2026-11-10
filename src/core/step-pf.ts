@@ -1,12 +1,29 @@
 /** CTS-G manual step policy. Distances are price PERCENT, not fractions or ATR multipliers. */
 export interface StepPfRules { enabled: boolean; ratio: number; max: number; byStep?: Record<string, number>; bySlRatio?: Record<string, number> }
 export const DEFAULT_STEP_PF: StepPfRules = { enabled: true, ratio: 0.2, max: 2 };
+
+/** Aliases of one numeric key cannot select different policies by insertion order. */
+export function validateStepPfOverrides(rules: Partial<StepPfRules>): void {
+  for (const [name, map] of [["step", rules.byStep], ["SL ratio", rules.bySlRatio]] as const) {
+    if (map === undefined) continue;
+    if (!map || typeof map !== "object" || Array.isArray(map)) throw new Error("Invalid step/SL PF policy");
+    const seen = new Set<number>();
+    for (const [key, value] of Object.entries(map)) {
+      const n = Number(key);
+      if (!key.trim() || !Number.isFinite(n) || (name === "step" ? !Number.isSafeInteger(n) || n < 0 : n <= 0) ||
+          seen.has(n) || !Number.isFinite(value) || value <= 1 || value > 100)
+        throw new Error("Invalid step/SL PF policy");
+      seen.add(n);
+    }
+  }
+}
+
 export function stepPfFloor(legacy: number, tpPercent: number | undefined, rules?: Partial<StepPfRules>, slRatio?: number): number {
+  if (rules) validateStepPfOverrides(rules);
   if (!rules?.enabled || tpPercent === undefined || !Number.isFinite(tpPercent) || tpPercent <= 0) return legacy;
   const overrides: number[] = [];
   for (const [map, key] of [[rules.byStep, String(Math.floor(tpPercent * 10 + 1e-9))], [rules.bySlRatio, slRatio == null ? "" : String(Math.round(slRatio * 1e8) / 1e8)]] as const) {
     if (!map) continue;
-    if (typeof map !== "object" || Array.isArray(map) || Object.entries(map).some(([k,v]) => !k.trim() || !Number.isFinite(Number(k)) || !Number.isFinite(v) || v <= 1 || v > 100)) throw new Error("Invalid step/SL PF policy");
     const own = Object.entries(map).find(([k]) => Number(k) === Number(key) && key !== "");
     if (own) overrides.push(own[1]);
   }
@@ -21,4 +38,9 @@ export function stepPfFloor(legacy: number, tpPercent: number | undefined, rules
 
 export function protectStepPct(p: { tp: number; trail: number; trailOnly?: boolean }): number {
   return (p.trailOnly ? p.trail : p.tp) * 100;
+}
+
+/** The effective configured stop after cost/minimum-distance adjustment, relative to its own TP. */
+export function protectSlRatio(p: { tp: number; sl: number }): number | undefined {
+  return Number.isFinite(p.tp) && p.tp > 0 && Number.isFinite(p.sl) && p.sl > 0 ? p.sl / p.tp : undefined;
 }

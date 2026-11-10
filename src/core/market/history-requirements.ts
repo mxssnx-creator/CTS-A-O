@@ -2,6 +2,9 @@ import type { CoreSettings } from "../config.ts";
 import type { WalkForwardOptions } from "../sim/walkforward.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
 
+/** Ordinary evaluated history. Signal/Exit retain their separate 150h policy. */
+export const EVALUATION_HISTORY_H = 48;
+
 /** Source requirements for an explicitly extended engine window, without changing saved lane preferences. */
 export function evaluationHistorySettings(
   s: CoreSettings,

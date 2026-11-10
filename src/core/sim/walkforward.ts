@@ -1,8 +1,9 @@
 import { RT_COST } from "../model-cost.ts";
+import { EVALUATION_HISTORY_H } from "../market/history-requirements.ts";
 import { ProcessedReplay, type ProcessedReplayPolicy, type ProcessedReplayReport } from "./processed-replay.ts";
 import type { ProcessedOpen } from "./processed-set.ts";
 import { minimumStopFraction } from "../protection-policy.ts";
-import { protectStepPct } from "../step-pf.ts";
+import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
 import { DerivedCache } from "./derived-cache.ts";
 import { exitScopeSuffix, isHistoricExitConfig } from "../exit-scope.ts";
@@ -891,8 +892,8 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     axisVolumeFactor: volumeRatio(s.axis.volumeFactor),
     exitVolumeFactor: volumeRatio(s.exitStrategy.volumeFactor),
     indicationVolumeFactors: signalVolumeFactorsOf(s.signals),
-    // Keep the general replay warm-up short; config qualification uses its explicit Last-N close window below.
-    preH: 6,
+    // Evaluated history is separate from indicator warmup and independent Signal/Exit history.
+    preH: EVALUATION_HISTORY_H,
     simH: 48,
     stepH: 1,
     // Real seats per strategy family: 0 = no limit — every config that passes the evaluation (PF, DDT, DDR,
@@ -934,7 +935,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
       s2Increase: s.block?.increase,
     },
     // Bound broad history-based qualification. Per-symbol history can request a longer window via symH.
-    longH: 24,
+    longH: EVALUATION_HISTORY_H,
     signalLongH: SIGNAL_HISTORY_H,
     robustFrac: 0.6,
     rank: "lcb",
@@ -4170,7 +4171,7 @@ function minPfForTape(
   o: Pick<WalkForwardOptions, "gates" | "exitMinPf">,
 ): number {
   return Math.max(
-    minPfOf(o.gates, tp.kind === "exit" ? undefined : tp.protect.tag, tp.ind, protectStepPct(tp.protect), tp.protect.tp > 0 ? tp.protect.sl / tp.protect.tp : undefined),
+    minPfOf(o.gates, tp.kind === "exit" ? undefined : tp.protect.tag, tp.ind, protectStepPct(tp.protect), protectSlRatio(tp.protect)),
     isSignalInd(tp.ind) ? (o.gates.baseSetsMinPf ?? 0) : 0,
     tp.kind === "exit" ? (o.exitMinPf ?? 0) : 0,
   );
@@ -4207,6 +4208,11 @@ export function sampleWindowsForTape(tp: ConfigTape, o: WalkForwardOptions): Rec
     entry: isSignalInd(tp.ind) ? signalEntryLastNOf(tp, o) : (rangeOptsOf(o, tp)?.lastN ?? o.lastN),
     range: o.rangeGate && tapeRangeGateOn(o.rangeGate, tp) ? o.rangeGate.lastN : 0,
   };
+}
+
+/** Count diagnostics share the actual config evaluator's history and minimum-sample policy. */
+export function sampleHistoryForTape(tp: ConfigTape, o: WalkForwardOptions): { hours: number; minTrades: number } {
+  return { hours: tapeHistoryHours(tp, o), minTrades: minTradesForTape(tp, o, o.gates.minTrades ?? 0) };
 }
 
 function configEvalAt(

@@ -29,12 +29,12 @@ export function StrategyCoverageTable({ coverage }: { coverage?: StrategyCoverag
       })}</tbody>
     </table>
     <p className="v2-muted">Counts include held-only and carried tapes; carried tapes use an earlier compute. A tape is not an admitted, funded or venue order. Block and Relate are execution adjustments, not separate tape types. The current progress stage may be building the next cohort.</p>
-    <h3>Last-N sample coverage</h3>
+    <h3>History and Last-N sample coverage</h3>
     {coverage.lastNSamples ? <>
-      <p className="v2-muted">Exact config × symbol × direction candidate histories before {fmt.time(coverage.lastNSamples.at)} UTC. Empty and losing contexts remain counted. These counts do not establish PF validation or processed Main/Real admission. Held-only configs are excluded; carried evidence is unavailable.</p>
+      <p className="v2-muted">Exact config × symbol × direction candidate histories before {fmt.time(coverage.lastNSamples.at)} UTC, for the built configuration catalogue including empty contexts. History rows use the displayed evaluation hours; Last-N rows use preceding completed closes. Empty and losing contexts remain counted. These counts do not establish PF validation or processed Main/Real admission. Held-only configs are excluded; carried evidence is unavailable. Persistent paper/venue stage coverage is unavailable while its adapter is pending.</p>
       <table className="v2-table"><thead><tr><th>Type / range</th><th>Window</th><th>N</th><th>Enough samples</th><th>Short</th><th>Unknown</th></tr></thead>
-        <tbody>{coverage.lastNSamples.rows.map((r) => <tr key={JSON.stringify([r.kind,r.range,r.window,r.n])}>
-          <td>{labels[r.kind] ?? r.kind} / {r.range}</td><td>{r.window}</td><td>{r.n || "off"}</td>
+        <tbody>{coverage.lastNSamples.rows.map((r) => <tr key={JSON.stringify([r.kind,r.range,r.source,r.window,r.n,r.historyH])}>
+          <td>{labels[r.kind] ?? r.kind} / {r.range}{r.source === "signals" ? " · Signals" : ""}</td><td>{r.window}{r.historyH == null ? "" : ` · ${r.historyH}h`}</td><td>{r.n || "off"}</td>
           <td>{r.n <= 0 ? "Disabled" : r.pct === null ? "Unavailable" : `${r.usable}/${r.contexts - r.disabled} (${r.pct.toFixed(1)}%)`}</td>
           <td>{r.insufficient}</td><td>{r.unknown}</td>
         </tr>)}</tbody>
