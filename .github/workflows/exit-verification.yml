@@ -1,12 +1,8 @@
 name: Exit verification
 
 on:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - feat/historic-exit-strategy-20261016
+  # Archived full inventory includes fixtures exceeding the current 72h study limit.
+  # PRs use lastn-execution-integrity.yml; run this inventory only after bounding its fixtures.
   workflow_dispatch:
 
 permissions:

@@ -42,3 +42,7 @@ The independent scalar audit checks all 1,920 contexts across both histories, an
 The follow-up audit also carries own step/SL metadata into the default representative Base proof and its counts, rejection reasons and sensitivity table. Default-cell fallback cannot waive a stricter SL policy. Legacy proofs without the required metadata remain unavailable.
 
 The standalone live report transport retries only read requests. Unknown POST/PUT/PATCH/DELETE outcomes are never blindly retried. Transport and UI verification remains separate from any live account acceptance.
+
+## Pull-request verification boundary
+
+The legacy full Exit inventory and exact Signal study are manual workflows because their inherited fixtures include 100h/336h and multi-day data beyond the current 72h limit. They are not run or claimed as current acceptance. The active Last-N integrity PR workflow now includes the affected Base cells, effective step/SL policies, evaluation-history propagation, exact-context readiness, processed ownership, demo keys, transport and rendered coverage component, plus typecheck and build. All assertions remain in the legacy inventory; those fixtures must be bounded before a future run. No financial strategy threshold is changed by this CI boundary.
