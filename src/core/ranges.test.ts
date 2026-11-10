@@ -500,26 +500,32 @@ test("a pair computes only the cells of the ranges it passed; a pair without Bas
 test("Base cell stats are runCombo's whole-history stats exactly, for every range's cells (incl. Micro, ATR-free)", () => {
   const t0 = Date.UTC(2026, 8, 20);
   const u = makeUniverse([
-    barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 1500, t0, 3)),
-    barsFromCandles("B-USDT", 15, syntheticCandles("B", 15, 1500, t0, 5)),
-    barsFromCandles("A-USDT", 5, syntheticCandles("A", 5, 3000, t0, 7)),
+    barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 72 * 60 / 15, t0, 3)),
+    barsFromCandles("B-USDT", 15, syntheticCandles("B", 15, 72 * 60 / 15, t0, 5)),
+    barsFromCandles("A-USDT", 5, syntheticCandles("A", 5, 72 * 60 / 5, t0, 7)),
   ]);
   const cells = baseRangeProtects({ ...DEFAULT_SETTINGS.grid, holdH: [16] }, 0.002);
   let compared = 0;
+  let closed = 0;
   for (const [bot, ind] of [["follow", "rsi-mom-14-20@m15"], ["revert", "z-50-2.5@m15"], ["follow", "mc-rsi2-5@m5"]] as const)
     for (const p of cells.filter((_, i) => i % 7 === 0)) {
       const a = cellStats(u, bot, ind, p, 0.002, null);
       const r = runCombo(u, bot, ind, p, 0.002, 1, null);
+      closed += r?.full.n ?? 0;
       // (gp / gl as well: the pooled PF after Base sums them, 63ef6c5)
       assert.deepEqual(
         a,
-        r ? { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd, gp: r.full.gp, gl: r.full.gl,
-          stepPct: (p.trailOnly ? laneProtect(p, ind).trail : laneProtect(p, ind).tp) * 100 } : null,
+        r ? { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd,
+          ...(r.full.n ? { gp: r.full.gp, gl: r.full.gl } : {}),
+          stepPct: (p.trailOnly ? laneProtect(p, ind).trail : laneProtect(p, ind).tp) * 100,
+          slRatioKnown: true,
+          ...(laneProtect(p, ind).tp > 0 ? { slRatio: laneProtect(p, ind).sl / laneProtect(p, ind).tp } : {}) } : null,
         `${bot}|${ind} ${JSON.stringify(p)}`,
       );
       compared++;
     }
   assert.ok(compared > 50, `${compared} cells compared`);
+  assert.ok(closed > 0, "the bounded comparison includes settled results, not only empty cells");
 });
 
 test("grid.baseRanges: a passed pair builds its passed ranges (default) or every range that applies (off)", () => {

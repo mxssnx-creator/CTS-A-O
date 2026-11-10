@@ -32,11 +32,17 @@ const retry = async (fn) => {
       await new Promise((r) => setTimeout(r, Math.min(wait, 10 * 60_000)));
     }
 };
-const bx = {
-  signed: (...a) => retry(() => bxm.signed(...a)),
-  fetchBook: (...a) => retry(() => bxm.fetchBook(...a)),
-  cancelOrder: (...a) => retry(() => bxm.cancelOrder(...a)),
-};
+export function reportClientWith(transport) {
+  return {
+    // A failed write response can describe an already accepted order. Only
+    // reads may retry here; the caller must reconcile the original write ID.
+    signed: (...a) => String(a[2]).toUpperCase() === "GET"
+      ? retry(() => transport.signed(...a)) : transport.signed(...a),
+    fetchBook: (...a) => retry(() => transport.fetchBook(...a)),
+    cancelOrder: (...a) => retry(() => transport.cancelOrder(...a)),
+  };
+}
+const bx = reportClientWith(bxm);
 
 const KIND = { U: "Micro", N: "Minimal", H: "Short", G: "General", L: "Long", M: "Minimal plus", E: "Wide / mixed", Q: "Signals" };
 const num = (x) => {

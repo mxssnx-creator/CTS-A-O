@@ -1,3 +1,9 @@
+## 2026-11-10 — 48h history and exact policy readiness
+
+On source base `057f9d1`, ordinary fresh defaults now evaluate 48h; Signal/Exit 150h and explicit saved/custom settings remain independent. Progress exposes own config/symbol/direction history readiness beside separate Last-N windows, including empty contexts and unknown evidence. Bounded illustrative coverage rises 1/8 (12.5%) to 2/8 (25%); this is a deterministic fixture, not a market result. Base and native live gates now retain the configured SL-ratio PF floor already used by modeled walk-forward. See `docs/verification/history-readiness-20261110.md` for exact denominators, tests and the oversize inherited-test correction.
+
+The opt-in modeled processed replay is retained. Persistent owned paper/venue stage admission, independent stage protection resimulation and negative-Main inverse lanes remain unfinished; the visible TODO is preserved. Current-policy market post-Base PF/validated percentage and venue PF remain unavailable. Unchanged OLD 8–9 October: Base 143/1,398 (10.2289%), post-Base 405/1,276 (31.7398%), historical finite mean PF 17.399524089 plus six no-loss sets, later funded-model PF 0.273050873; positions 52/49/3 and orders 3,116/3,108/8 O/C/H. No account start, deployment or profitable preset promotion.
+
 ## 2026-11-09 — native processed replay integration
 
 Published code `27c7ad6fb52f611a3a2773270a61abe1b3721157`, tested tree

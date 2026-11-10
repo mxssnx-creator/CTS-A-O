@@ -1,3 +1,4 @@
+import { validateStepPfOverrides } from "./step-pf.ts";
 import { MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, SL_TP_MIN, SL_TP_MAX } from "./protection-policy.ts";
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
 import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, MAX_EXTERNAL_STACK, MAX_FOCUS_PAIRS, mergeGridSettings, type CoreSettings, type SettingsPatch } from "./config.ts";
@@ -118,6 +119,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       if (p.enabled !== undefined && typeof p.enabled !== "boolean") throw new Error("step PF enabled: true or false");
       num(p.ratio, 0.1, 1.5, "step PF ratio");
       num(p.max, 1, 2, "step PF maximum");
+      validateStepPfOverrides(p);
     }
     if (s.gates.rangeMinPf !== undefined) {
       if (typeof s.gates.rangeMinPf !== "object" || s.gates.rangeMinPf === null)

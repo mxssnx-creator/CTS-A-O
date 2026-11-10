@@ -1,7 +1,7 @@
 // Tag-scoped closes on a shared account: a tag closes its own part of a merged position, never another system's.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { closableQty, flatten, historyWith, netByTag, ownOpenPnl, ownResults } from "./core-live-report.mjs";
+import { closableQty, flatten, flattenWith, historyWith, netByTag, ownOpenPnl, ownResults, reportClientWith } from "./core-live-report.mjs";
 import { buildStatistics, liveTrades } from "../src/core/statistics.ts";
 import { RT_COST } from "../src/core/model-cost.ts";
 
@@ -434,6 +434,62 @@ describe("flatten sends market orders", () => {
 });
 
 describe("confirmed demo flatten", () => {
+  it("the production report transport retains bounded retries for read-only queries", async () => {
+    let attempts = 0;
+    const api = reportClientWith({ signed: async () => {
+      if (++attempts === 1) throw new Error("network issue, please retry");
+      return { positions: [] };
+    } });
+    assert.deepEqual(await api.signed("testnet", "bingx-vst-02", "GET", "/positions", {}), { positions: [] });
+    assert.equal(attempts, 2);
+  });
+
+  it("the production report transport never retries an uncertain signed write", async () => {
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+      for (const message of ["network timed out", "109500 network issue, please retry", "100410 frequency limit"]) {
+        let attempts = 0;
+        const failure = new Error(message);
+        const params = { clientOrderID: "TEST_ORIGINAL", quantity: 2 };
+        const api = reportClientWith({ signed: async (...args) => {
+          attempts++;
+          assert.equal(args[4], params, "the original write identity is preserved");
+          if (attempts === 1) throw failure;
+          return { accepted: true };
+        } });
+        await assert.rejects(api.signed("testnet", "bingx-vst-02", method, "/order", params), error => error === failure);
+        assert.equal(attempts, 1);
+      }
+    }
+  });
+
+  it("a lost close response is reconciled through the production report transport without a second POST", async () => {
+    const saved = process.env.CTS_CORE_LIVE; process.env.CTS_CORE_LIVE = "1";
+    const now = Date.now(); let posts = 0; let filled = false;
+    const calls = [];
+    const entry = { ...o("TEST_E", "BUY", "LONG", 2), orderId: "1", time: now - 1000 };
+    const stop = { id: "2", clientOrderId: "TEST_S", venueSymbol: "SAND-USDT", side: "long", type: "STOP_MARKET" };
+    try {
+      const api = reportClientWith({
+        signed: async (_net, _conn, method, path, params) => {
+          if (method === "POST") {
+            posts++; filled = true; calls.push("close");
+            assert.equal(params.quantity, 2);
+            throw new Error("network timed out after order acceptance");
+          }
+          if (path.endsWith("allOrders")) return { orders: filled
+            ? [entry, { ...o("TEST_C", "SELL", "LONG", 2), orderId: "3", time: now }] : [entry] };
+          calls.push(filled ? "confirmed-flat" : "position");
+          return filled ? [] : [{ symbol: "SAND-USDT", positionSide: "LONG", positionAmt: "2" }];
+        },
+        fetchBook: async () => ({ orders: [stop] }),
+        cancelOrder: async () => { calls.push("cancel-protection"); },
+      });
+      assert.equal(await flattenWith(api, "bingx-vst-02", "TEST_", { from: now - 2000 }), 1);
+      assert.equal(posts, 1);
+      assert.deepEqual(calls, ["position", "close", "confirmed-flat", "cancel-protection"]);
+    } finally { if (saved === undefined) delete process.env.CTS_CORE_LIVE; else process.env.CTS_CORE_LIVE = saved; }
+  });
+
   it("retains protection after an accepted close that has not filled", async () => {
     const { flattenWith } = await import("./core-live-report.mjs");
     const saved = process.env.CTS_CORE_LIVE; process.env.CTS_CORE_LIVE = "1";

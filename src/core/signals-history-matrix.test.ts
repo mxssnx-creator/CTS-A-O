@@ -17,9 +17,10 @@ const H = 3_600_000;
 const T = Date.UTC(2026, 9, 20, 12);
 
 describe("Signal history, bounded trailing and exact-context progression", () => {
-  it("keeps 150h independent of engine 24h and persists the override through WF sanitization", () => {
+  it("keeps 150h independent of engine 48h and persists the override through WF sanitization", () => {
     const wf = defaultWalkForward(DEFAULT_SETTINGS);
-    assert.equal(wf.longH, 24);
+    assert.equal(wf.longH, 48);
+    assert.equal(wf.preH, 48);
     assert.equal(signalHistoryHours(wf), 150);
     assert.deepEqual(sanitizeWf({ signalLongH: 480 }), { signalLongH: 480 });
     assert.equal(signalHistoryHours({ preH: 6 }), 150);

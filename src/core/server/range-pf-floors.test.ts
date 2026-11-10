@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import { BaseConfigCounter } from "../base-config-counts.ts";
 import { minPfOf } from "../minimal-coord.ts";
 import { CoreDb } from "./db.server.ts";
-import { migrateBasePf11, migrateRangePfFloors } from "./runtime.server.ts";
+import { liveMinPfOf, migrateBasePf11, migrateRangePfFloors } from "./runtime.server.ts";
 
 const flat = () => ({ minPf: 1.1, baseSetsMinPf: 1.1,
   rangeMinPf: { micro: 1.1, minimal: 1.1, short: 1.1, general: 1.1, long: 1.1 } });
@@ -18,6 +18,17 @@ test("all research families retain the requested range floor instead of a hidden
   }
   assert.equal(minPfOf(DEFAULT_SETTINGS.gates, "mc", "sig-ema-cross-s@m1"), 1.5,
     "Signals retain their independently configured economic floor");
+});
+
+test("native live floors preserve each configured step and SL ratio without borrowing a sibling policy", () => {
+  const settings = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates,
+    stepPf: { enabled: true, ratio: .2, max: 2, byStep: { "2": 1.2 }, bySlRatio: { "0.5": 1.6, "1": 1.3 } } },
+    live: { ...DEFAULT_SETTINGS.live, liveMinPf: 1.1 } };
+  assert.equal(liveMinPfOf(settings,"mc","ema-9-21@m1","normal",.2,.5),1.6);
+  assert.equal(liveMinPfOf(settings,"mc","ema-9-21@m1","normal",.2,1),1.3);
+  assert.equal(liveMinPfOf({ ...settings,live:{...settings.live,liveMinPf:1.8} },"mc","ema-9-21@m1","normal",.2,.5),1.8);
+  assert.equal(liveMinPfOf(settings,"sh","sig-ema-cross-s@m1","normal",.2,.5),1.5,
+    "Signals retain independently defined economic floors");
 });
 
 test("full configured-cell statistics count qualifying Micro/Minimal cells below the former hidden 1.1", () => {
