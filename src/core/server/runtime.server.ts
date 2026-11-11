@@ -5802,6 +5802,10 @@ export class CoreRuntime {
     // the steps the simulation really takes (its start is floored to the hour: up to one step more than
     // simH / stepH, which ran the bar past 100 %)
     const steps = Math.max(1, walkForwardSteps(wu, wf));
+    const positionPolicy = wf.gates?.positionWindows;
+    const validationProgress = positionPolicy
+      ? `positions Main / Real / Entry ${positionPolicy.main} / ${positionPolicy.real} / ${positionPolicy.entry} · own range/config overrides apply`
+      : `engine ${wf.preH}h pre / Last-${wf.validLastN ?? 0}${sig.enabled ? ` · Signals ${signalHistoryHours(wf)}h / Last-${wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN ?? 0}` : ""} · entry Last-${wf.lastN}`;
     this.setStage("Real", 0, steps, `${wf.simH}h sim · step 0/${steps}`);
     const sim = await this.researchSimulation(wu, tapes, wf, gen, (v) => {
       if (v >= 0) {
@@ -5810,7 +5814,7 @@ export class CoreRuntime {
           "Real",
           step,
           steps,
-          `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · engine ${wf.preH}h pre / Last-${wf.validLastN ?? 0}${sig.enabled ? ` · Signals ${signalHistoryHours(wf)}h / Last-${wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN ?? 0}` : ""} · entry Last-${wf.lastN}`,
+          `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · ${validationProgress}`,
         );
       }
     }, signal);

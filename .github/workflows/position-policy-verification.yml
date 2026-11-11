@@ -36,6 +36,7 @@ jobs:
           src/core/server/position-windows-migration.test.ts src/core/server/low-range-settings.test.ts
           src/core/server/cost-default-runtime.test.ts src/core/server/fee-schedule.test.ts
           src/core/server/live-state-lifecycle.test.ts src/core/server/native-order-kind-safety.test.ts
+          src/core/server/pool-progress-timeout.test.ts
           src/core/indications/low-range-auto.test.ts src/core/indications/low-range-integration.test.ts
           src/core/indications/low-range-research.test.ts
       - name: Report provenance and verification inventory

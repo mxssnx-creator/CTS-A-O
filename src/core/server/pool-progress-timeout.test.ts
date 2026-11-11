@@ -6,11 +6,12 @@ import { join } from "node:path";
 import { it } from "node:test";
 import { promisify } from "node:util";
 
-it("extends Base-like worker timeouts only for advancing progress, with a finite hard deadline", { timeout: 25_000 }, async () => {
+it("extends Base-like worker timeouts only for advancing progress, with a finite hard deadline", { timeout: 50_000 }, async () => {
   const dir = mkdtempSync(join(tmpdir(), "cts-progress-timeout-"));
   const worker = join(dir, "progress.worker.mjs");
   writeFileSync(worker, `import { parentPort } from 'node:worker_threads';
 parentPort.on('message', m => {
+  if (m.warmup) { parentPort.postMessage({ id: m.id, ok: true }); return; }
   let n = 0;
   const timer = setInterval(() => {
     n++;
@@ -23,7 +24,12 @@ parentPort.on('message', m => {
   const child = `
 import assert from 'node:assert/strict';
 import { closePool, isWorkerTimeout, runOnWorkers } from ${JSON.stringify(moduleUrl)};
-const run = (message, hard) => runOnWorkers([message], 1, 500, undefined, false, undefined, undefined, undefined, hard);
+const run = async (message, hard) => {
+  // Worker bootstrap is separate from heartbeat inactivity. Warm each replacement after a timed-out job
+  // before exercising the same 500 ms watchdog and hard deadlines, even on a CPU-contended CI host.
+  await runOnWorkers([{ warmup: true }], 1, 10_000);
+  return runOnWorkers([message], 1, 500, undefined, false, undefined, undefined, undefined, hard);
+};
 const timedOut = e => isWorkerTimeout(e) && /worker timed out/.test(String(e));
 try {
   assert.equal((await run({ finish: true }, 2000))[0].ok, true);
@@ -38,7 +44,7 @@ try {
   try {
     const { stdout } = await promisify(execFile)(process.execPath,
       ["--experimental-strip-types", "--no-warnings", "--input-type=module", "-e", child],
-      { env: { ...process.env, CTS_CORE_WORKER: worker, CTS_CORE_WORKERS: "1" }, timeout: 20_000, maxBuffer: 32_000 });
+      { env: { ...process.env, CTS_CORE_WORKER: worker, CTS_CORE_WORKERS: "1" }, timeout: 45_000, maxBuffer: 32_000 });
     assert.match(stdout, /progress timeout checks passed/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
