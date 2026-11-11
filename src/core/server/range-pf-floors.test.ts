@@ -33,7 +33,7 @@ test("native live floors preserve each configured step and SL ratio without borr
 
 test("full configured-cell statistics count qualifying Micro/Minimal cells below the former hidden 1.1", () => {
   for (const [tag, pf] of [["mc", 1.06], ["mn", 1.09]] as const) {
-    const counter = new BaseConfigCounter({ gates: { ...DEFAULT_SETTINGS.gates, stepPf: { enabled: false, ratio: .2, max: 2 }, baseLastN: 0,
+    const counter = new BaseConfigCounter({ gates: { ...DEFAULT_SETTINGS.gates, positionWindows:null, stepPf: { enabled: false, ratio: .2, max: 2 }, baseLastN: 0,
       baseRangeLastN: {}, minTrades: 2, maxDdr: 0, lossPrior: false, lastNFloor: 0 },
       cost: .0015, fromT: 0, cutT: 60_000 });
     counter.record("follow", "low-range-1-breakout-trend", { tp: .01, sl: .01, trail: 0, hold: 1, tag },

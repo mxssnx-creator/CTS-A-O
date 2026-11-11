@@ -15,7 +15,7 @@ afterEach(() => { resetLiveBackoff(); mock.timers.reset(); });
 
 it("only an explicit position-stop kind is treated as a backstop", () => {
   assert.equal(isBackstopKind("S"), true);
-  for (const kind of ["", "E", "U", "M", "N", "H", "G", "L", "Q", "C", "T", "V", "Y"])
+  for (const kind of ["", "E", "U", "M", "N", "H", "G", "L", "Q", "Z", "C", "T", "V", "Y"])
     assert.equal(isBackstopKind(kind), false, kind);
 });
 

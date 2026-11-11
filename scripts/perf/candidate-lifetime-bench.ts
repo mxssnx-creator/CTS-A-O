@@ -49,7 +49,7 @@ const fixture = () => {
     tapes.push(makeTape(id, "follow", ind, { tp: 0.01 + k / 10000, sl: 0.01, trail: 0, hold: 32 }, "normal", syms, trades, [], []));
   }
   // The historical lifecycle snapshot predates Base Last-N and used a floor of five; freeze both serialized inputs.
-  const { baseLastN: _baseLastN, baseRangeLastN: _baseRangeLastN, stepPf: _stepPf, ...archivedGates } = DEFAULT_SETTINGS.gates;
+  const { baseLastN: _baseLastN, baseRangeLastN: _baseRangeLastN, stepPf: _stepPf, positionWindows: _positionWindows, ...archivedGates } = DEFAULT_SETTINGS.gates;
   // Preserve the archived fee budget and omit the later step-policy field from this exact lifecycle seal.
   const o = { ...defaultWalkForward(DEFAULT_SETTINGS), cost: 0.0015, gates: { ...archivedGates, minPf: 1.1, lastNFloor: 5,
     baseSetsMinPf: 1, rangeMinPf: { micro: 1.05, minimal: 1.1, short: 1.1, general: 1.2, long: 1.3 } },
@@ -78,6 +78,8 @@ const fixture = () => {
     relate: undefined,
     toggles: { normal: true, trailing: true, block: false, blockActive: false, dca: false, dcaActive: false, axis: false },
   };
+  // Low-Range is not present in this archived Signal-only option snapshot.
+  if (o.rangeVolumeFactors) delete o.rangeVolumeFactors.lr;
   return { tapes, o, u: { bars: [], caches: [], startT: start - H, endT: start + hours * H, splitT: start,
     nowT: start + hours * H, baseTf: 1 } };
 };

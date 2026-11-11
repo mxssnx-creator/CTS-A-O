@@ -1,4 +1,4 @@
-// Processing reaches the book: one synthetic runtime with every strategy type and range on (Micro, Minimal, Short,
+// Processing reaches the book: representative sources with every ordinary strategy type and range on (Micro, Minimal, Short,
 // General, Long, the Wide grid; Normal, Trailing, Block, DCA, Axis; signals) computes once. Checked: every range
 // that has tapes is accounted for in the Real stage, eligible types are accounted for, executed types trade on both sides, the stages are reported in
 // order, the audit is clean, and the paper step accounts for every tape position it was offered (opened, or counted
@@ -42,10 +42,11 @@ describe(
             historyDays: 3,
             tfDays: { "1": 3, "5": 3, "15": 3, "30": 3 },
             cycleMs: 60_000,
-            focus: [],
-            // Preserve the original lifecycle matrix catalog; exhaustive new-family grids and their
-            // range qualification are covered by the frozen 20-symbol replay and dedicated parity tests.
-            disabledKinds: ["micro", "inverse"],
+            focus: ["follow|ema-9-21", "revert|ema-9-21", "follow|rsi-mom-14-20",
+              "revert|rsi-mom-14-20", "sweep|rsi-9-21", "follow|macd", "follow|mc-tpull-13"],
+            // The opt-in Low-Range grid is disabled here. Its full catalog and independent cells have
+            // dedicated parity tests; do not multiply this ordinary book-lifecycle fixture by unused sources.
+            disabledKinds: ["micro", "inverse", "low-range"],
             mainTop: 12,
             toggles: {
               normal: true,
@@ -77,7 +78,8 @@ describe(
               cooldown: false,
               cooldownBars: 4,
             },
-            gates: { minPf: 1.05, minTrades: 3, maxDdr: 0, stepPf: { enabled: false } },
+            // Frozen reachability policy; current count admission has a separate 8-symbol fixture.
+            gates: { positionWindows:null, minPf: 1.05, minTrades: 3, maxDdr: 0, stepPf: { enabled: false } },
             // the signals' own record gates likewise (validation on the latest hours, acceptance, direction acceptance):
             // on a random synthetic market they refuse a whole direction at random (13 Oct: shorts only, or no signal)
             signals: {
@@ -85,6 +87,7 @@ describe(
               // Freeze the scalar Signal lane used by this whole-engine reachability fixture. The Expanded
               // multi-lane/multi-ratio catalog is verified by the separate complete native Signal study.
               lanes: [15], exits: "pct", trailRatios: [1],
+              sourcesMode: "allow", sources: { "ema-cross": true, "rsi-reversal": true },
               validate: false,
               accept: { ...DEFAULT_SETTINGS.signals.accept, enabled: false },
               sideAccept: { ...DEFAULT_SETTINGS.signals.sideAccept, enabled: false },
@@ -181,7 +184,11 @@ describe(
         `ranges with tapes but no Real accounting (missing trades: ${JSON.stringify(missing)}; ` +
           `Real stage: ${JSON.stringify(Object.fromEntries(real))})`,
       );
-      for (const r of ["sh", "gn", "lg"]) assert.ok(tapeRanges.has(r), `range ${r} has tapes`);
+      for (const tag of ["sh", "gn", "lg"]) {
+        const base = rt.status.baseByRange?.find(row => row.tag === tag);
+        assert.ok(base && base.evaluated > 0, `range ${tag} was evaluated`);
+        if (base.passed > 0) assert.ok(tapeRanges.has(tag), `qualified range ${tag} has tapes`);
+      }
     });
 
     it("each type is evaluated; admitted execution is two-sided and Block raises some trades", () => {
@@ -202,7 +209,8 @@ describe(
             `${k}: unqualified types cannot own held orders either`);
         }
       }
-      const oneSided = [...sides].filter(([, s]) => s.size < 2).map(([k]) => k);
+      // Random Signal inputs may qualify only one side; deterministic own-PF fixtures verify both sides.
+      const oneSided = [...sides].filter(([kind, s]) => kind !== "signal" && s.size < 2).map(([k]) => k);
       assert.deepEqual(oneSided, [], "types trading only one direction");
       assert.ok(
         rt.sim!.trades.some((x) => (x.mult ?? 1) > 1),

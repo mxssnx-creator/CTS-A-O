@@ -39,7 +39,8 @@ describe("evaluation families in the runtime", { timeout: 1_200_000 }, () => {
         // one engine indication and one signal source keep the compute light
         focus: ["follow|ema-21-55", "revert|ema-21-55"],
         pinned: [],
-        gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
+        // Family-routing fixture retains its original clock qualification policy.
+        gates: { positionWindows:null, minPf: 1.05, minTrades: 3, maxDdr: 0 },
         tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
         signals: signalSettings({ sources: { "ema-cross": true }, sourcesMode: "allow" }),
       } as never,

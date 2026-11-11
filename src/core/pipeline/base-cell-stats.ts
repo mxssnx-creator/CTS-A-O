@@ -76,7 +76,7 @@ export class BaseCellAccumulator {
     const n = this.n;
     const lastCount = Math.min(n, lastN);
     if (!n) return { n: 0, pf: 0, net: 0, mdd: 0,
-      ...(lastN ? { baseLast: { requested: lastN, n: 0, gp: 0, gl: 0, stop } } : {}) };
+      ...(lastN ? { baseLast: { requested: lastN, n: 0, gp: 0, gl: 0, stop, mdd:0 } } : {}) };
     if (n > this.runStart) {
       this.ends.push(n);
       this.runStart = n;
@@ -126,10 +126,11 @@ export class BaseCellAccumulator {
     let peak = 0;
     let mdd = 0;
     let lastGp = 0;
-    let lastGl = 0;
+    let lastGl = 0, lastEquity = 0, lastPeak = 0, lastMdd = 0;
     for (let j = 0; j < n; j++) {
       const r = this.rr[indices ? indices[j] : j];
       if (lastN && j >= n - lastCount) {
+        lastEquity += r; lastPeak=Math.max(lastPeak,lastEquity);lastMdd=Math.max(lastMdd,lastPeak-lastEquity);
         if (r > 0) lastGp += r;
         else lastGl -= r;
       }
@@ -149,11 +150,13 @@ export class BaseCellAccumulator {
       Number.isFinite(sum * 100) && Number.isFinite(mdd * 100) &&
       Number.isFinite(gp * 100) && Number.isFinite(gl * 100)))
       return { n, pf: 0, net: 0, mdd: 0, gp: 0, gl: 0, invalid: true,
-        ...(lastN ? { baseLast: { requested: lastN, n: lastCount, gp: 0, gl: 0, stop: 0, invalid: true } } : {}) };
+        ...(lastN ? { baseLast: this.validTimes && [lastGp,lastGl,lastMdd,stop].every(Number.isFinite) ?
+          { requested:lastN,n:lastCount,gp:lastGp*100,gl:lastGl*100,stop,mdd:lastMdd*100 } :
+          { requested: lastN, n: lastCount, gp: 0, gl: 0, stop: 0, invalid: true } } : {}) };
     const validLast = this.validTimes && Number.isFinite(lastGp * 100) && Number.isFinite(lastGl * 100) && Number.isFinite(stop) && stop >= 0;
     return { n, pf, net: sum * 100, mdd: mdd * 100, gp: gp * 100, gl: gl * 100,
       ...(lastN ? { baseLast: validLast
-        ? { requested: lastN, n: lastCount, gp: lastGp * 100, gl: lastGl * 100, stop }
+        ? { requested: lastN, n: lastCount, gp: lastGp * 100, gl: lastGl * 100, stop, mdd:lastMdd*100 }
         : { requested: lastN, n: lastCount, gp: 0, gl: 0, stop: 0, invalid: true as const } } : {}) };
   }
 }

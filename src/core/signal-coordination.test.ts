@@ -1,6 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_SETTINGS } from "./config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS } from "./config.ts";
+
+// Historical Signal window fixture; exact count-policy admission is tested separately.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
 import type { Trade } from "./domain/types.ts";
 import { exchangeAcceptIndex, laneKeyOf, liveRecords } from "./live-record.ts";
 import { liveGate } from "./live-validation.ts";

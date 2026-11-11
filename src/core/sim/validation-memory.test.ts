@@ -9,9 +9,11 @@ const ind = "ema-21-55@m5";
 const protect = { tp: 0.01, sl: 0.01, trail: 0, hold: 12 };
 const tapes = [0, 1, 2].map((j) => {
   const id = `follow|${ind}|cell${j}`;
-  const rows: Trade[] = Array.from({ length: 72 }, (_, i) => ({
+  // Forty complete observations for each own context fit in the declared 48h prehistory.
+  const rows: Trade[] = Array.from({ length: 104 }, (_, i) => ({
     cfg: id, sym: i % 2 ? "A" : "B", side: i % 2 ? 1 : -1,
-    entryT: T + (i - 48) * H + 60_000, exitT: T + (i - 48) * H + 120_000,
+    entryT: T + (i < 80 ? (i - 80) / 2 : i - 80) * H + 60_000,
+    exitT: T + (i < 80 ? (i - 80) / 2 : i - 80) * H + 120_000,
     entry: 100, exit: 101, r: j === 1 || i % 4 === 0 ? -0.005 : 0.012,
     reason: "tp", bars: 1, mfe: 0, mae: 0,
   }));

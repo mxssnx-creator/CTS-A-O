@@ -6,7 +6,7 @@ import { Empty, ErrorNote, fmt, Kpi, Panel, Pill, useDebounced, usePoll } from "
 
 type Any = any;
 const PAGE = 50;
-const RANGES = [["", "All ranges"], ["Wide", "Wide"], ["mc", "Micro"], ["mn", "Minimal"], ["mp", "Minimal plus"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"]] as const;
+const RANGES = [["", "All ranges"], ["Wide", "Wide"], ["mc", "Micro"], ["mn", "Minimal"], ["mp", "Minimal plus"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"], ["lr", "Low-Range"]] as const;
 const rangeLabel = (tag: string) => tag === "" ? "Wide" : RANGES.find(([key]) => key === tag)?.[1] ?? tag;
 const stateNote: Record<string, string> = {
   pending: "Waiting for the exact historical Base sweep. No count is inferred from representative pairs.",

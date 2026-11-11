@@ -26,7 +26,7 @@ test("pending Signal entries keep their own cap when a Signal-sourced Exit is he
       signalRank: signalSettings({ enabled: true, validate: false, count: 0 }),
       signalActive: new Set([sigActiveKey("follow", ind, sym, 1, "normal", cfg)]),
       coord: { enabled: false, confirm: false, conflict: false, hourLock: 0, cooldown: "off" } };
-    const rows: Trade[] = Array.from({ length: 30 }, (_, i) => ({ cfg, sym, side: 1,
+    const rows: Trade[] = Array.from({ length: 40 }, (_, i) => ({ cfg, sym, side: 1,
       entryT: t - (40 - i) * H, exitT: t - (40 - i) * H + 60_000, entry: 100, exit: 102,
       r: .02, mult: 1, reason: "tp", bars: 1, mfe: 0, mae: 0, kind: "normal" }));
     rt.tapes = [makeTape(cfg, "follow", ind, protect, "normal", [sym], rows, [], [{ sym, side: 1 }])];

@@ -71,7 +71,7 @@ test("legacy nominal rows including NULL cannot retain old ON or manufacture own
     assert.match(result.stdout, /nominal reference own rows 30 \(not funded-execution proof\)/);
     const live = read(f.patchPath).settings.live;
     assert.deepEqual(live.promotedLanes, []);
-    assert.deepEqual(live.excludeRanges, ["mc", "mn", "mp", "sh", "gn", "lg", "wide"]);
+    assert.deepEqual(live.excludeRanges, ["mc", "mn", "mp", "sh", "gn", "lg", "lr", "wide"]);
     assert.deepEqual(live.kinds, ["trailing-only"]);
     assert.equal(live.ratio, 3);
     assert.ok(Object.values(read(f.statePath).on).every((on) => !on));

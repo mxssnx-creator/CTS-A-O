@@ -1,3 +1,4 @@
+import { positionCounts } from "../position-windows.ts";
 import { SL_TP_RATIOS, minimumStopFraction } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { profitFactorRatio } from "../metrics/profit-factor.mjs";
@@ -56,7 +57,7 @@ import {
 } from "../indications/micro-family.ts";
 import { isRelateInd, relateAnchorTf } from "../indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "../indications/break-config.ts";
-import { isLowRangeInd, LOW_RANGE_TIMEFRAMES, lowRangeGridProtects } from "../indications/low-range.ts";
+import { isLowRangeInd, LOW_RANGE_TIMEFRAMES, lowRangeGridProtects, lowRangeEnabled, lowRangeTag } from "../indications/low-range.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { MarketSource } from "../indications/market.ts";
 import {
@@ -69,7 +70,7 @@ import {
 } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
 import { optimizeLastN } from "../lastn/optimizer.ts";
-import { ddrFails, scoreStats, statsOf } from "../metrics/stats.ts";
+import { ddrFails, scoreStats, statsOf, profitFactor } from "../metrics/stats.ts";
 import {
   ATR_PERIOD,
   LANE_MIN,
@@ -296,10 +297,60 @@ export interface Combo {
 }
 
 /** Base gate: a config set is evaluated and promoted to Main only with PF ≥ min PF, positive net and enough trades. */
+function basePositionMiss(
+  st: Parameters<typeof passesBase>[0],
+  g: Parameters<typeof passesBase>[1],
+): BaseGate[] {
+  const recent = st.baseLast;
+  const requested = positionCounts(g.positionWindows!, st.rangeTag ?? "wide", st.configId).base;
+  if (
+    !recent ||
+    recent.invalid ||
+    recent.requested !== requested ||
+    !Number.isSafeInteger(recent.n) ||
+    recent.n < 0 ||
+    ![recent.gp, recent.gl, recent.mdd ?? NaN, recent.stop].every(Number.isFinite) ||
+    recent.gp < 0 ||
+    recent.gl < 0 ||
+    recent.mdd! < 0 ||
+    recent.stop < 0
+  )
+    return ["lastN"];
+  const miss: BaseGate[] = [];
+  if (recent.n !== requested) miss.push("closes");
+  const net = recent.gp - recent.gl;
+  const loss = recent.gl + (g.lossPrior ? recent.stop : 0);
+  if (!(net > 0)) miss.push("net");
+  if (!(recent.gp >= g.minPf * loss)) miss.push("pf");
+  if (ddrFails(recent.mdd, net, g.maxDdr)) miss.push("ddr");
+  return miss;
+}
+
 export function passesBase(
-  st: { n: number; pf: number; net: number; mdd?: number; bw?: BaseWindowsResult; baseLast?: BaseLastNStats },
-  g: { minPf: number; minTrades: number; maxDdr?: number; baseLastN?: number; lastNFloor?: number; lossPrior?: boolean; stepPf?: Gates["stepPf"] },
+  st: {
+    n: number;
+    pf: number;
+    net: number;
+    mdd?: number;
+    bw?: BaseWindowsResult;
+    baseLast?: BaseLastNStats;
+    rangeTag?: string;
+    configId?: string;
+  },
+  g: {
+    minPf: number;
+    minTrades: number;
+    maxDdr?: number;
+    baseLastN?: number;
+    lastNFloor?: number;
+    lossPrior?: boolean;
+    stepPf?: Gates["stepPf"];
+    positionWindows?: Gates["positionWindows"];
+  },
 ): boolean {
+  if (g.positionWindows) {
+    return basePositionMiss(st, g).length === 0;
+  }
   // Fail closed on invalid source/aggregate returns even when the optional drawdown ratio is disabled.
   // A nonfinite numerator or gross-loss underflow must not turn into a high-PF winning Base pass.
   if (!(Number.isSafeInteger(st.n) && Number.isFinite(st.pf) && Number.isFinite(st.net)))
@@ -391,6 +442,7 @@ const atrTag = (p: Protect) =>
   p.atr ? `|atr${p.atr.sl}x${p.atr.tpRatio}${p.atr.trail ? `t${p.atr.trail}` : ""}` : "";
 export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind): string {
   const mode = `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}${p.trail > 0 && p.trailFree ? "|tf1" : ""}${p.trailMax !== undefined ? `|tm${pct(p.trailMax)}` : ""}`;
+  const caps = p.riskCaps ? `|rc${pct(p.riskCaps.sl)}x${pct(p.riskCaps.trail)}` : "";
   const exitFloor = p.exitType === "historic" && p.trail > 0 && (p.exitTrailFloor ?? 0) > 0
     ? `|eg${pct(p.exitTrailFloor ?? 0)}` : "";
   const exit =
@@ -411,7 +463,7 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
       : "";
   const dca = p.dca && (kind === "dca" || kind === "dca-active")
     ? `|dc${p.dca.levels}s${pct(p.dca.step)}q${p.dca.stepOfTp ?? 0}g${p.dca.stopGap ?? 0.5}r${p.dca.addRatio ?? 1}${p.dca.maxDistance ? `m${pct(p.dca.maxDistance)}` : ""}` : "";
-  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${p.maxHoldMin !== undefined ? `|hm${p.maxHoldMin}` : ""}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}${mode}${exitFloor}${exit}${dca}`;
+  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${p.maxHoldMin !== undefined ? `|hm${p.maxHoldMin}` : ""}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}${mode}${caps}${exitFloor}${exit}${dca}`;
   return kind === "dca"
     ? `${base}|dca`
     : kind === "dca-active"
@@ -422,7 +474,7 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
 }
 
 export function kindOfId(id: string): StratKind {
-  const core = id.replace(/\|(?:mp|mc|mn|sh|gn|lg)(?=\||$)/g, "");
+  const core = id.replace(/\|(?:mp|mc|mn|sh|gn|lg|lr)(?=\||$)/g, "");
   if (/\|hx(?:[LS])?[0-4]?$/.test(core)) return "exit";
   if (core.endsWith("|axis")) return "axis";
   if (core.endsWith("|dcaA")) return "dca-active";
@@ -453,14 +505,15 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   const ratio = /\|ts([\d.]+)(?=\||$)/.exec(id);
   const free = /\|tf1(?=\||$)/.exec(id);
   const ceiling = /\|tm([\d.]+)(?=\||$)/.exec(id);
+  const caps = /\|rc([\d.]+)x([\d.]+)(?=\||$)/.exec(id);
   const exitFloor = /\|eg([\d.]+)(?=\||$)/.exec(id);
   const ladder = /\|dc([1-4])s([\d.]+)q([\d.]+)g([\d.]+)r([\d.]+)(?:m([\d.]+))?(?=\||$)/.exec(id);
   // Remove each token once; duplicates or malformed tokens remain and fail the strict grammar below.
-  const plainId = id.replace(/\|hm[\d.]+(?=\||$)/, "").replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|eg[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?:m[\d.]+)?(?=\||$)/, "");
+  const plainId = id.replace(/\|rc[\d.]+x[\d.]+(?=\||$)/, "").replace(/\|hm[\d.]+(?=\||$)/, "").replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|eg[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?:m[\d.]+)?(?=\||$)/, "");
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
-    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(?:\|axd?-[a-z0-9]+)?(\|hx([LS])?([0-4])?)?(\|dcaA?|\|axis)?$/.exec(
+    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg|\|lr)?(?:\|axd?-[a-z0-9]+)?(\|hx([LS])?([0-4])?)?(\|dcaA?|\|axis)?$/.exec(
       plainId,
     );
   if (!m) return null;
@@ -470,6 +523,12 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
     trail: fromPct(m[5]),
     hold: +m[6],
   };
+  if (caps) {
+    const sl = fromPct(caps[1]), trail = fromPct(caps[2]);
+    if (![sl, trail].every(n => Number.isFinite(n) && n > 0 && n <= 1) || protect.sl > sl + 1e-12 ||
+        protect.trail * (ratio ? +ratio[1] : 1) > trail + 1e-12) return null;
+    protect.riskCaps = { sl, trail };
+  }
   if (minuteHold) {
     const minutes = Number(minuteHold[1]);
     if (!Number.isFinite(minutes) || minutes < 1) return null;
@@ -631,13 +690,17 @@ export interface ComboRun {
 }
 
 /** The effective protection policy proved by Base; preserve legacy keys for the default policy. */
-export const protectCellKey = (p: Pick<Protect, "tp" | "sl" | "trail" | "hold" | "tag" | "maxHoldMin" | "trailOnly" | "trailStep" | "trailFree" | "trailMax">) =>
+export const protectCellKey = (p: Pick<Protect, "tp" | "sl" | "trail" | "hold" | "tag" | "maxHoldMin" | "trailOnly" | "trailStep" | "trailFree" | "trailMax" | "riskCaps">) =>
   `${p.tag ?? ""}|${p.tp}|${p.sl}|${p.trail}|${p.hold}${p.maxHoldMin !== undefined ? `|hm${p.maxHoldMin}` : ""}` +
   `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}` +
-  `${p.trail > 0 && p.trailFree ? "|tf1" : ""}${p.trailMax !== undefined && !(p.trailOnly && p.trailMax === SIGNAL_STOP_LIMIT) ? `|tm${p.trailMax}` : ""}`;
+  `${p.riskCaps ? `|rc${p.riskCaps.sl}x${p.riskCaps.trail}` : ""}${p.trail > 0 && p.trailFree ? "|tf1" : ""}${p.trailMax !== undefined && !(p.trailOnly && p.trailMax === SIGNAL_STOP_LIMIT) ? `|tm${p.trailMax}` : ""}`;
 
 /** Base result of a pair at one range's representative cell (full history). */
 export interface RangeBaseStat {
+  configId?: string;
+  rangeTag?: string;
+  /** Available before selecting the last-N primary sample. */
+  availableN?: number;
   /** Exact configured TP or trailing activation percent used by the step PF policy. */
   stepPct?: number;
   /** Effective configured stop relative to this representative cell's own TP. */
@@ -724,7 +787,7 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
       trail: tr > 0 ? trailAtFloor(tp * tr, minTrail, g.trailStep ?? 1, digits) : 0,
       hold: Math.max(holdFloorBars(range), Math.round((h * 60) / REF_TF)),
       ...(tag ? { tag } : {}),
-      ...(range && range.maxHoldMin ? { maxHoldMin: range.maxHoldMin } : {}),
+      ...(range && (range.holdAuto || range.maxHoldMin) ? { maxHoldMin: range.holdAuto ? Math.round(h * 60) : range.maxHoldMin } : {}),
     };
     // The Wide caps resolve before identity/deduplication, as in the executable grid.
     if (!tag) {
@@ -764,7 +827,7 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
       const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.maxHoldMin ?? ""}|${p.tag}`;
       if (!seen.has(key)) { seen.add(key); out.push(p); }
     }
-  const lowRange = (g.short ? lowRangeGridProtects(g.lowRange, cost, REF_TF) : []).map((p) => ({...p, sl: Math.max(slFloor, p.sl)}));
+  const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, REF_TF, .1, slFloor) : []);
   if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
   out.push(...lowRange);
   return out;
@@ -843,13 +906,10 @@ export function baseRangeProtects(
         // stop no config may trade
         if (g.baseCells) {
           // cell level: the cells the grid builds (every hold; with baseTrailCells every trail ratio), each its own Base cell
-          const holds = [
-            ...new Set(
-              rangeHolds(r, g.holdH ?? [16]).map((h) =>
-                Math.max(holdFloorBars(r), Math.round((h * 60) / REF_TF)),
-              ),
-            ),
-          ];
+          const holds = rangeHolds(r, g.holdH ?? [16]).map(hours => ({
+            hold: Math.max(holdFloorBars(r), Math.round((hours * 60) / REF_TF)),
+            maxHoldMin: r.holdAuto ? Math.round(hours * 60) : r.maxHoldMin,
+          }));
           const trs = g.baseTrailCells
             ? [...new Set(r.trailOfTp ?? [])].filter((x) => x > 0).sort((a, b) => a - b)
             : [];
@@ -863,14 +923,14 @@ export function baseRangeProtects(
               out.push(p);
             }
           };
-          for (const h of holds) {
+          for (const { hold: h, maxHoldMin } of holds) {
             for (const k of ks)
               add({
                 tp,
                 sl: distanceAtFloor(tp * k, Math.max(floorR, minSlR), digits),
                 trail: 0,
                 hold: h,
-                ...(r.maxHoldMin ? { maxHoldMin: r.maxHoldMin } : {}),
+                ...(maxHoldMin ? { maxHoldMin } : {}),
                 tag,
               });
             for (const tr of trs)
@@ -880,7 +940,7 @@ export function baseRangeProtects(
                   sl: distanceAtFloor(tp * Math.max(k, trailStop), Math.max(floorR, minSlR), digits),
                   trail: trailAtFloor(tp * tr, minTrailR, step, digits),
                   hold: h,
-                  ...(r.maxHoldMin ? { maxHoldMin: r.maxHoldMin } : {}),
+                  ...(maxHoldMin ? { maxHoldMin } : {}),
                   tag,
                   trailStep: step,
                   trailFree: g.trailFree ?? false,
@@ -958,6 +1018,8 @@ export function baseRangeProtects(
 }
 type CoordRangeLike = {
   maxHoldMin?: number;
+  holdAuto?: boolean;
+  holdCandidatesMin?: readonly number[];
   tp: readonly number[];
   slOfTp: readonly number[];
   trailOfTp?: readonly number[];
@@ -1000,8 +1062,11 @@ export function basePassTags(
   allTags: readonly string[] = [],
 ): string[] {
   if (r.ind && isLowRangeInd(laneOf(r.ind).base)) {
-    const sh = r.ranges?.sh;
-    return sh && baseSlPolicyKnown(g, sh, r.ind) && passesBase(sh, { ...g, minPf: minPfOf(g, "sh", r.ind, sh.stepPct, sh.slRatio) }) ? ["sh"] : [];
+    return ["sh","lr"].filter(tag=>{
+      const own=r.ranges?.[tag];
+      return !!own&&baseSlPolicyKnown(g,own,r.ind)&&passesBase(own,{...g,baseLastN:baseLastNForRange(g,tag),
+        minPf:minPfOf(g,tag,r.ind,own.stepPct,own.slRatio)});
+    });
   }
   const out: string[] = [];
   const own = new Set(Object.keys(r.ranges ?? {}));
@@ -1212,7 +1277,7 @@ export interface BaseRangeCount {
 const BASE_DIAGNOSTIC_BATCH = 128;
 type BaseReportingGates = { stepPf?: Gates["stepPf"]; minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"];
   baseLastN?: number; baseRangeLastN?: Gates["baseRangeLastN"]; lastNFloor?: number; lossPrior?: boolean;
-  baseWindows?: Gates["baseWindows"] };
+  baseWindows?: Gates["baseWindows"]; positionWindows?: Gates["positionWindows"] };
 
 /** Keep the synchronous public helpers available to reports and other non-interactive callers. */
 function finishBaseDiagnostics<R>(work: Generator<number, R>): R {
@@ -1439,9 +1504,15 @@ export function* baseRangeWhyGen(
   eligible: (ind: string, tag: string) => boolean = () => true,
 ): Generator<number, BaseWhyRow[]> {
   // the two-window gate is a reason of its own only while it is set (the rows are unchanged otherwise)
-  const win = !!g.baseWindows?.gate;
-  const zero = (): BaseGateCounts => ({ closes: 0, net: 0, pf: 0, ddr: 0,
-    ...(win ? { windows: 0 } : {}), ...((g.baseLastN ?? 0) > 0 ? { lastN: 0 } : {}) });
+  const win = !g.positionWindows && !!g.baseWindows?.gate;
+  const zero = (): BaseGateCounts => ({
+    closes: 0,
+    net: 0,
+    pf: 0,
+    ddr: 0,
+    ...(win ? { windows: 0 } : {}),
+    ...(g.positionWindows || (g.baseLastN ?? 0) > 0 ? { lastN: 0 } : {}),
+  });
   const rows: BaseWhyRow[] = [];
   let processed = 0;
   for (const tag of ["", ...allTags]) {
@@ -1464,16 +1535,28 @@ export function* baseRangeWhyGen(
       const ownGates = own ? { ...g, baseLastN: baseLastNForRange(g, tag) } : g;
       // no own cell: judged at the default protect against both minimums (as baseRangeCounts)
       const minPf = minPfOf(g, tag, r.ind, st.stepPct, st.slRatio);
-      const need = own || !tag ? minPf : Math.max(minPfOf(g, "", r.ind, r.full.stepPct, r.full.slRatio), minPf);
+      const need =
+        own || !tag
+          ? minPf
+          : Math.max(minPfOf(g, "", r.ind, r.full.stepPct, r.full.slRatio), minPf);
       // the gates exactly as passesBase reads them
       const miss: BaseGate[] = [];
-      if (!(Number.isSafeInteger(st.n) && st.n >= g.minTrades)) miss.push("closes");
-      if (!(Number.isFinite(st.net) && (st.net > 0 || need < 1))) miss.push("net");
-      if (!baseSlPolicyKnown(g, st, r.ind) || !(Number.isFinite(st.pf) && st.pf >= need)) miss.push("pf");
-      if ((st.mdd !== undefined && !(Number.isFinite(st.mdd) && st.mdd >= 0)) ||
-          ddrFails(st.mdd, st.net, g.maxDdr)) miss.push("ddr");
-      if (win && st.bw?.gate === false) miss.push("windows");
-      if (!passesBaseLastN(st.n, st.baseLast, { ...ownGates, minPf: need })) miss.push("lastN");
+      if (g.positionWindows) {
+        miss.push(...basePositionMiss(st, { ...ownGates, minPf: need }));
+        if (!baseSlPolicyKnown(g, st, r.ind) && !miss.includes("pf")) miss.push("pf");
+      } else {
+        if (!(Number.isSafeInteger(st.n) && st.n >= g.minTrades)) miss.push("closes");
+        if (!(Number.isFinite(st.net) && (st.net > 0 || need < 1))) miss.push("net");
+        if (!baseSlPolicyKnown(g, st, r.ind) || !(Number.isFinite(st.pf) && st.pf >= need))
+          miss.push("pf");
+        if (
+          (st.mdd !== undefined && !(Number.isFinite(st.mdd) && st.mdd >= 0)) ||
+          ddrFails(st.mdd, st.net, g.maxDdr)
+        )
+          miss.push("ddr");
+        if (win && st.bw?.gate === false) miss.push("windows");
+        if (!passesBaseLastN(st.n, st.baseLast, { ...ownGates, minPf: need })) miss.push("lastN");
+      }
       if (!miss.length) {
         row.passed++;
         continue;
@@ -1547,7 +1630,8 @@ export function rangeAppliesTo(
   },
 ): boolean {
   if (!o.enabled(tag)) return false;
-  if (isLowRangeInd(laneOf(ind).base) && tag !== "sh") return false;
+  const lowRange = isLowRangeInd(laneOf(ind).base);
+  if (lowRange && tag !== "sh" && tag !== "lr" || !lowRange && tag === "lr") return false;
   if (!microIndFits(o.microOwnInds, tag, isMicroInd(laneOf(ind).base), isMicroFamilyInd(ind)))
     return false;
   const tf = laneOf(ind).tf ?? o.baseTf ?? 1;
@@ -1607,6 +1691,7 @@ export function rangeBaseStats(
   baseRangeLastN?: Gates["baseRangeLastN"],
   trailingOnlyCellsOut?: string[],
   trailingOnlyStatsOut?: Record<string, TrailingOnlyBaseCount>,
+  positionWindows?: Gates["positionWindows"],
 ): Record<string, RangeBaseStat> | undefined {
   if (!protects.length) return undefined;
   // a lane-less indication (a research tool, a legacy preset) trades the base timeframe: the same expression
@@ -1633,7 +1718,7 @@ export function rangeBaseStats(
       noTpStats.evaluated++;
     }
     // the cell's whole-history stats only (cellStats = runCombo(…).full, without its per-symbol and in-sample work)
-    const cand = cellStats(u, bot, ind, p, cost, tactics, bw, baseLastNForRange({ baseLastN, baseRangeLastN }, p.tag ?? ""));
+    const cand = cellStats(u, bot, ind, p, cost, tactics, bw, baseLastNForRange({ baseLastN, baseRangeLastN, positionWindows }, p.tag ?? ""), positionWindows);
     if (!cand) { if (noTpStats) noTpStats.unavailable++; continue; }
     if (noTpStats && (!Number.isSafeInteger(cand.n) || cand.n <= 0 ||
         !Number.isFinite(cand.net) || !Number.isFinite(cand.pf))) noTpStats.unavailable++;
@@ -1697,12 +1782,15 @@ export function cellStats(
   /** Gates.baseWindows: the cell is also judged on its windows from the lane's first bar (laneFromT) to u.nowT */
   bw?: { plan: BaseWindowsPlan; fromT: number },
   baseLastN = 0,
+  positionWindows?: Gates["positionWindows"],
 ): RangeBaseStat | null {
   // Historic Exit is a standalone indication source; engine Bot tactics/cooldown do not thin its entry history.
   const cooldown = bot === "exit" ? 0 : tacticCooldown(tactics);
   const p = laneProtect(protect, ind);
   if (p.hold < 1 && !(p.maxHoldMin !== undefined && hasMinutePrices(u))) return null;
   const id = configId(bot, ind, p);
+  const countRange = isSignalInd(ind) ? "sig" : bot === "exit" ? "exit" : (p.tag ?? "wide");
+  if (positionWindows) baseLastN = positionCounts(positionWindows, countRange, id).base;
   const series = seriesOf(u, ind);
   if (!series.length) return null;
   // Synchronous cells reuse one job-scoped buffer. Each series/direction supplies an already chronological run.
@@ -1711,7 +1799,7 @@ export function cellStats(
   const wRr: number[] = [];
   const wEn: number[] = [];
   const wEx: number[] = [];
-  const sink = bw
+  const collect = bw
     ? (r: number, entryT: number, exitT: number) => {
         cell.push(r, entryT, exitT);
         wRr.push(r);
@@ -1719,6 +1807,12 @@ export function cellStats(
         wEx.push(exitT);
       }
     : cell.push;
+  const sink = positionWindows
+    ? (r: number, entryT: number, exitT: number) => {
+        if (exitT >= u.nowT) return;
+        collect(r, entryT, exitT);
+      }
+    : collect;
   for (const s of series) {
     const rawSignal = entrySignal(bot, ind, u.caches[s], tactics);
     if (!rawSignal) return null;
@@ -1739,6 +1833,18 @@ export function cellStats(
     }
   }
   const st: RangeBaseStat = cell.stats(baseLastN, Math.max(0, p.sl) * 100);
+  if (positionWindows && st.baseLast) {
+    st.configId = id;
+    st.rangeTag = countRange;
+    const own = st.baseLast;
+    st.availableN = st.n;
+    st.n = own.n;
+    st.gp = own.gp;
+    st.gl = own.gl;
+    st.net = own.invalid ? NaN : own.gp - own.gl;
+    st.pf = own.invalid ? NaN : profitFactor(own.gp, own.gl);
+    st.mdd = own.mdd ?? NaN;
+  }
   st.stepPct = protectStepPct(p);
   const slRatio = protectSlRatio(p);
   st.slRatioKnown = true;
@@ -1746,7 +1852,9 @@ export function cellStats(
   if (bw) {
     // the closes in exit order (statsOf's order: exit, then entry; stable), for the windows
     const n = wRr.length;
-    const idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => wEx[a] - wEx[b] || wEn[a] - wEn[b]);
+    const idx = Array.from({ length: n }, (_, i) => i).sort(
+      (a, b) => wEx[a] - wEx[b] || wEn[a] - wEn[b],
+    );
     const oex = new Float64Array(n);
     const orr = new Float64Array(n);
     for (let j = 0; j < n; j++) {
@@ -1806,8 +1914,9 @@ export function runCombo(
   /** the protect is already the lane's (e.g. parsed from a config id): do not scale it again */
   laneScaled = false,
   baseLastN = 0,
+  positionWindows?: Gates["positionWindows"],
 ): ComboRun | null {
-  const gen = runComboSteps(u, bot, ind, protect, cost, stage, tactics, laneScaled, baseLastN);
+  const gen = runComboSteps(u, bot, ind, protect, cost, stage, tactics, laneScaled, baseLastN, positionWindows);
   for (;;) {
     const r = gen.next();
     if (r.done) return r.value;
@@ -1828,6 +1937,7 @@ export function* runComboSteps(
   tactics?: Tactics | null,
   laneScaled = false,
   baseLastN = 0,
+  positionWindows?: Gates["positionWindows"],
 ): Generator<void, ComboRun | null> {
   // Historic Exit is a standalone indication source; engine Bot tactics/cooldown do not thin its entry history.
   const cooldown = bot === "exit" ? 0 : tacticCooldown(tactics);
@@ -1884,9 +1994,17 @@ export function* runComboSteps(
   // in-sample = closed before the split (a trade straddling the split is not in-sample)
   const isTrades = trades.filter((t) => t.exitT <= u.splitT);
   const is = statsOf(isTrades, u.splitT);
-  const full = { ...statsOf(trades, u.nowT), stepPct: protectStepPct(protect),
-    slRatio: protectSlRatio(protect), slRatioKnown: true as const };
-  const baseLast = baseLastNOf(trades, baseLastN, Math.max(0, protect.sl) * 100);
+  const countRange = isSignalInd(ind) ? "sig" : bot === "exit" ? "exit" : (protect.tag ?? "wide");
+  if (positionWindows) baseLastN = positionCounts(positionWindows, countRange, id).base;
+  const closed = positionWindows ? trades.filter((t) => t.exitT < u.nowT) : trades;
+  const full = {
+    ...statsOf(positionWindows ? closed.slice(-baseLastN) : closed, u.nowT),
+    ...(positionWindows ? { configId: id, rangeTag: countRange } : {}),
+    stepPct: protectStepPct(protect),
+    slRatio: protectSlRatio(protect),
+    slRatioKnown: true as const,
+  };
+  const baseLast = baseLastNOf(closed, baseLastN, Math.max(0, protect.sl) * 100);
   if (baseLast) full.baseLast = baseLast;
   return {
     id,
@@ -2019,7 +2137,7 @@ export function baseRuns(
   for (const g of groups.values()) {
     for (const c of g) {
       const pass = gates ? rangeCellPass(gates, c.ind) : undefined;
-      const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics, false, gates?.baseLastN ?? 0);
+      const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics, false, baseLastNForRange(gates ?? {}, ""), gates?.positionWindows);
       if (r) {
         // signal pairs never use range cells (they take their own configs): no range runs for them
         const tps: Record<string, number[]> = {};
@@ -2050,6 +2168,7 @@ export function baseRuns(
               gates?.baseRangeLastN,
               noTpCells,
               noTpStats,
+              gates?.positionWindows,
             );
         if (ranges) r.ranges = ranges;
         if (Object.keys(tps).length) r.rangeTps = tps;
@@ -2089,7 +2208,7 @@ export function* runPipeline(
     ? []
     : [
         ...allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid),
-          s.grid.lowRange?.enabled === true && !!s.grid.short, rangeMinTfOf(s.grid).sh ?? 0),
+          lowRangeEnabled(s.grid), rangeMinTfOf(s.grid)[lowRangeTag(s.grid.lowRange)] ?? 0),
         ...signalCombos(signalSettings(s.signals), s.tfs ?? []),
         ...additionalCombos,
       ];
@@ -2103,7 +2222,7 @@ export function* runPipeline(
   for (let i = 0; i < combos.length; i++) {
     const c = combos[i];
     const source = isSignalInd(c.ind) ? signalUniverse : u;
-    const steps = runComboSteps(source, c.bot, c.ind, DEFAULT_PROTECT, cost, 1, s.tactics, false, s.gates.baseLastN ?? 0);
+    const steps = runComboSteps(source, c.bot, c.ind, DEFAULT_PROTECT, cost, 1, s.tactics, false, baseLastNForRange(s.gates,""), s.gates.positionWindows);
     let r: ComboRun | null = null;
     for (;;) {
       const x = steps.next();
@@ -2142,6 +2261,7 @@ export function* runPipeline(
         s.gates.baseRangeLastN,
         noTpCells,
         noTpStats,
+        s.gates.positionWindows,
       );
       if (ranges) r.ranges = ranges;
       if (Object.keys(tps).length) r.rangeTps = tps;
@@ -2169,7 +2289,7 @@ export function* runPipeline(
   for (const L of leaders) {
     const first = s2.length;
     for (const p of grid) {
-      const steps = runComboSteps(u, L.bot, L.ind, p, cost, 2, s.tactics);
+      const steps = runComboSteps(u, L.bot, L.ind, p, cost, 2, s.tactics, false, baseLastNForRange(s.gates,p.tag??""), s.gates.positionWindows);
       let r: ComboRun | null = null;
       for (;;) {
         const x = steps.next();
@@ -2237,7 +2357,7 @@ export function* runPipeline(
   // S5: final rank
   // selection uses in-sample data only, so the out-of-sample figures reported afterwards stay honest
   const finalScore = (x: RankedConfig) => {
-    const is = x.lastN ? scoreStats(x.lastN.is, 3) : 0;
+    const is = x.lastN ? g.positionWindows?Math.max(0,x.lastN.is.net)*x.lastN.is.wr:scoreStats(x.lastN.is, 3) : 0;
     const ok =
       x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag, x.ind, protectStepPct(x.protect), protectSlRatio(x.protect)) ? 1 : 0;
     return ok * 1000 + is;

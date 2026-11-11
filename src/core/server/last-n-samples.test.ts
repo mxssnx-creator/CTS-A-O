@@ -4,7 +4,8 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import { defaultWalkForward, type ConfigTape } from "../sim/walkforward.ts";
 import { lastNSamplesGen } from "./last-n-samples.ts";
 
-const options = () => ({ ...defaultWalkForward(DEFAULT_SETTINGS), validLastN: 3, lastN: 2, rangeGate: undefined });
+// Frozen legacy clock/history readout; primary count-window progress is tested in position-windows.test.ts.
+const options = () => ({ ...defaultWalkForward({...DEFAULT_SETTINGS,gates:{...DEFAULT_SETTINGS.gates,positionWindows:null}}), validLastN: 3, lastN: 2, rangeGate: undefined });
 function tape(extra: Partial<ConfigTape> = {}): ConfigTape {
   return { id: "own", ind: "ema@m1", kind: "normal", protect: { tag: "mn" },
     syms: ["A", "B"], n: 5, exitT: Float64Array.from([1,2,3,4,5]),

@@ -13,7 +13,10 @@ import {
   walkForward,
   type WalkForwardOptions,
 } from "./walkforward.ts";
-import { DEFAULT_SETTINGS } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS } from "../config.ts";
+// Freeze this historical window-policy contract; current count admission has independent scope tests.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import { sigActiveKey } from "../signals.ts";
 import type { Trade } from "../domain/types.ts";
 import { controlTargets, type ControlContribution } from "../server/live.ts";
@@ -88,8 +91,8 @@ const at = NOW - 2 * H + 10 * 60_000;
 describe("gating: nothing unvalidated executes", () => {
   it("keeps broad history short and validates seats on the configured Last-N sample", () => {
     const defaults = defaultWalkForward(DEFAULT_SETTINGS);
-    assert.equal(defaults.preH, 6);
-    assert.equal(defaults.longH, 24);
+    assert.equal(defaults.preH, 48);
+    assert.equal(defaults.longH, 48);
     assert.equal(defaults.validLastN, 12);
     assert.equal(defaults.maxPerSymbol, 0, "orders per symbol remain uncapped");
     assert.equal(defaults.maxPerSide, 0, "orders per symbol and direction remain uncapped");
@@ -417,7 +420,6 @@ describe("last-N floor (gates.lastNFloor): a short pre-calculation still seats c
 describe("sample warm-up (gates.warmup): a check that cannot be computed yet is valid, then judged normally", () => {
   it("the per-symbol 'proven' gate no longer refuses a symbol it has too few closes on", async () => {
     const { execDecision, makeTape, defaultWalkForward } = await import("./walkforward.ts");
-    const { DEFAULT_SETTINGS } = await import("../config.ts");
     const H0 = Date.UTC(2026, 9, 4);
     // 30 winning closes on A, exactly one on B (below symMinN 2): B cannot be judged yet
     const xs = Array.from({ length: 31 }, (_, i) => ({
@@ -533,7 +535,8 @@ describe("sample warm-up (gates.warmup): a check that cannot be computed yet is 
   });
 
   it("Base and downstream evaluations retain each requested range floor, including Wide", async () => {
-    const { DEFAULT_GATES } = await import("../config.ts");
+    const { DEFAULT_GATES: factoryGates } = await import("../config.ts");
+    const DEFAULT_GATES = { ...factoryGates, positionWindows: null };
     const { baseSetsGates, passesBase } = await import("../pipeline/pipeline.ts");
     const { minPfOf } = await import("../minimal-coord.ts");
     assert.equal(DEFAULT_GATES.baseSetsMinPf, 1.25, "the Wide sets floor");

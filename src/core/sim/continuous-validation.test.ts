@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DEFAULT_SETTINGS } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS } from "../config.ts";
+// Freeze this historical window-policy contract; current count admission has independent scope tests.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import type { RangeTag, Trade } from "../domain/types.ts";
 import {
   configEval,
@@ -640,7 +643,7 @@ describe("continuous post-Base qualification", () => {
 
   it("Signal history stays independent of the shortened engine window", () => {
     const defaults = defaultWalkForward(DEFAULT_SETTINGS);
-    assert.equal(defaults.longH, 24);
+    assert.equal(defaults.longH, 48);
     assert.equal(signalHistoryHours(defaults), 150);
     assert.equal(signalHistoryHours({ preH: 6, signalLongH: 480 }), 480);
     assert.equal(signalHistoryHours({ preH: 6 }), 150);
@@ -653,12 +656,12 @@ describe("continuous post-Base qualification", () => {
       tfDays: { "1": 3, "15": 18 },
     };
     const o = defaultWalkForward(s);
-    assert.equal(o.longH, 24);
+    assert.equal(o.longH, 48);
     assert.equal(tapeRetentionHours(s, o, 1), 72);
     assert.equal(tapeRetentionHours(s, o, 15), 432);
     assert.equal(
       tapeRetentionHours(s, { ...o, validLastN: 0, lastN: 0, rangeGate: undefined }, 15),
-      24,
+      48,
     );
   });
 

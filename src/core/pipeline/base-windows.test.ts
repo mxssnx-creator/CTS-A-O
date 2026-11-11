@@ -34,7 +34,8 @@ const ALL = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
 const grid = { ...DEFAULT_SETTINGS.grid, holdH: [16] };
 const protects = baseRangeProtects(grid, RT_COST);
 // lenient closes so the synthetic cells pass Base
-const gates0: Gates = { ...DEFAULT_SETTINGS.gates, minTrades: 3 };
+// Historical time-window contract. Count-mode bypass is verified independently.
+const gates0: Gates = { ...DEFAULT_SETTINGS.gates, positionWindows:null, minTrades: 3 };
 const withWindows = (bw: Gates["baseWindows"]): Gates => ({ ...gates0, baseWindows: bw });
 // a 15m lane of 12.5 days and a 5m lane of 6.25 days: each lane's windows start at its own first bar
 const universe = () =>

@@ -24,7 +24,8 @@ after(() => closePool());
 
 const IND = "low-range-12-breakout-standalone";
 const cost = DEFAULT_SETTINGS.cost;
-const lowRange = { ...DEFAULT_LOW_RANGE_GRID, enabled: true, steps: [2], slRatios: [0.5, 1, 2], trailRatios: [0, 0.25] };
+const legacy = { ...DEFAULT_LOW_RANGE_GRID, coordination: "short" as const, holdAuto: false, maxSlRatio: undefined, maxTrailRatio: undefined };
+const lowRange = { ...legacy, enabled: true, steps: [2], slRatios: [0.5, 1, 2], trailRatios: [0, 0.25] };
 const grid = { ...DEFAULT_SETTINGS.grid, tp: [], slOfTp: [1], trailOfTp: [0], holdH: [3], trailingOnly: false,
   short: { ...SHORT_RANGE, minTf: 1 },
   micro: false as const, minimal: false as const, general: false as const, long: false as const, lowRange };
@@ -43,16 +44,16 @@ describe("Low-Range Short integration", () => {
     assert.equal(DEFAULT_SETTINGS.grid.rangeGate?.minPf, 1.35);
   });
 
-  it("keeps all 650 sources and their timeframe identities independent, opt-in, and follow-only", () => {
-    assert.equal(LOW_RANGE_IDS.length, 650);
-    assert.equal(new Set(LOW_RANGE_IDS).size, 650);
-    assert.equal(INDICATIONS.filter((s) => s.kind === "low-range").length, 650);
+  it("keeps all original sources plus independently identified inverse and new research sources and their timeframe identities independent, opt-in, and follow-only", () => {
+    assert.equal(LOW_RANGE_IDS.length, 1354);
+    assert.equal(new Set(LOW_RANGE_IDS).size, 1354);
+    assert.equal(INDICATIONS.filter((s) => s.kind === "low-range").length, 1354);
     const focus = [`follow|${IND}`, `revert|${IND}`];
     assert.deepEqual(allCombos(focus, [], [1, 5, 15, 30]), []);
     const combos = allCombos(focus, [], [1, 5, 15, 30], 0, true);
-    assert.equal(combos.length, 5);
-    assert.ok(combos.every((c) => c.bot === "follow" && !c.ind.includes("@m30")));
-    assert.deepEqual(allCombos(focus, [], [1, 5, 15, 30], 0, true, 15).map((c) => c.ind), [`${IND}@m15`]);
+    assert.equal(combos.length, 7);
+    assert.ok(combos.every((c) => c.bot === "follow"));
+    assert.deepEqual(allCombos(focus, [], [1, 5, 15, 30], 0, true, 15).map((c) => c.ind), [`${IND}@m15`, `${IND}@m15c`, `${IND}@m30`]);
     assert.equal(allCombos(focus, ["low-range"], [1, 5, 15], 0, true).length, 0);
     const p = lowRangeGridProtects(lowRange, cost)[0];
     const a = configId("follow", `${IND}@m1`, laneProtect(p, `${IND}@m1`));
@@ -79,7 +80,7 @@ describe("Low-Range Short integration", () => {
 
   it("builds exactly the same cost-aware Short cells for Base and tapes on every configured step and ratio", () => {
     for (const trailingOnly of [false, true]) {
-      const g = { ...DEFAULT_SETTINGS.grid, lowRange: { ...DEFAULT_LOW_RANGE_GRID, enabled: true }, trailingOnly };
+      const g = { ...DEFAULT_SETTINGS.grid, lowRange: { ...legacy, enabled: true }, trailingOnly };
       const base = completeBaseRangeProtects(g, cost).filter((p) => p.lowRangeOnly);
       const exec = protectGrid(REF_TF, g, cost).filter((p) => p.lowRangeOnly);
       assert.deepEqual(base.map(protectCellKey).sort(), exec.map(protectCellKey).sort());
@@ -172,7 +173,7 @@ describe("Low-Range Short integration", () => {
     const accepted = protectCellKey(laneProtect(ps[0], ind));
     const stat = { n: 10, pf: 2, net: 1, mdd: 0,
       baseLast: { requested: 40, n: 10, gp: 2, gl: 1, stop: .5 } };
-    const s = { ...DEFAULT_SETTINGS, grid, gates: { ...DEFAULT_SETTINGS.gates, minTrades: 1 } };
+    const s = { ...DEFAULT_SETTINGS, grid, gates: { ...DEFAULT_SETTINGS.gates, positionWindows:null, minTrades: 1 } };
     const row = { bot: "follow", ind, full: stat, ranges: { sh: stat }, rangeTps: { sh: [ps[0].tp] },
       rangeCells: [accepted], score: 1 };
     const b = basePass([row] as never, s as never);
@@ -190,10 +191,15 @@ describe("Low-Range Short integration", () => {
   });
 
   it("measures real Base cells identically on a worker and locally before building their tapes", async () => {
-    const ind = "low-range-12-failed-break-standalone@m1", pair = `follow|${ind}`;
-    const bars = [barsFromCandles("A", 1, syntheticCandles("A", 1, 1200, Date.UTC(2026, 9, 1), 1))];
+    const ind = "low-range-1-breakout-standalone@m1", pair = `follow|${ind}`;
+    // A fixed two-sided TP regime provides real complete count samples; no seed is selected by market PF.
+    const pattern=[[100,100.25,99.95,100.2],[100.2,101,100.15,100.8],[100.8,100.85,100.65,100.7],
+      [100.7,100.75,100.05,100.1],[100.1,100.15,99.1,100]];
+    const bars = [barsFromCandles("A",1,Array.from({length:1200},(_,i)=>{
+      const [o,h,l,c]=pattern[i%5];return {t:Date.UTC(2026,9,1)+i*60000,o,h,l,c,v:100};
+    }))];
     const g = { ...grid, lowRange: { ...lowRange, steps: [2, 3] } };
-    const gates = { ...DEFAULT_SETTINGS.gates, minTrades: 1 };
+    const gates = { ...DEFAULT_SETTINGS.gates, minTrades: 1, positionWindows:{base:2,main:4,real:3,entry:2,maxDrawdownPositions:4,byRange:{}} };
     const settings = { ...DEFAULT_SETTINGS, grid: g, gates };
     const combos = [{ bot: "follow" as const, ind }];
     const rp = baseRangeProtects(g, cost), complete = completeBaseRangeProtects(g, cost);

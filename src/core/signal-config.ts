@@ -488,6 +488,8 @@ export const signalId = (name: string, range: "short" | "medium") =>
  * Causal (only results closed before the entry); the candidates keep being computed while a group is not accepted.
  */
 export interface SignalAccept {
+  /** Last completed positions; hours is used only by explicitly reproduced legacy policies. */
+  lastN?: number;
   enabled: boolean;
   minPf: number;
   hours: number;
@@ -530,6 +532,7 @@ export interface SignalCoordinationSettings {
  */
 export interface SignalSourceGate {
   enabled: boolean;
+  lastN?: number;
   days: number;
   minShare: number;
   minTrades: number;

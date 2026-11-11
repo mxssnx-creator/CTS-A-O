@@ -4,7 +4,10 @@ import assert from "node:assert/strict";
 import { configId } from "../pipeline/pipeline.ts";
 import { crowdRangeOf, defaultWalkForward, execDecision, familyOf, makeTape, selectAt, selectDurable } from "./walkforward.ts";
 import { EngineSideIndex, engineSideKey, SignalGuard } from "../signals.ts";
-import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
+// Freeze this historical window-policy contract; current count admission has independent scope tests.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import type { Protect, StratKind, Trade } from "../domain/types.ts";
 
 const H = 3_600_000;

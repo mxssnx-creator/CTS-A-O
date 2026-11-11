@@ -185,7 +185,7 @@ test("regression: a planted micro edge passes Base at Micro's own cell and build
   const cost = 0.002;
   const ind = "mc-rsi2-5@m5";
   const r = runCombo(u, "follow", ind, DEFAULT_PROTECT, cost, 1, null, false, 40)!;
-  const gates0 = { ...DEFAULT_SETTINGS.gates, minPf: 1.05 };
+  const gates0 = { ...DEFAULT_SETTINGS.gates, positionWindows:null, minPf: 1.05 };
   const tps: Record<string, number[]> = {};
   const ranges = rangeBaseStats(
     u,
@@ -249,7 +249,7 @@ test("regression: a planted micro edge passes Base at Micro's own cell and build
   assert.ok(withHeld.filter((x) => x.id !== heldId).every((x) => !x.heldOnly), "validated cells are not held-only");
   // (the planted rebound is ~0.9 %: at 2–5× cost the larger Micro targets take fewer of its closes than the former 0.3–0.6 %)
   assert.ok(ranges.mc.n >= 50 && ranges.mc.pf >= 2 && ranges.mc.net > 0, JSON.stringify(ranges.mc));
-  const gates = { ...DEFAULT_SETTINGS.gates, minPf: 1.05 };
+  const gates = { ...DEFAULT_SETTINGS.gates, positionWindows:null, minPf: 1.05 };
   const o = { enabled: () => true, minTf: rangeMinTfOf(g), microOwnInds: true };
   const tags = basePassTags({ full: r.full, ranges }, gates, ["mc"]).filter((x) => rangeAppliesTo(ind, x, o));
   assert.deepEqual(tags, ["mc"], "passes Base for Micro only");
@@ -367,7 +367,7 @@ test("a Micro indication that passed only on its Minimal cells is a Minimal surv
   const { basePairRows } = await import("./pipeline/pipeline.ts");
   // Micro on, Minimal's micro indications on (the default rule "minimal": a Micro indication takes Micro and Minimal
   // cells); the sets gates (PF ≥ 1, 12 closes, DDR ≤ 1)
-  const s = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, baseRangeLastN: { micro: 40, minimal: 40 } },
+  const s = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, positionWindows:null, baseRangeLastN: { micro: 40, minimal: 40 } },
     grid: { ...DEFAULT_SETTINGS.grid, micro: MICRO_RANGE } } as CoreSettings;
   const st = (pf: number, net: number) => ({ n: 20, pf, net, mdd: 1,
     baseLast: { requested: 40, n: 20, gp: pf, gl: 1, stop: 1 } });

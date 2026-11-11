@@ -83,6 +83,8 @@ export interface Protect {
   trail: number;
   /** Internal Short-grid ownership: this cell is only for Low-Range sources. */
   lowRangeOnly?: boolean;
+  /** Immutable Low-Range distance ceilings, including feedback; captured in the config identity. */
+  riskCaps?: { sl: number; trail: number };
   /** trailing distance after activation as a share of `trail` (default 1: stop = peak · (1 − trail)) */
   trailStep?: number;
   /** once the trail is active the target is dropped and the trail alone exits (let winners run) */
@@ -172,6 +174,9 @@ export interface RangeGrid {
    */
   maxHoldMin?: number;
   /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
+  holdAuto?: boolean;
+  /** Independent hold candidates, minutes; every candidate needs its own Base proof. */
+  holdCandidatesMin?: readonly number[];
   ownBase?: boolean;
   /** Base on this range's best cell (overrides grid.baseBest) */
   baseBest?: boolean;
@@ -216,7 +221,7 @@ export interface MicroGrid extends RangeGrid {
 }
 
 /** Protect ranges beside the wide grid (see minimal-coord.ts). */
-export type RangeTag = "mp" | "mc" | "mn" | "sh" | "gn" | "lg";
+export type RangeTag = "mp" | "mc" | "mn" | "sh" | "gn" | "lg" | "lr";
 
 /** ATR exit parameters (see Protect.atr and resolveAtrProtect). */
 export interface AtrProtect {
@@ -654,9 +659,12 @@ export interface BaseLastNStats {
   gl: number;
   stop: number;
   invalid?: true;
+  mdd?: number;
 }
 
 export interface Stats {
+  configId?: string;
+  rangeTag?: string;
   n: number;
   wins: number;
   losses: number;
@@ -740,6 +748,8 @@ export interface EvalResult {
 }
 
 export interface Gates {
+  /** Primary samples are complete positions per exact configuration. Null is retained for historical reproductions. */
+  positionWindows?: import("../position-windows.ts").PositionWindows | null;
   /** Optional manual step floor, shared across Base and downstream windows; stricter range floors remain. */
   stepPf?: import("../step-pf.ts").StepPfRules;
   /** stage minimum PF; the runtime keeps it within 1.05–1.50 (a value outside is snapped to the nearest bound) */
@@ -853,10 +863,18 @@ export interface BaseWindowsResult {
 }
 
 /** The ranges with their own stage minimum PF (Gates.rangeMinPf). */
-export type RangeMinPfKey = "micro" | "minimal" | "short" | "general" | "long";
+export type RangeMinPfKey = "micro" | "minimal" | "short" | "general" | "long" | "lowRange";
 
 export interface LowRangeGrid {
   enabled: boolean;
+  /** Unset retains legacy Short ownership; new independent cells use the lr tag. */
+  coordination?: "short" | "independent";
+  minTf?: number;
+  volumeFactor?: number;
+  holdAuto?: boolean;
+  holdCandidatesMin?: readonly number[];
+  maxSlRatio?: number;
+  maxTrailRatio?: number;
   /** Fixed range step as a fraction of price. */
   step: number;
   steps: readonly number[];

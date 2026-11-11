@@ -83,7 +83,7 @@ export function botFamilyOf(cfg: string): string {
     const range = /-([sm])(?=@|$)/.exec(ind)?.[1] === "s" ? "short" : "medium";
     return `sig ${bot} ${signalSourceOf(ind)} ${range}`;
   }
-  const tag = /\|(mc|mp|mn|sh|gn|lg)(?=\||$)/.exec(cfg)?.[1] ?? "wide";
+  const tag = /\|(mc|mp|mn|sh|gn|lg|lr)(?=\||$)/.exec(cfg)?.[1] ?? "wide";
   return `eng ${bot} ${tag}`;
 }
 

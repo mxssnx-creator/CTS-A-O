@@ -18,7 +18,7 @@ for (const mode of ["full", "fast"] as const) for (const side of [1, -1] as cons
     rt.stop();
     try {
       rt.wf = { ...defaultWalkForward(DEFAULT_SETTINGS), rangeGate: undefined, maxOpen: 1 };
-      const history: Trade[] = Array.from({ length: 30 }, (_, i) => ({ cfg: CFG, sym: SYM, side: 1,
+      const history: Trade[] = Array.from({ length: 40 }, (_, i) => ({ cfg: CFG, sym: SYM, side: 1,
         entryT: T - 3 * H + i * 60_000, exitT: T - 2 * H + i * 60_000, entry: 100, exit: 102,
         r: .02, unitR: .02, mult: 1, vol: 1, kind: "normal", reason: "tp", bars: 1, mfe: 0, mae: 0 }));
       const open: OpenPosition = { cfg: CFG, sym: SYM, side: 1, entryI: 0, entryT: T, entry: 100,

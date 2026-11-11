@@ -23,15 +23,16 @@ it("step PF leaf edits preserve enabled, ratio, maximum and unrelated gate setti
   runtime.updateSettings({ gates: { stepPf: { enabled: true, ratio: 0.35, max: 1.6 } } });
   const minPf = runtime.settings.gates.minPf;
   runtime.updateSettings({ gates: { stepPf: { ratio: 0.4 } } });
-  assert.deepEqual(runtime.settings.gates.stepPf, { enabled: true, ratio: 0.4, max: 1.6 });
+  assert.deepEqual(runtime.settings.gates.stepPf, { enabled: true, ratio: 0.4, max: 1.6, mode:"auto", maxStepPct:3.5 });
   runtime.updateSettings({ gates: { stepPf: { enabled: false } } });
-  assert.deepEqual(runtime.settings.gates.stepPf, { enabled: false, ratio: 0.4, max: 1.6 });
+  assert.deepEqual(runtime.settings.gates.stepPf, { enabled: false, ratio: 0.4, max: 1.6, mode:"auto", maxStepPct:3.5 });
   assert.equal(runtime.settings.gates.minPf, minPf);
   assert.deepEqual(runtime.wf.gates?.stepPf, runtime.settings.gates.stepPf);
 });
 
 function fixture(settings?: SettingsPatch, version = 33, presets?: unknown[]) {
   const db = new CoreDb(":memory:");
+  db.kvSet("positionWindows20261111V1",true); // isolate the historical fee-policy migration under test
   db.kvSet("wfCapsV", version);
   db.kvSet("ddtMax35", true);
   if (settings) db.kvSet("settings", settings);
@@ -136,7 +137,7 @@ describe("modeled position cost defaults and migration", () => {
     }
     const { runtime } = fixture(structuredClone(formerModel), 34);
     assert.equal(runtime.settings.cost, formerModel.cost, "saved custom model costs are never silently discounted");
-    assert.deepEqual(runtime.settings.fees, { ...formerModel.fees, slippageRatio: undefined });
+    assert.deepEqual(runtime.settings.fees, { ...DEFAULT_MODEL_FEES, ...formerModel.fees, slippageRatio: undefined });
   });
 
   it("uses the canonical default only for unmeasured ledger fees and preserves measured fill costs", () => {

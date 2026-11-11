@@ -25,8 +25,8 @@ function paperEntry(samples: Sample[], groupN = 0, direction: 1 | -1 = 1, disabl
   try {
     rt.wf.rangeGate = undefined;
     rt.db.kvSet("liveSince", T - 4 * H);
-    const raw = (cfg: string): Trade[] => Array.from({ length: 30 }, (_, i) => ({
-      cfg, sym: SYM, side: direction, entryT: T - 3 * H + i * 60_000, exitT: T - 2 * H + i * 60_000,
+    const raw = (cfg: string, sym = SYM): Trade[] => Array.from({ length: 40 }, (_, i) => ({
+      cfg, sym, side: direction, entryT: T - 3 * H + i * 60_000, exitT: T - 2 * H + i * 60_000,
       entry: 100, exit: 100 * (1 + direction * .02), r: .02, unitR: .02, mult: 1, vol: 1, kind: "normal", reason: "tp",
       bars: 1, mfe: 0, mae: 0,
     }));
@@ -35,7 +35,8 @@ function paperEntry(samples: Sample[], groupN = 0, direction: 1 | -1 = 1, disabl
     const protect = { ...DEFAULT_PROTECT, tag: "sh" as const };
     const ownSymbols = [...new Set([SYM, ...samples.filter((s) => s.cfg === CFG).map((s) => s.sym ?? SYM)])];
     rt.tapes = [
-      makeTape(CFG, "follow", "rsi-mom-14-25@m15", protect, "normal", ownSymbols, raw(CFG), [open], []),
+      makeTape(CFG, "follow", "rsi-mom-14-25@m15", protect, "normal", ownSymbols,
+        ownSymbols.flatMap((sym) => raw(CFG, sym)).sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT), [open], []),
       makeTape(OTHER, "follow", "ema-9-21@m15", protect, "normal", [SYM], raw(OTHER), [], []),
     ];
     const u = { bars: [], caches: [], startT: T - 24 * H, endT: T, splitT: T - 12 * H, nowT: T, baseTf: 15 } as never;

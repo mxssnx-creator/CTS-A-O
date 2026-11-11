@@ -642,6 +642,7 @@ test("Base sets floor: lowering Wide never weakens a configured range floor", ()
   assert.equal(DEFAULT_SETTINGS.gates.baseSetsMinPf, 1.25);
   const g = {
     ...DEFAULT_SETTINGS.gates,
+    positionWindows: null,
     baseSetsMinPf: undefined,
     minPf: 1.05,
     minTrades: 10,

@@ -37,7 +37,7 @@ function fixture(path = ":memory:", n = 3) {
 }
 function install(r: CoreRuntime, trades = [.02, -.01, .02].map((v, i) => close(v, i))) {
   r.tapes = [makeTape(CFG, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal", [SYM],
-    Array.from({ length: 30 }, (_, i) => close(.03, i)), [], [])];
+    Array.from({ length: 40 }, (_, i) => close(.03, i)), [], [])];
   const u = { bars: [], caches: [], startT: NOW - 24 * H, endT: NOW, splitT: NOW - 12 * H, nowT: NOW, baseTf: 15 } as never;
   r.sim = walkForward(u, [], { ...r.wf, simH: 24 });
   r.sim.trades = trades; r.sim.openAtEnd = [];
@@ -133,7 +133,7 @@ describe("strict live promotion uses two settled independent evidence axes", () 
     const r = install(fixture(), trades);
     const protect = { ...DEFAULT_PROTECT, tag: "mn" as const };
     r.tapes = [makeTape(cfg, "follow", "rsi-mom-14-25@m15", protect, "normal", [SYM],
-      Array.from({ length: 30 }, (_, i) => close(.03, i, { cfg })), [], [])];
+      Array.from({ length: 75 }, (_, i) => close(.03, i, { cfg })), [], [])];
     r.paper.selected = [cfg];
     r.wf.basePassed = new Set([pair]);
     r.wf.basePassedRanges = { [pair]: ["mn"] };
@@ -155,7 +155,7 @@ describe("strict live promotion uses two settled independent evidence axes", () 
       const r = install(fixture(), trades);
       owned(r, [.02, -.01, .02], { cfg });
       r.tapes = [makeTape(cfg, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, kind, [SYM],
-        Array.from({ length: 30 }, (_, i) => close(.03, i, { cfg, kind })), [], [])];
+        Array.from({ length: 40 }, (_, i) => close(.03, i, { cfg, kind })), [], [])];
       r.paper.selected = [cfg];
       r.wf.basePassed = new Set([pair]);
       r.wf.basePassedRanges = { [pair]: ["mn"] };
@@ -260,11 +260,11 @@ describe("strict live promotion uses two settled independent evidence axes", () 
 
   it("recomputes a reference's CURRENT last N from its exact settled returns instead of clipping an aggregate PF", () => {
     const r = install(fixture(":memory:", 25), Array.from({ length: 25 }, (_, i) => close(.02, i)));
-    const proof: PromotedLaneProof = { ...lane, side: 1, modelPf: 2, executionPf: 2, modelN: 30, executionN: 30,
+    const proof: PromotedLaneProof = { ...lane, side: 1, modelPf: 2, executionPf: .5 / .35, modelN: 30, executionN: 40,
       modelNoLoss: false, executionNoLoss: false, fromT: NOW - 100_000, toT: NOW - 1, asOf: NOW - 1,
       validUntilT: NOW + H, minN: 20, minPf: 1.2, proofId: "a".repeat(64), referenceId: "measured-demo",
       modelBasis: "unit-net-returns", executionBasis: "owned-net-returns", executionSource: "verified-venue", afterBase: true,
-      executionCloses: Array.from({ length: 30 }, (_, i) => ({ id: `actual-${i}`, exitT: NOW - 30_000 + i * 1000, unitR: i < 5 ? .1 : -.01 })) };
+      executionCloses: Array.from({ length: 40 }, (_, i) => ({ id: `actual-${i}`, exitT: NOW - 40_000 + i * 1000, unitR: i < 5 ? .1 : -.01 })) };
     r.settings.live.promotedLanes = [proof];
     const roundtrip = JSON.parse(JSON.stringify(r.settings));
     assert.doesNotThrow(() => checkSettings(roundtrip));
@@ -384,7 +384,7 @@ describe("paper entry allocation provenance", () => {
     r.settings.live.liveMinPf = 1.1;
     r.wf.rangeGate = undefined;
     r.db.kvSet("liveSince", t - 3 * H);
-    const raw = Array.from({ length: 30 }, (_, i) => close(.02, i, {
+    const raw = Array.from({ length: 40 }, (_, i) => close(.02, i, {
       cfg, entryT: t - 3 * H + i * 60_000, exitT: t - 2 * H + i * 60_000,
     }));
     const open = { cfg, sym: SYM, side: 1, entryI: 0, entryT: t, entry: 100,
@@ -404,7 +404,7 @@ describe("paper entry allocation provenance", () => {
 
   it("continues eligible paper learning before live proof and freezes only the newly measured allocation", () => {
     const r = install(fixture(), []), t = Math.floor(Date.now() / H) * H;
-    const raw = Array.from({ length: 30 }, (_, i) => close(.02, i, { entryT: t - 3 * H + i * 60_000, exitT: t - 2 * H + i * 60_000 }));
+    const raw = Array.from({ length: 40 }, (_, i) => close(.02, i, { entryT: t - 3 * H + i * 60_000, exitT: t - 2 * H + i * 60_000 }));
     const open = { cfg: CFG, sym: SYM, side: 1, entryI: 0, entryT: t, entry: 100,
       stop: 96.1, target: 102.6, peak: 100, trailOn: false, mtm: 0 } as OpenPosition;
     r.tapes = [makeTape(CFG, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal", [SYM], raw, [open], [])];

@@ -1,3 +1,5 @@
+import { positionCounts, positionStats } from "../position-windows.ts";
+import { rangeOfId } from "../minimal-coord.ts";
 // Walk-forward last-N gate optimizer.
 //
 // For each candidate N, trade k is TAKEN only if the last N trades that had CLOSED before trade k's entry
@@ -142,12 +144,44 @@ export interface LastNOptions {
   nowT?: number;
 }
 
+function countGate(rows:readonly Trade[],n:number,g:Gates):boolean {
+  const sample=positionStats(rows.map(r=>r.r),n);
+  const prior=g.lossPrior?Number(/\|sl([\d.]+)/.exec(rows[0]?.cfg??"")?.[1])/100:0;
+  return sample.complete&&sample.known&&sample.net>0&&sample.gp>=Math.max(1.05,g.minPf)*(sample.gl+prior)&&
+    sample.maxDrawdownPositions<=g.positionWindows!.maxDrawdownPositions&&
+    !(g.maxDdr&&sample.mdd/sample.net>g.maxDdr)&&sample.positiveShare>=(g.minGreen??.5)&&sample.lcb>0;
+}
+function countGated(trades:readonly Trade[],n:number,g:Gates):Trade[] {
+  const groups=new Map<string,Trade[]>();
+  for(const tr of trades) {const key=JSON.stringify([tr.cfg,tr.sym,tr.side]);if(!groups.has(key))groups.set(key,[]);groups.get(key)!.push(tr);}
+  const taken:Trade[]=[];
+  for(const own of groups.values()) {
+    own.sort(compareExit);
+    for(const tr of own) {let end=0;while(end<own.length&&own[end].exitT<tr.entryT)end++;
+      if(countGate(own.slice(Math.max(0,end-n),end),n,g))taken.push(tr);}
+  }
+  return taken.sort(compareExit);
+}
+function configuredCountResult(cfg:string,trades:readonly Trade[],opt:LastNOptions):LastNResult {
+  const g=opt.gates,n=positionCounts(g.positionWindows!,rangeOfId(cfg)||"wide",cfg).entry;
+  const source=trades.filter(tr=>tr.cfg===cfg&&(opt.nowT===undefined||tr.exitT<opt.nowT)).sort(compareExit);
+  const split=Math.floor(source.length/2),isRows=source.slice(0,split),oosRows=source.slice(split),taken=countGated(source,n,g),keys=new Set(taken);
+  const si=statsOf(isRows.filter(t=>keys.has(t))),so=statsOf(oosRows.filter(t=>keys.has(t)));
+  const baseIs=statsOf(isRows),baseOos=statsOf(oosRows),contexts=new Map<string,Trade[]>();
+  for(const tr of source){const key=JSON.stringify([tr.sym,tr.side]);if(!contexts.has(key))contexts.set(key,[]);contexts.get(key)!.push(tr);}
+  const gateOpen=[...contexts.values()].some(rows=>countGate(rows,n,g));
+  const row=(s:typeof si):LastNRow=>({n,taken:s.n,pf:s.pf,net:s.net,ddt:0,score:s.net>0?s.net*s.wr:0});
+  return {cfg,total:source.length,baseline:{is:baseIs,oos:baseOos},rows:[row(si)],oosRows:[row(so)],bestN:n,is:si,oos:so,
+    success:si.net>0&&so.net>0&&si.pf>=g.minPf&&so.pf>=g.minPf&&gateOpen,gateOpen};
+}
+
 export function optimizeLastN(
   cfg: string,
   trades: readonly Trade[],
   opt: LastNOptions,
 ): LastNResult {
   const g = opt.gates;
+  if(g.positionWindows) return configuredCountResult(cfg,trades,opt);
   const grid = opt.grid ?? LAST_N_GRID;
   const tape = buildTape(trades);
   const m = tape.byEntry.length;
@@ -243,6 +277,7 @@ export function optimizeLastN(
 
 /** Which trades of a tape the chosen gate takes (for paper replay). N=0 takes all. */
 export function gatedTrades(trades: readonly Trade[], nN: number, g: Gates): Trade[] {
+  if(g.positionWindows) return countGated(trades,nN>0?nN:g.positionWindows.entry,g);
   if (nN <= 0) return [...trades].sort((a, b) => a.exitT - b.exitT);
   const tape = buildTape(trades);
   const out: Trade[] = [];

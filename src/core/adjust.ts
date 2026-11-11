@@ -239,6 +239,12 @@ export function adjustProtect(
       minSl: Math.max(p.atr.minSl ?? 0, adj.minSl),
       ...(p.atr.trail ? { minTrail: Math.max(p.atr.minTrail ?? 0, adj.minTrail) } : {}),
     };
+  // An immutable candidate ceiling takes precedence over feedback widening. The original cell already
+  // met its cost floors; a later feedback level must not turn it into an unproved wider-risk config.
+  if (p.riskCaps) {
+    out.sl = Math.min(out.sl, p.riskCaps.sl);
+    if (out.trail > 0) out.trail = Math.min(out.trail, p.riskCaps.trail / (out.trailStep ?? 1));
+  }
   return out;
 }
 

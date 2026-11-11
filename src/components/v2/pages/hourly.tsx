@@ -79,7 +79,7 @@ export function HourlyPage() {
       <ErrorNote error={error} />
       <Panel
         title="Simulated run"
-        sub={`${fmt.hour(startT)} → ${fmt.hour(endT)} UTC · each hour picks configs from the prior ${sim.opts.preH}h (and the long window), then trades the hour`}
+        sub={`${fmt.hour(startT)} → ${fmt.hour(endT)} UTC · ${sim.opts.positionWindows ? `config selection uses completed positions: Main N ${sim.opts.positionWindows.main}, Real N ${sim.opts.positionWindows.real}, Entry N ${sim.opts.positionWindows.entry}; range/config overrides apply` : `each hour picks configs from the prior ${sim.opts.preH}h (and the long window), then trades the hour`}`}
         right={
           <>
             <select

@@ -2,7 +2,10 @@
 // (wf.seatSet "validated"), and the cell-keyed Base pass. Executed ids ⊆ V ⊆ Base cells, per side.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DEFAULT_SETTINGS } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS } from "../config.ts";
+// Explicit historical window contract; current position-policy invariants are covered separately.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { baseRangeProtects, baseRuns, makeUniverse, protectCellKey, REF_TF } from "../pipeline/pipeline.ts";
 import { basePass } from "../server/runtime.server.ts";

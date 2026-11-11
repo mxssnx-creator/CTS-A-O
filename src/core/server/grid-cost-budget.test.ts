@@ -8,7 +8,7 @@ import { CoreDb } from "./db.server.ts";
 import { CoreRuntime } from "./runtime.server.ts";
 
 const grid = () => ({ ...structuredClone(DEFAULT_SETTINGS.grid), trailingOnly: true,
-  lowRange: { ...DEFAULT_LOW_RANGE_GRID, enabled: true, step: .0000013 } });
+  lowRange: { ...DEFAULT_LOW_RANGE_GRID, coordination:"short" as const, holdAuto:false, maxSlRatio:undefined, maxTrailRatio:undefined, enabled: true, step: .0000013 } });
 
 test("variant budget counts the actual modeled cost including fractional Low-Range and no-TP deduplication", () => {
   const g = grid();
@@ -30,7 +30,7 @@ test("merged settings, fee-only changes and preset application retain effective 
   const db = new CoreDb(":memory:"), first = new CoreRuntime(db, undefined, { market: "synthetic", priceStream: null });
   first.stop(); let restored: CoreRuntime | undefined;
   try {
-    first.updateSettings({ grid: { lowRange: { enabled: true, step: .0000013 } }, cost: .0014 });
+    first.updateSettings({ grid: { lowRange: { ...grid().lowRange } }, cost: .0014 });
     assert.equal(first.settings.cost, .0014);
     assert.equal(gridVariants(first.settings.grid, first.settings.cost), protectGrid(15, first.settings.grid, first.settings.cost).length);
     const fees = { taker: .00005, slippage: 0 };
@@ -41,7 +41,7 @@ test("merged settings, fee-only changes and preset application retain effective 
     assert.equal(first.wf.protects.length, 4599);
     const source = first.findPreset("live-all-independent"); assert.ok(source);
     const saved = { ...structuredClone(source), id: "grid-cost-budget-preset", kind: "saved" as const,
-      settings: { grid: { lowRange: { enabled: true, step: .0000013 } } } };
+      settings: { grid: { lowRange: { ...grid().lowRange } } } };
     db.kvSet("presets", [saved]);
     first.updatePreset(saved.id, { grid: { trailingOnly: true } }, {});
     first.applyPreset(saved.id);

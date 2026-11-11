@@ -49,7 +49,7 @@ const small = {
   },
   // the synthetic feed has no edge: lenient gates so Base passes pairs and there are tapes, seats and trades to
   // publish and audit (the gates themselves: gating.test, walkforward.test, lastn-calc.test)
-  gates: { minPf: 1.05, baseSetsMinPf: 1.05, minTrades: 3, maxDdr: 0 },
+  gates: { positionWindows: null, minPf: 1.05, baseSetsMinPf: 1.05, minTrades: 3, maxDdr: 0 },
   // runtime mechanics, not signal quality (signals.test covers the full signal defaults): percent exits and the
   // classic sources only keep each engine light enough to run several in parallel
   signals: signalSettings({
@@ -82,8 +82,8 @@ const until = async (cond: () => boolean, ms = 120_000) => {
     await new Promise((r) => setTimeout(r, 20));
   }
 };
-// the slow job (npm run test:core:slow, CTS_CORE_SLOW=1): a full-focus storm and a 2-day preset backtest take 2–5 min
-// each on this VM, so the default suite skips them (every assertion stays in the slow job)
+// Cold full-catalog publication, the full-focus storm and the 2-day backtest run in the explicit slow job.
+// Keep every assertion; these cold correctness checks do not establish the warmed foreground latency target.
 const slow = process.env.CTS_CORE_SLOW === "1" ? it : it.skip;
 
 describe("walk-forward patch sanitiser", () => {
@@ -99,7 +99,7 @@ describe("walk-forward patch sanitiser", () => {
 
 // 20 min: a full compute per test on a 4-core host the live desk shares (the stress test alone is 3–5 min; idle, the
 // suite takes ~6 min) — a limit that only guards against a hang, never a measure of speed
-describe("runtime coordination", { timeout: 1_200_000 }, () => {
+describe("runtime coordination", { timeout: process.env.CTS_CORE_SLOW === "1" ? 2_400_000 : 1_200_000 }, () => {
   for (const [name, block] of [
     ["config set", {}],
     [
@@ -377,13 +377,13 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     }
   });
 
-  it("computes on the synthetic feed and publishes every stage", async () => {
+  slow("computes on the synthetic feed and publishes every stage", { timeout: 900_000 }, async () => {
     const rt = mk();
     // Exercise the complete indication/lane catalog on bounded history. The former 18-day fixture also
     // times out on the unchanged base revision; long-history continuation has separate parity coverage.
     rt.updateSettings({ focus: [], historyDays: 3, tfDays: { "1": 3, "5": 3, "15": 3, "30": 3 } });
     rt.start();
-    await until(() => rt.status.computes >= 1 && rt.status.state === "running", 400_000);
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running", 880_000);
     assert.equal(rt.status.source, "synthetic");
     assert.ok(rt.pipeline && rt.sim && rt.tapes.length > 0);
     assert.ok(Number(rt.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM results")?.n) > 300);

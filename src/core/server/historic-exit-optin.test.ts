@@ -10,7 +10,7 @@ function dbWithCurrentMigrations() {
   db.kvSet("wfCapsV", 37);
   for (const key of ["ddtMax35", "signalEvaluation100V1", "signalLast4V1", "signalHistory150V1",
     "signalExpandedDefaultsV1", "neutralVolumeRatiosV1", "dcaTwoStepsV1", "microBreakoutFocusV1",
-    "microContextFocusV1"]) db.kvSet(key, true);
+    "microContextFocusV1", "positionWindows20261111V1"]) db.kvSet(key, true);
   return db;
 }
 function open(db: CoreDb) {

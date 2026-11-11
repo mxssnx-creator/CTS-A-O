@@ -1,3 +1,4 @@
+import { positionCounts, type PositionWindows } from "./position-windows.ts";
 // Historic trailing configs of a signal (operator, 13 Oct: "Signals run with multiple trailing configs related to the
 // historic calcs in their spec"). Every signal has the same 42 Normal + 35 Trailing percent configs; these add
 // Trailing configs of its OWN, from what its own entries did before: the maximum favourable move each historic entry
@@ -36,6 +37,7 @@ import { POSITION_COST_RT } from "./model-cost.ts";
 import { SIGNAL_MIN_PF, SIGNAL_VALID_LAST_N } from "./signal-policy.ts";
 
 export interface SignalHistValidation {
+  positionWindows?: PositionWindows | null;
   cost: number;
   minPf: number;
   minTrades: number;
@@ -66,11 +68,12 @@ export function signalHistPassingRanges(
 /** Signals retain the configured stage PF floor; the lower engine Wide prefilter cannot relax it. */
 export function signalHistValidationOf(
   cost: number,
-  gates: Pick<Gates, "minPf" | "rangeMinPf" | "baseSetsMinPf" | "minTrades" | "maxDdr">,
+  gates: Pick<Gates, "minPf" | "rangeMinPf" | "baseSetsMinPf" | "minTrades" | "maxDdr" | "positionWindows">,
   lastN = SIGNAL_VALID_LAST_N,
 ): SignalHistValidation {
   return {
     cost,
+    positionWindows:gates.positionWindows,
     minPf: Math.max(SIGNAL_MIN_PF, minPfOf(gates, undefined), gates.baseSetsMinPf ?? gates.minPf),
     lastN,
     minTrades: gates.minTrades,
@@ -187,9 +190,11 @@ function* prepareSignalHistGen(
   holdH: number,
   fromT: number,
   cutT: number,
+  maxFitN?: number,
 ): Generator<void, { series: PreparedSignalHistSeries[]; mfe: number[] }> {
   const series: PreparedSignalHistSeries[] = [];
   const mfe: number[] = [];
+  const matureTimes: number[] = [];
   const effectiveFromT = u.evaluationFromT === undefined ? fromT : Math.max(u.evaluationFromT, fromT);
   for (const s of seriesOf(u, ind)) {
     yield;
@@ -199,7 +204,8 @@ function* prepareSignalHistGen(
     if (sig.filter.trendH > 0 || sig.filter.volFloor > 0)
       entries = filterEntries(entries, b, u.caches[s], sig.filter);
     // Historic targets use every complete causal excursion; replay warmup still cannot add evaluated entries.
-    entryMfes(b, entries, Math.max(2, Math.round((holdH * 60) / b.tfMin)), cutT, mfe, effectiveFromT);
+    entryMfes(b, entries, Math.max(2, Math.round((holdH * 60) / b.tfMin)),
+      maxFitN ? cutT - 1 : cutT, mfe, effectiveFromT, maxFitN ? matureTimes : undefined);
     const clipped = barsThroughCut(b, cutT);
     if (clipped.n < 2) continue;
     entries = Int8Array.from(evaluationSignal(u, b, entries));
@@ -209,7 +215,9 @@ function* prepareSignalHistGen(
     }
     series.push({ bars: clipped, sides: splitSides(entries.subarray(0, clipped.n)) });
   }
-  return { series, mfe };
+  const selected = maxFitN ? Array.from({ length: mfe.length }, (_, i) => i)
+    .sort((a, b) => matureTimes[a] - matureTimes[b] || a - b).slice(-maxFitN).map(i => mfe[i]) : mfe;
+  return { series, mfe: selected };
 }
 
 /** The config-specific PF/DD evidence on complete closes before the causal cut. */
@@ -237,8 +245,10 @@ function signalHistStats(
     if (!groups.has(key)) groups.set(key, own);
     own.push(tr);
   }
-  const n = validation.lastN ?? SIGNAL_VALID_LAST_N;
-  return [...groups.values()].map((own) => ({ history: statsOf(own), last: statsOf(n > 0 ? own.slice(-n) : own), required: n }));
+  const counts=validation.positionWindows?positionCounts(validation.positionWindows,"sig",id):null;
+  const n = counts?.real ?? validation.lastN ?? SIGNAL_VALID_LAST_N;
+  return [...groups.values()].map((own) => ({ history: statsOf(counts?own.slice(-counts.main):own),
+    last: statsOf(n > 0 ? own.slice(-n) : own), required: n,historyRequired:counts?.main??validation.minTrades }));
 }
 
 /** Keep the simulator's bars to completed candles at or before the historic cut. */
@@ -271,6 +281,7 @@ export function entryMfes(
   cutT: number,
   out: number[] = [],
   fromT?: number,
+  matureTimes?: number[],
 ): number[] {
   const tfMs = b.tfMin * 60_000;
   if (!Number.isInteger(hold) || hold < 1 || hold >= b.n) return out;
@@ -320,6 +331,7 @@ export function entryMfes(
       if (x > m) m = x;
     }
     out.push(m);
+    matureTimes?.push(b.t[i + hold] + tfMs);
   }
   return out;
 }
@@ -378,7 +390,7 @@ export function* signalHistProtectsGen(
     // narrow it further; otherwise live research begins at the earliest available candle for this lane.
     const fromT = Math.max(
       u.evaluationFromT ?? earliest,
-      h.lookbackH > 0 ? cutT - h.lookbackH * 3_600_000 : -Infinity,
+      !validation?.positionWindows && h.lookbackH > 0 ? cutT - h.lookbackH * 3_600_000 : -Infinity,
     );
     if (!Number.isFinite(fromT) || fromT >= cutT) {
       if (diagnostics) diagnostics.insufficientEntries++;
@@ -388,7 +400,7 @@ export function* signalHistProtectsGen(
     // available sample for MFE/hold so the remaining three quarters can supply complete entries and closed PF rows.
     const laneTf = laneOf(ind).tf ?? REF_TF;
     const availableH = (cutT - fromT) / 3_600_000;
-    const holdH = signalHistHoldH(sig.holdH, availableH, laneTf);
+    const holdH = validation?.positionWindows ? sig.holdH : signalHistHoldH(sig.holdH, availableH, laneTf);
     const hold = Math.max(2, Math.round((holdH * 60) / REF_TF));
     const sample = prepareSignalHistGen(
       u,
@@ -399,6 +411,7 @@ export function* signalHistProtectsGen(
       holdH,
       fromT,
       cutT,
+      validation?.positionWindows ? positionCounts(validation.positionWindows,"sig").base : undefined,
     );
     let sampled = 0;
     let step = sample.next();
@@ -456,7 +469,7 @@ export function* signalHistProtectsGen(
             // hist.minN already validated the pooled mature excursions used to fit this source's quantiles.
             // Each exact symbol/direction must satisfy its configured close minimum, without borrowing a
             // sibling's returns or inheriting the separate pooled fitting count as an extra own-context gate.
-            const sampled = contexts.filter(({ history, last, required }) => history.n >= validation.minTrades && last.n >= required);
+            const sampled = contexts.filter(({ history, last, required, historyRequired }) => history.n >= historyRequired && last.n >= required);
             if (!sampled.length) {
               if (diagnostics) diagnostics.insufficientTrades++;
               continue;

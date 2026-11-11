@@ -29,10 +29,11 @@ export const RANGE_LABEL: Record<RangeTag | "", string> = {
   lg: "Long",
   mc: "Micro",
   mp: "Minimal plus",
+  lr: "Low-Range",
 };
 
 /** Every range tag, smallest targets first. */
-export const RANGE_TAGS: readonly RangeTag[] = ["mc", "mn", "mp", "sh", "gn", "lg"];
+export const RANGE_TAGS: readonly RangeTag[] = ["mc", "mn", "mp", "sh", "gn", "lg", "lr"];
 
 /** Execution volume by target range. The balance-relative default uses neutral volume in every range. */
 export const RANGE_VOLUME_FACTOR_DEFAULTS: Readonly<Record<"wide" | RangeTag, number>> = {
@@ -43,6 +44,7 @@ export const RANGE_VOLUME_FACTOR_DEFAULTS: Readonly<Record<"wide" | RangeTag, nu
   sh: 1,
   gn: 1,
   lg: 1,
+  lr: 1,
 };
 
 export type RangeVolumeFactors = Partial<Record<"wide" | RangeTag, number>>;
@@ -60,6 +62,7 @@ export function rangeVolumeFactorsOf(g?: Partial<ProtectGridSpec> | null): Range
     sh: factor(g?.short, "sh"),
     gn: factor(g?.general, "gn"),
     lg: factor(g?.long, "lg"),
+    lr: factor(g?.lowRange, "lr"),
   };
 }
 
@@ -69,7 +72,7 @@ export function rangeOfId(id: string | undefined): RangeTag | "" {
   // memoized: called per order in every simulation step; the regexp match cost 0.8 s of a 24-symbol compute
   let r = RANGE_OF_ID.get(id);
   if (r === undefined) {
-    const m = /\|(mc|mp|mn|sh|gn|lg)(?=\||$)/.exec(id);
+    const m = /\|(mc|mp|mn|sh|gn|lg|lr)(?=\||$)/.exec(id);
     r = m ? (m[1] as RangeTag) : "";
     if (RANGE_OF_ID.size > 200_000) RANGE_OF_ID.clear();
     RANGE_OF_ID.set(id, r);
@@ -114,9 +117,11 @@ export function rangeMinTfOf(g: {
   short?: CoordRange | false;
   general?: CoordRange | false;
   long?: CoordRange | false;
+  lowRange?: import("./domain/types.ts").LowRangeGrid;
   wideMinTf?: number;
 }): Partial<Record<RangeTag | "wide", number>> {
   const out: Partial<Record<RangeTag | "wide", number>> = {};
+  if (g.lowRange?.coordination === "independent") out.lr = g.lowRange.minTf ?? 1;
   // Wide (untagged Normal / Trailing cells): its own lever, no default
   if (typeof g.wideMinTf === "number" && g.wideMinTf > 0) out.wide = g.wideMinTf;
   for (const [tag, r] of [
@@ -276,7 +281,16 @@ export type CoordTag = "mn" | "sh" | "gn" | "lg";
 /**
  * The holds (hours) a range's cells are built at: its own hold limit (maxHoldMin, minutes) when set, else the grid's holdH.
  */
-export function rangeHolds(range: Pick<CoordRange, "maxHoldMin"> | false | undefined, holdH: readonly number[]): readonly number[] {
+export function rangeHolds(range: Pick<CoordRange, "maxHoldMin" | "holdAuto" | "holdCandidatesMin"> | false | undefined, holdH: readonly number[]): readonly number[] {
+  if (range && range.holdAuto) {
+    const minutes = range.holdCandidatesMin ?? holdH.map(h => h * 60);
+    if (!minutes.length || minutes.length > 50 || new Set(minutes).size !== minutes.length ||
+        minutes.some(n => !Number.isInteger(n) || n < 1 || n > 4320))
+      throw new RangeError("Automatic hold candidates need 1–50 distinct whole-minute values");
+    const out = minutes.filter(n => !range.maxHoldMin || n <= range.maxHoldMin).sort((a,b) => a-b);
+    if (!out.length) throw new RangeError("No automatic hold candidate within the maximum");
+    return out.map(n => n / 60);
+  }
   return range && range.maxHoldMin != null && range.maxHoldMin > 0 ? [range.maxHoldMin / 60] : holdH;
 }
 
@@ -288,7 +302,8 @@ export function holdFloorBars(range: Pick<CoordRange, "maxHoldMin"> | false | un
 /** Cells a range adds before identical distances collapse. */
 export function coordVariants(holdN: number, range: CoordRange | false | undefined): number {
   if (!range) return 0;
-  const hold = range.maxHoldMin != null && range.maxHoldMin > 0 ? 1 : holdN || 1;
+  const hold = range.holdAuto ? range.holdCandidatesMin ? rangeHolds(range, []).length : holdN || 1 :
+    range.maxHoldMin != null && range.maxHoldMin > 0 ? 1 : holdN || 1;
   return range.tp.length * range.slOfTp.length * range.trailOfTp.length * hold;
 }
 
@@ -481,7 +496,7 @@ export const RANGE_GATE = { enabled: true, lastN: 75, minPf: 1.35 } as const;
  * churn the cost (micro, minimal, short, plus). General and Long replace the former wide targets and are judged like
  * them (the stage gates, the validation last-N) — with the 50-close gate a slow lane would lose its whole plain base.
  */
-export const GATED_RANGES: ReadonlySet<string> = new Set(["mc", "mn", "sh", "mp"]);
+export const GATED_RANGES: ReadonlySet<string> = new Set(["mc", "mn", "sh", "mp", "lr"]);
 export const rangeGated = (tag: string | undefined | null) => !!tag && GATED_RANGES.has(tag);
 
 /** Walk-forward form of the range gate (null = off). lastN never below 50, min PF never below the Base minimum 1.05. */
@@ -505,6 +520,7 @@ const RANGE_MIN_PF_KEY: Readonly<Record<RangeTag, RangeMinPfKey>> = {
   sh: "short",
   gn: "general",
   lg: "long",
+  lr: "lowRange",
 };
 
 /**
@@ -523,7 +539,7 @@ export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf" | "stepPf">, t
   // Tagged research families use the same independent range floor as ordinary indications. The former
   // hard-coded 1.1 silently overrode requested Micro/Minimal floors at every downstream stage.
   return ind && (ind.startsWith("low-range-") || ind.startsWith("micro-") || ind.startsWith("inverse-") || ind.startsWith("tactic-") || ind.startsWith("relate-") || ind.startsWith("break-rel-") || ind.startsWith("break-mc-rel-"))
-    ? Math.max(key === "micro" || key === "minimal" ? 1.05 : 1.1, min)
+    ? Math.max(key === "micro" || key === "minimal" || key === "lowRange" ? 1.05 : 1.1, min)
     : min;
 }
 

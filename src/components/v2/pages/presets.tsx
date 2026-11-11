@@ -117,7 +117,9 @@ function Backtests(props: {
           </span>
         )}
         <span className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginLeft: "auto" }}>
-          gates: PF ≥ {fmt.pf(props.gates?.minPf)} · DDT ≤ {props.gates?.maxDdtH}h
+          gates: PF ≥ {fmt.pf(props.gates?.minPf)} · {props.gates?.positionWindows
+            ? `Main N ${props.gates.positionWindows.main}; drawdown ≤ ${props.gates.positionWindows.maxDrawdownPositions} positions; own overrides apply`
+            : `DDT ≤ ${props.gates?.maxDdtH}h`}
         </span>
       </div>
       {props.list.length ? (

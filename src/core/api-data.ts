@@ -341,6 +341,7 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
     status: r.status,
     settings: r.settings,
     wf: {
+      positionWindows: r.wf.gates?.positionWindows ?? null,
       preH: r.wf.preH,
       simH: r.wf.simH,
       seatSet: r.wf.seatSet ?? "validated",
@@ -652,6 +653,7 @@ export async function coreSimData(data: ReturnType<typeof connInput>) {
       })),
       trades: sim.trades.slice(-400).reverse(),
       opts: {
+        positionWindows: sim.opts.gates?.positionWindows ?? null,
         preH: sim.opts.preH,
         simH: sim.opts.simH,
         lastN: sim.opts.lastN,

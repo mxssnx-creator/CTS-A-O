@@ -10,7 +10,10 @@ import {
   selectFixed,
   stableSortGen,
 } from "./walkforward.ts";
-import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
+// Explicit historical window contract; current position-policy invariants are covered separately.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import type { Trade } from "../domain/types.ts";
 
 const H = 3_600_000;

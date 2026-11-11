@@ -1,13 +1,29 @@
 /** Default per-side assumptions. Actual measured venue fees remain authoritative. */
 import { DEFAULT_FEE_POLICY } from "./fee-policy.ts";
 export const DEFAULT_MODEL_FEES = Object.freeze({ taker: DEFAULT_FEE_POLICY.taker,
-  maker: DEFAULT_FEE_POLICY.maker, slippage: 0, slippageRatio: DEFAULT_FEE_POLICY.slippageFeeRatio });
+  maker: DEFAULT_FEE_POLICY.maker, slippage: 0, slippageRatio: DEFAULT_FEE_POLICY.slippageFeeRatio,
+  mode: "auto" as const, entry: "taker" as const, exit: "taker" as const });
 
-/** The system's modeled round-trip cost: two taker fees plus two slippage allowances. */
-export function roundTripCostFromFees(fees: { taker: number; slippage: number; slippageRatio?: number }): number {
-  const slip = fees.slippageRatio === undefined ? fees.slippage : fees.taker * fees.slippageRatio;
-  if (![fees.taker, slip].every(x => Number.isFinite(x) && x >= 0)) throw new RangeError("Invalid fee model");
-  return 2 * (fees.taker + slip);
+export interface ModelFees {
+  taker: number; maker: number; slippage: number; slippageRatio?: number;
+  mode?: "auto" | "manual";
+  entry?: "maker" | "taker";
+  exit?: "maker" | "taker";
+  slippageMode?: "ratio" | "absolute";
+}
+
+/** Modeled entry + exit roles, plus either a fee-ratio allowance or absolute slippage per side. */
+export function roundTripCostFromFees(fees: Pick<ModelFees, "taker" | "slippage"> & Partial<ModelFees>): number {
+  const entry = fees.entry ?? "taker", exit = fees.exit ?? "taker";
+  if (![entry, exit].every(x => x === "maker" || x === "taker")) throw new RangeError("Invalid fee role");
+  const rates = [fees[entry], fees[exit]];
+  if (!rates.every(x => typeof x === "number" && Number.isFinite(x) && x >= 0) ||
+      (fees.slippageRatio !== undefined && (!Number.isFinite(fees.slippageRatio) || fees.slippageRatio < 0)) ||
+      !Number.isFinite(fees.slippage) || fees.slippage < 0) throw new RangeError("Invalid fee model");
+  const slip=(rate:number)=>fees.slippageMode === "absolute" || fees.slippageRatio === undefined ? fees.slippage : rate*fees.slippageRatio;
+  // Preserve the established arithmetic for equal roles, including existing default/config fingerprints.
+  return rates[0]===rates[1] ? 2*(rates[0]!+slip(rates[0]!)) :
+    (rates[0]!+slip(rates[0]!))+(rates[1]!+slip(rates[1]!));
 }
 
 /** Default modeled round-trip cost, as a fraction of notional. */
