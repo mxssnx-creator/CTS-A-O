@@ -66,8 +66,8 @@ test("each range's own minimum net stop distance replaces the global one for tha
   const c = DEFAULT_SETTINGS.cost;
   const base = normalizeLanes({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, lowRange: { ...DEFAULT_LOW_RANGE_GRID, enabled: true } } });
   const own = normalizeLanes({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid,
-    micro: { ...DEFAULT_SETTINGS.grid.micro!, minSlDistancePct: 0.4 },
-    short: { ...DEFAULT_SETTINGS.grid.short!, minSlDistancePct: 0.2 },
+    micro: { ...DEFAULT_SETTINGS.grid.micro!, minSlDistancePct: 0.4 } as never,
+    short: { ...DEFAULT_SETTINGS.grid.short!, minSlDistancePct: 0.2 } as never,
     lowRange: { ...DEFAULT_LOW_RANGE_GRID, enabled: true, minSlDistancePct: 0.5 } } });
   const floor = (pct: number) => minimumStopFraction(c, pct);
   const minSl = (cells: ReturnType<typeof protectGrid>, tag: string) => Math.min(...cells.filter((p) => p.tag === tag).map((p) => p.sl));
