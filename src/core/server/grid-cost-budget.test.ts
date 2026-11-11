@@ -16,10 +16,12 @@ test("variant budget counts the actual modeled cost including fractional Low-Ran
   for (const cost of [0, .0001, .0011, .0014, .0015])
     assert.equal(gridVariants(g, cost), protectGrid(15, g, cost).length, `cost ${cost}`);
   assert.equal(gridVariants(g), gridVariants(g, DEFAULT_SETTINGS.cost));
-  assert.equal(gridVariants(g, .0015), 4681);
-  assert.equal(gridVariants(g, .0001), 4593);
-  assert.equal(checkGridVariantBudget(g, .0001, 4640), 4593);
-  assert.throws(() => checkGridVariantBudget(g, .0015, 4640), /4681 variants, max 4640/);
+  // Micro / Low-Range ladders of 11 Nov 2026 (stops 0.2 to 1.6 step 0.1, trailing 0.1 to 0.6 step 0.1): the count
+  // still follows the modeled cost, since the cost moves which requested cells collapse on a floor
+  assert.equal(gridVariants(g, .0015), 5928);
+  assert.equal(gridVariants(g, .0001), 5942);
+  assert.equal(checkGridVariantBudget(g, .0015, 5935), 5928);
+  assert.throws(() => checkGridVariantBudget(g, .0001, 5935), /5942 variants, max 5935/);
   assert.throws(() => checkGridVariantBudget(g, NaN), /finite nonnegative/);
   const ordinary = { ...g, trailingOnly: false };
   for (const cost of [.0001, .0015])
@@ -37,8 +39,8 @@ test("merged settings, fee-only changes and preset application retain effective 
     assert.doesNotThrow(() => checkMerged(first.settings, { fees }));
     first.updateSettings({ fees });
     assert.equal(first.settings.cost, .0001, "fee-only patch derives and validates merged effective cost");
-    assert.equal(gridVariants(first.settings.grid, first.settings.cost), 4599);
-    assert.equal(first.wf.protects.length, 4599);
+    assert.equal(gridVariants(first.settings.grid, first.settings.cost), 5948);
+    assert.equal(first.wf.protects.length, 5948);
     const source = first.findPreset("live-all-independent"); assert.ok(source);
     const saved = { ...structuredClone(source), id: "grid-cost-budget-preset", kind: "saved" as const,
       settings: { grid: { lowRange: { ...grid().lowRange } } } };

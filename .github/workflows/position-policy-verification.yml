@@ -39,10 +39,15 @@ jobs:
           src/core/server/pool-progress-timeout.test.ts
           src/core/indications/low-range-auto.test.ts src/core/indications/low-range-integration.test.ts
           src/core/indications/low-range-research.test.ts
+          src/core/fine-ladder-sets.test.ts src/core/micro-range.test.ts
+          src/core/server/fine-ladder-migration.test.ts src/core/market/base-history-cut.test.ts
+          src/core/server/grid-cost-budget.test.ts src/core/regression.test.ts
+          src/core/server/cycle-serial.test.ts
       - name: Report provenance and verification inventory
         run: >-
           node --require ./scripts/lib/core-test-offline-guard.cjs --test
           scripts/test-core.test.mjs scripts/core-session.test.mjs
+          scripts/lib/live-desk-audit.test.mjs scripts/core-block-comparison.test.mjs
       - run: npm run build
   render:
     runs-on: ubuntu-24.04

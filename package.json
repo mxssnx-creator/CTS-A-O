@@ -26,7 +26,9 @@
     "core:run": "node --experimental-strip-types --no-warnings scripts/core-run.mjs",
     "core:compare": "node --experimental-strip-types --no-warnings scripts/core-compare.mjs",
     "core:sweep": "node --experimental-strip-types --no-warnings scripts/core-sweep.mjs",
-    "core:hourly": "node --experimental-strip-types --no-warnings scripts/core-hourly.mjs"
+    "core:hourly": "node --experimental-strip-types --no-warnings scripts/core-hourly.mjs",
+    "test:strategy-features": "node --experimental-strip-types --test src/core/sim/strategy-processing.test.ts src/core/indications/dca-tactic.test.ts src/core/indications/inverse.test.ts shared/cts-volume/ratios.test.ts",
+    "test:lastn-blocks": "node --experimental-strip-types --test shared/cts-lastn/blocks.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",

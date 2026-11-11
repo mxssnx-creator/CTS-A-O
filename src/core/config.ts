@@ -283,6 +283,7 @@ export const DEFAULT_ADJUST: AdjustSettings = {
 };
 
 export interface CoreSettings {
+  relationalVolumeRatios?: import("../../shared/cts-volume/ratios.ts").RelationalVolumeRatios;
   /** Net initial SL percent added to modeled round-trip costs. */
   minSlDistancePct?: number;
   /** hard floors of every engine config's stop and trailing distance after lane scaling (fractions; 0.005 = 0.5 %) */

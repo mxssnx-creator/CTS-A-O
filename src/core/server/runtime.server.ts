@@ -1,10 +1,12 @@
 import { migratePositionWindows } from "./position-windows-migration.server.ts";
 import { mainnetPositionWindows } from "../position-windows.ts";
+import {relationalVolumeFactor,relationalVolumeSettings} from "../../../shared/cts-volume/ratios.ts";
 import { minimumStopFraction, normalizeMinSlDistancePct } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, validatedSetPf, type ValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
 import { migrateMinuteCaps } from "./minute-cap-migration.server.ts";
 import { migrateMinimumProtectionPolicy } from "./protection-policy-migration.server.ts";
+import { migrateFineLadders } from "./fine-ladder-migration.server.ts";
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
 import { isHistoricExitConfig } from "../exit-scope.ts";
 import { lstatSync } from "node:fs";
@@ -128,9 +130,11 @@ import type { Bars, BlockConfig, Candle, OpenPosition, Protect, RelateAdjustment
 import { syntheticCandles, tailBars, headBars } from "../market/bars.ts";
 import {
   CandleSeries,
+  baseHistoryCut,
   barsOfSeries,
   headroomFor,
   resampleTailBars,
+  type BaseHistoryCut,
 } from "../market/candle-series.ts";
 import { startStallProbe, type StallProbe } from "./stall-probe.server.ts";
 import {
@@ -203,6 +207,7 @@ import {
   configDirectionEval,
   tapeRetentionHours,
   kindExecutable,
+  tapeExecutable,
   defaultWalkForward,
   signalHistoryHours,
   signalValidationOk,
@@ -261,6 +266,7 @@ import {
   positionMult,
   positionVolume,
   rangeVolumeFactorFor,
+  kindOfInd,
   freshEntry,
   seatedForEntry,
   stepSeats,
@@ -1254,6 +1260,7 @@ export class CoreRuntime {
     migrateHistoricExitOptIn(db);
     migrateMinimumProtectionPolicy(db);
     migratePositionWindows(db);
+    migrateFineLadders(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
     if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {
@@ -1597,8 +1604,13 @@ export class CoreRuntime {
     math: TickMathBook | null;
     groups: Array<{ sym: string; idx: number[]; px: number; sum: number; nextBarT: number }>;
   } | null = null;
+  private trailingProcessingFor(cfg:string):boolean{
+    const range=isHistoricExitConfig(cfg)?'exit':isSignalInd(cfg.split('|')[1]??'')?'sig':rangeOfId(cfg)||'wide';
+    return this.wf.toggles.trailing!==false && this.wf.rangeOpts?.[range as keyof typeof this.wf.rangeOpts]?.trailing!==false;
+  }
   private tickBook() {
     const positions = this.paper.positions;
+    for(const p of positions){if(this.trailingProcessingFor(p.cfg))delete p.trailingProcessingEnabled;else p.trailingProcessingEnabled=false;}
     const units = this.paperUnits();
     const cost = this.settings.cost;
     const m = this.tickMemo;
@@ -2837,6 +2849,8 @@ export class CoreRuntime {
   }
 
   updateSettings(patch: SettingsPatch, wfPatch?: Partial<WalkForwardOptions>) {
+    if(patch.relationalVolumeRatios!==undefined)relationalVolumeSettings(patch.relationalVolumeRatios,true);
+    this.tickMemo=null;this.tickSentBook=null;
     const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${evaluationHistorySettings(this.settings, this.wf).historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`;
     const prevCompute = computeKey(this.settings, this.wf);
     const next = mergeSettings(this.settings, patch);
@@ -4351,13 +4365,15 @@ export class CoreRuntime {
     const signalBars: ReturnType<typeof laneSeriesFrom> = [];
     const signalH = signalDataHours(s, wf);
     const strategyH = strategyDataHours(s, wf);
+    const historyCuts = new Map<string, BaseHistoryCut>();
     for (const [sym, cs] of this.candles) {
-      allBars.push(...laneSeriesOf(sym, cs, s, 0, strategyH));
+      allBars.push(...laneSeriesOf(sym, cs, s, 0, strategyH, historyCuts));
       if (sigEnabled(s)) signalBars.push(...signalLaneSeriesOf(sym, cs, s, wf));
       await yieldNow();
       signal.throwIfAborted();
       if (gen !== this.gen) return;
     }
+    this.reportHistoryCuts(historyCuts);
     if (
       this.evaluationFromT !== undefined &&
       this.paper.positions.some((p) => p.entryT < this.evaluationFromT!)
@@ -6799,6 +6815,30 @@ export class CoreRuntime {
     };
   }
 
+  /** the base-history cuts last reported (symbol → first usable bar), so an unchanged cut is not repeated */
+  private historyCutsSeen = "";
+  /**
+   * A symbol whose base history starts after a missing / invalid venue bar: said once per change, with the missing
+   * coverage in numbers (never silently clipped), and kept for the status readers (kv `historyCuts`).
+   */
+  private reportHistoryCuts(cuts: ReadonlyMap<string, BaseHistoryCut>) {
+    const rows = [...cuts].map(([sym, c]) => ({ sym, afterT: c.afterT, firstT: c.firstT, missing: c.missing }))
+      .sort((a, b) => a.sym.localeCompare(b.sym));
+    const key = JSON.stringify(rows);
+    if (key === this.historyCutsSeen) return;
+    this.historyCutsSeen = key;
+    this.db.kvSet("historyCuts", { at: Date.now(), tfMin: this.settings.tfMin, symbols: rows });
+    if (!rows.length) return;
+    const iso = (t: number) => (Number.isFinite(t) ? new Date(t).toISOString().slice(0, 16).replace("T", " ") : "–");
+    this.db.event(
+      "warn",
+      `base history: ${rows.length} symbol(s) start after a missing or invalid ${this.settings.tfMin}m venue bar — ` +
+        rows.slice(0, 8).map((r) => `${r.sym} from ${iso(r.firstT)} (${r.missing ? `${r.missing} bar(s) missing` : "invalid bar"} after ${iso(r.afterT)})`).join("; ") +
+        (rows.length > 8 ? `; +${rows.length - 8} more` : "") +
+        ". Their minute execution prices are used from there; nothing is invented for the break.",
+    );
+  }
+
   /** One adjuster pass on the executed (Real) positions; a change triggers a recompute with the new ranges. */
   private runAdjust() {
     const a = this.settings.adjust;
@@ -7342,7 +7382,7 @@ export class CoreRuntime {
           !isSignalInd(tp.ind) &&
           !tp.heldOnly &&
           baseAllowsTape(tp, this.wf) &&
-          kindExecutable(tp.kind, this.wf.toggles) &&
+          tapeExecutable(tp, this.wf) &&
           (!this.wf.bots?.length || this.wf.bots.includes(tp.bot)),
       )
       .map((tp) => ({ id: tp.id, group: liveGroupOf(tp.id), kind: kindOfId(tp.id) }));
@@ -10047,6 +10087,7 @@ export class CoreRuntime {
       // multiple (its volume without the ladder weight: an Axis ladder that filled another rung since grows)
       const prev = prevByKey.get(posId(op));
       // what the tick advanced since this tape's data end (a trailing stop never moves back)
+      if(!this.trailingProcessingFor(op.cfg))op.trailingProcessingEnabled=false;
       const tr = carryTrail(op, prev);
       const stopNow = tr.stop ?? op.stop;
       const d = held
@@ -10124,7 +10165,7 @@ export class CoreRuntime {
       perSide.set(`${cls}|${op.side}`, sd + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
       // new entries take the relation volume the simulation ended with (within the Block maximum)
-      const vf = held ? 1 : volumeFactorForStrategy(tp, this.wf);
+      const vf = held ? 1 : volumeFactorForStrategy(tp, this.wf)*relationalVolumeFactor(this.wf.relationalVolumeRatios,{indicationType:kindOfInd(tp.ind),indication:laneOf(tp.ind).base,strategy:tp.kind,range:tp.kind==="exit"?"exit":isSignalInd(tp.ind)?"sig":tp.protect.tag??"wide",symbol:op.sym});
       const positionVf = held ? (prev?.volFactor ?? 1) : vf;
       const cv = !held ? this.s2EntryVolume(d.vol, op.cfg) : 1;
       const hedge = !held && this.isHedgeEntry(op);
@@ -10510,6 +10551,7 @@ export class CoreRuntime {
     // built is carried over (else the lane asks for its volume again until the next step reads the stored hit)
     for (const p of positions) {
       const prev = prevByKey.get(posId(p));
+      if(!this.trailingProcessingFor(p.cfg))p.trailingProcessingEnabled=false;
       Object.assign(p, carryTrail(p, prev));
       if (p.stopHit) continue;
       if (prev?.stopHit && prev.stop === p.stop) {
@@ -10759,7 +10801,7 @@ export class CoreRuntime {
         }
         const hedge = this.isHedgeEntry({ cfg: tp.id, sym: p.sym, side: p.side });
         const coordVol = this.s2EntryVolume(d.vol, tp.id);
-        const volFactor = volumeFactorForStrategy(tp, this.wf);
+        const volFactor = volumeFactorForStrategy(tp, this.wf)*relationalVolumeFactor(this.wf.relationalVolumeRatios,{indicationType:kindOfInd(tp.ind),indication:laneOf(tp.ind).base,strategy:tp.kind,range:tp.kind==="exit"?"exit":isSignalInd(tp.ind)?"sig":tp.protect.tag??"wide",symbol:p.sym});
         const rangeVol = rangeVolumeFactorFor(tp, this.wf);
         const hedgeVol = hedge ? (this.wf.coord?.hedgeVolumeFactor ?? 1) : 1;
         const baseExternalMult = d.vol * coordVol * volFactor * rangeVol * hedgeVol;
@@ -11014,6 +11056,7 @@ export function sanitizeRangeOpts(v: unknown): Partial<Record<RangeOptTag, Range
     if (!x || typeof x !== "object") continue;
     const src = x as Record<string, unknown>;
     const r: RangeOpts = {};
+    for (const key of ["normal", "trailing"] as const) if (typeof src[key] === "boolean") r[key] = src[key];
     const validLastN = num(src.validLastN, 0, 200, true);
     if (validLastN !== undefined) r.validLastN = validLastN;
     const lastN = num(src.lastN, 0, 200, true);
@@ -11282,6 +11325,7 @@ function migrateNeutralVolumeRatios(db: CoreDb): void {
   const backup=structuredClone({settings,presets});
   const upgrade=(s:SettingsPatch|undefined) => {
     if(!s) return;
+    if(s.relationalVolumeRatios!==undefined)s.relationalVolumeRatios=relationalVolumeSettings(s.relationalVolumeRatios,true);
     if(s.signals?.coordination?.volumeFactor!==undefined)
       s.signals.coordination.volumeFactor=s.signals.coordination.volumeFactor===8?1:volumeRatio(s.signals.coordination.volumeFactor);
     if(s.axis?.volumeFactor!==undefined)
@@ -12661,7 +12705,12 @@ export function normalizeLanes(s: CoreSettings): CoreSettings {
   const grid = { ...s.grid, minSl, minSlEval: minSl };
   for (const key of ["micro", "minimal", "short", "general", "long"] as const) {
     const r = grid[key];
-    if (r) grid[key] = { ...r, minSl, minSlEval: minSl, ...(key === "micro" ? { minSlNet: minSlDistancePct / 100 } : {}) };
+    if (r) {
+      // a range's own minimum net distance (minSlDistancePct) replaces the global one for that range only
+      const own = r.minSlDistancePct === undefined ? minSlDistancePct : normalizeMinSlDistancePct(r.minSlDistancePct);
+      const f = minimumStopFraction(s.cost, own);
+      grid[key] = { ...r, minSl: f, minSlEval: f, ...(key === "micro" ? { minSlNet: own / 100 } : {}) };
+    }
   }
   return {
     ...s,
@@ -12739,7 +12788,17 @@ export function laneSeriesOf(
   s: CoreSettings,
   extraDays = 0,
   minHistoryH = 0,
+  /** filled with the symbol's history cut when its base series has a missing or invalid bar (baseHistoryCut) */
+  cuts?: Map<string, BaseHistoryCut>,
 ): Bars[] {
+  // One missing venue minute made the minute-execution validator (sim/capped-execution.ts) refuse the whole
+  // universe: Base left the workers and the cycle failed, for every symbol. The base lane — the execution prices —
+  // of the symbol with the break now starts after it; no price is invented for the missing bar, and the other
+  // symbols are untouched. The resampled lanes keep their history: a bucket with a missing base bar is dropped, as
+  // before, and a minute-capped config takes no evidence from before its own execution prices (cappedPriceStart).
+  const cut = baseHistoryCut(cs, s.tfMin);
+  if (cut) cuts?.set(sym, cut);
+  const base = cut ? cs.range(cut.start, cs.n) : cs;
   // the enabled lanes ride on every series (Bars.lanes): a combined lane agrees with the higher ENABLED lanes, the
   // ones laneInds generates it from (the whole ladder agreed with 15m / 30m on a desk running 1m and 5m only)
   const lanes = Object.freeze([...(s.tfs ?? [s.tfMin])]);
@@ -12748,7 +12807,7 @@ export function laneSeriesOf(
     const n = Math.max(laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf), Math.ceil(minHistoryH * 60 / tf));
     const b =
       tf === s.tfMin
-        ? barsOfSeries(sym, tf, cs, cs.n - n, cs.n)
+        ? barsOfSeries(sym, tf, base, base.n - n, base.n)
         : resampleTailBars(sym, cs, s.tfMin, tf, n);
     b.lanes = lanes;
     out.push(b);

@@ -1,4 +1,7 @@
+import {BlockPolicyFields} from "../../../../shared/cts-lastn/fields";
 import { DEFAULT_POSITION_WINDOWS, checkPositionWindows, type PositionWindows } from "@/core/position-windows";
+import {dcaTacticConfigs,dcaTacticId,DCA_TACTIC_GRID} from "@/core/indications/dca-tactic";
+import {VolumeRatioSliders} from "../../../../shared/cts-volume/sliders.tsx";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { progressText } from "@/core/progress";
 import { SIGNAL_VALID_LAST_N } from "@/core/signal-policy";
@@ -1467,6 +1470,7 @@ export function PositionWindowSettings(props: {
           />
         </Field>
       </div>
+      {(["base","main","real","entry"] as const).map(stage=><BlockPolicyFields key={stage} label={stage+" Last-N blocks"} value={p.blocks?.[stage]} onChange={block=>{const blocks={...p.blocks};if(block)blocks[stage]=block;else delete blocks[stage];put("blocks",blocks)}}/>)}
       <details style={{ marginTop: 12 }}>
         <summary>Position counts by range</summary>
         <div style={{ overflowX: "auto" }}>
@@ -1823,7 +1827,7 @@ export function RangeEditor(props: {
           <StepList
             label={`${props.title} SL × ${net ? "price target (net + cost)" : "TP"} min · max · step`}
             max={props.k === "micro" ? 24 : 64}
-            lo={props.k === "micro" ? 0.5 : 0.2}
+            lo={0.2}
             hi={5}
             value={s.slOfTp}
             onChange={(v) => props.set(p("slOfTp"), v)}
@@ -2062,7 +2066,7 @@ export function LongRange(props: {
   );
 }
 
-/** Micro range: net 0.1–0.4 % after the position cost (price targets 0.25–0.55 % at 0.15 %), SL 1–5× step 0.25. */
+/** Micro range: net 0.2–0.8 % after the position cost (price targets 0.376–0.976 % at 0.176 %), SL 0.2–1.6× step 0.1. */
 export function MicroRange(props: {
   grid: Record<string, unknown> | object;
   set: (path: string[], v: unknown) => void;
@@ -2072,7 +2076,7 @@ export function MicroRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="micro"
       title="Micro range"
-      info="Default net TP values use the frozen 0.2% range reference (0.2–0.8% net); price targets add the configured execution cost (0.35–0.95% at the default 0.15%). SL 1–5× the price target, step 0.25. Current targets, stop floors and enabled state are shown below; each computed cell must pass its own admission gates. Orders tracked as U."
+      info="Default net TP values use the frozen 0.2% range reference (0.2–0.8% net); price targets add the configured execution cost (0.376–0.976% at the default 0.176%). SL 0.2–1.6× the price target, step 0.1, never inside cost plus the minimum net distance; trailing arms at 0.1–0.6 of the target, step 0.1. Current targets, stop floors and enabled state are shown below; each computed cell must pass its own admission gates. Orders tracked as U."
       defaults={MICRO_RANGE}
       set={props.set}
     />
@@ -2483,9 +2487,9 @@ export function LowRangeShortSettings(props: {
           hint="Effective hard cap after cost floors and feedback. Incompatible cells are excluded."
         >
           <Num
-            min={0.25}
+            min={0.2}
             max={2.5}
-            step={0.25}
+            step={0.1}
             value={lr.maxSlRatio ?? 2.5}
             onChange={(maxSlRatio) => put({ maxSlRatio })}
           />
@@ -2532,7 +2536,7 @@ export function LowRangeShortSettings(props: {
         </Field>
         <StepList
           label="Stop ratios · minimum / maximum / increment"
-          lo={0.25}
+          lo={0.2}
           hi={2.5}
           max={64}
           value={lr.slRatios}
@@ -3512,6 +3516,13 @@ export function SettingsPage() {
             </select>
           }
         >
+              <VolumeRatioSliders value={s.relationalVolumeRatios} onChange={v=>set(["relationalVolumeRatios"],v)} buckets={{strategies:['normal','trailing','axis','block','dca','exit'],ranges:['wide','mc','mn','mp','sh','gn','lg','lr','sig','exit']}}/>
+          <p className="v2-muted">Normal off keeps its calculations for enabled Block, DCA and Axis strategies, including their own validation. It blocks standalone Normal and Trailing entries. Trailing off excludes trailing from every strategy. Overall and range switches must both allow progression.</p>
+          <div className="v2-lines" style={{ gap: 8 }}>
+            {([['wide','Wide'],['mc','Micro'],['mn','Minimal'],['mp','Minimal plus'],['sh','Short / Low-Range'],['gn','General / Normal'],['lg','Long'],['lr','Low-Range'],['sig','Signals'],['exit','Exit']] as const).map(([tag,label]) => <div key={tag} className="v2-grid v2-cols-3">
+              <span>{label}</span>{(['normal','trailing'] as const).map(key=><Switch key={key} label={`${label} ${key} processing`} checked={wf.rangeOpts?.[tag]?.[key] !== false} onChange={v=>setW('rangeOpts',{...wf.rangeOpts,[tag]:{...wf.rangeOpts?.[tag],[key]:v}})} />)}
+            </div>)}
+          </div>
           <div className="v2-lines" style={{ gap: 8 }}>
             {Object.keys(TOGGLE_HELP).map((k) => (
               <div key={k} style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -3832,6 +3843,8 @@ export function SettingsPage() {
                 Each source, lane and Short cell has independent Base and post-Base gates; candidate history is not a venue fill.
               </div>
             </div>
+              <VolumeRatioSliders overall value={s.relationalVolumeRatios} onChange={v=>set(["relationalVolumeRatios"],v)} buckets={{indicationTypes:INDICATION_KINDS,indications:TACTIC_IDS}}/>
+            <DcaTacticFocusInfo focus={s.focus??[]} pinned={s.pinned??[]} disabled={(s.disabledKinds??[]).includes('tactic')} onInclude={ids=>{set(['focus'],includeIndicationsInFocus(s.focus??[],ids));set(['disabledKinds'],(s.disabledKinds??[]).filter((kind:string)=>kind!=='tactic'));}}/>
             <TacticFocusInfo
               focus={s.focus ?? []}
               pinned={s.pinned ?? []}
@@ -5650,4 +5663,17 @@ export function SettingsPage() {
       </div>
     </>
   );
+}
+
+function DcaTacticFocusInfo({focus,pinned,disabled,onInclude}:{focus:string[];pinned:string[];disabled:boolean;onInclude:(ids:string[])=>void}){
+ const [filters,setFilters]=useState<Record<string,string>>({});
+ const all=dcaTacticConfigs(),selected=all.filter(c=>Object.entries(filters).every(([key,value])=>!value||String(c[key as keyof typeof c])===value));
+ const ids=selected.map(dcaTacticId),coverage=indicationFocusCoverage(focus,ids,pinned);
+ const dimensions={lookback:DCA_TACTIC_GRID.lookbacks,basis:DCA_TACTIC_GRID.bases,spacing:DCA_TACTIC_GRID.spacings,level:DCA_TACTIC_GRID.levels,recovery:DCA_TACTIC_GRID.recoveries,method:DCA_TACTIC_GRID.methods};
+ return <fieldset style={{border:'1px solid var(--v-border,#345)',borderRadius:8,padding:12,marginBottom:12}}><legend>Tactic · DCA decline / recovery sources</legend>
+  <p className="v2-muted">{all.length} independent source configurations, in addition to the existing ten Tactic sources. Decline spacing and recovery are source distances; order volume is controlled separately. Completed candles, costs and ordinary Base/Main/Real validation apply.</p>
+  <div className="v2-grid v2-cols-3">{Object.entries(dimensions).map(([key,values])=><label key={key}>{key}<select className="v2-select" value={filters[key]??''} onChange={e=>setFilters({...filters,[key]:e.target.value})}><option value="">All</option>{values.map(value=><option key={value} value={value}>{value}</option>)}</select></label>)}</div>
+  <button type="button" className="v2-btn" disabled={!ids.length||!disabled&&coverage.full===coverage.total} onClick={()=>onInclude(ids)}>Include {ids.length} DCA Tactic sources in Base focus</button>
+  <p className="v2-muted">{coverage.covered}/{coverage.total} selected sources represented in focus. Broader grids add independent lanes and evaluation work. Save to apply.</p>
+ </fieldset>;
 }

@@ -14,7 +14,7 @@ import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS, lowRangeGridProtects } from "./l
 import { INDICATIONS } from "./registry.ts";
 import { exitStrategyPairs } from "../exit-strategy.ts";
 import { SeriesCache } from "./cache.ts";
-import { LOW_RANGE_METHODS, LOW_RANGE_RELATIONS, LOW_RANGE_WINDOWS, lowRangeState } from "./low-range-research.ts";
+import { LOW_RANGE_METHODS, LOW_RANGE_RELATIONS, LOW_RANGE_TRAIL_FLOOR_STEPS, LOW_RANGE_WINDOWS, lowRangeState } from "./low-range-research.ts";
 import { controlledLowRange } from "./test-support.ts";
 import { closePool, runOnWorkers } from "../server/pool.server.ts";
 import { adjustProtect, type AdjustState } from "../adjust.ts";
@@ -85,23 +85,24 @@ describe("Low-Range Short integration", () => {
       const exec = protectGrid(REF_TF, g, cost).filter((p) => p.lowRangeOnly);
       assert.deepEqual(base.map(protectCellKey).sort(), exec.map(protectCellKey).sort());
       assert.ok(gridVariants(g) >= protectGrid(REF_TF, g).length, "ordinary grid budget is an upper bound before floor deduplication");
-      assert.equal(base.length, trailingOnly ? 265 : 160, "distinct Low-Range cells after stop/trailing floors");
+      assert.equal(base.length, trailingOnly ? 895 : 491, "distinct Low-Range cells after stop/trailing floors");
       for (const p of base) {
         assert.equal(p.tag, "sh");
         assert.ok(p.sl + 1e-12 >= cost + 0.001);
-        assert.ok(!p.trail || p.trail * (p.trailStep ?? 1) + 1e-12 >= cost + 2 * g.lowRange.step);
+        assert.ok(!p.trail || p.trail * (p.trailStep ?? 1) + 1e-12 >= cost + LOW_RANGE_TRAIL_FLOOR_STEPS * g.lowRange.step);
       }
     }
     assert.equal(protectGrid(REF_TF, { ...grid, short: false }, cost).filter((p) => p.lowRangeOnly).length, 0);
   });
 
   it("preserves precise cost-aware Low-Range floors when feedback rounds either distance", () => {
-    const fine = { ...lowRange, step: 0.002011, steps: [2], slRatios: [0.5], trailRatios: [0, 0.25] };
+    // trail share 0.1 of the two-step range is under the half-step floor: the floor itself is the cell
+    const fine = { ...lowRange, step: 0.002011, steps: [2], slRatios: [0.5], trailRatios: [0, 0.1] };
     const cells = lowRangeGridProtects(fine, cost);
     const p = cells.find((x) => x.trail > 0)!;
     const noTrail = cells.find((x) => x.trail === 0)!;
     assert.equal(p.sl, 0.002891);
-    assert.equal(p.trail, 0.005782);
+    assert.equal(p.trail, 0.002766);
     const ind = `${IND}@m1`, pair = `follow|${ind}`;
     for (const cell of [p, noTrail, trailingOnlyProtects([p])[0]]) {
       const kind = cell.trailOnly ? "trailing-only" : cell.trail > 0 ? "trailing" : "normal";
@@ -111,7 +112,7 @@ describe("Low-Range Short integration", () => {
         assert.ok(q.sl + 1e-12 >= cost + 0.001, `${kind}: stop floor`);
         assert.ok(q.sl + 1e-12 >= cell.sl, `${kind}: feedback cannot narrow the initial stop`);
         if (cell.trail > 0) {
-          assert.ok(q.trail * (q.trailStep ?? 1) + 1e-12 >= cost + 2 * fine.step, `${kind}: trail gap floor`);
+          assert.ok(q.trail * (q.trailStep ?? 1) + 1e-12 >= cost + LOW_RANGE_TRAIL_FLOOR_STEPS * fine.step, `${kind}: trail gap floor`);
           assert.ok(q.trail + 1e-12 >= cell.trail, `${kind}: feedback cannot narrow the initial trail`);
         } else assert.equal(q.trail, 0, "feedback must not create a trail on a normal cell");
         // Keep the existing four-decimal result exactly whenever its rounding did not narrow the initial distance.
@@ -144,7 +145,7 @@ describe("Low-Range Short integration", () => {
             const q = adjustProtect(cell, { minSl: 0, minTrail: 0, slMult, trailMult });
             assert.ok(q.sl + 1e-12 >= c + 0.001 && q.sl + 1e-12 >= cell.sl);
             if (cell.trail > 0)
-              assert.ok(q.trail * (q.trailStep ?? 1) + 1e-12 >= c + 2 * step && q.trail + 1e-12 >= cell.trail);
+              assert.ok(q.trail * (q.trailStep ?? 1) + 1e-12 >= c + LOW_RANGE_TRAIL_FLOOR_STEPS * step && q.trail + 1e-12 >= cell.trail);
             else assert.equal(q.trail, 0);
           }
         }
@@ -237,7 +238,9 @@ describe("Low-Range Short integration", () => {
 
   it("validates complete Low-Range settings and rejects malformed or excessive values", () => {
     assert.doesNotThrow(() => checkSettings({ grid } as never));
-    assert.throws(() => checkSettings({ grid: { ...grid, lowRange: { ...lowRange, slRatios: [0.24] } } } as never));
+    assert.doesNotThrow(() => checkSettings({ grid: { ...grid, lowRange: { ...lowRange, slRatios: [0.2, 1.6] } } } as never));
+    assert.throws(() => checkSettings({ grid: { ...grid, lowRange: { ...lowRange, slRatios: [0.19] } } } as never));
+    assert.throws(() => checkSettings({ grid: { ...grid, lowRange: { ...lowRange, slRatios: [2.6] } } } as never));
     assert.throws(() => checkSettings({ grid: { ...grid, lowRange: { ...lowRange, steps: [2.5] } } } as never));
     assert.throws(() => checkSettings({ grid: { ...grid, lowRange: { ...lowRange, maxHoldMin: 0 } } } as never));
     assert.throws(() => checkSettings({ grid: { ...grid, lowRange: { ...lowRange, step: NaN } } } as never));
