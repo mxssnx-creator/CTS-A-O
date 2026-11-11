@@ -11,7 +11,7 @@
   },
   "wf": {
     "engineSideAccept": {
-      "enabled": true,
+      "enabled": false,
       "minPf": 1.05,
       "hours": 24,
       "minTrades": 30
