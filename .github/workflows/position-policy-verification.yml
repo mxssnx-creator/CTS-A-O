@@ -69,7 +69,7 @@ jobs:
       - name: Render desktop and mobile in dev and production
         shell: bash
         run: |
-          mkdir -p /workspace/screenshots
+          sudo install -d -o "$(id -u)" -g "$(id -g)" /workspace/screenshots
           npm run dev > /workspace/screenshots/dev-server.log 2>&1 &
           for attempt in {1..60}; do
             if curl --fail --silent http://127.0.0.1:8080/ > /dev/null; then break; fi
