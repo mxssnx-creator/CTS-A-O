@@ -56,7 +56,15 @@ jobs:
           node-version: "24"
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npx playwright install --with-deps chromium
+      - name: Resolve the runner browser or install a bounded fallback
+        shell: bash
+        run: |
+          browser="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          if [ -n "$browser" ]; then
+            printf 'CTS_UI_BROWSER_EXECUTABLE=%s\n' "$browser" >> "$GITHUB_ENV"
+          else
+            timeout 180s npx playwright install --with-deps chromium
+          fi
       - run: npm run build
       - name: Render desktop and mobile in dev and production
         shell: bash
