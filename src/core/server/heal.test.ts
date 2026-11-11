@@ -268,8 +268,8 @@ describe("self-healing", { timeout: 600_000 }, () => {
       history: async (sym, tf, bars) => syntheticCandles(sym, tf, bars, Date.now() - tf * 60_000),
       klines: async () => [],
     };
-    // 12 symbols in three batches (the batch is max(5, ceil(target / 4)), so the symbol count stays); the history, the lanes
-    // and the engine focus are smaller than `small`: each of the three computes covers the whole universe (148 s on 11 Oct)
+    // 12 symbols in two batches (5, then doubling: 5 + 7); the history, the lanes
+    // and the engine focus are smaller than `small`: each of the two computes covers the whole universe (148 s on 11 Oct)
     const rt = new TrackedRuntime(
       new CoreDb(":memory:"),
       {
@@ -300,7 +300,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
     rt.stop();
     const p = rt.status.prehistoric!;
     assert.ok(paperBeforeAll, "realtime (computes / paper) started before every symbol was loaded");
-    assert.ok(rt.status.computes >= 3, `one complete compute per batch (${rt.status.computes})`);
+    assert.ok(rt.status.computes >= 2, `one complete compute per batch (${rt.status.computes})`);
     assert.equal(p.total, 12);
     assert.equal(p.ready, 12);
     assert.ok(p.stats && Number.isFinite(p.stats.avgOpen));
