@@ -15,6 +15,10 @@ zwischengespeicherte Binance-Daten; nicht um einen frischen Holdout oder BingX-A
 Base qualifizierte 0 von 1.492 ausgewerteten Paaren. Nach Base wurden 0 Konfigurationen bewertet;
 der qualifizierte post-Base-PF und der Ausführungs-PF sind nicht verfügbar. Positionen und Orders,
 jeweils eröffnet/geschlossen/gehalten: 0/0/0. Daraus folgt kein Profitabilitätsnachweis.
+Der separat aufgebaute Kandidatenpool hat 12 Signal-Konfigurationen und 192 exakte
+Konfiguration/Symbol/Richtung-Kontexte. Davon sind 0/192 (0 %) vollständig bzw. qualifiziert;
+die größte eigene Stichprobe umfasst fünf statt der erforderlichen 40 Main-Positionen.
+Diese Kandidatenbereitschaft ersetzt nicht den leeren post-Base-Nenner 0/0; dessen Prozentwert bleibt unverfügbar.
 
 Die früher dokumentierte Kohorte darf nicht als Garantie übernommen werden: Der alte Bericht zeigte
 405/1.276 post-Base-Kontexte mit hohem historischem Validierungs-PF, aber anschließend einen
@@ -90,9 +94,17 @@ Die meisten Low-Range-Base-Samples sind unvollständig. Gates wurden nicht gesen
 nicht nachträglich entfernt und keine Gewinne aus Geschwisterkonfigurationen übernommen, um daraus
 positive Ausführung zu erzeugen. Der leere qualifizierte Marktpfad bleibt sichtbar.
 
+Der letzte vollständige Replay ist `attempt-7` auf wirtschaftlichem Code
+`2c6b543a2ac3ccf292c8a45daec384f8a68f20af`, Quellenfingerprint
+`49ee14a0a01d640c4022bde2ad8a5e714f854aff0ffacc7242449ce0a9d12cdf`.
+Die späteren Änderungen betreffen Test-Startbedingungen, CI und Nachweise, nicht die Handelsrechnung.
+Kalte Berechnung: 44.145 ms; gemessener maximaler RSS: 380 MB; Loop-Maximum unter paralleler
+Prüflast: 1.344 ms, letzter schlechtester Base-Slice: 1.152 ms. Der warme 500-ms-Zielwert ist damit
+nicht nachgewiesen. Wiederholungen desselben bekannten Feeds sind keine unabhängigen Marktstudien.
+
 ## Prüfung und bekannte offene Punkte
 
-Die beigefügte Testmanifest-Datei unterscheidet beobachtet erfolgreiche Befehle, fehlgeschlagene
+Die [Testmanifest-Datei](position-count-policy-20261111-evidence/test-manifest.json) unterscheidet beobachtet erfolgreiche Befehle, fehlgeschlagene
 Erstläufe und unterbrochene Läufe. Überlappende Teilprüfungen werden nicht als eindeutige Gesamtsumme addiert.
 Historische Zeitfenster-Contract-Fixtures setzen `positionWindows: null` ausdrücklich; die neue
 Produkt-Policy bleibt standardmäßig aktiv und hat eigene vollständige Count-/Scope-/Chronologie-Tests.
@@ -104,14 +116,57 @@ nach dem Schließen eines SQLite-Handles zu schreiben. Explizites Flushen entfer
 ein verzögerter Flush erkennt einen geschlossenen Handle. Native Stops, Targets, Teilfüllungen,
 Kapazitäten und Neustart werden separat geprüft.
 
+Der vollständige kalte Katalogtest bleibt mit allen Veröffentlichungs-, Lane-, Detailtrade- und
+Atomizitätsprüfungen im expliziten Slow-Job und bestand in 268,6 s. Ein früherer 400-s-Timeout
+unter paralleler Gesamtlast bleibt im Logarchiv erhalten. Dieser Test misst keine warme Tick-Latenz.
+Der Worker-Heartbeat-Test trennt nun die erstmalige Thread-Initialisierung vom unveränderten
+500-ms-Inaktivitätslimit und den harten Fristen. Der korrigierte Worker-/Pool-Lauf besteht alle 16 Prüfungen.
+Die echte Preset-Backtest-Prüfung einschließlich eines zweiten Warteschlangenlaufs ist erfolgreich.
+Der separate tatsächliche Abbruch-/Einstellungswechsel-Stresstest bestand ebenfalls, mit unveränderten
+abschließenden Publikations-, Schutz-, Koordinations- und Volumenassertionen (860,8 s gesamter Cold-Lauf).
+
+Lokale Script-Prüfungen: 799 bestanden, 8 Browserfälle ausdrücklich übersprungen; App-/Komponenten:
+87 bestanden. Typprüfung und Produktions-/Core-Worker-Build sind erfolgreich; Scoped-Lint:
+0 Fehler, 15 Warnungen. Überlappende gezielte Testläufe sind im Manifest separat vermerkt.
+
+| Vollständiger Core-Teil | Beobachtetes Ergebnis |
+| --- | --- |
+| Shard 1/3 | 1.621 bestanden, 0 fehlgeschlagen |
+| Shard 2/3 | 1.438 bestanden, 0 fehlgeschlagen |
+| Shard 3/3 vor Bootstrap-Fixture-Korrektur | 1.843 bestanden, 1 Bootstrap-Zeitfehler, 3 Slow-Fälle separat, 1 sichtbarer Processed-Main-TODO |
+| Korrigierter Worker-/Pool-Fokus | 16 bestanden, einschließlich der zuvor fehlgeschlagenen Prüfung |
+
+Der dritte Gesamtlauf wird nicht nachträglich als fehlerfrei umetikettiert. Seine einzige gescheiterte
+Prüfung wurde gezielt korrigiert und erneut erfolgreich ausgeführt. Der Architektur-TODO bleibt offen.
+
 Der persistente Base→Main→Real-Paper-/Venue-Adapter und die unabhängige Schutz-Resimulation der
 verarbeiteten Stufen sind noch nicht vollständig integriert. Der sichtbare Processed-Main-TODO bleibt
-bestehen. Kein x01/x02-Konto wurde gestartet, keine echte Order versendet und keine Veröffentlichung vorgenommen.
+bestehen. Kein x01/x02-Konto wurde gestartet, keine echte Order versendet und kein Deployment vorgenommen.
+Der Code wird über [PR #258](https://github.com/mxssnx-creator/CTS-A-O/pull/258) veröffentlicht;
+vollständige Git-Tree-Prüfsummen sichern die Übereinstimmung mit den lokalen Quellen.
 
-Eine echte Desktop-/Mobil-Browserprüfung konnte in dieser Umgebung nicht abgeschlossen werden:
-Chromium scheitert an nicht erlaubten lokalen Sockets; die alternative Browser-Verbindung erreichte
-die Anwendung ebenfalls nicht. Build/API-/Komponententests ersetzen diesen Render-Nachweis nicht.
+Lokales Chromium blieb durch eingeschränkte Sockets blockiert. Die tatsächliche Browserprüfung wurde
+deshalb auf dem GitHub-Runner abgeschlossen: geladene Settings auf Desktop und Mobil in Dev und
+Produktionsbuild, keine Console-/Page-Fehler, kein horizontaler Überlauf und keine Baseline-Divergenz.
+Alle vier zusätzlichen Funktionstests bestehen: sämtliche berechneten Seiten und Settings-Speichern
+auf Desktop und Telefon. Die vier Bilder wurden zusätzlich visuell geprüft. Quelle:
+[Run 43057168755](https://github.com/mxssnx-creator/CTS-A-O/actions/runs/43057168755),
+Commit `7a7badefd8dc37c7d3ab21ae7956881a2337b7af`.
+Ein früherer grüner Smoke-Lauf zeigte lediglich den Startbildschirm; er zählt ausdrücklich nicht als
+geladener UI-Nachweis. Der Workflow fordert nun die tatsächliche Positionsfenster-Settings-Überschrift
+und verwirft eine abweichende Build-Baseline.
 Ein ständig hoher zukünftiger Ausführungs-PF und ein harter 500-ms-Live-Zeitnachweis sind nicht belegt.
+
+Die gehostete Policy-Prüfung besteht 465 Core- und 53 Runner-/Berichtsprüfungen; die bestehende
+Integritätsprüfung 74 Core- und 29 Transport-/Render-Prüfungen. Diese gezielten Prüfungen überlappen
+mit den lokalen Inventaren. [Browserbilder und Verdicts](position-count-policy-20261111-evidence/loaded-browser-render.zip)
+und die [CI-Zusammenfassung](position-count-policy-20261111-evidence/ci-summary.json) bleiben zusammen mit den Rohlogs erhalten.
+
+Rohdaten, Protokolle und Sidecars aller Replay-Versuche liegen im
+[Replay-Archiv](position-count-policy-20261111-evidence/market-replays.tar.gz), auch frühere und
+fehlgeschlagene Anläufe im [Logarchiv](position-count-policy-20261111-evidence/verification-logs.tar.gz).
+Die [Marktzusammenfassung](position-count-policy-20261111-evidence/market-summary.json) hält
+Base, Kandidaten, post-Base und Ausführung ausdrücklich getrennt.
 
 ## Primärquellen der zusätzlichen Forschungsvarianten
 
