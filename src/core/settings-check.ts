@@ -722,6 +722,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
         for (const n of g.holdCandidatesMin) { num(n, 1, 4320, `${name} hold minutes`); int(n, `${name} hold minutes`); }
       }
       if (g.minSlEval !== undefined) num(g.minSlEval, 0.0005, 0.05, `${name} evaluation min SL`);
+      num((g as { minSlDistancePct?: number }).minSlDistancePct, MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, `${name} own minimum net stop distance (%)`);
       for (const [k, v] of [
         ["own Base cell (ownBase)", g.ownBase],
         ["best-cell Base (baseBest)", g.baseBest],
@@ -787,6 +788,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       volumeFactor(lowRange.volumeFactor, "Low-Range volume factor");
       num(lowRange.maxSlRatio, FINE_SL_TP_MIN, SL_TP_MAX, "Low-Range maximum SL ratio");
       num(lowRange.maxTrailRatio, 0.01, 1, "Low-Range maximum trailing ratio");
+      num(lowRange.minSlDistancePct, MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, "Low-Range own minimum net stop distance (%)");
       if (lowRange.holdAuto !== undefined && typeof lowRange.holdAuto !== "boolean") throw new Error("Low-Range hold auto: on / off");
       if (lowRange.holdCandidatesMin !== undefined) {
         const xs = lowRange.holdCandidatesMin;

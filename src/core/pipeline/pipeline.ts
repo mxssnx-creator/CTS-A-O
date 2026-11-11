@@ -49,6 +49,7 @@ import {
   forEachCoord,
   forEachMicro,
   MICRO_SL,
+  ownSlFloor,
 } from "../minimal-coord.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import { INVERSE_TIMEFRAMES, isInverseInd } from "../indications/inverse-config.ts";
@@ -757,6 +758,9 @@ export function* trailingOnlyBaseCountsGen(
 /** Complete grid at the reference timeframe, matching protectGrid's cells, rounding and floors exactly. */
 export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number): Protect[] {
   const slFloor = g.minSlEval ?? minimumStopFraction(cost);
+  const floorFor = (tag?: string) =>
+    ownSlFloor(tag === "mc" ? g.micro : tag === "mn" ? g.minimal : tag === "sh" ? g.short
+      : tag === "gn" ? g.general : tag === "lg" ? g.long : undefined, cost) ?? slFloor;
   const out: Protect[] = [],
     seen = new Set<string>();
   const emit = (
@@ -784,7 +788,7 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
     const digits = tag === "mc" ? 6 : 4;
     const p: Protect = {
       tp: tag === "mc" ? +tp.toFixed(6) : tp,
-      sl: distanceAtFloor(tp * k, Math.max(slEval ?? slFloor, minSl, slFloor), digits),
+      sl: distanceAtFloor(tp * k, Math.max(slEval ?? floorFor(tag), minSl, floorFor(tag)), digits),
       trail: tr > 0 ? trailAtFloor(tp * tr, minTrail, g.trailStep ?? 1, digits) : 0,
       hold: Math.max(holdFloorBars(range), Math.round((h * 60) / REF_TF)),
       ...(tag ? { tag } : {}),
@@ -828,7 +832,7 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
       const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.maxHoldMin ?? ""}|${p.tag}`;
       if (!seen.has(key)) { seen.add(key); out.push(p); }
     }
-  const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, REF_TF, .1, slFloor) : []);
+  const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, REF_TF, g.lowRange?.minSlDistancePct ?? .1, ownSlFloor(g.lowRange, cost) ?? slFloor) : []);
   if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
   out.push(...lowRange);
   return out;
@@ -884,7 +888,7 @@ export function baseRangeProtects(
     // rounded as the grid rounds the range's cells (protectGrid: 4 decimals, Micro 6): with stop steps of 0.25 a
     // target × stop has 5–6 decimals, and Base validated a 2.025 % stop the grid builds as 2.03 %
     const digits = tag === "mc" ? 6 : 4;
-    const floorR = Math.max(slFloor, net ?? (r as { minSlEval?: number }).minSlEval ?? slFloor);
+    const floorR = Math.max(ownSlFloor(r as { minSlDistancePct?: number }, cost) ?? slFloor, net ?? (r as { minSlEval?: number }).minSlEval ?? ownSlFloor(r as { minSlDistancePct?: number }, cost) ?? slFloor);
     // Match the actual grid: ordinary ranges inherit its optional floors, while Micro has its own fallbacks.
     const minSlR = net ?? r.minSl ?? (tag === "mc" ? 0.001 : (g.minSl ?? 0));
     const minTrailR = r.minTrail ?? (tag === "mc" ? 0.0005 : (g.minTrail ?? 0));

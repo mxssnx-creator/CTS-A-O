@@ -12691,7 +12691,12 @@ export function normalizeLanes(s: CoreSettings): CoreSettings {
   const grid = { ...s.grid, minSl, minSlEval: minSl };
   for (const key of ["micro", "minimal", "short", "general", "long"] as const) {
     const r = grid[key];
-    if (r) grid[key] = { ...r, minSl, minSlEval: minSl, ...(key === "micro" ? { minSlNet: minSlDistancePct / 100 } : {}) };
+    if (r) {
+      // a range's own minimum net distance (minSlDistancePct) replaces the global one for that range only
+      const own = r.minSlDistancePct === undefined ? minSlDistancePct : normalizeMinSlDistancePct(r.minSlDistancePct);
+      const f = minimumStopFraction(s.cost, own);
+      grid[key] = { ...r, minSl: f, minSlEval: f, ...(key === "micro" ? { minSlNet: own / 100 } : {}) };
+    }
   }
   return {
     ...s,

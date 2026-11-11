@@ -60,3 +60,25 @@ test("at the runtime's normalized floors every range's executable cell carries t
     assert.ok(exec.every((p) => p.sl + 1e-12 >= s.grid.minSl), "the floor itself still holds");
   }
 });
+
+test("each range's own minimum net stop distance replaces the global one for that range only, in Base and in the grid", async () => {
+  const { normalizeLanes } = await import("./server/runtime.server.ts");
+  const c = DEFAULT_SETTINGS.cost;
+  const base = normalizeLanes({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, lowRange: { ...DEFAULT_LOW_RANGE_GRID, enabled: true } } });
+  const own = normalizeLanes({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid,
+    micro: { ...DEFAULT_SETTINGS.grid.micro!, minSlDistancePct: 0.4 },
+    short: { ...DEFAULT_SETTINGS.grid.short!, minSlDistancePct: 0.2 },
+    lowRange: { ...DEFAULT_LOW_RANGE_GRID, enabled: true, minSlDistancePct: 0.5 } } });
+  const floor = (pct: number) => minimumStopFraction(c, pct);
+  const minSl = (cells: ReturnType<typeof protectGrid>, tag: string) => Math.min(...cells.filter((p) => p.tag === tag).map((p) => p.sl));
+  const e0 = protectGrid(REF_TF, base.grid, c), e1 = protectGrid(REF_TF, own.grid, c);
+  assert.ok(Math.abs(minSl(e0, "mc") - floor(0.1)) < 1e-9);
+  assert.ok(Math.abs(minSl(e1, "mc") - floor(0.4)) < 1e-9, "Micro: own 0.4 %");
+  assert.ok(minSl(e1, "sh") >= floor(0.2) - 1e-9, "Short: never inside its own 0.2 % floor (its 0.25 x ladder is already wider)");
+  assert.ok(Math.abs(minSl(e1, "lr") - floor(0.5)) < 1e-9, "Low-Range: own 0.5 %");
+  assert.equal(minSl(e1, "mn"), minSl(e0, "mn"), "Minimal is unchanged by the other ranges' own values");
+  for (const tag of ["mc", "mn", "sh", "gn", "lg", "lr"]) {
+    const b = completeBaseRangeProtects(own.grid, c).filter((p) => p.tag === tag).map(protectCellKey).sort();
+    assert.deepEqual(protectGrid(REF_TF, own.grid, c).filter((p) => p.tag === tag).map(protectCellKey).sort(), b, `${tag}: Base proves what trades`);
+  }
+});

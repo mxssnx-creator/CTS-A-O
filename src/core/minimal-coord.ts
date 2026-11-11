@@ -357,6 +357,12 @@ export function trailAtFloor(activation: number, minTrail: number, step: number,
 }
 
 
+/** A range's own stop floor from its `minSlDistancePct` (cost + its own net distance); undefined = the global floor. */
+export function ownSlFloor(range: { minSlDistancePct?: number } | false | undefined, cost = RT_COST): number | undefined {
+  if (!range || range.minSlDistancePct === undefined || !Number.isFinite(range.minSlDistancePct)) return undefined;
+  return minimumStopFraction(Number.isFinite(cost) && cost > 0 ? cost : 0, range.minSlDistancePct);
+}
+
 /** Micro's stop floor from `minSlNet`: the net floor plus the round-trip cost (undefined = not set). */
 export function microSlFloor(range: Pick<CoordRange, "minSlNet"> | false | undefined, cost = RT_COST): number | undefined {
   if (!range || range.minSlNet == null || !Number.isFinite(range.minSlNet)) return undefined;

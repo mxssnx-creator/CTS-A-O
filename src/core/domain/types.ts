@@ -186,6 +186,12 @@ export interface RangeGrid {
    * reward:risk below 1. Unset = the global floor.
    */
   minSlEval?: number;
+  /**
+   * This range's OWN minimum net stop distance in percent (0.1 to 1): the initial stop is never inside the modeled
+   * round-trip cost plus this distance. Unset = the global `minSlDistancePct`. Operator, 11 Nov 2026: "use own minimal
+   * SL distance" per project. A higher value than the global one tightens only this range; a lower one loosens only it.
+   */
+  minSlDistancePct?: number;
 }
 
 /** The Minimal range: `RangeGrid` plus the one lever only Minimal reads. */
@@ -875,6 +881,8 @@ export interface LowRangeGrid {
   holdCandidatesMin?: readonly number[];
   maxSlRatio?: number;
   maxTrailRatio?: number;
+  /** Low-Range's own minimum net stop distance in percent (0.1 to 1); unset = the global value. */
+  minSlDistancePct?: number;
   /** Fixed range step as a fraction of price. */
   step: number;
   steps: readonly number[];
