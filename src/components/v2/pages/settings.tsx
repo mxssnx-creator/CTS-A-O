@@ -1827,7 +1827,7 @@ export function RangeEditor(props: {
           <StepList
             label={`${props.title} SL × ${net ? "price target (net + cost)" : "TP"} min · max · step`}
             max={props.k === "micro" ? 24 : 64}
-            lo={props.k === "micro" ? 0.5 : 0.2}
+            lo={0.2}
             hi={5}
             value={s.slOfTp}
             onChange={(v) => props.set(p("slOfTp"), v)}
@@ -2066,7 +2066,7 @@ export function LongRange(props: {
   );
 }
 
-/** Micro range: net 0.1–0.4 % after the position cost (price targets 0.25–0.55 % at 0.15 %), SL 1–5× step 0.25. */
+/** Micro range: net 0.2–0.8 % after the position cost (price targets 0.376–0.976 % at 0.176 %), SL 0.2–1.6× step 0.1. */
 export function MicroRange(props: {
   grid: Record<string, unknown> | object;
   set: (path: string[], v: unknown) => void;
@@ -2076,7 +2076,7 @@ export function MicroRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="micro"
       title="Micro range"
-      info="Default net TP values use the frozen 0.2% range reference (0.2–0.8% net); price targets add the configured execution cost (0.35–0.95% at the default 0.15%). SL 1–5× the price target, step 0.25. Current targets, stop floors and enabled state are shown below; each computed cell must pass its own admission gates. Orders tracked as U."
+      info="Default net TP values use the frozen 0.2% range reference (0.2–0.8% net); price targets add the configured execution cost (0.376–0.976% at the default 0.176%). SL 0.2–1.6× the price target, step 0.1, never inside cost plus the minimum net distance; trailing arms at 0.1–0.6 of the target, step 0.1. Current targets, stop floors and enabled state are shown below; each computed cell must pass its own admission gates. Orders tracked as U."
       defaults={MICRO_RANGE}
       set={props.set}
     />
@@ -2487,9 +2487,9 @@ export function LowRangeShortSettings(props: {
           hint="Effective hard cap after cost floors and feedback. Incompatible cells are excluded."
         >
           <Num
-            min={0.25}
+            min={0.2}
             max={2.5}
-            step={0.25}
+            step={0.1}
             value={lr.maxSlRatio ?? 2.5}
             onChange={(maxSlRatio) => put({ maxSlRatio })}
           />
@@ -2536,7 +2536,7 @@ export function LowRangeShortSettings(props: {
         </Field>
         <StepList
           label="Stop ratios · minimum / maximum / increment"
-          lo={0.25}
+          lo={0.2}
           hi={2.5}
           max={64}
           value={lr.slRatios}

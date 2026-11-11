@@ -186,6 +186,12 @@ export interface RangeGrid {
    * reward:risk below 1. Unset = the global floor.
    */
   minSlEval?: number;
+  /**
+   * This range's OWN minimum net stop distance in percent (0.1 to 1): the initial stop is never inside the modeled
+   * round-trip cost plus this distance. Unset = the global `minSlDistancePct`. Operator, 11 Nov 2026: "use own minimal
+   * SL distance" per project. A higher value than the global one tightens only this range; a lower one loosens only it.
+   */
+  minSlDistancePct?: number;
 }
 
 /** The Minimal range: `RangeGrid` plus the one lever only Minimal reads. */
@@ -876,6 +882,8 @@ export interface LowRangeGrid {
   holdCandidatesMin?: readonly number[];
   maxSlRatio?: number;
   maxTrailRatio?: number;
+  /** Low-Range's own minimum net stop distance in percent (0.1 to 1); unset = the global value. */
+  minSlDistancePct?: number;
   /** Fixed range step as a fraction of price. */
   step: number;
   steps: readonly number[];
@@ -925,8 +933,8 @@ export interface ProtectGridSpec {
   long?: false | RangeGrid;
   /**
    * Micro range: net targets use the frozen range reference basis (default 0.20%-0.80%); price targets add settings.cost
-   * (default 0.15%, so 0.35%-0.95%),
-   * stops 1x-5x the price target step 0.25 (MICRO_SL, 17 ratios), both trailing distances. Tagged "mc" so the orders are not mixed
+   * (default 0.176%, so 0.376%-0.976%),
+   * stops 0.2x-1.6x the price target step 0.1 (MICRO_SL, 15 ratios), six trailing distances. Tagged "mc" so the orders are not mixed
    * with the minimal range. Every lever of `RangeGrid` plus the three Micro-only ones.
    */
   micro?: false | MicroGrid;

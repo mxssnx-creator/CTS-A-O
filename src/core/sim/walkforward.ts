@@ -30,6 +30,7 @@ import {
   rangeOfId,
   distanceAtFloor,
   trailAtFloor,
+  ownSlFloor,
 } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
 import { createExitProtection } from "./exit-protection.ts";
@@ -761,10 +762,18 @@ export function protectGrid(
 ): Protect[] {
   // the evaluation's minimum stop (settings.grid.minSlEval, default EVAL_MIN_SL)
   const slFloor = g.minSlEval ?? minimumStopFraction(cost ?? RT_COST);
+  // a range's own minimum net distance (minSlDistancePct) replaces the global floor for its cells only
+  const rangeOf = (tag?: string) => tag === "mc" ? g.micro : tag === "mn" ? g.minimal : tag === "sh" ? g.short
+    : tag === "gn" ? g.general : tag === "lg" ? g.long : undefined;
+  const floorOf = (tag?: string) => ownSlFloor(rangeOf(tag), cost ?? RT_COST) ?? slFloor;
   const out: Protect[] = [];
   const seen = new Set<string>();
   const push = (p: Protect) => {
-    p.sl = Math.max(slFloor, p.sl);
+    const slFloor = floorOf(p.tag);
+    // The floor is a float sum (cost + net distance: 0.00176 + 0.001 = 0.0027600000000000003). A cell already rounded
+    // onto it (0.00276) meets it by distanceAtFloor's own rule; replacing it with the unrounded sum gave the executable
+    // cell a different key than the one Base proved (protectCellKey), so a floor cell never matched its Base proof.
+    if (p.sl + Number.EPSILON * Math.max(Math.abs(p.sl), slFloor) < slFloor) p.sl = slFloor;
     if (!p.tag && g.maxSl && g.maxSl > 0) {
       if (g.maxSl + 1e-12 < Math.max(slFloor, g.minSl ?? 0)) return;
       p.sl = Math.min(p.sl, g.maxSl);
@@ -803,7 +812,7 @@ export function protectGrid(
       tp,
       // A range's own evaluation floor replaces the grid-wide floor, exactly as its Base cells do. The Wide grid
       // (no tag) caps its stop / trailing distance at grid.maxSl / grid.maxTrail when set.
-      sl: distanceAtFloor(tp * k, Math.max(slEval ?? slFloor, minSl, slFloor), 4),
+      sl: distanceAtFloor(tp * k, Math.max(slEval ?? floorOf(tag), minSl, floorOf(tag)), 4),
       // the floor is on the trailing distance (trail × trailStep), not on the arming move
       trail: tr > 0 ? capAt(trailAtFloor(tp * tr, minTrail, g.trailStep ?? 1, 4), tag ? undefined : g.maxTrail) : 0,
       hold: Math.max(
@@ -860,7 +869,7 @@ export function protectGrid(
           ...(c.trail > 0 ? { trailStep: g.trailStep ?? 1, trailFree: g.trailFree ?? false } : {}),
         });
   }
-  const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, tfMin, .1, slFloor) : []);
+  const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, tfMin, g.lowRange?.minSlDistancePct ?? .1, ownSlFloor(g.lowRange, cost ?? RT_COST) ?? slFloor) : []);
   if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
   out.push(...lowRange);
   return out;

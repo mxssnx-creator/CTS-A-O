@@ -72,7 +72,8 @@ test("actual stopped runtime settings remain default-positive and retain full ex
   assert.equal(p.actualSettings.cost, RT_COST);
   assert.ok(p.actualSettings.focus.length > 30);
   assert.ok(p.actualSettings.grid.micro.tp.length > 5);
-  assert.deepEqual(p.actualSettings.grid.micro.slOfTp, Array.from({ length: 10 }, (_, i) => (i + 1) / 4));
+  // Micro stop ratios 0.2 to 1.6 in steps of 0.1 (operator, 11 Nov 2026)
+  assert.deepEqual(p.actualSettings.grid.micro.slOfTp, Array.from({ length: 15 }, (_, i) => (i + 2) / 10));
   assert.ok(p.positiveCoordWarnings.length > 0);
   assert.equal(p.actualSettings.gates.baseSetsMinPf, 1.25);
   assert.ok(p.positiveCoordWarnings.every((x) => x.includes("Axis is off") ||

@@ -6,6 +6,7 @@ import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, validatedSetPf, type ValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
 import { migrateMinuteCaps } from "./minute-cap-migration.server.ts";
 import { migrateMinimumProtectionPolicy } from "./protection-policy-migration.server.ts";
+import { migrateFineLadders } from "./fine-ladder-migration.server.ts";
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
 import { isHistoricExitConfig } from "../exit-scope.ts";
 import { lstatSync } from "node:fs";
@@ -129,9 +130,11 @@ import type { Bars, BlockConfig, Candle, OpenPosition, Protect, RelateAdjustment
 import { syntheticCandles, tailBars, headBars } from "../market/bars.ts";
 import {
   CandleSeries,
+  baseHistoryCut,
   barsOfSeries,
   headroomFor,
   resampleTailBars,
+  type BaseHistoryCut,
 } from "../market/candle-series.ts";
 import { startStallProbe, type StallProbe } from "./stall-probe.server.ts";
 import {
@@ -1257,6 +1260,7 @@ export class CoreRuntime {
     migrateHistoricExitOptIn(db);
     migrateMinimumProtectionPolicy(db);
     migratePositionWindows(db);
+    migrateFineLadders(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
     if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {
@@ -4361,13 +4365,15 @@ export class CoreRuntime {
     const signalBars: ReturnType<typeof laneSeriesFrom> = [];
     const signalH = signalDataHours(s, wf);
     const strategyH = strategyDataHours(s, wf);
+    const historyCuts = new Map<string, BaseHistoryCut>();
     for (const [sym, cs] of this.candles) {
-      allBars.push(...laneSeriesOf(sym, cs, s, 0, strategyH));
+      allBars.push(...laneSeriesOf(sym, cs, s, 0, strategyH, historyCuts));
       if (sigEnabled(s)) signalBars.push(...signalLaneSeriesOf(sym, cs, s, wf));
       await yieldNow();
       signal.throwIfAborted();
       if (gen !== this.gen) return;
     }
+    this.reportHistoryCuts(historyCuts);
     if (
       this.evaluationFromT !== undefined &&
       this.paper.positions.some((p) => p.entryT < this.evaluationFromT!)
@@ -6807,6 +6813,30 @@ export class CoreRuntime {
       fee,
       slip,
     };
+  }
+
+  /** the base-history cuts last reported (symbol → first usable bar), so an unchanged cut is not repeated */
+  private historyCutsSeen = "";
+  /**
+   * A symbol whose base history starts after a missing / invalid venue bar: said once per change, with the missing
+   * coverage in numbers (never silently clipped), and kept for the status readers (kv `historyCuts`).
+   */
+  private reportHistoryCuts(cuts: ReadonlyMap<string, BaseHistoryCut>) {
+    const rows = [...cuts].map(([sym, c]) => ({ sym, afterT: c.afterT, firstT: c.firstT, missing: c.missing }))
+      .sort((a, b) => a.sym.localeCompare(b.sym));
+    const key = JSON.stringify(rows);
+    if (key === this.historyCutsSeen) return;
+    this.historyCutsSeen = key;
+    this.db.kvSet("historyCuts", { at: Date.now(), tfMin: this.settings.tfMin, symbols: rows });
+    if (!rows.length) return;
+    const iso = (t: number) => (Number.isFinite(t) ? new Date(t).toISOString().slice(0, 16).replace("T", " ") : "–");
+    this.db.event(
+      "warn",
+      `base history: ${rows.length} symbol(s) start after a missing or invalid ${this.settings.tfMin}m venue bar — ` +
+        rows.slice(0, 8).map((r) => `${r.sym} from ${iso(r.firstT)} (${r.missing ? `${r.missing} bar(s) missing` : "invalid bar"} after ${iso(r.afterT)})`).join("; ") +
+        (rows.length > 8 ? `; +${rows.length - 8} more` : "") +
+        ". Their minute execution prices are used from there; nothing is invented for the break.",
+    );
   }
 
   /** One adjuster pass on the executed (Real) positions; a change triggers a recompute with the new ranges. */
@@ -12675,7 +12705,12 @@ export function normalizeLanes(s: CoreSettings): CoreSettings {
   const grid = { ...s.grid, minSl, minSlEval: minSl };
   for (const key of ["micro", "minimal", "short", "general", "long"] as const) {
     const r = grid[key];
-    if (r) grid[key] = { ...r, minSl, minSlEval: minSl, ...(key === "micro" ? { minSlNet: minSlDistancePct / 100 } : {}) };
+    if (r) {
+      // a range's own minimum net distance (minSlDistancePct) replaces the global one for that range only
+      const own = r.minSlDistancePct === undefined ? minSlDistancePct : normalizeMinSlDistancePct(r.minSlDistancePct);
+      const f = minimumStopFraction(s.cost, own);
+      grid[key] = { ...r, minSl: f, minSlEval: f, ...(key === "micro" ? { minSlNet: own / 100 } : {}) };
+    }
   }
   return {
     ...s,
@@ -12753,7 +12788,17 @@ export function laneSeriesOf(
   s: CoreSettings,
   extraDays = 0,
   minHistoryH = 0,
+  /** filled with the symbol's history cut when its base series has a missing or invalid bar (baseHistoryCut) */
+  cuts?: Map<string, BaseHistoryCut>,
 ): Bars[] {
+  // One missing venue minute made the minute-execution validator (sim/capped-execution.ts) refuse the whole
+  // universe: Base left the workers and the cycle failed, for every symbol. The base lane — the execution prices —
+  // of the symbol with the break now starts after it; no price is invented for the missing bar, and the other
+  // symbols are untouched. The resampled lanes keep their history: a bucket with a missing base bar is dropped, as
+  // before, and a minute-capped config takes no evidence from before its own execution prices (cappedPriceStart).
+  const cut = baseHistoryCut(cs, s.tfMin);
+  if (cut) cuts?.set(sym, cut);
+  const base = cut ? cs.range(cut.start, cs.n) : cs;
   // the enabled lanes ride on every series (Bars.lanes): a combined lane agrees with the higher ENABLED lanes, the
   // ones laneInds generates it from (the whole ladder agreed with 15m / 30m on a desk running 1m and 5m only)
   const lanes = Object.freeze([...(s.tfs ?? [s.tfMin])]);
@@ -12762,7 +12807,7 @@ export function laneSeriesOf(
     const n = Math.max(laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf), Math.ceil(minHistoryH * 60 / tf));
     const b =
       tf === s.tfMin
-        ? barsOfSeries(sym, tf, cs, cs.n - n, cs.n)
+        ? barsOfSeries(sym, tf, base, base.n - n, base.n)
         : resampleTailBars(sym, cs, s.tfMin, tf, n);
     b.lanes = lanes;
     out.push(b);
