@@ -101,12 +101,12 @@ describe("offline replay universe backfill", { timeout: 20_000 }, () => {
     assert.deepEqual(attempts, universe);
   });
 
-  it("keeps live start progressive: the first compute sees only the first six symbols", async () => {
+  it("keeps live start progressive: the first compute sees only the first five symbols", async () => {
     const { rt, attempts, computed } = fixture(false);
     rt.start();
     await until(() => computed.length > 0);
-    assert.deepEqual(computed, [universe.slice(0, 6)]);
-    assert.deepEqual(attempts, universe.slice(0, 6));
+    assert.deepEqual(computed, [universe.slice(0, 5)]);
+    assert.deepEqual(attempts, universe.slice(0, 5));
   });
 
   it("extends every existing short-history cache across progressive batches, including young symbols", async () => {
@@ -116,7 +116,7 @@ describe("offline replay universe backfill", { timeout: 20_000 }, () => {
       rt.candles.set(sym, CandleSeries.fromCandles(syntheticCandles(sym, 1, 200, end)));
     const sync = () => (rt as unknown as { syncMarket(gen: number): Promise<boolean> }).syncMarket(rt.generation);
     await sync();
-    assert.equal(attempts.length, 6);
+    assert.equal(attempts.length, 5);
     assert.equal((rt as unknown as { prehistPending: boolean }).prehistPending, true, "existing symbols do not mark the history extension complete after one batch");
     await sync(); await sync(); await sync();
     assert.deepEqual(attempts, universe, "short but usable venue histories are not requested repeatedly ahead of later symbols");
