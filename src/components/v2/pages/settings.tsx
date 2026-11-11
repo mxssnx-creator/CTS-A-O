@@ -4631,6 +4631,14 @@ export function SettingsPage() {
               </Field>
             </div>
             <div className="v2-grid v2-cols-2">
+              <Field label="Micro minimum SL (% of entry)" hint="Independent absolute Micro stop floor. Fees remain in net returns once; other ranges keep their own policy.">
+                <Num step={0.01} min={0} max={10} value={s.microMinSlDistancePct ?? 0.1}
+                  onChange={(v) => set(["microMinSlDistancePct"], v)} />
+              </Field>
+              <Field label="Micro minimum trailing gap (% of entry)" hint="Independent gap floor shared by Micro Base evaluation and execution. Held positions retain their captured protection.">
+                <Num step={0.01} min={0} max={10} value={s.microMinTrailDistancePct ?? 0.05}
+                  onChange={(v) => set(["microMinTrailDistancePct"], v)} />
+              </Field>
               <Field
                 label="Minimum SL above costs (%)"
                 hint="Initial SL adds this net price distance to modeled costs. TP keeps its requested distance; trailing may tighten after entry."

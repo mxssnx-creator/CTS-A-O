@@ -764,7 +764,8 @@ export function protectGrid(
   const out: Protect[] = [];
   const seen = new Set<string>();
   const push = (p: Protect) => {
-    p.sl = Math.max(slFloor, p.sl);
+    // Micro already resolved its own floor in forEachMicro; the global floor must not overwrite it.
+    if (p.tag !== "mc") p.sl = Math.max(slFloor, p.sl);
     if (!p.tag && g.maxSl && g.maxSl > 0) {
       if (g.maxSl + 1e-12 < Math.max(slFloor, g.minSl ?? 0)) return;
       p.sl = Math.min(p.sl, g.maxSl);

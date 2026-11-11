@@ -883,7 +883,8 @@ export function baseRangeProtects(
     // rounded as the grid rounds the range's cells (protectGrid: 4 decimals, Micro 6): with stop steps of 0.25 a
     // target × stop has 5–6 decimals, and Base validated a 2.025 % stop the grid builds as 2.03 %
     const digits = tag === "mc" ? 6 : 4;
-    const floorR = Math.max(slFloor, net ?? (r as { minSlEval?: number }).minSlEval ?? slFloor);
+    const ownFloor = net ?? (r as { minSlEval?: number }).minSlEval ?? slFloor;
+    const floorR = tag === "mc" ? ownFloor : Math.max(slFloor, ownFloor);
     // Match the actual grid: ordinary ranges inherit its optional floors, while Micro has its own fallbacks.
     const minSlR = net ?? r.minSl ?? (tag === "mc" ? 0.001 : (g.minSl ?? 0));
     const minTrailR = r.minTrail ?? (tag === "mc" ? 0.0005 : (g.minTrail ?? 0));

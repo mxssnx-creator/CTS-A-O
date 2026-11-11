@@ -12675,7 +12675,16 @@ export function normalizeLanes(s: CoreSettings): CoreSettings {
   const grid = { ...s.grid, minSl, minSlEval: minSl };
   for (const key of ["micro", "minimal", "short", "general", "long"] as const) {
     const r = grid[key];
-    if (r) grid[key] = { ...r, minSl, minSlEval: minSl, ...(key === "micro" ? { minSlNet: minSlDistancePct / 100 } : {}) };
+    if (r) {
+      if (key === "micro") {
+        const own = (value: unknown, fallback: number) => typeof value === "number" && Number.isFinite(value)
+          ? +(Math.min(10, Math.max(0, value)) / 100).toFixed(12) : fallback;
+        const microSl = own(s.microMinSlDistancePct, minSl);
+        const microTrail = own(s.microMinTrailDistancePct, r.minTrail ?? 0.001);
+        // Both Base and executable grids read these same absolute floors. Do not add costs to geometry twice.
+        grid[key] = { ...r, minSl: microSl, minSlEval: microSl, minSlNet: undefined, minTrail: microTrail };
+      } else grid[key] = { ...r, minSl, minSlEval: minSl };
+    }
   }
   return {
     ...s,

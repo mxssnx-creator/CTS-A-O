@@ -118,10 +118,13 @@ try {
 
     const title = await page.title();
     const hasCanvas = (await page.locator("canvas").count()) > 0;
-    const bodyText = await page
-      .locator("body")
-      .innerText()
-      .catch(() => "");
+    // Capture readiness and content atomically: hydration may briefly replace a ready page with its shell.
+    const bodyText = readyText
+      ? await (await page.waitForFunction(needle => {
+          const text = document.body?.innerText ?? "";
+          return text.includes(needle) ? text : false;
+        }, readyText, { timeout: timeoutMs })).jsonValue()
+      : await page.locator("body").innerText();
     const horizontalOverflow = await page.evaluate(() => {
       const el = document.documentElement;
       return el.scrollWidth > el.clientWidth + 1;

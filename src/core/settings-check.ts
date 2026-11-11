@@ -46,6 +46,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
   num(s.cost, 0, MAX_MODEL_RT_COST, "modeled round-trip cost (fraction)");
   num(s.armTop, 1, 40, "armTop");
   num(s.mainTop, 0, 100_000, "mainTop");
+  num(s.microMinSlDistancePct, 0, 10, "Micro minimum SL (%)");
+  num(s.microMinTrailDistancePct, 0, 10, "Micro minimum trail (%)");
   if (s.minSlDistancePct !== undefined) num(s.minSlDistancePct, MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, "minimum SL above costs");
   if (s.grid?.minSlEval !== undefined) num(s.grid.minSlEval, 0.0005, 0.05, "grid.minSlEval");
   if (s.grid?.baseTargets !== undefined && typeof s.grid.baseTargets !== "boolean")
