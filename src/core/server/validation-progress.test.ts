@@ -15,7 +15,7 @@ it("publishes the actual full paper selection's post-Base validation separately 
     const id = `${pair}|tp1|sl2|tr0|h4|mc|${suffix}`;
     const rows: Trade[] = Array.from({ length: 60 }, (_, i) => ({ cfg: id, sym: "A", side: 1,
       entryT: t - (61 - i) * 20 * 60_000, exitT: t - (60 - i) * 20 * 60_000,
-      entry: 100, exit: 101, r: losing || i === 0 ? -0.01 : 0.01, mult: 1, kind: "normal",
+      entry: 100, exit: 101, r: losing || i === 20 ? -0.01 : 0.01, mult: 1, kind: "normal",
       reason: "tp", bars: 1, mfe: 0, mae: 0 }));
     return makeTape(id, "follow", ind, protect, "normal", ["A"], rows, [], []);
   };
@@ -37,8 +37,8 @@ it("publishes the actual full paper selection's post-Base validation separately 
     assert.equal(progress.at, t);
     assert.equal(progress.evaluated, 2);
     assert.equal(progress.passed, 1);
-    assert.equal(progress.closes, 60);
-    assert.ok(Math.abs(progress.pf! - 59) < 1e-9);
+    assert.equal(progress.closes, 40, "the configured complete Main N defines this sample");
+    assert.ok(Math.abs(progress.pf! - 39) < 1e-9);
     assert.equal(rt.paper.positions.length, 0, "validation history did not become an execution");
   } finally { rt.dispose(); db.db.close(); }
 });

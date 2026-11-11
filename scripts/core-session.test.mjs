@@ -310,7 +310,7 @@ describe("session CLI background comparison policy", () => {
     }
   });
 });
-function replay({ signalExitSets = false, postGateRejected, exitOrders = false, endpointOccupancy = false, caps = false, weighted = false, invalidReturn = false, qualification, thresholds, thresholdRange = "Short", variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData } = {}) {
+function replay({ signalExitSets = false, postGateRejected, exitOrders = false, endpointOccupancy = false, caps = false, weighted = false, invalidReturn = false, qualification, thresholds, thresholdRange = "Short", variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData, positionWindows, lowRange = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -390,6 +390,14 @@ function replay({ signalExitSets = false, postGateRejected, exitOrders = false, 
       raw.engine.configEvalPhase = { phase: "run-start", t: H, evaluated: 3, passed: 2 };
       raw.tapeAgg = { evalStats: { configs: 3, evaluated: 3, passed: 2, signalTapes: 0, signalActive: 0 }, evalRule: { preH: 336 } };
     }
+    if (lowRange) {
+      raw.settings.ranges = { ...raw.settings.ranges, lowRange: true };
+      raw.engine.baseByRange = [...(raw.engine.baseByRange ?? []), { tag: "lr", range: "Low-Range", enabled: true, evaluated: 1, passed: 0, ownCells: 1, minPf: 1.08 }];
+    }
+    if (positionWindows) raw.tapeAgg = { ...raw.tapeAgg, evalRule: {
+      ...raw.tapeAgg?.evalRule, windowBasis: "positions", positionWindows,
+      legacyWindowControlsInactive: true,
+    } };
     if (qualification) raw.qualification = qualification;
     if (liveValidation) raw.engine.liveValidation = liveValidation;
     if (variants) raw.variants = variants;
@@ -506,6 +514,20 @@ function summaryOf(html) {
 }
 
 describe("session reports: return PF primary, simulated provenance", () => {
+  it("renders count-based qualification without relabelling it as an hour-window gate", () => {
+    const { md, report, writeup } = replay({ positionWindows: structuredClone(DEFAULT_GATES.positionWindows), lowRange: true });
+    assert.match(md, /complete own Main \/ Real \/ Entry samples of 40 \/ 12 \/ 12/);
+    assert.match(md, /drawdown recovery ≤ 40 completed positions/);
+    assert.match(md, /Drawdown limit \(positions\)/);
+    assert.doesNotMatch(md, /over the selection window \(undefined h\)/);
+    assert.doesNotMatch(md, /green hours ≥/);
+    assert.doesNotMatch(md, /Config-evaluation history is .* h/);
+    assert.equal(report.configEvaluationHistoryH, null);
+    assert.equal(report.configEvaluationPositionWindows.main, 40);
+    assert.match(writeup, /Config evaluation uses complete own positions/);
+    assert.match(md, /Low-Range/);
+  });
+
   it("prints CLI help without starting a simulated session", () => {
     const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script, "--help"], {
       encoding: "utf8",
@@ -846,7 +868,7 @@ describe("session qualification matches the runtime's full indication rules", ()
   const tactic = "tactic-trend-s@m15";
   const other = "rsi-mom-14-20@m15";
   // These two-close synthetic samples isolate the independent PF/range gate; recent Base proof is tested separately.
-  const gates = { ...DEFAULT_GATES, baseLastN: 0, minPf: 1.05, minTrades: 2, maxDdr: 0, baseSetsMinPf: undefined, rangeMinPf: { short: 1.05, general: 1.4 } };
+  const gates = { ...DEFAULT_GATES, positionWindows:null, baseLastN: 0, minPf: 1.05, minTrades: 2, maxDdr: 0, baseSetsMinPf: undefined, rangeMinPf: { short: 1.05, general: 1.4 } };
   const sample = (pf) => statsOf([{ r: pf * 0.01, entryT: 0, exitT: 1 }, { r: -0.01, entryT: 2, exitT: 3 }], 4);
   const run = (ind, pf) => ({ bot: "follow", ind, full: sample(pf), ranges: { sh: sample(pf), gn: sample(pf) }, score: 1 });
   const applies = { enabled: () => true };

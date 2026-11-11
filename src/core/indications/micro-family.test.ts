@@ -242,6 +242,7 @@ describe("first-class Micro", () => {
       robustFrac: 0,
       gates: {
         ...DEFAULT_SETTINGS.gates,
+        positionWindows: {...DEFAULT_SETTINGS.gates.positionWindows!,real:40,entry:15},
         minTrades: 3,
         maxDdr: 0,
         maxDdtH: 48,

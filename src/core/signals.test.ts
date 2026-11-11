@@ -28,7 +28,11 @@ import {
 import { isSignalCoordinationInd } from "./signal-coordination.ts";
 import { allCombos, symStat } from "./pipeline/pipeline.ts";
 import { checkSettings } from "./settings-check.ts";
-import { DEFAULT_SETTINGS } from "./config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS } from "./config.ts";
+import { runtimeFixtureGrid } from "./test-support.ts";
+
+// Preserve historical clock/Last-N compatibility cases; complete count admission is tested independently.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
 import { signalRangeOf } from "./signal-config.ts";
 import {
   capsOf,
@@ -622,14 +626,18 @@ describe("signals: engine", { timeout: 400_000 }, () => {
         evalTop: 6,
         cycleMs: 60_000,
         // Keep the coordinator's General/Long range grids while bounding unrelated engine pairs.
-        grid: { short: false },
+        grid: { ...runtimeFixtureGrid(), short: false },
         // This suite verifies the full Signal catalog and its own historic exits. Keep unrelated new
         // engine families/independent Exit fitting out of this generic Signal lifecycle compute.
         disabledKinds: ["micro", "inverse"],
         exitStrategy: { enabled: false },
         // Keep this generic lifecycle fixture's scalar grid explicit. Expanded defaults and every lane /
         // ratio are covered by signal-expanded-defaults and the source-sealed 12-symbol native study.
-        signals: signalSettings({ enabled: true, count: 10, minTrades: 1, lanes: [15], exits: "pct", trailRatios: [1] }),
+        signals: signalSettings({ enabled: true, count: 10, minTrades: 1, lanes: [15], exits: "pct", trailRatios: [1],
+          // All source identities, representative cells; full protection grids have separate matrix tests.
+          normal: { tp: [.01], slOfTp: [1] }, trailing: { tp: [.01], slOfTp: 1, trailOfTp: [.5] },
+          trailingOnly: { enabled: true, sl: [.01], trail: [.005], trailStep: 1 },
+          hist: { ...DEFAULT_SIGNALS.hist, quantiles: [.6], slOfTp: [1], trailOfTp: [.5] } }),
       },
       { market: "synthetic" },
     );

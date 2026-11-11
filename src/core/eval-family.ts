@@ -20,7 +20,7 @@ export function parseEvalFamily(label: string | null | undefined): EvalFamily | 
   if (p[0] === "eng" && p.length === 3) return { label: name, kind: "eng", bot: p[1], tag: p[2] === "wide" ? "" : p[2] };
   if (p[0] === "sig" && p.length >= 4 && (p[p.length - 1] === "short" || p[p.length - 1] === "medium"))
     return { label: name, kind: "sig", bot: p[1], tag: "" };
-  throw new Error(`CTS_CORE_FAMILY "${label}" is not a family ("eng <bot> <mc|mp|mn|sh|gn|lg|wide>" or "sig <bot> <source> <short|medium>")`);
+  throw new Error(`CTS_CORE_FAMILY "${label}" is not a family ("eng <bot> <mc|mp|mn|sh|gn|lg|lr|wide>" or "sig <bot> <source> <short|medium>")`);
 }
 
 /**

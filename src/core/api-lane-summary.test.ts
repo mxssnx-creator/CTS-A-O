@@ -16,7 +16,7 @@ const G = globalThis as unknown as { __ctsCoreRuntime?: InstanceType<typeof Core
 let current: InstanceType<typeof CoreRuntime> | null = null;
 afterEach(() => { current?.dispose(); current = null; delete G.__ctsCoreRuntime; });
 const stats = (pf: number) => {
-  const rows = Array.from({ length: 20 }, (_, i) => ({
+  const rows = Array.from({ length: 40 }, (_, i) => ({
     entryT: 1000 + i * 10, exitT: 1001 + i * 10, r: i % 2 ? -0.01 : pf * 0.01,
   }));
   return { ...statsOf(rows), baseLast: baseLastNOf(rows, 40, DEFAULT_PROTECT.sl * 100) };

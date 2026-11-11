@@ -5,7 +5,7 @@ import { BaseConfigCounter } from "../base-config-counts.ts";
 import { basePassTags, rangeCellPass, baseRangeCounts, baseRangeWhy, baseGateSensitivity } from "./pipeline.ts";
 
 test("representative Base and each cell retain their own SL-ratio floor across range relations", () => {
-  const gates = { ...DEFAULT_SETTINGS.gates, minTrades: 1, baseLastN: 0, maxDdr: 0,
+  const gates = { ...DEFAULT_SETTINGS.gates, positionWindows:null, minTrades: 1, baseLastN: 0, maxDdr: 0,
     rangeMinPf: { micro: 1.05, minimal: 1.08 },
     stepPf: { enabled: true, ratio: .2, max: 2, bySlRatio: { "0.5": 1.6, "1": 1.2 } } };
   const sample = { n: 20, pf: 1.5, net: .5, mdd: 0, gp: 1.5, gl: 1, stepPct: .4, slRatio: .5 };

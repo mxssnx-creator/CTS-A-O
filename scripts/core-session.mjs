@@ -218,8 +218,9 @@ async function coverageOf(rt, s) {
   const { INDICATIONS } = await import("../src/core/indications/registry.ts");
   // the same Micro lane floor the runtime applies (a Micro pair below it can pass nothing)
   const { rangeMinTfOf } = await import("../src/core/minimal-coord.ts");
+  const {lowRangeEnabled,lowRangeTag}=await import("../src/core/indications/low-range.ts");
   const engineComboList = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid),
-    s.grid.lowRange?.enabled === true && !!s.grid.short, rangeMinTfOf(s.grid).sh ?? 0);
+    lowRangeEnabled(s.grid), rangeMinTfOf(s.grid)[lowRangeTag(s.grid.lowRange)] ?? 0);
   const engineCombos = engineComboList.length;
   const sigCombos = signalCombos(signalSettings(s.signals), s.tfs).length;
   // Engine Exit rows are in S1; Signal Exit rows have their own worker pass and must be added here once.
@@ -1126,7 +1127,8 @@ async function runEngine() {
       if (ex2) {
         evalStats.evaluated++;
         pfs.evaluated.push(+ev.pf.toFixed(4));
-        pfs.ddtLimitH.push(+Math.min(ddtMaxH, ddtLimitH(rt.wf, tp, startT, selH)).toFixed(2));
+        if (!evalGates.positionWindows)
+          pfs.ddtLimitH.push(+Math.min(ddtMaxH, ddtLimitH(rt.wf, tp, startT, selH)).toFixed(2));
       }
       if (baseOk) {
         const f = (evalAfterBase[`${rl}|${tp.kind}`] ??= {
@@ -1441,6 +1443,7 @@ async function runEngine() {
       focus: s.focus.length,
       disabledKinds: s.disabledKinds,
       ranges: {
+        lowRange: s.grid.lowRange?.enabled === true && s.grid.lowRange?.coordination === "independent",
         micro: !!s.grid.micro,
         minimal: !!s.grid.minimal,
         short: !!s.grid.short,
@@ -1573,6 +1576,9 @@ async function runEngine() {
       evalStats,
       v: 2,
       evalRule: {
+        windowBasis: evalGates.positionWindows ? "positions" : "legacy-time",
+        positionWindows: evalGates.positionWindows ?? null,
+        legacyWindowControlsInactive: !!evalGates.positionWindows,
         minPf: evalGates.minPf,
         rangeMinPf: evalGates.rangeMinPf ?? {},
         minTrades: evalGates.minTrades,
@@ -2670,6 +2676,7 @@ const rangeOfTrade = (x) => (kindOfTrade(x) === "exit" ? "Exit" : isSig(x) ? "Si
 const indKindOf = (ind) => (isSignalInd(ind) ? `signal:${signalSourceOf(ind)}` : kindOfInd(ind));
 const RANGE_ORDER = [
   "Micro",
+  "Low-Range",
   "Minimal",
   "Minimal plus",
   "Short",
@@ -3601,6 +3608,7 @@ const isRaised = (x) => blockOf(x) !== "Plain";
 const unitsWanted = trades.map(unitU);
 const ENABLED_RANGES = [
   ["micro", "Micro"],
+  ["lowRange", "Low-Range"],
   ["minimal", "Minimal"],
   ["minimalPlus", "Minimal plus"],
   ["short", "Short"],
@@ -3745,10 +3753,12 @@ const blockText = tg.block
   ? ` with Block${tg.blockActive ? ` (Block Active from level ${minActive})` : ""}`
   : "";
 // Historical dumps omitted wf.longH but did retain the actual selection window in evalRule.preH.
-const configEvaluationHistoryH =
+const reportPositionPolicy = raw.tapeAgg?.evalRule?.positionWindows ?? null;
+const configEvaluationHistoryH = reportPositionPolicy ? null :
   raw.tapeAgg?.evalRule?.preH ??
   (Math.max(raw.settings?.wf?.longH ?? 0, raw.settings?.wf?.preH ?? 0) || null);
 report.configEvaluationHistoryH = configEvaluationHistoryH;
+report.configEvaluationPositionWindows = reportPositionPolicy;
 const E = report.engine;
 function sessionSelectionPhaseText(e) {
   const first = e.realFirstStep;
@@ -3915,7 +3925,7 @@ if (raw.funnel) {
     ``,
     `## Stage funnel, hour by hour (post-gate virtual closes · one-unit PF)`,
     ``,
-    `Base (each pair at its default protect and its ranges' cells): ${k.basePairs ?? "?"} engine pairs evaluated, ${k.basePassed ?? "?"} passed (any range)${E.signals?.representativeBaseGate ? "; gated Signal pairs are included in the status totals" : "; Signal pairs are measured separately"}. Later stages: *candidate pool* = every config of the Base-passed pairs (${k.poolConfigs ?? "?"} tapes; diagnostic, before config validation), Normal / Trailing / Trailing only apart; *post-Base config passes* = ${k.seatedConfigs ?? "?"} distinct configs passed at least one causal config-evaluation step across the window (a config can pass again in a later hour; the hourly row below counts those repeat pass instances). At run start, use the separate config-evaluation denominator/pass count and first simulated-step selection when recorded; the later paper/current selection is a separate snapshot; *post-gate virtual closes* = simulated trades that passed the causal config, coordination, caps and Block gates, before account funding/allocation. This count can include zero-allocated trades; funded settled orders and their PF are reported separately above. One-unit PF is every virtual close normalized to one unit after the ${((raw.settings?.cost ?? RT_COST) * 100).toFixed(2)} % cost. Config-evaluation history is ${configEvaluationHistoryH ?? "unknown"} h (max of longH and preH); Base history is reported separately.${raw.settings?.replaySelectionHours != null ? ` Replay-only selection-window override: ${raw.settings.replaySelectionHours} h; it does not change normal runtime settings.` : ""} ${raw.settings?.wf?.lastN > 0 ? `Additional causal config entry check: each candidate needs the prior ${raw.settings.wf.lastN} closes of its exact config at PF ≥ max(${raw.settings.wf.lastNMinPf}, its range floor); no future closes are used.` : "The additional per-config entry last-N check is off (wf.lastN = 0); configEval still validates configs before seating."}${raw.settings?.live?.replaySinceT != null ? ` Separate post-Base paper Live-entry replay: last ${raw.settings.live.liveLastN} closes per config${raw.settings.live.liveGroupLastN ? ` and last ${raw.settings.live.liveGroupLastN} pooled closes per range` : ""}, from ${new Date(raw.settings.live.replaySinceT).toISOString()}; see the Live gate section for judged and rejected counts.` : "Native liveLastN is not replayed unless --live-since is set."}${k.causalBase ? "" : " Base and the candidate pool use the full history (in-sample for the run); seated / executed are causal."}`,
+    `Base (each pair at its default protect and its ranges' cells): ${k.basePairs ?? "?"} engine pairs evaluated, ${k.basePassed ?? "?"} passed (any range)${E.signals?.representativeBaseGate ? "; gated Signal pairs are included in the status totals" : "; Signal pairs are measured separately"}. Later stages: *candidate pool* = every config of the Base-passed pairs (${k.poolConfigs ?? "?"} tapes; diagnostic, before config validation), Normal / Trailing / Trailing only apart; *post-Base config passes* = ${k.seatedConfigs ?? "?"} distinct configs passed at least one causal config-evaluation step across the window (a config can pass again in a later hour; the hourly row below counts those repeat pass instances). At run start, use the separate config-evaluation denominator/pass count and first simulated-step selection when recorded; the later paper/current selection is a separate snapshot; *post-gate virtual closes* = simulated trades that passed the causal config, coordination, caps and Block gates, before account funding/allocation. This count can include zero-allocated trades; funded settled orders and their PF are reported separately above. One-unit PF is every virtual close normalized to one unit after the ${((raw.settings?.cost ?? RT_COST) * 100).toFixed(2)} % cost. ${reportPositionPolicy ? `Config evaluation uses complete own positions: Main N ${reportPositionPolicy.main}, Real N ${reportPositionPolicy.real}, Entry N ${reportPositionPolicy.entry}; range/config overrides apply. History availability remains separate.` : `Config-evaluation history is ${configEvaluationHistoryH ?? "unknown"} h (max of longH and preH); Base history is reported separately.`}${!reportPositionPolicy && raw.settings?.replaySelectionHours != null ? ` Replay-only selection-window override: ${raw.settings.replaySelectionHours} h; it does not change normal runtime settings.` : ""} ${reportPositionPolicy ? `Each entry needs its own complete Entry N ${reportPositionPolicy.entry}; legacy window controls are inactive.` : raw.settings?.wf?.lastN > 0 ? `Additional causal config entry check: each candidate needs the prior ${raw.settings.wf.lastN} closes of its exact config at PF ≥ max(${raw.settings.wf.lastNMinPf}, its range floor); no future closes are used.` : "The additional per-config entry last-N check is off (wf.lastN = 0); configEval still validates configs before seating."}${raw.settings?.live?.replaySinceT != null ? ` Separate post-Base paper Live-entry replay: last ${raw.settings.live.liveLastN} closes per config${raw.settings.live.liveGroupLastN ? ` and last ${raw.settings.live.liveGroupLastN} pooled closes per range` : ""}, from ${new Date(raw.settings.live.replaySinceT).toISOString()}; see the Live gate section for judged and rejected counts.` : "Native liveLastN is not replayed unless --live-since is set."}${k.causalBase ? "" : " Base and the candidate pool use the full history (in-sample for the run); seated / executed are causal."}`,
     ``,
     `| hour (UTC) | ${COLS.map(([c]) => c).join(" | ")} |`,
     `|---|${COLS.map(() => "---:").join("|")}|`,
@@ -4001,12 +4011,15 @@ const seatHead = v2
   ? `Engine configs that passed the seat evaluation (configEval) at the run start (${ES.passed} of ${ES.evaluated} evaluated, ${ES.configs - ES.signalTapes} engine tapes) and the signal configs' entries made while their unit (pair × symbol × direction) was active at the entry's step (${ES.signalActive} units active at the run start${ES.signalUnitsRun !== undefined ? `, ${ES.signalUnitsRun} over the run, ${ES.signalSeated} of ${ES.signalTapes} signal configs with such an entry` : ""}), each on its own closes inside the run (entries ≥ start, exits ≤ end). Net in % of one unit; PF unit basis.`
   : `Configs that passed configEval at the run start (${ES.evaluated} of ${ES.configs}), each on its own closes inside the run. Net in % of one unit; PF unit basis.${oldNote}`;
 const maxDdtH = ER.maxDdtH ?? raw.settings.gates?.maxDdtH;
-const ddtRule = `drawdown time ≤ min(${f2(ER.ddtMaxH)} h, ${maxDdtH} h × span ÷ 72 h), span = the tape's own history inside the ${ER.preH} h window (ddtLimitH: a 1m tape with 72 h of history → ${maxDdtH} h; a full window → ${f2(ER.ddtMaxH)} h)`;
+const positionPolicy = ER.positionWindows;
+const ddtRule = positionPolicy ? `drawdown recovery ≤ ${positionPolicy.maxDrawdownPositions} completed positions` : `drawdown time ≤ min(${f2(ER.ddtMaxH)} h, ${maxDdtH} h × span ÷ 72 h), span = the tape's own history inside the ${ER.preH} h window (ddtLimitH: a 1m tape with 72 h of history → ${maxDdtH} h; a full window → ${f2(ER.ddtMaxH)} h)`;
 const indFloorRule =
   report.evidence.qualification.state === "recorded"
     ? `; full indication-aware Tactic floor ${report.evidence.qualification.tacticMinPf}, Short floor ${report.evidence.qualification.shortMinPf}, retaining stricter settings; mixed indication groups can have different minima`
     : "; historical qualification provenance does not establish the Short 1.1 floor";
-const seatRule = `Each engine config on its own closes at the run start (configEval: the gates the seat selection applies — not the Base stage, which ranks bot × indication pairs): over the selection window (${ER.preH} h) ≥ max(3, ${ER.minTrades}) closes, positive net, PF ≥ its full indication's range minimum (stage ${ER.minPf}${
+const seatRule = positionPolicy
+  ? `Each exact config × symbol × direction needs complete own Main / Real / Entry samples of ${positionPolicy.main} / ${positionPolicy.real} / ${positionPolicy.entry} settled positions before the decision; range and exact-config overrides apply. Positive net, the own effective range/step/SL PF floor, lower confidence bound and positive-position share remain required. ${ddtRule}. Wall-clock evaluation cutoffs and partial last-N floors are inactive. Native execution still requires separate owned evidence. Candidate samples, qualified post-Base sets and funded closes remain different cohorts.`
+  : `Each engine config on its own closes at the run start (configEval: the gates the seat selection applies — not the Base stage, which ranks bot × indication pairs): over the selection window (${ER.preH} h) ≥ max(3, ${ER.minTrades}) closes, positive net, PF ≥ its full indication's range minimum (stage ${ER.minPf}${
   Object.keys(ER.rangeMinPf ?? {}).length
     ? `; ${Object.entries(ER.rangeMinPf)
         .map(([k, v]) => `${k} ${v}`)
@@ -4036,7 +4049,7 @@ for (const l of RANGE_ORDER.filter((x) => x !== "Signals")) {
     );
     continue;
   }
-  const ddtTxt =
+  const ddtTxt = positionPolicy ? String(positionPolicy.maxDrawdownPositions) :
     f.ddtLimitMinH != null
       ? `${f2(f.ddtLimitMinH)}–${f2(f.ddtLimitMaxH)} (median ${f2(f.ddtLimitMedianH)})`
       : "–";
@@ -4122,7 +4135,7 @@ lines.push(
   ``,
   seatRule,
   ``,
-  `| range | configs | evaluated | passed | median PF score (evaluated) | median PF score (passed) | DDT limit h (min–max) | ${EVAL_GATES.join(" | ")} | type off | pair not Base-passed | note |`,
+  `| range | configs | evaluated | passed | median PF score (evaluated) | median PF score (passed) | ${positionPolicy ? "Drawdown limit (positions)" : "DDT limit h (min–max)"} | ${EVAL_GATES.join(" | ")} | type off | pair not Base-passed | note |`,
   `|---|---:|---:|---:|---:|---:|---:|${EVAL_GATES.map(() => "---:").join("|")}|---:|---:|---|`,
   ...seatRows,
   ``,
@@ -4215,6 +4228,7 @@ const data = clean({
   ),
   selectionPhaseLabel: realText,
   configEvaluationHistoryH,
+  configEvaluationPositionWindows: reportPositionPolicy,
   total: T,
   checks,
   checksOk,
@@ -4528,7 +4542,7 @@ function renderWriteup(d, dir) {
     ``,
     `${marketDataText}, the engine itself (Base → Main → Real over the ${s.lanes.join(" / ")} min lanes), ` +
       `pre-historic ${hmd(d.window.preStartT)} → ${hmd(d.window.startT)} UTC, run ${hmd(d.window.startT)} → ${hmd(d.window.endT)} UTC. ` +
-      `${s.signals ? `${signalHistoryText(s)} ` : ""}Config evaluation uses the separately recorded ${d.configEvaluationHistoryH ?? "unknown"} h selection lookback. Symbols: ${d.symbols.join(", ")}.`,
+      `${s.signals ? `${signalHistoryText(s)} ` : ""}${d.configEvaluationPositionWindows ? `Config evaluation uses complete own positions: Main N ${d.configEvaluationPositionWindows.main}, Real N ${d.configEvaluationPositionWindows.real}, Entry N ${d.configEvaluationPositionWindows.entry}; range/config overrides apply.` : `Config evaluation uses the separately recorded ${d.configEvaluationHistoryH ?? "unknown"} h selection lookback.`} Symbols: ${d.symbols.join(", ")}.`,
     ``,
     sessionQualificationEvidence(d.evidence?.qualification).note,
     d.evidence?.returns?.note ?? sessionReturnEvidence({}).note,
@@ -4634,7 +4648,7 @@ function renderWriteup(d, dir) {
     ``,
     ...grp(d.sources, "source"),
     ``,
-    `Window of ${s.runH} h: a single short sample — it shows the engine and the desk settings processing correctly on real data and their current edge, not a durable result.`,
+    `Window of ${s.runH} h: a single short sample — it describes processing on this input; source provenance is stated above, and durable forward performance is not established.`,
     ``,
   ].join("\n");
 }

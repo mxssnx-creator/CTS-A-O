@@ -38,7 +38,7 @@ function fixture() {
     [...history, ...candidates].sort((a, b) => a.exitT - b.exitT), [], []);
   const other = makeTape(blockerId, "follow", ind, blockerProtect, "normal", symbols,
     [...blockerHistory, ...blockers].sort((a, b) => a.exitT - b.exitT), [], []);
-  const base = defaultWalkForward(DEFAULT_SETTINGS);
+  const base = defaultWalkForward({...DEFAULT_SETTINGS,gates:{...DEFAULT_SETTINGS.gates,positionWindows:null}}); // frozen raw-history conflict control
   const options = { ...base, preH: 12, longH: 12, simH: 12, signalLongH: 12, startT: start, stepH: 1,
     mode: "fixed" as const, seatPer: "config" as const, portfolio: 0, maxPositions: 0, preGate: false,
     symGate: "off" as const, basePassed: new Set([`follow|${ind}`]), basePassedRanges: { [`follow|${ind}`]: ["mn"] },

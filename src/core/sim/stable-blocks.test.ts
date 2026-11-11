@@ -4,7 +4,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { configEval, defaultWalkForward, makeTape, selectFixed, stableOk, type WalkForwardOptions } from "./walkforward.ts";
-import { DEFAULT_SETTINGS } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS } from "../config.ts";
+// Explicit historical time-window fixture; the count policy is tested independently.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import type { Trade } from "../domain/types.ts";
 
 const H = 3_600_000;

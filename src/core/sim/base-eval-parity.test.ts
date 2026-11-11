@@ -47,6 +47,7 @@ describe("Strategy Base diagnostic and runtime parity", () => {
       seatPer: "config",
       gates: {
         ...defaults.gates,
+        positionWindows: null, // explicit legacy hour-based DDT contract
         minTrades: 3,
         minPf: 1.1,
         maxDdtH: 1,

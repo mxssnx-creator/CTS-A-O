@@ -101,7 +101,7 @@ type Msg = { evaluationFromT?: number } & (
       combos: Array<{ bot: string; ind: string }>;
       cost: number;
       tactics: unknown;
-      gates?: { minPf: number; minTrades: number; baseLastN?: number; lastNFloor?: number; lossPrior?: boolean };
+      gates?: { minPf: number; minTrades: number; baseLastN?: number; lastNFloor?: number; lossPrior?: boolean; positionWindows?: import("../domain/types.ts").Gates["positionWindows"] };
     }
   | {
       id: number;
@@ -420,6 +420,7 @@ parentPort!.on("message", (m: Msg) => {
           m.tactics as never,
           false,
           m.gates?.baseLastN ?? 0,
+          m.gates?.positionWindows,
         );
         if (r && (!m.gates || passesBase(r.full, m.gates)))
           scores.push({ pair: `${c.bot}|${c.ind}`, score: r.score });

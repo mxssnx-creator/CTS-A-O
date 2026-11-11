@@ -263,7 +263,7 @@ test("live closes: signal entries (client-id letter Q) land in Signals, the rang
       ["SOL-USDT", "Signals"],
       ["ETH-USDT", "Short"],
       ["BTC-USDT", "Wide"],
-      ["XRP-USDT", "Wide"],
+      ["XRP-USDT", "Low-Range"],
     ],
   );
   assert.equal(typeOf(xs[0]), "Signals");

@@ -21,8 +21,8 @@ function fixture(replay: boolean, entryT: number, endT: number) {
   const op = position(entryT);
   // The entry-clock cases need a valid direction-qualified tape so the execution
   // gate reaches freshness handling instead of rejecting an empty history first.
-  const evidence = Array.from({ length: 30 }, (_, i) => {
-    const tradeEntry = entryT - 6 * H + i * 10 * 60_000;
+  const evidence = Array.from({ length: 75 }, (_, i) => {
+    const tradeEntry = entryT - 6 * H + i * 2 * 60_000;
     return { cfg: CFG, sym: SYM, side: 1 as const, entryT: tradeEntry, exitT: tradeEntry + 60_000,
       entry: 100, exit: 102, r: .02, mult: 1, vol: 1, kind: "normal" as const, reason: "tp" as const,
       bars: 1, mfe: .02, mae: 0 };

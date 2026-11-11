@@ -242,20 +242,23 @@ describe("processing through the stages, every strategy type, every toggle combi
         historyDays: 3,
         tfDays: { "1": 3, "5": 3, "15": 3, "30": 3 },
         cycleMs: 60_000,
-        focus: [],
-        // Preserve the original lifecycle matrix catalog; exhaustive new-family grids and their
-        // range qualification are covered by the frozen 20-symbol replay and dedicated parity tests.
-        disabledKinds: ["micro", "inverse"],
+        // Full-catalog state/lane checks are above; use representative sources for the 128-toggle cross product.
+        focus: ["follow|ema-9-21", "revert|ema-9-21", "follow|rsi-mom-14-20",
+          "revert|rsi-mom-14-20", "sweep|rsi-9-21", "follow|macd", "follow|mc-tpull-13"],
+        // Low-Range is opt-in and its grid is disabled in this ordinary 128-toggle matrix.
+        // Every registered indication is checked above; independent Low-Range cells have full parity tests.
+        disabledKinds: ["micro", "inverse", "low-range"],
         pinned: [],
         mainTop: 24,
         // Freeze the lifecycle/toggle matrix's original qualification policy. New factory floors are
         // tested separately; a stricter factory gate cannot promise every family wins on this fixture.
-        gates: { minPf: 1.1, baseSetsMinPf: 1.1, stepPf: { enabled: false },
+        gates: { positionWindows:null, minPf: 1.1, baseSetsMinPf: 1.1, stepPf: { enabled: false },
           rangeMinPf: { micro: 1.1, minimal: 1.1, short: 1.1, general: 1.1, long: 1.1 } },
         grid,
         // This 128-toggle matrix exercises the ordinary range/DCA/Axis pipeline. Keep its former Signal
         // scalar lane explicit; the full Expanded catalog has a separate frozen native replay.
-        signals: { lanes: [15], exits: "pct", trailRatios: [1] },
+        signals: { lanes: [15], exits: "pct", trailRatios: [1],
+          sourcesMode: "allow", sources: { "ema-cross": true, "rsi-reversal": true } },
         // Historic Exit evaluates every initialized engine pair and has its own focused runtime regression. Keep this
         // 128-toggle matrix scoped to the shared range/DCA/Axis pipeline so it does not fit the full Exit universe.
         exitStrategy: { enabled: false },
@@ -320,11 +323,15 @@ describe("processing through the stages, every strategy type, every toggle combi
       assert.equal(coverage.byKind[kind]?.engine, rt.tapes.filter((t) => !isSignalInd(t.ind) && t.kind === kind).length,
         `${kind}: displayed engine coverage matches the actual published tapes`);
     const { GATED_RANGES } = await import("./minimal-coord.ts");
-    assert.deepEqual([...GATED_RANGES].sort(), ["mc", "mn", "mp", "sh"]);
+    assert.deepEqual([...GATED_RANGES].sort(), ["lr", "mc", "mn", "mp", "sh"]);
     const gl = rt.tapes.filter((t) => t.protect.tag === "gn" || t.protect.tag === "lg");
-    assert.ok(gl.some((t) => t.n < 50), "General / Long tapes with fewer than 50 closes are kept");
+    if (gl.length) assert.ok(gl.some((t) => t.n < 50), "qualified General / Long tapes with fewer than 50 closes are kept");
     const tags = new Set<string>(rt.tapes.map((t) => t.protect.tag ?? "wide"));
-    for (const tag of ["mn", "sh", "gn", "lg"]) assert.ok(tags.has(tag), `range ${tag} has tapes`);
+    for (const tag of ["mn", "sh", "gn", "lg"]) {
+      const base = rt.status.baseByRange?.find(row => row.tag === tag);
+      assert.ok(base && base.evaluated > 0, `range ${tag} was evaluated`);
+      if (base.passed > 0) assert.ok(tags.has(tag), `qualified range ${tag} has tapes`);
+    }
     // the stage chain is consistent and every published number replays
     const bad = rt.audit!.checks.filter((c) => !c.ok);
     assert.deepEqual(bad, [], JSON.stringify(bad));

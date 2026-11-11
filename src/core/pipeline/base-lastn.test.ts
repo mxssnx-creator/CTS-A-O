@@ -19,7 +19,7 @@ test("Base last-N defaults to 40 and rejects malformed settings", () => {
 });
 
 test("Micro and Minimal own Last-30 Base results are used for admission and rejection counts", () => {
-  const own = { ...DEFAULT_SETTINGS.gates, minTrades: 9, maxDdr: 0, lastNFloor: 9 };
+  const own = { ...DEFAULT_SETTINGS.gates, positionWindows:null, minTrades: 9, maxDdr: 0, lastNFloor: 9 };
   assert.equal(baseLastNForRange(own, "mc"), 30);
   assert.equal(baseLastNForRange(own, "mn"), 30);
   assert.equal(baseLastNForRange(own, "sh"), 40);

@@ -76,7 +76,7 @@ function fixture() {
         general: false,
         long: false,
       },
-      gates: { minTrades: 10000 },
+      gates: { minTrades: 500 },
       tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false },
     },
     { market: "synthetic", priceStream: null },

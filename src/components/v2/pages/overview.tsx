@@ -332,6 +332,7 @@ export function OverviewPage() {
         status={d.status}
         minPf={minPf}
         maxDdtH={d.settings.gates.maxDdtH}
+        maxDrawdownPositions={d.settings.gates.positionWindows?.maxDrawdownPositions}
         baseSetsMinPf={d.settings.gates.baseSetsMinPf}
       />
       <ExecutionSummary account={d.live?.account} />
@@ -362,7 +363,7 @@ export function OverviewPage() {
           label="Sim net (Σ trade %)"
           value={fmt.pct(s?.net)}
           className={tone(s?.net)}
-          sub={`${d.wf.simH}h run · ${d.wf.preH}h pre-calc`}
+          sub={`${d.wf.simH}h run · ${d.settings.gates.positionWindows ? `Main N ${d.settings.gates.positionWindows.main} positions; own overrides apply` : `${d.wf.preH}h pre-calc`}`}
         />
         <Kpi
           label="Positions / Orders"
@@ -404,11 +405,11 @@ export function OverviewPage() {
                 value: baseEval ? basePassed / baseEval : 0,
                 display: `${basePassed}/${baseEval}`,
               },
-              {
+              ...(!d.settings.gates.positionWindows ? [{
                 label: "DDT headroom",
                 value: s ? Math.max(0, 1 - s.ddt / Math.max(1, d.settings.gates.maxDdtH)) : 0,
                 display: s ? fmt.h(d.settings.gates.maxDdtH - s.ddt) : "–",
-              },
+              }] : []),
             ]}
           /> : <Empty>{s ? "Unit-return basis unavailable" : "No simulated run yet"}</Empty>}
         </Panel>

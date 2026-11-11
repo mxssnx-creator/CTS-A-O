@@ -1,6 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_SETTINGS } from "./config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS } from "./config.ts";
+
+// Preserve historical clock/Last-N compatibility cases; complete count admission is tested independently.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
 import type { Protect, StratKind, Trade } from "./domain/types.ts";
 import { configId, laneProtect, makeUniverse, parseConfigId } from "./pipeline/pipeline.ts";
 import { signalSettings } from "./signal-config.ts";

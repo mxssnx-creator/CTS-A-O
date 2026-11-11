@@ -1345,7 +1345,7 @@ const small = {
   },
   // Freeze this API paging fixture's original qualification policy so it exercises nonempty row shapes.
   // Base Last-N and the stricter new step-PF policy have independent admission tests.
-  gates: { minPf: 1.05, minTrades: 3, maxDdr: 0, baseLastN: 0, stepPf: { enabled: false } },
+  gates: { positionWindows:null, minPf: 1.05, minTrades: 3, maxDdr: 0, baseLastN: 0, stepPf: { enabled: false } },
   signals: {
     ...signalSettings({
       exits: "pct",
@@ -1909,7 +1909,7 @@ describe(
       const win = (await read(
         "coreStatistics",
         () => api.coreStatisticsData(api.coreStatisticsInput({ source: "sim", hours: 6 })),
-        { label: "coreStatistics sim 6h" },
+        { label: "coreStatistics sim 6h", allEmpty: true },
       )) as { report: { balanceStart?: unknown } };
       assert.notEqual(win.report.balanceStart, undefined, "a window carries its start balance");
       for (const source of ["paper", "live"] as const)

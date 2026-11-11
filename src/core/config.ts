@@ -1,3 +1,4 @@
+import { DEFAULT_POSITION_WINDOWS } from "./position-windows.ts";
 import { DEFAULT_MIN_SL_DISTANCE_PCT, SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
 import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "./indications/micro-family.ts";
 import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "./indications/low-range.ts";
@@ -30,7 +31,7 @@ export const MAX_EXCHANGE_POSITIONS = 100;
 /** One systemwide ceiling for Block, Relate, coordination, and other external sizing groups. */
 export const MAX_EXTERNAL_STACK = 8;
 /** Bounded settings payload, including every independent Micro/Inverse source and the ordinary catalog. */
-export const MAX_FOCUS_PAIRS = 2000;
+export const MAX_FOCUS_PAIRS = 4096;
 
 /** Normalize legacy, unset, or oversized exchange limits without allowing the account cap to be bypassed. */
 export function exchangePositionLimit(value?: number): number {
@@ -78,6 +79,7 @@ export {
 };
 
 export const DEFAULT_GATES: Gates = {
+  positionWindows: structuredClone(DEFAULT_POSITION_WINDOWS),
   minPf: 1.25,
   // longest drawdown time allowed, hours (selectable 2–35)
   maxDdtH: 35,
@@ -87,8 +89,8 @@ export const DEFAULT_GATES: Gates = {
   // 12 windows — PF 1.232 → 1.244, drawdown −9 %, 85 % of the orders kept; 0.5 = low drawdown, −39 % orders)
   maxDdr: 1,
   // Operator 29 Oct: each range keeps its own floor through Base and subsequent evaluation.
-  stepPf: { enabled: true, ratio: 0.2, max: 2 },
-  rangeMinPf: { micro: 1.05, minimal: 1.08, short: 1.12, general: 1.25, long: 1.5 },
+  stepPf: { ...DEFAULT_STEP_PF },
+  rangeMinPf: { micro: 1.05, minimal: 1.08, short: 1.12, general: 1.25, long: 1.5, lowRange: 1.08 },
   minTrades: 12,
   baseLastN: 40,
   baseRangeLastN: { micro: 30, minimal: 30 },
@@ -311,7 +313,7 @@ export interface CoreSettings {
   /** effective round-trip position cost (fraction); = 2 × (taker fee + slippage per side) */
   cost: number;
   /** cost components as on the exchange (per side, fractions) */
-  fees: { taker: number; maker: number; slippage: number; slippageRatio?: number };
+  fees: import("./model-cost.ts").ModelFees;
   /** live-feedback auto-adjuster (last N positions per strategy config set) */
   adjust: AdjustSettings;
   /** prehistory-derived exit candidates; each candidate and direction is validated and carried independently */
@@ -420,20 +422,27 @@ export function mergeGridSettings(base: ProtectGridSpec, patch?: GridSettingsPat
   if (patch.lowRange !== undefined) {
     if (!patch.lowRange || typeof patch.lowRange !== "object" || Array.isArray(patch.lowRange))
       throw new Error("Low-Range: settings object required");
-    out.lowRange = { ...DEFAULT_LOW_RANGE_GRID, ...base.lowRange, ...patch.lowRange };
+    // Full legacy objects retain their exact fields and Short ownership. Partial edits inherit the
+    // existing object's mode; fresh settings already carry the independent defaults.
+    const legacy = patch.lowRange.enabled !== undefined && patch.lowRange.step !== undefined &&
+      patch.lowRange.steps !== undefined && patch.lowRange.slRatios !== undefined &&
+      patch.lowRange.trailRatios !== undefined && patch.lowRange.maxHoldMin !== undefined && patch.lowRange.coordination === undefined;
+    out.lowRange = { ...(legacy ? {} : base.lowRange ?? DEFAULT_LOW_RANGE_GRID), ...patch.lowRange } as LowRangeGrid;
   }
   return out;
 }
 
 /** A settings patch: every group (grid, gates, live, block …) may be partial — it is merged into the current values. */
-export type GateSettingsPatch = Omit<Partial<CoreSettings["gates"]>, "stepPf"> & {
+export type GateSettingsPatch = Omit<Partial<CoreSettings["gates"]>, "stepPf" | "positionWindows"> & {
   stepPf?: Partial<import("./step-pf.ts").StepPfRules>;
+  positionWindows?: Partial<import("./position-windows.ts").PositionWindows> | null;
 };
 export function mergeGateSettings(base: CoreSettings["gates"], patch?: GateSettingsPatch): CoreSettings["gates"] {
   if (patch?.stepPf !== undefined && (!patch.stepPf || typeof patch.stepPf !== "object" || Array.isArray(patch.stepPf)))
     throw new Error("step PF: settings object required");
-  const { stepPf, ...rest } = patch ?? {};
-  return { ...base, ...rest, ...(stepPf === undefined ? {} : {
+  const { stepPf, positionWindows, ...rest } = patch ?? {};
+  return { ...base, ...rest, ...(positionWindows === undefined ? {} : { positionWindows: positionWindows === null ? null :
+    { ...DEFAULT_POSITION_WINDOWS, ...base.positionWindows, ...positionWindows } }), ...(stepPf === undefined ? {} : {
     stepPf: { ...DEFAULT_STEP_PF, ...base.stepPf, ...stepPf },
   }) };
 }
@@ -604,7 +613,7 @@ export interface LiveSettings {
    * overall: engine configs of these families do NOT reach the exchange, and a held position of one is CLOSED — its
    * lanes never ask for volume again, held or not (the operator's stop, unlike excludeRanges, which keeps a held lane
    * until its paper position exits). A family is `bot|range`: the bot "follow" or "revert", the range "wide" (untagged)
-   * or a range tag ("mc", "mn", "mp", "sh", "gn", "lg"); `bot|exit` excludes every Historic Exit config set.
+   * or a range tag ("mc", "mn", "mp", "sh", "gn", "lg", "lr"); `bot|exit` excludes every Historic Exit config set.
    * Example: "follow|mn" = every Normal / Trailing follow config of Minimal.
    * Signal configs have no family here (live.source narrows them). Unset / empty = none.
    */

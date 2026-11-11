@@ -39,3 +39,13 @@ it("derives SL ratio from the configured distances and never invents a TP for tr
   assert.equal(protectSlRatio({ tp: 0, sl: .003 }), undefined);
   assert.equal(protectSlRatio({ tp: NaN, sl: .003 }), undefined);
 });
+
+it("auto PF covers every 0.1% step through the configured maximum and manual mode preserves explicit floors", () => {
+ const rules={...DEFAULT_STEP_PF,maxStepPct:2};
+ for(let n=1;n<=20;n++) assert.equal(stepPfFloor(1,n/10,rules),Math.round((1+n/10*.2)*1e6)/1e6);
+ assert.equal(stepPfFloor(1,20,rules),1.4);
+ assert.equal(stepPfFloor(1.25,.1,rules),1.25);
+ assert.equal(stepPfFloor(1.1,2,{...rules,mode:"manual"}),1.1);
+ assert.equal(stepPfFloor(1.1,2,{...rules,mode:"manual",byStep:{20:1.6}}),1.6);
+ for(const maxStepPct of [0,.15,101,NaN]) assert.throws(()=>checkSettings({gates:{stepPf:{maxStepPct}}}));
+});

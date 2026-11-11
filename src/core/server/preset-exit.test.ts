@@ -4,7 +4,10 @@ import { afterEach, describe, it } from "node:test";
 import { CoreRuntime, laneSeriesFrom } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { closePool, workersAvailable } from "./pool.server.ts";
-import { DEFAULT_SETTINGS } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS } from "../config.ts";
+
+// Freeze the historical window-based parity fixture; count admission has dedicated exact-context tests.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
 import type { Candle } from "../domain/types.ts";
 import { CandleSeries } from "../market/candle-series.ts";
 import { allCombos, makeUniverse } from "../pipeline/pipeline.ts";

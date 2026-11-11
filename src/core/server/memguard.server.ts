@@ -242,7 +242,7 @@ export function memRetryDelayMs(level: number, abortsInRow: number): number {
 }
 
 /**
- * The fallback ladder: 0 = everything rebuilt, 1 = Micro carried, 2 = Micro and Minimal carried. A carried range is
+ * The fallback ladder: 0 = everything rebuilt, 1 = Micro/Low-Range carried, 2 = Minimal carried too. A carried range is
  * not rebuilt in that compute: its tapes from the previous compute go into the new set unchanged (partial
  * processing), so the range keeps computing, validating and trading on its last results instead of being switched
  * off; it is rebuilt again once memory has room (nextFallback).
@@ -250,7 +250,7 @@ export function memRetryDelayMs(level: number, abortsInRow: number): number {
 export const MEM_FALLBACK_MAX = 2;
 /** The range tags a compute at this fallback level does not rebuild (carries over). */
 export function fallbackCarriedTags(level: number): ReadonlySet<string> {
-  return new Set(level <= 0 ? [] : level >= 2 ? ["mc", "mn"] : ["mc"]);
+  return new Set(level <= 0 ? [] : level >= 2 ? ["mc", "mn", "lr"] : ["mc", "lr"]);
 }
 /** The protect variants a compute at this fallback level rebuilds (the carried ranges' cells are left out). */
 export function fallbackProtects<P extends { tag?: string | null }>(protects: readonly P[], level: number): P[] {
@@ -259,7 +259,7 @@ export function fallbackProtects<P extends { tag?: string | null }>(protects: re
   return protects.filter((p) => !p.tag || !drop.has(p.tag));
 }
 export const fallbackLabel = (level: number) =>
-  level <= 0 ? "full" : level === 1 ? "micro carried" : "micro and minimal carried";
+  level <= 0 ? "full" : level === 1 ? "micro and Low-Range carried" : "micro, minimal and Low-Range carried";
 
 /**
  * After a compute: the next fallback level. Pressure during the compute → one level up (to the max); three clean

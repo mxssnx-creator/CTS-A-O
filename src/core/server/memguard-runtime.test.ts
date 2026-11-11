@@ -6,11 +6,10 @@
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime as BaseRuntime } from "./runtime.server.ts";
-import { trackRuntimes } from "../test-support.ts";
+import { runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
 import { CoreDb } from "./db.server.ts";
 import { MEM_FALLBACK_MAX, memSoftMb, memHardMb } from "./memguard.server.ts";
 import { abortWorkers, closePool, runOnWorkers, workersAvailable, workerFailure } from "./pool.server.ts";
-import { DEFAULT_SETTINGS } from "../config.ts";
 import { MICRO_RANGE } from "../minimal-coord.ts";
 
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
@@ -253,7 +252,12 @@ describe("memory guard in the runtime", { timeout: 300_000 }, () => {
         ...small,
         symbols: 1,
         // Micro on (its own indications, which also take Minimal cells); one other indication keeps Base light
-        grid: { ...DEFAULT_SETTINGS.grid, micro: MICRO_RANGE },
+        // Guard fallback needs each range, not the full Cartesian protection search.
+        grid: { ...runtimeFixtureGrid(), micro: { ...MICRO_RANGE,
+          tp: [MICRO_RANGE.tp[0], MICRO_RANGE.tp.at(-1)!],
+          slOfTp: [MICRO_RANGE.slOfTp[0], MICRO_RANGE.slOfTp.at(-1)!],
+          trailOfTp: [0, MICRO_RANGE.trailOfTp.at(-1)!] } },
+        gates: { ...small.gates, positionWindows: null },
         focus: ["follow|ema-21-55"],
         pinned: [],
       } as never,

@@ -33,15 +33,16 @@ export function liveNetwork(connId: LiveSettings["connId"]): "mainnet" | "testne
 }
 
 /** Entry tracking kind per range: U micro, M minimal plus, N minimal, H short; E the wide grid or a mix. */
-export const RANGE_COID: Record<RangeTag, "U" | "M" | "N" | "H" | "G" | "L"> = {
+export const RANGE_COID: Record<RangeTag, "U" | "M" | "N" | "H" | "G" | "L" | "Z"> = {
   mc: "U",
   mp: "M",
   mn: "N",
   sh: "H",
   gn: "G",
   lg: "L",
+  lr: "Z",
 };
-export type EntryKind = "E" | "U" | "M" | "N" | "H" | "G" | "L" | "Q";
+export type EntryKind = "E" | "U" | "M" | "N" | "H" | "G" | "L" | "Q" | "Z";
 
 /**
  * Entry tracking kind of a config: its range letter, "Q" for a signal config (signals carry no range tag; without

@@ -5,7 +5,10 @@
 // orders (each executed order is its tape's trade, entered while the config was validated) — every range, Micro included.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_SETTINGS, RT_COST } from "./config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS, RT_COST } from "./config.ts";
+// Explicit historical window contract; current position-policy invariants are covered separately.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import {
   GENERAL_RANGE,
   LONG_RANGE,

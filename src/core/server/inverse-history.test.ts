@@ -11,7 +11,7 @@ import { syntheticCandles } from "../market/bars.ts";
 test("Extended windows supply every lane, including the supported 60-day window, without rewriting preferences", () => {
   const s = structuredClone(DEFAULT_SETTINGS);
   const wf = defaultWalkForward(s);
-  assert.equal(evaluationHistorySettings(s, wf), s, "default source selection stays unchanged");
+  assert.equal(evaluationHistorySettings(s, wf).focus, s.focus, "physical retention growth preserves source selection");
   for (const hours of [168, 336, 720, 1440]) {
     const source = evaluationHistorySettings(s, { ...wf, longH: hours, simH: 6 });
     for (const tf of s.tfs) assert.ok(source.tfDays[String(tf)] * 24 >= hours + 24 + 6);

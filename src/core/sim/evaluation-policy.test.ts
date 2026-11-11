@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DEFAULT_SETTINGS } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS } from "../config.ts";
+// Freeze this historical window-policy contract; current count admission has independent scope tests.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import type { RangeTag, StratKind, Trade } from "../domain/types.ts";
 import {
   cellAllowed, configEval, defaultWalkForward, execDecision, makeTape, rangeOptsOf, selectAt, selectFixed, signalConfigEval, validatedSetGen,

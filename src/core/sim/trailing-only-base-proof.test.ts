@@ -26,7 +26,7 @@ const grid = { ...DEFAULT_SETTINGS.grid, tp: [], holdH: [1], micro: false as con
   short: false as const, general: false as const, long: false as const,
   lowRange: { ...DEFAULT_LOW_RANGE_GRID, enabled: false }, minimalPlus: false as const,
   trailingOnly: true, baseCells: false, baseTargets: true };
-const gates = { ...DEFAULT_SETTINGS.gates, minTrades: 8, minPf: .6, baseSetsMinPf: .6,
+const gates = { ...DEFAULT_SETTINGS.gates, positionWindows:null, minTrades: 8, minPf: .6, baseSetsMinPf: .6,
   baseLastN: 0, baseRangeLastN: { micro: 0, minimal: 0 },
   rangeMinPf: { ...DEFAULT_SETTINGS.gates.rangeMinPf, minimal: 4 }, lastNFloor: 0,
   maxDdr: 0, minDdtH: 0, maxDdtH: 0 };

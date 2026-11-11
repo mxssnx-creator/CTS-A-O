@@ -19,6 +19,7 @@ function database() {
   const db = new CoreDb(":memory:"); databases.push(db);
   db.kvSet("wfCapsV", 37); db.kvSet("ddtMax35", true);
   db.kvSet("signalEvaluation100V1", true);
+  db.kvSet("positionWindows20261111V1", true); // isolate the historical Signal migration
   return db;
 }
 function open(db = database()) {

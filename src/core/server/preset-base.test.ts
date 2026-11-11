@@ -9,7 +9,10 @@ import { CoreDb } from "./db.server.ts";
 import { closePool } from "./pool.server.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { allCombos, type ComboRun } from "../pipeline/pipeline.ts";
-import { DEFAULT_SETTINGS, type CoreSettings } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS, type CoreSettings } from "../config.ts";
+
+// Freeze the historical window-based parity fixture; count admission has dedicated exact-context tests.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
 import { MICRO_RANGE } from "../minimal-coord.ts";
 import { isMicroInd } from "../indications/micro.ts";
 import { laneOf } from "../indications/registry.ts";

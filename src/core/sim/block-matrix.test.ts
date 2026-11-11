@@ -2,30 +2,28 @@
 // Block Active on / off, Normal on / off, volume steps and the pause after a win: every run replays clean through
 // the self-audit (each trade's level and volume re-derived from the causal book), volumes stay within the 8× stack,
 // Normal off only ever removes unadjusted base entries, and Block Active only ever removes entries below its level.
-import { after, before, describe, it } from "node:test";
+import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime } from "../server/runtime.server.ts";
-import { CoreDb } from "../server/db.server.ts";
-import { closePool } from "../server/pool.server.ts";
 import { auditState } from "../audit.ts";
-import { walkForward, type WalkForwardOptions } from "./walkforward.ts";
+import {
+  defaultWalkForward,
+  makeTape,
+  passedCellsOf,
+  walkForward,
+  type ConfigTape,
+  type WalkForwardOptions,
+} from "./walkforward.ts";
 import { BLOCK_SOURCES, type BlockSource } from "./block.ts";
-import type { BlockConfig } from "../domain/types.ts";
-import { pinSyntheticEnd, runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
-
-pinSyntheticEnd();
-const tracked = trackRuntimes();
-after(() => tracked.disposeAll());
-
-let rt: CoreRuntime;
-// (a hang guard only: the setup runs one compute per symbol batch — three of ~100 s each before the runtime rests, which
-// left 5 s of margin under 300 s on a quiet host and timed out beside the live desks)
-const until = async (cond: () => boolean, ms = 900_000) => {
-  const t0 = Date.now();
-  while (!cond()) {
-    if (Date.now() - t0 > ms) throw new Error("timeout");
-    await new Promise((r) => setTimeout(r, 20));
-  }
+import type { BlockConfig, Protect, Trade } from "../domain/types.ts";
+import { DEFAULT_SETTINGS } from "../config.ts";
+import { configId, protectCellKey } from "../pipeline/pipeline.ts";
+// Planted 8-symbol, 12h prehistory + 12h execution fixture. This isolates Block relations from
+// catalog discovery profitability; real-runtime Base/book integration is tested separately.
+let rt: {
+  wf: WalkForwardOptions;
+  tapes: ConfigTape[];
+  lastUniverse: Parameters<typeof walkForward>[0];
+  settings: { cost: number };
 };
 
 const only = (...xs: BlockSource[]) =>
@@ -49,37 +47,98 @@ function run(patch: {
 }
 
 describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
-  before(async () => {
-    rt = tracked.track(new CoreRuntime(
-      new CoreDb(":memory:"),
-      {
-        symbols: 4,
-        historyDays: 18,
-        tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
-        cycleMs: 60_000,
-        // Real-stage relation replay needs diverse actual tapes, rather than a
-        // second full Cartesian/independent Exit fit before every matrix case.
-        grid: { ...runtimeFixtureGrid(), short: false },
-        signals: { enabled: false } as never,
-        focus: [],
-        pinned: [],
-        // This matrix exercises Block coordination on its original catalog. New full Micro grids and
-        // independent historical Exit fitting have separate end-to-end/parity studies.
-        disabledKinds: ["micro", "inverse"],
-        exitStrategy: { enabled: false },
-        mainTop: 16,
+  before(() => {
+    const M = 60_000,
+      H = 60 * M,
+      first = Date.UTC(2026, 9, 8, 12),
+      start = first + 12 * H,
+      end = start + 12 * H;
+    const syms = Array.from({ length: 8 }, (_, i) => `BLOCK${i}-USDT`);
+    const protects: Protect[] = [
+      { tp: 0.02, sl: 0.02, trail: 0, hold: 4 },
+      { tp: 0.02, sl: 0.02, trail: 0.005, hold: 4 },
+      { tp: 0.02, sl: 0.02, trail: 0, hold: 4, tag: "sh" },
+      { tp: 0.02, sl: 0.02, trail: 0.005, hold: 4, tag: "sh" },
+    ];
+    const inds = ["ema-9-21@m1", "rsi-mom-14-20@m5"];
+    const tapes = inds.flatMap((ind) =>
+      protects.map((p) => {
+        const kind = p.trail ? ("trailing" as const) : ("normal" as const),
+          id = configId("follow", ind, p);
+        const rows: Trade[] = syms.flatMap((sym) =>
+          ([1, -1] as const).flatMap((side) =>
+            Array.from({ length: 92 }, (_, i) => {
+              const entryT = i < 80 ? first + (i + 1) * 8 * M : start + (i - 80) * H + M;
+              const r = i < 80 ? 0.02 : i % 3 === 0 ? -0.003 : 0.01;
+              return {
+                cfg: id,
+                sym,
+                side,
+                entryT,
+                exitT: entryT + M,
+                entry: 100,
+                exit: 100 * (1 + side * (r + DEFAULT_SETTINGS.cost)),
+                r,
+                mult: 1,
+                kind,
+                reason: r > 0 ? ("tp" as const) : ("sl" as const),
+                bars: 1,
+                mfe: Math.max(0, r),
+                mae: Math.max(0, -r),
+              };
+            }),
+          ),
+        );
+        rows.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);
+        return makeTape(id, "follow", ind, p, kind, syms, rows, [], []);
+      }),
+    );
+    const wf = defaultWalkForward(DEFAULT_SETTINGS);
+    rt = {
+      tapes,
+      settings: { cost: DEFAULT_SETTINGS.cost },
+      lastUniverse: {
+        bars: [],
+        caches: [],
+        startT: first,
+        endT: end,
+        splitT: start,
+        nowT: end,
+        baseTf: 1,
+      } as never,
+      wf: {
+        ...wf,
+        startT: start,
+        simH: 12,
+        stepH: 1,
+        portfolio: 0,
+        robustFrac: 0,
+        guardPct: 0,
+        maxOpen: 0,
+        maxPerSide: 0,
+        maxPerSymbol: 0,
+        maxPositions: 0,
+        seatPer: "config",
+        symGate: "off",
+        rangeGate: undefined,
+        preGate: false,
+        basePassed: new Set(inds.map((ind) => `follow|${ind}`)),
+        basePassedRanges: Object.fromEntries(inds.map((ind) => [`follow|${ind}`, ["", "sh"]])),
+        basePassedCells: passedCellsOf(
+          Object.fromEntries(inds.map((ind) => [`follow|${ind}`, protects.map(protectCellKey)])),
+        ),
+        coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
+        toggles: {
+          ...wf.toggles,
+          normal: true,
+          trailing: true,
+          block: true,
+          dca: false,
+          axis: false,
+        },
       },
-      { market: "synthetic" },
-    ));
-    // the matrix measures Block, not the desk's last-N seat gate
-    rt.wf.validLastN = 0;
-    rt.wf.lastN = 0;
-    rt.start();
-    await until(() => rt.status.computes >= 1 && rt.status.state === "running");
-    rt.stop();
+    };
   });
-
-  after(async () => { rt?.dispose(); await closePool(); });
 
   const cases: Array<[string, Partial<BlockConfig>]> = [
     ...BLOCK_SOURCES.map(
@@ -93,7 +152,16 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
   for (const [name, b] of cases)
     for (const mode of ["shared", "additive", "overall"] as const)
       it(`${name} · ${mode}: audit clean, stack ≤ 8×, levels and volumes consistent`, () => {
-        const block = { ...b, mode, minActiveLevel: 2, maxLevel: 6, ratio: 0.5, maxMult: 8, steps: 0, pause: 0 };
+        const block = {
+          ...b,
+          mode,
+          minActiveLevel: 2,
+          maxLevel: 6,
+          ratio: 0.5,
+          maxMult: 8,
+          steps: 0,
+          pause: 0,
+        };
         const { sim, audit } = run({ block, toggles: { block: true, blockActive: false } });
         const bad = audit.checks.filter((c) => !c.ok);
         assert.deepEqual(bad, [], JSON.stringify(bad));
@@ -106,12 +174,21 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
           if (mode === "overall") {
             // every source its own position: the volume is 1 + the sum of the per-source legs
             const legs = Object.values(x.legs ?? {}).map((v) => v ?? 0);
-            assert.ok(legs.every((v) => v > 0 && v <= 7 + 1e-9), `${x.cfg} legs ${JSON.stringify(x.legs)}`);
-            assert.ok(Math.abs(m - (1 + legs.reduce((a, v) => a + v, 0))) < 1e-5, `${x.cfg} mult ${m} legs`);
+            assert.ok(
+              legs.every((v) => v > 0 && v <= 7 + 1e-9),
+              `${x.cfg} legs ${JSON.stringify(x.legs)}`,
+            );
+            assert.ok(
+              Math.abs(m - (1 + legs.reduce((a, v) => a + v, 0))) < 1e-5,
+              `${x.cfg} mult ${m} legs`,
+            );
             assert.equal(legs.length > 0, m > 1, `${x.cfg} raised ⇔ legs`);
           } else {
             // an unadjusted entry is volume 1 at level 0; an adjusted one is 1 + ratio · level (capped)
-            assert.ok(Math.abs(m - Math.min(8, 1 + 0.5 * lv)) < 1e-9, `${x.cfg} level ${lv} mult ${m}`);
+            assert.ok(
+              Math.abs(m - Math.min(8, 1 + 0.5 * lv)) < 1e-9,
+              `${x.cfg} level ${lv} mult ${m}`,
+            );
             assert.equal(x.legs, undefined);
           }
         }
@@ -137,20 +214,33 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
           if (x.kind !== "normal" && x.kind !== "trailing") continue;
           const m = x.mult ?? 1;
           // Complete steps round down; a smaller positive request retains its fractional ratio.
-          const parts = mode === "overall" ? Object.values(x.legs ?? {}).map((v) => v ?? 0) : [m - 1];
+          const parts =
+            mode === "overall" ? Object.values(x.legs ?? {}).map((v) => v ?? 0) : [m - 1];
           // When the total cap binds, proportional source allocations can be fractional steps
           // (an Overall stack shrunk to the cap moves its legs off the grid in proportion).
           for (const p of parts)
-            assert.ok(p < 0.25 || Math.abs(p / 0.25 - Math.round(p / 0.25)) < 1e-6 || Math.abs(m - 2.5) < 1e-6, `${mode} raise ${p}`);
+            assert.ok(
+              p < 0.25 ||
+                Math.abs(p / 0.25 - Math.round(p / 0.25)) < 1e-6 ||
+                Math.abs(m - 2.5) < 1e-6,
+              `${mode} raise ${p}`,
+            );
           // maxMult caps the total stack in every type, Overall too: base plus every source share it
           assert.ok(m <= 2.5 + 1e-9, `${mode} stack ${m}`);
-          if (mode === "overall") assert.ok(parts.every((p) => p <= 1.5 + 1e-9), "every source within total extra budget");
+          if (mode === "overall")
+            assert.ok(
+              parts.every((p) => p <= 1.5 + 1e-9),
+              "every source within total extra budget",
+            );
         }
       }
       // the pause only ever lowers raises: total extra volume with a pause ≤ without
       const extra = (p: number) =>
-        run({ block: { ...block, pause: p }, toggles: { block: true, blockActive: false, normal: true }, wf: { guardPct: 0 } })
-          .sim.trades.reduce((a, x) => a + ((x.mult ?? 1) - 1), 0);
+        run({
+          block: { ...block, pause: p },
+          toggles: { block: true, blockActive: false, normal: true },
+          wf: { guardPct: 0 },
+        }).sim.trades.reduce((a, x) => a + ((x.mult ?? 1) - 1), 0);
       assert.ok(extra(3) <= extra(0) + 1e-9, `${mode}: pause ${extra(3)} vs none ${extra(0)}`);
     });
 
@@ -174,7 +264,12 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
   it("Normal off removes exactly the unadjusted base; Block Active skips every entry below its min level", () => {
     for (const mode of ["shared", "additive", "overall"] as const)
       for (const blockActive of [false, true]) {
-        const block = { sources: only("config", "direction"), maxLevel: 10, minActiveLevel: 6, mode };
+        const block = {
+          sources: only("config", "direction"),
+          maxLevel: 10,
+          minActiveLevel: 6,
+          mode,
+        };
         const on = run({ block, toggles: { block: true, blockActive, normal: true } });
         const off = run({ block, toggles: { block: true, blockActive, normal: false } });
         for (const r of [on, off])
@@ -192,13 +287,25 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
           `${mode} Active ${blockActive}: a plain entry below level ${min} executed with Normal off`,
         );
         const noGuard = { guardPct: 0 };
-        const onNg = run({ block, toggles: { block: true, blockActive, normal: true }, wf: noGuard });
-        const offBlock = run({ toggles: { block: false, blockActive: false, normal: true }, wf: noGuard });
-        const keys = (t: typeof onNg.sim.trades) => t.map((x) => `${x.cfg}|${x.sym}|${x.entryT}`).sort();
+        const onNg = run({
+          block,
+          toggles: { block: true, blockActive, normal: true },
+          wf: noGuard,
+        });
+        const offBlock = run({
+          toggles: { block: false, blockActive: false, normal: true },
+          wf: noGuard,
+        });
+        const keys = (t: typeof onNg.sim.trades) =>
+          t.map((x) => `${x.cfg}|${x.sym}|${x.entryT}`).sort();
         if (!blockActive) {
           // Normal on, Active off: nothing is skipped for Block — the same entries as Block off, unadjusted at 1×
           assert.deepEqual(keys(onNg.sim.trades), keys(offBlock.sim.trades), mode);
-          assert.ok(on.sim.trades.filter((x) => base(x.kind) && (x.level ?? 0) === 0).every((x) => (x.mult ?? 1) === 1));
+          assert.ok(
+            on.sim.trades
+              .filter((x) => base(x.kind) && (x.level ?? 0) === 0)
+              .every((x) => (x.mult ?? 1) === 1),
+          );
         } else {
           // Block Active: every executed plain / trailing entry is at or above the min level (also with Normal on),
           // and Active only removes entries
@@ -206,7 +313,10 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
             on.sim.trades.every((x) => !base(x.kind) || (x.level ?? 0) >= 6),
             `${mode}: an entry below level 6 executed with Block Active`,
           );
-          assert.ok(on.sim.trades.every((x) => !base(x.kind) || (x.mult ?? 1) > 1), `${mode}: Active entries are raised`);
+          assert.ok(
+            on.sim.trades.every((x) => !base(x.kind) || (x.mult ?? 1) > 1),
+            `${mode}: Active entries are raised`,
+          );
           assert.ok(onNg.sim.trades.length <= offBlock.sim.trades.length);
         }
         assert.ok(off.sim.trades.length <= on.sim.trades.length);

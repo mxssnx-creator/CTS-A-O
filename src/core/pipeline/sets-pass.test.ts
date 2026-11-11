@@ -8,9 +8,9 @@ import { baseRangeRules } from "../server/runtime.server.ts";
 
 const ALL = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
 // These synthetic samples explicitly carry Last-40 evidence; range-default tests cover Last-30 separately.
-const gates = baseSetsGates({ ...DEFAULT_SETTINGS.gates, baseRangeLastN: { micro: 40, minimal: 40 } });
+const gates = baseSetsGates({ ...DEFAULT_SETTINGS.gates, positionWindows:{...DEFAULT_SETTINGS.gates.positionWindows!,byRange:{mc:{base:40},mn:{base:40}}}, baseRangeLastN: { micro: 40, minimal: 40 } });
 const applies = baseRangeRules(DEFAULT_SETTINGS).applies;
-const recent = (pf: number) => ({ requested: 40, n: 40, gp: pf, gl: 1, stop: 1 });
+const recent = (pf: number) => ({ requested: 40, n: 40, gp: pf*10, gl: 10, stop: 1, mdd:1 });
 const good = { n: 200, pf: 1.5, net: 5, mdd: 1, baseLast: recent(1.5) };
 const bad = { n: 200, pf: 0.8, net: -1, mdd: 1, baseLast: recent(.8) };
 

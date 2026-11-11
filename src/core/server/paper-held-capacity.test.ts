@@ -22,7 +22,7 @@ for (const mode of ["full", "fast"] as const) {
     rt.stop();
     try {
       rt.wf = { ...defaultWalkForward(DEFAULT_SETTINGS), rangeGate: undefined, maxOpen: 1 };
-      const raw: Trade[] = Array.from({ length: 30 }, (_, i) => ({
+      const raw: Trade[] = Array.from({ length: 40 }, (_, i) => ({
         cfg: CFG, sym: SYM, side: 1, entryT: T - 3 * H + i * 60_000, exitT: T - 2 * H + i * 60_000,
         entry: 100, exit: 102, r: .02, unitR: .02, mult: 1, vol: 1, kind: "normal", reason: "tp",
         bars: 1, mfe: 0, mae: 0,
@@ -57,7 +57,7 @@ for (const mode of ["full", "fast"] as const) {
     rt.stop();
     try {
       rt.wf = { ...defaultWalkForward(DEFAULT_SETTINGS), rangeGate: undefined, maxOpen: 1 };
-      const raw: Trade[] = Array.from({ length: 30 }, (_, i) => ({
+      const raw: Trade[] = Array.from({ length: 40 }, (_, i) => ({
         cfg: CFG, sym: SYM, side: 1, entryT: T - 3 * H + i * 60_000, exitT: T - 2 * H + i * 60_000,
         entry: 100, exit: 102, r: .02, unitR: .02, mult: 1, vol: 1, kind: "normal", reason: "tp",
         bars: 1, mfe: 0, mae: 0,

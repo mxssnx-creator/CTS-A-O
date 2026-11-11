@@ -233,6 +233,7 @@ describe("auto-adjust", () => {
         dcaActive: false,
         axis: false,
       },
+      gates: { positionWindows: null },
       lastN: 0,
       lastNMinPf: 1,
       block: { ratio: 0.2, maxLevel: 6, minActiveLevel: 1, maxMult: 2.5 },

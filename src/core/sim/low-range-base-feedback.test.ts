@@ -19,7 +19,7 @@ const u = makeUniverse([
   barsFromCandles("A", tf, syntheticCandles("A", tf, 1800, Date.UTC(2026, 9, 1), 1)),
   barsFromCandles("B", tf, syntheticCandles("B", tf, 1800, Date.UTC(2026, 9, 1), 5)),
 ]);
-const grid = { ...DEFAULT_LOW_RANGE_GRID, enabled: true, steps: [2], slRatios: [1, 2], trailRatios: [0, 1] };
+const grid = { ...DEFAULT_LOW_RANGE_GRID, coordination: "short" as const, holdAuto: false, maxSlRatio: undefined, maxTrailRatio: undefined, enabled: true, steps: [2], slRatios: [1, 2], trailRatios: [0, 1] };
 const all = lowRangeGridProtects(grid, cost);
 
 function variant(kind: StratKind): [Protect, Protect] {
@@ -73,7 +73,7 @@ for (const kind of ["normal", "trailing", "trailing-only"] as const) describe(`L
     assert.equal(cellAllowed(adjusted[0], proof([bk])), true);
     assert.equal(baseAllowsTape(adjusted[0], proof([bk])), true);
     assert.equal(baseAllowsTape(adjusted[0], proof([ak])), false);
-    const defaults = defaultWalkForward(DEFAULT_SETTINGS);
+    const defaults = defaultWalkForward({...DEFAULT_SETTINGS,gates:{...DEFAULT_SETTINGS.gates,positionWindows:null}});
     const options = { ...defaults, ...proof([bk]), probe: { perRange: 0, perCell: 1 },
       normalBaseMinPf: 0, rangeOpts: undefined,
       toggles: { ...defaults.toggles, normal: true, trailing: true, block: false, blockActive: false } };

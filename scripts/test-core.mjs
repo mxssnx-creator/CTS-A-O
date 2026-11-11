@@ -99,7 +99,7 @@ export function coreTestInvocation(argv = [], sourceEnv = process.env, root = RO
       "--test",
       `--test-concurrency=${concurrency}`,
       ...(shard ? [`--test-shard=${shard}`] : []),
-      ...(slow ? ["--test-name-pattern=stress: a storm|backtests a preset over"] : []),
+      ...(slow ? ["--test-name-pattern=computes on the synthetic feed and publishes every stage|stress: a storm|backtests a preset over"] : []),
       ...filters,
       ...selected,
     ],

@@ -1,3 +1,5 @@
+import { positionCounts, positionStats } from "../position-windows.ts";
+import { rangeOfId } from "../minimal-coord.ts";
 // Continuous independent evaluations: each config is scored on its own, over several time windows and
 // last-trade windows ending "now". A window with too few trades is idle (neither pass nor fail).
 import { EVAL_TIME_WINDOWS_H, EVAL_TRADE_WINDOWS } from "../config.ts";
@@ -21,6 +23,33 @@ function minTradesFor(hours: number, g: Gates): number {
 /** `tape` must be in exit order. */
 export function evaluateConfig(cfg: string, tape: readonly Trade[], o: EvalOptions): EvalResult {
   const g = o.gates;
+  if(g.positionWindows) {
+    const policy=g.positionWindows, counts=positionCounts(policy,cfg.split("|")[1]?.startsWith("sig-")?"sig":/\|hx/.test(cfg)?"exit":rangeOfId(cfg)||"wide",cfg);
+    const groups=new Map<string,Trade[]>();
+    for(const tr of tape) if(tr.cfg===cfg&&tr.exitT<o.nowT) {
+      const key=JSON.stringify([tr.sym,tr.side]);if(!groups.has(key))groups.set(key,[]);groups.get(key)!.push(tr);
+    }
+    // Empty opposite sides are explicit unavailable contexts, never a pooled success.
+    for(const tr of tape) for(const side of [1,-1]) {const key=JSON.stringify([tr.sym,side]);if(!groups.has(key))groups.set(key,[]);}
+    const windows:EvalWindow[]=[],scores:number[]=[];let valid=0;
+    for(const [key,rows] of groups) {
+      rows.sort((a,b)=>a.exitT-b.exitT||a.entryT-b.entryT);
+      const [sym,side]=JSON.parse(key) as [string,number];let all=true;
+      for(const stage of ["base","main","real","entry"] as const) {
+        const n=counts[stage],sample=positionStats(rows.map(r=>r.r),n),stop=Number(/\|sl([\d.]+)/.exec(cfg)?.[1])/100;
+        const prior=g.lossPrior?stop:0;
+        const pass=sample.complete&&sample.known&&sample.net>0&&sample.gp>=Math.max(1.05,g.minPf)*(sample.gl+prior)&&
+          sample.maxDrawdownPositions<=policy.maxDrawdownPositions&&!(g.maxDdr&&sample.mdd/sample.net>g.maxDdr)&&
+          sample.positiveShare>=(g.minGreen??.5)&&sample.lcb>0;
+        windows.push({key:`${sym}/${side}/${stage}/N${n}`,kind:"trades",span:n,n:sample.n,pf:sample.known?statsOf(rows.slice(-n)).pf:NaN,
+          net:sample.net*100,ddt:0,wr:sample.positiveShare,pass});
+        all&&=pass;if(stage==="main"&&pass)scores.push(sample.lcb);
+      }
+      if(all)valid++;
+    }
+    const passed=windows.filter(w=>w.pass).length;
+    return {cfg,at:o.nowT,windows,passRatio:windows.length?passed/windows.length:0,success:valid>0,score:valid?Math.max(0,...scores):0};
+  }
   // The caller may retain a complete replay tape. Only settled closes at this
   // decision clock belong to its time windows, Last-N and ranking score.
   const after = (time: number, end = tape.length) => {

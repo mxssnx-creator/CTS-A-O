@@ -42,7 +42,7 @@ function fixture(local: boolean, hist: boolean, coord = false) {
       general: false, long: false },
     exitStrategy: { enabled: false },
     tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 0 },
-    gates: { minPf: 1.5, minTrades: 1, maxDdr: 0 },
+    gates: { positionWindows: null, minPf: 1.5, minTrades: 1, maxDdr: 0 },
     signals: signalSettings({ enabled: true, sourcesMode: "allow", sources: { "ema-cross": true, "ema-slope": true },
       lanes: [15], ranges: { short: true, medium: false }, holdH: 1,
       normal: { tp: [0.02], slOfTp: [1] }, trailing: { tp: [0.03], trailOfTp: [0.5], slOfTp: 1 },

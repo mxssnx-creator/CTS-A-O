@@ -240,7 +240,8 @@ describe("short-history lanes are judged on the history they have", () => {
       [],
       [],
     );
-    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), longH: 336, preGate: false, validLastN: 0 };
+    // Frozen historical clock-window contract; new count windows never clip by this horizon.
+    const o = { ...defaultWalkForward({...DEFAULT_SETTINGS,gates:{...DEFAULT_SETTINGS.gates,positionWindows:null}}), longH: 336, preGate: false, validLastN: 0 };
     // without the history start: three of four sub-windows of the 14-day window are empty → rejected
     assert.equal(selectDurable([tape], now, o, new Set()).picks.length, 0);
     tape.fromT = 264 * H;

@@ -875,6 +875,7 @@ const RANGE_OF_LETTER: Record<string, string> = {
   G: "|gn",
   L: "|lg",
   M: "|mp",
+  Z: "|lr",
   E: "",
   Q: "@sig",
 };

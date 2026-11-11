@@ -74,8 +74,8 @@ describe("memory guard", () => {
   });
 
   it("a lighter compute drops micro, then minimal too; other ranges and the wide grid stay", () => {
-    const ps = [{ tag: "" }, { tag: "mc" }, { tag: "mn" }, { tag: "sh" }, {}];
-    assert.equal(fallbackProtects(ps, 0).length, 5);
+    const ps = [{ tag: "" }, { tag: "mc" }, { tag: "mn" }, { tag: "sh" }, {}, { tag: "lr" }];
+    assert.equal(fallbackProtects(ps, 0).length, 6);
     assert.deepEqual(
       fallbackProtects(ps, 1).map((p) => p.tag),
       ["", "mn", "sh", undefined],
@@ -162,9 +162,9 @@ describe("memory fallback: partial processing carries a range, never switches it
     const { fallbackCarriedTags, fallbackLabel } = await import("./memguard.server.ts");
     const { withCarried } = await import("./runtime.server.ts");
     assert.deepEqual([...fallbackCarriedTags(0)], []);
-    assert.deepEqual([...fallbackCarriedTags(1)], ["mc"]);
-    assert.deepEqual([...fallbackCarriedTags(2)].sort(), ["mc", "mn"]);
-    assert.equal(fallbackLabel(1), "micro carried");
+    assert.deepEqual([...fallbackCarriedTags(1)], ["mc", "lr"]);
+    assert.deepEqual([...fallbackCarriedTags(2)].sort(), ["lr", "mc", "mn"]);
+    assert.equal(fallbackLabel(1), "micro and Low-Range carried");
     const tp = (id: string, ind: string, tag?: string) => ({ id, ind, protect: { tp: 0.01, sl: 0.01, trail: 0, hold: 8, ...(tag ? { tag } : {}) } }) as never;
     const prev = [
       tp("a|ind|mc1", "ind", "mc"),

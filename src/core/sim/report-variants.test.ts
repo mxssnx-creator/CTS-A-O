@@ -3,7 +3,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { defaultWalkForward } from "./walkforward.ts";
-import { DEFAULT_SETTINGS } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS } from "../config.ts";
+// Freeze this historical window-policy contract; current count admission has independent scope tests.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import type { Trade } from "../domain/types.ts";
 import {
   effectOf,
@@ -125,7 +128,7 @@ describe("walk-forward variants", () => {
     // per indication: Micro alone and every range (pooled is the as-run value here)
     assert.deepEqual(
       vs.filter((v) => v.id.startsWith("sig:engineSidePerInd-")).map((v) => v.opts!.engineSideAccept!.perInd),
-      [["mc"], ["mc", "mn", "mp", "sh", "gn", "lg", "wide"]],
+      [["mc"], ["mc", "mn", "mp", "sh", "gn", "lg", "lr", "wide"]],
     );
     // windows 3 / 12 / 48 h, PF 1.2 / 1.3, 10 / 60 closes
     assert.equal(alts.length, 7, alts.map((v) => v.label).join(", "));

@@ -8,6 +8,20 @@ import { coreTestInvocation } from "./test-core.mjs";
 
 const runner = resolve("scripts/test-core.mjs");
 
+test("the explicit slow job includes full-catalog publication, cancellation storms and queued backtests", () => {
+  const v = coreTestInvocation(["--slow"], {});
+  assert.equal(v.env.CTS_CORE_SLOW, "1");
+  assert.deepEqual(v.files, ["src/core/server/runtime.test.ts"]);
+  const filter = v.args.find(x => x.startsWith("--test-name-pattern="));
+  const pattern = new RegExp(filter.slice("--test-name-pattern=".length));
+  for (const title of [
+    "computes on the synthetic feed and publishes every stage",
+    "stress: a storm of mixed operations always ends in a clean compute with the last settings",
+    "backtests a preset over the last days in the background and keeps the result",
+  ]) assert.match(title, pattern);
+  assert.equal(coreTestInvocation([], {}).env.CTS_CORE_SLOW, "0");
+});
+
 test("core compute workers default to one and an explicit two leaves serial file execution unchanged", () => {
   const files = ["src/core/sim/symbol-directions.test.ts"];
   const defaults = coreTestInvocation(files, { CTS_CORE_WORKERS: "8" });

@@ -49,7 +49,8 @@ const small = {
     cooldown: false,
     cooldownBars: 4,
   },
-  gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
+  // Historical synthetic ownership lifecycle; current count economics have separate causal fixtures.
+  gates: { positionWindows: null, minPf: 1.05, minTrades: 3, maxDdr: 0 },
   signals: signalSettings({
     exits: "pct",
     sourcesMode: "allow",

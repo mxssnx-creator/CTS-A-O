@@ -1,3 +1,5 @@
+import { migratePositionWindows } from "./position-windows-migration.server.ts";
+import { mainnetPositionWindows } from "../position-windows.ts";
 import { minimumStopFraction, normalizeMinSlDistancePct } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, validatedSetPf, type ValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
@@ -59,7 +61,7 @@ import {
   WIDE_TARGET_SL,
 } from "../minimal-coord.ts";
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
-import { isLowRangeInd } from "../indications/low-range.ts";
+import { isLowRangeInd, lowRangeEnabled, lowRangeTag } from "../indications/low-range.ts";
 import { PRE_CONTEXT_FOCUS_21OCT } from "../indications/context-default-focus.ts";
 import { isBreakRelInd } from "../indications/break-config.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
@@ -1251,6 +1253,7 @@ export class CoreRuntime {
     migrateMicroContextFocus(db);
     migrateHistoricExitOptIn(db);
     migrateMinimumProtectionPolicy(db);
+    migratePositionWindows(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
     if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {
@@ -2837,6 +2840,7 @@ export class CoreRuntime {
     const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${evaluationHistorySettings(this.settings, this.wf).historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`;
     const prevCompute = computeKey(this.settings, this.wf);
     const next = mergeSettings(this.settings, patch);
+    if(patch.gates) checkSettings({gates:next.gates});
     if (patch.grid) {
       checkLowRangeComplete(next.grid);
       checkRangeReplacementsComplete(next.grid);
@@ -2917,6 +2921,11 @@ export class CoreRuntime {
       // (CTS_CORE_MAINNET_WAIVE_FLOORS=1): each config then trades on its own Base evaluation and window gates
       // (min PF, net, DDT, DDR) like the demo desk — settings, presets and patches never switch the floors off
       if (process.env.CTS_CORE_MAINNET_WAIVE_FLOORS !== "1") {
+        if(this.wf.gates.positionWindows) {
+          const policy=mainnetPositionWindows(this.wf.gates.positionWindows,MAINNET_VALID_LAST_N,MAINNET_LAST_N,MAINNET_SIGNAL_VALID_LAST_N);
+          this.wf.gates={...this.wf.gates,positionWindows:policy};
+          this.settings.gates={...this.settings.gates,positionWindows:policy};
+        }
         this.wf.lastN = Math.max(MAINNET_LAST_N, this.wf.lastN ?? 0);
         this.wf.validLastN = Math.max(MAINNET_VALID_LAST_N, this.wf.validLastN ?? 0);
         this.wf.signalValidLastN = Math.max(MAINNET_SIGNAL_VALID_LAST_N, this.wf.signalValidLastN ?? 0);
@@ -4387,7 +4396,7 @@ export class CoreRuntime {
     // Base on every CPU core: the lane combos are dealt round-robin over the worker pool (each worker a mix of
     // 1m … 30m work); the main thread only waits, so the server stays responsive. In-process fallback.
     const computeCombos = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid),
-      s.grid.lowRange?.enabled === true && !!s.grid.short, rangeMinTfOf(s.grid).sh ?? 0);
+      lowRangeEnabled(s.grid), rangeMinTfOf(s.grid)[lowRangeTag(s.grid.lowRange)] ?? 0);
     const engineExitPairs = s.exitStrategy.enabled
       ? exitStrategyPairs(computeCombos, uStage, s.exitStrategy, s.disabledKinds)
       : [];
@@ -4841,6 +4850,7 @@ export class CoreRuntime {
           cost: s.cost,
           minPf: s.exitStrategy.minPf,
           minTrades: s.exitStrategy.minValidationTrades,
+          positionWindows:s.gates.positionWindows,
           maxDdr: s.exitStrategy.maxDdr,
           minSl: s.protectFloor.minSl,
           minTrail: s.protectFloor.minTrail,
@@ -5792,6 +5802,10 @@ export class CoreRuntime {
     // the steps the simulation really takes (its start is floored to the hour: up to one step more than
     // simH / stepH, which ran the bar past 100 %)
     const steps = Math.max(1, walkForwardSteps(wu, wf));
+    const positionPolicy = wf.gates?.positionWindows;
+    const validationProgress = positionPolicy
+      ? `positions Main / Real / Entry ${positionPolicy.main} / ${positionPolicy.real} / ${positionPolicy.entry} · own range/config overrides apply`
+      : `engine ${wf.preH}h pre / Last-${wf.validLastN ?? 0}${sig.enabled ? ` · Signals ${signalHistoryHours(wf)}h / Last-${wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN ?? 0}` : ""} · entry Last-${wf.lastN}`;
     this.setStage("Real", 0, steps, `${wf.simH}h sim · step 0/${steps}`);
     const sim = await this.researchSimulation(wu, tapes, wf, gen, (v) => {
       if (v >= 0) {
@@ -5800,7 +5814,7 @@ export class CoreRuntime {
           "Real",
           step,
           steps,
-          `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · engine ${wf.preH}h pre / Last-${wf.validLastN ?? 0}${sig.enabled ? ` · Signals ${signalHistoryHours(wf)}h / Last-${wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN ?? 0}` : ""} · entry Last-${wf.lastN}`,
+          `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · ${validationProgress}`,
         );
       }
     }, signal);
@@ -6051,7 +6065,7 @@ export class CoreRuntime {
       };
       const measuredRuns = pipeline.s1.filter((r) => isMeasuredIndication(r.ind));
       const countPairs = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid),
-        s.grid.lowRange?.enabled === true && !!s.grid.short, rangeMinTfOf(s.grid).sh ?? 0)
+        lowRangeEnabled(s.grid), rangeMinTfOf(s.grid)[lowRangeTag(s.grid.lowRange)] ?? 0)
         .filter((r) => isMeasuredIndication(r.ind))
         .map((r) => `${r.bot}|${r.ind}`);
       const admittedPairKeys = passed
@@ -6794,6 +6808,7 @@ export class CoreRuntime {
     const excess = 0;
     if (lc) this.db.kvSet("liveCost", { ...lc, model: this.settings.cost, at: Date.now() });
     if (
+      this.settings.fees.mode !== "manual" &&
       a.autoCost &&
       lc &&
       lc.rt > this.settings.cost + 0.0002 &&
@@ -8266,7 +8281,7 @@ export class CoreRuntime {
     const exitPairs = exitU
       ? exitStrategyPairs(
           allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid),
-            s.grid.lowRange?.enabled === true && !!s.grid.short, rangeMinTfOf(s.grid).sh ?? 0),
+            lowRangeEnabled(s.grid), rangeMinTfOf(s.grid)[lowRangeTag(s.grid.lowRange)] ?? 0),
           exitU,
           s.exitStrategy,
           s.disabledKinds,
@@ -8309,7 +8324,7 @@ export class CoreRuntime {
     // the engine's Micro lane floor (Micro's own was applied under both rules: with Minimal on Micro's indications a
     // Micro pair on a faster lane never reached its Minimal cells)
     const combos = allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid),
-      s.grid.lowRange?.enabled === true && !!s.grid.short, rangeMinTfOf(s.grid).sh ?? 0);
+      lowRangeEnabled(s.grid), rangeMinTfOf(s.grid)[lowRangeTag(s.grid.lowRange)] ?? 0);
     const beforeT = (b: Bars) => {
       let z = 0;
       while (z < b.n && b.t[z] < startT) z++;
@@ -8392,6 +8407,7 @@ export class CoreRuntime {
         cost: s.cost,
         minPf: s.exitStrategy.minPf,
         minTrades: s.exitStrategy.minValidationTrades,
+          positionWindows:s.gates.positionWindows,
         maxDdr: s.exitStrategy.maxDdr,
         minSl: s.protectFloor.minSl,
         minTrail: s.protectFloor.minTrail,
@@ -10589,6 +10605,7 @@ export class CoreRuntime {
     // the desk's own exchange closes judge an acceptance group once they number its minTrades (live-record.ts)
     const exchange = {
       stats: (k: string, t: number, h: number) => this.exchangeAccept().stats(k, t, h),
+      statsN:(k:string,t:number,n:number)=>this.exchangeAccept().statsN?.(k,t,n)??{n:0,pf:NaN},
     };
     guard.exchange = exchange;
     let i = 0;
@@ -11111,10 +11128,11 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
       minPf: n(a.minPf, 1.05, 0, 10),
       hours: Math.round(n(a.hours, 24, 1, 336)),
       minTrades: Math.round(n(a.minTrades, 30, 1, 100_000)),
+      ...(a.lastN !== undefined ? { lastN: Math.round(n(a.lastN,30,1,500)) } : {}),
       ...(Array.isArray(a.perInd)
         ? {
             perInd: a.perInd.filter((r) =>
-              ["mc", "mn", "mp", "sh", "gn", "lg", "wide"].includes(r),
+              ["mc", "mn", "mp", "sh", "gn", "lg", "lr", "wide"].includes(r),
             ),
           }
         : {}),
@@ -11124,7 +11142,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     // per range ("mc" … "lg", "wide", "sig"): whole numbers 0 … 1000 (0 = no cap); anything else dropped
     const src = (p.entryCrowd ?? {}) as Record<string, unknown>;
     const out: Record<string, number> = {};
-    for (const k of ["mc", "mn", "mp", "sh", "gn", "lg", "wide", "sig"]) {
+    for (const k of ["mc", "mn", "mp", "sh", "gn", "lg", "lr", "wide", "sig"]) {
       const v = Number(src[k]);
       if (Number.isFinite(v) && v > 0) out[k] = Math.min(1000, Math.round(v));
     }
@@ -11481,7 +11499,10 @@ export function migrateBasePf11(db: CoreDb): void {
 export function migrateRangePfFloors(db: CoreDb): void {
   const before = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.1, baseSetsMinPf: 1.1,
     rangeMinPf: { micro: 1.1, minimal: 1.1, short: 1.1, general: 1.1, long: 1.1 } } };
-  migratePfDefaults(db, "rangePfFloors20261029", before, DEFAULT_SETTINGS, 1.1, 1.05);
+  // This migration predates the independent Low-Range policy. Its result stays frozen across catalog additions.
+  const after = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.25, baseSetsMinPf: 1.25,
+    rangeMinPf: { micro: 1.05, minimal: 1.08, short: 1.12, general: 1.25, long: 1.5 } } };
+  migratePfDefaults(db, "rangePfFloors20261029", before, after, 1.1, 1.05);
 }
 
 function migratePfDefaults(db: CoreDb, policy: string, oldDefaults: CoreSettings, nextDefaults: CoreSettings,
@@ -11560,9 +11581,11 @@ function migrateMicroMinimalBase30(db: CoreDb): void {
   const backtests = db.kvGet<Record<string, unknown>>("presetBacktests");
   const series = db.kvGet<Record<string, unknown>>("presetSeries");
   const backup = structuredClone({ presets, presetBacktests: backtests, presetSeries: series });
-  const oldDefaults: CoreSettings = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, baseRangeLastN: undefined } };
+  // Freeze this historical migration at its original policy. A later count-policy default must not mask it.
+  const historicalDefaults: CoreSettings = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, positionWindows: null } };
+  const oldDefaults: CoreSettings = { ...historicalDefaults, gates: { ...historicalDefaults.gates, baseRangeLastN: undefined } };
   const oldDesk = mergeSettings(oldDefaults, settings);
-  const newDesk = mergeSettings(DEFAULT_SETTINGS, settings);
+  const newDesk = mergeSettings(historicalDefaults, settings);
   const byId = new Map([...(presets ?? []), ...ALL_RESEARCH_PRESETS].map((p) => [p.id, p]));
   const changed = (preset: Preset | undefined) => {
     if (!preset) return true;
@@ -12228,7 +12251,7 @@ export function microOwnInds(g: CoreSettings["grid"] | undefined): MicroIndRule 
 }
 
 /** every range tag a protect grid can carry */
-export const ALL_RANGE_TAGS = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
+export const ALL_RANGE_TAGS = ["mc", "mn", "mp", "sh", "gn", "lg", "lr"] as const;
 
 /** Historic signal configs use the eventual stage PF floors; coordinator variants also keep each enabled range's own floor. */
 function coordinatorHistValidationOf(
@@ -12326,6 +12349,7 @@ export function baseRangeRules(
     minimalPlus?: { enabled?: boolean };
   };
   const RANGE_GRID_KEY: Record<string, string> = {
+    lr: "lowRange",
     mc: "micro",
     mn: "minimal",
     sh: "short",
@@ -12335,7 +12359,8 @@ export function baseRangeRules(
   const rangeOn = (tag: string) =>
     !tag ||
     (!off.has(tag) &&
-      (tag === "mp" ? !!rangeGrid.minimalPlus?.enabled : !!rangeGrid[RANGE_GRID_KEY[tag]]));
+      (tag === "lr" ? lowRangeEnabled(s.grid) && lowRangeTag(s.grid.lowRange) === "lr" :
+       tag === "mp" ? !!rangeGrid.minimalPlus?.enabled : !!rangeGrid[RANGE_GRID_KEY[tag]]));
   return {
     rangeOn,
     applies: {
@@ -12405,6 +12430,8 @@ export function basePass(
           .filter((tag) => rangeAppliesTo(r.ind, tag, applies)) : [];
     if (evalFams) noTpTags = familyTags(evalFams, r.bot, r.ind, noTpTags);
     const noTpProof = (r.trailingOnlyCells ?? []).filter((k) => noTpTags.includes(k.slice(0, k.indexOf("|"))));
+    // Explicit empty proof survives even when the entire pair fails Base; builders must fail closed.
+    if (s.grid?.trailingOnly === true) pairTrailingOnlyCells[`${r.bot}|${r.ind}`] = noTpProof;
     if (!tags.length && !noTpProof.length) return false;
     qualifiedTags[`${r.bot}|${r.ind}`] = [...tags];
     // the ranges built: the passed ones, or (baseRanges off) every range that applies, the unpassed ones with every

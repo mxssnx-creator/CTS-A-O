@@ -3,7 +3,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { configEval, defaultWalkForward, execDecision, makeTape, selectAt, selectFixed, lastNOk, type WalkForwardOptions } from "./walkforward.ts";
-import { DEFAULT_SETTINGS } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS } from "../config.ts";
+// Freeze this historical window-policy contract; current count admission has independent scope tests.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import { minPfOf } from "../minimal-coord.ts";
 import { basePassTags, rangeCellPass } from "../pipeline/pipeline.ts";
 import { checkSettings } from "../settings-check.ts";
@@ -86,7 +89,7 @@ describe("per-range stage min PF", () => {
 
   it("the configured defaults apply the intended stage floor to each range", () => {
     const g = DEFAULT_SETTINGS.gates;
-    assert.deepEqual(g.rangeMinPf, { micro: 1.05, minimal: 1.08, short: 1.12, general: 1.25, long: 1.5 });
+    assert.deepEqual(g.rangeMinPf, { micro: 1.05, minimal: 1.08, short: 1.12, general: 1.25, long: 1.5, lowRange: 1.08 });
     assert.deepEqual(
       ["mc", "mn", "mp", "sh", "gn", "lg", undefined].map((tag) => minPfOf(g, tag)),
       [1.05, 1.08, 1.08, 1.12, 1.25, 1.5, g.minPf],
