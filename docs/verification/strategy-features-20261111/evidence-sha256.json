@@ -1,0 +1,22 @@
+{
+  "all-cells.csv.gz": {
+    "bytes": 2051964,
+    "sha256": "e42fb206d3a60b9fe04cccd6fbbb8ea651d73cc571fccc6c6d5ef4a07e7f005e"
+  },
+  "public-bars-1m.json.gz": {
+    "bytes": 1089758,
+    "sha256": "9490c5aa1fbae26e56e73d66d6768abc31ae5e9cd196815df9208e875c1dab47"
+  },
+  "public-bars-5m.json.gz": {
+    "bytes": 367680,
+    "sha256": "1c19f6cc5b26341226c9dfd8593f031ffb9fa29bb0298f2b7a5b0412bbd43112"
+  },
+  "report.html": {
+    "bytes": 79183,
+    "sha256": "1d53b269bf54d936eb59a5af8c669dd63eb1706512b70f6a08c0ccc9873e4570"
+  },
+  "results.json": {
+    "bytes": 138758,
+    "sha256": "8f949ec3c75900eee2452bf4cc1c0342ffeb5b3336b31d39dc82a15023ea8160"
+  }
+}

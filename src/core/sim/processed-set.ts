@@ -1,3 +1,4 @@
+import {blockPrefix,blockRequired,blockPolicyKey,checkBlockPolicy,evaluateBlocks,type BlockPolicy} from "../../../shared/cts-lastn/blocks.ts";
 import { profitFactor } from "../metrics/stats.ts";
 import { negativeLastN, negativeLastNDecision, type NegativeLastN } from "../negative-last-n.ts";
 
@@ -17,9 +18,11 @@ export type ProcessedVerdict = {
   state: "insufficient" | "unknown" | "failed" | "qualified";
   n: number;
   pf: number | null;
-  blockedBy?: "negative-filter";
+  blockedBy?: "negative-filter" | "signed-block";
+  blockPolicyKey?: string;
 };
 export interface ProcessedPolicy {
+  blocks?: {validation?:BlockPolicy;real?:BlockPolicy};
   validationN: number;
   realN: number;
   minPf: number;
@@ -98,18 +101,21 @@ export function processedSetKey(i: ProcessedSetIdentity): string {
 const entryKey = (i: ProcessedSetIdentity, id: string, entryT: number) =>
   JSON.stringify([processedSetKey(i), id, entryT]);
 function validPolicy(p: ProcessedPolicy | undefined, capacity: number): p is ProcessedPolicy {
-  try { if (p?.negativeFilter && negativeLastN(p.negativeFilter)!.windows.some(n=>n>capacity)) return false; }
+  try { if(p?.blocks)for(const [stage,b] of Object.entries(p.blocks)){if(!["validation","real"].includes(stage))return false;checkBlockPolicy(b);if(blockRequired(b)>capacity)return false;}
+    if (p?.negativeFilter && negativeLastN(p.negativeFilter)!.windows.some(n=>n>capacity)) return false; }
   catch { return false; }
   return !!p && Number.isSafeInteger(p.validationN) && p.validationN >= 1 && p.validationN <= capacity &&
     Number.isSafeInteger(p.realN) && p.realN >= 1 && p.realN <= capacity &&
     Number.isFinite(p.minPf) && p.minPf > 1;
 }
-function validVerdict(v: ProcessedVerdict | null | undefined, n: number, minPf: number, negative?: NegativeLastN): v is ProcessedVerdict {
+function validVerdict(v: ProcessedVerdict | null | undefined, n: number, minPf: number, negative?: NegativeLastN,blocks?:BlockPolicy): v is ProcessedVerdict {
+  if(blocks)n=blockRequired(blocks);
+  if((v?.blockPolicyKey??null)!==(blocks?blockPolicyKey(blocks):null))return false;
   if (!v || !Number.isSafeInteger(v.n) || v.n < 0 || v.n > n) return false;
-  if (v.blockedBy && (v.state !== "failed" || !negative || v.blockedBy !== "negative-filter")) return false;
+  if (v.blockedBy && (v.state !== "failed" || !(v.blockedBy==="signed-block"?blocks:negative) || !["negative-filter","signed-block"].includes(v.blockedBy))) return false;
   if (v.state === "insufficient") return v.n < n && v.pf === null;
   if (v.state === "unknown") return v.n > 0 && v.pf === null;
-  if (v.state === "failed") return v.n === n && typeof v.pf === "number" && Number.isFinite(v.pf) && v.pf >= 0 && (v.pf < minPf || v.blockedBy === "negative-filter");
+  if (v.state === "failed") return v.n === n && typeof v.pf === "number" && Number.isFinite(v.pf) && v.pf >= 0 && (v.pf < minPf || Boolean(v.blockedBy));
   if (v.state === "qualified") return v.n === n && typeof v.pf === "number" && Number.isFinite(v.pf) && v.pf >= minPf;
   return false;
 }
@@ -163,7 +169,8 @@ export class ProcessedSetBook {
    * Without beforeT this reports the latest completed record, including closes at the book's clock.
    */
   verdict(identity: ProcessedSetIdentity, source: ProcessedStage, n: number, minPf: number,
-    beforeT?: number, negative?: NegativeLastN): ProcessedVerdict {
+    beforeT?: number, negative?: NegativeLastN,blocks?:BlockPolicy): ProcessedVerdict {
+    if(blocks){checkBlockPolicy(blocks);n=blockRequired(blocks);}
     const filter = negativeLastN(negative);
     if (filter?.windows.some(w=>w>this.capacity)) throw new RangeError("negative window exceeds capacity");
     if (!stages.includes(source) || !Number.isSafeInteger(n) || n < 1 || n > this.capacity ||
@@ -179,6 +186,11 @@ export class ProcessedSetBook {
         if (history[mid].exitT < beforeT) lo = mid + 1; else hi = mid;
       }
       end = lo;
+    }
+    if(blocks){
+      const v=evaluateBlocks(blockPrefix(history.slice(Math.max(0,end-n),end).reverse().map(x=>x.unitReturn),n),blocks,minPf);
+      const pf=v.long.pf===Infinity?profitFactor(v.long.gp,0):v.long.pf;
+      return {state:v.state,n:v.count,pf:v.state==="unknown"||v.state==="insufficient"?null:pf,blockPolicyKey:v.key,...(v.state==="failed"?{blockedBy:"signed-block" as const}:{})};
     }
     const values = history.slice(Math.max(0, end - n), end);
     if (values.some((x) => x.unitReturn === null || !Number.isFinite(x.unitReturn)))
@@ -208,11 +220,12 @@ export class ProcessedSetBook {
       if (!nonempty(p.id) || ids.has(p.id) || !["major", "minor", "independent", "additional"].includes(p.role) || !validPolicy(p, this.capacity))
         throw new RangeError("invalid processed lane policy");
       ids.add(p.id);
-      const own = { ...identity, lane: JSON.stringify([identity.lane, p.id, p.role, p.validationN, p.realN, p.minPf, negativeLastN(p.negativeFilter)]) };
-      this.verdict(own, "postBase", p.validationN, p.minPf, entryT, p.negativeFilter);
+      const own = { ...identity, lane: JSON.stringify([identity.lane, p.id, p.role, p.validationN, p.realN, p.minPf, negativeLastN(p.negativeFilter),...(p.blocks?[p.blocks]:[])]) };
+      this.verdict(own, "postBase", p.validationN, p.minPf, entryT, p.negativeFilter,p.blocks?.validation);
       const key = entryKey(own, entryId, entryT);
       if (this.open.has(key) || (entryT === this.clock && this.seenAtClock.has(key))) throw new Error("duplicate processed entry");
       return { own, policy: { validationN: p.validationN, realN: p.realN, minPf: p.minPf,
+        ...(p.blocks?{blocks:structuredClone(p.blocks)}:{}),
         ...(p.negativeFilter ? {negativeFilter:negativeLastN(p.negativeFilter)} : {}) } };
     });
     if (!nonempty(entryId)) throw new TypeError("invalid processed entry");
@@ -225,8 +238,8 @@ export class ProcessedSetBook {
     if (!Number.isFinite(entryT) || entryT < 0 || entryT < this.clock) throw new RangeError("processed events must be chronological");
     // Validate both windows before mutating the clock or records.
     if (!validPolicy(policy,this.capacity)) throw new RangeError("invalid processed-set policy");
-    const validation = this.verdict(identity, "postBase", policy.validationN, policy.minPf, entryT, policy.negativeFilter);
-    const real = validation.state === "qualified" ? this.verdict(identity, "validated", policy.realN, policy.minPf, entryT, policy.negativeFilter) : null;
+    const validation = this.verdict(identity, "postBase", policy.validationN, policy.minPf, entryT, policy.negativeFilter,policy.blocks?.validation);
+    const real = validation.state === "qualified" ? this.verdict(identity, "validated", policy.realN, policy.minPf, entryT, policy.negativeFilter,policy.blocks?.real) : null;
     if (real === null && (!Number.isSafeInteger(policy.realN) || policy.realN < 1 || policy.realN > this.capacity))
       throw new RangeError("invalid processed-set policy");
     const key = entryKey(identity, entryId, entryT);
@@ -237,7 +250,7 @@ export class ProcessedSetBook {
     rows.evaluations.validation[validation.state]++;
     if (real) rows.evaluations.real[real.state]++;
     for (let i = 0; i <= stages.indexOf(stage); i++) rows.counts[stages[i]].openedOrders++;
-    const opened: ProcessedOpen = { identity: { ...identity }, entryId, entryT, policy: { ...policy }, validation, real, stage, slices: [], settledUnitReturn: 0 };
+    const opened: ProcessedOpen = { identity: { ...identity }, entryId, entryT, policy: structuredClone(policy), validation, real, stage, slices: [], settledUnitReturn: 0 };
     this.open.set(key, opened);
     this.seenAtClock.add(key);
     return structuredClone(opened);
@@ -379,9 +392,9 @@ export class ProcessedSetBook {
     for (const item of snapshot.open) {
       const key = entryKey(item.identity, item.entryId, item.entryT);
       const p = item.policy;
-      const decisionValid = validPolicy(p, snapshot.capacity) && validVerdict(item.validation, p.validationN, p.minPf, p.negativeFilter) &&
+      const decisionValid = validPolicy(p, snapshot.capacity) && validVerdict(item.validation, p.validationN, p.minPf, p.negativeFilter,p.blocks?.validation) &&
         (item.validation.state === "qualified"
-          ? validVerdict(item.real, p.realN, p.minPf, p.negativeFilter) &&
+          ? validVerdict(item.real, p.realN, p.minPf, p.negativeFilter,p.blocks?.real) &&
             (item.real.state === "qualified" ? item.stage === "active" : item.stage === "validated")
           : item.real === null && item.stage === "postBase");
       if (!nonempty(item.entryId) || !Number.isFinite(item.entryT) || item.entryT < 0 || item.entryT > snapshot.clock ||

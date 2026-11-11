@@ -1,4 +1,5 @@
-import { positionCounts, positionStats } from "../position-windows.ts";
+import {blockRequired} from "../../../shared/cts-lastn/blocks.ts";
+import { positionCounts, positionStats, positionStageStats } from "../position-windows.ts";
 import { rangeOfId } from "../minimal-coord.ts";
 // Walk-forward last-N gate optimizer.
 //
@@ -145,13 +146,14 @@ export interface LastNOptions {
 }
 
 function countGate(rows:readonly Trade[],n:number,g:Gates):boolean {
-  const sample=positionStats(rows.map(r=>r.r),n);
+  const sample=positionStageStats(rows.map(r=>r.r),n,g.positionWindows?.blocks?.entry,Math.max(1.05,g.minPf));
   const prior=g.lossPrior?Number(/\|sl([\d.]+)/.exec(rows[0]?.cfg??"")?.[1])/100:0;
-  return sample.complete&&sample.known&&sample.net>0&&sample.gp>=Math.max(1.05,g.minPf)*(sample.gl+prior)&&
+  return sample.blocksPassed&&sample.complete&&sample.known&&sample.net>0&&sample.gp>=Math.max(1.05,g.minPf)*(sample.gl+prior)&&
     sample.maxDrawdownPositions<=g.positionWindows!.maxDrawdownPositions&&
     !(g.maxDdr&&sample.mdd/sample.net>g.maxDdr)&&sample.positiveShare>=(g.minGreen??.5)&&sample.lcb>0;
 }
 function countGated(trades:readonly Trade[],n:number,g:Gates):Trade[] {
+  if(g.positionWindows?.blocks?.entry)n=blockRequired(g.positionWindows.blocks.entry);
   const groups=new Map<string,Trade[]>();
   for(const tr of trades) {const key=JSON.stringify([tr.cfg,tr.sym,tr.side]);if(!groups.has(key))groups.set(key,[]);groups.get(key)!.push(tr);}
   const taken:Trade[]=[];

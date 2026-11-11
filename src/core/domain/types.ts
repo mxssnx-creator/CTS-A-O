@@ -595,6 +595,7 @@ export interface Trade {
 }
 
 export interface OpenPosition {
+  trailingProcessingEnabled?: boolean;
   blockAttribution?: BlockAttribution;
   cfg: string;
   sym: string;

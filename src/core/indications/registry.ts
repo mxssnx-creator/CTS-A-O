@@ -17,6 +17,7 @@ import { INVERSE_TIMEFRAMES, isInverseInd } from "./inverse-config.ts";
 import { microFamilySpecs, inverseMicroSpecs } from "./micro-family.ts";
 import { rangeFamilySpecs } from "./range-families.ts";
 import { tacticSpecs } from "./tactic.ts";
+import { dcaTacticSpecs } from "./dca-tactic.ts";
 import {
   isSignalCoordinationInd,
   signalCoordinationSourceLabel,
@@ -1237,6 +1238,7 @@ for (const x of research5Specs()) add(x);
 for (const x of rangeFamilySpecs()) add(x);
 // Tactic is a first-class indication kind; its techniques use the ordinary independent lanes and config PF gates.
 for (const x of tacticSpecs()) add(x);
+for (const x of dcaTacticSpecs()) add(x);
 // Relate uses explicit 1/5/15m combinations and bounded standard/Micro identities.
 for (const x of relateSpecs()) add(x);
 // Break adds independent Donchian, squeeze and retest cells with trend, activity and drawdown filters.

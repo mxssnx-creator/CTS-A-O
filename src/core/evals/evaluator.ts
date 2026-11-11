@@ -1,4 +1,4 @@
-import { positionCounts, positionStats } from "../position-windows.ts";
+import { positionCounts, positionStats, positionStageStats } from "../position-windows.ts";
 import { rangeOfId } from "../minimal-coord.ts";
 // Continuous independent evaluations: each config is scored on its own, over several time windows and
 // last-trade windows ending "now". A window with too few trades is idle (neither pass nor fail).
@@ -36,9 +36,9 @@ export function evaluateConfig(cfg: string, tape: readonly Trade[], o: EvalOptio
       rows.sort((a,b)=>a.exitT-b.exitT||a.entryT-b.entryT);
       const [sym,side]=JSON.parse(key) as [string,number];let all=true;
       for(const stage of ["base","main","real","entry"] as const) {
-        const n=counts[stage],sample=positionStats(rows.map(r=>r.r),n),stop=Number(/\|sl([\d.]+)/.exec(cfg)?.[1])/100;
+        const n=counts[stage],sample=positionStageStats(rows.map(r=>r.r),n,policy.blocks?.[stage],Math.max(1.05,g.minPf)),stop=Number(/\|sl([\d.]+)/.exec(cfg)?.[1])/100;
         const prior=g.lossPrior?stop:0;
-        const pass=sample.complete&&sample.known&&sample.net>0&&sample.gp>=Math.max(1.05,g.minPf)*(sample.gl+prior)&&
+        const pass=sample.blocksPassed&&sample.complete&&sample.known&&sample.net>0&&sample.gp>=Math.max(1.05,g.minPf)*(sample.gl+prior)&&
           sample.maxDrawdownPositions<=policy.maxDrawdownPositions&&!(g.maxDdr&&sample.mdd/sample.net>g.maxDdr)&&
           sample.positiveShare>=(g.minGreen??.5)&&sample.lcb>0;
         windows.push({key:`${sym}/${side}/${stage}/N${n}`,kind:"trades",span:n,n:sample.n,pf:sample.known?statsOf(rows.slice(-n)).pf:NaN,

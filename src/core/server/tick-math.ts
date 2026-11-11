@@ -95,7 +95,7 @@ export class TickMathBook {
           const deadline = Number.isFinite(p.holdEndT) && p.holdEndT! > p.entryT ? p.holdEndT! : Infinity;
           const holdDue = !p.stopHit && now >= deadline;
           if (changed || barDue || holdDue) {
-            if (enforceSignalPosition(p)) result.trailMoved = true;
+            if (p.trailingProcessingEnabled!==false && enforceSignalPosition(p)) result.trailMoved = true;
             if (!p.stopHit && (p.trail || p.exitProtection))
               if (tickTrail(p, px, now, protectTf || laneMs)) result.trailMoved = true;
             if (!p.stopHit) {
@@ -184,6 +184,7 @@ export function crossedStop(p: { side: number; stop: number }, px: number): bool
 /** A paper position's trail state while the tick follows it (its lane bar, and that bar's high and low so far). */
 export interface TickTrail {
   cfg?: string;
+  trailingProcessingEnabled?: boolean;
   executionTfMin?: number;
   side: number;
   entry: number;
@@ -210,6 +211,9 @@ export interface TickTrail {
  * then exited a reversal at an old level. Returns whether the stop moved.
  */
 export function tickTrail(p: TickTrail, px: number, now: number, tfMs: number): boolean {
+  if(p.trailingProcessingEnabled===false && ((p.trail??0)>0 || p.exitProtection?.set==='trailing' || p.exitProtection?.set==='trailing-only')){
+    if(Number.isFinite(px)&&px>0&&Number.isFinite(now)&&tfMs>0){p.tkBar=Math.floor(now/tfMs);p.tkHi=px;p.tkLo=px;p.tkClose=px;}return false;
+  }
   const repaired = enforceSignalPosition(p);
   if (
     (!p.exitProtection && !(p.trail && p.trail > 0)) ||
@@ -273,6 +277,7 @@ export function carryTrail(
   >
 > {
   if (!prev || (!op.exitProtection && !(op.trail && op.trail > 0))) return {};
+  if(op.trailingProcessingEnabled===false && ((op.trail??0)>0 || op.exitProtection?.set==='trailing' || op.exitProtection?.set==='trailing-only'))return {stop:prev.stop,peak:prev.peak,trailOn:prev.trailOn,trail:prev.trail,trailDist:prev.trailDist,target:prev.target,...(prev.exitProtection?{exitProtection:{...prev.exitProtection}}:{}),...(prev.tkBar!==undefined?{tkBar:prev.tkBar,tkHi:prev.tkHi,tkLo:prev.tkLo,tkClose:prev.tkClose}:{})};
   const long = op.side === 1;
   return {
     stop: long ? Math.max(op.stop, prev.stop) : Math.min(op.stop, prev.stop),

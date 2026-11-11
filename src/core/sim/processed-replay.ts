@@ -1,9 +1,11 @@
+import {blockRequired,checkBlockPolicy,type BlockPolicy} from "../../../shared/cts-lastn/blocks.ts";
 import { negativeLastN, type NegativeLastN } from "../negative-last-n.ts";
 import { ProcessedSetBook, type ProcessedOpen, type ProcessedSetIdentity,
   type ProcessedSetSnapshot, type ProcessedSetSummary, type ProcessedVerdict } from "./processed-set.ts";
 
 /** Opt-in modeled progression. Native paper/venue admission requires its own persistent adapter. */
 export interface ProcessedReplayPolicy {
+  blocks?: {validation?:BlockPolicy;real?:BlockPolicy};
   validationN: number;
   realN: number;
   negativeFilter?: NegativeLastN;
@@ -55,11 +57,13 @@ export class ProcessedReplay {
   constructor(policy: ProcessedReplayPolicy, cost: number) {
     if (!policy || ![policy.validationN, policy.realN].every(n => Number.isSafeInteger(n) && n >= 1 && n <= 200) ||
       !Number.isFinite(cost) || cost < 0) throw new RangeError("invalid processed replay policy");
+    if(policy.blocks)for(const b of Object.values(policy.blocks))checkBlockPolicy(b);
     const negativeFilter = negativeLastN(policy.negativeFilter);
     this.policy = { validationN: policy.validationN, realN: policy.realN,
+      ...(policy.blocks?{blocks:structuredClone(policy.blocks)}:{}),
       ...(negativeFilter ? { negativeFilter } : {}) };
     this.revision = JSON.stringify(["processed-replay-v1", cost, this.policy]);
-    this.book = new ProcessedSetBook("model", Math.max(policy.validationN, policy.realN, ...negativeFilter?.windows ?? []));
+    this.book = new ProcessedSetBook("model", Math.max(policy.validationN, policy.realN, ...Object.values(policy.blocks??{}).map(blockRequired), ...negativeFilter?.windows ?? []));
   }
 
   identity(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, minPf: number): ProcessedSetIdentity {
@@ -83,8 +87,8 @@ export class ProcessedReplay {
   report(at: number, contexts: Iterable<{ identity: ProcessedSetIdentity; minPf: number }>): ProcessedReplayReport {
     const validation = coverage(), real = coverage(), sets: ProcessedSetSummary[] = [];
     for (const { identity, minPf } of contexts) {
-      count(validation, this.book.verdict(identity, "postBase", this.policy.validationN, minPf, at, this.policy.negativeFilter), this.policy.validationN);
-      count(real, this.book.verdict(identity, "validated", this.policy.realN, minPf, at, this.policy.negativeFilter), this.policy.realN);
+      count(validation, this.book.verdict(identity, "postBase", this.policy.validationN, minPf, at, this.policy.negativeFilter,this.policy.blocks?.validation), this.policy.blocks?.validation?blockRequired(this.policy.blocks.validation):this.policy.validationN);
+      count(real, this.book.verdict(identity, "validated", this.policy.realN, minPf, at, this.policy.negativeFilter,this.policy.blocks?.real), this.policy.blocks?.real?blockRequired(this.policy.blocks.real):this.policy.realN);
       const summary = this.book.summary(identity);
       if (summary) sets.push(summary);
     }
