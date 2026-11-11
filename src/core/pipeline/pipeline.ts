@@ -48,6 +48,7 @@ import {
   microIndRule,
   forEachCoord,
   forEachMicro,
+  MICRO_SL,
 } from "../minimal-coord.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import { INVERSE_TIMEFRAMES, isInverseInd } from "../indications/inverse-config.ts";
@@ -1033,13 +1034,11 @@ type CoordRangeLike = {
   baseBest?: boolean;
 };
 /**
- * The stops (× target) Micro's best-cell Base tries at every target: 1 / 1.75 / 2.5 / 3.5 / 5 (its 17 MICRO_SL
- * ratios 1–5 would be 119 cells per pair at the 7 targets). Every ratio here is one MICRO_SL actually offers
- * (operator, 5 Oct: Micro stops start at 1.0): a Base cell at a ratio no Micro config can trade validated targets on
- * a stop that never reaches the tape stage. 5× since MICRO_SL
- * reaches 5 (operator, 6 Oct): Micro earned only with stops well beyond its target (reward:risk 0.29–0.36).
+ * The stops (× target) Micro's Base tries at every target: its whole default ladder, MICRO_SL (0.2–1.6 step 0.1
+ * since 11 Nov 2026). Every ratio here is one MICRO_SL actually offers: a Base cell at a ratio no Micro config can
+ * trade would validate targets on a stop that never reaches the tape stage.
  */
-export const MICRO_BASE_SL: readonly number[] = SL_TP_RATIOS;
+export const MICRO_BASE_SL: readonly number[] = MICRO_SL;
 
 /**
  * Micro's Base stop ratios from its configured ladder (audit 13 Oct, C15: the fixed MICRO_BASE_SL validated stops a

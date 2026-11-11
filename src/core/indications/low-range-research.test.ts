@@ -8,7 +8,7 @@ import { simulate } from "../sim/backtest.ts";
 import { ratchetTrail } from "../sim/trailing.ts";
 import {
   DEFAULT_LOW_RANGE_POLICY, LOW_RANGE_IDS, LOW_RANGE_METHODS, LOW_RANGE_RELATIONS,
-  LOW_RANGE_SL_RATIOS, LOW_RANGE_STEPS, LOW_RANGE_WINDOWS, lowRangeProtects, lowRangeState,
+  LOW_RANGE_SL_RATIOS, LOW_RANGE_STEPS, LOW_RANGE_TRAIL_FLOOR_STEPS, LOW_RANGE_TRAIL_RATIOS, LOW_RANGE_WINDOWS, lowRangeProtects, lowRangeState,
 } from "./low-range-research.ts";
 
 const prefix = (b: Bars, n: number): Bars => ({ ...b, n, t: b.t.slice(0, n), o: b.o.slice(0, n),
@@ -109,16 +109,17 @@ describe("Low-Range research candidate", () => {
   });
   it("uses all requested stop ratios and preserves cost-aware hard floors", () => {
     assert.deepEqual(LOW_RANGE_STEPS, [2, 3, 4, 5, 6]);
-    assert.equal(LOW_RANGE_SL_RATIOS.length, 10);
-    assert.equal(LOW_RANGE_SL_RATIOS[0], 0.25);
-    assert.equal(LOW_RANGE_SL_RATIOS.at(-1), 2.5);
+    // operator, 11 Nov 2026: 0.2 to 1.6 in steps of 0.1; trailing shares 0.1 to 0.6 in steps of 0.1
+    assert.deepEqual([...LOW_RANGE_SL_RATIOS], [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6]);
+    assert.deepEqual([...LOW_RANGE_TRAIL_RATIOS], [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]);
     const cost = 0.0015, step = 0.002;
     for (const n of LOW_RANGE_STEPS) for (const sl of LOW_RANGE_SL_RATIOS) {
       const p = lowRangeProtects({ step, cost, steps: [n], slRatios: [sl], trailRatios: [0, 0.25], tags: ["mc"] });
       assert.equal(p.length, 2);
       assert.equal(p[0].tp, +(cost + n * step).toFixed(9));
       assert.equal(p[0].sl, +Math.max((cost + n * step) * sl, cost + .001).toFixed(9));
-      assert.ok(p[1].trail >= cost + 2 * step - 1e-12);
+      assert.ok(p[1].trail >= cost + LOW_RANGE_TRAIL_FLOOR_STEPS * step - 1e-12);
+      assert.equal(p[1].trail, +(cost + Math.max(LOW_RANGE_TRAIL_FLOOR_STEPS * step, n * step * 0.25)).toFixed(9));
       assert.equal(p[1].trailStep, 1);
     }
     const tags = new Set(lowRangeProtects().map((p) => p.tag));
@@ -128,7 +129,7 @@ describe("Low-Range research candidate", () => {
       steps: [2], slRatios: [0.5], trailRatios: [0.5], tags: ["mc"] })[0];
     assert.ok(fine.tp >= 0.00150000004 + 2 * 0.00200000004);
     assert.ok(fine.sl >= Math.max((0.00150000004 + 2 * 0.00200000004) * .5, 0.00150000004 + .001));
-    assert.ok(fine.trail >= 0.00150000004 + 2 * 0.00200000004);
+    assert.ok(fine.trail >= 0.00150000004 + 0.5 * 2 * 0.00200000004);
   });
   it("deducts modeled cost once for target and stop on both sides", () => {
     const policy = { ...DEFAULT_LOW_RANGE_POLICY, steps: [2], slRatios: [0.5], trailRatios: [0], tags: ["mc"] as const };

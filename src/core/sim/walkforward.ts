@@ -756,7 +756,10 @@ export function protectGrid(
   const out: Protect[] = [];
   const seen = new Set<string>();
   const push = (p: Protect) => {
-    p.sl = Math.max(slFloor, p.sl);
+    // The floor is a float sum (cost + net distance: 0.00176 + 0.001 = 0.0027600000000000003). A cell already rounded
+    // onto it (0.00276) meets it by distanceAtFloor's own rule; replacing it with the unrounded sum gave the executable
+    // cell a different key than the one Base proved (protectCellKey), so a floor cell never matched its Base proof.
+    if (p.sl + Number.EPSILON * Math.max(Math.abs(p.sl), slFloor) < slFloor) p.sl = slFloor;
     if (!p.tag && g.maxSl && g.maxSl > 0) {
       if (g.maxSl + 1e-12 < Math.max(slFloor, g.minSl ?? 0)) return;
       p.sl = Math.min(p.sl, g.maxSl);
