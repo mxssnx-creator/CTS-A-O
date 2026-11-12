@@ -655,13 +655,13 @@ describe("continuous post-Base qualification", () => {
       signals: { ...DEFAULT_SETTINGS.signals, enabled: false },
       tfDays: { "1": 3, "15": 18 },
     };
-    const o = defaultWalkForward(s);
-    assert.equal(o.longH, 48);
+    const o = { ...defaultWalkForward(s), preH: 6, longH: 24 };
+    assert.equal(o.longH, 24);
     assert.equal(tapeRetentionHours(s, o, 1), 72);
     assert.equal(tapeRetentionHours(s, o, 15), 432);
     assert.equal(
       tapeRetentionHours(s, { ...o, validLastN: 0, lastN: 0, rangeGate: undefined }, 15),
-      48,
+      24,
     );
   });
 

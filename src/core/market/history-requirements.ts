@@ -4,6 +4,8 @@ import { tacticWarmupBars } from "../indications/filters.ts";
 
 /** Ordinary evaluated history. Signal/Exit retain their separate 150h policy. */
 export const EVALUATION_HISTORY_H = 48;
+/** Operator-requested ordinary pre-calculation; the long selection window remains independent. */
+export const PRECALC_HISTORY_H = 72;
 
 /** Source requirements for an explicitly extended engine window, without changing saved lane preferences. */
 export function evaluationHistorySettings(

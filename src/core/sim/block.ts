@@ -474,14 +474,16 @@ function calculateBlock(
   const requested = mode === "additive"
     ? additions.reduce((sum, x) => sum + x.value, 0)
     : Math.max(0, ...additions.filter((x) => lv(x.source) >= min).map((x) => x.value));
-  const src = additions.filter((x) => x.value > 0 && (mode === "additive" || x.value === requested)).map((x) => x.source);
+  // A below-threshold relation can tie the requested value through its ratio without qualifying in Shared Active.
+  const src = additions.filter((x) => x.value > 0 &&
+    (mode === "additive" || lv(x.source) >= min && x.value === requested)).map((x) => x.source);
   if (mode === "shared" && src.length) level = Math.max(...src.map(lv));
   const extra = stepRaise(requested, b, cap - 1);
   const rounded = Math.min(extra, Math.floor(extra * 1_000_000) / 1_000_000);
   if (!(rounded > 0))
     // stepFloor off (opt-in): an entry at its level whose raise rounds to no step is still Block-adjusted, at its unit
     return b.stepFloor === false && level > 0 && requested > 0 && cap > 1
-      ? { adjusted: true, level, vol: 1, src }
+      ? { adjusted: true, level, vol: 1, src: [] }
       : { adjusted: false, level: 0, vol: 1, src: [] };
   return { adjusted: true, level, vol: Math.min(cap, 1 + rounded), src };
 }
@@ -572,7 +574,7 @@ export class AutoBlockBook extends BlockBook {
     const sources = this.pause > 0 ? [] as number[] : undefined;
     for (let i = 0; i < this.books.length; i++) {
       const d = this.decide(i, t);
-      if (d.adjusted) m |= 1 << i;
+      if (d.vol > 1) m |= 1 << i;
       if (sources) sources.push(d.src.reduce((mask, source) => mask | (1 << BLOCK_SOURCES.indexOf(source)), 0));
     }
     t.autoRaise = m;
@@ -587,7 +589,7 @@ export class AutoBlockBook extends BlockBook {
     if (this.holdUntilNet) super.add(t, signal, pooled);
     for (let i = 0; i < this.books.length; i++) {
       // stamped at its entry (a run's feed); unstamped, judged on the closes before this one
-      if (pooled && (t.autoRaise !== undefined ? (t.autoRaise >> i) & 1 : this.decide(i, t).adjusted)) {
+      if (pooled && (t.autoRaise !== undefined ? (t.autoRaise >> i) & 1 : this.decide(i, t).vol > 1)) {
         const r = recent[i];
         r.push(t.r);
         if (r.length > 2 * this.lookback) r.splice(0, r.length - this.lookback);

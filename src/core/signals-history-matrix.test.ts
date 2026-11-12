@@ -23,7 +23,7 @@ describe("Signal history, bounded trailing and exact-context progression", () =>
   it("keeps 150h independent of engine 48h and persists the override through WF sanitization", () => {
     const wf = defaultWalkForward(DEFAULT_SETTINGS);
     assert.equal(wf.longH, 48);
-    assert.equal(wf.preH, 48);
+    assert.equal(wf.preH, 72);
     assert.equal(signalHistoryHours(wf), 150);
     assert.deepEqual(sanitizeWf({ signalLongH: 480 }), { signalLongH: 480 });
     assert.equal(signalHistoryHours({ preH: 6 }), 150);

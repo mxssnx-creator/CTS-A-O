@@ -1,0 +1,13 @@
+# Block attribution and 72-hour pre-calculation
+
+## 12 November integration
+
+PR #257 is integrated with current main after #259, preserving the fine protection ladders, comparison APIs, maximum-leverage policy, position-count windows and exact execution ownership. The retention fixture uses explicit six-hour prehistory and a 24-hour selection window; factory assertions independently require 72-hour prehistory and the unchanged 48-hour long window. Final integration checks and their exact source are recorded in the PR. Historical test counts below refer only to their original source. Post-Base PF and passed/evaluated market validation for this combined source remain unavailable; no exchange or persisted live checkpoint is modified by this source merge.
+
+The Shared Active Block decision could attribute an increase to a below-threshold relation when its ratio made its requested value tie an eligible relation. This created incorrect pause and recovery attribution. Shared and Additive could also mark sources as raising an order whose addition rounded to zero, and automatic window scoring counted these unit-sized orders as raised samples. Source attribution now follows the actual eligible raise, and automatic windows score only genuine increases. The five new synthetic regressions reproduce the former behavior and cover eligible ties, source-local pause/recovery, and stamped and unstamped automatic windows.
+
+New ordinary pre-calculation defaults to 72 hours. The independent long-selection window retains its existing 48-hour default, and Signal/Exit history retains its separate policy. Candle requirements include the requested pre-calc, replay and indicator warmup. Existing saved pre-calc choices remain overrides; no account setting, checkpoint, order or position was changed by this patch.
+
+Block's previously persisted pause, recovery and window history is not retroactively repaired. Preserve existing records and reconcile their provenance before changing a running owner. This change does not establish positive post-Base, funded or venue PF; no live or demo exchange execution was performed. Runtime market coverage, profitable forward execution and production performance require separate evidence.
+
+In an isolated source checkout reconstructed from CTS-A-O `main` at `819b6621f25393e3fe66da4a0fa0a52c4baee709`, 129 focused Block/history/Signal/Last-N tests passed. A separate, partly overlapping group of 83 Block replay, order-identity, funded-cohort and prehistory checks passed, as did TypeScript checking. The source-specific checks are not a full-grid or exchange test.

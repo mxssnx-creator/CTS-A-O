@@ -1,3 +1,7 @@
+## 2026-11-12 — Block attribution integration
+
+PR #257 combines the pending eligible-source Block correction and 72-hour ordinary prehistory default with main after #259. Exact configuration windows, fine grids, immutable execution ownership, comparison data and saved history overrides are preserved. Unit-sized entries do not generate raised-source recovery, pause or auto-window samples. Existing persisted Block state is retained without retroactive rewriting. See `docs/verification/block-attribution-72h-20261110.md` and the PR for source-specific checks. Combined-source post-Base return PF, passed/evaluated market validation and venue PF are unavailable; this is a source merge without a deployment or exchange mutation.
+
 ## 2026-11-11 — position-count policy, independent Low-Range and release verification
 
 The publication is PR #258: https://github.com/mxssnx-creator/CTS-A-O/pull/258. Economic source is

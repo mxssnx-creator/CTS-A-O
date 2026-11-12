@@ -30,6 +30,12 @@ jobs:
           src/core/base-config-counts.test.ts src/core/pipeline/base-cell-stats.test.ts
           src/core/pipeline/step-sl-pf.test.ts src/core/server/evaluation-history.test.ts
           src/core/server/range-pf-floors.test.ts
+      - name: Block attribution, recovery and explicit pre-calculation windows
+        run: >-
+          node scripts/test-core.mjs
+          src/core/sim/block-attribution-regression.test.ts src/core/sim/block-recovery.test.ts
+          src/core/sim/block-replay.test.ts src/core/server/three-day-prehistory.test.ts
+          src/core/sim/continuous-validation.test.ts src/core/sim/gating.test.ts
       - name: Transport and rendered coverage component
         run: node --test scripts/core-live-report.test.mjs scripts/strategy-coverage-ui.test.mjs
       - run: npm run build:dev

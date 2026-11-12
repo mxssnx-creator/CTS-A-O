@@ -3,7 +3,7 @@ import {blockRequired} from "../../../shared/cts-lastn/blocks.ts";
 import { positionCounts, positionStats, positionTapeValid } from "../position-windows.ts";
 import {relationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
 import { RT_COST } from "../model-cost.ts";
-import { EVALUATION_HISTORY_H } from "../market/history-requirements.ts";
+import { EVALUATION_HISTORY_H, PRECALC_HISTORY_H } from "../market/history-requirements.ts";
 import { ProcessedReplay, type ProcessedReplayPolicy, type ProcessedReplayReport } from "./processed-replay.ts";
 import type { ProcessedOpen } from "./processed-set.ts";
 import { minimumStopFraction } from "../protection-policy.ts";
@@ -911,7 +911,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     indicationVolumeFactors: signalVolumeFactorsOf(s.signals),
     relationalVolumeRatios: s.relationalVolumeRatios,
     // Evaluated history is separate from indicator warmup and independent Signal/Exit history.
-    preH: EVALUATION_HISTORY_H,
+    preH: PRECALC_HISTORY_H,
     simH: 48,
     stepH: 1,
     // Real seats per strategy family: 0 = no limit — every config that passes the evaluation (PF, DDT, DDR,

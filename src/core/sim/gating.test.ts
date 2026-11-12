@@ -89,9 +89,9 @@ const u = {
 const at = NOW - 2 * H + 10 * 60_000;
 
 describe("gating: nothing unvalidated executes", () => {
-  it("keeps broad history short and validates seats on the configured Last-N sample", () => {
+  it("uses three-day prehistory and validates seats on the configured Last-N sample", () => {
     const defaults = defaultWalkForward(DEFAULT_SETTINGS);
-    assert.equal(defaults.preH, 48);
+    assert.equal(defaults.preH, 72);
     assert.equal(defaults.longH, 48);
     assert.equal(defaults.validLastN, 12);
     assert.equal(defaults.maxPerSymbol, 0, "orders per symbol remain uncapped");
