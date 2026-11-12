@@ -83,6 +83,24 @@ causal comparison on held-out data before it becomes a default.
 - **Not yet measured:** live fills, partials, restart/crash continuity with open positions, live-vs-simulation diff, execution PF.
   Those numbers are appended below when the probe run produces them; until then they are unavailable, not zero.
 
+## Survey of other CTS projects (12 Nov, read-only shallow clones of CTS-G, CTS-C, CTS-K-N, CTS-A)
+
+Operator request: add successful indications and strategy types from the other CTS projects. Nothing qualifies, so nothing was added.
+
+- **CTS-G** (same operator, same x02 VST account): its Micro / Low-Range screen of CTS-A-O candidates (30 Oct, 8 symbols) found **0 of 19** with
+  prehistory PF >= 1.2 and >= 10 closes; its Signals retrospective (1 Nov) ends **net-positive in 0 of 7 scenarios** (closed-return PF 0.80 / 0.81 /
+  0.22; the frozen variants admitted no order). Its x02 probe episodes: return PF 0.265 over 50 episodes. Its own reports say no configuration is promoted.
+- **CTS-C**: its indication families (Trend, Trend_ADX, Trend_Efficiency, Trend_Fade, Break, Break_ATR, Break_Volume, Break_Retest, Break_Reversal,
+  MA / RSI / MACD / Bollinger variants, Pullback, Tactic, Inverse) all already exist in CTS-A-O (ADX, efficiency, retest, reversal, fade, pullback, volume
+  filters were checked by name). Its measured held-out results are negative too: Block PF 0.26, DCA 1.00, Normal 0.47, Main 0.33 / Real 0.32 forward,
+  and **zero** of 28 predefined training profiles with >= 20 closes and PF >= 1.1 at all three later stages; validated own-window PF 2.09 against
+  0.74 for the closes after validation (the same validation-to-execution drop documented above).
+- **CTS-K-N** is a Redis/Next.js production system, **CTS-A** a sibling of this repository; neither holds a measured positive indication or strategy
+  that this registry lacks (no PF evidence found in their top-level documents; not searched exhaustively).
+
+Porting an unvalidated candidate would add compute (Base cost scales with the catalogue) without evidence, and the project rules forbid promotion without a
+causal held-out comparison. Registered as research options they would go through the same independent Base gates; none is a measured winner.
+
 ## Verification
 
 - Full core suite on the first commit set: 4,914 tests, 4,903 pass, 3 skipped, 1 todo, 4 fail + 3 cancelled in three fixture files — all
