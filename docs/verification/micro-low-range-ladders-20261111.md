@@ -95,8 +95,12 @@ Operator request: add successful indications and strategy types from the other C
   filters were checked by name). Its measured held-out results are negative too: Block PF 0.26, DCA 1.00, Normal 0.47, Main 0.33 / Real 0.32 forward,
   and **zero** of 28 predefined training profiles with >= 20 closes and PF >= 1.1 at all three later stages; validated own-window PF 2.09 against
   0.74 for the closes after validation (the same validation-to-execution drop documented above).
-- **CTS-K-N** is a Redis/Next.js production system, **CTS-A** a sibling of this repository; neither holds a measured positive indication or strategy
-  that this registry lacks (no PF evidence found in their top-level documents; not searched exhaustively).
+- **CTS-K-N** (Redis/Next.js production system; code search over all CTS repositories for documented forward / held-out results found only its
+  documents): DCA historic validation (42 days, 18 symbols) PF 0.51 and 0.80, losing in every weekly fold, even its best-PF buffer; the Special
+  indication/strategy found no stable positive configuration under purged walk-forward (Short lane PF 0.54); the one positive result (BTC, 7 out-of-sample
+  positions, PF 1.54) is called insufficient for activation by its own document.
+- **CTS-A** (sibling of this repository) and the older CTS-* repositories (CTS-X is private and was not opened) were not searched exhaustively;
+  the repository-wide search returned no other document reporting a net-positive forward or held-out result.
 
 Porting an unvalidated candidate would add compute (Base cost scales with the catalogue) without evidence, and the project rules forbid promotion without a
 causal held-out comparison. Registered as research options they would go through the same independent Base gates; none is a measured winner.
