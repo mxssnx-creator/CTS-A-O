@@ -83,6 +83,20 @@ causal comparison on held-out data before it becomes a default.
 - **Not yet measured:** live fills, partials, restart/crash continuity with open positions, live-vs-simulation diff, execution PF.
   Those numbers are appended below when the probe run produces them; until then they are unavailable, not zero.
 
+## Memory: measured, not yet reduced in code (12 Nov)
+
+Measured on the 16 GB host (shared cgroup limit 13.7 GB) with two desks at once: x02 full profile (50 symbols, Signals on, 4 workers) 5.7 GB RSS and
+x01 (20 symbols, 2 workers) 3.2 GB RSS, rising to 5.5 GB / 4.4 GB inside a compute. The V8 heap is small (~0.2 GB of each); the rest is native
+(typed-array tapes, bars, worker threads). Both desks hit the hard guard (< 1.2 GB available) at the same minute (01:20), aborted their compute and went to
+fallback level 1 ("Micro and Low-Range carried"). The ladder and the partial processing already exist (`memguard.server.ts`: a carried range keeps its
+previous tapes, nothing is switched off, the level steps back down after clean readings), but on a **fresh** desk there are no previous tapes to carry, so
+carried Micro / Low-Range cells are simply absent until memory recovers. x02 had completed **no** compute after 55 minutes.
+
+Done: x02 was stopped (audit before: 0 own orders, 0 own positions, nothing stranded) so x01, the live account, has the memory; x02 is to be re-run alone
+or with `CTS_CORE_WORKERS=2`. Not done: a code change that lowers the native footprint of the tape stage (candidates: fewer simultaneous pair builds per worker,
+column narrowing of tape arrays, releasing Base-phase caches earlier). Each needs the exact-parity guards and a before/after RSS measurement on one desk.
+Rule until then: **one heavy desk per host** (or `mainTop` and workers sized to the cgroup).
+
 ## Survey of other CTS projects (12 Nov, read-only shallow clones of CTS-G, CTS-C, CTS-K-N, CTS-A)
 
 Operator request: add successful indications and strategy types from the other CTS projects. Nothing qualifies, so nothing was added.
