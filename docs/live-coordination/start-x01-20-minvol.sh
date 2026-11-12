@@ -5,6 +5,8 @@
 #
 #   docs/live-coordination/start-x01-20-minvol.sh [loss-pct] [symbols]            (defaults: 80, 20)
 #
+# Signals are OFF by default here (CTS_X01_SIGNALS=true turns them on): with the default Signal source matrix on 20 symbols the
+# first compute held 8 GB native memory and sat at "48h sim step 0/49" for more than 10 minutes (12 Nov); the gates stay code defaults.
 # The loss limit is a share of the wallet at this SESSION's start (src/core/loss-limit.ts). The overall-system readiness
 # check is waived as in start-x01-signals.sh (operator's choice); the last-N floors are NOT waived.
 set -Eeuo pipefail
@@ -19,6 +21,7 @@ if ps -eo args | grep -v grep | grep -q -- "core-live-test.mjs --name x01-20 "; 
 mkdir -p "$OUT"
 cat > "$OUT/settings.json" <<JSON
 { "symbols": $SYMBOLS, "symbolRank": "volatility1h", "mainTop": 100,
+  "signals": { "enabled": ${CTS_X01_SIGNALS:-false} },
   "live": { "positionSize": "min", "ratio": 1, "maxPositions": 100, "leverage": "max" } }
 JSON
 export CTS_CORE_LIVE_TAG=CTSAO_ CTS_CORE_MAINNET_WAIVE_READY=1
