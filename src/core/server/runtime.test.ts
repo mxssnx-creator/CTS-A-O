@@ -1230,7 +1230,7 @@ describe("progress reporting", { timeout: 600_000 }, () => {
         rt.generation,
       );
 
-    // 12 symbols with one forced symbol outside the ranking: 12 in batches of 5 → 3 batches
+    // 12 symbols with one forced symbol outside the ranking: batches of 5 and 7 (5, then doubling) → 2 batches
     const rt = mkFeed({ symbols: 12, forceSymbols: ["ZZZ-USDT"] });
     const rec = record(rt);
     for (let i = 0; i < 3; i++) await sync(rt);
@@ -1240,10 +1240,10 @@ describe("progress reporting", { timeout: 600_000 }, () => {
     assert.equal(rt.universeTarget(), 12);
     assert.equal(rt.status.prehistoric?.total, 12);
     const bf = rec.filter((r) => r.stage === "backfill");
-    for (const b of [1, 2, 3])
+    for (const b of [1, 2])
       assert.ok(
-        bf.some((r) => r.label.includes(`batch ${b}/3`)),
-        `batch ${b}/3 in ${bf.map((r) => r.label).join(" | ")}`,
+        bf.some((r) => r.label.includes(`batch ${b}/2`)),
+        `batch ${b}/2 in ${bf.map((r) => r.label).join(" | ")}`,
       );
     for (const r of bf) {
       const m = /symbols (\d+)\/(\d+)/.exec(r.label);
@@ -1251,7 +1251,7 @@ describe("progress reporting", { timeout: 600_000 }, () => {
       // every batch is a backfill (batches 2 and 3 stayed "running" before)
       assert.equal(r.state, "backfill", r.label);
     }
-    assert.ok(!bf.some((r) => /batch \d+\/(?!3\b)/.test(r.label)), "no other batch total");
+    assert.ok(!bf.some((r) => /batch \d+\/(?!2\b)/.test(r.label)), "no other batch total");
 
     // more forced symbols than the symbol count: every forced symbol is loaded (the cap was the symbol count)
     const forced = ["F1-USDT", "F2-USDT", "F3-USDT", "F4-USDT", "F5-USDT", "F6-USDT"];

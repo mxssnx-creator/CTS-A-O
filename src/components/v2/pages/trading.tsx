@@ -3,6 +3,7 @@ import { coreMarket, coreTrading } from "../api-conn";
 import { Sparkline } from "../charts";
 import { capText, sizeText } from "@/core/live-labels";
 import { ExecutionSummary } from "../execution-summary";
+import { LiveVsSystem } from "../live-diff";
 import { paperUnitReturn } from "../accounting";
 import { hasNoTakeProfit } from "../signal-units";
 import { Age, Empty, ErrorNote, fmt, Kpi, Line, liveState, Panel, Pill, tone, usePoll } from "../ui";
@@ -164,6 +165,7 @@ export function TradingPage() {
           )}
         </Panel>
       </div>
+      <LiveVsSystem />
       <Panel
         title="Paper closes"
         sub={`latest ${d.tradesShown ?? trades.length} · unit net excludes execution volume; legacy unit basis may be unavailable · closed P&L above covers every close`}

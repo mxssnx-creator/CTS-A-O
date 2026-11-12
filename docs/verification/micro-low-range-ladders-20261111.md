@@ -83,6 +83,76 @@ causal comparison on held-out data before it becomes a default.
 - **Not yet measured:** live fills, partials, restart/crash continuity with open positions, live-vs-simulation diff, execution PF.
   Those numbers are appended below when the probe run produces them; until then they are unavailable, not zero.
 
+## Memory: measured, not yet reduced in code (12 Nov)
+
+Measured on the 16 GB host (shared cgroup limit 13.7 GB) with two desks at once: x02 full profile (50 symbols, Signals on, 4 workers) 5.7 GB RSS and
+x01 (20 symbols, 2 workers) 3.2 GB RSS, rising to 5.5 GB / 4.4 GB inside a compute. The V8 heap is small (~0.2 GB of each); the rest is native
+(typed-array tapes, bars, worker threads). Both desks hit the hard guard (< 1.2 GB available) at the same minute (01:20), aborted their compute and went to
+fallback level 1 ("Micro and Low-Range carried"). The ladder and the partial processing already exist (`memguard.server.ts`: a carried range keeps its
+previous tapes, nothing is switched off, the level steps back down after clean readings), but on a **fresh** desk there are no previous tapes to carry, so
+carried Micro / Low-Range cells are simply absent until memory recovers. x02 had completed **no** compute after 55 minutes.
+
+Done: x02 was stopped (audit before: 0 own orders, 0 own positions, nothing stranded) so x01, the live account, has the memory; x02 is to be re-run alone
+or with `CTS_CORE_WORKERS=2`. Not done: a code change that lowers the native footprint of the tape stage (candidates: fewer simultaneous pair builds per worker,
+column narrowing of tape arrays, releasing Base-phase caches earlier). Each needs the exact-parity guards and a before/after RSS measurement on one desk.
+Rule until then: **one heavy desk per host** (or `mainTop` and workers sized to the cgroup).
+
+## Survey of other CTS projects (12 Nov, read-only shallow clones of CTS-G, CTS-C, CTS-K-N, CTS-A)
+
+Operator request: add successful indications and strategy types from the other CTS projects. Nothing qualifies, so nothing was added.
+
+- **CTS-G** (same operator, same x02 VST account): its Micro / Low-Range screen of CTS-A-O candidates (30 Oct, 8 symbols) found **0 of 19** with
+  prehistory PF >= 1.2 and >= 10 closes; its Signals retrospective (1 Nov) ends **net-positive in 0 of 7 scenarios** (closed-return PF 0.80 / 0.81 /
+  0.22; the frozen variants admitted no order). Its x02 probe episodes: return PF 0.265 over 50 episodes. Its own reports say no configuration is promoted.
+- **CTS-C**: its indication families (Trend, Trend_ADX, Trend_Efficiency, Trend_Fade, Break, Break_ATR, Break_Volume, Break_Retest, Break_Reversal,
+  MA / RSI / MACD / Bollinger variants, Pullback, Tactic, Inverse) all already exist in CTS-A-O (ADX, efficiency, retest, reversal, fade, pullback, volume
+  filters were checked by name). Its measured held-out results are negative too: Block PF 0.26, DCA 1.00, Normal 0.47, Main 0.33 / Real 0.32 forward,
+  and **zero** of 28 predefined training profiles with >= 20 closes and PF >= 1.1 at all three later stages; validated own-window PF 2.09 against
+  0.74 for the closes after validation (the same validation-to-execution drop documented above).
+- **CTS-K-N** (Redis/Next.js production system; code search over all CTS repositories for documented forward / held-out results found only its
+  documents): DCA historic validation (42 days, 18 symbols) PF 0.51 and 0.80, losing in every weekly fold, even its best-PF buffer; the Special
+  indication/strategy found no stable positive configuration under purged walk-forward (Short lane PF 0.54); the one positive result (BTC, 7 out-of-sample
+  positions, PF 1.54) is called insufficient for activation by its own document.
+- **CTS-A** (sibling of this repository) and the older CTS-* repositories (CTS-X is private and was not opened) were not searched exhaustively;
+  the repository-wide search returned no other document reporting a net-positive forward or held-out result.
+
+Porting an unvalidated candidate would add compute (Base cost scales with the catalogue) without evidence, and the project rules forbid promotion without a
+causal held-out comparison. Registered as research options they would go through the same independent Base gates; none is a measured winner.
+
+## New short-horizon candidates: web research and a frozen screen (12 Nov)
+
+Operator request: add further working indications / tactics for Low-Range, Micro, Minimal and Short, chosen by execution PF.
+
+**Research** (web search, two queries; the sources are blogs, repositories and preprints, none verified out-of-sample at 1–5 minutes):
+- A one-year, eight-symbol, 1-minute VWAP-deviation reversion test reports flat-to-negative forward returns after realistic costs at every threshold
+  and exit style ([anomiq](https://anomiq.io/blog/mean-reversion-crypto-backtest/)); a 5-minute BTC RSI(14) reversion rule loses 38 % where the daily version gains
+  ([Coinquant](https://www.coinquant.ai/blog/best-timeframe-for-crypto-trading-strategies-1-minute-to-1-month-backtested)).
+- Momentum evidence is at 1–12 months ([time-series momentum summary via TapeScript](https://tapescript.io/blog/short-term-mean-reversion-strategy)), short-term reversal
+  is documented from 1990 equity work and is eaten by costs when traded often.
+- Crypto microstructure: VWAP-to-mid deviations mean-revert as depth replenishes, but as a feature-importance finding, not a tradable return
+  ([arXiv 2602.00776](https://arxiv.org/html/2602.00776v1)); order-flow-imbalance alpha does not survive costs
+  ([SSRN 7053198](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7053198)); the quarter-hour effect is real (volatility/volume bursts and return
+  predictability in the first seconds after each quarter hour) but "average gains remain far below Binance trading fees"
+  ([arXiv 2607.09426](https://arxiv.org/html/2607.09426v2); fees statement from secondary coverage, the full paper was not read).
+
+**Screen** (`scripts/screen-new-candidates-20261112.mjs`, frozen before scoring, standalone, not the Base→Main→Real pipeline): 31 symbols, about 18 days of 1m
+candles resampled to completed 5m bars, entry at the next open, TP 0.5 % / SL 0.4 % / 12-bar limit, stop first, 0.11 % modeled round trip deducted once,
+first two thirds training and the last third forward, gate: ≥ 30 training closes and PF ≥ 1.2.
+
+| Candidate | Training n / PF | Forward n / PF |
+|---|---:|---:|
+| VWAP 2σ reclaim | 4,155 / 0.497 | 2,187 / 0.510 |
+| VWAP reclaim + 24-bar trend | 57 / 0.362 | 30 / 0.510 |
+| Quarter-hour bar, follow prior 3-bar move | 17,124 / 0.495 | 8,533 / 0.488 |
+| Quarter-hour bar, fade prior 3-bar move | 16,995 / 0.509 | 8,497 / 0.505 |
+| Volume-spike reversal bar | 457 / 0.394 | 263 / 0.370 |
+| Band-reclaim (reference for the engine's existing shape) | 4,089 / 0.485 | 2,147 / 0.506 |
+
+**None passes**, and the reference scores the same as the new ideas, so the screen finds no edge in any of them at this exit shape; it cannot say they fail in other
+ranges or coordinations (one exit, one timeframe, one 18-day window already seen by earlier studies). Result: **no new indication was registered or added to the
+default focus**; adding unvalidated sources would raise Base cost (the catalogue size drove the memory abort above) without evidence. Frozen result:
+`micro-low-range-ladders-20261111-evidence-screen-5m.json`. A broader search (other exits, 1m/15m, the engine's own cell grid) would be the next honest step.
+
 ## Verification
 
 - Full core suite on the first commit set: 4,914 tests, 4,903 pass, 3 skipped, 1 todo, 4 fail + 3 cancelled in three fixture files — all

@@ -5,26 +5,57 @@ import type { Protect } from "../domain/types.ts";
 export const SIGNAL_STOP_MAX = 0.02; // legacy identities retain their original ceiling
 export const SIGNAL_STOP_LIMIT = 0.03;
 
+/**
+ * What a config id says about its trailing policy, parsed once per id (the simulators ask for every bar of every open
+ * position; the regular expressions below cost a third of a trailing-heavy Base): bit 1 = a Signal config, bit 2 = the
+ * "|to" trailing-only token. The cache is bounded and rebuilt on demand, so a long session never grows it unboundedly.
+ */
+const cfgFlagCache = new Map<string, number>();
+const tmTokenCache = new Map<string, number>();
+const TRAILING_ONLY_TOKEN = /\|to(?=\||$)/;
+const TM_TOKEN = /\|tm([\d.]+)(?=\||$)/;
+function cfgFlags(cfg?: string): number {
+  if (!cfg) return 0;
+  let f = cfgFlagCache.get(cfg);
+  if (f === undefined) {
+    const first = cfg.indexOf("|");
+    f = (first >= 0 && cfg.startsWith("sig-", first + 1) ? 1 : 0) | (TRAILING_ONLY_TOKEN.test(cfg) ? 2 : 0);
+    if (cfgFlagCache.size >= 200_000) cfgFlagCache.clear();
+    cfgFlagCache.set(cfg, f);
+  }
+  return f;
+}
+/** the "|tm<percent>" ceiling token of a config id as a fraction; NaN when the id has none */
+function tmToken(cfg: string): number {
+  let v = tmTokenCache.get(cfg);
+  if (v === undefined) {
+    const m = TM_TOKEN.exec(cfg);
+    v = m ? Number(m[1]) / 100 : NaN;
+    if (tmTokenCache.size >= 200_000) tmTokenCache.clear();
+    tmTokenCache.set(cfg, v);
+  }
+  return v;
+}
+
 export function signalTrailMax(p: { cfg?: string; trailMax?: number }): number {
-  const token = p.cfg && /\|tm([\d.]+)(?=\||$)/.exec(p.cfg);
-  const max = p.trailMax ?? (token ? Number(token[1]) / 100 : SIGNAL_STOP_MAX);
+  const token = p.cfg ? tmToken(p.cfg) : NaN;
+  const max = p.trailMax ?? (Number.isNaN(token) ? SIGNAL_STOP_MAX : token);
   if (!(Number.isFinite(max) && max >= 0.002 && max <= SIGNAL_STOP_LIMIT))
     throw new RangeError("Signal trailing ceiling must be between 0.2% and 3%");
   return max;
 }
 
 export function isSignalConfig(cfg?: string): boolean {
-  if (!cfg) return false;
-  const first = cfg.indexOf("|");
-  return first >= 0 && cfg.startsWith("sig-", first + 1);
+  return (cfgFlags(cfg) & 1) !== 0;
 }
 
 export function isBoundedTrailingPosition(p: TrailingPosition): boolean {
-  return isSignalConfig(p.cfg) || !!p.trailOnly || /\|to(?=\||$)/.test(p.cfg ?? "");
+  return (cfgFlags(p.cfg) & 3) !== 0 || !!p.trailOnly;
 }
 
 export function positionTrailMax(p: TrailingPosition): number {
-  return isSignalConfig(p.cfg) ? signalTrailMax(p) : signalTrailMax({ ...p, trailMax: p.trailMax ?? SIGNAL_STOP_LIMIT });
+  // a non-Signal position defaults to the hard ceiling; signalTrailMax only reads cfg and trailMax, so no copy is needed
+  return isSignalConfig(p.cfg) || p.trailMax !== undefined ? signalTrailMax(p) : SIGNAL_STOP_LIMIT;
 }
 
 /** Ordinary Trailing-only sets have the same hard 3% ceiling; ordinary TP/trailing sets keep their policy. */
@@ -97,7 +128,7 @@ export function enforceSignalPosition(p: TrailingPosition): boolean {
   p.stop = signalStopAt(p.entry, p.side, p.stop, max);
   if (p.trail !== undefined && Number.isFinite(p.trail)) p.trail = Math.min(p.trail, max);
   if (p.trailDist !== undefined && Number.isFinite(p.trailDist)) p.trailDist = Math.min(p.trailDist, max);
-  if (p.trailOnly || /\|to(?=\||$)/.test(p.cfg ?? "")) { p.trailOnly = true; p.target = 0; p.trailFree = false; }
+  if (p.trailOnly || (cfgFlags(p.cfg) & 2) !== 0) { p.trailOnly = true; p.target = 0; p.trailFree = false; }
   return !Object.is(p.stop, stop) || !Object.is(p.target, target) || !Object.is(p.trail, trail) ||
     !Object.is(p.trailDist, gap) || p.trailOnly !== only || p.trailFree !== free;
 }

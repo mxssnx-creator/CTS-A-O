@@ -383,7 +383,6 @@ import { auditState, auditStateGen, type AuditInput, type AuditReport } from "..
 import { closedPositions, openBook, openTimeline, positionOrderCounts } from "../positions.ts";
 import {
   backfillLabel,
-  batchesOf,
   DONE_STAGE,
   estimatedFraction,
   overallOf,
@@ -3566,7 +3565,10 @@ export class CoreRuntime {
           .slice(0, target);
         // Connected desks progressively start realtime after each batch. A frozen offline replay loads all
         // symbols first, avoiding repeated full computations on intermediate partial universes.
-        const batch = this.completeReplayUniverse ? target : Math.max(5, Math.ceil(target / 4));
+        // Orders may open as soon as a symbol's batch is computed, so the first batch is small and each next one doubles
+        // (5, 10, 20, 15 of 50): the first compute runs on 5 symbols instead of a quarter
+        // of the universe, and the total work stays the same (the loaded sizes 5/15/35/50 against 13/26/39/50 before).
+        const batch = this.completeReplayUniverse ? target : Math.min(target, 5 * 2 ** Math.min(10, this.prehistBatch));
         const syms = missing.slice(0, batch);
         const more = missing.length > syms.length;
         this.prehistTotal = Math.min(target, this.candles.size + missing.length);
@@ -3576,7 +3578,12 @@ export class CoreRuntime {
         // batch #/# of this run (the batches done before + the ones the missing symbols still take) and the
         // symbols loaded of the universe — the line showed the loaded count over the symbol setting as "batch"
         const batchNo = ++this.prehistBatch;
-        const batches = batchesOf(batchNo - 1, missing.length, batch);
+        // batches still to come follow the doubling schedule (a complete replay loads everything in one)
+        let batches = batchNo - 1, left = missing.length;
+        for (let k = this.completeReplayUniverse ? 10 : batchNo - 1; left > 0; k++) {
+          batches++;
+          left -= this.completeReplayUniverse ? left : Math.min(target, 5 * 2 ** Math.min(10, k));
+        }
         this.beginJob(true);
         if (this.status.state !== "backfill") {
           this.status.state = "backfill";
