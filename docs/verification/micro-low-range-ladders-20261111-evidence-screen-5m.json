@@ -1,0 +1,88 @@
+{
+ "tf": 5,
+ "cost": 0.0011,
+ "tp": 0.005,
+ "sl": 0.004,
+ "holdBars": 12,
+ "symbols": 32,
+ "candidates": {
+  "vwap-reclaim": {
+   "train": {
+    "n": 4155,
+    "pf": 0.4967771826626824,
+    "net": -6.3361
+   },
+   "forward": {
+    "n": 2187,
+    "pf": 0.5100511617726198,
+    "net": -3.205
+   },
+   "passesTrainingGate": false
+  },
+  "vwap-reclaim+trend": {
+   "train": {
+    "n": 57,
+    "pf": 0.361980325645758,
+    "net": -0.1172
+   },
+   "forward": {
+    "n": 30,
+    "pf": 0.5098039215686259,
+    "net": -0.045
+   },
+   "passesTrainingGate": false
+  },
+  "quarter-follow": {
+   "train": {
+    "n": 17124,
+    "pf": 0.4946530576766278,
+    "net": -26.3156
+   },
+   "forward": {
+    "n": 8533,
+    "pf": 0.48751586635891564,
+    "net": -13.4239
+   },
+   "passesTrainingGate": false
+  },
+  "quarter-revert": {
+   "train": {
+    "n": 16995,
+    "pf": 0.5092501557364051,
+    "net": -25.0268
+   },
+   "forward": {
+    "n": 8497,
+    "pf": 0.5053933409408017,
+    "net": -12.7141
+   },
+   "passesTrainingGate": false
+  },
+  "spike-reversal": {
+   "train": {
+    "n": 457,
+    "pf": 0.39405172317682235,
+    "net": -0.9116
+   },
+   "forward": {
+    "n": 263,
+    "pf": 0.36999861155496816,
+    "net": -0.5582
+   },
+   "passesTrainingGate": false
+  },
+  "band-reclaim(ref)": {
+   "train": {
+    "n": 4089,
+    "pf": 0.485152668039149,
+    "net": -6.451
+   },
+   "forward": {
+    "n": 2147,
+    "pf": 0.5060201135805442,
+    "net": -3.1777
+   },
+   "passesTrainingGate": false
+  }
+ }
+}
