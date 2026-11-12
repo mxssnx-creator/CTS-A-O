@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {baseRangeProtects} from "../pipeline/pipeline.ts";
+import {baseRangeProtects,completeBaseRangeProtects,protectCellKey} from "../pipeline/pipeline.ts";
 import {forEachMicro} from "../minimal-coord.ts";
 import {DEFAULT_SETTINGS} from "../config.ts";
 import {normalizeLanes} from "./runtime.server.ts";
@@ -15,6 +15,8 @@ test("Micro owns the same independent floors in Base and executable grids",()=>{
  assert.equal(after.grid.micro.minSlNet,undefined);assert.equal(after.grid.micro.minTrail,.0003);
  assert.ok(after.grid.minSl>after.grid.micro.minSl);
  const executable=protectGrid(5,after.grid,after.cost).filter(p=>p.tag==="mc");
+ const allBase=completeBaseRangeProtects(after.grid,after.cost).filter(p=>p.tag==="mc");
+ assert.deepEqual(allBase.map(protectCellKey).sort(),protectGrid(15,after.grid,after.cost).filter(p=>p.tag==="mc").map(protectCellKey).sort(),"every exact Base cell must match executable protection at the reference timeframe");
  const base:{sl:number;trail:number;trailStep?:number}[]=[];
  forEachMicro(after.grid,(tp,k,tr,h,minSl,minTrail,slEval)=>base.push({sl:Math.max(tp*k,minSl,slEval??0),trail:tr?Math.max(tp*tr,minTrail):0}),after.cost);
  assert.ok(executable.length&&base.length);

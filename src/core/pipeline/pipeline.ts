@@ -760,7 +760,8 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
   const slFloor = g.minSlEval ?? minimumStopFraction(cost);
   const floorFor = (tag?: string) =>
     ownSlFloor(tag === "mc" ? g.micro : tag === "mn" ? g.minimal : tag === "sh" ? g.short
-      : tag === "gn" ? g.general : tag === "lg" ? g.long : undefined, cost) ?? slFloor;
+      : tag === "gn" ? g.general : tag === "lg" ? g.long : undefined, cost)
+      ?? (tag === "mc" && g.micro ? microSlFloor(g.micro, cost) ?? g.micro.minSlEval ?? g.micro.minSl ?? 0.001 : slFloor);
   const out: Protect[] = [],
     seen = new Set<string>();
   const emit = (

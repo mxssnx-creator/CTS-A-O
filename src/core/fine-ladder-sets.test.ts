@@ -57,7 +57,7 @@ test("at the runtime's normalized floors every range's executable cell carries t
       assert.ok(b.length > 0, `${tag} at cost ${c}`);
       assert.deepEqual(e, b, `${tag} at cost ${c}: a cell on the stop floor must match its Base proof`);
     }
-    assert.ok(exec.every((p) => p.sl + 1e-12 >= s.grid.minSl), "the floor itself still holds");
+    assert.ok(exec.every((p) => p.sl + 1e-12 >= (p.tag === "mc" && s.grid.micro ? s.grid.micro.minSlEval ?? s.grid.minSl : s.grid.minSl)), "each range retains its own floor");
   }
 });
 
@@ -72,7 +72,7 @@ test("each range's own minimum net stop distance replaces the global one for tha
   const floor = (pct: number) => minimumStopFraction(c, pct);
   const minSl = (cells: ReturnType<typeof protectGrid>, tag: string) => Math.min(...cells.filter((p) => p.tag === tag).map((p) => p.sl));
   const e0 = protectGrid(REF_TF, base.grid, c), e1 = protectGrid(REF_TF, own.grid, c);
-  assert.ok(Math.abs(minSl(e0, "mc") - floor(0.1)) < 1e-9);
+  assert.ok(Math.abs(minSl(e0, "mc") - (base.microMinSlDistancePct ?? .1) / 100) < 1e-9, "Micro uses its independent absolute default floor");
   assert.ok(Math.abs(minSl(e1, "mc") - floor(0.4)) < 1e-9, "Micro: own 0.4 %");
   assert.ok(minSl(e1, "sh") >= floor(0.2) - 1e-9, "Short: never inside its own 0.2 % floor (its 0.25 x ladder is already wider)");
   assert.ok(Math.abs(minSl(e1, "lr") - floor(0.5)) < 1e-9, "Low-Range: own 0.5 %");
