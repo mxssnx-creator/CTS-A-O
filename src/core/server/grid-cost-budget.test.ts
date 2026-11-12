@@ -39,8 +39,8 @@ test("merged settings, fee-only changes and preset application retain effective 
     assert.doesNotThrow(() => checkMerged(first.settings, { fees }));
     first.updateSettings({ fees });
     assert.equal(first.settings.cost, .0001, "fee-only patch derives and validates merged effective cost");
-    assert.equal(gridVariants(first.settings.grid, first.settings.cost), 5948);
-    assert.equal(first.wf.protects.length, 5948);
+    assert.equal(gridVariants(first.settings.grid, first.settings.cost), 6240, "the independent Micro floor preserves 292 additional distinct cells");
+    assert.equal(first.wf.protects.length, 6240);
     const source = first.findPreset("live-all-independent"); assert.ok(source);
     const saved = { ...structuredClone(source), id: "grid-cost-budget-preset", kind: "saved" as const,
       settings: { grid: { lowRange: { ...grid().lowRange } } } };
