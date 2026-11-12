@@ -1,4 +1,7 @@
+import {positionStageStats} from "../position-windows.ts";
+import {blockRequired} from "../../../shared/cts-lastn/blocks.ts";
 import { positionCounts, positionStats, positionTapeValid } from "../position-windows.ts";
+import {relationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
 import { RT_COST } from "../model-cost.ts";
 import { EVALUATION_HISTORY_H } from "../market/history-requirements.ts";
 import { ProcessedReplay, type ProcessedReplayPolicy, type ProcessedReplayReport } from "./processed-replay.ts";
@@ -372,10 +375,14 @@ export function coordBlock(
 }
 
 /** The ranges wf.rangeOpts sets apart: engine ranges, "sig" for Signals, and "wide" for untagged engine configs. */
-export const RANGE_OPT_TAGS = ["wide", "mc", "mn", "mp", "sh", "gn", "lg", "lr", "sig"] as const;
+export const RANGE_OPT_TAGS = ["wide", "mc", "mn", "mp", "sh", "gn", "lg", "lr", "sig", "exit"] as const;
 export type RangeOptTag = (typeof RANGE_OPT_TAGS)[number];
 /** One range's seat and entry options (WalkForwardOptions.rangeOpts); each one unset is the global value. */
 export interface RangeOpts {
+  /** Both the overall switch and this range switch must allow standalone base progression. */
+  normal?: boolean;
+  /** Master within this range, including trailing used by additional strategies. */
+  trailing?: boolean;
   /** seat validation: the last this-many closes (WalkForwardOptions.validLastN) */
   validLastN?: number;
   /** seat cool-off in hours (WalkForwardOptions.seatQuietH) */
@@ -655,6 +662,7 @@ export interface WalkForwardOptions {
   signalMaxPositions?: number;
   /** Extra per-type execution multipliers; derived from signals settings, not a walk-forward user override. */
   indicationVolumeFactors?: SignalVolumeFactors;
+  relationalVolumeRatios?: import("../../../shared/cts-volume/ratios.ts").RelationalVolumeRatios;
   toggles: StrategyToggles;
   block: BlockConfig;
   /** Settled-order volume adjustment; undefined on legacy research callers is inert. */
@@ -761,10 +769,9 @@ export function protectGrid(
   const out: Protect[] = [];
   const seen = new Set<string>();
   const push = (p: Protect) => {
-    const slFloor = floorOf(p.tag);
-    // The floor is a float sum (cost + net distance: 0.00176 + 0.001 = 0.0027600000000000003). A cell already rounded
-    // onto it (0.00276) meets it by distanceAtFloor's own rule; replacing it with the unrounded sum gave the executable
-    // cell a different key than the one Base proved (protectCellKey), so a floor cell never matched its Base proof.
+    const slFloor = p.tag === "mc" ? (ownSlFloor(rangeOf(p.tag), cost ?? RT_COST) ?? 0) : floorOf(p.tag);
+    // Micro's absolute floor is resolved by forEachMicro. Explicit range net floors remain cost-aware.
+    // Preserve already rounded floor cells so Base and execution keep the same protectCellKey.
     if (p.sl + Number.EPSILON * Math.max(Math.abs(p.sl), slFloor) < slFloor) p.sl = slFloor;
     if (!p.tag && g.maxSl && g.maxSl > 0) {
       if (g.maxSl + 1e-12 < Math.max(slFloor, g.minSl ?? 0)) return;
@@ -902,6 +909,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     axisVolumeFactor: volumeRatio(s.axis.volumeFactor),
     exitVolumeFactor: volumeRatio(s.exitStrategy.volumeFactor),
     indicationVolumeFactors: signalVolumeFactorsOf(s.signals),
+    relationalVolumeRatios: s.relationalVolumeRatios,
     // Evaluated history is separate from indicator warmup and independent Signal/Exit history.
     preH: EVALUATION_HISTORY_H,
     simH: 48,
@@ -2983,15 +2991,24 @@ export function axisVariants<P>(
  * Whether a config of this tape trades under the toggles: kindExecutable, except a signal's own base (signalOwnBase)
  * — its Normal always, its Trailing with the Trailing switch — whatever the engine's Normal / Block switches say.
  */
+export function effectiveStrategyToggles(
+  tp: Pick<ConfigTape, "kind" | "ind"> & Partial<Pick<ConfigTape, "protect">>,
+  o: Pick<WalkForwardOptions, "toggles" | "rangeOpts">,
+): StrategyToggles {
+  const tag = tp.kind === "exit" ? "exit" : isSignalInd(tp.ind) ? "sig" : tp.protect?.tag ?? "wide";
+  const own = o.rangeOpts?.[tag];
+  return { ...o.toggles, normal: o.toggles.normal && own?.normal !== false,
+    trailing: o.toggles.trailing && own?.trailing !== false };
+}
+
 export function tapeExecutable(
-  tp: Pick<ConfigTape, "kind" | "ind">,
-  o: Pick<WalkForwardOptions, "toggles" | "signalOwnBase">,
+  tp: Pick<ConfigTape, "kind" | "ind"> & Partial<Pick<ConfigTape, "protect">>,
+  o: Pick<WalkForwardOptions, "toggles" | "signalOwnBase" | "rangeOpts">,
 ): boolean {
-  if (o.signalOwnBase && isPlainKind(tp.kind) && isSignalInd(tp.ind))
-    return tp.kind === "exit"
-      ? o.toggles.exit !== false
-      : tp.kind === "normal" || o.toggles.trailing;
-  return kindExecutable(tp.kind, o.toggles);
+  const tg = effectiveStrategyToggles(tp, o);
+  // A trailing Exit, DCA or hybrid Axis must also respect the master. Never silently change its qualified economics.
+  if (!tg.trailing && ((tp.protect?.trail ?? 0) > 0 || tp.protect?.trailOnly || (tp.kind === "axis" && /\|axd?-.*h(?:\||$)/.test((tp as Partial<ConfigTape>).id ?? "")))) return false;
+  return kindExecutable(tp.kind, tg);
 }
 
 /** Block level from the entry's own config × symbol × side closes, in independent last-n windows. */
@@ -4012,12 +4029,13 @@ export function positionConfigEval(
     windowBasis:"positions",requestedN:counts.main};
   const indices = signalContextOf(tp, sym, side),
     end = indices ? lowerBound(indices, lowerBound(tp.exitT, t)) : 0;
-  const take = (n: number) => {
+  const take = (n: number, stage?: "base"|"main"|"real"|"entry") => {
+    const blocks=stage?policy.blocks?.[stage]:undefined; if(blocks)n=blockRequired(blocks);
     const values: number[] = [];
     for (let j = Math.max(0, end - n); j < end; j++) values.push(tp.r[indices![j]]);
-    return positionStats(values, n);
+    return positionStageStats(values,n,blocks,minPfForTape(tp,o));
   };
-  const main = take(counts.main),
+  const main = take(counts.main,"main"),
     floor = minPfForTape(tp, o),
     prior = lossPriorOf(tp, o.gates);
   const base = {
@@ -4027,19 +4045,21 @@ export function positionConfigEval(
     gp: main.gp * 100,
     gl: main.gl * 100,
     windowBasis: "positions" as const,
-    requestedN: counts.main,
+    requestedN: main.requested,
     drawdownPositions: main.maxDrawdownPositions,
   };
   const no = (fail: EvalGate): ConfigEval => ({ ok: false, fail, ...base });
   if (tp.heldOnly || tp.carried || !main.complete) return no("closes");
+  if (!main.blocksPassed) return no("pf");
   if (!main.known || !(main.net > 0)) return no("net");
   if (!qualifiedPf(main.gp, main.gl + prior, floor)) return no("pf");
   // Real and entry observations remain separate count windows, even when their sizes coincide.
-  for (const [n, fail] of [
-    [counts.real, "pre"],
-    [counts.entry, "lastN"],
+  for (const [stage,n, fail] of [
+    ["real",counts.real, "pre"],
+    ["entry",counts.entry, "lastN"],
   ] as const) {
-    const sample = take(n);
+    const sample = take(n,stage);
+    if (!sample.blocksPassed) return no(fail);
     if (!sample.complete) return no("closes");
     if (!sample.known || !(sample.net > 0) || !qualifiedPf(sample.gp, sample.gl + prior, floor))
       return no(fail);
@@ -4055,11 +4075,13 @@ export function positionConfigEval(
   if (ddrFails(main.mdd * 100, main.net * 100, maxDdrForTape(tp, o))) return no("ddr");
   if (!(main.lcb > 0)) return no("lcb");
   if (main.positiveShare < minGreenForTape(tp, o)) return no("green");
+  const mainEnd=policy.blocks?.main?Math.max(0,end-policy.blocks.main.short-policy.blocks.main.minimal):end;
+  const mainLongN=policy.blocks?.main?.long??counts.main;
   if (o.mode === "durable") {
     const parts = Math.max(2, o.durableSplits),
       values: number[] = [];
-    if (counts.main < parts) return no("stable");
-    for (let j = end - counts.main; j < end; j++) values.push(tp.r[indices![j]]);
+    if (mainLongN < parts) return no("stable");
+    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(tp.r[indices![j]]);
     let passing = 0;
     for (let k = 0; k < parts; k++) {
       const a = Math.floor((values.length * k) / parts),
@@ -4072,9 +4094,9 @@ export function positionConfigEval(
   }
   const blocks = rangeOptsOf(o, tp)?.stableBlocks ?? o.gates.stableBlocks ?? 0;
   if (blocks >= 2) {
-    if (counts.main < 2 * blocks) return no("stable");
+    if (mainLongN < 2 * blocks) return no("stable");
     const values: number[] = [];
-    for (let j = end - counts.main; j < end; j++) values.push(tp.r[indices![j]]);
+    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(tp.r[indices![j]]);
     for (let k = 0; k < blocks; k++) {
       const a = Math.floor((values.length * k) / blocks),
         b = Math.floor((values.length * (k + 1)) / blocks),
@@ -5792,7 +5814,7 @@ export function execDecision(
   },
 ): ExecDecision {
   if (o.processedStages && !ctx?.processedBase) return { ok: false, why: "processedUnavailable" };
-  const tg = o.toggles;
+  const tg = effectiveStrategyToggles(tp, o);
   const applyRelate = (decision: Extract<ExecDecision, { ok: true }>): ExecDecision => {
     if (!o.relate?.enabled) return decision;
     if (!ctx?.relate) return { ok: false, why: "relateUnavailable" };
@@ -6022,7 +6044,7 @@ export function execDecision(
   }
   // Normal off: Normal / Trailing execute only Block-raised. Historic Exit has its own independent switch.
   const plain = isPlainKind(tp.kind);
-  const sigBase = plain && tp.kind !== "exit" && !!o.signalOwnBase && isSignalInd(tp.ind);
+  const sigBase = plain && tp.kind !== "exit" && tg.normal && !!o.signalOwnBase && isSignalInd(tp.ind);
   const kindBaseOn = tp.kind === "exit" ? tg.exit !== false : tg.normal;
   // The enabled plain type's unraised base trades on the config's own recent record.
   const gatedBase = plain && tp.kind !== "exit" && kindBaseOn && !sigBase && (o.normalBaseMinPf ?? 0) > 0;
@@ -6048,6 +6070,7 @@ export function execDecision(
   // a type Block never raises trades at its own volume (and Block Active does not skip it); the Normal base PF
   // still applies, as for a range Block never raises
   if (o.block.excludeKinds?.includes(tp.kind)) {
+    if (plain && !kindBaseOn && !sigBase) return { ok: false, why: "normalOff" };
     if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };
     return applyRelate({ ok: true, level: 0, vol: 1 });
   }
@@ -6056,6 +6079,7 @@ export function execDecision(
   const blockRange =
     tp.kind === "exit" ? "" : tp.protect.tag || (plain && !isSignalInd(tp.ind) ? "wide" : "");
   if (blockRange && o.block.excludeRanges?.includes(blockRange)) {
+    if (plain && !kindBaseOn && !sigBase) return { ok: false, why: "normalOff" };
     if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };
     return applyRelate({ ok: true, level: 0, vol: 1 });
   }
@@ -7581,7 +7605,7 @@ export function* walkForwardGen(
           (crowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) >= crowdCapOf(o, tr.cfg)
         )
           why = "crowd";
-        const vf = indicationVolumeFactors.get(tp.id) ?? 1;
+        const vf = (indicationVolumeFactors.get(tp.id) ?? 1)*relationalVolumeFactor(o.relationalVolumeRatios,{indicationType:kindOfInd(tp.ind),indication:laneOf(tp.ind).base,strategy:tp.kind,range:tp.kind==="exit"?"exit":isSignalInd(tp.ind)?"sig":tp.protect.tag??"wide",symbol:tr.sym});
         const hedgeVol = hedging ? (o.coord?.hedgeVolumeFactor ?? 1) : 1;
         const rangeVol = rangeVolumeFactorFor(tp, o);
         const baseForBlock = (_blockVolume: number) => 1;

@@ -1,5 +1,6 @@
 import { migratePositionWindows } from "./position-windows-migration.server.ts";
 import { mainnetPositionWindows } from "../position-windows.ts";
+import {relationalVolumeFactor,relationalVolumeSettings} from "../../../shared/cts-volume/ratios.ts";
 import { minimumStopFraction, normalizeMinSlDistancePct } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, validatedSetPf, type ValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
@@ -206,6 +207,7 @@ import {
   configDirectionEval,
   tapeRetentionHours,
   kindExecutable,
+  tapeExecutable,
   defaultWalkForward,
   signalHistoryHours,
   signalValidationOk,
@@ -264,6 +266,7 @@ import {
   positionMult,
   positionVolume,
   rangeVolumeFactorFor,
+  kindOfInd,
   freshEntry,
   seatedForEntry,
   stepSeats,
@@ -1600,8 +1603,13 @@ export class CoreRuntime {
     math: TickMathBook | null;
     groups: Array<{ sym: string; idx: number[]; px: number; sum: number; nextBarT: number }>;
   } | null = null;
+  private trailingProcessingFor(cfg:string):boolean{
+    const range=isHistoricExitConfig(cfg)?'exit':isSignalInd(cfg.split('|')[1]??'')?'sig':rangeOfId(cfg)||'wide';
+    return this.wf.toggles.trailing!==false && this.wf.rangeOpts?.[range as keyof typeof this.wf.rangeOpts]?.trailing!==false;
+  }
   private tickBook() {
     const positions = this.paper.positions;
+    for(const p of positions){if(this.trailingProcessingFor(p.cfg))delete p.trailingProcessingEnabled;else p.trailingProcessingEnabled=false;}
     const units = this.paperUnits();
     const cost = this.settings.cost;
     const m = this.tickMemo;
@@ -2840,6 +2848,8 @@ export class CoreRuntime {
   }
 
   updateSettings(patch: SettingsPatch, wfPatch?: Partial<WalkForwardOptions>) {
+    if(patch.relationalVolumeRatios!==undefined)relationalVolumeSettings(patch.relationalVolumeRatios,true);
+    this.tickMemo=null;this.tickSentBook=null;
     const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${evaluationHistorySettings(this.settings, this.wf).historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`;
     const prevCompute = computeKey(this.settings, this.wf);
     const next = mergeSettings(this.settings, patch);
@@ -7379,7 +7389,7 @@ export class CoreRuntime {
           !isSignalInd(tp.ind) &&
           !tp.heldOnly &&
           baseAllowsTape(tp, this.wf) &&
-          kindExecutable(tp.kind, this.wf.toggles) &&
+          tapeExecutable(tp, this.wf) &&
           (!this.wf.bots?.length || this.wf.bots.includes(tp.bot)),
       )
       .map((tp) => ({ id: tp.id, group: liveGroupOf(tp.id), kind: kindOfId(tp.id) }));
@@ -10084,6 +10094,7 @@ export class CoreRuntime {
       // multiple (its volume without the ladder weight: an Axis ladder that filled another rung since grows)
       const prev = prevByKey.get(posId(op));
       // what the tick advanced since this tape's data end (a trailing stop never moves back)
+      if(!this.trailingProcessingFor(op.cfg))op.trailingProcessingEnabled=false;
       const tr = carryTrail(op, prev);
       const stopNow = tr.stop ?? op.stop;
       const d = held
@@ -10161,7 +10172,7 @@ export class CoreRuntime {
       perSide.set(`${cls}|${op.side}`, sd + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
       // new entries take the relation volume the simulation ended with (within the Block maximum)
-      const vf = held ? 1 : volumeFactorForStrategy(tp, this.wf);
+      const vf = held ? 1 : volumeFactorForStrategy(tp, this.wf)*relationalVolumeFactor(this.wf.relationalVolumeRatios,{indicationType:kindOfInd(tp.ind),indication:laneOf(tp.ind).base,strategy:tp.kind,range:tp.kind==="exit"?"exit":isSignalInd(tp.ind)?"sig":tp.protect.tag??"wide",symbol:op.sym});
       const positionVf = held ? (prev?.volFactor ?? 1) : vf;
       const cv = !held ? this.s2EntryVolume(d.vol, op.cfg) : 1;
       const hedge = !held && this.isHedgeEntry(op);
@@ -10547,6 +10558,7 @@ export class CoreRuntime {
     // built is carried over (else the lane asks for its volume again until the next step reads the stored hit)
     for (const p of positions) {
       const prev = prevByKey.get(posId(p));
+      if(!this.trailingProcessingFor(p.cfg))p.trailingProcessingEnabled=false;
       Object.assign(p, carryTrail(p, prev));
       if (p.stopHit) continue;
       if (prev?.stopHit && prev.stop === p.stop) {
@@ -10796,7 +10808,7 @@ export class CoreRuntime {
         }
         const hedge = this.isHedgeEntry({ cfg: tp.id, sym: p.sym, side: p.side });
         const coordVol = this.s2EntryVolume(d.vol, tp.id);
-        const volFactor = volumeFactorForStrategy(tp, this.wf);
+        const volFactor = volumeFactorForStrategy(tp, this.wf)*relationalVolumeFactor(this.wf.relationalVolumeRatios,{indicationType:kindOfInd(tp.ind),indication:laneOf(tp.ind).base,strategy:tp.kind,range:tp.kind==="exit"?"exit":isSignalInd(tp.ind)?"sig":tp.protect.tag??"wide",symbol:p.sym});
         const rangeVol = rangeVolumeFactorFor(tp, this.wf);
         const hedgeVol = hedge ? (this.wf.coord?.hedgeVolumeFactor ?? 1) : 1;
         const baseExternalMult = d.vol * coordVol * volFactor * rangeVol * hedgeVol;
@@ -11051,6 +11063,7 @@ export function sanitizeRangeOpts(v: unknown): Partial<Record<RangeOptTag, Range
     if (!x || typeof x !== "object") continue;
     const src = x as Record<string, unknown>;
     const r: RangeOpts = {};
+    for (const key of ["normal", "trailing"] as const) if (typeof src[key] === "boolean") r[key] = src[key];
     const validLastN = num(src.validLastN, 0, 200, true);
     if (validLastN !== undefined) r.validLastN = validLastN;
     const lastN = num(src.lastN, 0, 200, true);
@@ -11319,6 +11332,7 @@ function migrateNeutralVolumeRatios(db: CoreDb): void {
   const backup=structuredClone({settings,presets});
   const upgrade=(s:SettingsPatch|undefined) => {
     if(!s) return;
+    if(s.relationalVolumeRatios!==undefined)s.relationalVolumeRatios=relationalVolumeSettings(s.relationalVolumeRatios,true);
     if(s.signals?.coordination?.volumeFactor!==undefined)
       s.signals.coordination.volumeFactor=s.signals.coordination.volumeFactor===8?1:volumeRatio(s.signals.coordination.volumeFactor);
     if(s.axis?.volumeFactor!==undefined)
@@ -12699,10 +12713,18 @@ export function normalizeLanes(s: CoreSettings): CoreSettings {
   for (const key of ["micro", "minimal", "short", "general", "long"] as const) {
     const r = grid[key];
     if (r) {
-      // a range's own minimum net distance (minSlDistancePct) replaces the global one for that range only
-      const own = r.minSlDistancePct === undefined ? minSlDistancePct : normalizeMinSlDistancePct(r.minSlDistancePct);
-      const f = minimumStopFraction(s.cost, own);
-      grid[key] = { ...r, minSl: f, minSlEval: f, ...(key === "micro" ? { minSlNet: own / 100 } : {}) };
+      const rangeNet = r.minSlDistancePct === undefined ? undefined : normalizeMinSlDistancePct(r.minSlDistancePct);
+      if (key === "micro") {
+        const own = (value: unknown, fallback: number) => typeof value === "number" && Number.isFinite(value)
+          ? +(Math.min(10, Math.max(0, value)) / 100).toFixed(12) : fallback;
+        // An explicitly configured range net floor retains its cost-aware contract; otherwise Micro uses its own absolute floor.
+        const microSl = rangeNet === undefined ? own(s.microMinSlDistancePct, minSl) : minimumStopFraction(s.cost, rangeNet);
+        const microTrail = own(s.microMinTrailDistancePct, r.minTrail ?? 0.001);
+        grid[key] = { ...r, minSl: microSl, minSlEval: microSl, minSlNet: undefined, minTrail: microTrail };
+      } else {
+        const f = minimumStopFraction(s.cost, rangeNet ?? minSlDistancePct);
+        grid[key] = { ...r, minSl: f, minSlEval: f };
+      }
     }
   }
   return {

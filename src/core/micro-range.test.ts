@@ -275,7 +275,7 @@ test("regression: a planted micro edge passes Base at Micro's own cell and build
   assert.ok(mc.filter((x) => x.gp[x.n] - x.gl[x.n] > 0).length >= 50);
 });
 
-test("Legacy Micro floors cannot lower the overall minimum; its net target filter stays independent", async () => {
+test("Micro owns its explicit stop floor while its net target filter stays independent", async () => {
   const { protectGrid } = await import("./sim/walkforward.ts");
   const { baseRangeProtects } = await import("./pipeline/pipeline.ts");
   const { DEFAULT_SETTINGS } = await import("./config.ts");
@@ -296,14 +296,14 @@ test("Legacy Micro floors cannot lower the overall minimum; its net target filte
   } as never;
   const g2 = protectGrid(5, own, cost).filter((p) => p.tag === "mc" && Math.abs(p.tp - 0.004) < 1e-9);
   assert.ok(
-    g2.every((p) => p.sl >= EVAL_MIN_SL - 1e-12),
-    "legacy range overrides cannot lower the overall floor",
+    g2.every((p) => p.sl >= 0.0025 - 1e-12) && g2.some((p) => p.sl < EVAL_MIN_SL),
+    "the explicit Micro floor replaces the wider global floor",
   );
   assert.ok(Math.min(...g2.map((p) => p.sl)) >= 0.0025 - 1e-12, "never below the range's own floor");
   // the Base cells follow the same floor
   const b2 = baseRangeProtects(own, cost).filter((p) => p.tag === "mc");
   assert.ok(b2.length > 0 && Math.min(...b2.map((p) => p.sl)) >= 0.0025 - 1e-12);
-  assert.ok(Math.min(...b2.map((p) => p.sl)) >= EVAL_MIN_SL - 1e-12, "Base applies the same global floor");
+  assert.ok(Math.min(...b2.map((p) => p.sl)) < EVAL_MIN_SL, "Base retains the same independent Micro floor");
   // minNetOfCost drops the net targets below a multiple of the round-trip cost
   const cut = { ...DEFAULT_SETTINGS.grid, trailingOnly: false, micro: { ...MICRO_RANGE, minNetOfCost: 1 } } as never;
   const tps = new Set(protectGrid(5, cut, cost).filter((p) => p.tag === "mc").map((p) => p.tp));

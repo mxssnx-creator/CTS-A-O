@@ -172,7 +172,7 @@ describe("range Base, grid and actual simulated protection agree", () => {
     micro.minTrail = 0.006;
     const actual = protectGrid(15, micro, COST).filter((p) => p.tag === "mc");
     assert.deepEqual(baseRangeProtects(micro, COST).filter((p) => p.tag === "mc"), actual);
-    assert.equal(actual[0].sl, 0.003);
+    assert.equal(actual[0].sl, 0.001);
     assert.equal(actual[1].trail * 0.5, 0.0005);
   });
 

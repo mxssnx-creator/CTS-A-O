@@ -1,3 +1,4 @@
+import {blockPrefix,blockRequired,checkBlockPolicy,evaluateBlocks,type BlockPolicy} from "../../shared/cts-lastn/blocks.ts";
 /** Position-count evaluation policy. Time controls data availability, never membership of these samples. */
 export interface PositionCounts {
   base: number;
@@ -6,6 +7,7 @@ export interface PositionCounts {
   entry: number;
 }
 export interface PositionWindows extends PositionCounts {
+  blocks?: Partial<Record<keyof PositionCounts,BlockPolicy>>;
   /** Longest unresolved drawdown in completed positions, independent of wall-clock gaps. */
   maxDrawdownPositions: number;
   byRange?: Record<string, Partial<PositionCounts>>;
@@ -73,6 +75,7 @@ export function checkPositionWindows(p: Partial<PositionWindows>): void {
   for (const k of [...stages, "maxDrawdownPositions"] as const)
     if (p[k] !== undefined && !count(p[k]))
       throw new Error(`${k}: 1–500 complete positions required`);
+  if(p.blocks){for(const [stage,b] of Object.entries(p.blocks)){if(!stages.includes(stage as keyof PositionCounts))throw new Error("Unknown block stage");checkBlockPolicy(b);}}
   for (const name of ["byRange", "byConfig"] as const) {
     const map = p[name];
     if (map === undefined) continue;
@@ -180,4 +183,12 @@ export function mainnetPositionWindows(
       ]),
     ),
   };
+}
+
+/** Statistics describe the independent long block; coverage describes all requested positions. */
+export function positionStageStats(values:readonly number[],requested:number,blocks?:BlockPolicy,minPf=1.05){
+ if(!blocks)return {...positionStats(values,requested),blocksPassed:true};
+ const total=blockRequired(blocks),v=evaluateBlocks(blockPrefix(values.slice(-total).reverse(),total),blocks,Math.max(1.000001,minPf));
+ const end=Math.max(0,values.length-blocks.short-blocks.minimal),stats=positionStats(values.slice(Math.max(0,end-blocks.long),end),blocks.long);
+ return {...stats,n:v.count,requested:total,complete:v.count===total,known:v.state!=="unknown",blocksPassed:v.state==="qualified"};
 }

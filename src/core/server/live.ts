@@ -25,7 +25,12 @@ export const LIVE_TAG: Record<LiveSettings["connId"], string> = {
  */
 export function liveTag(connId: LiveSettings["connId"], env: NodeJS.ProcessEnv = process.env): string {
   const own = (env.CTS_CORE_LIVE_TAG ?? "").trim().toUpperCase();
-  return /^[A-Z0-9]{2,12}_$/.test(own) ? own : LIVE_TAG[connId];
+  if (/^(?:CTSA|CTSB|CTSX|CTSC|GX0[12]|KN|KT)/.test(own) &&
+      !own.startsWith(LIVE_TAG[connId].slice(0,-1)))
+    throw new Error("Configured live tag belongs to another CTS project or connection");
+  if (own && !/^[A-Z0-9]{2,12}_$/.test(own))
+    throw new Error("Configured live tag must contain 2–12 letters/digits followed by one underscore");
+  return own || LIVE_TAG[connId];
 }
 
 export function liveNetwork(connId: LiveSettings["connId"]): "mainnet" | "testnet" {

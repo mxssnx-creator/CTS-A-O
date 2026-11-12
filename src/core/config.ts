@@ -283,8 +283,12 @@ export const DEFAULT_ADJUST: AdjustSettings = {
 };
 
 export interface CoreSettings {
+  relationalVolumeRatios?: import("../../shared/cts-volume/ratios.ts").RelationalVolumeRatios;
   /** Net initial SL percent added to modeled round-trip costs. */
   minSlDistancePct?: number;
+  /** Micro-only absolute price floors, in percent (0.1 = 0.1%). */
+  microMinSlDistancePct?: number;
+  microMinTrailDistancePct?: number;
   /** hard floors of every engine config's stop and trailing distance after lane scaling (fractions; 0.005 = 0.5 %) */
   protectFloor: { minSl: number; minTrail: number };
   /** base candle timeframe in minutes: 1m (every lane is derived from it) */
@@ -802,6 +806,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   paperBalance: 1000,
   // Initial SL uses the shared cost-plus-distance policy; trailing has its own activation/gap rules.
   minSlDistancePct: DEFAULT_MIN_SL_DISTANCE_PCT,
+  microMinSlDistancePct: .1,
+  microMinTrailDistancePct: .05,
   protectFloor: { minSl: minimumStopFraction(RT_COST), minTrail: 0.005 },
   sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
