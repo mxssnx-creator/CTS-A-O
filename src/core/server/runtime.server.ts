@@ -267,6 +267,7 @@ import {
   positionVolume,
   rangeVolumeFactorFor,
   kindOfInd,
+  minPfForTape,
   freshEntry,
   seatedForEntry,
   stepSeats,
@@ -277,6 +278,7 @@ import {
   type ConfirmPool,
   mirrorId,
 } from "../sim/walkforward.ts";
+import { NativeProcessedStageAdapter, type NativeProcessedSnapshot } from "./processed-stage-adapter.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
   ENGINE_PROOF_PF,
@@ -882,6 +884,8 @@ export interface PaperBook {
       tkClose?: number;
       /** when the paper book first held this position (its entry delay is heldAt − entryT) */
       heldAt?: number;
+      /** Entry-time native Base -> Main -> Real result. It stays frozen while this parent remains held. */
+      processedStage?: "postBase" | "validated" | "active";
       /**
        * the market price when the book first held it (a fresh ticker, else the last bar's close): the executable
        * record — the sim's entry may lie a compute in the past (relation.ts executableR)
@@ -999,6 +1003,9 @@ export class CoreRuntime {
   paper: PaperBook;
   /** Measured at actual paper adoption, frozen separately from later retrospective sizing. */
   private paperOwnedAllocations = new Map<string, { unitUsd: number; vol: number }>();
+  private processedNative: NativeProcessedStageAdapter | null = null;
+  private processedNativeKey = "";
+  private processedNativeError: string | null = null;
   /** the paper book was stepped at least once since start */
   private paperStepped = false;
   private lastTrim = 0;
@@ -1402,6 +1409,36 @@ export class CoreRuntime {
     if (typeof book.startedAt === "number" && book.startedAt > 0)
       this.paper.startedAt = book.startedAt;
     return book.positions.length;
+  }
+
+  /** Restore the opt-in native stage book once. Invalid durable evidence fails closed instead of starting empty. */
+  private nativeProcessedStages(): NativeProcessedStageAdapter | null {
+    const policy = this.wf.processedStages;
+    if (!policy) return null;
+    const key = JSON.stringify([policy, this.settings.cost]);
+    if (this.processedNative && this.processedNativeKey === key) return this.processedNative;
+    if (this.processedNativeError && this.processedNativeKey === key) return null;
+    try {
+      const snapshot = this.processedNative?.snapshot() ?? this.db.kvGet<NativeProcessedSnapshot>("processedNativePaperV1") ?? undefined;
+      const adapter = new NativeProcessedStageAdapter(policy, this.settings.cost, snapshot);
+      const missing = adapter.reconcile(new Set(this.paper.positions.map(orderKey)), Date.now());
+      this.processedNative = adapter;
+      this.processedNativeKey = key;
+      this.processedNativeError = null;
+      if (missing) this.db.event("warn", `native processed stages: ${missing} checkpoint parent(s) had no paper position; retained as unknown`);
+      this.persistNativeProcessedStages();
+      return adapter;
+    } catch (err) {
+      this.processedNative = null;
+      this.processedNativeKey = key;
+      this.processedNativeError = err instanceof Error ? err.message : String(err);
+      this.db.event("error", `native processed stages unavailable: ${this.processedNativeError}`);
+      return null;
+    }
+  }
+
+  private persistNativeProcessedStages(): void {
+    if (this.processedNative) this.db.kvSet("processedNativePaperV1", this.processedNative.snapshot());
   }
 
   /** Current loop generation (live steps abort when it changes). */
@@ -7585,7 +7622,7 @@ export class CoreRuntime {
     return model.byConfigSide;
   }
   /** Settled post-Base model outcomes and funded OWNED PAPER executions are distinct evidence, never venue fills. */
-  livePromotionGate(lane: { cfg: string; sym: string; side: number }, now = Date.now()): LiveGate {
+  livePromotionGate(lane: { cfg: string; sym: string; side: number; entryT?: number; id?: string }, now = Date.now()): LiveGate {
     const n = Math.max(
       1,
       this.settings.gates.minTrades ?? 0,
@@ -7680,7 +7717,25 @@ export class CoreRuntime {
               tp.kind,
               tp.id,
             ))));
-    return eligible ? gate : { ...gate, ok: false, state: "ineligible" };
+    if (!eligible) return { ...gate, ok: false, state: "ineligible" };
+    if (!this.wf.processedStages) return gate;
+    const native = this.nativeProcessedStages();
+    const entryT = lane.entryT ?? (lane.id ? Number(lane.id.slice(lane.id.lastIndexOf("|") + 1)) : now);
+    if (!native || !tp || !Number.isFinite(entryT))
+      return { ...gate, ok: false, state: "unknown", unknown: Math.max(1, gate.unknown ?? 0),
+        processed: { stage: null, state: "unknown", n: 0, pf: null } };
+    const exact = native.decisionFor(orderKey({ ...lane, entryT }));
+    const minProcessedPf = Math.max(this.wf.lastNMinPf, minPfForTape(tp, this.wf));
+    const decision = exact
+      ? exact
+      : native.preview(tp, lane.sym, lane.side > 0 ? 1 : -1, entryT, minProcessedPf);
+    if (decision.stage === "active") return { ...gate,
+      processed: { stage: "active", state: "qualified", n: this.wf.processedStages.realN, pf: decision.real?.pf ?? null } };
+    const verdict = decision.stage === "postBase" ? decision.validation : decision.real;
+    const state = verdict?.state ?? "unknown";
+    return { ...gate, ok: false,
+      state: state === "failed" ? "model-failed" : state === "unknown" ? "unknown" : "model-insufficient",
+      processed: { stage: decision.stage, state, n: verdict?.n ?? 0, pf: verdict?.pf ?? null } };
   }
   /**
    * Pooled per-config OWNED PAPER diagnostic (null when off). Strict native admission uses livePromotionGate's
@@ -9615,6 +9670,7 @@ export class CoreRuntime {
   }, reuseSeats = false): Generator<number, void> {
     if (!this.tapes.length || !this.sim) return;
     if (fast && !this.lastSelection) return;
+    const nativeStages = this.wf.processedStages ? this.nativeProcessedStages() : null;
     // sub-timings (the Paper phase is one synchronous slice: its slowest part is named in the phase record)
     const tp0 = performance.now();
     const nowT = Math.floor(Date.now() / H) * H;
@@ -9707,6 +9763,7 @@ export class CoreRuntime {
         legs?: Partial<Record<string, number>>;
         heldAt?: number;
         heldPx?: number;
+        processedStage?: "postBase" | "validated" | "active";
       }
     > = [];
     const saved =
@@ -10029,6 +10086,15 @@ export class CoreRuntime {
         if (!positions.some((x) => `${orderCapScope(x.cfg)}|${x.sym}|${x.side}` === pos)) openPos.delete(pos);
         openKeys.delete(openDupKey(p));
       }
+      if (nativeStages) {
+        for (const { p, at: exitT } of due) {
+          const id = orderKey(p);
+          if (!nativeStages.stageFor(id)) continue;
+          const close = heldCloseOf(p);
+          nativeStages.settle(id, exitT, close && Number.isFinite(unitReturn(close)) ? unitReturn(close) : null);
+        }
+        this.persistNativeProcessedStages();
+      }
     };
     // A legacy hit key has no side. Never copy that ambiguous hit to both sides of an otherwise identical entry.
     const legacySides = new Map<string, number>();
@@ -10111,6 +10177,7 @@ export class CoreRuntime {
             blockSampleCounts: prev?.blockSampleCounts,
           } as const)
         : execDecision(tp, op.entryT, this.wf, {
+            processedBase: !!nativeStages,
             ...booksAt(op.entryT),
             sym: op.sym,
             side: op.side,
@@ -10167,6 +10234,22 @@ export class CoreRuntime {
         pSkip(`${pre}cap:${capWhy}`);
         continue;
       }
+      let processedStage = prev?.processedStage;
+      if (!held && this.wf.processedStages) {
+        if (!nativeStages) {
+          pSkip(`${pre}exec:processedUnavailable`);
+          continue;
+        }
+        try {
+          const minProcessedPf = Math.max(this.wf.lastNMinPf, minPfForTape(tp, this.wf));
+          processedStage = nativeStages.enter(tp, op.sym, op.side > 0 ? 1 : -1, op.entryT, minProcessedPf).stage;
+          this.persistNativeProcessedStages();
+        } catch (err) {
+          this.db.event("error", `native processed-stage admission failed: ${err instanceof Error ? err.message : err}`);
+          pSkip(`${pre}exec:processedUnavailable`);
+          continue;
+        }
+      }
       openPos.add(`${cls}|${posKey}`);
       perSym.set(`${cls}|${op.sym}`, c + 1);
       perSide.set(`${cls}|${op.side}`, sd + 1);
@@ -10205,6 +10288,7 @@ export class CoreRuntime {
       const heldPx = prev ? prev.heldPx : this.heldPxOf(op.sym);
       positions.push({
         ...op,
+        ...(processedStage ? { processedStage } : {}),
         // when the book first held it (kept across steps): adopted now, or as it was
         heldAt: prevByKey.get(posId(op))?.heldAt ?? Date.now(),
         ...(heldPx ? { heldPx } : {}),
@@ -10253,6 +10337,8 @@ export class CoreRuntime {
         })(),
       });
     }
+    // Settle every exact held parent that closed by this snapshot, including a step with no later new entry.
+    releaseDue(closeT);
     // Provisional orders have reserved capacity. Remove their temporary copies now so the exact close check decides
     // whether each should be carried or settled; never remove any other position that joined during the step.
     if (provisionalHeld.size) {
@@ -10738,7 +10824,7 @@ export class CoreRuntime {
       for (const p of tp.pending) {
         if (++visited % 16 === 0) yield visited;
         // an entry on the next bar passes the same execution and coordination rules as in the simulation
-        const d = execDecision(tp, entryT, this.wf, { ...books, sym: p.sym, side: p.side,
+        const d = execDecision(tp, entryT, this.wf, { processedBase: !!this.nativeProcessedStages(), ...books, sym: p.sym, side: p.side,
           relateBase: () => 1,
         });
         if (!d.ok) {
@@ -10749,7 +10835,7 @@ export class CoreRuntime {
         // entries require both settled model and measured owned-paper execution proof for this side
         if (
           (this.liveEntryGate && !this.liveEntryGate(tp, p.side, p.sym)) ||
-          !this.livePromotionGate({ cfg: tp.id, sym: p.sym, side: p.side }).ok
+          !this.livePromotionGate({ cfg: tp.id, sym: p.sym, side: p.side, entryT }).ok
         ) {
           skip(tp, "liveValidation");
           continue;
@@ -10821,6 +10907,7 @@ export class CoreRuntime {
           cfg: tp.id,
           sym: p.sym,
           side: p.side,
+          entryT,
           // an ATR protect trades the distances resolved for this entry (concrete stop / target)
           protect: p.protect ?? tp.protect,
           barT,
@@ -10920,6 +11007,8 @@ export interface LiveIntent {
   cfg: string;
   sym: string;
   side: 1 | -1;
+  /** Exact parent clock used by persistent stage admission and venue-lane identity. */
+  entryT: number;
   protect: Protect;
   barT: number;
   /** Extra multiplier relative to a normal order; 1 = neutral. */
@@ -10999,6 +11088,7 @@ export interface SetListings {
 
 /** The walk-forward knobs that are user settings (grids, toggles and gates come from CoreSettings). */
 export const WF_KEYS = [
+  "processedStages",
   "preH",
   "simH",
   "stepH",
@@ -11110,6 +11200,14 @@ export function mainnetRangeFloors(ro: Partial<Record<RangeOptTag, RangeOpts>>):
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
 export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
   const p = pickWf(o) as Record<string, unknown>;
+  if (p.processedStages !== undefined) {
+    const raw = p.processedStages as Record<string, unknown>;
+    const validationN = Number(raw?.validationN), realN = Number(raw?.realN);
+    if (!raw || !Number.isSafeInteger(validationN) || validationN < 1 || validationN > 200 ||
+      !Number.isSafeInteger(realN) || realN < 1 || realN > 200)
+      throw new Error("processedStages requires validationN and realN in 1–200");
+    p.processedStages = { ...raw, validationN, realN };
+  }
   const num = (k: string, lo: number, hi: number, int = false) => {
     if (p[k] === undefined) return;
     const v = Number(p[k]);

@@ -17,7 +17,10 @@ export interface LastNSamples {
   configs: number;
   heldOnly: number;
   catalogueScope: "built-configs-including-empty-contexts";
-  processedNative: { state: "unavailable"; reason: "persistent-paper-venue-adapter-pending" };
+  processedNative:
+    | { state: "disabled" }
+    | { state: "configured"; basis: "paper"; persistent: true; seededFromCandidates: false;
+        validationN: number; realN: number };
   rows: Array<SampleCount & { kind: string; range: string; source: "engine" | "signals"; window: string; n: number; historyH: number | null }>;
 }
 const empty = (): SampleCount => ({ contexts: 0, full: 0, usable: 0, insufficient: 0, unknown: 0, disabled: 0, pct: null });
@@ -87,7 +90,11 @@ export function* lastNSamplesGen(tapes: readonly ConfigTape[], at: number, o: Wa
     const denominator = row.contexts - row.disabled;
     row.pct = denominator && row.full + row.insufficient > 0 ? row.usable * 100 / denominator : null;
   }
+  const processedNative: LastNSamples["processedNative"] = o.processedStages
+    ? { state: "configured", basis: "paper", persistent: true, seededFromCandidates: false,
+        validationN: o.processedStages.validationN, realN: o.processedStages.realN }
+    : { state: "disabled" };
   return { at, basis: "candidate-config-symbol-side", configs, heldOnly,
     catalogueScope: "built-configs-including-empty-contexts",
-    processedNative: { state: "unavailable", reason: "persistent-paper-venue-adapter-pending" }, rows };
+    processedNative, rows };
 }

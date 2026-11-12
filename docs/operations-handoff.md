@@ -4965,3 +4965,25 @@ Further 8 November audit: cached-rate budgets now re-price immediately on ratio/
 New `gates.stepPf` settings expose enabled/ratio/max, default true/0.2/2 for new defaults. The manual CTS-G formula is neutral 1 + target-percent-grid × ratio; round down to the 0.1% grid, bounded to 0.2–3.5%. Keep stricter configured range/type floors; Signals retain their separate policy. Trailing-only uses its activation distance; ATR protections use their documented nominal distance. Exact Base cells, downstream selection, entry, native admission and cell statistics resolve the same rule. Selection-cache provenance includes the policy. Legacy settings without the property remain readable and custom floors are not replaced.
 Stable-02 relation volume now matches each entry's symbol/direction/indication/type/config keys. Global relation summaries are diagnostic, not the multiplier of an unrelated entry.
 Validation: 122 focused tests passed after the changes. A separate processed-stage/ownership suite passed 99 tests with one explicit existing TODO: persistent processed Main → Real is not integrated into the runtime. That failed causal predecessor fixture remains visible. These changes do not establish complete runtime/live parity or high executed PF. A high settled PF with negative marked equity is not a successful preset.
+
+## 12 November 2026 — persistent paper processed-stage adapter on current main
+
+Draft #219 was audited against current main rather than mass-merged. Its 38 commits / 73 files start from old base
+`a50a10e`, head `ad9271b3`; current target was `63c2a1bf`, and the published current-main/draft graph has no common
+merge base. The draft's useful processed-book/model primitives and partial-parent repair already existed in newer
+form, but its own handoff correctly identified native persistence/admission as missing.
+
+The missing opt-in paper predecessor bridge is now implemented on current main. `wf.processedStages` is persisted and sanitized;
+actual paper admissions after current selection/coordination/execution/cap checks enter the durable exact-identity
+post-Base → validated → active book. Raw candidates never bootstrap it. Exact terminal paper parents settle once;
+entry-time stage and policy stay frozen through restart. Predecessor parents keep learning on paper, while only active
+parents can pass the additional native gate in `livePromotionGate`. Missing checkpoint/paper counterparts settle as
+unknown and malformed evidence fails closed. Full evidence and limits: `docs/verification/persistent-processed-adapter-20261112.md`.
+
+Focused verification passes with no processed-stage TODO; TypeScript passes. No account or exchange call was made.
+This is mechanical paper-stage/ownership evidence only: a separate persistent venue-own-stage ledger,
+partial-fill/restart correlation, Settings/UI controls, full CI, a fresh bounded twelve-symbol x02 forward cohort,
+venue parity and sufficient independent samples remain open. No positive-PF, deployment or live-readiness claim follows.
+The broad core inventory was attempted and remains red on four assertions; all four reproduce on untouched base
+`63c2a1bf` (two Axis 60/90 expectations, one-sided `trailing-only` fixture coverage and incomplete two-sided
+Tactic-DCA fixture activation). They are retained as pre-existing open regressions, not attributed to this adapter.

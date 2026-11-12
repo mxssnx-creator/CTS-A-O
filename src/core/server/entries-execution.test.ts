@@ -16,7 +16,7 @@ const originalSecret = process.env.BINGX_X02_SECRET;
 const originalArmed = process.env.CTS_CORE_LIVE;
 const originalBudgetFile = process.env.CTS_BINGX_RATE_BUDGET_FILE;
 const intent: LiveIntent = { cfg: "combo|ema-9-21@m1|entry", sym: "S0-USDT", side: 1,
-  barT: 1, protect: { tp: .1, sl: .05, trail: 0, hold: 1 } };
+  entryT: 2, barT: 1, protect: { tp: .1, sl: .05, trail: 0, hold: 1 } };
 type Reply = { order: { orderId?: string; orderID?: string; clientOrderId?: string; symbol?: string; side?: string; positionSide?: string; type?: string;
   status?: string; executedQty?: number; executedVolume?: number; cumExecQty?: number; filledQty?: number; origQty?: number;
   avgPrice?: number; commission?: number; updateTime?: number } };

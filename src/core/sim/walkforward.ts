@@ -4431,7 +4431,7 @@ function minTradesForTape(
   return Math.max(3, tp.kind === "exit" ? (o.exitMinTrades ?? fallback) : fallback);
 }
 
-function minPfForTape(
+export function minPfForTape(
   tp: Pick<ConfigTape, "kind" | "protect" | "ind">,
   o: Pick<WalkForwardOptions, "gates" | "exitMinPf">,
 ): number {

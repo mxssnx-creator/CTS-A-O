@@ -54,7 +54,10 @@ test("48h evaluated history adds own samples while Last-N, empty contexts and Si
   assert.equal(row(extended,"validation").usable,2);
   assert.equal(row(extended,"validation").historyH,null);
   assert.equal(extended.catalogueScope,"built-configs-including-empty-contexts");
-  assert.equal(extended.processedNative.state,"unavailable");
+  assert.equal(extended.processedNative.state,"disabled");
+  const configured = run([tp], at, { ...base, processedStages: { validationN: 12, realN: 8 } });
+  assert.deepEqual(configured.processedNative, { state: "configured", basis: "paper", persistent: true,
+    seededFromCandidates: false, validationN: 12, realN: 8 });
   const signal = run([tape({ind:"sig-ema-cross-s@m1"})], at,
     { ...base, preH: 48, longH: 48 });
   assert.equal(row(signal,"history").historyH,150);
