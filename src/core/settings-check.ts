@@ -2,7 +2,7 @@ import { checkPositionWindows } from "./position-windows.ts";
 import { lowRangeHolds } from "./indications/low-range.ts";
 import { rangeHolds } from "./minimal-coord.ts";
 import { validateStepPfOverrides } from "./step-pf.ts";
-import { MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, SL_TP_MIN, SL_TP_MAX } from "./protection-policy.ts";
+import { FINE_SL_TP_MIN, MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, SL_TP_MIN, SL_TP_MAX } from "./protection-policy.ts";
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
 import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, MAX_EXTERNAL_STACK, MAX_FOCUS_PAIRS, mergeGridSettings, type CoreSettings, type SettingsPatch } from "./config.ts";
 import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "./model-cost.ts";
@@ -724,6 +724,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
         for (const n of g.holdCandidatesMin) { num(n, 1, 4320, `${name} hold minutes`); int(n, `${name} hold minutes`); }
       }
       if (g.minSlEval !== undefined) num(g.minSlEval, 0.0005, 0.05, `${name} evaluation min SL`);
+      num((g as { minSlDistancePct?: number }).minSlDistancePct, MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, `${name} own minimum net stop distance (%)`);
       for (const [k, v] of [
         ["own Base cell (ownBase)", g.ownBase],
         ["best-cell Base (baseBest)", g.baseBest],
@@ -787,8 +788,9 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
         throw new Error("Low-Range coordination: short or independent");
       num(lowRange.minTf, 0, 30, "Low-Range minimum timeframe");
       volumeFactor(lowRange.volumeFactor, "Low-Range volume factor");
-      num(lowRange.maxSlRatio, SL_TP_MIN, SL_TP_MAX, "Low-Range maximum SL ratio");
+      num(lowRange.maxSlRatio, FINE_SL_TP_MIN, SL_TP_MAX, "Low-Range maximum SL ratio");
       num(lowRange.maxTrailRatio, 0.01, 1, "Low-Range maximum trailing ratio");
+      num(lowRange.minSlDistancePct, MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, "Low-Range own minimum net stop distance (%)");
       if (lowRange.holdAuto !== undefined && typeof lowRange.holdAuto !== "boolean") throw new Error("Low-Range hold auto: on / off");
       if (lowRange.holdCandidatesMin !== undefined) {
         const xs = lowRange.holdCandidatesMin;
@@ -798,7 +800,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       }
       for (const [xs, lo, hi, label] of [
         [lowRange.steps, 2, 6, "Low-Range target steps"],
-        [lowRange.slRatios, SL_TP_MIN, SL_TP_MAX, "Low-Range stop ratios"],
+        [lowRange.slRatios, FINE_SL_TP_MIN, SL_TP_MAX, "Low-Range stop ratios"],
         [lowRange.trailRatios, 0, 1, "Low-Range trailing ratios"],
       ] as const) {
         if (xs === undefined) continue;
@@ -821,7 +823,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       };
       // tp: the net target after the round-trip cost (tpNetOfCost, default on) or the price target itself
       wide(micro.tp, 0.001, 0.2, "micro TP", 16);
-      wide(micro.slOfTp, SL_TP_MIN, SL_TP_MAX, "micro SL×TP", 24);
+      // the Micro ladder starts at 0.2 (11 Nov 2026); the former 0.25 to 2.5 values stay valid
+      wide(micro.slOfTp, FINE_SL_TP_MIN, SL_TP_MAX, "micro SL×TP", 24);
       if (micro.tpNetOfCost !== undefined && typeof micro.tpNetOfCost !== "boolean")
         throw new Error("micro tpNetOfCost: true or false");
 

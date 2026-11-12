@@ -118,13 +118,15 @@ try {
 
     const title = await page.title();
     const hasCanvas = (await page.locator("canvas").count()) > 0;
-    // Capture readiness and content atomically: hydration may briefly replace a ready page with its shell.
+    // Hydration can replace a ready page between separate locator reads.
+    // Record readiness and body evidence atomically; a loading shell cannot
+    // become the baseline for a fully rendered production page.
     const bodyText = readyText
-      ? await (await page.waitForFunction(needle => {
-          const text = document.body?.innerText ?? "";
-          return text.includes(needle) ? text : false;
-        }, readyText, { timeout: timeoutMs })).jsonValue()
-      : await page.locator("body").innerText();
+      ? await page.waitForFunction((expected) => {
+          const text = document.body?.innerText || "";
+          return text.includes(expected) ? text : false;
+        }, readyText, { timeout: timeoutMs }).then((handle) => handle.jsonValue())
+      : await page.locator("body").innerText().catch(() => "");
     const horizontalOverflow = await page.evaluate(() => {
       const el = document.documentElement;
       return el.scrollWidth > el.clientWidth + 1;

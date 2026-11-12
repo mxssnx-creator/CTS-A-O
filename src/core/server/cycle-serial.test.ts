@@ -291,7 +291,14 @@ describe("completion-paced engine intervals", () => {
     await r.tickerMetadata;
     assert.equal(r.tickerMetadata, null);
     r.refreshTickerMetadata(hooks.gen, 20);
-    await r.tickerMetadata;
+    // The production deadline timer is unref'd (a cosmetic request must never hold a stopping process open). With
+    // nothing else pending, the test process itself would end before the deadline fires; hold it for the wait.
+    const hold = setInterval(() => {}, 1_000);
+    try {
+      await r.tickerMetadata;
+    } finally {
+      clearInterval(hold);
+    }
     assert.equal(
       r.tickerMetadata,
       null,

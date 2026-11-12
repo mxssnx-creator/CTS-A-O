@@ -100,9 +100,10 @@ describe("no silent caps", () => {
     assert.ok(GRID_VARIANTS_MAX >= 20_000, String(GRID_VARIANTS_MAX));
   });
 
-  it("Micro stops start at ratio 0.25 of the price target (which already carries the round-trip cost)", async () => {
+  it("Micro stops start at ratio 0.2 of the price target (which already carries the round-trip cost)", async () => {
     const { MICRO_SL, MICRO_RANGE, microPriceTp, EVAL_MIN_SL } = await import("./minimal-coord.ts");
-    assert.equal(Math.min(...MICRO_SL), 0.25, "the tightest Micro stop ratio");
+    assert.equal(Math.min(...MICRO_SL), 0.2, "the tightest Micro stop ratio");
+    assert.equal(Math.max(...MICRO_SL), 1.6, "the widest Micro stop ratio");
     assert.equal(MICRO_RANGE.tpNetOfCost, true, "Micro targets are net of the cost");
     // a 0.1 % net target at the 0.2 % cost is a 0.3 % price target; its ratio-1 stop is 0.3 %, floored at 0.5 %
     const tp = microPriceTp(0.001, MICRO_RANGE, 0.002);
@@ -373,18 +374,18 @@ describe("protect grid", () => {
     assert.deepEqual(mult(g.long.tp), [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
     assert.deepEqual(g.tp, []);
     // (9 × 7 Minimal + 6 × 7 Short + 8 × 6 General + 10 × 6 Long) cells × 4 trails × 2 holds, and Micro (on since
-    // 13 Oct): 7 targets × 17 stops × 4 trails × 2 holds
+    // 13 Oct): 7 targets × 15 stops (0.2–1.6) × 7 trails (0, 0.1–0.6) × 2 holds since 11 Nov, 615 distinct per hold
     const allCells = protectGrid(15, g);
     const trailingOnly = allCells.filter((p) => p.trailOnly);
     assert.ok(trailingOnly.length > 0);
     assert.ok(trailingOnly.every((p) => p.tp === 0 && p.sl <= 0.03 && p.trail > 0));
-    assert.equal(gridVariants(g), 2640 + 544 + trailingOnly.length);
+    assert.equal(gridVariants(g), 2640 + 1230 + trailingOnly.length);
     assert.ok(gridVariants(g) <= GRID_VARIANTS_MAX);
     const cells = allCells.filter((p) => !p.trailOnly);
     // the floors fold no two cells of the four ranges into one: every combination is its own config; Micro's stop floor
     // (0.2 % net + cost) folds its tightest stops of the smallest targets (952 distinct at 2–5× cost, micro-range.test.ts)
     assert.equal(cells.filter((p) => p.tag !== "mc").length, 2640);
-    assert.equal(cells.filter((p) => p.tag === "mc").length, 544);
+    assert.equal(cells.filter((p) => p.tag === "mc").length, 1230);
     // trailing cells: three widths, the stop at least the range's trailing floor (1× Minimal / Short, 0.25× General /
     // Long: every stop of their ladder)
     for (const [tag, floor] of [["mn", 0.25], ["sh", 0.25], ["gn", 0.25], ["lg", 0.25]] as const) {

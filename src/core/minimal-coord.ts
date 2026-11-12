@@ -1,4 +1,4 @@
-import { SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
+import { FINE_SL_TP_RATIOS, FINE_TRAIL_RATIOS, SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
 import { stepPfFloor } from "./step-pf.ts";
 /**
  * Minimal Coord.
@@ -208,8 +208,8 @@ export const LONG_RANGE: CoordRange = {
 
 /**
  * Micro (operator, 13 Oct: "Micro range 2–5×"): price targets are the reference-basis net target plus configured cost;
- * the 1–4× reference-basis net targets are 0.2–0.8 %, and default-cost price targets are 0.35–0.95 %. Every stop
- * ratio is 1–5× (step 0.25, MICRO_SL's 17 ratios) of the price target, plain and both trailing distances.
+ * the 1–4× reference-basis net targets are 0.2–0.8 %, and default-cost price targets are 0.376–0.976 %. Every stop
+ * ratio is 0.2–1.6× (step 0.1, MICRO_SL's 15 ratios) of the price target, plain and six trailing distances.
  * Traded only by the Micro indications (ownInds); the Base PF evaluation decides which cells run. Before (price
  * targets 0.20–0.40 %): no cell above PF 1 — a 0.2 % target nets nothing after the 0.2 % cost, a 0.4 % one needs a
  * win rate above 75 % at a 1× stop, and the one-bar reversal events have no gross edge on the 1m lane. With the net
@@ -221,19 +221,21 @@ export const MICRO_TP: readonly number[] = costTps(1, 4, 0.5);
 /** The Micro net targets before 13 Oct (price 1.5–3× cost): the settings migration v25 moves a stored copy. */
 export const FORMER_MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025, 0.003, 0.0035, 0.004];
 /**
- * Micro stop ratios: from 1.0 of the PRICE target upward (operator, 5 Oct — "run SL from ratio 1.0 away,
- * additionally to the position cost situation"). The price target already includes the round-trip cost
- * (tpNetOfCost), so ratio 1.0 means the stop is the whole net target plus the cost away, never inside it; the
- * tighter 0.5 / 0.75 ratios were stopped out by noise before the target could be reached.
+ * Micro stop ratios (operator, 11 Nov 2026): 0.2–1.6 × the PRICE target, step 0.1 (FINE_SL_TP_RATIOS, fifteen
+ * requested ratios; 0.25–2.5 step 0.25 from 8 Nov, 1–5 before). The price target already includes the round-trip
+ * cost (tpNetOfCost) and the initial stop is never inside cost + the global net distance, so the tight requests of a
+ * small target resolve to that floor and share one cell. Every distinct TP × SL × trail × hold is its own config.
  */
-export const MICRO_SL: readonly number[] = SL_TP_RATIOS;
+export const MICRO_SL: readonly number[] = FINE_SL_TP_RATIOS;
+/** Micro trailing shares: plain plus 0.1–0.6 of the price target, step 0.1 (was ¼ / ½ / ¾). */
+export const MICRO_TRAIL: readonly number[] = FINE_TRAIL_RATIOS;
 export const MICRO_RANGE: CoordRange = {
   volumeFactor: 1,
   tp: MICRO_TP,
   slOfTp: MICRO_SL,
-  trailOfTp: TRAIL_CONFIGS,
-  /** Trailing cells keep the stated stop ratio from 1×. */
-  trailSlOfTp: SL_TP_RATIOS[0],
+  trailOfTp: MICRO_TRAIL,
+  /** Trailing cells keep the stated stop ratio (forEachMicro applies the configured ratio as is). */
+  trailSlOfTp: FINE_SL_TP_RATIOS[0],
   minSl: EVAL_MIN_SL,
   // at least half the 0.2% PositionCost (13 Oct, with the ¼ trail share); every other range's trail floor is 0.2 % or more
   minTrail: +(RANGE_COST_BASIS * 0.5).toFixed(4),
@@ -354,6 +356,12 @@ export function trailAtFloor(activation: number, minTrail: number, step: number,
   return distanceAtFloor(activation, minTrail / step, digits);
 }
 
+
+/** A range's own stop floor from its `minSlDistancePct` (cost + its own net distance); undefined = the global floor. */
+export function ownSlFloor(range: { minSlDistancePct?: number } | false | undefined, cost = RT_COST): number | undefined {
+  if (!range || range.minSlDistancePct === undefined || !Number.isFinite(range.minSlDistancePct)) return undefined;
+  return minimumStopFraction(Number.isFinite(cost) && cost > 0 ? cost : 0, range.minSlDistancePct);
+}
 
 /** Micro's stop floor from `minSlNet`: the net floor plus the round-trip cost (undefined = not set). */
 export function microSlFloor(range: Pick<CoordRange, "minSlNet"> | false | undefined, cost = RT_COST): number | undefined {

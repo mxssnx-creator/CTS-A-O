@@ -48,6 +48,8 @@ import {
   microIndRule,
   forEachCoord,
   forEachMicro,
+  MICRO_SL,
+  ownSlFloor,
 } from "../minimal-coord.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import { INVERSE_TIMEFRAMES, isInverseInd } from "../indications/inverse-config.ts";
@@ -756,6 +758,9 @@ export function* trailingOnlyBaseCountsGen(
 /** Complete grid at the reference timeframe, matching protectGrid's cells, rounding and floors exactly. */
 export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number): Protect[] {
   const slFloor = g.minSlEval ?? minimumStopFraction(cost);
+  const floorFor = (tag?: string) =>
+    ownSlFloor(tag === "mc" ? g.micro : tag === "mn" ? g.minimal : tag === "sh" ? g.short
+      : tag === "gn" ? g.general : tag === "lg" ? g.long : undefined, cost) ?? slFloor;
   const out: Protect[] = [],
     seen = new Set<string>();
   const emit = (
@@ -783,7 +788,7 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
     const digits = tag === "mc" ? 6 : 4;
     const p: Protect = {
       tp: tag === "mc" ? +tp.toFixed(6) : tp,
-      sl: distanceAtFloor(tp * k, Math.max(slEval ?? slFloor, minSl, slFloor), digits),
+      sl: distanceAtFloor(tp * k, Math.max(slEval ?? floorFor(tag), minSl, floorFor(tag)), digits),
       trail: tr > 0 ? trailAtFloor(tp * tr, minTrail, g.trailStep ?? 1, digits) : 0,
       hold: Math.max(holdFloorBars(range), Math.round((h * 60) / REF_TF)),
       ...(tag ? { tag } : {}),
@@ -827,7 +832,7 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
       const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.maxHoldMin ?? ""}|${p.tag}`;
       if (!seen.has(key)) { seen.add(key); out.push(p); }
     }
-  const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, REF_TF, .1, slFloor) : []);
+  const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, REF_TF, g.lowRange?.minSlDistancePct ?? .1, ownSlFloor(g.lowRange, cost) ?? slFloor) : []);
   if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
   out.push(...lowRange);
   return out;
@@ -884,7 +889,8 @@ export function baseRangeProtects(
     // target × stop has 5–6 decimals, and Base validated a 2.025 % stop the grid builds as 2.03 %
     const digits = tag === "mc" ? 6 : 4;
     const ownFloor = net ?? (r as { minSlEval?: number }).minSlEval ?? slFloor;
-    const floorR = tag === "mc" ? ownFloor : Math.max(slFloor, ownFloor);
+    const rangeFloor = ownSlFloor(r as { minSlDistancePct?: number }, cost);
+    const floorR = tag === "mc" ? Math.max(rangeFloor ?? 0, ownFloor) : Math.max(rangeFloor ?? slFloor, ownFloor);
     // Match the actual grid: ordinary ranges inherit its optional floors, while Micro has its own fallbacks.
     const minSlR = net ?? r.minSl ?? (tag === "mc" ? 0.001 : (g.minSl ?? 0));
     const minTrailR = r.minTrail ?? (tag === "mc" ? 0.0005 : (g.minTrail ?? 0));
@@ -1034,13 +1040,11 @@ type CoordRangeLike = {
   baseBest?: boolean;
 };
 /**
- * The stops (× target) Micro's best-cell Base tries at every target: 1 / 1.75 / 2.5 / 3.5 / 5 (its 17 MICRO_SL
- * ratios 1–5 would be 119 cells per pair at the 7 targets). Every ratio here is one MICRO_SL actually offers
- * (operator, 5 Oct: Micro stops start at 1.0): a Base cell at a ratio no Micro config can trade validated targets on
- * a stop that never reaches the tape stage. 5× since MICRO_SL
- * reaches 5 (operator, 6 Oct): Micro earned only with stops well beyond its target (reward:risk 0.29–0.36).
+ * The stops (× target) Micro's Base tries at every target: its whole default ladder, MICRO_SL (0.2–1.6 step 0.1
+ * since 11 Nov 2026). Every ratio here is one MICRO_SL actually offers: a Base cell at a ratio no Micro config can
+ * trade would validate targets on a stop that never reaches the tape stage.
  */
-export const MICRO_BASE_SL: readonly number[] = SL_TP_RATIOS;
+export const MICRO_BASE_SL: readonly number[] = MICRO_SL;
 
 /**
  * Micro's Base stop ratios from its configured ladder (audit 13 Oct, C15: the fixed MICRO_BASE_SL validated stops a
