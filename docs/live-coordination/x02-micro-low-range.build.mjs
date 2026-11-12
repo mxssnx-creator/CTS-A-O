@@ -38,7 +38,8 @@ const settings = {
   grid: { tp: [], minimal: full ? { ...MINIMAL_RANGE } : false, short: full ? { ...SHORT_RANGE } : false, general: false, long: false,
     minimalPlus: false, trailingOnly: false,
     micro: { ...MICRO_RANGE }, lowRange: { ...DEFAULT_LOW_RANGE_GRID, enabled: true, minTf: 5 } },
-  signals: { enabled: false },
+  // full: Signals stay on with the code defaults (independent sources, lanes, trade types and protection grid)
+  ...(full ? {} : { signals: { enabled: false } }),
   // DEMO PROFILE ONLY, not a default. With 48 h of history no config x symbol x direction reaches the default 40 own
   // closes (measured 11 Nov: 0 of 3,308 contexts; 127 reach 8, 12 reach 12), so nothing validates and the exchange path
   // can never be exercised. These smaller own-close windows let sets validate on the demo account so orders, fills,
