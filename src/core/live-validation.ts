@@ -29,6 +29,8 @@ export interface LiveGate {
   minPf?: number;
   evidenceBasis?: "settled-post-base-and-owned-execution";
   referenceIgnored?: "newer-local-owned-closes" | "local-owned-proof-preferred";
+  /** Independent persistent native predecessor-stage evidence; absent when the adapter is disabled. */
+  processed?: { stage: "postBase" | "validated" | "active" | null; state: string; n: number; pf: number | null };
 }
 
 export interface PromotionWindow {

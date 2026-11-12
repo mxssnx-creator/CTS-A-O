@@ -5,6 +5,7 @@ import type { Protect, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
 import { ProcessedSetBook, type ProcessedSetIdentity } from "./processed-set.ts";
 import { configDirectionEval, defaultWalkForward, lastNSideOk, makeTape, walkForward } from "./walkforward.ts";
+import { NativeProcessedStageAdapter } from "../server/processed-stage-adapter.ts";
 
 // Reproduces the actual walk-forward controls on an artificial 8-symbol, 12h + 12h tape.
 // This is a controlled lineage test, not a claim about any market or exchange account.
@@ -85,4 +86,24 @@ test("native processed replay excludes conflict-rejected wins from Main and Real
   assert.equal(native.skips.conflict, 14, "rejected winning siblings never enter a processed set");
 });
 
-test.todo("Persistent owned paper/venue Main → Real integration remains separate from opt-in modeled replay");
+test("persistent owned paper Main → Real freezes entry stage and survives restart", () => {
+  const tp = { id: "follow|ema-9-21@m1|native", kind: "normal", ind: "ema-9-21@m1" };
+  const sym = "OWN-USDT", policy = { validationN: 1, realN: 1 }, minPf = 1.05;
+  let native = new NativeProcessedStageAdapter(policy, .0015);
+  const first = native.enter(tp, sym, 1, 10, minPf);
+  assert.equal(first.stage, "postBase");
+  native.settle(first.entryId, 11, .02);
+  const main = native.enter(tp, sym, 1, 12, minPf);
+  assert.equal(main.stage, "validated");
+  native.settle(main.entryId, 13, .02);
+  const active = native.enter(tp, sym, 1, 14, minPf);
+  assert.equal(active.stage, "active");
+  native = new NativeProcessedStageAdapter(policy, .0015, JSON.parse(JSON.stringify(native.snapshot())));
+  assert.equal(native.stageFor(active.entryId), "active", "restart keeps the entry-time Real decision");
+  native.settle(active.entryId, 15, -.03);
+  assert.equal(native.settle(active.entryId, 15, -.03), "already-settled", "checkpoint replay is idempotent");
+  const afterLoss = native.enter(tp, sym, 1, 16, minPf);
+  assert.equal(afterLoss.stage, "postBase", "the settled loss blocks only later admission");
+  assert.equal(native.preview(tp, "SIBLING-USDT", 1, 16, minPf).stage, "postBase",
+    "another symbol cannot borrow the owned parent window");
+});
