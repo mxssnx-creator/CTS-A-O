@@ -1,3 +1,4 @@
+import type { DcaTacticConfig } from "./dca-tactic.ts";
 export const START = 1_700_006_400_000;
 export function waveBars(n = 720) {
   return Array.from({ length: n }, (_, i) => {
@@ -25,5 +26,23 @@ export function declineBars(mirror = false) {
       low: i === 16 && !mirror ? 99.9 : c - 0.05,
       volume: 10,
     };
+  });
+}
+
+/** A causal closed-bar regime for an exact decline cell; no strategy result is asserted. */
+export function declineCellBars(c: DcaTacticConfig, mirrored = false) {
+  if (c.basis === "atr" && c.level * c.spacing > c.lookback) throw new Error("Unreachable ATR depth");
+  const depth = Math.min(c.level + 0.5, c.basis === "atr" ? c.lookback / c.spacing : Infinity);
+  const range = c.basis === "atr" ? 0.1 : c.spacing * depth;
+  const high = 100 + range, low = 100, observedRange = high - low;
+  const firstJump = c.basis === "atr" ? Math.max(0, observedRange * c.lookback / (c.spacing * depth) - observedRange) : 0;
+  const before = high - firstJump;
+  const values = [...Array(c.lookback - 1).fill(Math.min(90, before - 1)), before,
+    high, ...Array(c.lookback - 1).fill(low), high + 1];
+  return values.map((value, i) => {
+    const last = i === values.length - 1;
+    const row = {timestamp: START + i * 60000, open: last ? low : value, close: value,
+      high: value, low: last ? low - 0.01 : value, volume: 10};
+    return mirrored ? {...row, open: 200-row.open, close: 200-row.close, high: 200-row.low, low: 200-row.high} : row;
   });
 }

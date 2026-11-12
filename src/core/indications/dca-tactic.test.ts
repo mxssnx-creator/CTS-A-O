@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { dcaTacticConfigs, dcaTacticId, dcaTacticState } from "./dca-tactic.ts";
 import { SeriesCache } from "./cache.ts";
 import { StreamMath } from "./stream-math.ts";
-import { waveBars, declineBars } from "./dca-fixtures.ts";
+import { waveBars, declineBars, declineCellBars } from "./dca-fixtures.ts";
 import type { Bars } from "../domain/types.ts";
 const bars = (rows: ReturnType<typeof waveBars>): Bars => ({
   sym: "SOL-USDT",
@@ -16,9 +16,9 @@ const bars = (rows: ReturnType<typeof waveBars>): Bars => ({
   c: Float64Array.from(rows, (r) => r.close),
   v: Float64Array.from(rows, (r) => r.volume),
 });
-test("DCA Tactic has 2304 independent level/range/ratio sources, with mirrored pre-entry directions", () => {
-  assert.equal(dcaTacticConfigs().length, 2304);
-  assert.equal(new Set(dcaTacticConfigs().map(dcaTacticId)).size, 2304);
+test("DCA Tactic has 2256 independent level/range/ratio sources, with mirrored pre-entry directions", () => {
+  assert.equal(dcaTacticConfigs().length, 2256);
+  assert.equal(new Set(dcaTacticConfigs().map(dcaTacticId)).size, 2256);
   for (const method of ["bounce", "trend", "vwap", "sweep"] as const) {
     const c = {
       lookback: 8,
@@ -48,4 +48,14 @@ test("all Tactic candidates are causal and incremental results equal the full or
     for (const c of configs)
       assert.deepEqual(dcaTacticState(k, c), full.get(dcaTacticId(c))!.slice(0, n), dcaTacticId(c));
   }
+});
+
+test("every registered decline cell has causal long and short onsets, with impossible ATR cells rejected", () => {
+  for (const c of dcaTacticConfigs()) for (const mirrored of [false, true]) {
+    const rows = declineCellBars(c, mirrored), cache = new SeriesCache(bars(rows));
+    assert.equal(dcaTacticState(cache, c).at(-1), mirrored ? -1 : 1, dcaTacticId(c));
+    const prefix = new SeriesCache(bars(rows.slice(0,-1)));
+    assert.deepEqual(dcaTacticState(prefix,c),dcaTacticState(cache,c).slice(0,-1),dcaTacticId(c)+" causal prefix");
+  }
+  assert.equal(dcaTacticConfigs().some(c=>c.basis==="atr"&&c.level*c.spacing>c.lookback),false);
 });
