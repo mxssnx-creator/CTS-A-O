@@ -1363,8 +1363,9 @@ export interface ControlStatus {
   /** (older states: the lane order ids themselves) */
   lanes?: Record<string, string[]>;
   /**
-   * lane orders held back after their position was closed by its exchange stop (no reopen until each exits, at most
-   * SUPPRESS_MAX_MS); a manual close does not hold anything back
+   * lane orders held back after their position was closed outside this system — by its exchange stop or take-profit, by a
+   * liquidation or BY HAND (no reopen of the same position until each exits, at most SUPPRESS_MAX_MS); a lane order that
+   * joins the key afterwards is a new decision and opens normally
    */
   suppressed?: number;
   /** lane orders the live kind list / plain-only filter does not send to the exchange (they keep paper-trading) */
