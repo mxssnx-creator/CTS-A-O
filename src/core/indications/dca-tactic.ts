@@ -52,6 +52,9 @@ export function dcaTacticConfigs(
                 !(recovery > 0 && recovery <= 2)
               )
                 throw new Error("Invalid Tactic decline grid");
+              // The observed range cannot exceed the sum of the lookback true ranges.
+              // A deeper ATR level would be unreachable for every valid market path.
+              if (basis === "atr" && level * spacing > lookback) continue;
               out.push({ lookback, basis, spacing, level, recovery, method });
             }
   if (out.length > 4096)
