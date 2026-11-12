@@ -661,7 +661,7 @@ describe("continuous post-Base qualification", () => {
     assert.equal(tapeRetentionHours(s, o, 15), 432);
     assert.equal(
       tapeRetentionHours(s, { ...o, validLastN: 0, lastN: 0, rangeGate: undefined }, 15),
-      48,
+      24,
     );
   });
 
