@@ -12,3 +12,20 @@ test("project and connection IDs reject every other CTS namespace for entries an
   }
  }finally{if(previous===undefined)delete process.env.CTS_CORE_LIVE_TAG;else process.env.CTS_CORE_LIVE_TAG=previous}
 });
+
+test("explicit malformed instance IDs cannot silently adopt the project-wide namespace",()=>{
+ const before=process.env.CTS_CORE_LIVE_TAG;
+ try{
+  delete process.env.CTS_CORE_LIVE_TAG;
+  for(const connection of Object.keys(LIVE_TAG) as Array<keyof typeof LIVE_TAG>){
+   const prefix=LIVE_TAG[connection].slice(0,-1);
+   for(const value of [prefix+"_N12_",prefix+"-N12_",prefix+"N12",prefix+"123456789012_"])
+    assert.throws(()=>liveTag(connection,{CTS_CORE_LIVE_TAG:value}),/letters\/digits/,value);
+   const tag=prefix+"N12_";
+   assert.equal(liveTag(connection,{CTS_CORE_LIVE_TAG:tag.toLowerCase()}),tag);
+   process.env.CTS_CORE_LIVE_TAG=tag;
+   const id=makeCoid(connection,"E");assert.ok(id.startsWith(tag));assert.equal(isOwnCoid(id,connection),true);
+   process.env.CTS_CORE_LIVE_TAG=prefix+"ALT_";assert.equal(isOwnCoid(id,connection),false);
+  }
+ }finally{if(before===undefined)delete process.env.CTS_CORE_LIVE_TAG;else process.env.CTS_CORE_LIVE_TAG=before}
+});
