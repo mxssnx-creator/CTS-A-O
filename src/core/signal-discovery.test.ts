@@ -1,6 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "./config.ts";
+import { DEFAULT_PROTECT, DEFAULT_SETTINGS as FACTORY_SETTINGS } from "./config.ts";
+
+// Historical Signal window fixture; exact count-policy admission is tested separately.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
 import { barsFromCandles, headBars, syntheticCandles } from "./market/bars.ts";
 import {
   baseRuns,

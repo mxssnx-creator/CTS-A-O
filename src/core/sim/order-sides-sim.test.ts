@@ -13,7 +13,10 @@ import { simulate } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
 import { simulateAxis, simulateAxisDesk } from "./axis.ts";
 import { barsFromCandles } from "../market/bars.ts";
-import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
+// Freeze this historical window-policy contract; current count admission has independent scope tests.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import { blockLevel, defaultWalkForward, execDecision, makeTape } from "./walkforward.ts";
 import { BlockBook, blockDecide, bookLevels, sourceKey, type BlockSource } from "./block.ts";
 import { INDICATIONS } from "../indications/registry.ts";

@@ -39,6 +39,7 @@ export function EnginePage() {
         status={st}
         minPf={d.settings?.gates?.minPf ?? 1.1}
         maxDdtH={d.settings?.gates?.maxDdtH ?? 35}
+        maxDrawdownPositions={d.settings?.gates?.positionWindows?.maxDrawdownPositions}
         baseSetsMinPf={d.settings?.gates?.baseSetsMinPf}
       />
       <Panel

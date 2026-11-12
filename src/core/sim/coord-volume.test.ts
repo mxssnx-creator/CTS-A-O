@@ -1,6 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_SETTINGS } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS } from "../config.ts";
+// Freeze this historical window-policy contract; current count admission has independent scope tests.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import { DEFAULT_SIGNALS } from "../signal-config.ts";
 import { defaultWalkForward, makeTape, rangeVolumeFactorFor, walkForward } from "./walkforward.ts";
 import type { Trade } from "../domain/types.ts";
@@ -187,14 +190,15 @@ describe("coordination volume factors", () => {
     assert.equal(raisedTrade!.hedgeVol, 1.6);
     assert.ok(raisedTrade!.cfg.startsWith("follow|sig-"));
 
-    const combined = run(1.6, true).trades.find((x) => x.hedge && (x.coordVol ?? 1) > 1);
-    assert.ok(combined, "the same causal hedge entry executes with all sizing sources enabled");
+    const combined = run(1.6, true).trades.find((x) => x.hedge);
+    assert.ok(combined, "the causal hedge executes with all sizing sources enabled");
     assert.equal(combined.hedgeVol, 1.6);
     assert.equal(combined.volFactor, 3);
     assert.equal(combined.rangeVol, 1.8);
-    assert.ok((combined.coordVol ?? 1) > 1, "settled history supplies the relation multiplier");
-    assert.equal(combined.level, 1, "the config's recent settled winner supplies one Block level");
-    assert.ok(Math.abs(combined.mult! - Math.min(8, 1.2 * combined.coordVol! * 3 * 1.6 * 1.8)) < 1e-12);
+    assert.equal(combined.coordVol ?? 1, 1, "insufficient own coordination history cannot borrow a pooled raise");
+    assert.equal(combined.level, 0, "its first accepted hedge cannot borrow rejected or pre-Real wins for Block");
+    assert.equal(combined.mult, 8, "the independent factors share the existing total volume cap");
+    assert.ok(Math.abs(combined.mult! - Math.min(8, (1 + .2 * combined.level!) * (combined.coordVol ?? 1) * 3 * 1.6 * 1.8)) < 1e-12);
     assert.ok(combined.mult! <= 8, "the aggregate external sizing ceiling still applies to coordinated Signal entries");
     assert.ok(Math.abs(combined.r / combined.mult! - 0.01) < 1e-12, "unit returns exclude every external sizing factor");
   });

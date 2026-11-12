@@ -38,7 +38,8 @@ const settings = {
     cooldown: false,
     cooldownBars: 4,
   },
-  gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
+  // Frozen lifecycle continuation policy; configured count windows have separate full/light parity tests.
+  gates: { positionWindows:null, minPf: 1.05, minTrades: 3, maxDdr: 0 },
   signals: signalSettings({
     sourcesMode: "allow", sources: { "ema-cross": true, "rsi-reversal": true }, lanes: [1, 5, 15, 30],
     exits: "pct", normal: { tp: [0.01, 0.02, 0.03, 0.04], slOfTp: [1, 2] },

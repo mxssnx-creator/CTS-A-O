@@ -1,3 +1,57 @@
+## 2026-11-12 — Block attribution integration
+
+PR #257 combines the pending eligible-source Block correction and 72-hour ordinary prehistory default with main after #259. Exact configuration windows, fine grids, immutable execution ownership, comparison data and saved history overrides are preserved. Unit-sized entries do not generate raised-source recovery, pause or auto-window samples. Existing persisted Block state is retained without retroactive rewriting. See `docs/verification/block-attribution-72h-20261110.md` and the PR for source-specific checks. Combined-source post-Base return PF, passed/evaluated market validation and venue PF are unavailable; this is a source merge without a deployment or exchange mutation.
+
+## 2026-11-11 — position-count policy, independent Low-Range and release verification
+
+The publication is PR #258: https://github.com/mxssnx-creator/CTS-A-O/pull/258. Economic source is
+`2c6b543a2ac3ccf292c8a45daec384f8a68f20af`; subsequent changes are the worker-bootstrap test fixture,
+CI and evidence only. Local release source `03dcf86801c4e1b8f9e1745d0ae3e8f815af5857` and remote
+`7a7badefd8dc37c7d3ab21ae7956881a2337b7af` share exact tree
+`bdb20665ee06d03253aa6c10947ffa88614bf468`. Later evidence-only commits preserve this application code.
+The previous main is backed up remotely at `backup/main-before-position-low-range-20261111`.
+
+Production evaluation now uses complete last-N own positions, default Base/Main/Real/Entry 40/40/12/12,
+with Micro/Minimal Base30 and exact range/config overrides. History availability remains separate.
+Migration backs up settings/presets/old evidence and preserves held protections. Settings, presets,
+progress APIs and reports share the policy; explicit historical `positionWindows: null` fixtures retain
+legacy clock contracts. Maker/taker/slippage auto/manual controls retain exact default cost 0.00176.
+Independent Low-Range uses `lr`/native `Z`, own caps/holds and 1,354 distinct causal indications;
+new protection-grid activation stays opt-in. Step/SL PF floors, empty/unknown evidence and held-only
+admission remain strict. A delayed SQLite Live-KV flush after handle closure is fixed.
+
+All 389 core test files were inventoried across three complete shards: 1,621 pass; 1,438 pass;
+then 1,843 pass, one worker-bootstrap timing failure, three separate slow cases and one visible
+processed-Main TODO. The bootstrap fixture was corrected without changing the 500 ms production
+watchdog or hard deadlines; its focused pool run passes all16 tests. All three actual slow cases
+pass separately: full-catalog publication 268.6 s, mixed-operation storm 860.8 s, real preset plus
+queued backtest 210.9 s. Scripts799 pass/eight local browser cases explicitly skipped; app/components87
+pass. Typecheck and production/core-worker build pass; scoped lint zero errors/fifteen warnings.
+Original failures, interrupted runs and overlapping checks remain distinguishable in the saved manifest.
+Hosted code7a7bade passes465 policy-core and53 runner/report tests, plus the existing74 core/29 transport
+integrity checks. Loaded Settings render on desktop/mobile in dev and production with clean console,
+no overflow and no baseline divergence; all4 computed-page/settings-save functional tests pass.
+All four screenshots were visually inspected. Run43057168755 retains the browser artifact; the early
+shell-only smoke was rejected as insufficient and the stricter readiness condition is now permanent.
+See `docs/verification/position-count-policy-20261111.md` and its evidence directory.
+
+Frozen retrospective market result: AVAX/ATOM/APT/BTC/BNB/ADA/BCH/ARB-USDT, 2026-10-08 12:00 UTC
+through 2026-10-09 12:00 UTC; exactly12h prehistory +12h trading, no hidden warmup. Known cached
+Binance candles, not a fresh holdout or BingX fills. Base0/1,492 (0%); built raw-candidate contexts
+0/192 complete/qualified (0%, largest ownN5 versus Main40). Post-Base0/0, percentage and return-PF
+unavailable. Subsequent funded-model PF unavailable; positions and orders each0/0/0 opened/closed/held.
+No venue session or venue PF was measured. Last complete replay attempt7 source fingerprint is
+`49ee14a0a01d640c4022bde2ad8a5e714f854aff0ffacc7242449ce0a9d12cdf`.
+Cold compute44,145ms, peak sampled RSS380MB, sampled loop maximum1,344ms under concurrent tests;
+the warmed500ms acceptance target is not proven. This 1/5-minute replay does not cover executed
+Short/General/Long source lanes. No lowering of gates or selection of a more favorable PF window.
+
+The persistent processed Base→Main→Real paper/venue adapter, independent per-stage protection
+resimulation, negative-Main inverse lanes and forward/venue acceptance remain unfinished. The
+processed conflict TODO stays visible. No x01/x02 account was started or reloaded, no real order
+was sent and no deployment was performed. Do not promote this empty retrospective cohort as a
+profitable preset or claim a high future execution PF.
+
 ## 2026-11-10 — 48h history and exact policy readiness
 
 On source base `057f9d1`, ordinary fresh defaults now evaluate 48h; Signal/Exit 150h and explicit saved/custom settings remain independent. Progress exposes own config/symbol/direction history readiness beside separate Last-N windows, including empty contexts and unknown evidence. Bounded illustrative coverage rises 1/8 (12.5%) to 2/8 (25%); this is a deterministic fixture, not a market result. Base and native live gates now retain the configured SL-ratio PF floor already used by modeled walk-forward. See `docs/verification/history-readiness-20261110.md` for exact denominators, tests and the oversize inherited-test correction.

@@ -29,6 +29,7 @@ const OTHER = "rsi-mom-14-20@m15";
 const P: Protect = { tp: 0.01, sl: 0.01, trail: 0, hold: 32 };
 const G = {
   ...DEFAULT_GATES,
+  positionWindows: null,
   stepPf: { enabled: false, ratio: .2, max: 2 }, // isolate the legacy indication/range floor
   // Two synthetic closes isolate the independent floor; Base Last-N has its own evidence tests.
   baseLastN: 0,

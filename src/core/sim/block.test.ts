@@ -27,7 +27,10 @@ import {
   walkForward,
 } from "./walkforward.ts";
 import { acceptKey, SignalAcceptIndex, SignalGuard } from "../signals.ts";
-import { DEFAULT_BLOCK, DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
+import { DEFAULT_BLOCK, DEFAULT_SETTINGS as FACTORY_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
+// Freeze this historical window-policy contract; current count admission has independent scope tests.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import { INDICATIONS } from "../indications/registry.ts";
 import type { BlockConfig, Trade } from "../domain/types.ts";
 

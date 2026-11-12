@@ -8,6 +8,7 @@ import { defaultWalkForward } from "../sim/walkforward.ts";
 const runtimes: CoreRuntime[] = [];
 afterEach(() => { for (const r of runtimes.splice(0)) r.dispose(); });
 function open(db: CoreDb) {
+  db.kvSet("positionWindows20261111V1", true); // isolate the historical Signal migration
   const r = new CoreRuntime(db, undefined, { market: "synthetic", priceStream: null });
   r.stop(); runtimes.push(r); return r;
 }

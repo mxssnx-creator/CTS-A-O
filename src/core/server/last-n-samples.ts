@@ -1,4 +1,5 @@
 import { isSignalInd } from "../indications/registry.ts";
+import { positionTapeValid } from "../position-windows.ts";
 import { sampleHistoryForTape, sampleWindowsForTape, type ConfigTape, type WalkForwardOptions } from "../sim/walkforward.ts";
 
 export interface SampleCount {
@@ -33,20 +34,21 @@ export function* lastNSamplesGen(tapes: readonly ConfigTape[], at: number, o: Wa
     configs++;
     const windows = sampleWindowsForTape(tp, o);
     const history = sampleHistoryForTape(tp, o);
-    const historyFrom = at - history.hours * 3_600_000;
+    const countMode=!!o.gates.positionWindows;
+    const historyFrom = countMode ? -Infinity : at - history.hours * 3_600_000;
     const cap = Math.max(0, ...Object.values(windows));
     const own = new Map<string, { recent: number[]; historyN: number; historyKnown: number }>();
     for (const sym of new Set(tp.syms)) for (const side of [1, -1])
       own.set(JSON.stringify([sym, side]), { recent: [], historyN: 0, historyKnown: 0 });
     let remaining = cap > 0 ? own.size : 0;
-    let corrupt = false, nextExit = Infinity;
+    let corrupt = countMode&&!positionTapeValid(tp), nextExit = Infinity;
     if (!tp.carried) for (let i = tp.n - 1; i >= 0; i--) {
       if ((++work & 4095) === 0) yield;
       const exit = tp.exitT[i];
       if (!Number.isFinite(exit) || exit > nextExit) { corrupt = true; break; }
       nextExit = exit;
       if (!(exit < at)) continue;
-      if (exit < historyFrom && !remaining) break;
+      if ((countMode || exit < historyFrom) && !remaining) break;
       const rows = own.get(JSON.stringify([tp.syms[tp.symI[i]], tp.side[i]]));
       if (!rows) { corrupt = true; break; }
       if (exit >= historyFrom) {
@@ -58,7 +60,7 @@ export function* lastNSamplesGen(tapes: readonly ConfigTape[], at: number, o: Wa
         if (rows.recent.length === cap) remaining--;
       }
     }
-    for (const [window, n] of Object.entries({ ...windows, history: history.minTrades })) {
+    for (const [window, n] of Object.entries(countMode?windows:{ ...windows, history: history.minTrades })) {
       const range = tp.protect.tag ?? "none";
       const source = isSignalInd(tp.ind) ? "signals" : "engine";
       const historyH = window === "history" ? history.hours : null;

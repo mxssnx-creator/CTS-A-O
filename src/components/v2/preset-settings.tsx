@@ -13,6 +13,8 @@ import {
   List,
   Num,
   ProtectRanges,
+  PositionWindowSettings,
+  StepPfSettings,
   SignalsSettings,
   Timeframes,
 } from "./pages/settings";
@@ -286,9 +288,10 @@ export function PresetSettingsDialog(props: {
             <Timeframes tfs={s.tfs} tfDays={s.tfDays} set={set} />
           </Section>
           <Section title="Signals">
-            <SignalsSettings signals={s.signals} set={set} grid={s.grid} />
+            <SignalsSettings signals={s.signals} set={set} grid={s.grid} positionMode={!!s.gates.positionWindows} positionMainN={s.gates.positionWindows?.main} />
           </Section>
           <Section title="Gates">
+            {s.gates.positionWindows && <PositionWindowSettings value={s.gates.positionWindows} set={set} />}
             <div className="v2-grid v2-cols-4">
               <Field label="Min PF">
                 <select
@@ -303,7 +306,8 @@ export function PresetSettingsDialog(props: {
                   ))}
                 </select>
               </Field>
-              <Field label="Max DDT">
+              <StepPfSettings value={s.gates.stepPf} set={set} />
+              <Field hidden={!!s.gates.positionWindows} label="Max DDT">
                 <select
                   className="v2-select"
                   value={nearest(MAX_DDT_CHOICES, s.gates.maxDdtH)}
@@ -494,10 +498,10 @@ export function PresetSettingsDialog(props: {
                   <option value="fixed">fixed set</option>
                 </select>
               </Field>
-              <Field label="Validate last-N" hint="0 = off">
+              <Field hidden={!!s.gates.positionWindows} label="Validate last-N" hint="0 = off">
                 <Num int value={wf.validLastN ?? 15} min={0} max={200} onChange={(v) => setW("validLastN", v)} />
               </Field>
-              <Field label="Live last-N" hint="0 = off">
+              <Field hidden={!!s.gates.positionWindows} label="Live last-N" hint="0 = off">
                 <Num int value={wf.lastN} min={0} max={200} onChange={(v) => setW("lastN", v)} />
               </Field>
               <Field label="Real seats / family" hint="0 = no limit">

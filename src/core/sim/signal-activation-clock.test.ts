@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEFAULT_SETTINGS } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS } from "../config.ts";
+// Explicit historical time-window fixture; the count policy is tested independently.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import { signalSettings } from "../signal-config.ts";
 import { sigActiveKey } from "../signals.ts";
 import type { Trade } from "../domain/types.ts";

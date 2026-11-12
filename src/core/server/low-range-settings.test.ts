@@ -33,7 +33,7 @@ test("partial Low-Range API saves preserve every configured sibling, reject inva
     assert.deepEqual(rt.settings.grid.lowRange, { ...custom, enabled: true, steps: [3, 5], maxHoldMin: 75 });
     assert.deepEqual(db.kvGet<{ grid: { lowRange: unknown } }>("settings")?.grid.lowRange, rt.settings.grid.lowRange);
     const before = structuredClone(rt.settings.grid.lowRange);
-    for (const patch of [{ step: 0 }, { maxHoldMin: 1.5 }, { steps: [2.5] }, { slRatios: [0.24] },
+    for (const patch of [{ step: 0 }, { maxHoldMin: 1.5 }, { steps: [2.5] }, { slRatios: [0.19] },
       { trailRatios: [1.01] }, { enabled: "yes" }, { steps: [] }, { slRatios: ["1"] }, null]) {
       assert.throws(() => saveCoreSettingsInput({ settings: { grid: { lowRange: patch as never } } }));
       assert.deepEqual(rt.settings.grid.lowRange, before);

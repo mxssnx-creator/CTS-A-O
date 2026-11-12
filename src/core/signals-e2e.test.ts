@@ -58,6 +58,12 @@ describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
           coordination: { ...DEFAULT_SIGNALS.coordination, enabled: false },
           sourcesMode: "allow",
           sources: Object.fromEntries(ALLOW.map((s) => [s, true])),
+          // Every allowed source/lane/type, with representative cells; full Cartesian cell math is separate.
+          normal: { tp: [.01], slOfTp: [1] },
+          trailing: { tp: [.01], slOfTp: 1, trailOfTp: [.5] },
+          trailingOnly: { enabled: true, sl: [.01], trail: [.005], trailStep: 1 },
+          // Source/activation integration; historical fitting has its own full-history runtime matrix.
+          hist: { ...DEFAULT_SIGNALS.hist, enabled: false },
         }),
       } as never,
       { market: "synthetic" },

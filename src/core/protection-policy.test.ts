@@ -14,10 +14,10 @@ test('all ten ratios keep targets while raising initial SL, on both sides',()=>{
       assert.equal(x.tpDist,.2);
     }
 });
-test('one setting determines Base, Main, DCA, Signals and execution floors without mutating defaults',()=>{
+test('global setting determines non-Micro floors and a legacy Micro inherits without mutating defaults',()=>{
   const before=JSON.stringify(DEFAULT_SETTINGS);
   for(const cost of [.0011,.00176]) for(const net of [.1,.4,1]) {
-    const s=normalizeLanes({...DEFAULT_SETTINGS,cost,minSlDistancePct:net});
+    const s=normalizeLanes({...DEFAULT_SETTINGS,cost,minSlDistancePct:net,microMinSlDistancePct:undefined,microMinTrailDistancePct:undefined});
     const floor=minimumStopFraction(cost,net);
     assert.equal(s.protectFloor.minSl,floor);
     assert.equal(s.signals.minSl,floor);

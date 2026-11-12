@@ -89,12 +89,24 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   const signalsOn =
     ctx.signalTapes > 0 && (!!base.signalRank || (base.signalActive?.size ?? 0) > 0);
   const blockOn = tg.block || tg.blockActive;
-  const push = (v: Omit<VariantSpec, "status"> & { status?: VariantStatus }) =>
+  const push = (v: Omit<VariantSpec, "status"> & { status?: VariantStatus }) => {
+    if (
+      base.gates.positionWindows &&
+      (/^gate:(lastN-|validLastN-|signalLastN-|lastNFloor-|warmup$)/.test(v.id) ||
+        (v.opts?.engineSideAccept?.hours !== base.engineSideAccept?.hours &&
+          v.id.startsWith("sig:engineSide-hours")))
+    )
+      v = {
+        ...v,
+        status: "na",
+        why: "Count policy is active; this legacy window control does not select the sample",
+      };
     out.push({
       status: "run",
       ...v,
       ...(v.status && v.status !== "run" ? { opts: undefined } : {}),
     });
+  };
   const withCoord = (c: Partial<CoordSettings>): WalkForwardOptions => ({
     ...base,
     coord: { ...coord, ...c },
@@ -273,7 +285,7 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     const cur = esa.perInd ?? [];
     for (const [id, what, ranges] of [
       ["mc", "Micro", ["mc"]],
-      ["all", "every range", ["mc", "mn", "mp", "sh", "gn", "lg", "wide"]],
+      ["all", "every range", ["mc", "mn", "mp", "sh", "gn", "lg", "lr", "wide"]],
       ["off", "pooled per range", []],
     ] as const) {
       if ([...ranges].sort().join() === [...cur].sort().join()) continue;
@@ -464,13 +476,54 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   });
 
   // gates
+  if (base.gates.positionWindows) {
+    const policy = base.gates.positionWindows;
+    for (const stage of ["base", "main", "real", "entry"] as const) {
+      for (const n of [4, 12, 25, 40, 75]) {
+        if (n === policy[stage]) continue;
+        const next = structuredClone(policy);
+        next[stage] = n;
+        for (const name of ["byRange", "byConfig"] as const)
+          for (const counts of Object.values(next[name] ?? {})) delete counts[stage];
+        push({
+          id: `gate:positions-${stage}-${n}`,
+          group: "gates",
+          label: `${stage} last ${n} positions`,
+          change: `${stage} positions ${policy[stage]} → ${n}; every range and exact config`,
+          asRun: String(policy[stage]),
+          opts: { ...base, gates: { ...base.gates, positionWindows: next } },
+          ...(stage === "base"
+            ? {
+                status: "recompute" as const,
+                why: "Base count changes require a new causal Base evaluation",
+              }
+            : {}),
+        });
+      }
+    }
+    for (const n of [12, 25, 40, 75])
+      if (n !== policy.maxDrawdownPositions)
+        push({
+          id: `gate:drawdownPositions-${n}`,
+          group: "gates",
+          label: `Drawdown length ${n} positions`,
+          change: `maximum drawdown length ${policy.maxDrawdownPositions} → ${n} completed positions`,
+          asRun: String(policy.maxDrawdownPositions),
+          opts: {
+            ...base,
+            gates: { ...base.gates, positionWindows: { ...policy, maxDrawdownPositions: n } },
+          },
+        });
+  }
   // a global last-N row sets the window for every range: a range's own value of that key (wf.rangeOpts) would
   // otherwise keep that range on its own window, and the row would not be the one change it names
   const globalKey = (k: "lastN" | "validLastN") => {
     const ro = base.rangeOpts;
     if (!ro || !Object.values(ro).some((r) => r?.[k] !== undefined)) return { patch: {}, note: "" };
     const out: NonNullable<WalkForwardOptions["rangeOpts"]> = {};
-    for (const [tag, r] of Object.entries(ro) as Array<[keyof typeof ro, (typeof ro)[keyof typeof ro]]>) {
+    for (const [tag, r] of Object.entries(ro) as Array<
+      [keyof typeof ro, (typeof ro)[keyof typeof ro]]
+    >) {
       if (!r) continue;
       const { [k]: _drop, ...rest } = r;
       if (Object.keys(rest).length) out[tag] = rest;
@@ -605,7 +658,7 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
         change:
           "the range gate also judges General and Long cells (as run: Micro, Minimal, Short, Minimal plus)",
         asRun: "mc · mn · sh · mp",
-        opts: { ...base, rangeGate: { ...rg, ranges: ["mc", "mn", "sh", "mp", "gn", "lg"] } },
+        opts: { ...base, rangeGate: { ...rg, ranges: ["mc", "mn", "sh", "mp", "gn", "lg", "lr"] } },
       });
   }
   // the loss prior: every evaluation PF counts one virtual stop-out at the config's own stop (a loss-free sample

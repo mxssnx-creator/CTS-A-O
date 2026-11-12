@@ -263,6 +263,42 @@ export function barsOfSeries(sym: string, tfMin: number, cs: CandleSeries, from:
   };
 }
 
+/** Where a symbol's usable base history starts: after its last missing or invalid bar. */
+export interface BaseHistoryCut {
+  /** index of the first bar of the valid contiguous suffix (0 = the whole series is usable) */
+  start: number;
+  /** time of the last bar before the break, and of the first usable bar after it */
+  afterT: number;
+  firstT: number;
+  /** base bars the venue did not deliver in the break (0 = the break is an invalid bar, not a missing one) */
+  missing: number;
+}
+
+/**
+ * The valid contiguous suffix of a base series. A venue occasionally delivers no candle for a minute (BingX VST,
+ * 11 Nov 2026: 3 of 26 symbols had one such break in 2–13 days of 1m history). Nothing is known about the price in
+ * a missing minute, so nothing may be simulated across it — and nothing is invented for it: the symbol's history
+ * simply starts after the break, exactly like a symbol listed at that time. Returns null when the series has no break.
+ * The check is the minute-execution validator's (sim/capped-execution.ts): exact bar spacing and a valid OHLCV bar.
+ */
+export function baseHistoryCut(cs: CandleSeries, tfMin: number): BaseHistoryCut | null {
+  const step = tfMin * 60_000;
+  const { t, o, h, l, c, v } = cs;
+  const ok = (i: number) =>
+    Number.isFinite(t[i]) && Number.isFinite(o[i]) && Number.isFinite(h[i]) && Number.isFinite(l[i]) &&
+    Number.isFinite(c[i]) && Number.isFinite(v[i]) && l[i] > 0 && v[i] >= 0 &&
+    h[i] >= Math.max(o[i], c[i], l[i]) && l[i] <= Math.min(o[i], c[i]);
+  for (let i = cs.n - 1; i >= 0; i--) {
+    if (!ok(i)) {
+      if (i === cs.n - 1) return { start: cs.n, afterT: t[i], firstT: NaN, missing: 0 };
+      return { start: i + 1, afterT: t[i], firstT: t[i + 1], missing: 0 };
+    }
+    if (i > 0 && t[i] !== t[i - 1] + step)
+      return { start: i, afterT: t[i - 1], firstT: t[i], missing: Math.max(0, Math.round((t[i] - t[i - 1]) / step) - 1) };
+  }
+  return null;
+}
+
 /**
  * The last `n` bars of a resampled lane (tf a multiple of srcMin): scan back until n complete buckets are found,
  * resampled as bars.ts resample does (h the max, l the min, c the last close, v summed in order; an incomplete bucket

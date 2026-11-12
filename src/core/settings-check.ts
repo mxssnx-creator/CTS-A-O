@@ -1,5 +1,8 @@
+import { checkPositionWindows } from "./position-windows.ts";
+import { lowRangeHolds } from "./indications/low-range.ts";
+import { rangeHolds } from "./minimal-coord.ts";
 import { validateStepPfOverrides } from "./step-pf.ts";
-import { MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, SL_TP_MIN, SL_TP_MAX } from "./protection-policy.ts";
+import { FINE_SL_TP_MIN, MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, SL_TP_MIN, SL_TP_MAX } from "./protection-policy.ts";
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
 import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, MAX_EXTERNAL_STACK, MAX_FOCUS_PAIRS, mergeGridSettings, type CoreSettings, type SettingsPatch } from "./config.ts";
 import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "./model-cost.ts";
@@ -43,6 +46,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
   num(s.cost, 0, MAX_MODEL_RT_COST, "modeled round-trip cost (fraction)");
   num(s.armTop, 1, 40, "armTop");
   num(s.mainTop, 0, 100_000, "mainTop");
+  num(s.microMinSlDistancePct, 0, 10, "Micro minimum SL (%)");
+  num(s.microMinTrailDistancePct, 0, 10, "Micro minimum trail (%)");
   if (s.minSlDistancePct !== undefined) num(s.minSlDistancePct, MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, "minimum SL above costs");
   if (s.grid?.minSlEval !== undefined) num(s.grid.minSlEval, 0.0005, 0.05, "grid.minSlEval");
   if (s.grid?.baseTargets !== undefined && typeof s.grid.baseTargets !== "boolean")
@@ -87,7 +92,9 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       num(v, 1, 45, `lane history ${k}m`);
     }
   }
+  for(const rule of [s.signals?.accept,s.signals?.sideAccept])if(rule?.lastN!==undefined){num(rule.lastN,1,500,"Acceptance positions N");int(rule.lastN,"Acceptance positions N");}
   if (s.gates) {
+    if (s.gates.positionWindows !== undefined && s.gates.positionWindows !== null) checkPositionWindows(s.gates.positionWindows);
     // legacy values are snapped into 1.05–1.50 / 2–35 h by the runtime; only nonsense is rejected
     num(s.gates.minPf, 0.5, 5, "min PF");
     num(s.gates.maxDdtH, 1, 500, "max DDT");
@@ -124,7 +131,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     if (s.gates.rangeMinPf !== undefined) {
       if (typeof s.gates.rangeMinPf !== "object" || s.gates.rangeMinPf === null)
         throw new Error("range min PF: an object per range");
-      const keys = new Set(["micro", "minimal", "short", "general", "long"]);
+      const keys = new Set(["micro", "minimal", "short", "general", "long", "lowRange"]);
       for (const [k, v] of Object.entries(s.gates.rangeMinPf)) {
         if (!keys.has(k)) throw new Error(`range min PF: unknown range ${k}`);
         if (v !== undefined) num(v, 1.05, 3, `${k} min PF`);
@@ -214,13 +221,13 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     if (s.live.source !== undefined && !["all", "signals", "engine"].includes(s.live.source))
       throw new Error("live source: all, signals or engine");
     if (s.live.excludeRanges !== undefined) {
-      const ok = ["wide", "mc", "mn", "mp", "sh", "gn", "lg"];
+      const ok = ["wide", "mc", "mn", "mp", "sh", "gn", "lg", "lr"];
       if (!Array.isArray(s.live.excludeRanges) || s.live.excludeRanges.some((r) => !ok.includes(r)))
         throw new Error(`live excluded ranges: a list of ${ok.join(", ")}`);
     }
     if (s.live.excludeConfigs !== undefined) {
       // a family: bot|range for Normal / Trailing, or bot|exit for all Historic Exit sets
-      const re = /^[a-z]+\|(wide|mc|mn|mp|sh|gn|lg|exit)$/;
+      const re = /^[a-z]+\|(wide|mc|mn|mp|sh|gn|lg|lr|exit)$/;
       if (
         !Array.isArray(s.live.excludeConfigs) ||
         s.live.excludeConfigs.some((f) => typeof f !== "string" || !re.test(f))
@@ -490,7 +497,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     }
     // the ranges Block never raises: the range tags, and "wide" for the untagged grid (as live.excludeRanges)
     if (s.block.excludeRanges !== undefined) {
-      const ok = ["wide", "mc", "mn", "mp", "sh", "gn", "lg"];
+      const ok = ["wide", "mc", "mn", "mp", "sh", "gn", "lg", "lr"];
       if (
         !Array.isArray(s.block.excludeRanges) ||
         s.block.excludeRanges.some((r) => !ok.includes(r))
@@ -499,6 +506,10 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     }
   }
   if (s.fees) {
+    if (s.fees.slippageMode !== undefined && !["ratio", "absolute"].includes(s.fees.slippageMode)) throw new Error("Invalid slippage mode");
+    if (s.fees.mode !== undefined && !["auto", "manual"].includes(s.fees.mode)) throw new Error("fees.mode: auto or manual");
+    for (const role of [s.fees.entry, s.fees.exit])
+      if (role !== undefined && !["maker", "taker"].includes(role)) throw new Error("fee role: maker or taker");
     num(s.fees.taker, 0, 0.01, "taker fee");
     num(s.fees.maker, 0, 0.01, "maker fee");
     num(s.fees.slippage, 0, 0.02, "legacy absolute slippage");
@@ -694,6 +705,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
         minSlEval?: unknown;
         ownBase?: unknown;
         baseBest?: unknown;
+        holdAuto?: unknown;
+        holdCandidatesMin?: unknown;
       };
       volumeFactor(g.volumeFactor, `${name} volume factor`);
       // 0.2 like the stop ratios: General / Long trail at every stop of their 0.25–1.5 ladder (13 Oct)
@@ -703,7 +716,15 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       num(g.minTf, 0, 240, `${name} shortest lane (minutes)`);
       if ((g as { maxHoldMin?: unknown }).maxHoldMin !== undefined)
         num((g as { maxHoldMin?: unknown }).maxHoldMin, 1, 1440, `${name} max hold time (minutes)`);
+      if (g.holdAuto !== undefined && typeof g.holdAuto !== "boolean") throw new Error(`${name} hold auto: on / off`);
+      if (g.holdCandidatesMin !== undefined) {
+        if (!Array.isArray(g.holdCandidatesMin) || !g.holdCandidatesMin.length || g.holdCandidatesMin.length > 50 ||
+            new Set(g.holdCandidatesMin).size !== g.holdCandidatesMin.length)
+          throw new Error(`${name} hold candidates: 1–50 distinct values`);
+        for (const n of g.holdCandidatesMin) { num(n, 1, 4320, `${name} hold minutes`); int(n, `${name} hold minutes`); }
+      }
       if (g.minSlEval !== undefined) num(g.minSlEval, 0.0005, 0.05, `${name} evaluation min SL`);
+      num((g as { minSlDistancePct?: number }).minSlDistancePct, MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, `${name} own minimum net stop distance (%)`);
       for (const [k, v] of [
         ["own Base cell (ownBase)", g.ownBase],
         ["best-cell Base (baseBest)", g.baseBest],
@@ -763,9 +784,23 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       num(lowRange.step, 0.000001, 0.008, "Low-Range step");
       num(lowRange.maxHoldMin, 1, 1440, "Low-Range maximum hold");
       int(lowRange.maxHoldMin, "Low-Range maximum hold");
+      if (lowRange.coordination !== undefined && !["short", "independent"].includes(lowRange.coordination))
+        throw new Error("Low-Range coordination: short or independent");
+      num(lowRange.minTf, 0, 30, "Low-Range minimum timeframe");
+      volumeFactor(lowRange.volumeFactor, "Low-Range volume factor");
+      num(lowRange.maxSlRatio, FINE_SL_TP_MIN, SL_TP_MAX, "Low-Range maximum SL ratio");
+      num(lowRange.maxTrailRatio, 0.01, 1, "Low-Range maximum trailing ratio");
+      num(lowRange.minSlDistancePct, MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, "Low-Range own minimum net stop distance (%)");
+      if (lowRange.holdAuto !== undefined && typeof lowRange.holdAuto !== "boolean") throw new Error("Low-Range hold auto: on / off");
+      if (lowRange.holdCandidatesMin !== undefined) {
+        const xs = lowRange.holdCandidatesMin;
+        if (!Array.isArray(xs) || !xs.length || xs.length > 50 || new Set(xs).size !== xs.length)
+          throw new Error("Low-Range hold candidates: 1–50 distinct values");
+        for (const n of xs) { num(n, 1, 1440, "Low-Range hold candidate"); int(n, "Low-Range hold candidate"); }
+      }
       for (const [xs, lo, hi, label] of [
         [lowRange.steps, 2, 6, "Low-Range target steps"],
-        [lowRange.slRatios, SL_TP_MIN, SL_TP_MAX, "Low-Range stop ratios"],
+        [lowRange.slRatios, FINE_SL_TP_MIN, SL_TP_MAX, "Low-Range stop ratios"],
         [lowRange.trailRatios, 0, 1, "Low-Range trailing ratios"],
       ] as const) {
         if (xs === undefined) continue;
@@ -788,7 +823,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       };
       // tp: the net target after the round-trip cost (tpNetOfCost, default on) or the price target itself
       wide(micro.tp, 0.001, 0.2, "micro TP", 16);
-      wide(micro.slOfTp, SL_TP_MIN, SL_TP_MAX, "micro SL×TP", 24);
+      // the Micro ladder starts at 0.2 (11 Nov 2026); the former 0.25 to 2.5 values stay valid
+      wide(micro.slOfTp, FINE_SL_TP_MIN, SL_TP_MAX, "micro SL×TP", 24);
       if (micro.tpNetOfCost !== undefined && typeof micro.tpNetOfCost !== "boolean")
         throw new Error("micro tpNetOfCost: true or false");
 
@@ -1003,6 +1039,10 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     num(g.minTrail, 0, 0.1, "signal minimum trailing distance");
     if (g.sourceGate) {
       bool(g.sourceGate.enabled, "source stability gate");
+      if(g.sourceGate.lastN!==undefined) {
+        num(g.sourceGate.lastN,1,500,"source stability last-N positions");
+        if(!Number.isSafeInteger(g.sourceGate.lastN)) throw new Error("source stability last-N positions must be whole");
+      }
       num(g.sourceGate.days, 1, 14, "source gate days");
       num(g.sourceGate.minShare, 0, 1, "source gate positive-day share");
       num(g.sourceGate.minTrades, 1, 100, "source gate minimum orders");
@@ -1112,7 +1152,7 @@ function checkBaseWindowRule(r: unknown, name: string) {
   num(x.minN, 1, 100, "minN (closes)", true);
   if (x.split === undefined && x.recentH === undefined) throw new Error(`${name}: set split, recentH or both`);
   if (x.ranges !== undefined) {
-    const ok = ["mc", "mn", "sh", "gn", "lg", "wide"];
+    const ok = ["mc", "mn", "sh", "gn", "lg", "lr", "wide"];
     // Minimal plus has no Base cell of its own: it is judged at the default cell, so "mp" would judge nothing ("wide"
     // judges it); an empty list judges nothing either (leave `ranges` out for every range)
     if (Array.isArray(x.ranges) && x.ranges.includes("mp"))
@@ -1136,6 +1176,7 @@ export function checkLowRangeComplete(grid: CoreSettings["grid"]) {
       typeof lr.step !== "number" || typeof lr.maxHoldMin !== "number" ||
       !Array.isArray(lr.steps) || !Array.isArray(lr.slRatios) || !Array.isArray(lr.trailRatios))
     throw new Error("Low-Range: merged settings must include enabled, step, target/stop/trailing lists and maximum hold");
+  lowRangeHolds(lr);
 }
 
 /** Ordinary range objects replace the prior object; never fill omitted ladders from another configuration. */
@@ -1146,6 +1187,11 @@ export function checkRangeReplacementsComplete(grid: CoreSettings["grid"]) {
     if (!range || typeof range !== "object" || Array.isArray(range) || !Array.isArray(range.tp) ||
         !Array.isArray(range.slOfTp) || !Array.isArray(range.trailOfTp))
       throw new Error(`${key} range replaces the previous object: provide complete TP, SL and trailing lists`);
+    if (range.holdAuto) {
+      rangeHolds(range, grid.holdH);
+      if (!grid.baseCells || !grid.baseTrailCells || range.ownBase === false || range.baseBest === false)
+        throw new Error(`${key} automatic hold requires exact Base cells, trailing cells and own Base evaluation`);
+    }
   }
 }
 

@@ -5,7 +5,7 @@ import { rangeOfId } from "./minimal-coord.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
 import { profitFactor } from "./metrics/stats.ts";
 
-export const PROMOTE_RANGES = ["mc", "mn", "mp", "sh", "gn", "lg", "wide"] as const;
+export const PROMOTE_RANGES = ["mc", "mn", "mp", "sh", "gn", "lg", "lr", "wide"] as const;
 export type PromoteRange = (typeof PROMOTE_RANGES)[number];
 export const PROMOTE_GROUPS = [...PROMOTE_RANGES, "exit"] as const;
 export type PromoteGroup = (typeof PROMOTE_GROUPS)[number];
@@ -237,7 +237,7 @@ function validOptions(o: PromoteOpts): boolean {
 }
 function laneShape(v: unknown): v is PromoteEvidenceLane {
   if (!object(v) || !identity(v)) return false;
-  const ranges = v.cfg.match(/\|(mc|mp|mn|sh|gn|lg)(?=\||$)/g) ?? [];
+  const ranges = v.cfg.match(/\|(mc|mp|mn|sh|gn|lg|lr)(?=\||$)/g) ?? [];
   const group = promoteGroupOf(v.cfg);
   return (
     group !== null &&

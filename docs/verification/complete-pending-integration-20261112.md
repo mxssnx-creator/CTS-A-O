@@ -1,0 +1,7 @@
+# Pending ladder and comparison integration — 12 November 2026
+
+PR #259 is brought up to main `39f343c4635c57034bcc06ed16c2497a427c8df4`, retaining both histories. The remaining changes add the live/system comparison endpoint and trading panel, retain the direction-specific maximum-leverage default, bound trailing-token caches, and make connected history batches grow from five symbols. The already merged fine ladders, own Micro floors, independent Last-N/volume controls and explicit instance-tag rejection remain intact.
+
+Local combined validation: TypeScript, production/core-worker build and 82 focused leverage, live-comparison, ownership, backfill, healing and trailing/relation tests pass. The hosted bounded Last-N/integrity, feature and position-policy/render workflows must pass before merging this combined head. The archived full inventory remains manual-only because some historical fixtures exceed the current 72-hour study limit; it is not claimed as passing. The obsolete draft statement that a previous x02 run is still ongoing is superseded by this source-integration record; earlier observations remain attributed to their original runs.
+
+No new market or venue experiment is performed for this merge. Post-Base PF and passed/evaluated validation counts for the exact combined cohort are unavailable. Existing measured losses and insufficient samples are retained. The checked-in x01/x02 launcher scripts are not executed, and this source merge changes no production instance, persisted account settings or exchange orders.

@@ -88,7 +88,7 @@ describe("range settings are complete and the same for every range", () => {
       );
     }
     const defaults = rangeVolumeFactorsOf(DEFAULT_SETTINGS.grid);
-    assert.deepEqual(defaults, { wide: 1, mc: 1, mn: 1, mp: 1, sh: 1, gn: 1, lg: 1 });
+    assert.deepEqual(defaults, { wide: 1, mc: 1, mn: 1, mp: 1, sh: 1, gn: 1, lg: 1, lr: 1 });
     assert.equal(
       rangeVolumeFactorsOf({ micro: { tp: [], slOfTp: [], trailOfTp: [] } }).mc,
       1,

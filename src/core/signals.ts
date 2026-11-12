@@ -1,3 +1,4 @@
+import { CountAcceptanceIndex } from "./count-acceptance.ts";
 // Signals processing: proven classic signal sources (see SIGNAL_SOURCES in the registry) processed per
 // source × symbol, independently of the engine's bot × indication combos.
 //   combos     every enabled source × range (short / medium) × signal lane, entered on the source's own onsets
@@ -464,7 +465,7 @@ function sliceClock(ms = 8): () => boolean {
   };
 }
 
-type AcceptColumns = { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array; invalid?: Uint32Array };
+type AcceptColumns = { r: Float64Array; t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array; invalid?: Uint32Array };
 /** Unknown observations stay in their window, but stop affecting later windows once they expire. */
 function windowHasInvalid(indices: Uint32Array | undefined, from: number, to: number): boolean {
   if (!indices) return false;
@@ -587,6 +588,7 @@ export class SignalAcceptIndex {
       const cols: Array<
         | {
             t: Float64Array;
+            r: Float64Array;
             gp: Float64Array;
             gl: Float64Array;
             cn: Int32Array;
@@ -600,6 +602,7 @@ export class SignalAcceptIndex {
         const n = counts[slot];
         cols[slot] = {
           t: new Float64Array(n),
+          r: new Float64Array(n),
           gp: new Float64Array(n + 1),
           gl: new Float64Array(n + 1),
           cn: new Int32Array(n + 1),
@@ -613,6 +616,7 @@ export class SignalAcceptIndex {
         const r = +tp.r[i];
         const finite = Number.isFinite(r);
         x.t[j] = tp.exitT[i];
+        x.r[j] = r;
         if (!finite) (x.invalid ??= []).push(j);
         x.gp[j + 1] = x.gp[j] + (finite && r > 0 ? r : 0);
         x.gl[j + 1] = x.gl[j] + (finite && r < 0 ? -r : 0);
@@ -623,9 +627,10 @@ export class SignalAcceptIndex {
         if ((i & 8191) === 8191 && clock()) yield 0;
       }
       for (const slot of slots) {
-        const { t, gp, gl, cn, invalid } = cols[slot]!;
+        const { t, r, gp, gl, cn, invalid } = cols[slot]!;
         this.groups.set(acceptKey(tp.ind, symbols.syms[slot >> 1], slot % 2 ? 1 : -1, tp.kind, tp.id), {
           t,
+          r,
           gp,
           gl,
           cn,
@@ -679,6 +684,7 @@ export class SignalAcceptIndex {
       for (let i = 0; i < c.n; i++) order[i] = i;
       order.sort((a, b) => c.t[a] - c.t[b]);
       const t = new Float64Array(c.n);
+      const rr = new Float64Array(c.n);
       const gp = new Float64Array(c.n + 1);
       const gl = new Float64Array(c.n + 1);
       // (counts: integers, 4 B each)
@@ -692,6 +698,7 @@ export class SignalAcceptIndex {
         const r = c.r[i];
         const finite = Number.isFinite(r);
         t[j] = c.t[i];
+        rr[j] = r;
         if (!finite) (invalid ??= []).push(j);
         gp[j + 1] = gp[j] + (finite && r > 0 ? r : 0);
         gl[j + 1] = gl[j] + (finite && r < 0 ? -r : 0);
@@ -704,7 +711,7 @@ export class SignalAcceptIndex {
         }
         cn[j + 1] = cn[j] + (first ? 1 : 0);
       }
-      this.groups.set(k, { t, gp, gl, cn, ...(invalid ? { invalid: Uint32Array.from(invalid) } : {}) });
+      this.groups.set(k, { t, r:rr, gp, gl, cn, ...(invalid ? { invalid: Uint32Array.from(invalid) } : {}) });
       // the group's scratch columns are done with: released now, not with the whole set at the end (60 B a close)
       cols.delete(k);
       if (clock()) yield 0;
@@ -731,7 +738,7 @@ export class SignalAcceptIndex {
     const n = symI < 0 || (side !== 1 && side !== -1) ? 0 : counts[slot];
     if (!n) return undefined;
     const columns: AcceptColumns = {
-      t: new Float64Array(n), gp: new Float64Array(n + 1), gl: new Float64Array(n + 1), cn: new Int32Array(n + 1),
+      r: new Float64Array(n), t: new Float64Array(n), gp: new Float64Array(n + 1), gl: new Float64Array(n + 1), cn: new Int32Array(n + 1),
     };
     const seen = tp.entryT ? new Set<number>() : null;
     let invalid: number[] | undefined;
@@ -741,6 +748,7 @@ export class SignalAcceptIndex {
       const r = +tp.r[i], entry = tp.entryT ? +tp.entryT[i] : 0;
       const finite = Number.isFinite(r);
       columns.t[j] = tp.exitT[i];
+      columns.r[j] = r;
       if (!finite) (invalid ??= []).push(j);
       columns.gp[j + 1] = columns.gp[j] + (finite && r > 0 ? r : 0);
       columns.gl[j + 1] = columns.gl[j] + (finite && r < 0 ? -r : 0);
@@ -749,7 +757,7 @@ export class SignalAcceptIndex {
       j++;
     }
     if (invalid) columns.invalid = Uint32Array.from(invalid);
-    const bytes = columns.t.byteLength + columns.gp.byteLength + columns.gl.byteLength + columns.cn.byteLength + (columns.invalid?.byteLength ?? 0);
+    const bytes = columns.r.byteLength + columns.t.byteLength + columns.gp.byteLength + columns.gl.byteLength + columns.cn.byteLength + (columns.invalid?.byteLength ?? 0);
     while (this.cached.size && (this.cached.size >= ACCEPT_CACHE_GROUPS || this.cachedBytes + bytes > ACCEPT_CACHE_BYTES)) {
       const first = this.cached.keys().next().value!;
       this.cachedBytes -= this.cached.get(first)!.bytes;
@@ -760,6 +768,14 @@ export class SignalAcceptIndex {
       this.cachedBytes += bytes;
     }
     return columns;
+  }
+  statsN(key:string,t:number,n:number):{n:number;pf:number} {
+    if(!Number.isSafeInteger(n)||n<1||n>500||!Number.isFinite(t))return {n:0,pf:NaN};
+    const g=this.lazy?this.context(key):this.groups.get(key);if(!g)return {n:0,pf:0};
+    let lo=0,hi=g.t.length;while(lo<hi){const m=(lo+hi)>>>1;if(g.t[m]<t)lo=m+1;else hi=m;}
+    const b=lo,a=Math.max(0,b-n);if(windowHasInvalid(g.invalid,a,b))return {n:b-a,pf:NaN};
+    let gp=0,gl=0;for(let i=a;i<b;i++){gp+=Math.max(0,g.r[i]);gl+=Math.max(0,-g.r[i]);}
+    return {n:b-a,pf:profitFactorRatio(gp,gl)};
   }
   /** profit factor (every close) and count (signal entries) of the group's closes in (t − hours, t] */
   stats(key: string, t: number, hours: number): { n: number; pf: number } {
@@ -809,7 +825,7 @@ const HOUR_MS = 3_600_000;
  */
 export function acceptOnWindow(
   stats: (hours: number) => { n: number; pf: number },
-  o: { minPf: number; hours: number; minTrades: number },
+  o: { minPf: number; hours: number; minTrades: number; lastN?: number },
 ): boolean {
   const s = stats(o.hours);
   if (!(s.pf >= 0)) return false;
@@ -825,6 +841,7 @@ export function acceptOnWindow(
  */
 export interface ExchangeAccept {
   stats(key: string, t: number, hours: number): { n: number; pf: number };
+  statsN?(key:string,t:number,n:number):{n:number;pf:number};
 }
 
 /** The acceptance rule on the exchange record once it holds enough closes in the window, else `sim`. */
@@ -832,9 +849,14 @@ export function acceptPreferExchange(
   ex: ExchangeAccept | null | undefined,
   key: string,
   t: number,
-  o: { minPf: number; hours: number; minTrades: number },
+  o: { minPf: number; hours: number; minTrades: number; lastN?: number },
   sim: () => boolean,
 ): boolean {
+  if(o.lastN) {
+    if(ex) {if(!ex.statsN)return false;const own=ex.statsN(key,t,o.lastN);
+      if(!(own.pf>=0))return false;if(own.n>=o.lastN)return own.pf>=o.minPf;}
+    return sim();
+  }
   if (ex) {
     const own = ex.stats(key, t, o.hours);
     if (!(own.pf >= 0)) return false;
@@ -891,9 +913,14 @@ export function engineSideKeyFor(
  * own hour is never seen: causal by construction). Memory: one bucket per group and hour, not per close.
  */
 export class EngineSideIndex {
+  private counts = new CountAcceptanceIndex();
+  statsN(key: string, t: number, n: number) {
+    return this.counts.stats(key, t, n);
+  }
   fork(): EngineSideIndex {
     const next = new EngineSideIndex();
     next.groups = new Map(this.groups);
+    next.counts = this.counts.fork();
     return next;
   }
   private groups = new Map<
@@ -904,6 +931,23 @@ export class EngineSideIndex {
   *append(tapes: readonly SideTape[]): Generator<number, void> {
     const additions = new EngineSideIndex();
     yield* additions.fill(tapes);
+    // Validate the whole revision before publishing either clock or position indexes.
+    for (const [key, extra] of additions.groups) {
+      const old = this.groups.get(key);
+      if (old?.h.length && extra.h[0] < old.h[old.h.length - 1])
+        throw new Error("engine acceptance append precedes its existing history");
+    }
+    for (const tp of tapes)
+      if (!isSignalInd(tp.ind))
+        for (const side of [1, -1])
+          for (const ind of [undefined, tp.ind])
+            this.counts.add(engineSideKey(tp.kind, tp.protect.tag, side, ind, tp.protect.exitSet), {
+              n: tp.n,
+              r: tp.r,
+              exitT: tp.exitT,
+              side: tp.side,
+              wantSide: side,
+            });
     for (const [key, extra] of additions.groups) {
       const old = this.groups.get(key);
       if (!old?.h.length) {
@@ -920,7 +964,7 @@ export class EngineSideIndex {
         gp: new Float64Array(n + 1),
         gl: new Float64Array(n + 1),
         n: new Float64Array(n + 1),
-        ...((old.invalid || extra.invalid) ? { invalid: new Float64Array(n + 1) } : {}),
+        ...(old.invalid || extra.invalid ? { invalid: new Float64Array(n + 1) } : {}),
       };
       next.h.set(old.h);
       for (const col of ["gp", "gl", "n"] as const) next[col].set(old[col]);
@@ -934,7 +978,8 @@ export class EngineSideIndex {
         }
         if (next.invalid) {
           const before = overlap && i === 0 ? (old.invalid?.[old.h.length] ?? 0) : next.invalid[j];
-          next.invalid[j + 1] = before + (extra.invalid ? extra.invalid[i + 1] - extra.invalid[i] : 0);
+          next.invalid[j + 1] =
+            before + (extra.invalid ? extra.invalid[i + 1] - extra.invalid[i] : 0);
         }
       }
       this.groups.set(key, next);
@@ -944,10 +989,21 @@ export class EngineSideIndex {
   // (the index is shared — cached per tape set, by the simulation and the live step alike — so it never holds the
   // exchange record itself: the live step's guard passes it per call)
   *fill(tapes: readonly SideTape[]): Generator<number, void> {
+    this.groups.clear();
+    this.counts = new CountAcceptanceIndex();
     const acc = new Map<string, Map<number, [number, number, number, number]>>();
     const clock = sliceClock();
     for (const tp of tapes) {
       if (isSignalInd(tp.ind)) continue;
+      for (const side of [1, -1])
+        for (const ind of [undefined, tp.ind])
+          this.counts.add(engineSideKey(tp.kind, tp.protect.tag, side, ind, tp.protect.exitSet), {
+            n: tp.n,
+            r: tp.r,
+            exitT: tp.exitT,
+            side: tp.side,
+            wantSide: side,
+          });
       // every candidate enters its range group and its indication's group (engineSideAccept.perInd picks)
       const keys = [-1, 1].map((sd) => [
         engineSideKey(tp.kind, tp.protect.tag, sd, undefined, tp.protect.exitSet),
@@ -1026,10 +1082,15 @@ export class EngineSideIndex {
     key: string,
     pooled: string,
     t: number,
-    o: { minPf: number; hours: number; minTrades: number },
+    o: { minPf: number; hours: number; minTrades: number; lastN?: number },
     /** the desk's own exchange closes (live step only; the simulation passes none) */
     exchange?: ExchangeAccept | null,
   ): boolean {
+    if (o.lastN) {
+      const own = this.statsN(key, t, o.lastN);
+      if (!(own.pf >= 0)) return false;
+      return this.accepts(key === pooled || own.n >= o.lastN ? key : pooled, t, o, exchange);
+    }
     if (key === pooled) return this.accepts(key, t, o, exchange);
     const judged =
       this.stats(key, t, o.hours * 2).n >= o.minTrades ||
@@ -1040,11 +1101,16 @@ export class EngineSideIndex {
   accepts(
     key: string,
     t: number,
-    o: { minPf: number; hours: number; minTrades: number },
+    o: { minPf: number; hours: number; minTrades: number; lastN?: number },
     exchange?: ExchangeAccept | null,
   ): boolean {
     return acceptPreferExchange(exchange, key, t, o, () =>
-      acceptOnWindow((h) => this.stats(key, t, h), o),
+      o.lastN
+        ? (() => {
+            const s = this.statsN(key, t, o.lastN);
+            return s.n === o.lastN && s.pf >= o.minPf;
+          })()
+        : acceptOnWindow((h) => this.stats(key, t, h), o),
     );
   }
 }
@@ -1200,10 +1266,18 @@ export class SignalGuard {
     m.byHours.set(hours, res);
     return res;
   }
+  acceptStatsN(key:string,t:number,n:number):{n:number;pf:number} {
+    if(this.acceptIndex&&!isSideAcceptKey(key))return this.acceptIndex.statsN(key,t,n);
+    const rows=this.accepted.get(key)??[],index=new CountAcceptanceIndex();
+    index.add(key,{n:rows.length,exitT:rows.map(x=>x.t),r:rows.map(x=>x.r)});return index.stats(key,t,n);
+  }
   /** the shared acceptance rule (`acceptOnWindow`) on this group's closes before t */
   accepts(key: string, t: number, a: SignalAccept): boolean {
     return acceptPreferExchange(this.exchange, key, t, a, () =>
-      acceptOnWindow((h) => this.acceptStats(key, t, h), a),
+      a.lastN ? (()=>{const s=this.acceptStatsN(key,t,a.lastN);
+        // Shared direction coordination has no verdict before it matures; own-config count qualification remains mandatory.
+        return s.pf>=0&&(isSideAcceptKey(key)&&s.n<a.lastN||s.n===a.lastN&&s.pf>=a.minPf);})() :
+        acceptOnWindow((h) => this.acceptStats(key, t, h), a),
     );
   }
   /** true when the last n results average below zero (a set with fewer than n results is not judged) */

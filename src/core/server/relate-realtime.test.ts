@@ -41,7 +41,7 @@ function fixture(rows: BlockFeedEntry[]) {
   const db = new CoreDb(":memory:");
   const rt = new CoreRuntime(db, { relate: config } as never, { market: "synthetic", priceStream: null });
   const hooks = rt as unknown as Hooks;
-  hooks.wf = { ...defaultWalkForward(DEFAULT_SETTINGS), relate: config };
+  hooks.wf = { ...defaultWalkForward(DEFAULT_SETTINGS), relate: config, gates: { ...DEFAULT_SETTINGS.gates, positionWindows: null } };
   hooks.sim = { feed: rows } as unknown as WalkForwardResult;
   hooks.tapes = [];
   hooks.paper.positions = [];

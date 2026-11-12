@@ -437,7 +437,9 @@ export function exchangeAcceptIndex(
       add(engineSideKey(kind, tag, x.side, ind, exitSet), x.exitT, x.r);
     }
   }
-  for (const l of by.values()) {
+  const invalidClocks=new Set<string>();
+  for (const [key,l] of by) {
+    if(l.some(x=>!Number.isFinite(x.t)))invalidClocks.add(key);
     l.sort((a, b) => a.t - b.t);
     const seen = new Set<string>();
     for (const x of l) {
@@ -448,6 +450,14 @@ export function exchangeAcceptIndex(
   }
   return {
     size: rows.length,
+    statsN(key,t,n) {
+      if(!Number.isSafeInteger(n)||n<1||n>500||!Number.isFinite(t)||invalidClocks.has(key))return {n:0,pf:NaN};
+      const source=by.get(key)??[];let lo=0,hi=source.length;
+      while(lo<hi){const m=(lo+hi)>>>1;if(source[m].t<t)lo=m+1;else hi=m;}
+      const a=Math.max(0,lo-n);let gp=0,gl=0;
+      for(let i=a;i<lo;i++){gp+=Math.max(0,source[i].r);gl+=Math.max(0,-source[i].r);}
+      return {n:lo-a,pf:profitFactorRatio(gp,gl)};
+    },
     stats(key, t, hours) {
       const l = by.get(key);
       if (!l) return { n: 0, pf: 0 };

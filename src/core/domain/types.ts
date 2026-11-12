@@ -83,6 +83,8 @@ export interface Protect {
   trail: number;
   /** Internal Short-grid ownership: this cell is only for Low-Range sources. */
   lowRangeOnly?: boolean;
+  /** Immutable Low-Range distance ceilings, including feedback; captured in the config identity. */
+  riskCaps?: { sl: number; trail: number };
   /** trailing distance after activation as a share of `trail` (default 1: stop = peak · (1 − trail)) */
   trailStep?: number;
   /** once the trail is active the target is dropped and the trail alone exits (let winners run) */
@@ -172,6 +174,9 @@ export interface RangeGrid {
    */
   maxHoldMin?: number;
   /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
+  holdAuto?: boolean;
+  /** Independent hold candidates, minutes; every candidate needs its own Base proof. */
+  holdCandidatesMin?: readonly number[];
   ownBase?: boolean;
   /** Base on this range's best cell (overrides grid.baseBest) */
   baseBest?: boolean;
@@ -181,6 +186,12 @@ export interface RangeGrid {
    * reward:risk below 1. Unset = the global floor.
    */
   minSlEval?: number;
+  /**
+   * This range's OWN minimum net stop distance in percent (0.1 to 1): the initial stop is never inside the modeled
+   * round-trip cost plus this distance. Unset = the global `minSlDistancePct`. Operator, 11 Nov 2026: "use own minimal
+   * SL distance" per project. A higher value than the global one tightens only this range; a lower one loosens only it.
+   */
+  minSlDistancePct?: number;
 }
 
 /** The Minimal range: `RangeGrid` plus the one lever only Minimal reads. */
@@ -216,7 +227,7 @@ export interface MicroGrid extends RangeGrid {
 }
 
 /** Protect ranges beside the wide grid (see minimal-coord.ts). */
-export type RangeTag = "mp" | "mc" | "mn" | "sh" | "gn" | "lg";
+export type RangeTag = "mp" | "mc" | "mn" | "sh" | "gn" | "lg" | "lr";
 
 /** ATR exit parameters (see Protect.atr and resolveAtrProtect). */
 export interface AtrProtect {
@@ -590,6 +601,7 @@ export interface Trade {
 }
 
 export interface OpenPosition {
+  trailingProcessingEnabled?: boolean;
   blockAttribution?: BlockAttribution;
   cfg: string;
   sym: string;
@@ -654,9 +666,12 @@ export interface BaseLastNStats {
   gl: number;
   stop: number;
   invalid?: true;
+  mdd?: number;
 }
 
 export interface Stats {
+  configId?: string;
+  rangeTag?: string;
   n: number;
   wins: number;
   losses: number;
@@ -740,6 +755,8 @@ export interface EvalResult {
 }
 
 export interface Gates {
+  /** Primary samples are complete positions per exact configuration. Null is retained for historical reproductions. */
+  positionWindows?: import("../position-windows.ts").PositionWindows | null;
   /** Optional manual step floor, shared across Base and downstream windows; stricter range floors remain. */
   stepPf?: import("../step-pf.ts").StepPfRules;
   /** stage minimum PF; the runtime keeps it within 1.05–1.50 (a value outside is snapped to the nearest bound) */
@@ -853,10 +870,20 @@ export interface BaseWindowsResult {
 }
 
 /** The ranges with their own stage minimum PF (Gates.rangeMinPf). */
-export type RangeMinPfKey = "micro" | "minimal" | "short" | "general" | "long";
+export type RangeMinPfKey = "micro" | "minimal" | "short" | "general" | "long" | "lowRange";
 
 export interface LowRangeGrid {
   enabled: boolean;
+  /** Unset retains legacy Short ownership; new independent cells use the lr tag. */
+  coordination?: "short" | "independent";
+  minTf?: number;
+  volumeFactor?: number;
+  holdAuto?: boolean;
+  holdCandidatesMin?: readonly number[];
+  maxSlRatio?: number;
+  maxTrailRatio?: number;
+  /** Low-Range's own minimum net stop distance in percent (0.1 to 1); unset = the global value. */
+  minSlDistancePct?: number;
   /** Fixed range step as a fraction of price. */
   step: number;
   steps: readonly number[];
@@ -906,8 +933,8 @@ export interface ProtectGridSpec {
   long?: false | RangeGrid;
   /**
    * Micro range: net targets use the frozen range reference basis (default 0.20%-0.80%); price targets add settings.cost
-   * (default 0.15%, so 0.35%-0.95%),
-   * stops 1x-5x the price target step 0.25 (MICRO_SL, 17 ratios), both trailing distances. Tagged "mc" so the orders are not mixed
+   * (default 0.176%, so 0.376%-0.976%),
+   * stops 0.2x-1.6x the price target step 0.1 (MICRO_SL, 15 ratios), six trailing distances. Tagged "mc" so the orders are not mixed
    * with the minimal range. Every lever of `RangeGrid` plus the three Micro-only ones.
    */
   micro?: false | MicroGrid;

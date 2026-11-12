@@ -341,6 +341,7 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
     status: r.status,
     settings: r.settings,
     wf: {
+      positionWindows: r.wf.gates?.positionWindows ?? null,
       preH: r.wf.preH,
       simH: r.wf.simH,
       seatSet: r.wf.seatSet ?? "validated",
@@ -652,6 +653,7 @@ export async function coreSimData(data: ReturnType<typeof connInput>) {
       })),
       trades: sim.trades.slice(-400).reverse(),
       opts: {
+        positionWindows: sim.opts.gates?.positionWindows ?? null,
         preH: sim.opts.preH,
         simH: sim.opts.simH,
         lastN: sim.opts.lastN,
@@ -681,6 +683,58 @@ async function paperRealizedOf(r: Awaited<ReturnType<typeof rt>>) {
   let realized = r.paper.carried ?? 0;
   for (const t of r.paper.trades) realized += t.r * unitOf(t);
   return { realized, unitOf };
+}
+
+/** Input of the live-vs-system read: the connection and the window in hours (default 48, 1 to 720). */
+export const liveDiffInput = (d?: { conn?: string; hours?: number }) => {
+  const base = connInput(d);
+  const hours = d?.hours === undefined ? 48 : Number(d.hours);
+  if (!Number.isFinite(hours) || hours < 1 || hours > 720) throw new Error("hours: 1 to 720");
+  return { ...base, hours };
+};
+
+/**
+ * The system (paper book) against the exchange (own fills) over the last `hours`: the same relation the desk report and the
+ * standing check use (src/core/relation.ts, docs/execution-fidelity.md) — per lane and per real position, per range, per
+ * hour, the worst gaps, the exact decomposition of the gap into entry timing, exit and fees — plus a trade history of
+ * the real positions, the standing alarms, and an adjustment hint per range. A hint only reads the measured parts of the gap;
+ * it changes no setting.
+ */
+export async function coreLiveDiffData(data: ReturnType<typeof liveDiffInput>) {
+  const r = await rt(data.conn);
+  const rel = await import("./relation.ts");
+  const { liveTrades } = await import("./statistics.ts");
+  const { liveTag } = await import("./server/live.ts");
+  const tag = liveTag(r.settings.live.connId);
+  const now = Date.now();
+  const from = now - data.hours * 3_600_000;
+  const d = rel.relationOf({
+    system: r.db.all(rel.relationSystemSql(), from - rel.RELATION_SYSTEM_SLACK_MS) as never,
+    lanes: r.db.all(rel.RELATION_LANES_SQL, from) as never,
+    trades: liveTrades(r.db.all(rel.RELATION_LEDGER_SQL, from - rel.RELATION_LEDGER_LOOKBACK_MS) as never, tag.length, r.settings.cost),
+    open: r.paper.positions.map((p) => rel.laneIdOfRow({ cfg: p.cfg, sym: p.sym, side: p.side, entry_t: p.entryT })),
+    from,
+    to: now,
+    coverageFrom: (r.db.get(rel.RELATION_COVERAGE_SQL) as { t?: number | null } | undefined)?.t ?? null,
+  });
+  const check = rel.relationCheck(d);
+  // per range: where the exchange did worse than the system, which measured part of the gap carries it
+  const hints = d.byRange.flatMap((g) => {
+    if (g.matched < 5 || !(g.gap.total < 0)) return [];
+    const parts = [
+      { part: "entry (join): the exchange entered later than the book", v: g.gap.entryJoin, action: "check entry latency and the order type; no distance change fixes a late fill" },
+      { part: "entry (adoption)", v: g.gap.entryAdoption, action: "the book adopts positions late; check the paper step cadence" },
+      { part: "exit: the exchange closed at a worse price than the system", v: g.gap.exit, action: "raise the minimum stop / trail distance of this range (stops are hit at the venue's price, not the tape's), or widen the venue stop buffer" },
+      { part: "fees: measured cost above the model cost", v: g.gap.fees, action: "raise settings.cost to the measured round trip (fees mode auto does this from the account rate)" },
+    ].filter((x) => x.v < 0).sort((a, b) => a.v - b.v);
+    const top = parts[0];
+    return top ? [{ range: g.key, matched: g.matched, gapTotal: g.gap.total, mainPart: top.part, partValue: top.v, action: top.action }] : [];
+  });
+  const history = (d.positions?.list ?? []).slice().sort((a, b) => b.exitT - a.exitT).slice(0, 200);
+  return ser({
+    tag, hours: data.hours, relation: { ...d, positions: d.positions && { ...d.positions, list: undefined } },
+    history, check, hints, cost: r.settings.cost, at: now,
+  });
 }
 
 export async function coreTradingData(data: ReturnType<typeof connInput>) {

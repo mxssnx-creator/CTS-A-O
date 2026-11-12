@@ -40,6 +40,7 @@ export function StagesPage() {
   if (!d) return <>{error ? <ErrorNote error={error} /> : <Empty>Loading…</Empty>}</>;
   const c = d.counts ?? {};
   const g = d.settings.gates;
+  const positionPolicy = d.wf.positionWindows === undefined ? g.positionWindows : d.wf.positionWindows;
   const tg = d.settings.toggles;
   const pipe = d.pipeline;
   const port = pipe?.portfolio;
@@ -87,9 +88,9 @@ export function StagesPage() {
             <div className="n">{validation.pfText} PF</div>
             <p>{validation.counts} validated · {fmt.frac(validation.fraction)} · {fmt.time(validation.at)} UTC. {validation.basisText}.</p>
             <p>
-              In-sample return PF meets each range's effective floor (global {g.minPf}, with range
+              {positionPolicy ? <>Each exact config × symbol × direction needs its complete own Main N {positionPolicy.main}; range/config overrides apply. Positive net, the own effective PF floor and confidence checks remain required. Drawdown recovery is limited to {positionPolicy.maxDrawdownPositions} completed positions.</> : <>In-sample return PF meets each range's effective floor (global {g.minPf}, with range
               overrides), DDT ≤ max({g.minDdtH ?? 0} h, {g.maxDdtH} h per 72 h), ≥ {g.minTrades}{" "}
-              trades; pair must be parameter-robust. Refined on the protect grid.
+              trades; pair must be parameter-robust. Refined on the protect grid.</>}
             </p>
           </div>
           <div className="v2-stage">
@@ -100,14 +101,14 @@ export function StagesPage() {
               {sigSel || d.status?.signals?.enabled
                 ? `${realSel} engine · ${sigSel} signal configs. `
                 : ""}
-              Pre-historic window {d.wf.preH}h, validate last-N{" "}
+              {positionPolicy ? <>Own complete Main / Real / Entry samples: {positionPolicy.main} / {positionPolicy.real} / {positionPolicy.entry} positions before the decision, with range/config overrides. Incomplete samples cannot qualify. Native orders also require their separate owned-execution proof.</> : <>Pre-historic window {d.wf.preH}h, validate last-N{" "}
               {d.wf.validLastN ? d.wf.validLastN : "off"}
               {d.wf.signalValidLastN !== undefined && d.wf.signalValidLastN !== d.wf.validLastN
                 ? ` (signals ${d.wf.signalValidLastN || "off"})`
                 : ""}{" "}
               (PF and DDT) before a seat. End stage and live re-check last-N{" "}
               {d.wf.lastN ? d.wf.lastN : "off"} (PF and DDT), then Block. Additional strategies
-              (Historic Exit, Trailing, DCA, Axis) pass the same gates.
+              (Historic Exit, Trailing, DCA, Axis) pass the same gates.</>}
             </p>
           </div>
           <div className="v2-stage">

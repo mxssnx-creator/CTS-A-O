@@ -1,0 +1,41 @@
+{
+  "sourceCommit": "7a7badefd8dc37c7d3ab21ae7956881a2337b7af",
+  "localSource": "03dcf86801c4e1b8f9e1745d0ae3e8f815af5857",
+  "tree": "bdb20665ee06d03253aa6c10947ffa88614bf468",
+  "policyRun": 43057168755,
+  "integrityRun": 43057168530,
+  "jobs": [
+    {
+      "name": "policy",
+      "job": 130649617780,
+      "state": "success",
+      "corePassed": 465,
+      "reportsPassed": 53
+    },
+    {
+      "name": "render",
+      "job": 130649618459,
+      "state": "success",
+      "functionalPassed": 4,
+      "functionalSkipped": 0,
+      "desktopMobileDevAndBuild": true,
+      "baselineDivergence": false,
+      "uncaughtErrors": 0,
+      "horizontalOverflow": false,
+      "screenshotsVisuallyInspected": 4
+    },
+    {
+      "name": "integrity",
+      "job": 130649617163,
+      "state": "success",
+      "corePassed": 74,
+      "transportPassed": 29
+    }
+  ],
+  "artifact": {
+    "id": 13871732873,
+    "file": "loaded-browser-render.zip",
+    "sha256": "417f7ca38fb167ba63fec4b63a31092812895b176913f9f0be90aade4a56328c"
+  },
+  "limits": "Synthetic correctness and UI evidence, not new market profitability or a venue session."
+}

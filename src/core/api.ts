@@ -29,6 +29,8 @@ import {
   presetActionInput,
   saveCoreSettingsData,
   saveCoreSettingsInput,
+  coreLiveDiffData,
+  liveDiffInput,
 } from "./api-data.ts";
 
 /** Light status for the header (polled often). */
@@ -107,3 +109,8 @@ export const coreStatistics = createServerFn({ method: "GET" })
 export const coreListing = createServerFn({ method: "GET" })
   .validator(coreListingInput)
   .handler(({ data }) => coreListingData(data));
+
+/** System (paper book) against the exchange (own fills): gaps, decomposition, trade history, alarms and adjustment hints. */
+export const coreLiveDiff = createServerFn({ method: "GET" })
+  .validator(liveDiffInput)
+  .handler(({ data }) => coreLiveDiffData(data));

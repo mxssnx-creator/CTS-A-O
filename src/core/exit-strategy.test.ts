@@ -526,6 +526,8 @@ describe("independent historic exit strategy", () => {
     assert.ok(t);
     const options = {
       ...defaultWalkForward(DEFAULT_SETTINGS),
+      // Toggle reachability fixture; exact count admission is tested separately.
+      gates: {...DEFAULT_SETTINGS.gates,positionWindows:null},
       toggles: { ...DEFAULT_TOGGLES, normal: false, block: false, exit: true },
       lastN: 0,
       validLastN: 0,

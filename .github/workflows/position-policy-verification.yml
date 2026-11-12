@@ -1,0 +1,97 @@
+name: Position policy and Low-Range verification
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  CTS_CORE_STATE: "off"
+  CTS_CORE_AUTOSTART: "0"
+  CTS_CORE_LIVE: "0"
+  CTS_CORE_COMPARE: "0"
+  CTS_CORE_VARIANTS: "0"
+  CTS_CORE_WORKERS: "2"
+  VITE_AUTH_ENABLED: "false"
+  DATABASE_URL: ""
+jobs:
+  policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - name: Count windows, own-context gates, costs and Low-Range regressions
+        run: >-
+          node scripts/test-core.mjs
+          src/core/completeness.test.ts src/core/count-acceptance.test.ts
+          src/core/step-pf.test.ts src/core/model-cost.test.ts
+          src/core/sim/position-windows.test.ts src/core/sim/position-variants.test.ts
+          src/core/sim/count-execution.test.ts src/core/sim/low-range-base-feedback.test.ts
+          src/core/server/position-windows-migration.test.ts src/core/server/low-range-settings.test.ts
+          src/core/server/cost-default-runtime.test.ts src/core/server/fee-schedule.test.ts
+          src/core/server/live-state-lifecycle.test.ts src/core/server/native-order-kind-safety.test.ts
+          src/core/server/pool-progress-timeout.test.ts
+          src/core/indications/low-range-auto.test.ts src/core/indications/low-range-integration.test.ts
+          src/core/indications/low-range-research.test.ts
+          src/core/fine-ladder-sets.test.ts src/core/micro-range.test.ts
+          src/core/server/fine-ladder-migration.test.ts src/core/market/base-history-cut.test.ts
+          src/core/server/grid-cost-budget.test.ts src/core/regression.test.ts
+          src/core/server/cycle-serial.test.ts
+      - name: Report provenance and verification inventory
+        run: >-
+          node --require ./scripts/lib/core-test-offline-guard.cjs --test
+          scripts/test-core.test.mjs scripts/core-session.test.mjs
+          scripts/lib/live-desk-audit.test.mjs scripts/core-block-comparison.test.mjs
+      - run: npm run build
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CTS_CORE_MARKET: synthetic
+      BROWSER_SMOKE_READY_TEXT: Evaluation by completed positions
+      BROWSER_SMOKE_TIMEOUT_MS: "120000"
+      CTS_CORE_TEST_SETTINGS: '{"symbols":2,"historyDays":1,"tfMin":1,"tfs":[1],"tfDays":{"1":1,"5":1,"15":1,"30":1},"focus":["follow|ema-9-21@m1","revert|ema-9-21@m1"],"cycleMs":60000,"grid":{"tp":[0.02],"slOfTp":[1],"trailOfTp":[0,0.5],"holdH":[1],"micro":false,"minimal":false,"minimalPlus":false,"short":false,"general":false,"long":false},"signals":{"enabled":false},"exitStrategy":{"enabled":false}}'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Resolve the runner browser or install a bounded fallback
+        shell: bash
+        run: |
+          browser="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          if [ -n "$browser" ]; then
+            printf 'CTS_UI_BROWSER_EXECUTABLE=%s\n' "$browser" >> "$GITHUB_ENV"
+          else
+            timeout 180s npx playwright install --with-deps chromium
+          fi
+      - run: npm run build
+      - name: Render desktop and mobile in dev and production
+        shell: bash
+        run: |
+          sudo install -d -o "$(id -u)" -g "$(id -g)" /workspace/screenshots
+          npm run dev > /workspace/screenshots/dev-server.log 2>&1 &
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8080/ > /dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/browser-smoke.mjs http://127.0.0.1:8080/v2/settings /workspace/screenshots/position-dev.png
+          npm run preview:restart
+          node scripts/browser-smoke.mjs http://127.0.0.1:8081/v2/settings /workspace/screenshots/position-built.png --baseline /workspace/screenshots/position-dev.json
+          node --input-type=module -e 'import assert from "node:assert/strict"; import {readFileSync} from "node:fs"; const verdict=JSON.parse(readFileSync("/workspace/screenshots/position-built.json")); assert.equal(verdict.divergesFromBaseline,false,JSON.stringify(verdict.baselineReasons));'
+      - name: Every computed page, settings save and desktop/mobile interactions
+        run: node --require ./scripts/lib/core-test-offline-guard.cjs --test scripts/ui-functional.test.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: position-policy-render-${{ github.run_id }}
+          path: /workspace/screenshots/
+          retention-days: 30

@@ -6,7 +6,8 @@ import { SeriesCache } from "../indications/cache.ts";
 import { isMicroInd } from "../indications/micro.ts";
 import { INDICATIONS, indicationState, mtfState } from "../indications/registry.ts";
 import { LOW_RANGE_IDS, LOW_RANGE_METHODS, LOW_RANGE_RELATIONS, LOW_RANGE_WINDOWS } from "../indications/low-range.ts";
-import { controlledLowRange } from "../indications/test-support.ts";
+import { controlledLowRange, controlledLowRangeResearch } from "../indications/test-support.ts";
+import { lowRangeExtraSpecs } from "../indications/low-range-extra.ts";
 import { BOTS, comboSignal } from "../bots/bots.ts";
 import { optimizeLastN, windowDdt, gatedTrades } from "../lastn/optimizer.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
@@ -20,7 +21,7 @@ import {
 } from "./pipeline.ts";
 import {
   DEFAULT_SETTINGS,
-  DEFAULT_GATES,
+  DEFAULT_GATES as CURRENT_GATES,
   MINIMAL_PLUS_RANGE,
   MINIMAL_RANGE,
   SHORT_RANGE,
@@ -28,6 +29,9 @@ import {
 import { MICRO_RANGE } from "../minimal-coord.ts";
 import { INDICATION_KINDS, type Bars, type Trade } from "../domain/types.ts";
 
+// Preserve the historical optimizer/grid and clock-window unit contracts in this file.
+// The primary configured count policy has independent causality and execution regressions.
+const DEFAULT_GATES={...CURRENT_GATES,positionWindows:null};
 const END = Date.UTC(2026, 8, 20);
 const H = 3_600_000;
 
@@ -118,8 +122,19 @@ describe("indications", () => {
           const prefix = head(b, b.n - 1);
           const partial = indicationState(id, new SeriesCache(prefix));
           assert.deepEqual(partial, full.slice(0, prefix.n), `${id}/${side} prefix`);
+          const inverse=id+"-inverse";seen.add(inverse);
+          assert.deepEqual(indicationState(inverse,new SeriesCache(b)),Int8Array.from(full,x=>-x),inverse);
         }
       }
+    for(const spec of lowRangeExtraSpecs()) {
+      seen.add(spec.id);
+      for(const side of [1,-1] as const) {
+        const method=spec.id.match(/-(band-reclaim|squeeze-break|rsi2-reclaim)-/)![1];
+        const b=barsFromCandles("LR-EXTRA",1,controlledLowRangeResearch(spec.params.window,method,side));
+        const full=indicationState(spec.id,new SeriesCache(b));
+        assert.equal(full!.at(-1),side*(spec.id.endsWith("-inverse")?-1:1),spec.id);
+      }
+    }
     assert.deepEqual([...seen].sort(), [...LOW_RANGE_IDS].sort());
     assert.deepEqual(INDICATIONS.filter((s) => s.kind === "low-range").map((s) => s.id).sort(), [...seen].sort());
   });

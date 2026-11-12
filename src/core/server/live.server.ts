@@ -1363,8 +1363,9 @@ export interface ControlStatus {
   /** (older states: the lane order ids themselves) */
   lanes?: Record<string, string[]>;
   /**
-   * lane orders held back after their position was closed by its exchange stop (no reopen until each exits, at most
-   * SUPPRESS_MAX_MS); a manual close does not hold anything back
+   * lane orders held back after their position was closed outside this system — by its exchange stop or take-profit, by a
+   * liquidation or BY HAND (no reopen of the same position until each exits, at most SUPPRESS_MAX_MS); a lane order that
+   * joins the key afterwards is a new decision and opens normally
    */
   suppressed?: number;
   /** lane orders the live kind list / plain-only filter does not send to the exchange (they keep paper-trading) */
@@ -2673,6 +2674,14 @@ function liveKvSet(db: CoreDb, key: string, v0: unknown, owned = false) {
 }
 /** Persist every live state value changed since its last write (shutdown, snapshot). */
 export function flushLiveKv(db: CoreDb) {
+  const timer = flushTimers.get(db);
+  if (timer) clearTimeout(timer);
+  flushTimers.delete(db);
+  // A retired SQLite handle has no writable state. Delayed work must not outlive it.
+  if (!db.db.isOpen) {
+    liveMem.delete(db);
+    return;
+  }
   const m = liveMem.get(db);
   if (!m) return;
   for (const [k, e] of m)
@@ -7541,6 +7550,10 @@ function done(rt: CoreRuntime, status: LiveStatus, reason: string, ex?: Exchange
 // unknown/stale selected symbols always participate at the configured fallback.
 const feeSchedules = new WeakMap<CoreRuntime, { scope: string; next: number; busy: boolean; rates: Map<string, FeeSnapshot>; published?: string }>();
 export async function refreshVenueFees(rt: CoreRuntime, ex: ExchangeClient, now = Date.now()) {
+  if (rt.settings.fees.mode === "manual") {
+    // Fee edits derive their modeled total in updateSettings. An explicit manual total stays authoritative.
+    return;
+  }
   if (!ex.commission || !ex.hasKeys() || rt.status.source !== "bingx") return;
   const scope = clientCacheFingerprint(ex), conn = rt.settings.live.connId;
   let state = feeSchedules.get(rt);
@@ -7550,17 +7563,18 @@ export async function refreshVenueFees(rt: CoreRuntime, ex: ExchangeClient, now 
   const symbols = [...rt.candles.keys()];
   if (!symbols.length) return;
   const publishBudget = () => {
-    if (feeSchedules.get(rt) !== state || clientCacheFingerprint(ex) !== scope || rt.settings.live.connId !== conn) return;
+    if (rt.settings.fees.mode === "manual" || feeSchedules.get(rt) !== state || clientCacheFingerprint(ex) !== scope || rt.settings.live.connId !== conn) return;
     try {
       const fees = rt.settings.fees;
-      const effective = symbols.map(symbol => {
+      const effective = [...rt.candles.keys()].map(symbol => {
         const row = state!.rates.get(symbol);
         const fresh = row && now >= row.at && now - row.at <= 7_200_000;
         return { symbol, maker: fresh ? row.maker : fees.maker,
           taker: fresh ? row.taker : fees.taker,
           source: fresh ? "account-rate" : "configured-estimate", at: fresh ? row.at : null };
       });
-      const cost = Math.max(...effective.map(row => roundTripCostFromFees({ ...fees, taker: row.taker })));
+      if (!effective.length) return;
+      const cost = Math.max(...effective.map(row => roundTripCostFromFees({ ...fees, maker: row.maker, taker: row.taker })));
       const identity = JSON.stringify({ cost, effective });
       if (identity !== state!.published) {
         rt.db.kvSet("feeSchedule", { scope, at: now, cost, symbols: effective });

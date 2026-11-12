@@ -17,7 +17,10 @@ import {
   walkForward,
   type WalkForwardOptions,
 } from "./walkforward.ts";
-import { DEFAULT_SETTINGS } from "../config.ts";
+import { DEFAULT_SETTINGS as FACTORY_SETTINGS } from "../config.ts";
+// Freeze this historical window-policy contract; current count admission has independent scope tests.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import type { Protect, RangeTag, Trade } from "../domain/types.ts";
 
 const H = 3_600_000;

@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import {it} from 'node:test';
 import {DerivedCache} from './derived-cache.ts';
 import {makeTape,signalConfigEval,defaultWalkForward} from './walkforward.ts';
-import {DEFAULT_SETTINGS} from '../config.ts';
+import {DEFAULT_SETTINGS as FACTORY_SETTINGS} from '../config.ts';
+// Freeze this historical window-policy contract; current count admission has independent scope tests.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
+
 import type {Trade} from '../domain/types.ts';
 it('bounds derived keys, retains replacements and recomputes evicted generations',()=>{
  const c=new DerivedCache<object,number>(2),a={},b={},d={};

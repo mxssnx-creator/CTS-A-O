@@ -1,6 +1,18 @@
 import type { Candle } from "../domain/types.ts";
 import type { LowRangeMethod, LowRangeRelation, LowRangeWindow } from "./low-range-research.ts";
 
+/** Tiny causal feature regimes, separate from any market/PF study. The mirror swaps both directions. */
+export function controlledLowRangeResearch(window:number,method:string,side:1|-1=1):Candle[] {
+  const closes=Array.from({length:3*window+2},(_,i)=>100+i*.36/window);
+  closes[closes.length-2]-=.5;closes[closes.length-1]-=.12;
+  if(method==="squeeze-break") {
+    for(let i=0;i<2*window;i++)closes[i]=100+(i%2?.3:-.3);
+    for(let i=2*window;i<closes.length-1;i++)closes[i]=100.4+(i-2*window)*.001;
+    closes[closes.length-1]=100.8;
+  }
+  return closes.map((c,i)=>{const px=side===1?c:200-c;return {t:i*60000,o:px,h:px+.001,l:px-.001,c:px,v:i===closes.length-1?400:100};});
+}
+
 /** Small upward close drift within established, steady wide ranges: ADX can be strong while extension is bounded.
  * The earlier shock/recovery fixtures exercise a different regime and need not fire every trend-context subset. */
 export function controlledRetestTrend(n = 2400, end = Date.UTC(2026, 9, 1)): Candle[] {

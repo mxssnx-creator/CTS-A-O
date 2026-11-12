@@ -8,7 +8,7 @@ import { CoreDb } from "./db.server.ts";
 import { CoreRuntime } from "./runtime.server.ts";
 
 const grid = () => ({ ...structuredClone(DEFAULT_SETTINGS.grid), trailingOnly: true,
-  lowRange: { ...DEFAULT_LOW_RANGE_GRID, enabled: true, step: .0000013 } });
+  lowRange: { ...DEFAULT_LOW_RANGE_GRID, coordination:"short" as const, holdAuto:false, maxSlRatio:undefined, maxTrailRatio:undefined, enabled: true, step: .0000013 } });
 
 test("variant budget counts the actual modeled cost including fractional Low-Range and no-TP deduplication", () => {
   const g = grid();
@@ -16,10 +16,12 @@ test("variant budget counts the actual modeled cost including fractional Low-Ran
   for (const cost of [0, .0001, .0011, .0014, .0015])
     assert.equal(gridVariants(g, cost), protectGrid(15, g, cost).length, `cost ${cost}`);
   assert.equal(gridVariants(g), gridVariants(g, DEFAULT_SETTINGS.cost));
-  assert.equal(gridVariants(g, .0015), 4681);
-  assert.equal(gridVariants(g, .0001), 4593);
-  assert.equal(checkGridVariantBudget(g, .0001, 4640), 4593);
-  assert.throws(() => checkGridVariantBudget(g, .0015, 4640), /4681 variants, max 4640/);
+  // Micro / Low-Range ladders of 11 Nov 2026 (stops 0.2 to 1.6 step 0.1, trailing 0.1 to 0.6 step 0.1): the count
+  // still follows the modeled cost, since the cost moves which requested cells collapse on a floor
+  assert.equal(gridVariants(g, .0015), 5928);
+  assert.equal(gridVariants(g, .0001), 5942);
+  assert.equal(checkGridVariantBudget(g, .0015, 5935), 5928);
+  assert.throws(() => checkGridVariantBudget(g, .0001, 5935), /5942 variants, max 5935/);
   assert.throws(() => checkGridVariantBudget(g, NaN), /finite nonnegative/);
   const ordinary = { ...g, trailingOnly: false };
   for (const cost of [.0001, .0015])
@@ -30,18 +32,18 @@ test("merged settings, fee-only changes and preset application retain effective 
   const db = new CoreDb(":memory:"), first = new CoreRuntime(db, undefined, { market: "synthetic", priceStream: null });
   first.stop(); let restored: CoreRuntime | undefined;
   try {
-    first.updateSettings({ grid: { lowRange: { enabled: true, step: .0000013 } }, cost: .0014 });
+    first.updateSettings({ grid: { lowRange: { ...grid().lowRange } }, cost: .0014 });
     assert.equal(first.settings.cost, .0014);
     assert.equal(gridVariants(first.settings.grid, first.settings.cost), protectGrid(15, first.settings.grid, first.settings.cost).length);
     const fees = { taker: .00005, slippage: 0 };
     assert.doesNotThrow(() => checkMerged(first.settings, { fees }));
     first.updateSettings({ fees });
     assert.equal(first.settings.cost, .0001, "fee-only patch derives and validates merged effective cost");
-    assert.equal(gridVariants(first.settings.grid, first.settings.cost), 4599);
-    assert.equal(first.wf.protects.length, 4599);
+    assert.equal(gridVariants(first.settings.grid, first.settings.cost), 6240, "the independent Micro floor preserves 292 additional distinct cells");
+    assert.equal(first.wf.protects.length, 6240);
     const source = first.findPreset("live-all-independent"); assert.ok(source);
     const saved = { ...structuredClone(source), id: "grid-cost-budget-preset", kind: "saved" as const,
-      settings: { grid: { lowRange: { enabled: true, step: .0000013 } } } };
+      settings: { grid: { lowRange: { ...grid().lowRange } } } };
     db.kvSet("presets", [saved]);
     first.updatePreset(saved.id, { grid: { trailingOnly: true } }, {});
     first.applyPreset(saved.id);

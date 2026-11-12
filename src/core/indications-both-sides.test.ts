@@ -14,7 +14,8 @@ import { SeriesCache } from "./indications/cache.ts";
 import { barsFromCandles, syntheticCandles, resample } from "./market/bars.ts";
 import { makeUniverse } from "./pipeline/pipeline.ts";
 import type { Candle } from "./domain/types.ts";
-import { controlledRetestTrend } from "./indications/test-support.ts";
+import { controlledRetestTrend, controlledLowRangeResearch } from "./indications/test-support.ts";
+import { LOW_RANGE_EXTRA_WINDOWS, LOW_RANGE_EXTRA_METHODS } from "./indications/low-range-extra.ts";
 import { LOW_RANGE_LEGACY_WINDOWS, LOW_RANGE_METHODS } from "./indications/low-range-research.ts";
 
 const END = Date.UTC(2026, 9, 1);
@@ -113,6 +114,8 @@ function channelReclaimCandles(tf: number): Candle[] {
  * This includes rare failed-break + short-breakout conjunctions that a random
  * market may never generate. Its mirror exercises the opposite side. */
 function* lowRangeCoverageCaches(): Generator<SeriesCache> {
+  for(const window of LOW_RANGE_EXTRA_WINDOWS)for(const method of LOW_RANGE_EXTRA_METHODS)for(const side of [1,-1] as const)
+    yield new SeriesCache(barsFromCandles("LR-RESEARCH-USDT",1,controlledLowRangeResearch(window,method,side)));
   for (const window of LOW_RANGE_LEGACY_WINDOWS) for (const method of LOW_RANGE_METHODS) for (const reverse of [false, true]) {
     const old = Array.from({ length: window }, (_, i) => ({
       t: END + i * 60_000, o: 100, c: 100, h: 101.5, l: 98.5, v: 100,

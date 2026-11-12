@@ -142,7 +142,10 @@ export function planLaneOrders(
   // nearest to triggering first; within the venue's cap
   fresh.sort((x, y) => x.dist - y.dist);
   const take = fresh.slice(0, Math.max(0, o.slots ?? Infinity)).map((x) => x.a);
-  return [...moves, ...take].slice(0, Math.max(0, o.budget));
+  // Tightening a resting stop must not queue behind another lane's target churn.
+  // Read the latest desired level once; no backlog of intermediate prices is retained.
+  return [...moves.filter(a => a.kind === "moveStop"), ...moves.filter(a => a.kind !== "moveStop"), ...take]
+    .slice(0, Math.max(0, o.budget));
 }
 
 /**

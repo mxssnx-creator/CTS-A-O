@@ -24,6 +24,7 @@ export function PrehistoricPanel(props: {
   status: Any;
   minPf: number;
   maxDdtH: number;
+  maxDrawdownPositions?: number;
   /** the minimum PF Base builds a pair's sets from (gates.baseSetsMinPf; unset = minPf) */
   baseSetsMinPf?: number;
 }) {
@@ -131,8 +132,8 @@ export function PrehistoricPanel(props: {
         <Stat
           k="DDT"
           v={fmt.h(s?.ddtH)}
-          cls={s && s.ddtH > props.maxDdtH ? "v2-down" : ""}
-          sub={`max ${props.maxDdtH} h`}
+          cls={!props.maxDrawdownPositions && s && s.ddtH > props.maxDdtH ? "v2-down" : ""}
+          sub={props.maxDrawdownPositions ? `time diagnostic; gate ≤ ${props.maxDrawdownPositions} positions` : `max ${props.maxDdtH} h`}
         />
         <Stat
           k="Avg open pos / orders"

@@ -22,7 +22,10 @@ import {
   walkForward,
   type TapeBuildStat,
 } from "../sim/walkforward.ts";
-import { DEFAULT_PROTECT, DEFAULT_SETTINGS, STRATEGY_PRESETS } from "../config.ts";
+import { DEFAULT_PROTECT, DEFAULT_SETTINGS as FACTORY_SETTINGS, STRATEGY_PRESETS } from "../config.ts";
+
+// Freeze the historical window-based parity fixture; count admission has dedicated exact-context tests.
+const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
 import { signalHistProtects } from "../signal-hist.ts";
 import { emptyExitStrategyDiagnostics, exitStrategyProtectsGen } from "../exit-strategy.ts";
 import { DEFAULT_SIGNALS, signalSettings } from "../signal-config.ts";

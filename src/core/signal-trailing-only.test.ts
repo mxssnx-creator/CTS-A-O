@@ -360,7 +360,7 @@ describe("Signals: additional independent Trailing only sets", () => {
     const winning = tape("trailing-only", Array(30).fill(0.03));
     const losing = tape("trailing-only", Array(30).fill(-0.01), IND, { ...only, sl: 0.06 });
     const at = NOW + 30 * H; // all thirty own closes precede the independent Base check
-    const base = defaultWalkForward(DEFAULT_SETTINGS);
+    const base = defaultWalkForward({...DEFAULT_SETTINGS,gates:{...DEFAULT_SETTINGS.gates,positionWindows:null}});
     const options = {
       ...base,
       signalActive: new Set([winning, losing].map((tp) => sigActiveKey("follow", IND, SYM, 1, "trailing-only", tp.id))),

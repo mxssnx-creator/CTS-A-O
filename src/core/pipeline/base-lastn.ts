@@ -1,8 +1,10 @@
+import { positionCounts } from "../position-windows.ts";
 import { profitFactor, type TradeLike } from "../metrics/stats.ts";
 import type { BaseLastNStats, Gates } from "../domain/types.ts";
 
 /** A range cell's own sample setting; the global off switch also disables its range overrides. */
-export function baseLastNForRange(gates: Pick<Gates, "baseLastN" | "baseRangeLastN">, tag: string): number {
+export function baseLastNForRange(gates: Pick<Gates, "baseLastN" | "baseRangeLastN" | "positionWindows">, tag: string): number {
+  if (gates.positionWindows) return positionCounts(gates.positionWindows, tag || "wide").base;
   const base = gates.baseLastN ?? 0;
   if (base === 0) return 0;
   return (tag === "mc" ? gates.baseRangeLastN?.micro : tag === "mn" ? gates.baseRangeLastN?.minimal : undefined) ?? base;
@@ -20,15 +22,16 @@ export function baseLastNOf(trades: readonly TradeLike[], requested: number, sto
       (previous && (t.exitT < previous.exitT || (t.exitT === previous.exitT && t.entryT < previous.entryT))))
       return { requested, n: selected.length, gp: 0, gl: 0, stop: 0, invalid: true };
   }
-  let gp = 0, gl = 0;
+  let gp = 0, gl = 0, equity = 0, peak = 0, mdd = 0;
   for (const trade of selected) {
     if (!Number.isFinite(trade.r)) return { requested, n: selected.length, gp: 0, gl: 0, stop, invalid: true };
     gp += Math.max(0, trade.r); gl += Math.max(0, -trade.r);
+    equity += trade.r; peak = Math.max(peak, equity); mdd = Math.max(mdd, peak-equity);
   }
   gp *= 100; gl *= 100;
   if (!(Number.isFinite(gp) && Number.isFinite(gl) && Number.isFinite(stop) && stop >= 0))
     return { requested, n: selected.length, gp: 0, gl: 0, stop: 0, invalid: true };
-  return { requested, n: selected.length, gp, gl, stop };
+  return { requested, n: selected.length, gp, gl, stop, mdd:mdd*100 };
 }
 
 /** Apply the existing last-N sample-floor rule without silently qualifying unknown or stale evidence. */

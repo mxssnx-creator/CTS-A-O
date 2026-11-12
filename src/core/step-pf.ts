@@ -1,9 +1,15 @@
 /** CTS-G manual step policy. Distances are price PERCENT, not fractions or ATR multipliers. */
-export interface StepPfRules { enabled: boolean; ratio: number; max: number; byStep?: Record<string, number>; bySlRatio?: Record<string, number> }
-export const DEFAULT_STEP_PF: StepPfRules = { enabled: true, ratio: 0.2, max: 2 };
+export interface StepPfRules { enabled: boolean; ratio: number; max: number;
+  mode?: "auto" | "manual"; maxStepPct?: number;
+  byStep?: Record<string, number>; bySlRatio?: Record<string, number> }
+export const DEFAULT_STEP_PF: StepPfRules = { enabled: true, ratio: 0.2, max: 2, mode: "auto", maxStepPct: 3.5 };
 
 /** Aliases of one numeric key cannot select different policies by insertion order. */
 export function validateStepPfOverrides(rules: Partial<StepPfRules>): void {
+  if (rules.mode !== undefined && !["auto", "manual"].includes(rules.mode)) throw new Error("Invalid step PF mode");
+  if (rules.maxStepPct !== undefined && (!Number.isFinite(rules.maxStepPct) || rules.maxStepPct < .1 ||
+      rules.maxStepPct > 100 || Math.abs(rules.maxStepPct * 10 - Math.round(rules.maxStepPct * 10)) > 1e-8))
+    throw new Error("Step PF maximum distance must use 0.1% increments between 0.1% and 100%");
   for (const [name, map] of [["step", rules.byStep], ["SL ratio", rules.bySlRatio]] as const) {
     if (map === undefined) continue;
     if (!map || typeof map !== "object" || Array.isArray(map)) throw new Error("Invalid step/SL PF policy");
@@ -28,11 +34,12 @@ export function stepPfFloor(legacy: number, tpPercent: number | undefined, rules
     if (own) overrides.push(own[1]);
   }
   if (overrides.length) return Math.max(legacy, ...overrides);
+  if (rules.mode === "manual") return legacy;
   const ratio = typeof rules.ratio === "number" && Number.isFinite(rules.ratio)
     ? Math.max(0.1, Math.min(1.5, Math.round(rules.ratio * 20) / 20)) : DEFAULT_STEP_PF.ratio;
   const cap = typeof rules.max === "number" && Number.isFinite(rules.max)
     ? Math.max(1, Math.min(2, rules.max)) : DEFAULT_STEP_PF.max;
-  const step = Math.max(0.2, Math.min(3.5, Math.floor(tpPercent * 10 + 1e-9) / 10));
+  const step = Math.max(0.1, Math.min(rules.maxStepPct ?? 3.5, Math.floor(tpPercent * 10 + 1e-9) / 10));
   return Math.max(legacy, Math.min(cap, Math.round((1 + step * ratio) * 1e6) / 1e6));
 }
 

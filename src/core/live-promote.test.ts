@@ -319,7 +319,7 @@ describe("strict exact-lane reference promotion", () => {
   });
 
   it("the signal proof is the operator's: promoteLive never sets it, and signals are sendable while it is off", () => {
-    const on = { mc: false, mn: false, mp: false, sh: true, gn: false, lg: false, wide: false, exit: false };
+    const on = { mc: false, mn: false, mp: false, sh: true, gn: false, lg: false, lr: false, wide: false, exit: false };
     const dec = { on, promotedLanes: decide(evidence([lane(SH)])).promotedLanes };
     const live = promoteLive({ source: "signals" }, dec);
     for (const k of ["signalProofN", "signalProofPf", "signalProofEvents"]) assert.ok(!(k in live), `${k} is never set`);

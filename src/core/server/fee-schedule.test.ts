@@ -51,3 +51,18 @@ it('re-prices cached venue rates after ratio edits and universe changes without 
  assert.ok(Math.abs(rt.settings.cost-.0006)<1e-15,'removed symbol stops setting the budget');
  assert.equal(calls,1);
 });
+
+it('manual fee mode makes no account request and an in-flight auto read cannot overwrite it',async()=>{
+ const rt={status:{source:'bingx'},candles:new Map([['A',[]]]),
+  settings:{live:{connId:'bingx-vst-02'},fees:{...DEFAULT_MODEL_FEES,mode:'manual'},cost:.0031},
+  db:{kvSet(){}},updateSettings(p:{cost:number}){rt.settings.cost=p.cost;},
+ } as unknown as CoreRuntime;
+ let calls=0, finish!:(v:{maker:number;taker:number})=>void;
+ const ex={hasKeys:()=>true,fingerprint:()=> 'mode-test',commission:async()=>{calls++;return await new Promise(r=>{finish=r;});}} as unknown as ExchangeClient;
+ await refreshVenueFees(rt,ex,10_000_000);assert.equal(calls,0);assert.equal(rt.settings.cost,.0031);
+ rt.settings.fees.mode='auto';const pending=refreshVenueFees(rt,ex,10_001_000);
+ rt.settings.fees.mode='manual';rt.settings.fees.entry='maker';rt.settings.fees.exit='maker';
+ rt.settings.cost=.0011;
+ await refreshVenueFees(rt,ex,10_001_001);assert.equal(rt.settings.cost,.0011);
+ finish({maker:0,taker:.002});await pending;assert.equal(rt.settings.cost,.0011);
+});

@@ -1,3 +1,4 @@
+import { positionCounts, positionStats, type PositionWindows } from "./position-windows.ts";
 // Independently qualified, prehistory-derived exit configs for initialized engine indications.
 // Candidate MFE is fitted on the older segment only; every protect is then judged on the later completed-bar holdout.
 import { createHash } from "node:crypto";
@@ -38,6 +39,7 @@ export const EXIT_HISTORY_MAX_PAIRS = 16;
 export const EXIT_BOT = "exit" as const;
 
 export interface ExitStrategyValidation {
+  positionWindows?: PositionWindows | null;
   cost: number;
   minPf: number;
   minTrades: number;
@@ -443,14 +445,23 @@ export function* exitStrategyProtectsGen(
     const earliest = series.reduce((t, s) => Math.min(t, u.bars[s].t[0] ?? Infinity), Infinity);
     const fromT = Math.max(
       u.evaluationFromT ?? earliest,
-      settings.lookbackH > 0 ? cutT - settings.lookbackH * H : -Infinity,
+      !validation.positionWindows && settings.lookbackH > 0 ? cutT - settings.lookbackH * H : -Infinity,
     );
     if (!Number.isFinite(fromT) || fromT >= cutT) {
       diagnostics.noPrehistory++;
       continue;
     }
     const availableH = (cutT - fromT) / H;
-    const fitCutT = fromT + availableH * settings.trainFraction * H;
+    let fitCutT = fromT + availableH * settings.trainFraction * H;
+    const counts=validation.positionWindows?positionCounts(validation.positionWindows,"exit"):null;
+    if(counts) {
+      const entries:number[]=[];
+      for(const s of series) {const b=u.bars[s],sig=entrySignal(bot,ind,u.caches[s],null);if(!sig)continue;
+        for(let i=0;i+1<b.n;i++)if(sig[i]&&b.t[i+1]>=fromT&&b.t[i+1]<cutT)entries.push(b.t[i+1]);}
+      entries.sort((a,b)=>a-b);
+      if(entries.length<=counts.real){diagnostics.insufficientEntries++;continue;}
+      fitCutT=entries[entries.length-counts.real];
+    }
     const laneTf = laneOf(ind).tf ?? REF_TF;
     const fitH = (fitCutT - fromT) / H;
     const profiles = [
@@ -460,7 +471,7 @@ export function* exitStrategyProtectsGen(
     const fits = profiles.map((profile) => ({
       ...profile,
       holdRef: Math.max(2, Math.round((Math.max((2 * laneTf) / 60,
-        Math.min(profile.holdH, fitH / 4)) * 60) / REF_TF)),
+        (counts?profile.holdH:Math.min(profile.holdH, fitH / 4))) * 60) / REF_TF)),
       mfe: { 1: [], [-1]: [] } as Record<1 | -1, number[]>,
       mae: { 1: [], [-1]: [] } as Record<1 | -1, number[]>,
     }));
@@ -505,6 +516,10 @@ export function* exitStrategyProtectsGen(
     if (fits.every((fit) => fit.mfe[1].length < settings.minEntries && fit.mfe[-1].length < settings.minEntries)) {
       diagnostics.insufficientEntries++;
       continue;
+    }
+    if(counts) for(const fit of fits) for(const side of [1,-1] as const) {
+      fit.mfe[side].splice(0,Math.max(0,fit.mfe[side].length-counts.base));
+      fit.mae[side].splice(0,Math.max(0,fit.mae[side].length-counts.base));
     }
     const groups: Protect[][] = [];
     const fitted = fits.map((fit) => {
@@ -575,8 +590,25 @@ export function* exitStrategyProtectsGen(
         trades.push(...result.trades);
       }
       trades.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT || b.side - a.side);
-      const stats = statsOf(trades);
       diagnostics.evaluated++;
+      if(validation.positionWindows) {
+        const requested=positionCounts(validation.positionWindows,"exit",configId(bot,ind,lane)).real;
+        const contexts=new Map<string,Trade[]>();for(const tr of trades){const key=`${tr.sym}|${tr.side}`;if(!contexts.has(key))contexts.set(key,[]);contexts.get(key)!.push(tr);}
+        const maxDdr=validation.maxDdr&&validation.maxDdr>0?Math.min(settings.maxDdr||Infinity,validation.maxDdr):settings.maxDdr||0;
+        const floor=Math.max(settings.minPf,validation.minPf),parts=settings.validationSlices??1;
+        const passing=[...contexts.values()].some(rows=>{
+          const own=rows.slice(-requested),sample=positionStats(own.map(t=>t.r),requested);
+          if(!sample.complete||!sample.known||!(sample.net>0)||sample.gp<floor*sample.gl||
+            sample.positiveShare<Math.max(settings.minGreenHourShare??0,validation.minGreenHourShare??0)||
+            sample.maxDrawdownPositions>validation.positionWindows!.maxDrawdownPositions||ddrFails(sample.mdd,sample.net,maxDdr)||own.length<parts) return false;
+          for(let k=0;k<parts;k++){const a=Math.floor(own.length*k/parts),b=Math.floor(own.length*(k+1)/parts),s=positionStats(own.slice(a,b).map(t=>t.r),b-a);
+            if(!s.known||!(s.net>0)||s.gp<floor*s.gl||ddrFails(s.mdd,s.net,maxDdr))return false;}
+          return true;
+        });
+        if(!passing){diagnostics.pfRejected++;continue;}
+        const id=configId(bot,ind,qualifiedProtect);if(!ids.has(id)){ids.add(id);kept.push(qualifiedProtect);}continue;
+      }
+      const stats = statsOf(trades);
       if (stats.n < Math.max(settings.minValidationTrades, validation.minTrades)) {
         diagnostics.insufficientTrades++;
         continue;

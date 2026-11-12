@@ -14,11 +14,11 @@ const HELD = "follow|ema-9-21@m15|tp2.6|sl3.9|tr0|h32|mn";
 
 for (const mode of ["full", "fast"] as const) test(`${mode}: replay stage policy blocks new native admission and preserves held protection`, () => {
   const db = new CoreDb(":memory:");
-  const rt = new CoreRuntime(db, { gates: { minTrades: 1 }, live: { liveLastN: 0 } },
+  const rt = new CoreRuntime(db, { gates: { positionWindows:null,minTrades: 1 }, live: { liveLastN: 0 } },
     { market: "synthetic", priceStream: null });
   rt.stop();
   try {
-    rt.wf = { ...defaultWalkForward(DEFAULT_SETTINGS), rangeGate: undefined,
+    rt.wf = { ...defaultWalkForward({...DEFAULT_SETTINGS,gates:{...DEFAULT_SETTINGS.gates,positionWindows:null}}), rangeGate: undefined,
       processedStages: { validationN: 2, realN: 2 } };
     const raw: Trade[] = Array.from({ length: 30 }, (_, i) => ({
       cfg: CFG, sym: SYM, side: 1, entryT: T - 3 * H + i * 60_000, exitT: T - 2 * H + i * 60_000,
