@@ -12706,10 +12706,18 @@ export function normalizeLanes(s: CoreSettings): CoreSettings {
   for (const key of ["micro", "minimal", "short", "general", "long"] as const) {
     const r = grid[key];
     if (r) {
-      // a range's own minimum net distance (minSlDistancePct) replaces the global one for that range only
-      const own = r.minSlDistancePct === undefined ? minSlDistancePct : normalizeMinSlDistancePct(r.minSlDistancePct);
-      const f = minimumStopFraction(s.cost, own);
-      grid[key] = { ...r, minSl: f, minSlEval: f, ...(key === "micro" ? { minSlNet: own / 100 } : {}) };
+      const rangeNet = r.minSlDistancePct === undefined ? undefined : normalizeMinSlDistancePct(r.minSlDistancePct);
+      if (key === "micro") {
+        const own = (value: unknown, fallback: number) => typeof value === "number" && Number.isFinite(value)
+          ? +(Math.min(10, Math.max(0, value)) / 100).toFixed(12) : fallback;
+        // An explicitly configured range net floor retains its cost-aware contract; otherwise Micro uses its own absolute floor.
+        const microSl = rangeNet === undefined ? own(s.microMinSlDistancePct, minSl) : minimumStopFraction(s.cost, rangeNet);
+        const microTrail = own(s.microMinTrailDistancePct, r.minTrail ?? 0.001);
+        grid[key] = { ...r, minSl: microSl, minSlEval: microSl, minSlNet: undefined, minTrail: microTrail };
+      } else {
+        const f = minimumStopFraction(s.cost, rangeNet ?? minSlDistancePct);
+        grid[key] = { ...r, minSl: f, minSlEval: f };
+      }
     }
   }
   return {

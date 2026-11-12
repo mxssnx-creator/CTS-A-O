@@ -255,6 +255,8 @@ const CASES: Record<string, Case> = {
   "grid.tp": list(0.002, 0.2, { empty: true, max: 64 }),
   "grid.volumeFactor": volumeFactor,
   "minSlDistancePct": num(0.1, 1),
+  "microMinSlDistancePct": num(0, 10),
+  "microMinTrailDistancePct": num(0, 10),
   "grid.slOfTp": list(0.25, 2.5, { max: 64 }),
   "grid.trailOfTp": list(0, 1, { max: 64 }),
   "grid.holdH": list(0.25, 72, { max: 64 }),

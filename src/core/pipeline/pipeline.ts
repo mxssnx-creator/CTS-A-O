@@ -760,7 +760,8 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
   const slFloor = g.minSlEval ?? minimumStopFraction(cost);
   const floorFor = (tag?: string) =>
     ownSlFloor(tag === "mc" ? g.micro : tag === "mn" ? g.minimal : tag === "sh" ? g.short
-      : tag === "gn" ? g.general : tag === "lg" ? g.long : undefined, cost) ?? slFloor;
+      : tag === "gn" ? g.general : tag === "lg" ? g.long : undefined, cost)
+      ?? (tag === "mc" && g.micro ? microSlFloor(g.micro, cost) ?? g.micro.minSlEval ?? g.micro.minSl ?? 0.001 : slFloor);
   const out: Protect[] = [],
     seen = new Set<string>();
   const emit = (
@@ -888,7 +889,9 @@ export function baseRangeProtects(
     // rounded as the grid rounds the range's cells (protectGrid: 4 decimals, Micro 6): with stop steps of 0.25 a
     // target × stop has 5–6 decimals, and Base validated a 2.025 % stop the grid builds as 2.03 %
     const digits = tag === "mc" ? 6 : 4;
-    const floorR = Math.max(ownSlFloor(r as { minSlDistancePct?: number }, cost) ?? slFloor, net ?? (r as { minSlEval?: number }).minSlEval ?? ownSlFloor(r as { minSlDistancePct?: number }, cost) ?? slFloor);
+    const ownFloor = net ?? (r as { minSlEval?: number }).minSlEval ?? slFloor;
+    const rangeFloor = ownSlFloor(r as { minSlDistancePct?: number }, cost);
+    const floorR = tag === "mc" ? Math.max(rangeFloor ?? 0, ownFloor) : Math.max(rangeFloor ?? slFloor, ownFloor);
     // Match the actual grid: ordinary ranges inherit its optional floors, while Micro has its own fallbacks.
     const minSlR = net ?? r.minSl ?? (tag === "mc" ? 0.001 : (g.minSl ?? 0));
     const minTrailR = r.minTrail ?? (tag === "mc" ? 0.0005 : (g.minTrail ?? 0));
