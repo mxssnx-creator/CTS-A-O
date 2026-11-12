@@ -3,8 +3,8 @@
 #
 #   docs/live-coordination/start-x02-micro-low-range.sh [symbols] [heap-mb] [probe] [full]     (defaults: 50, 4096, 0)
 #
-# Demo money only (conn bingx-vst-02). probe N > 0: the best N configs of each range trade even when they fail the
-# gates (demo connections only) — used to exercise the exchange path; such orders are not gate-qualified results.
+# Demo money only (conn bingx-vst-02). probe N > 0 is refused by the runtime (execution always uses the validated set V);
+# the demo profile instead uses smaller own-close windows (see the builder) so sets can validate.
 # Restart keeping positions: kill -USR2 <pid>, then run this script again (same tag, same folder).
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."

@@ -39,6 +39,11 @@ const settings = {
     minimalPlus: false, trailingOnly: false,
     micro: { ...MICRO_RANGE }, lowRange: { ...DEFAULT_LOW_RANGE_GRID, enabled: true, minTf: 5 } },
   signals: { enabled: false },
+  // DEMO PROFILE ONLY, not a default. With 48 h of history no config x symbol x direction reaches the default 40 own
+  // closes (measured 11 Nov: 0 of 3,308 contexts; 127 reach 8, 12 reach 12), so nothing validates and the exchange path
+  // can never be exercised. These smaller own-close windows let sets validate on the demo account so orders, fills,
+  // partials, protection and restarts can be tested; their PF is evidence for the path, not for a default.
+  gates: { positionWindows: { base: 8, main: 8, real: 5, entry: 5, maxDrawdownPositions: 8, byRange: {} } },
   // the account rate read from the venue (GET /user/commissionRate, 11 Nov 18:20Z): taker 0.05 %, maker 0.02 %.
   // Auto mode arrives at the same value after reading every symbol, and then recomputes everything once.
   fees: { ...DEFAULT_SETTINGS.fees, taker: 0.0005, maker: 0.0002 },
