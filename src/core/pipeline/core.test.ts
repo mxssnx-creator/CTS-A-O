@@ -97,6 +97,9 @@ describe("indications", () => {
         !s.id.startsWith("relate-") &&
         !s.id.startsWith("break-rel-") &&
         !s.id.startsWith("break-mc-rel-") &&
+        // Exact decline depths are covered in both directions for every cell by
+        // dca-tactic.test.ts, indications-both-sides.test.ts and processing.test.ts.
+        !s.id.startsWith("tactic-dca-") &&
         s.kind !== "micro" &&
         s.kind !== "inverse" &&
         s.kind !== "low-range",

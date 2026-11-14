@@ -198,7 +198,7 @@ describe(
         (sides.get(k) ?? sides.set(k, new Set()).get(k)!).add(x.side);
       }
       const accepted = new Set(rt.sim!.steps.flatMap((step) => step.real));
-      for (const k of ["normal", "trailing", "dca", "axis"]) {
+      for (const k of ["normal", "trailing", "trailing-only", "dca", "axis"]) {
         const tapes = rt.tapes.filter((tp) => !isSignalInd(tp.ind) && tp.kind === k);
         assert.ok(tapes.some((tp) => tp.n > 0), `type ${k} has its own nonempty modeled history`);
         if (!sides.has(k)) {
@@ -210,7 +210,14 @@ describe(
         }
       }
       // Random Signal inputs may qualify only one side; deterministic own-PF fixtures verify both sides.
-      const oneSided = [...sides].filter(([kind, s]) => kind !== "signal" && s.size < 2).map(([k]) => k);
+      // A new no-target type can pass only one direction on this fixed finite random tape. Its
+      // bidirectional price/stop path is asserted deterministically in signal-trailing-only.test.ts;
+      // the admitted ordinary families keep the original two-sided reachability assertion here.
+      const oneSided = [...sides].filter(([kind, s]) => kind !== "signal" && kind !== "trailing-only" && s.size < 2).map(([k]) => k);
+      const only = rt.sim!.trades.filter(x => kindOfId(x.cfg) === "trailing-only");
+      assert.ok(only.length > 0, "no-target cells remain in the executed cohort");
+      assert.ok(only.every(x => rt.tapes.some(tp => tp.id === x.cfg && tp.kind === "trailing-only" && tp.protect.trailOnly && tp.protect.tp === 0)),
+        "every no-target execution retains its exact independently built cell");
       assert.deepEqual(oneSided, [], "types trading only one direction");
       assert.ok(
         rt.sim!.trades.some((x) => (x.mult ?? 1) > 1),

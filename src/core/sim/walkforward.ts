@@ -3008,6 +3008,11 @@ export function tapeExecutable(
   const tg = effectiveStrategyToggles(tp, o);
   // A trailing Exit, DCA or hybrid Axis must also respect the master. Never silently change its qualified economics.
   if (!tg.trailing && ((tp.protect?.trail ?? 0) > 0 || tp.protect?.trailOnly || (tp.kind === "axis" && /\|axd?-.*h(?:\||$)/.test((tp as Partial<ConfigTape>).id ?? "")))) return false;
+  // Signals with an explicitly independent base keep their own Normal switch.
+  // The engine master still controls trailing geometry and every other family.
+  if (isPlainKind(tp.kind) && tp.kind !== "exit" && o.signalOwnBase && isSignalInd(tp.ind) &&
+      o.rangeOpts?.sig?.normal !== false)
+    return !isTrailingKind(tp.kind) || tg.trailing;
   return kindExecutable(tp.kind, tg);
 }
 
@@ -6044,7 +6049,7 @@ export function execDecision(
   }
   // Normal off: Normal / Trailing execute only Block-raised. Historic Exit has its own independent switch.
   const plain = isPlainKind(tp.kind);
-  const sigBase = plain && tp.kind !== "exit" && tg.normal && !!o.signalOwnBase && isSignalInd(tp.ind);
+  const sigBase = plain && tp.kind !== "exit" && o.rangeOpts?.sig?.normal !== false && !!o.signalOwnBase && isSignalInd(tp.ind);
   const kindBaseOn = tp.kind === "exit" ? tg.exit !== false : tg.normal;
   // The enabled plain type's unraised base trades on the config's own recent record.
   const gatedBase = plain && tp.kind !== "exit" && kindBaseOn && !sigBase && (o.normalBaseMinPf ?? 0) > 0;

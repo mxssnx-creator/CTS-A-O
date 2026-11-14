@@ -177,6 +177,8 @@ describe("stage consistency: one config, the same at every stage", () => {
     const o = {
       ...defaultWalkForward({ ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.0, minTrades: 3, maxDdr: 0 } }),
       // the record gates judge results; this checks the bookkeeping, so they let the configs through
+      preH: 6,
+      simH: 6,
       validLastN: 0,
       lastN: 0,
       symGate: "off" as const,
