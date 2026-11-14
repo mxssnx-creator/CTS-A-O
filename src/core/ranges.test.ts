@@ -140,8 +140,8 @@ test("orders of each range carry their own tracking kind; a test run can use its
   assert.equal(entryCoidKind("follow|x|tp3|sl3|tr0|h16"), "E");
   assert.equal(liveTag("bingx-vst-02", {}), "CTSBV2_");
   assert.equal(liveTag("bingx-vst-02", { CTS_CORE_LIVE_TAG: "ctsv2u_" }), "CTSV2U_");
-  // an invalid tag falls back to the connection's own
-  assert.equal(liveTag("bingx-vst-02", { CTS_CORE_LIVE_TAG: "bad tag" }), "CTSBV2_");
+  // An invalid instance tag cannot silently adopt another instance's namespace.
+  assert.throws(() => liveTag("bingx-vst-02", { CTS_CORE_LIVE_TAG: "bad tag" }), /letters\/digits/);
   const prev = process.env.CTS_CORE_LIVE_TAG;
   process.env.CTS_CORE_LIVE_TAG = "CTSV2U_";
   try {

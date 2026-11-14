@@ -45,6 +45,7 @@ import {
   coordSettings,
   DEFAULT_COORD,
   execDecision,
+  tapeExecutable,
   feedBooks,
   makeTape,
   signalSetAt,
@@ -432,6 +433,23 @@ describe("signals trade their own base", () => {
     assert.equal(why(execDecision(mk("rsi-mom-14-20@m15"), NOW, noBlock(true), ctx)), "toggle");
   });
 
+  it("an independent Signal base honors its own range switch and the trailing master", () => {
+    for (const kind of ["normal", "trailing", "trailing-only"]) {
+      const tp = mk("sig-ema-cross-s@m15", kind);
+      assert.equal(tapeExecutable(tp, x01(true)), true, kind);
+      const disabled = { ...x01(true), rangeOpts: { sig: { normal: false } } };
+      assert.equal(execDecision(tp, NOW, disabled, ctx).ok, false, kind);
+      // With Block enabled the candidate may still supply a raised leg. Turning
+      // it off proves that no ordinary independent base remains executable.
+      const disabledNoBlock = { ...disabled, toggles: { ...disabled.toggles, block: false } };
+      assert.equal(tapeExecutable(tp, disabledNoBlock), false, kind);
+      assert.equal(execDecision(tp, NOW, disabledNoBlock, ctx).ok, false, kind);
+      const noTrailing = { ...x01(true), toggles: { ...x01(true).toggles, trailing: false } };
+      assert.equal(tapeExecutable(tp, noTrailing), kind === "normal", kind);
+      assert.equal(execDecision(tp, NOW, noTrailing, ctx).ok, kind === "normal", kind);
+    }
+  });
+
   it("is on by default and can be switched off", () => {
     assert.equal(signalSettings({}).ownBase, true);
     assert.equal(signalSettings({ ownBase: false }).ownBase, false);
@@ -624,7 +642,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
         mainTop: 10,
         refineTop: 4,
         evalTop: 6,
-        cycleMs: 60_000,
+        cycleMs: 3_600_000,
         // Keep the coordinator's General/Long range grids while bounding unrelated engine pairs.
         grid: { ...runtimeFixtureGrid(), short: false },
         // This suite verifies the full Signal catalog and its own historic exits. Keep unrelated new
@@ -703,8 +721,8 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     for (const t of rt.tapes) {
       if (t.protect.tag) {
         assert.ok(
-          t.protect.sl >= 0.002 - 1e-9 &&
-            (t.protect.trail === 0 || t.protect.trail >= 0.001 - 1e-9),
+          t.protect.sl >= (t.protect.tag === "mc" && rt.settings.grid.micro ? rt.settings.grid.micro.minSl ?? .001 : .002) - 1e-9 &&
+            (t.protect.trail === 0 || t.protect.trail >= (t.protect.tag === "mc" && rt.settings.grid.micro ? rt.settings.grid.micro.minTrail ?? .0005 : .001) - 1e-9),
           t.id,
         );
         continue;

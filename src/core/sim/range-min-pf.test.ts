@@ -188,7 +188,9 @@ describe("per-range stage min PF", () => {
     const ctx = { sym: "AAA-USDT", side: 1 };
     const why = (d: object) => ("why" in d ? d.why : "ok");
     assert.notEqual(why(execDecision(gn, NOW, o, ctx)), "ok");
-    const ex = { ...o, block: { ...o.block, excludeRanges: ["gn", "lg"] } };
+    const disabled = { ...o, block: { ...o.block, excludeRanges: ["gn", "lg"] } };
+    assert.equal(why(execDecision(gn, NOW, disabled, ctx)), "normalOff");
+    const ex = { ...disabled, toggles: { ...disabled.toggles, normal: true } };
     const d = execDecision(gn, NOW, ex, ctx);
     assert.equal(why(d), "ok");
     assert.equal(d.ok && d.vol, 1);
@@ -209,8 +211,11 @@ describe("per-range stage min PF", () => {
     const wide = tape(null, 20, 4);
     // with Block on, Normal off and the Active level out of reach, the untagged config is skipped…
     assert.notEqual(why(execDecision(wide, NOW, o, ctx)), "ok");
-    // …and with Wide excluded from Block it trades its unit on its own record, as an excluded General config does
-    const ex = { ...o, block: { ...o.block, excludeRanges: ["wide"] } };
+    // A Block exclusion never re-enables disabled Normal. Once Normal is on,
+    // the excluded range trades its own unit, independently of Block Active.
+    const disabled = { ...o, block: { ...o.block, excludeRanges: ["wide"] } };
+    assert.equal(why(execDecision(wide, NOW, disabled, ctx)), "normalOff");
+    const ex = { ...disabled, toggles: { ...disabled.toggles, normal: true } };
     const d = execDecision(wide, NOW, ex, ctx);
     assert.equal(why(d), "ok");
     assert.equal(d.ok && d.vol, 1);
@@ -295,7 +300,8 @@ describe("min PF on every execution path", () => {
 
  it("per-step PF applies to selection, independent per-entry last-N and cache revisions",()=>{
   const small=tape("gn",46,1), wide=tape("gn",46,3.2);
-  const o=opts({general:1.05});o.gates={...o.gates,stepPf:{enabled:true,ratio:.2,max:2}};
+  // Isolate per-step PF from the separately tested prehistory gate.
+  const o={...opts({general:1.05}),preGate:false};o.gates={...o.gates,stepPf:{enabled:true,ratio:.2,max:2}};
   assert.equal(configEval(small,t,o).ok,true);
   assert.equal(configEval(wide,t,o).ok,false);
   assert.deepEqual(ids(selectFixed([small,wide],t,o)),[small.id]);

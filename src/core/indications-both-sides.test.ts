@@ -17,6 +17,8 @@ import type { Candle } from "./domain/types.ts";
 import { controlledRetestTrend, controlledLowRangeResearch } from "./indications/test-support.ts";
 import { LOW_RANGE_EXTRA_WINDOWS, LOW_RANGE_EXTRA_METHODS } from "./indications/low-range-extra.ts";
 import { LOW_RANGE_LEGACY_WINDOWS, LOW_RANGE_METHODS } from "./indications/low-range-research.ts";
+import { dcaTacticConfigs, dcaTacticId } from "./indications/dca-tactic.ts";
+import { declineCellBars } from "./indications/dca-fixtures.ts";
 
 const END = Date.UTC(2026, 9, 1);
 
@@ -338,6 +340,16 @@ describe("every indication fires long and short", { timeout: 600_000 }, () => {
         for (const k of contexts) add(counts, x.id, onsets(indicationState(x.id, k)));
     for (const k of lowRangeCoverageCaches())
       for (const x of engine.filter((spec) => spec.kind === "low-range")) add(counts, x.id, onsets(indicationState(x.id, k)));
+    // Deep decline configurations need their declared depth and recovery. Exercise every registered
+    // cell through the public registry with an explicit causal pattern and its reflected direction.
+    // A shared random walk is not evidence that an otherwise reachable 12-level cell is one-sided.
+    for (const cfg of dcaTacticConfigs()) for (const mirrored of [false, true]) {
+      const rows = declineCellBars(cfg, mirrored);
+      const b = barsFromCandles("TACTIC-USDT", 1, rows.map(row => ({
+        t:row.timestamp,o:row.open,h:row.high,l:row.low,c:row.close,v:row.volume,
+      })));
+      add(counts,dcaTacticId(cfg),onsets(indicationState(dcaTacticId(cfg),new SeriesCache(b))));
+    }
     assert.equal(counts.size, engine.length);
     assert.deepEqual(oneWay(counts, exempt), []);
     // the symmetry exception fires both ways (biased, not one-sided)

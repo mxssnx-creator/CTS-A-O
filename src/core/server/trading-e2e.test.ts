@@ -197,7 +197,10 @@ describe(
       // Empty does not mean stuck: each rejection remains visible, and stale entries must never be adopted.
       if (!computedPaper.length)
         assert.ok(Object.values(engineRt.status.paperSkips ?? {}).some((n) => n > 0), "empty book has explicit entry rejections");
-      const cutoff = Date.now() - Math.max(1, engineRt.wf.stepH) * H;
+      // The synthetic fixture has a frozen market end; use the same bounded
+      // clock as paper synchronization instead of today's wall-clock date.
+      const clock = Math.min(Math.floor(Date.now() / H) * H, engineRt.sim!.endT);
+      const cutoff = clock - Math.max(1, engineRt.wf.stepH) * H;
       for (const p of computedPaper) assert.ok(p.entryT >= cutoff, "cold start did not adopt an old tape entry");
     });
 

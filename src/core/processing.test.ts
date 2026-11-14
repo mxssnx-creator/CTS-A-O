@@ -13,6 +13,8 @@ import { auditState } from "./audit.ts";
 import { walkForward, tapeExecutable, type WalkForwardOptions } from "./sim/walkforward.ts";
 import { allCombos, isPlainKind, isTrailingKind } from "./pipeline/pipeline.ts";
 import { INDICATIONS, indicationState, laneOf, isSignalInd } from "./indications/registry.ts";
+import { dcaTacticConfigs, dcaTacticId } from "./indications/dca-tactic.ts";
+import { declineCellBars } from "./indications/dca-fixtures.ts";
 import { isRelateInd, relateAnchorTf } from "./indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { isMicroCalculationInd as isMicroFamilyInd, microAnchorTf } from "./indications/micro-family.ts";
@@ -124,10 +126,15 @@ describe("every indication works", () => {
     // This reclaim is intentionally qualified for a quiet edge sweep; the shock/rally series below do not include
     // that regime. indications-both-sides.test.ts feeds its dedicated shallow sweep and mirrored sweep.
     const quietSweepOnly = new Set(["break-mc-rel-reclaim8-5x15-dd48-guarded"]);
+    const declines = new Map(dcaTacticConfigs().map((c) => [dcaTacticId(c), c]));
     for (const x of engine) {
       let fired = 0;
       const referencePair = x.id.startsWith("inverse-pair-");
-      for (const b of referencePair ? pairSeries : series) {
+      const decline = declines.get(x.id);
+      const cases = decline ? [false, true].map((mirror) => barsFromCandles("DCA-USDT", 1,
+        declineCellBars(decline, mirror).map((c) => ({ t: c.timestamp, o: c.open, h: c.high, l: c.low, c: c.close, v: c.volume }))))
+        : referencePair ? pairSeries : series;
+      for (const b of cases) {
         const st = indicationState(x.id, cacheOf(b, referencePair ? pairMarket : market));
         if (!st) continue;
         if (st.length !== b.n) bad.push(`${x.id}: ${st.length} states for ${b.n} bars`);

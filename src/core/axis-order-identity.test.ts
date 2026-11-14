@@ -36,7 +36,7 @@ const options=()=>{
   const d=defaultWalkForward(DEFAULT_SETTINGS);
   return {...d,simH:2,preH:12,longH:24,lastN:15,validLastN:15,rangeGate:undefined,seatPer:"config" as const,portfolio:0,robustFrac:0,
     coord:{enabled:false,hourLock:0,cooldown:"off" as const,conflict:false,confirm:false},
-    toggles:{...d.toggles,normal:false,trailing:false,block:false,blockActive:false,dca:false,dcaActive:false,axis:true},
+    toggles:{...d.toggles,normal:false,trailing:true,block:false,blockActive:false,dca:false,dcaActive:false,axis:true},
     maxOpen:0,maxPerSymbol:0,maxPerSide:0,maxPositions:0};
 };
 it("simultaneous Axis configs execute independently after their own prehistory and Last-N checks",()=>{
@@ -97,4 +97,14 @@ it("Axis config gates retain losing Last-N samples and honor exact seat cooldown
   assert.equal(execDecision(good,T-90*M,o,{sym:"A",side:1}).ok,true);
   assert.deepEqual(execDecision(good,T-90*M,{...o,seatQuietH:3},{sym:"A",side:1}),{ok:false,why:"seatQuiet"});
   assert.equal(execDecision(good,T-90*M,{...o,seatQuietH:0},{sym:"A",side:1}).ok,true);
+});
+
+it("disabling trailing withholds only hybrid Axis cells while every plain Axis config keeps its own seat",()=>{
+  const tapes=ids.map((id)=>tape(id)),o=options();
+  const u={bars:[],caches:[],startT:T-24*H,endT:T,splitT:0,nowT:T,baseTf:1} as never;
+  const noTrail=walkForward(u,tapes,{...o,toggles:{...o.toggles,trailing:false}});
+  const plain=tapes.filter(tp=>!(/\|axd?-.*h(?:\||$)/.test(tp.id)));
+  assert.equal(plain.length,60);
+  assert.deepEqual(new Set(noTrail.trades.map(x=>x.cfg)),new Set(plain.map(tp=>tp.id)));
+  for(const tp of plain) assert.deepEqual(noTrail.trades.filter(x=>x.cfg===tp.id),walkForward(u,[tp],o).trades);
 });
