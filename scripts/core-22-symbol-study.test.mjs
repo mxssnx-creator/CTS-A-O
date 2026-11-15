@@ -187,8 +187,10 @@ test("preflight uses production complete nested ladders and unchanged gates with
   const { normalizeLanes } = await import("../src/core/server/runtime.server.ts");
   const x = await studyRuntimeSettings(STUDY_SYMBOLS, studyWindow());
   assert.deepEqual(x.settings.grid, normalizeLanes(DEFAULT_SETTINGS).grid);
-  assert.equal(x.settings.grid.micro.minSlNet, .001);
-  assert.equal(x.settings.grid.micro.minSl, x.settings.cost + .001);
+  assert.equal(x.settings.grid.micro.minSl, .001, "Micro keeps its own raw grid floor");
+  assert.equal(x.settings.grid.micro.minSlEval, .001, "Micro evaluation keeps its independent floor");
+  assert.equal(x.settings.microMinSlDistancePct, .1, "Micro requires 0.1% net distance above costs");
+  assert.equal(x.settings.protectFloor.minSl, x.settings.cost + .001, "runtime protection adds cost once");
   assert.deepEqual(x.settings.gates, DEFAULT_SETTINGS.gates);
   assert.deepEqual(x.settings.tfDays, { 1: 11, 5: 11, 15: 11, 30: 11 });
   assert.deepEqual(x.settings.forceSymbols, STUDY_SYMBOLS);
@@ -207,7 +209,8 @@ test("preflight uses production complete nested ladders and unchanged gates with
   await assert.rejects(studyRuntimeSettings(STUDY_SYMBOLS, studyWindow(), 10), /at least11/);
   await assert.rejects(studyRuntimeSettings(STUDY_SYMBOLS, studyWindow(), undefined, { cost: 0.0009 }), /taker fees/);
   const higherCost = await studyRuntimeSettings(STUDY_SYMBOLS, studyWindow(), undefined, { cost: .002 });
-  assert.equal(higherCost.settings.grid.micro.minSl, .003);
+  assert.equal(higherCost.settings.grid.micro.minSl, .001, "cost changes do not rewrite the configured Micro grid");
+  assert.equal(higherCost.settings.protectFloor.minSl, .003, "the runtime floor follows cost plus net distance");
   assert.deepEqual(higherCost.settings.grid.micro.slOfTp, x.settings.grid.micro.slOfTp);
   const reclaim = await studyRuntimeSettings(STUDY_SYMBOLS, studyWindow(), undefined, { variant: "reclaim8" });
   assert.equal(reclaim.settings.focus.length, x.settings.focus.length + 12);
