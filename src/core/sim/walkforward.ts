@@ -4117,6 +4117,7 @@ function positionAggregate(
   o: WalkForwardOptions,
   side?: number,
 ): ConfigEval {
+  if (positionTapeValid(tp)) prepareSignalContexts(tp);
   const contexts = [...new Set(tp.syms)].flatMap((sym) =>
     (side === undefined ? [1, -1] : [side]).map((side) => ({
       sym,
@@ -5597,6 +5598,30 @@ function qualifiedDirectionTape(
 
 /** Only queried config contexts allocate an index; original tape returns/times are never copied. */
 const signalContextIndices = new DerivedCache<ConfigTape, Map<number, Uint32Array>>(512);
+const completeSignalContexts = new WeakSet<Map<number, Uint32Array>>();
+/** A caller which needs every context indexes the immutable columns together.
+ * Keep the same bounded cache and chronological indices; single-context native
+ * queries continue to build only the context they request. */
+function prepareSignalContexts(tp: ConfigTape): void {
+  let contexts = signalContextIndices.get(tp);
+  if (contexts && completeSignalContexts.has(contexts)) return;
+  contexts ??= new Map();
+  const canonical = tp.syms.map((sym) => tp.syms.indexOf(sym));
+  const counts = new Uint32Array(tp.syms.length * 2);
+  const symI = tp.symI, side = tp.side;
+  for (let i = 0; i < tp.n; i++) counts[canonical[symI[i]] * 2 + (side[i] > 0 ? 1 : 0)]++;
+  for (const slot of new Set(canonical)) {
+    contexts.set(slot * 2, new Uint32Array(counts[slot * 2]));
+    contexts.set(slot * 2 + 1, new Uint32Array(counts[slot * 2 + 1]));
+  }
+  const offsets = new Uint32Array(counts.length);
+  for (let i = 0; i < tp.n; i++) {
+    const slot = canonical[symI[i]] * 2 + (side[i] > 0 ? 1 : 0);
+    contexts.get(slot)![offsets[slot]++] = i;
+  }
+  completeSignalContexts.add(contexts);
+  signalContextIndices.set(tp, contexts);
+}
 function signalContextOf(tp: ConfigTape, sym: string, side: number): Uint32Array | null {
   if (side !== 1 && side !== -1) return null;
   const si = tp.syms.indexOf(sym);
@@ -6323,6 +6348,7 @@ function* signalWindowRows(
     const policy = options.gates.positionWindows;
     for (const { tp } of index) {
       if (tp.heldOnly) continue;
+      if (positionTapeValid(tp)) prepareSignalContexts(tp);
       const bySym: Record<string, SymStat> = {};
       const counts = positionCounts(policy, "sig", tp.id);
       for (const sym of new Set(tp.syms))
