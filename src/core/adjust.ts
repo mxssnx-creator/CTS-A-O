@@ -189,8 +189,9 @@ export function evaluateAdjust(
       next.level = cur.level - 1;
       next.note = `PF ${pf.toFixed(2)} ≥ ${a.recoverPf} → step back (level ${next.level})`;
     } else next.note = `PF ${pf.toFixed(2)} — unchanged`;
-    next.minSl = Math.min(a.slMax, base.minSl + next.level * a.slStep);
-    next.minTrail = Math.min(a.trailMax, base.minTrail + next.level * a.trailStep);
+    // the range is [base floor, cap]: a cap below the base floor must never lower the floor (it collapses to the floor)
+    next.minSl = Math.max(base.minSl, Math.min(a.slMax, base.minSl + next.level * a.slStep));
+    next.minTrail = Math.max(base.minTrail, Math.min(a.trailMax, base.minTrail + next.level * a.trailStep));
     // relative steps: the set's own distances, × 1 + level × scale, up to scaleMax
     if (a.slScale) next.slMult = +Math.min(scaleMax, 1 + next.level * a.slScale).toFixed(4);
     else delete next.slMult;
