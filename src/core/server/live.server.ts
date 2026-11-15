@@ -7476,10 +7476,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         entryParentsChanged = true;
         continue;
       }
-      const pending = !!row && !!pendingOf(row.msg);
+      const pending = row.status === "pending" || !!pendingOf(row.msg);
       const attributed = allocation.parents.length > 0 && allocation.parents.every((parent) => !!attributedParents[parent.lk]);
       const exposure = (ledger.get(allocation.key) ?? 0) > 1e-12 || heldAfter.has(allocation.key) || pendingKeys.has(allocation.key);
-      if (attributed || (!pending && !exposure)) {
+      // Initial partial attribution does not finish this request. A later fill or restart still needs the
+      // exact frozen parent/policy until the venue outcome is terminal and the entry is reconciled.
+      if (!pending && (attributed || !exposure)) {
         delete entryParentAllocations[coid];
         entryParentsChanged = true;
       }
