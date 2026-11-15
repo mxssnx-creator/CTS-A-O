@@ -118,6 +118,9 @@ export interface LaneOpen {
   /** when the lane joined the exchange position, and at what exchange price */
   t: number;
   px: number;
+  /** Frozen processed-stage evidence from the paper parent that caused venue ownership. */
+  processedStage?: "postBase" | "validated" | "active";
+  processedPolicy?: string;
 }
 
 export interface LaneTrade {
@@ -132,6 +135,9 @@ export interface LaneTrade {
   exit: number;
   /** side × exit / entry − 1, minus the round-trip cost */
   r: number;
+  /** Venue-lane stage evidence retained through the terminal close. */
+  processedStage?: "postBase" | "validated" | "active";
+  processedPolicy?: string;
   /**
    * how the lane left: "exit" (the desk moved the position), "stop" (the exchange closed it at its stop), "target"
    * (at its take-profit), "hand" (an order that is not ours closed it: by hand in the venue, or another system),
@@ -162,6 +168,8 @@ export interface LaneStepInput {
     side: 1 | -1;
     key?: string;
     lk?: string;
+    processedStage?: "postBase" | "validated" | "active";
+    processedPolicy?: string;
   }>;
   /** control keys (`sym|side`) held on the exchange after this step's orders */
   heldAfter: ReadonlySet<string>;
@@ -208,7 +216,7 @@ export function attributeLanes(
 ): { open: Record<string, LaneOpen>; closed: LaneTrade[] } {
   const next: Record<string, LaneOpen> = {};
   const closed: LaneTrade[] = [];
-  const live = new Map<string, { cfg: string; sym: string; side: 1 | -1 }>();
+  const live = new Map<string, LaneStepInput["lanes"][number]>();
   for (const l of x.lanes) {
     if (!l.id) continue;
     // (the lane's key strings when the control built them once per position; else built here)
@@ -228,6 +236,8 @@ export function attributeLanes(
       entry: o.px,
       exit: px,
       r: (o.side * (px - o.px)) / o.px - x.cost,
+      ...(o.processedStage ? { processedStage: o.processedStage } : {}),
+      ...(o.processedPolicy ? { processedPolicy: o.processedPolicy } : {}),
       reason,
       ...(pxSrc ? { pxSrc } : {}),
     });
@@ -257,7 +267,15 @@ export function attributeLanes(
     if (next[id]) continue;
     const key = `${l.sym}|${l.side}`;
     const px = x.grew.get(key) ?? x.prices.get(l.sym) ?? 0;
-    if (px > 0) next[id] = { cfg: l.cfg, sym: l.sym, side: l.side, t: x.now, px };
+    if (px > 0) next[id] = {
+      cfg: l.cfg,
+      sym: l.sym,
+      side: l.side,
+      t: x.now,
+      px,
+      ...(l.processedStage ? { processedStage: l.processedStage } : {}),
+      ...(l.processedPolicy ? { processedPolicy: l.processedPolicy } : {}),
+    };
   }
   return { open: next, closed };
 }

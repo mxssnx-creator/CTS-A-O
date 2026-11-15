@@ -293,6 +293,10 @@ export interface ControlContribution {
   cfg: string;
   sym: string;
   side: 1 | -1;
+  /** Frozen paper admission stage; a new venue parent is allowed only from active when processed stages are on. */
+  processedStage?: "postBase" | "validated" | "active";
+  /** Exact processed-stage policy/economic revision captured with processedStage. */
+  processedPolicy?: string;
   /** Block volume multiple of this lane's position (1 = plain) */
   vol: number;
   /**

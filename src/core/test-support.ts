@@ -491,6 +491,8 @@ export type FakePaperPosition = {
   level?: number;
   legs?: Partial<Record<"config" | "overall" | "symbol" | "direction" | "indication" | "type", number>>;
   entryT?: number;
+  processedStage?: "postBase" | "validated" | "active";
+  processedPolicy?: string;
   /** the lane's target price (unset: none) */
   target?: number;
   trailOn?: boolean;

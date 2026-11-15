@@ -53,6 +53,81 @@ it("the pure selector folds Block legs, retains tracked parents, and never guess
   assert.match(simultaneous.blocked[0].why, /simultaneous opposite parents/);
 });
 
+it("processed mode rejects a non-active venue parent and persists active stage evidence through its close", async () => {
+  const { rt, ex, step } = setup();
+  Object.assign(rt.settings.live, { positionSize: "lanes", laneOrders: false, positionMode: "hedge" });
+  (rt as unknown as { wf: { processedStages: { validationN: number; realN: number } } }).wf = {
+    processedStages: { validationN: 2, realN: 2 },
+  };
+  const policy = JSON.stringify(["processed-native-v1", rt.settings.cost, { validationN: 2, realN: 2 }]);
+  try {
+    rt.paper.positions = [{ ...pos(A, 1), processedStage: "validated", processedPolicy: policy }];
+    await step();
+    assert.equal(ex.log.filter((row) => row.type === "MARKET").length, 0);
+    const rejectedControl = liveKv<ControlStatus>(rt.db, "controlStatus")!;
+    assert.ok(rejectedControl.actions.some((row) => /processed-stage identity/.test(row.msg ?? "")), JSON.stringify(rejectedControl.actions));
+
+    rt.paper.positions = [{ ...pos(A, 1), processedStage: "active", processedPolicy: `${policy}-stale` }];
+    await step();
+    const staleControl = liveKv<ControlStatus>(rt.db, "controlStatus")!;
+    assert.ok(staleControl.actions.some((row) => /processed-stage identity/.test(row.msg ?? "")), JSON.stringify(staleControl.actions));
+    assert.equal(ex.log.filter((row) => row.type === "MARKET").length, 0);
+
+    rt.paper.positions = [{ ...pos(A, 1), processedStage: "active", processedPolicy: policy }];
+    await step();
+    const open = Object.values(liveKv<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {});
+    assert.equal(open.length, 1);
+    assert.equal(open[0].processedStage, "active");
+    assert.equal(open[0].processedPolicy, policy);
+
+    rt.paper.positions = [];
+    await step();
+    // relation: all rows — the isolated fixture reads back the sole row it wrote.
+    const closed = rt.db.get<{ processed_stage: string; processed_policy: string }>(
+      "SELECT processed_stage,processed_policy FROM live_lane_trades WHERE cfg=?",
+      A,
+    );
+    assert.equal(closed?.processed_stage, "active");
+    assert.equal(closed?.processed_policy, policy);
+  } finally {
+    flushLiveKv(rt.db);
+    rt.db.db.close();
+  }
+});
+
+it("a pending processed venue request keeps its exact active policy across restart", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cts-processed-venue-parent-"));
+  const path = join(dir, "core.sqlite");
+  const { rt, ex, step } = setup(new CoreDb(path));
+  Object.assign(rt.settings.live, { positionSize: "lanes", laneOrders: false, positionMode: "hedge" });
+  (rt as unknown as { wf: { processedStages: { validationN: number; realN: number } } }).wf = {
+    processedStages: { validationN: 2, realN: 2 },
+  };
+  const policy = JSON.stringify(["processed-native-v1", rt.settings.cost, { validationN: 2, realN: 2 }]);
+  const place = ex.order.bind(ex);
+  ex.order = async (request) => request.type === "MARKET" && request.reduceOnly !== "true"
+    ? { order: { orderId: "pending-processed", status: "NEW", executedQty: 0 } }
+    : place(request);
+  try {
+    rt.paper.positions = [{ ...pos(A, 1), processedStage: "active", processedPolicy: policy }];
+    await step();
+    flushLiveKv(rt.db);
+    rt.db.db.close();
+
+    const reopened = new CoreDb(path);
+    const allocations = liveKv<Record<string, { parents: Array<{ processedStage?: string; processedPolicy?: string }> }>>(
+      reopened,
+      "liveEntryParents",
+    ) ?? {};
+    const parent = Object.values(allocations)[0]?.parents[0];
+    assert.equal(parent?.processedStage, "active");
+    assert.equal(parent?.processedPolicy, policy);
+    reopened.db.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 for (const sizing of ["min", "risk", "lanes"] as const) for (const side of [1, -1] as const) {
   it(`${sizing}, side ${side}: an aggregate holding cannot acquire a sibling; its own exit still runs`, async () => {
     const { rt, ex, step } = setup();

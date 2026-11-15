@@ -10,6 +10,12 @@ export interface ProcessedReplayPolicy {
   realN: number;
   negativeFilter?: NegativeLastN;
 }
+
+/** Stable economic-policy identity carried from modeled admission through paper and venue ownership. */
+export function processedReplayRevision(policy: ProcessedReplayPolicy, cost: number): string {
+  if (!Number.isFinite(cost) || cost < 0) throw new RangeError("invalid processed replay cost");
+  return JSON.stringify(["processed-replay-v1", cost, policy]);
+}
 export interface ProcessedReplayContext {
   id: string;
   kind: string;
@@ -62,7 +68,7 @@ export class ProcessedReplay {
     this.policy = { validationN: policy.validationN, realN: policy.realN,
       ...(policy.blocks?{blocks:structuredClone(policy.blocks)}:{}),
       ...(negativeFilter ? { negativeFilter } : {}) };
-    this.revision = JSON.stringify(["processed-replay-v1", cost, this.policy]);
+    this.revision = processedReplayRevision(this.policy, cost);
     this.book = new ProcessedSetBook("model", Math.max(policy.validationN, policy.realN, ...Object.values(policy.blocks??{}).map(blockRequired), ...negativeFilter?.windows ?? []));
   }
 
