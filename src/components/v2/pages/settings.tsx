@@ -1559,6 +1559,51 @@ export function PositionWindowSettings(props: {
   );
 }
 
+export function ProcessedStageSettings(props: {
+  value?: { validationN?: number; realN?: number } | null;
+  onChange: (value: { validationN: number; realN: number } | null) => void;
+}) {
+  const enabled = !!props.value;
+  const policy = {
+    validationN: Math.round(props.value?.validationN ?? 12),
+    realN: Math.round(props.value?.realN ?? 12),
+  };
+  const put = (key: "validationN" | "realN", value: number) =>
+    props.onChange({ ...policy, [key]: Math.round(value) });
+  return (
+    <Panel
+      title="Persistent own-stage progression"
+      sub="Opt-in Base → Main → Real predecessor windows. Only accepted, settled parents feed their exact next stage; raw candidates and sibling wins never bootstrap a window."
+    >
+      <Switch
+        label="Use persistent processed stages"
+        checked={enabled}
+        onChange={(on) => props.onChange(on ? policy : null)}
+      />
+      {enabled && (
+        <div className="v2-grid v2-cols-2" style={{ marginTop: 12 }}>
+          <Field
+            label="Main predecessor closes"
+            hint="Accepted post-Base parent closes required for the independent Main decision · 1–200"
+          >
+            <Num int min={1} max={200} value={policy.validationN} onChange={(v) => put("validationN", v)} />
+          </Field>
+          <Field
+            label="Real predecessor closes"
+            hint="Validated Main parent closes required before the exact config becomes Active · 1–200"
+          >
+            <Num int min={1} max={200} value={policy.realN} onChange={(v) => put("realN", v)} />
+          </Field>
+        </div>
+      )}
+      <div className="v2-muted" style={{ marginTop: 10, fontSize: "var(--v-fs-xs)" }}>
+        Enabling this policy does not manufacture history or waive Live proof, risk, ownership, fee or venue checks.
+        Disabling it removes the policy on Save; existing positions remain protected and reconcilable.
+      </div>
+    </Panel>
+  );
+}
+
 function PfOverrides(props: {
   label: string;
   hint: string;
@@ -4705,6 +4750,7 @@ export function SettingsPage() {
 
       <div className="v2-grid v2-cols-2">
         <Panel title="Real stage (walk-forward)" sub="Completed-position samples and independent replay/book limits">
+          <ProcessedStageSettings value={wf.processedStages} onChange={(value) => setW("processedStages", value)} />
           <div className="v2-grid v2-cols-3">
             <Field hidden={!!s.gates.positionWindows} label="Pre-calc (h)" hint="Legacy evaluation window">
               <Num value={wf.preH} min={1} max={240} onChange={(v) => setW("preH", v)} />

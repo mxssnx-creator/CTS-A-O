@@ -14,6 +14,7 @@ import {
   Num,
   ProtectRanges,
   PositionWindowSettings,
+  ProcessedStageSettings,
   StepPfSettings,
   SignalsSettings,
   Timeframes,
@@ -163,6 +164,7 @@ export function PresetSettingsDialog(props: {
         maxOpen: wf.maxOpen,
         preH: wf.preH,
         longH: wf.longH,
+        processedStages: wf.processedStages ?? null,
       };
       const r = (await presetAction({
         data: { action: "update", id: p.id, settings, wf: w, label },
@@ -321,6 +323,12 @@ export function PresetSettingsDialog(props: {
                 </select>
               </Field>
             </div>
+          </Section>
+          <Section title="Persistent own-stage progression">
+            <ProcessedStageSettings
+              value={wf.processedStages}
+              onChange={(value) => setW("processedStages", value)}
+            />
           </Section>
           <Section title="Strategies" sub="executed sub-strategies (Base always computes all)">
             <div className="v2-grid v2-cols-4" style={{ gap: 8 }}>
