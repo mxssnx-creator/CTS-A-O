@@ -177,14 +177,14 @@ describe("Relate indication family", () => {
     lateMarketCache.setMarket(new MarketSource([target, crash]));
     assert.equal(beforeAttach[137], 1);
     assert.equal(signal.fn(lateMarketCache)[137], 0, "attaching market data invalidates preexisting relation memos");
-    const market = makeUniverse([target, crash]).caches[0];
+    const market = makeUniverse([target, crash]).caches.find((c) => c.b.sym === target.sym)!;
     const relative = signal.fn(market);
     assert.equal(solo[137], 1, "the standalone uptrend is still valid");
     assert.equal(relative[137], 0, "a large market drawdown suppresses the long relation");
 
     const quiet = bars("QUIET-USDT", 5, 240);
     const spike = bars("SPIKE-USDT", 5, 240, () => 0.001, (i) => (i === 180 ? 100_000 : 1_000));
-    const withActivity = signal.fn(makeUniverse([quiet, spike]).caches[0]);
+    const withActivity = signal.fn(makeUniverse([quiet, spike]).caches.find((c) => c.b.sym === quiet.sym)!);
     assert.equal(withActivity[179], 1, "normal cross-market activity qualifies");
     assert.equal(withActivity[180], 0, "a market-wide activity surge is filtered");
 
@@ -193,18 +193,19 @@ describe("Relate indication family", () => {
     const moderateTarget = bars("MODERATE-TARGET-USDT", 5, 240);
     const moderatePartner = bars("MODERATE-PARTNER-USDT", 5, 240, () => 0.001, (i) => (i === 180 ? 6_500 : 1_000));
     const moderateMarket = makeUniverse([moderateTarget, moderatePartner]);
-    assert.equal(guard.fn(moderateMarket.caches[0])[180], 0, "Guarded rejects market activity above 3×");
-    assert.equal(balanced.fn(moderateMarket.caches[0])[180], 1, "Balanced accepts the same activity below its 4× limit");
+    const moderateCache = moderateMarket.caches.find((c) => c.b.sym === moderateTarget.sym)!;
+    assert.equal(guard.fn(moderateCache)[180], 0, "Guarded rejects market activity above 3×");
+    assert.equal(balanced.fn(moderateCache)[180], 1, "Balanced accepts the same activity below its 4× limit");
 
     const cutT = target.t[137];
     const fullBars = [target, crash];
-    const fullTarget = signal.fn(makeUniverse(fullBars).caches[0]);
+    const fullTarget = signal.fn(makeUniverse(fullBars).caches.find((c) => c.b.sym === target.sym)!);
     const cutBars = fullBars.map((x) => {
       let n = 0;
       while (n < x.n && x.t[n] <= cutT) n++;
       return cut(x, n);
     });
-    const cutTarget = signal.fn(makeUniverse(cutBars).caches[0]);
+    const cutTarget = signal.fn(makeUniverse(cutBars).caches.find((c) => c.b.sym === target.sym)!);
     assert.deepEqual(cutTarget, fullTarget.slice(0, cutTarget.length), "market context is causal on a time cut");
   });
 

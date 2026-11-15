@@ -43,6 +43,9 @@ it("fresh Expanded defaults match the verified source/grid catalog with own Last
   expected.guard.lastN = 12;
   expected.hist.lookbackH = 150;
   expected.coordination.volumeFactor = 1; // Operator neutral-sizing default; archived receipt stays immutable.
+  assert.equal(expected.sideAccept.enabled, true, "archived receipt predates the 19 Oct optional-side-gate override");
+  assert.equal(DEFAULT_SIGNALS.sideAccept.enabled, false);
+  expected.sideAccept.enabled = false; // Current operator policy, integrated by f1f74b7; preserve the historical receipt.
   assert.equal(Object.hasOwn(expected.combinedVolumeFactors, "low-range"), false, "archived receipt predates Low-Range");
   assert.equal(DEFAULT_SIGNALS.combinedVolumeFactors["low-range"], 1);
   assert.equal(rt.settings.signals.combinedVolumeFactors["low-range"], 1);
@@ -58,6 +61,14 @@ it("fresh Expanded defaults match the verified source/grid catalog with own Last
   assert.equal(rt.settings.signals.hist.minN, 30);
   assert.equal(rt.settings.gates.minTrades, recorded.actualSettings.gates.minTrades);
   assert.doesNotThrow(() => checkSettings({ signals: rt.settings.signals }));
+});
+
+it("preserves an explicit enabled optional Signal side-acceptance policy", () => {
+  const db = database();
+  const sideAccept = { enabled: true, minPf: 1.7, hours: 36, minTrades: 24 };
+  db.kvSet("settings", { signals: { sideAccept } });
+  assert.deepEqual(open(db).settings.signals.sideAccept, sideAccept);
+  assert.equal(DEFAULT_SIGNALS.sideAccept.enabled, false, "a custom policy cannot mutate factory defaults");
 });
 
 it("allow-lists and disabled sources stay exact, and normalized arrays do not mutate factory settings", () => {

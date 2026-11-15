@@ -409,17 +409,17 @@ describe("Break indication family", () => {
     const marketSelloff = breakoutBars("SELL", 5, 300, 1, (i) => (i === 139 ? -0.08 : 1_000));
     const id = "break-rel-don-5-dd48-guarded";
     const solo = breakSpecs().find((x) => x.id === id)!.fn(new SeriesCache(target));
-    const market = makeUniverse([target, marketSelloff]).caches[0];
+    const market = makeUniverse([target, marketSelloff]).caches.find((c) => c.b.sym === target.sym)!;
     const withMarket = breakSpecs().find((x) => x.id === id)!.fn(market);
     assert.equal(solo[139], 1, "standalone signal has no cross-market filter");
     assert.equal(withMarket[139], 0, "market drawdown/against-move suppresses the long signal");
 
     const fullUniverse = makeUniverse([target, marketSelloff]);
-    const fullState = breakSpecs().find((x) => x.id === id)!.fn(fullUniverse.caches[0]);
+    const fullState = breakSpecs().find((x) => x.id === id)!.fn(fullUniverse.caches.find((c) => c.b.sym === target.sym)!);
     const cutAt = 139;
     const cutMarket = makeUniverse([cut(target, cutAt + 1), cut(marketSelloff, cutAt + 1)]);
     assert.deepEqual(
-      breakSpecs().find((x) => x.id === id)!.fn(cutMarket.caches[0]),
+      breakSpecs().find((x) => x.id === id)!.fn(cutMarket.caches.find((c) => c.b.sym === target.sym)!),
       fullState.slice(0, cutAt + 1),
       "market-relative features do not read bars beyond the evaluation time",
     );
@@ -433,7 +433,7 @@ describe("Break indication family", () => {
     const peer = bars("PEER-Z", 5, 240, (i) =>
       i === shockAt ? 0.008 : Math.cos(i * 0.23) * 0.0008,
     );
-    const cache = makeUniverse([target, peer]).caches[0];
+    const cache = makeUniverse([target, peer]).caches.find((c) => c.b.sym === target.sym)!;
     breakSpecs().find((x) => x.id === "break-rel-don-5-dd48-balanced")!.fn(cache);
     const x = cache.memo<{ marketZ: Float32Array; residualZ: Float32Array }>("break:shared:context:v1", () => {
       throw new Error("Break shared context was not memoized");

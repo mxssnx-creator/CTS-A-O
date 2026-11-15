@@ -113,7 +113,11 @@ export interface Universe {
 export function makeUniverse(bars: Bars[], evaluationFromT?: number): Universe {
   if (evaluationFromT !== undefined && (!Number.isFinite(evaluationFromT) || evaluationFromT < 0))
     throw new Error("evaluationFromT must be a finite nonnegative timestamp");
-  const ok = bars.filter((b) => b.n >= 120);
+  // Arrival order depends on asynchronous backfill completion. Canonical symbol slots keep
+  // local, worker, replay and incremental tie-breaking identical; retain each symbol's
+  // explicitly configured lane order and the original immutable bar objects.
+  const ordered = [...bars].sort((a, b) => a.sym < b.sym ? -1 : a.sym > b.sym ? 1 : 0);
+  const ok = ordered.filter((b) => b.n >= 120);
   let startT = Infinity;
   let endT = 0;
   let nowT = 0;
@@ -130,7 +134,7 @@ export function makeUniverse(bars: Bars[], evaluationFromT?: number): Universe {
     startT = Math.min(nowT, Math.max(startT, evaluationFromT));
   // the market reference per timeframe (market.ts), built lazily on the first relation indication: from EVERY series
   // given (a short one too), so a universe cut at any time sees the same market up to the cut
-  const market = new MarketSource(bars);
+  const market = new MarketSource(ordered);
   const caches = ok.map((b) => {
     const k = new SeriesCache(b);
     k.setMarket(market);
@@ -138,7 +142,7 @@ export function makeUniverse(bars: Bars[], evaluationFromT?: number): Universe {
   });
   return {
     bars: ok,
-    series: bars,
+    series: ordered,
     caches,
     startT,
     endT,
