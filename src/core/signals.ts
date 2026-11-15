@@ -15,6 +15,7 @@ import { atrProtect } from "./sim/backtest.ts";
 import { isSignalInd, laneInd } from "./indications/registry.ts";
 import { SIGNAL_MIN_PF } from "./signal-policy.ts";
 import { profitFactorRatio } from "./metrics/profit-factor.mjs";
+import { imprecisePrefix, returnWindow } from "./metrics/return-window.ts";
 import {
   SIGNAL_SOURCES,
   signalId,
@@ -796,8 +797,7 @@ export class SignalAcceptIndex {
     const b = above(t);
     if (b <= a) return { n: 0, pf: 0 };
     if (windowHasInvalid(g.invalid, a, b)) return { n: g.cn[b] - g.cn[a], pf: NaN };
-    const gp = g.gp[b] - g.gp[a];
-    const gl = g.gl[b] - g.gl[a];
+    const { gp, gl } = returnWindow(g, a, b);
     return { n: g.cn[b] - g.cn[a], pf: profitFactorRatio(gp, gl) };
   }
 }
@@ -925,7 +925,7 @@ export class EngineSideIndex {
   }
   private groups = new Map<
     string,
-    { h: Float64Array; gp: Float64Array; gl: Float64Array; n: Float64Array; invalid?: Float64Array }
+    { h: Float64Array; gp: Float64Array; gl: Float64Array; n: Float64Array; bucketGp: Float64Array; bucketGl: Float64Array; invalid?: Float64Array }
   >();
   /** Extend the hourly record with strictly newer closes, retaining every earlier candidate and hour. */
   *append(tapes: readonly SideTape[]): Generator<number, void> {
@@ -964,17 +964,24 @@ export class EngineSideIndex {
         gp: new Float64Array(n + 1),
         gl: new Float64Array(n + 1),
         n: new Float64Array(n + 1),
+        bucketGp: new Float64Array(n),
+        bucketGl: new Float64Array(n),
         ...(old.invalid || extra.invalid ? { invalid: new Float64Array(n + 1) } : {}),
       };
       next.h.set(old.h);
+      next.bucketGp.set(old.bucketGp);
+      next.bucketGl.set(old.bucketGl);
       for (const col of ["gp", "gl", "n"] as const) next[col].set(old[col]);
       if (old.invalid) next.invalid!.set(old.invalid);
       for (let i = 0; i < extra.h.length; i++) {
         const j = old.h.length - overlap + i;
         next.h[j] = extra.h[i];
+        next.bucketGp[j] = (overlap && i === 0 ? old.bucketGp[j] : 0) + extra.bucketGp[i];
+        next.bucketGl[j] = (overlap && i === 0 ? old.bucketGl[j] : 0) + extra.bucketGl[i];
         for (const col of ["gp", "gl", "n"] as const) {
           const before = overlap && i === 0 ? old[col][old.h.length] : next[col][j];
-          next[col][j + 1] = before + extra[col][i + 1] - extra[col][i];
+          const increment = col === "gp" ? extra.bucketGp[i] : col === "gl" ? extra.bucketGl[i] : extra.n[i + 1] - extra.n[i];
+          next[col][j + 1] = before + increment;
         }
         if (next.invalid) {
           const before = overlap && i === 0 ? (old.invalid?.[old.h.length] ?? 0) : next.invalid[j];
@@ -1034,11 +1041,15 @@ export class EngineSideIndex {
         gp: new Float64Array(m + 1),
         gl: new Float64Array(m + 1),
         n: new Float64Array(m + 1),
+        bucketGp: new Float64Array(m),
+        bucketGl: new Float64Array(m),
         ...(hs.some((hour) => g.get(hour)![3] > 0) ? { invalid: new Float64Array(m + 1) } : {}),
       };
       for (let j = 0; j < m; j++) {
         const b = g.get(hs[j])!;
         x.h[j] = hs[j];
+        x.bucketGp[j] = b[0];
+        x.bucketGl[j] = b[1];
         x.gp[j + 1] = x.gp[j] + b[0];
         x.gl[j + 1] = x.gl[j] + b[1];
         x.n[j + 1] = x.n[j] + b[2];
@@ -1069,8 +1080,22 @@ export class EngineSideIndex {
     const b = first(cur); // buckets before the entry's own hour
     if (b <= a) return { n: 0, pf: 0 };
     if (g.invalid && g.invalid[b] - g.invalid[a] > 0) return { n: g.n[b] - g.n[a], pf: NaN };
-    const gp = g.gp[b] - g.gp[a];
-    const gl = g.gl[b] - g.gl[a];
+    const gpBefore = g.gp[a], gpAfter = g.gp[b], glBefore = g.gl[a], glAfter = g.gl[b];
+    let gp = gpAfter - gpBefore;
+    let gl = glAfter - glBefore;
+    if (![gpBefore, gpAfter, glBefore, glAfter, gp, gl].every(Number.isFinite) || gp < 0 || gl < 0)
+      return { n: g.n[b] - g.n[a], pf: NaN };
+    if (imprecisePrefix(g.gp, a, b) || imprecisePrefix(g.gl, a, b)) {
+      gp = 0;
+      gl = 0;
+      for (let i = a; i < b; i++) {
+        const p = g.bucketGp[i], l = g.bucketGl[i];
+        if (!(Number.isFinite(p) && Number.isFinite(l) && p >= 0 && l >= 0))
+          return { n: g.n[b] - g.n[a], pf: NaN };
+        gp += p;
+        gl += l;
+      }
+    }
     return { n: g.n[b] - g.n[a], pf: profitFactorRatio(gp, gl) };
   }
   /**

@@ -4,6 +4,7 @@ import {relationalVolumeFactor,relationalVolumeSettings} from "../../../shared/c
 import { minimumStopFraction, normalizeMinSlDistancePct } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, validatedSetPf, type ValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
+import { returnWindow } from "../metrics/return-window.ts";
 import { migrateMinuteCaps } from "./minute-cap-migration.server.ts";
 import { migrateMinimumProtectionPolicy } from "./protection-policy-migration.server.ts";
 import { migrateFineLadders } from "./fine-ladder-migration.server.ts";
@@ -7678,8 +7679,8 @@ export class CoreRuntime {
       : undefined;
     const b = referenceRecord ? lowerBound(referenceRecord.exitT, now + 1) : 0;
     const a = Math.max(0, b - n);
-    const referenceGp = referenceRecord ? referenceRecord.gp[b] - referenceRecord.gp[a] : 0;
-    const referenceGl = referenceRecord ? referenceRecord.gl[b] - referenceRecord.gl[a] : 0;
+    const { gp: referenceGp, gl: referenceGl } = referenceRecord
+      ? returnWindow(referenceRecord, a, b) : { gp: 0, gl: 0 };
     const noLoss = referenceGp > 0 && referenceGl === 0;
     const gate = promotionGate(
       sim ? model?.records.get(key) : undefined,

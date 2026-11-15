@@ -1,0 +1,40 @@
+/** True if accumulated rounding can obscure the selected part of a nonnegative prefix sum. */
+export function imprecisePrefix(prefix: ArrayLike<number>, a: number, b: number): boolean {
+  const before = prefix[a], after = prefix[b], diff = after - before;
+  const scale = Math.max(Math.abs(before), Math.abs(after));
+  return !Number.isFinite(diff) || (a > 0 && scale > 0 && Math.abs(diff) <=
+    Number.EPSILON * scale * Math.max(4, b));
+}
+
+/** Recover a rare cancellation-prone window from its own original unit returns. */
+export function returnWindow(
+  tape: { gp: ArrayLike<number>; gl: ArrayLike<number>; r?: ArrayLike<number>; direction?: ArrayLike<number> }, a: number, b: number,
+): { gp: number; gl: number; rescanned: boolean } {
+  const gpBefore = tape.gp[a], gpAfter = tape.gp[b];
+  const glBefore = tape.gl[a], glAfter = tape.gl[b];
+  let gp = gpAfter - gpBefore, gl = glAfter - glBefore;
+  // Recovery is only for finite cancellation in otherwise valid nondecreasing
+  // prefixes. Never let the raw rows repair malformed or overflowed aggregate
+  // evidence: those records must remain unknown and fail closed.
+  if (![gpBefore, gpAfter, glBefore, glAfter, gp, gl].every(Number.isFinite) || gp < 0 || gl < 0)
+    return { gp: NaN, gl: NaN, rescanned: false };
+  const badGp = imprecisePrefix(tape.gp, a, b), badGl = imprecisePrefix(tape.gl, a, b);
+  // A single signed return cannot add to both sides. One reliably visible nonzero increment proves the other is zero.
+  if (b === a + 1 && ((gp > 0 && !badGp && gl === 0) || (gl > 0 && !badGl && gp === 0)))
+    return { gp, gl, rescanned: false };
+  const direction = tape.direction ? tape.direction[b] - tape.direction[a] : 0;
+  if ((direction === b - a && gp > 0 && !badGp && gl === 0) ||
+      (direction === a - b && gl > 0 && !badGl && gp === 0))
+    return { gp, gl, rescanned: false };
+  const rescanned = badGp || badGl;
+  if (!rescanned) return { gp, gl, rescanned };
+  if (!tape.r || tape.r.length < b) return { gp: NaN, gl: NaN, rescanned };
+  gp = gl = 0;
+  for (let i = a; i < b; i++) {
+    const r = tape.r[i];
+    if (!Number.isFinite(r)) return { gp: NaN, gl: NaN, rescanned };
+    if (r > 0) gp += r;
+    else gl -= r;
+  }
+  return { gp, gl, rescanned };
+}

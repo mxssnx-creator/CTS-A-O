@@ -33,7 +33,7 @@ jobs:
       - run: npm run typecheck -- --pretty false
       - name: Bounded PF regressions
         run: |
-          node scripts/test-core.mjs src/core/metrics/pf-neutral.test.ts src/core/metrics/stats.test.ts src/core/pipeline/pooled-pf.test.ts src/core/bot-stats.test.ts src/core/live-record.test.ts src/core/validated-set-pf.test.ts
+          node scripts/test-core.mjs src/core/metrics/pf-neutral.test.ts src/core/metrics/stats.test.ts src/core/pipeline/pooled-pf.test.ts src/core/bot-stats.test.ts src/core/live-record.test.ts src/core/live-validation.test.ts src/core/pf-neutral-systemwide.test.ts src/core/sim/lastn-calc.test.ts src/core/server/live-promotion.test.ts src/core/validated-set-pf.test.ts
           node --test scripts/lib/pf-neutral.test.mjs scripts/lib/eval-variants.test.mjs scripts/lib/eval-base-rules.test.mjs scripts/eval-orders.test.mjs
           node --experimental-strip-types --no-warnings --test src/components/v2/accounting.test.ts
           node --experimental-strip-types --no-warnings --test scripts/core-live-coord.test.mjs scripts/eval-validation.test.mjs scripts/core-session.test.mjs
