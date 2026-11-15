@@ -40,7 +40,7 @@ const sourceChecks = new WeakMap<object, { n: number; columns: WeakRef<object>[]
 export function positionTapeValid(tp: PositionTapeColumns): boolean {
   const columns = [tp.syms, tp.exitT, tp.entryT, tp.symI, tp.side, tp.r];
   const cached = sourceChecks.get(tp);
-  if (cached?.n === tp.n && columns.every((v, i) => v === cached.columns[i].deref())) return cached.valid;
+  if (cached?.n === tp.n && columns.every((v, i) => v !== undefined && v === cached.columns[i].deref())) return cached.valid;
   let valid =
     Number.isSafeInteger(tp.n) &&
     tp.n >= 0 &&

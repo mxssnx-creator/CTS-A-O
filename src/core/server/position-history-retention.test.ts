@@ -38,6 +38,11 @@ test('position validation does not pin evicted immutable history buffers', () =>
       assert.equal(buffer.deref()===undefined,true,'validation metadata must not retain the evicted history arena');
       assert.equal(positionTapeValid(tape),true,'reloaded history remains valid');
       assert.ok(store.stats.reads>=2,'released columns are reloaded and revalidated');
+      const empty={n:0,syms:[],exitT:[],entryT:[],symI:[],side:[],r:[]};
+      assert.equal(positionTapeValid(empty),true);
+      empty.side=undefined;
+      for(let i=0;i<8;i++){await setImmediate();globalThis.gc();}
+      assert.equal(positionTapeValid(empty),false,'a missing column cannot match an expired weak identity');
     } finally {store.close();}
   `;
   assert.doesNotThrow(() => execFileSync(process.execPath,
