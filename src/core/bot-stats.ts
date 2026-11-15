@@ -179,7 +179,11 @@ export function botStatsFromRows(rows: readonly LaneRow[]): {
     const longPf = profitFactor(long);
     const shortPf = profitFactor(short);
     const why: string[] = [];
-    const judgeable = xs.length >= MIN_TRADES && events >= MIN_EVENTS && long.length >= MIN_SIDE_TRADES && short.length >= MIN_SIDE_TRADES && judged.length > 0;
+    const knownPf = (pf: number) => Number.isFinite(pf) || pf === Infinity;
+    const known = stored.every(Number.isFinite) && r02.every(Number.isFinite) && r04.every(Number.isFinite) &&
+      [pf02, pf04, longPf, shortPf].every(knownPf);
+    const judgeable = known && xs.length >= MIN_TRADES && events >= MIN_EVENTS && long.length >= MIN_SIDE_TRADES && short.length >= MIN_SIDE_TRADES && judged.length > 0;
+    if (!known) why.push("unknown or unrepresentable return PF");
     if (xs.length < MIN_TRADES) why.push(`trades ${xs.length} of ${MIN_TRADES}`);
     if (events < MIN_EVENTS) why.push(`events ${events} of ${MIN_EVENTS}`);
     if (long.length < MIN_SIDE_TRADES) why.push(`long trades ${long.length} of ${MIN_SIDE_TRADES}`);

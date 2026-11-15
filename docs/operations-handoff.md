@@ -1,3 +1,23 @@
+## 2026-11-15 — old PR #238 prefix-cancellation integration
+
+Old draft #238 was compared from common base `d677b05d3ac4dc3571e58641cc8e4324b8d17acb` and head
+`51c6464a1e5639c7795b704066adfba44712bb54` against current `main`
+`67ae55b501aef10377046832efbc4f0477661dd5`. Its neutral-PF primitive and systemwide replacements were already
+integrated and superseded by `7969959`; they were not duplicated. Only the missing finite prefix-cancellation
+recovery was ported onto the current stage, ownership and cost implementation.
+
+Selected Last-N windows now rescan their own immutable unit returns when a valid finite cumulative prefix loses a
+tiny recent window to floating-point subtraction. Missing raw returns remain unknown. Malformed, decreasing or
+overflowed cumulative evidence is never repaired and fails closed. Pre-upgrade ambiguous evidence therefore needs
+re-evaluation from original returns or explicit retirement; no historical row or loss is rewritten. Full mapping
+and limits are in `docs/verification/old-pr-238-prefix-cancellation-20261115.md`.
+
+The first full Core attempt found two fail-closed regressions (4,961 tests: 4,956 pass, 2 fail, 3 skips); this failed
+attempt is retained. After narrowing recovery, both exact failures plus the new systemwide cases pass 38/38. Final
+publication is conditional on a clean complete Core rerun, typecheck, build and exact-head required
+CI. No exchange/account/deployment write was made and no PF was measured. Twelve-symbol forward/Sim-Venue evidence,
+sufficient independent samples and positive execution PF remain open and cannot be inferred from this source fix.
+
 ## 2026-11-15 — old PR #219 venue-stage admission provenance
 
 This continuation is based on current `main` `fee2c520910d12224e0668c1a175bcff5b400bbc`, after the durable
