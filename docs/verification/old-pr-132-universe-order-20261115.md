@@ -58,6 +58,15 @@ source publication does not certify or migrate an existing live cache.
   All **25/25** Break/Relate/permutation checks pass, and these families are
   included in required CI. The initial full-inventory failures remain in the
   continuation log; they are not relabeled as a clean full run.
+- The first full inventory ends at **4,967 tests: 4,961 pass, three fail,
+  three explicit skips**. The third failure also reproduces on unchanged
+  `d70a470`: the archived 23 October receipt expects the optional pooled
+  Signal-side gate on, while current `f1f74b7` deliberately applies the
+  operator's later override with it off. The fixture now explicitly bridges
+  that historical difference, retains the immutable receipt and independently
+  verifies that a custom enabled gate with its own PF/window survives restart.
+  Production gates are unchanged. All **31/31** affected/order cases pass;
+  a fresh complete Core rerun on the final tree remains required before merge.
 - Failed test-construction attempts are retained: the first fixture supplied
   the synthetic generator's ending clock as a starting clock; the next warmup
   assertion overlooked its first-bar offset. Typecheck also rejected the

@@ -12,6 +12,11 @@ typecheck and diff check pass. Exact-head required CI and broader Core verificat
 The first full Core attempt found two positional Break/Relate fixture assumptions. Their scalar subject is now
 selected by symbol rather than `caches[0]`; all 25 Break/Relate/permutation cases pass with original assertions.
 Required CI includes those families. Retain the first full-inventory failures rather than calling that attempt green.
+Final first-inventory totals: 4,967 tests / 4,961 pass / three fail / three explicit skips. The third is a stale
+archived-receipt expectation for the already integrated optional Signal-side default (`f1f74b7`), reproduced on
+unchanged `d70a470`. The receipt remains immutable, the fixture explicitly applies the current policy and verifies
+that a custom enabled gate survives restart. All 31 affected/order checks pass; production gates are unchanged.
+A fresh full Core rerun on this final source is required before merge.
 Details and retained failed fixture attempts: `docs/verification/old-pr-132-universe-order-20261115.md`.
 The separate twelve-symbol replay stays frozen on its original source. Current-policy post-Base PF,
 passed/evaluated validation and execution PF are unavailable. No exchange, account, service or deployment changed.
