@@ -372,6 +372,7 @@ export const KIND_LABEL: Record<StratKind, string> = {
   "trailing-only": "Trailing only",
   exit: "Historic Exit",
   axis: "Axis",
+  block: "Block",
   dca: "DCA",
   "dca-active": "DCA Active",
 };

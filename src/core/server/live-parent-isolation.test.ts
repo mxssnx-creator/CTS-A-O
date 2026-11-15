@@ -178,6 +178,7 @@ for (const side of [1, -1] as const) for (const terminal of ["FILLED", "CANCELLE
     assert.equal(held[0]?.processedPolicy, policy); assert.equal(held[0]?.processedStage, "active");
     rt.paper.positions = []; mock.timers.tick(20_000); await step();
     assert.equal(ex.positions.has(key), false);
+    // relation: all rows — fixture asserts the stored processed stage of every row it wrote, not a PF
     const rows = rt.db.all<{ cfg: string; processed_stage: string; processed_policy: string }>("SELECT cfg,processed_stage,processed_policy FROM live_lane_trades");
     assert.deepEqual(rows.map(r => [r.cfg, r.processed_stage, r.processed_policy]), [[A, "active", policy]]);
   } finally {

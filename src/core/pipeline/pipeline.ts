@@ -476,13 +476,16 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
       ? `${base}|dcaA`
       : kind === "axis"
         ? `${base}|axis`
-        : base;
+        : kind === "block"
+          ? `${base}|blk`
+          : base;
 }
 
 export function kindOfId(id: string): StratKind {
   const core = id.replace(/\|(?:mp|mc|mn|sh|gn|lg|lr)(?=\||$)/g, "");
   if (/\|hx(?:[LS])?[0-4]?$/.test(core)) return "exit";
   if (core.endsWith("|axis")) return "axis";
+  if (core.endsWith("|blk")) return "block";
   if (core.endsWith("|dcaA")) return "dca-active";
   if (core.endsWith("|dca")) return "dca";
   if (/\|to(?:\||$)/.test(core)) return "trailing-only";
@@ -515,7 +518,7 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   const exitFloor = /\|eg([\d.]+)(?=\||$)/.exec(id);
   const ladder = /\|dc([1-4])s([\d.]+)q([\d.]+)g([\d.]+)r([\d.]+)(?:m([\d.]+))?(?=\||$)/.exec(id);
   // Remove each token once; duplicates or malformed tokens remain and fail the strict grammar below.
-  const plainId = id.replace(/\|rc[\d.]+x[\d.]+(?=\||$)/, "").replace(/\|hm[\d.]+(?=\||$)/, "").replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|eg[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?:m[\d.]+)?(?=\||$)/, "");
+  const plainId = id.replace(/\|rc[\d.]+x[\d.]+(?=\||$)/, "").replace(/\|hm[\d.]+(?=\||$)/, "").replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|eg[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?:m[\d.]+)?(?=\||$)/, "").replace(/\|blk(?=\||$)/, "");
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)

@@ -2913,6 +2913,8 @@ export function kindExecutable(kind: StratKind, tg: StrategyToggles): boolean {
       return tg.dca && tg.dcaActive;
     case "axis":
       return tg.axis !== false;
+    case "block":
+      return tg.block === true;
   }
 }
 

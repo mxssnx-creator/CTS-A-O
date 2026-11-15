@@ -256,7 +256,7 @@ export type ExitReason = "tp" | "sl" | "trail" | "time" | "disarm" | "be";
 
 /** Sub-strategy that produced a trade. */
 export type StratKind =
-  "normal" | "trailing" | "trailing-only" | "exit" | "dca" | "dca-active" | "axis";
+  "normal" | "trailing" | "trailing-only" | "exit" | "dca" | "dca-active" | "axis" | "block";
 
 /** Strategy toggles. Intern calculations always cover every kind; toggles only filter execution. */
 export interface StrategyToggles {

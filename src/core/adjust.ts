@@ -39,6 +39,8 @@ const kindOf = (cfg: string): StratKind =>
     ? "exit"
     : cfg.endsWith("|axis")
       ? "axis"
+      : cfg.endsWith("|blk")
+        ? "block"
       : cfg.endsWith("|dcaA")
         ? "dca-active"
         : cfg.endsWith("|dca")
