@@ -5226,3 +5226,43 @@ venue parity and sufficient independent samples remain open. No positive-PF, dep
 The broad core inventory was attempted and remains red on four assertions; all four reproduce on untouched base
 `63c2a1bf` (two Axis 60/90 expectations, one-sided `trailing-only` fixture coverage and incomplete two-sided
 Tactic-DCA fixture activation). They are retained as pre-existing open regressions, not attributed to this adapter.
+
+## 15 November 2026 — causal progression, independent Block/Axis and bounded automatic SL
+
+See [the full verification](verification/independent-block-axis-sl-auto-20261115.md).
+PR284 integrates on current main after PR283. It retains real short lanes with indication-owned warmup,
+refreshes Base-qualified config validation causally after later own settlements, records complete hourly
+denominators and failures, adds explicit capped/settled independent Block predecessors, preserves Axis
+exclusion, and corrects settled funded Block unit-PF/unknown membership accounting. Explicit frozen snapshots
+and actual persistent Active-stage proof stay strict. This is not a raw-candidate live promotion path.
+
+Fresh untouched desks/newly enabled ranges start bounded Auto-SL with the same factory candidates; existing
+saved manual profiles and explicit manual edits remain effective. Standard .25–2.5 step .25/fallback1;
+Micro/Low-Range .2–1.6 step .1/fallback1; Signal Historic1–2 step1/fallback1. These are construction defaults,
+not a proved economic optimum or admission fallback.
+
+Completed offline controlled tests: twelve cached symbols, exactly12h evaluated prehistory +12h trading,
+15 October21:00 through16 October2026 21:00 UTC, no extra indicator history. Default and Ordinary-off
+independent profiles both evaluate3,288/3,288 combos (old source2,099/3,288), build247,037 configs and pass
+77/77 native integrity checks. Initial engine post-Base0/71,976 (0%); hourly eligible engine/Signal cohorts
+0/246,345 (0%) in every one of twelve hours. Passing historical PF and execution PF remain unavailable.
+Funded positions and orders are0 opened/closed/held; balance/equity stay10. No live engine or monitoring starts.
+
+Every own-context tape checksum is audited: maximum62 closes across the entire24h feed, zero Last-75-ready
+contexts. The existing extra range Last-75/PF1.35 and Main/Real/Entry40/12/12 remain unchanged; Axis owns
+at most12 closes. End-of-run sample readiness cannot qualify an earlier entry. Additional75,361 slower-lane
+Signal configs are empty, not new wins. Cost remains0.176% and all effective economic input settings match
+the baseline after removing only new automatic-construction metadata. No profitable preset is promoted.
+The archived November8 settled PF8.30590 used eight symbols, another period,25h extra indicator warmup and
+older pooled/time rules; its final equity was−9.77912. Do not restore it as a viable positive baseline.
+
+Source receipt: ordinary local`eb054161` / published`aee9d23d`, identical tree`e7e1b1cb`; independent
+local`10bb09d9` / published`cb1e829e`, identical tree`61d4a4bd`. Production sources pass all three required
+workflows, including661 policy/new regression checks,118 report/provenance checks, desktop/mobile dev and
+production rendering, Settings save, typecheck and build. The initial local full inventory had5,002 passes,
+four stale failing expectations and three intentional slow skips; all four affected files subsequently pass
+44 targeted checks. Final SL/Signal/settings tests pass56 plus six fresh-default catalog checks.
+
+Compute default/independent1,004.0/986.9s, peak recorded RSS2,388/2,382MiB, worst foreground636/819ms.
+The sub-500ms target, profitable independent market cohorts, stable positive post-Base/execution PF, optimum
+sample counts and complete venue parity remain unestablished. Keep all live engines and monitoring stopped.
