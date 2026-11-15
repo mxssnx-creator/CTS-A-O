@@ -9,6 +9,8 @@ import { RESEARCH_PRESETS } from "./presets.research.ts";
 import { DESK_PRESETS } from "./presets.desk.ts";
 import { LIVE_COORD_PRESETS } from "./presets.live.ts";
 import { MICRO_RANGE, MICRO_SL } from "./minimal-coord.ts";
+import { protectGrid } from "./sim/walkforward.ts";
+import { normalizeLanes } from "./server/runtime.server.ts";
 import { positiveCoordWarnings, SIGNAL_EVAL_MIN_PF } from "./positive.ts";
 
 describe("positive coordinations stay on", () => {
@@ -172,4 +174,11 @@ describe("positive coordinations stay on", () => {
     assert.equal(wf.coord?.s2Steps, undefined);
     assert.equal(wf.coord?.s2Pause, undefined);
   });
+});
+
+it("the default Wide grid is off: no untagged cells and no Wide targets (12 Nov 2026)", () => {
+  // grid.tp empty = the untagged Wide grid builds no cell; the Wide losses of the 24 h session came from its desk settings
+  assert.deepEqual(DEFAULT_SETTINGS.grid.tp, []);
+  const s = normalizeLanes(structuredClone(DEFAULT_SETTINGS));
+  assert.equal(protectGrid(15, s.grid, s.cost).filter((p) => !p.tag).length, 0);
 });
