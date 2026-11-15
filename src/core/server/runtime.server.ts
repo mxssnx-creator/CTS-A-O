@@ -1416,8 +1416,8 @@ export class CoreRuntime {
     const policy = this.wf.processedStages;
     if (!policy) return null;
     const key = JSON.stringify([policy, this.settings.cost]);
-    if (this.processedNative && this.processedNativeKey === key) return this.processedNative;
     if (this.processedNativeError && this.processedNativeKey === key) return null;
+    if (this.processedNative && this.processedNativeKey === key) return this.processedNative;
     try {
       const snapshot = this.processedNative?.snapshot() ?? this.db.kvGet<NativeProcessedSnapshot>("processedNativePaperV1") ?? undefined;
       const adapter = new NativeProcessedStageAdapter(policy, this.settings.cost, snapshot);
@@ -1426,7 +1426,8 @@ export class CoreRuntime {
       this.processedNativeKey = key;
       this.processedNativeError = null;
       if (missing) this.db.event("warn", `native processed stages: ${missing} checkpoint parent(s) had no paper position; retained as unknown`);
-      this.persistNativeProcessedStages();
+      if (!this.persistNativeProcessedStages())
+        throw new Error(this.processedNativeError ?? "native processed-stage checkpoint unavailable");
       return adapter;
     } catch (err) {
       this.processedNative = null;
@@ -1437,8 +1438,17 @@ export class CoreRuntime {
     }
   }
 
-  private persistNativeProcessedStages(): void {
-    if (this.processedNative) this.db.kvSet("processedNativePaperV1", this.processedNative.snapshot());
+  private persistNativeProcessedStages(): boolean {
+    if (!this.processedNative) return false;
+    if (!this.db.hasStateStore()) {
+      this.processedNativeError = "durable checkpoint unavailable: no restart state store configured";
+      this.db.event("error", `native processed stages unavailable: ${this.processedNativeError}`);
+      return false;
+    }
+    if (this.db.kvSetDurableNow("processedNativePaperV1", this.processedNative.snapshot())) return true;
+    this.processedNativeError = `durable checkpoint unavailable: ${this.db.lastStateError || "unknown state error"}`;
+    this.db.event("error", `native processed stages unavailable: ${this.processedNativeError}`);
+    return false;
   }
 
   /** Current loop generation (live steps abort when it changes). */
@@ -10236,14 +10246,17 @@ export class CoreRuntime {
       }
       let processedStage = prev?.processedStage;
       if (!held && this.wf.processedStages) {
-        if (!nativeStages) {
+        if (!nativeStages || this.processedNativeError) {
           pSkip(`${pre}exec:processedUnavailable`);
           continue;
         }
         try {
           const minProcessedPf = Math.max(this.wf.lastNMinPf, minPfForTape(tp, this.wf));
           processedStage = nativeStages.enter(tp, op.sym, op.side > 0 ? 1 : -1, op.entryT, minProcessedPf).stage;
-          this.persistNativeProcessedStages();
+          if (!this.persistNativeProcessedStages()) {
+            pSkip(`${pre}exec:processedUnavailable`);
+            continue;
+          }
         } catch (err) {
           this.db.event("error", `native processed-stage admission failed: ${err instanceof Error ? err.message : err}`);
           pSkip(`${pre}exec:processedUnavailable`);

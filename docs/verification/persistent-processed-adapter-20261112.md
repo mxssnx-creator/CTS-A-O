@@ -23,7 +23,8 @@ The missing bridge is implemented on current main as an opt-in, fail-closed poli
   parents and does not reclassify or orphan held protection.
 - Exact terminal paper parents settle once. Partial-parent accounting remains in `ProcessedSetBook` snapshot v3; the
   adapter adds a bounded recent terminal-parent receipt list so checkpoint replay is idempotent.
-- The adapter checkpoint is journaled under `processedNativePaperV1`. On restart, a checkpoint parent with no matching
+- The adapter checkpoint is atomically written to the restart state under `processedNativePaperV1` before admission
+  continues. A missing or configured-but-unwritable state store fails closed. On restart, a checkpoint parent with no matching
   paper position is retained as an unknown terminal result, never converted to a win or silently discarded. A malformed
   checkpoint makes native stage admission unavailable rather than starting a clean book.
 - Pending Entries and Overall control both use the same exact paper entry-stage gate through `livePromotionGate`; existing
@@ -46,7 +47,10 @@ market fixture does not activate every Tactic-DCA cell on both sides. The same f
 exact base `63c2a1bf`; they were not introduced by this adapter. They remain visible work rather than being skipped or
 rewritten as an adapter pass.
 
-This is not the whole #219 draft. A separate persistent venue-own-stage ledger, partial-fill/restart correlation,
+This is not the whole #219 draft. The 15 November follow-up repairs a publication mismatch: the key was present in
+SQLite but had been omitted from the actual restart-state allowlist, so a crash before the next database snapshot could
+lose it. The new immediate atomic checkpoint and unwritable-store regression close that paper-parent durability gap.
+A separate persistent venue-own-stage ledger, partial-fill/restart correlation,
 Settings/UI controls, full repository CI, a fresh bounded twelve-symbol x02 forward run, venue-return parity, and
 sufficient independent forward samples remain required before any live or profitability conclusion. The current
 paper checkpoint must not be described as venue-stage proof.
