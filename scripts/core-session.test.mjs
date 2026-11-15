@@ -194,12 +194,17 @@ describe("session CLI sidecar replay preserves complete evidence", () => {
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     const raw = sidecarReplayRaw();
     raw.engine.signalSteps = [{ t: H, keys: [raw.trades[0].cfg, raw.trades[1].cfg] }, { t: H + M, keys: [] }];
+    raw.signalProgress = { version: 3, definitions: { configured: 'Complete own Signal catalog' },
+      configs: [{ id: 'same-币', r: -1e-12 }, { id: 'same-币', r: 0.01 }],
+      requestedConfigs: [{ requestedId: 'raw-a', effectiveId: 'same-币' }, { requestedId: 'raw-b', effectiveId: 'same-币' }] };
     const legacy = join(dir, "legacy.json"), chunked = join(dir, "chunked.json");
     writeFileSync(legacy, JSON.stringify(raw));
     await writeSessionDump(chunked, raw, { maxChunkBytes: 256 });
     const physical = JSON.parse(readFileSync(chunked, "utf8"));
     assert.deepEqual(physical.tapeTrades, []);
     assert.deepEqual(physical.validation, []);
+    assert.deepEqual(physical.signalProgress.configs, []);
+    assert.equal(physical.signalProgressSidecars.configs.items, 2);
     assert.equal(physical.validationSidecar.steps, 2);
     assert.equal(physical.validationSidecar.rows, 32);
     assert.ok(physical.validationSidecar.chunks.length > 2);
@@ -236,6 +241,8 @@ describe("session CLI sidecar replay preserves complete evidence", () => {
     const rewrittenHeader = JSON.parse(readFileSync(rewritten, "utf8"));
     assert.equal(rewrittenHeader.validationSidecar.rows, 32);
     assert.equal(rewrittenHeader.arraySidecars.trades.items, 2);
+    assert.equal(rewrittenHeader.signalProgressSidecars.configs.items, 2);
+    assert.equal(rewrittenHeader.signalProgressSidecars.requestedConfigs.items, 2);
 
     const allocationDir = join(dir, "allocation-chunks");
     const allocationRun = sidecarReplayCli(chunked, allocationDir, undefined, { chunkAllocations: true });

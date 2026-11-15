@@ -54,6 +54,8 @@ jobs:
           node --require ./scripts/lib/core-test-offline-guard.cjs --test
           scripts/test-core.test.mjs scripts/core-session.test.mjs
           scripts/lib/live-desk-audit.test.mjs scripts/core-block-comparison.test.mjs
+          scripts/lib/session-signal-progress-sidecar.test.mjs scripts/lib/session-dump.test.mjs
+          scripts/session-dump-consumers.test.mjs scripts/session-funded-cohort.test.mjs
       - run: npm run build
   render:
     runs-on: ubuntu-24.04

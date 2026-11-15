@@ -36,7 +36,8 @@ test("Signal report reader preserves funded long/short cohorts and physical prov
     const input = join(dir, mode); mkdirSync(input);
     for (const [name, data] of Object.entries(sample)) {
       const file = join(input, `${name}.json`);
-      if (mode === "chunked" && name !== "protocol") await writeSessionDump(file, data, { maxChunkBytes: 512, arrayFields: name === "raw" ? ["trades"] : ["sizedOrders", "sizedOpenOrders"] });
+      // Complete Signal config rows are now sidecars too; one fixture row is 1,922 bytes.
+      if (mode === "chunked" && name !== "protocol") await writeSessionDump(file, data, { maxChunkBytes: 2048, arrayFields: name === "raw" ? ["trades"] : ["sizedOrders", "sizedOpenOrders"] });
       else writeFileSync(file, JSON.stringify(data));
     }
     const report = await main(["--raw", join(input, "raw.json"), "--book", join(input, "book.json"), "--protocol", join(input, "protocol.json"), "--out", join(input, "out")]);
@@ -57,7 +58,7 @@ test("Signal report verifies even unloaded raw validation sidecars before publis
   const dir = mkdtempSync(join(tmpdir(), "cts-signal-report-corrupt-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const { raw, book, protocol } = readerFixture(), file = join(dir, "raw.json");
-  await writeSessionDump(file, raw, { maxChunkBytes: 512, arrayFields: ["trades"] });
+  await writeSessionDump(file, raw, { maxChunkBytes: 2048, arrayFields: ["trades"] });
   writeFileSync(join(dir, "book.json"), JSON.stringify(book)); writeFileSync(join(dir, "protocol.json"), JSON.stringify(protocol));
   const manifest = JSON.parse(readFileSync(file, "utf8")), chunk = join(dir, manifest.validationSidecar.chunks[0].path);
   writeFileSync(chunk, readFileSync(chunk, "utf8") + "\n");

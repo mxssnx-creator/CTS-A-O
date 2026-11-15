@@ -22,7 +22,8 @@ it("builds exact frozen-case commands without silently enabling sources or chang
   const settings = JSON.parse(value("--settings"));
   assert.equal(settings.focus.length, 32); assert.ok(settings.focus.every((x) => /@m15c?$/.test(x)));
   assert.equal(settings.grid.baseTrailCells, true); assert.deepEqual(settings.gates, p.gates);
-  assert.deepEqual(settings, rangeStudyIdentityUniverse(p, profile).settings);
+  // The CLI transports JSON: optional undefined fields have no serialized representation.
+  assert.deepEqual(settings, JSON.parse(JSON.stringify(rangeStudyIdentityUniverse(p, profile).settings)));
   assert.ok(args.includes("--dump-only") && args.includes("--signal-progress") && args.includes("--tape-trades"));
 });
 it("applies every serialized full profile to a stopped real runtime with the sealed settings/WF identity", () => {

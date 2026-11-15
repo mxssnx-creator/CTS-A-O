@@ -1,3 +1,30 @@
+## 2026-11-15 — completed twelve-symbol replay and lossless Signal detail storage
+
+The exact PR279 tree `78cf4ac4caa4c89806f9470fded86a2e717f9e23` completed the full
+twelve-symbol / twelve-hour forward replay in 2,935.838s. It is a retrospective
+72h physical feed with 12h evaluated prehistory; independent 150h Signal fitting
+is not certified. Post-Base run-start validation at 2026-10-16 09:00 UTC is
+0/153,298 ordinary configs (0%), all insufficient closes; historical passing PF
+and modeled execution PF are unavailable. Funded modeled positions/orders are
+0 opened / 0 settled / 0 held, zero unknown allocations. Base pair acceptance,
+separately, is 318/2,404. No venue test or account write occurred. Ordinary,
+Trailing, Exit, Block and DCA were on; Axis and Active variants were off.
+
+The completed raw header was 635,271,931 bytes and the normal reader failed
+with `Invalid string length`. This continuation chunks both complete Signal
+catalogs, preserves default/selected/streamed reads and re-export, and verifies
+unused evidence before ordinary report publication. Same-run conversion keeps
+the original hash, every metadata value and all ordered details: 174,369
+effective and 207,740 requested rows; 331,423 tapes / 22,326,422 history rows.
+The portable header is 3,828,347 bytes and the exact same report renders with
+77/77 integrity checks. These are not positive PF or live-acceptance counts.
+
+See `docs/verification/signal-progress-sidecars-20261115.md` for prior failures,
+fixtures, source scope and remaining checks. Preserve all prior losses, the
+original/portable headers and every referenced chunk; the portable header shares
+the original tape chunks. Local Chromium is unavailable. Required exact-head CI
+and the final frozen script inventory are separate publication evidence.
+
 ## 2026-11-15 — count Signal cache correctness and bounded history reuse
 
 Continuation starts at `e462ce19b58ba59bd6caeb6eab416ab03aa56a3c`. A current-source bounded Real CPU diagnostic

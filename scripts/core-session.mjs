@@ -51,6 +51,7 @@ import { closesIn } from "./lib/candles.mjs";
 import { captureSignalProgress } from "./lib/signal-progress.mjs";
 import {
   iterateSessionTapeTrades,
+  iterateSessionArray,
   iterateSessionValidation,
   readSessionDump,
   writeJsonFile,
@@ -1644,7 +1645,8 @@ const raw = replay
   ? await readSessionDump(replay, {
       loadTapeTrades: false,
       loadValidation: false,
-      verifyUnloaded: ["validation"],
+      loadSignalProgress: false,
+      verifyUnloaded: ["validation", "signalProgress"],
     })
   : await runEngine();
 // Older session dumps counted only pipeline S1 in the coverage total, even though Signal Exit's
@@ -1696,15 +1698,23 @@ if (arg("dump")) {
   delete output.tapeTradesSidecar;
   delete output.validationSidecar;
   delete output.arraySidecars;
+  delete output.signalProgressSidecars;
   const stored = await writeSessionDump(arg("dump"), output, {
     arrayFields: ["trades"],
     ...(raw.tapeTradesSidecar ? { tapeTrades: iterateSessionTapeTrades(tapeSourceFile) } : {}),
     ...(raw.validationSidecar ? { validation: iterateSessionValidation(tapeSourceFile) } : {}),
+    ...(raw.signalProgressSidecars ? { signalProgress: Object.fromEntries(
+      Object.keys(raw.signalProgressSidecars).map((field) => [field, iterateSessionArray(tapeSourceFile, `signalProgress.${field}`)]),
+    ) } : {}),
   });
   raw.tapeTrades = [];
   raw.validation = [];
   raw.tapeTradesSidecar = stored.tapeTradesSidecar;
   raw.validationSidecar = stored.validationSidecar;
+  if (stored.signalProgressSidecars) {
+    raw.signalProgress = { ...raw.signalProgress, configs: [], requestedConfigs: [] };
+    raw.signalProgressSidecars = stored.signalProgressSidecars;
+  }
   tapeSourceFile = arg("dump");
   // --dump-only: the raw session is the product (the evaluation runs read the trades and stop); no report is rendered
   if (flag("dump-only")) process.exit(0);
