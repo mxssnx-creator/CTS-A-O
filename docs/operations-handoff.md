@@ -1,3 +1,28 @@
+## 2026-11-15 — old PR #219 paper checkpoint durability follow-up
+
+This continuation is based on exact current `main` `1cf7742d329e01a0a859bae4c3026da026964468`
+(tree `61ac3e39151a481702c5f7ad4207460c9d6a7857`). The native processed paper adapter published through
+PR #265 wrote `processedNativePaperV1` to SQLite, but the key was missing from the restart-state allowlist.
+An admitted parent could therefore disappear after a process loss before the next periodic database snapshot,
+contrary to the earlier persistence wording.
+
+The key is now restart-durable and every new processed paper admission synchronously publishes the complete
+atomic state checkpoint before it may continue. A missing state store or a configured store that cannot write
+or rename fails closed and remains fenced for the process; it is not relabeled as a clean or persistent book.
+A fresh database/process can read an open parent immediately without waiting for a SQLite snapshot. Exact scope,
+reproduction and limits are in `docs/verification/old-pr-219-durable-paper-checkpoint-20261115.md`.
+
+Local verification on this source: 144 stage/runtime checks, 315 durability regression checks, 18 strategy-feature
+checks, three Last-N Block checks and the focused 21 adapter/admission/journal checks pass. Typecheck and the complete
+development/core-worker build pass. Scoped ESLint reports zero errors and five pre-existing warnings. No x01/x02
+account, order, position or deployment was changed. Current-policy post-Base PF, venue PF and forward profitability
+remain unavailable; historical losses and all earlier failed attempts remain unchanged.
+
+This closes only the paper-parent checkpoint gap. A separate persistent venue-own-stage ledger, venue partial-fill
+and restart correlation, Active-to-Live fill proof, Settings/UI controls, fresh twelve-symbol x02 forward acceptance,
+venue-return parity and sufficient independent samples remain open in old draft #219. Do not close that draft or
+describe this checkpoint correction as venue-stage or profitability proof.
+
 ## 2026-11-12 — Block attribution integration
 
 PR #257 combines the pending eligible-source Block correction and 72-hour ordinary prehistory default with main after #259. Exact configuration windows, fine grids, immutable execution ownership, comparison data and saved history overrides are preserved. Unit-sized entries do not generate raised-source recovery, pause or auto-window samples. Existing persisted Block state is retained without retroactive rewriting. See `docs/verification/block-attribution-72h-20261110.md` and the PR for source-specific checks. Combined-source post-Base return PF, passed/evaluated market validation and venue PF are unavailable; this is a source merge without a deployment or exchange mutation.

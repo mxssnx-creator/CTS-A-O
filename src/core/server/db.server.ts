@@ -355,6 +355,18 @@ export class CoreDb {
     this.kvWrite(k, v);
     if (isDurableKey(k)) this.persistState();
   }
+  /**
+   * Write a restart-critical key and synchronously publish the complete atomic
+   * state file before the caller may perform the action it protects.
+   *
+   * Memory-only test databases still succeed. A configured store that cannot
+   * be written stays failed through `lastStateError`; callers must fail closed.
+   */
+  kvSetDurableNow(k: string, v: unknown): boolean {
+    if (!isDurableKey(k)) throw new Error(`key is not restart-durable: ${k}`);
+    this.kvWrite(k, v);
+    return this.flushState();
+  }
   private kvWrite(k: string, v: unknown) {
     this.run(
       "INSERT INTO kv (k, v, at) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, at = excluded.at",
@@ -570,6 +582,7 @@ const DURABLE_KEYS = new Set([
   "liveOwnershipAccount",
   "liveBoundedSince",
   "controlSuppressed",
+  "processedNativePaperV1",
   "hostSettingsApplied",
   "stopHits",
   "connsEnabled",

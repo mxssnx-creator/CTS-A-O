@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "../config.ts";
 import type { OpenPosition, Trade } from "../domain/types.ts";
@@ -13,7 +16,8 @@ const CFG = "follow|rsi-mom-14-25@m15|tp2.6|sl3.9|tr0|h32|sh";
 const HELD = "follow|ema-9-21@m15|tp2.6|sl3.9|tr0|h32|mn";
 
 for (const mode of ["full", "fast"] as const) test(`${mode}: native stage policy persists predecessor admission and preserves held protection`, () => {
-  const db = new CoreDb(":memory:");
+  const dir = mkdtempSync(join(tmpdir(), "cts-processed-admission-"));
+  const db = new CoreDb(":memory:", { statePath: join(dir, "state.json") });
   const rt = new CoreRuntime(db, { gates: { positionWindows:null,minTrades: 1 }, live: { liveLastN: 0 } },
     { market: "synthetic", priceStream: null });
   rt.stop();
@@ -59,5 +63,5 @@ for (const mode of ["full", "fast"] as const) test(`${mode}: native stage policy
     hooks.coordOf = () => null;
     assert.deepEqual(rt.pendingEntries(), []);
     assert.equal(rt.status.paperSkips?.["pending:liveValidation"], 1);
-  } finally { rt.dispose(); db.db.close(); }
+  } finally { rt.dispose(); db.db.close(); rmSync(dir, { recursive: true, force: true }); }
 });
