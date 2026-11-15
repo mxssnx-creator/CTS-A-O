@@ -10,7 +10,8 @@ const TAPE_SCHEMA = 'cts-session-tape-trades-v1';
 const VALIDATION_SCHEMA = 'cts-session-validation-v2';
 const ARRAY_SCHEMA = 'cts-session-array-v1';
 const SIGNAL_STEPS_SCHEMA = 'cts-session-signal-steps-v1';
-const RESERVED_ARRAY_FIELDS = new Set(['tapeTrades', 'validation', 'arraySidecars', 'tapeTradesSidecar', 'validationSidecar', 'signalStepsSidecar', 'engine.signalSteps', '__proto__', 'constructor', 'prototype']);
+const SIGNAL_PROGRESS_FIELDS = ['configs', 'requestedConfigs'];
+const RESERVED_ARRAY_FIELDS = new Set(['tapeTrades', 'validation', 'arraySidecars', 'tapeTradesSidecar', 'validationSidecar', 'signalStepsSidecar', 'signalProgressSidecars', 'engine.signalSteps', '__proto__', 'constructor', 'prototype']);
 const own = (x, k) => Object.prototype.hasOwnProperty.call(x, k);
 const count = (x) => Number.isSafeInteger(x) && x >= 0;
 const digest = (x) => createHash('sha256').update(x).digest('hex');
@@ -159,7 +160,10 @@ export const writeValidationSidecar = (file, steps, options = {}) => writeSideca
 export async function writeSessionDump(file, raw, options = {}) {
   chunkLimit(options.maxChunkBytes);
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new TypeError('Session dump must be an object');
-  if (raw.tapeTradesSidecar || raw.validationSidecar || raw.signalStepsSidecar || raw.arraySidecars) throw new Error('Hydrate existing sidecars before rewriting a dump');
+  if (raw.tapeTradesSidecar || raw.validationSidecar || raw.signalStepsSidecar || raw.signalProgressSidecars || raw.arraySidecars) throw new Error('Hydrate existing sidecars before rewriting a dump');
+  if (options.signalProgress !== undefined && (!options.signalProgress || typeof options.signalProgress !== 'object' ||
+      Array.isArray(options.signalProgress) || Object.keys(options.signalProgress).some((k) => !SIGNAL_PROGRESS_FIELDS.includes(k))))
+    throw new Error('Invalid Signal progress stream fields');
   const fields = options.arrayFields ?? [];
   if (!Array.isArray(fields) || new Set(fields).size !== fields.length || fields.some((field) => typeof field !== 'string' ||
       RESERVED_ARRAY_FIELDS.has(field)))
@@ -167,6 +171,22 @@ export async function writeSessionDump(file, raw, options = {}) {
   const header = { ...raw };
   const made = [];
   try {
+    // The complete requested/effective Signal catalogs exceeded V8's string limit in a real 12-symbol dump.
+    // Keep metadata inline and every ordered detail row in bounded, checksummed chunks.
+    if (options.signalProgress !== undefined || SIGNAL_PROGRESS_FIELDS.some((k) => Array.isArray(raw.signalProgress?.[k]))) {
+      if (!raw.signalProgress || typeof raw.signalProgress !== 'object' || Array.isArray(raw.signalProgress))
+        throw new Error('Missing Signal progress metadata');
+      header.signalProgress = { ...raw.signalProgress };
+      header.signalProgressSidecars = Object.create(null);
+      for (const field of SIGNAL_PROGRESS_FIELDS) {
+        if (!Array.isArray(raw.signalProgress[field]) && !own(options.signalProgress ?? {}, field)) continue;
+        const manifest = await writeSidecar(file, own(options.signalProgress ?? {}, field)
+          ? options.signalProgress[field] : raw.signalProgress[field], {
+          ...options, rowsKey: null, schema: ARRAY_SCHEMA, itemName: 'items', tag: 'i',
+        });
+        made.push(manifest); header.signalProgressSidecars[field] = manifest; header.signalProgress[field] = [];
+      }
+    }
     // Minute qualification keys can exceed the entire tape metadata header.
     // Split even one very large clock across chunks, preserving every key and
     // empty clock without mutating the caller's engine snapshot.
@@ -196,7 +216,8 @@ export async function writeSessionDump(file, raw, options = {}) {
       }
     }
     const result = await writeJsonFile(file, header);
-    return { ...result, tapeTradesSidecar: header.tapeTradesSidecar, validationSidecar: header.validationSidecar, arraySidecars: header.arraySidecars };
+    return { ...result, tapeTradesSidecar: header.tapeTradesSidecar, validationSidecar: header.validationSidecar,
+      signalProgressSidecars: header.signalProgressSidecars, arraySidecars: header.arraySidecars };
   } catch (error) {
     // Only remove directories created by this attempted write; an existing header
     // and its referenced sidecars remain intact after a later serialization error.
@@ -283,12 +304,28 @@ async function headerOf(file) {
   if (raw.arraySidecars !== undefined && (!raw.arraySidecars || typeof raw.arraySidecars !== 'object' || Array.isArray(raw.arraySidecars) ||
       Object.keys(raw.arraySidecars).some((field) => RESERVED_ARRAY_FIELDS.has(field))))
     throw new Error('Invalid or reserved flat array sidecar field');
+  if (raw.signalProgressSidecars !== undefined) {
+    if (!raw.signalProgressSidecars || typeof raw.signalProgressSidecars !== 'object' || Array.isArray(raw.signalProgressSidecars) ||
+        !raw.signalProgress || typeof raw.signalProgress !== 'object' || Array.isArray(raw.signalProgress) ||
+        Object.keys(raw.signalProgressSidecars).some((field) => !SIGNAL_PROGRESS_FIELDS.includes(field) ||
+          !Array.isArray(raw.signalProgress[field]) || raw.signalProgress[field].length !== 0))
+      throw new Error('Invalid Signal progress sidecar fields or inline details');
+    for (const manifest of Object.values(raw.signalProgressSidecars)) descriptor(manifest, arraySpec);
+  }
   return raw;
 }
 
 /** Iteration preserves duplicate config IDs, empty items and exact global order. */
 export async function* iterateSessionArray(file, field) {
   const raw = await headerOf(file);
+  if (field.startsWith('signalProgress.')) {
+    const key = field.slice('signalProgress.'.length);
+    if (!SIGNAL_PROGRESS_FIELDS.includes(key)) throw new Error('Invalid Signal progress array field');
+    const manifest = raw.signalProgressSidecars?.[key];
+    if (manifest) yield* readSidecar(file, manifest, arraySpec);
+    else for (const row of raw.signalProgress?.[key] ?? []) yield row;
+    return;
+  }
   const manifest = field === 'engine.signalSteps' ? raw.signalStepsSidecar : field === 'tapeTrades' ? raw.tapeTradesSidecar : field === 'validation' ? raw.validationSidecar : raw.arraySidecars?.[field];
   if (!manifest) { for (const x of (field === 'engine.signalSteps' ? raw.engine?.signalSteps : raw[field]) ?? []) yield x; return; }
   const spec = field === 'engine.signalSteps' ? signalStepsSpec : field === 'tapeTrades' ? tapeSpec : field === 'validation' ? validationSpec : arraySpec;
@@ -304,10 +341,12 @@ export async function verifySessionDumpSidecars(file, options = {}) {
     ['engine.signalSteps', raw.signalStepsSidecar, signalStepsSpec],
     ['tapeTrades', raw.tapeTradesSidecar, tapeSpec],
     ['validation', raw.validationSidecar, validationSpec],
+    ...Object.entries(raw.signalProgressSidecars ?? {}).map(([field, manifest]) => [`signalProgress.${field}`, manifest, arraySpec]),
     ...Object.entries(raw.arraySidecars ?? {}).map(([field, manifest]) => [field, manifest, arraySpec]),
   ];
   for (const [field, manifest, spec] of manifests) {
-    if (!manifest || (options.fields && !options.fields.includes(field))) continue;
+    if (!manifest || (options.fields && !options.fields.includes(field) &&
+        !(field.startsWith('signalProgress.') && options.fields.includes('signalProgress')))) continue;
     for await (const _ of readSidecar(file, manifest, spec)) { /* validation requires full exhaustion */ }
     verified[field] = { ...manifest, bytes: manifest.chunks.reduce((n, x) => n + x.bytes, 0) };
   }
@@ -320,6 +359,7 @@ export async function removeSessionDump(file) {
   for (const [manifest, spec] of [
     [raw.signalStepsSidecar, signalStepsSpec],
     [raw.tapeTradesSidecar, tapeSpec], [raw.validationSidecar, validationSpec],
+    ...Object.values(raw.signalProgressSidecars ?? {}).map((m) => [m, arraySpec]),
     ...Object.values(raw.arraySidecars ?? {}).map((m) => [m, arraySpec]),
   ]) {
     if (!manifest) continue;
@@ -337,9 +377,25 @@ export async function removeSessionDump(file) {
 /** Default hydration returns the legacy flat shape. Projection retains unloaded manifests. */
 export async function readSessionDump(file, options = {}) {
   const raw = await headerOf(file);
-  const want = (field) => options.loadSidecars !== false && (!options.fields || options.fields.includes(field)) &&
-    !(field === 'tapeTrades' && options.loadTapeTrades === false) && !(field === 'validation' && options.loadValidation === false);
-  const verifyUnloaded = (field) => options.verifyUnloaded === true || (Array.isArray(options.verifyUnloaded) && options.verifyUnloaded.includes(field));
+  const progressField = (field) => field.startsWith('signalProgress.');
+  const selected = (fields, field) => fields.includes(field) || (progressField(field) && fields.includes('signalProgress'));
+  const want = (field) => options.loadSidecars !== false && (!options.fields || selected(options.fields, field)) &&
+    !(field === 'tapeTrades' && options.loadTapeTrades === false) && !(field === 'validation' && options.loadValidation === false) &&
+    !(progressField(field) && options.loadSignalProgress === false);
+  const verifyUnloaded = (field) => options.verifyUnloaded === true || (Array.isArray(options.verifyUnloaded) && selected(options.verifyUnloaded, field));
+  if (raw.signalProgressSidecars) {
+    for (const [key, manifest] of Object.entries(raw.signalProgressSidecars)) {
+      const field = `signalProgress.${key}`;
+      if (!want(field)) {
+        if (verifyUnloaded(field)) for await (const _ of readSidecar(file, manifest, arraySpec)) { /* verify without retaining catalog */ }
+        continue;
+      }
+      const values = [];
+      for await (const item of readSidecar(file, manifest, arraySpec)) values.push(item);
+      raw.signalProgress[key] = values; delete raw.signalProgressSidecars[key];
+    }
+    if (!Object.keys(raw.signalProgressSidecars).length) delete raw.signalProgressSidecars;
+  }
   if (raw.signalStepsSidecar) {
     if (want('engine.signalSteps')) {
       const values = [];
