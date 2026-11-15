@@ -1,3 +1,4 @@
+import { slRatiosOf } from "./sl-ratios.ts";
 import { FINE_SL_TP_RATIOS, FINE_TRAIL_RATIOS, SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
 import { stepPfFloor } from "./step-pf.ts";
 /**
@@ -307,7 +308,7 @@ export function coordVariants(holdN: number, range: CoordRange | false | undefin
   if (!range) return 0;
   const hold = range.holdAuto ? range.holdCandidatesMin ? rangeHolds(range, []).length : holdN || 1 :
     range.maxHoldMin != null && range.maxHoldMin > 0 ? 1 : holdN || 1;
-  return range.tp.length * range.slOfTp.length * range.trailOfTp.length * hold;
+  return range.tp.length * slRatiosOf(range).length * range.trailOfTp.length * hold;
 }
 
 /** Emit every minimal, short, general and long cell. Trailing cells use at least trailSlOfTp. */
@@ -336,7 +337,7 @@ export function forEachCoord(
     const minTrail = range.minTrail ?? g.minTrail;
     const trailStop = range.trailSlOfTp ?? 2;
     for (const tp of range.tp)
-      for (const k of range.slOfTp)
+      for (const k of slRatiosOf(range))
         for (const tr of range.trailOfTp)
           for (const h of rangeHolds(range, g.holdH))
             emit(tp, tr > 0 ? Math.max(k, trailStop) : k, tr, h, minSl, minTrail, tag, range.minSlEval);
@@ -396,7 +397,7 @@ export function forEachMicro(
   const minSl = net ?? range.minSl ?? 0.001;
   const minTrail = range.minTrail ?? 0.0005;
   for (const tp of [...new Set(microNetTps(range, cost).map((x) => microPriceTp(x, range, cost)))])
-    for (const k of range.slOfTp)
+    for (const k of slRatiosOf(range))
       for (const tr of range.trailOfTp)
         for (const h of rangeHolds(range, g.holdH)) emit(tp, k, tr, h, minSl, minTrail, net ?? range.minSlEval);
 }

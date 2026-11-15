@@ -1,3 +1,4 @@
+import { checkAutoSlRatios } from "./sl-ratios.ts";
 import { checkPositionWindows } from "./position-windows.ts";
 import { lowRangeHolds } from "./indications/low-range.ts";
 import { rangeHolds } from "./minimal-coord.ts";
@@ -425,9 +426,9 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       throw new Error("block retain until net: on / off");
     if (
       s.block.historySource !== undefined &&
-      !["accepted-orders", "real-candidates"].includes(s.block.historySource)
+      !["accepted-orders", "processed-orders", "real-candidates"].includes(s.block.historySource)
     )
-      throw new Error("block history source: accepted-orders or real-candidates");
+      throw new Error("block history source: accepted-orders, processed-orders or real-candidates");
     num(s.block.maxLevel, 1, 12, "block max level");
     num(s.block.minActiveLevel, 1, 12, "block active level");
     num(s.block.maxMult, 1, MAX_EXTERNAL_STACK, "block max multiple (stack ≤ 8×)");
@@ -682,6 +683,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     // the wide grid may be empty (the position-cost ranges cover its targets)
     if (!(Array.isArray(s.grid.tp) && s.grid.tp.length === 0))
       list(s.grid.tp, 0.002, 0.2, "grid TP");
+    if (s.grid.slAuto !== undefined) checkAutoSlRatios(s.grid.slAuto);
     list(s.grid.slOfTp, SL_TP_MIN, SL_TP_MAX, "grid SL×TP");
     list(s.grid.trailOfTp, 0, 1, "grid trail share");
     list(s.grid.holdH, 0.25, 72, "grid hold");
@@ -708,6 +710,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
         holdAuto?: unknown;
         holdCandidatesMin?: unknown;
       };
+      const auto = (r as { slAuto?: unknown }).slAuto;
+      if (auto !== undefined) checkAutoSlRatios(auto, name === "micro" ? 24 : 64);
       volumeFactor(g.volumeFactor, `${name} volume factor`);
       // 0.2 like the stop ratios: General / Long trail at every stop of their 0.25–1.5 ladder (13 Oct)
       num(g.trailSlOfTp, 0.2, 5, `${name} trailing stop ×TP`);
@@ -777,6 +781,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     range(long, "long");
     const lowRange = s.grid.lowRange;
     if (lowRange !== undefined) {
+      if (lowRange?.slAuto !== undefined) checkAutoSlRatios(lowRange.slAuto);
       if (!lowRange || typeof lowRange !== "object" || Array.isArray(lowRange))
         throw new Error("Low-Range: settings object required");
       if (lowRange.enabled !== undefined && typeof lowRange.enabled !== "boolean")
@@ -927,6 +932,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       throw new Error("range seats: on / off");
   }
   if (s.signals) {
+    if (s.signals.normal?.slAuto !== undefined) checkAutoSlRatios(s.signals.normal.slAuto);
+    if (s.signals.hist?.slAuto !== undefined) checkAutoSlRatios(s.signals.hist.slAuto);
     const g = s.signals;
     const bool = (v: unknown, name: string) => {
       if (v !== undefined && typeof v !== "boolean") throw new Error(`${name}: on / off`);

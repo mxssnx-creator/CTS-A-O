@@ -280,7 +280,7 @@ describe("independent Exit preset backtests", { timeout: 180_000 }, () => {
         }),
     );
 
-  it("executes a sparse 30m Exit focus even when its ordinary lane is not initialized", async () =>
+  it("executes a sparse 30m Exit focus independently while retaining the short ordinary lane", async () =>
     withWorkers(false, async () => {
       const { rt, p, columns, end } = fixture(0.0008);
       p.settings.tfs = [1, 30];
@@ -302,8 +302,8 @@ describe("independent Exit preset backtests", { timeout: 180_000 }, () => {
       );
       assert.equal(
         ordinary.bars.some((b) => b.tfMin === 30),
-        false,
-        "96 ordinary 30m bars cannot initialize an indication",
+        true,
+        "a short lane is retained; each indication enforces its own warmup",
       );
       let actual: WalkForwardResult | undefined;
       const original = inner(rt).sliced.bind(rt);

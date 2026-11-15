@@ -1,3 +1,4 @@
+import { mergeSlRatioSettings, slRatiosOf } from "./sl-ratios.ts";
 import { RT_COST } from "./model-cost.ts";
 import { SL_TP_RATIOS, SL_TP_MIN, SL_TP_MAX, minimumStopFraction } from "./protection-policy.ts";
 // Signals processing settings and sources (pure, no engine imports: shared by the engine, config and the UI).
@@ -569,6 +570,7 @@ export interface SignalHistTrail {
   trailOfTp: number[];
   /** stop as a multiple of the target (0.25–5) */
   slOfTp: number[];
+  slAuto?: import("./sl-ratios.ts").AutoSlRatios;
   /** historic entries a signal needs before it gets its own configs (pooled over symbols and sides) */
   minN: number;
   /** hours of history before each window's start the historic entries come from (0 = the whole history) */
@@ -591,7 +593,7 @@ export interface SignalSettings {
   rangeVolumeFactors: { short: number; medium: number };
   /** timeframe lanes signals run on (of the engine's lanes) */
   lanes: number[];
-  normal: { tp: number[]; slOfTp: number[] };
+  normal: { tp: number[]; slOfTp: number[]; slAuto?: import("./sl-ratios.ts").AutoSlRatios };
   trailing: { tp: number[]; trailOfTp: number[]; slOfTp: number };
   /** Additional independent sets with a hard stop and peak trail, without any take-profit. 15m reference. */
   trailingOnly: { enabled: boolean; sl: number[]; trail: number[]; trailStep: number };
@@ -847,14 +849,14 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     ...(s ?? {}),
     ranges: { ...DEFAULT_SIGNALS.ranges, ...(s?.ranges ?? {}) },
     rangeVolumeFactors: { ...DEFAULT_SIGNALS.rangeVolumeFactors, ...(s?.rangeVolumeFactors ?? {}) },
-    normal: { ...DEFAULT_SIGNALS.normal, ...(s?.normal ?? {}) },
+    normal: mergeSlRatioSettings(DEFAULT_SIGNALS.normal, s?.normal),
     trailing: { ...DEFAULT_SIGNALS.trailing, ...(s?.trailing ?? {}) },
     trailingOnly: { ...DEFAULT_SIGNALS.trailingOnly, ...(s?.trailingOnly ?? {}) },
     atr: {
       ...DEFAULT_SIGNALS.atr,
       ...(s?.atr ?? {}),
     },
-    hist: { ...DEFAULT_SIGNALS.hist, ...(s?.hist ?? {}) },
+    hist: mergeSlRatioSettings(DEFAULT_SIGNALS.hist, s?.hist),
     guard: { ...DEFAULT_SIGNALS.guard, ...(s?.guard ?? {}) },
     cluster: { ...DEFAULT_SIGNALS.cluster, ...(s?.cluster ?? {}) },
     coordination: {
@@ -944,6 +946,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
       : [];
     return v.length || (empty && Array.isArray(xs)) ? [...new Set(v)].slice(0, 64) : [...def];
   };
+  if (out.normal.slAuto?.enabled) out.normal.slOfTp = [...slRatiosOf(out.normal)];
   out.trailRatios = nums(out.trailRatios, 0.1, 2, DEFAULT_SIGNALS.trailRatios!);
   const trailMax = Number(out.trailMax);
   out.trailMax = Number.isFinite(trailMax)
@@ -964,7 +967,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   hs.enabled = hs.enabled !== false;
   hs.quantiles = nums(hs.quantiles, 0.2, 0.95, DEFAULT_SIGNALS.hist.quantiles);
   hs.trailOfTp = nums(hs.trailOfTp, 0.1, 0.95, DEFAULT_SIGNALS.hist.trailOfTp);
-  hs.slOfTp = nums(hs.slOfTp, SL_TP_MIN, SL_TP_MAX, DEFAULT_SIGNALS.hist.slOfTp);
+  hs.slOfTp = hs.slAuto?.enabled ? [...slRatiosOf(hs)] : nums(hs.slOfTp, SL_TP_MIN, SL_TP_MAX, DEFAULT_SIGNALS.hist.slOfTp);
   hs.minN = Math.min(1000, Math.max(5, Math.round(Number(hs.minN) || DEFAULT_SIGNALS.hist.minN)));
   // the lookback in hours (0 = the whole history), never negative, at most 30 days
   const lb = Number(hs.lookbackH);
@@ -1006,11 +1009,11 @@ export function mergeSignals(
     ...a,
     ...p,
     ranges: { ...a.ranges, ...(p.ranges ?? {}) },
-    normal: { ...a.normal, ...(p.normal ?? {}) },
+    normal: mergeSlRatioSettings(a.normal, p.normal),
     trailing: { ...a.trailing, ...(p.trailing ?? {}) },
     trailingOnly: { ...a.trailingOnly, ...(p.trailingOnly ?? {}) },
     atr: { ...a.atr, ...(p.atr ?? {}) },
-    hist: { ...a.hist, ...(p.hist ?? {}) },
+    hist: mergeSlRatioSettings(a.hist, p.hist),
     guard: { ...a.guard, ...(p.guard ?? {}) },
     cluster: { ...a.cluster, ...(p.cluster ?? {}) },
     coordination: {

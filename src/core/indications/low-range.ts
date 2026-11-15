@@ -1,5 +1,6 @@
 /** Low-Range registry and Short-grid bridge. Its signals remain independently gated research candidates. */
 import type { IndicationSpec } from "./registry.ts";
+import { slRatiosOf } from "../sl-ratios.ts";
 import type { LowRangeGrid, Protect } from "../domain/types.ts";
 import { RT_COST } from "../model-cost.ts";
 import {
@@ -63,7 +64,7 @@ export function lowRangeGridProtects(grid: LowRangeGrid | undefined, cost = RT_C
   if (!grid?.enabled) return [];
   if (!(Number.isFinite(grid.maxHoldMin) && grid.maxHoldMin >= 1 && Number.isFinite(tfMin) && tfMin > 0))
     throw new RangeError("invalid Low-Range hold/timeframe");
-  const cells = lowRangeProtects({ step: grid.step, cost, minSlDistancePct, steps: grid.steps, slRatios: grid.slRatios,
+  const cells = lowRangeProtects({ step: grid.step, cost, minSlDistancePct, steps: grid.steps, slRatios: slRatiosOf({slOfTp:grid.slRatios,slAuto:grid.slAuto}),
     trailRatios: grid.trailRatios, tags: ["sh"] }).map(p => ({ ...p, sl: Math.max(minSlFloor, p.sl) }));
   return lowRangeHolds(grid).flatMap(minutes => cells.filter(p =>
     p.sl / p.tp <= (grid.maxSlRatio ?? Infinity) + 1e-12 &&

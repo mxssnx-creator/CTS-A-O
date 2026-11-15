@@ -1,3 +1,4 @@
+import { slRatiosOf } from "../sl-ratios.ts";
 import { migratePositionWindows } from "./position-windows-migration.server.ts";
 import { mainnetPositionWindows } from "../position-windows.ts";
 import {relationalVolumeFactor,relationalVolumeSettings} from "../../../shared/cts-volume/ratios.ts";
@@ -26,6 +27,7 @@ import { validationProgressOf, type ValidationProgress } from "../validation-pro
 import {
   DEFAULT_PROTECT,
   DEFAULT_SETTINGS,
+  newDefaultSettings,
   FORMER_FOCUS_13OCT,
   PREVIOUS_DEFAULT_FOCUS_17OCT,
   PREVIOUS_DEFAULT_FOCUS_20OCT,
@@ -1276,7 +1278,7 @@ export class CoreRuntime {
       saved.cycleMs = DEFAULT_SETTINGS.cycleMs;
       saved.tickMs = DEFAULT_SETTINGS.tickMs;
     }
-    this.settings = mergeSettings(DEFAULT_SETTINGS, saved, settings);
+    this.settings = mergeSettings(!saved && !settings ? newDefaultSettings() : DEFAULT_SETTINGS, saved, settings);
     if (this.conn) this.settings.live = { ...this.settings.live, connId: this.conn };
     this.settings.gates.minPf = Math.min(1.5, Math.max(1.05, this.settings.gates.minPf));
     // once: every saved preset and the running gates move to a 35 h drawdown max (the old ceiling was 20)
@@ -10735,7 +10737,7 @@ export class CoreRuntime {
     // the direction gate reads the same feed, Block on or off
     const wantBook =
       this.wf.toggles.block &&
-      (this.wf.block.historySource === "accepted-orders" ||
+      (this.wf.block.historySource === "accepted-orders" || this.wf.block.historySource === "processed-orders" ||
         !!(src.overall || src.symbol || src.direction || src.indication || src.type) ||
         (this.wf.block.pause ?? 0) > 0);
     const wantRelate = this.wf.relate?.enabled === true;
@@ -12832,7 +12834,8 @@ export function normalizeLanes(s: CoreSettings): CoreSettings {
   for (const k of Object.keys(tfDays)) tfDays[k] = Math.min(45, Math.max(1, Math.round(tfDays[k])));
   const minSlDistancePct = normalizeMinSlDistancePct(s.minSlDistancePct);
   const minSl = minimumStopFraction(s.cost, minSlDistancePct);
-  const grid = { ...s.grid, minSl, minSlEval: minSl };
+  const grid = { ...s.grid, slOfTp: slRatiosOf(s.grid), minSl, minSlEval: minSl };
+  if (grid.lowRange) grid.lowRange = { ...grid.lowRange, slRatios: slRatiosOf({ slOfTp: grid.lowRange.slRatios, slAuto: grid.lowRange.slAuto }) };
   for (const key of ["micro", "minimal", "short", "general", "long"] as const) {
     const r = grid[key];
     if (r) {
@@ -12843,10 +12846,10 @@ export function normalizeLanes(s: CoreSettings): CoreSettings {
         // An explicitly configured range net floor retains its cost-aware contract; otherwise Micro uses its own absolute floor.
         const microSl = rangeNet === undefined ? own(s.microMinSlDistancePct, minSl) : minimumStopFraction(s.cost, rangeNet);
         const microTrail = own(s.microMinTrailDistancePct, r.minTrail ?? 0.001);
-        grid[key] = { ...r, minSl: microSl, minSlEval: microSl, minSlNet: undefined, minTrail: microTrail };
+        grid[key] = { ...r, slOfTp: slRatiosOf(r, 24), minSl: microSl, minSlEval: microSl, minSlNet: undefined, minTrail: microTrail };
       } else {
         const f = minimumStopFraction(s.cost, rangeNet ?? minSlDistancePct);
-        grid[key] = { ...r, minSl: f, minSlEval: f };
+        grid[key] = { ...r, slOfTp: slRatiosOf(r), minSl: f, minSlEval: f };
       }
     }
   }

@@ -1,3 +1,4 @@
+import { slRatiosOf } from "../sl-ratios.ts";
 import {positionStageStats} from "../position-windows.ts";
 import {blockRequired} from "../../../shared/cts-lastn/blocks.ts";
 import { positionCounts, positionStats, positionTapeValid } from "../position-windows.ts";
@@ -727,7 +728,7 @@ export const DEFAULT_GRID: ProtectGridSpec = {
 export function gridVariants(g: ProtectGridSpec, cost?: number): number {
   if (g.trailingOnly) return protectGrid(REF_TF, g, cost).length;
   const hold = g.holdH.length || 1;
-  const main = g.tp.length * g.slOfTp.length * g.trailOfTp.length * hold;
+  const main = g.tp.length * slRatiosOf(g).length * g.trailOfTp.length * hold;
   const plus = g.minimalPlus;
   const plusN = plus ? plusVariants(plus.enabled === true, plus.cells?.length ?? 0, hold) : 0;
   return (
@@ -836,7 +837,7 @@ export function protectGrid(
     push(p);
   };
   for (const tp of g.tp)
-    for (const k of g.slOfTp)
+    for (const k of slRatiosOf(g))
       for (const tr of g.trailOfTp)
         for (const h of g.holdH) cell(tp, k, tr, h, g.minSl, g.minTrail);
   forEachCoord(g, (tp, k, tr, h, minSl, minTrail, tag, slEval) =>
@@ -3179,6 +3180,8 @@ export interface WalkForwardResult {
 }
 
 export interface BlockFeedEntry {
+  /** Independent bounded predecessor admission, not a funded order or venue fill. */
+  blockProcessed?: boolean;
   blockAttribution?: BlockAttribution;
   exitT: number;
   sym: string;
@@ -3343,7 +3346,7 @@ export function feedBooks(
 ) {
   if (e.open) return; // not closed: its mark is no result
   direction?.add(e); // every candidate, including signals and rejected entries; never accepted-only Block evidence
-  if (book && (!book.acceptedOnly || e.accepted === true)) book.add(e, !!e.ind && isSignalInd(e.ind));
+  if (book?.accepts(e)) book.add(e, !!e.ind && isSignalInd(e.ind));
   if (relate && (e.accepted === true || e.relateShadow === true) && e.cfg && e.ind) {
     const entry = {
       cfg: e.cfg,
@@ -4836,12 +4839,13 @@ function configPassAt(
 
 /**
  * The validated set V: the ids of the configs that take a seat-eligible place and pass the evaluation (configEval's gates)
- * at time t — evaluated once, at a run's start. In slices (yields −1 every ~8 ms).
+ * at time t. Ongoing runs refresh this cohort at each decision clock; explicit snapshots stay frozen. In slices (yields −1 every ~8 ms).
  */
 export function* validatedSetGen(
   tapes: readonly ConfigTape[],
   t: number,
   o: WalkForwardOptions,
+  record?: { summary: ValidationSummary; checks?: ValidationCheck[] },
 ): Generator<number, Set<string>> {
   const out = new Set<string>();
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
@@ -4857,7 +4861,12 @@ export function* validatedSetGen(
     if (!info.inScope || !info.canSeat) continue;
     // The initial validated pool must use the same own-direction / Signal
     // context proof and independent history as hourly selection and entry.
-    if (configEval(tp, t, o).ok) out.add(tp.id);
+    const ev = configEval(tp, t, free);
+    if (record) {
+      record.checks?.push([tp.id, ev.ok ? 1 : 0, ev.n, ev.pf, (ev.gp ?? 0) / 100, (ev.gl ?? 0) / 100]);
+      summarizeValidation(record.summary, ev, ev.n, (ev.gp ?? 0) / 100, (ev.gl ?? 0) / 100);
+    }
+    if (ev.ok) out.add(tp.id);
   }
   return out;
 }
@@ -6130,7 +6139,7 @@ export function execDecision(
   const observed = o.blockTrace ? { n: 0 } : undefined;
   // Accepted-order history must not borrow unexecuted raw config wins, including when the book is absent.
   const configLevel =
-    blk.historySource === "accepted-orders"
+    (blk.historySource === "accepted-orders" || blk.historySource === "processed-orders")
       ? (ctx?.book?.level(sourceKey("config", t), blk.maxLevel) ?? 0)
       : blockLevel(tp, entryT, blk, ctx, observed);
   const levels = { config: configLevel, ...bookLevels(book, t, blk.maxLevel) };
@@ -6154,7 +6163,7 @@ export function execDecision(
           BLOCK_SOURCES.map((src) => [
             src,
             src === "config"
-              ? blk.historySource === "accepted-orders"
+              ? (blk.historySource === "accepted-orders" || blk.historySource === "processed-orders")
                 ? (ctx?.book?.sampleCount(sourceKey(src, t), blk.maxLevel) ?? 0)
                 : (observed?.n ?? 0)
               : (book?.sampleCount(sourceKey(src, t), blk.maxLevel) ?? 0),
@@ -7369,14 +7378,22 @@ export function* walkForwardGen(
   const { engine: allEngine, signal: sigTapes } = splitSignalTapes(tapes, o);
   const endT = u.nowT;
   const startT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
-  // seatSet "validated": V is evaluated once here, then every step selects from V's tapes alone
+  // seatSet "validated": each step selects only its causally validated cohort; explicit snapshots remain frozen.
   assertSeatSet(o);
+  const frozenValidation = o.validated !== undefined;
+  const newValidationRecord = (): { summary: ValidationSummary; checks?: ValidationCheck[] } | undefined => o.recordValidation ? {
+    summary: { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {}, setPf: emptyValidatedSetPf() },
+    ...(o.recordValidation === true ? { checks: [] } : {}),
+  } : undefined;
+  let validationRecord = !frozenValidation ? newValidationRecord() : undefined;
   let validatedIds: Set<string> | undefined;
+  const everValidated = new Set<string>();
   let selTapes = allEngine;
   if (o.seatSet === "validated") {
-    validatedIds = o.validated ? new Set(o.validated) : yield* validatedSetGen(allEngine, startT, o);
+    validatedIds = o.validated ? new Set(o.validated) : yield* validatedSetGen(allEngine, startT, o, validationRecord);
     o = { ...o, validated: validatedIds };
     selTapes = validatedTapes(allEngine, validatedIds, o);
+    for (const id of validatedIds) everValidated.add(id);
   }
   // without an explicit start the run reaches the newest bar (the last partial hour included)
   const stopT = o.startT === undefined ? endT : Math.min(endT, startT + o.simH * H);
@@ -7388,6 +7405,7 @@ export function* walkForwardGen(
   const crowd = new Map<string, number>();
   const open = new ExitHeap<Trade>(); // taken, by exit
   const counts = new OpenCounts(); // the caps' counts of the taken orders still open
+  const blockPredecessors = new OpenCounts(); // independent virtual admissions never reserve funded slots
   const hourNet = new Map<number, number>();
   const exitHourNet = new Map<string, Map<number, number>>();
   const skips: Record<string, number> = {};
@@ -7471,6 +7489,7 @@ export function* walkForwardGen(
     while (vopen.size && vopen.peekT() <= t) {
       const fx = vopen.pop()!;
       if (fx.cfg && !sigCfg(fx.cfg) && !isHistoricExitConfig(fx.cfg, fx.type)) engineOpen.add(fx.sym, fx.side, -1);
+      if (fx.blockProcessed && fx.cfg) blockPredecessors.add({cfg:fx.cfg,sym:fx.sym,side:fx.side}, -1);
       feed.push(fx);
       feedBooks(fx, book, guard, direction, relateBook);
       if (!fx.open) s2For(fx.cfg ?? "", fx.type, true)?.close(fx);
@@ -7560,8 +7579,20 @@ export function* walkForwardGen(
   // the step's hedge-only signals (negative-hour hedge; outside the ranked set)
   let hedgeKeys = new Set<string>();
   // per-range selection modes (wf.rangeOpts[tag].mode); null = one selection over every engine tape, as without them
-  const groups = modeGroups(selTapes, o);
+  let groups = modeGroups(selTapes, o);
   for (let t = startT; t < stopT; t += stepH * H) {
+    // A short/losing run-start window is not a permanent rejection. Re-evaluate the same Base-qualified
+    // built cohort on each new decision clock, using only its own already settled history. Explicit caller
+    // snapshots remain frozen; previously admitted losses and held protection stay in their original books.
+    if (t > startT && o.seatSet === "validated" && !frozenValidation) {
+      validationRecord = newValidationRecord();
+      validatedIds = yield* validatedSetGen(allEngine, t, o, validationRecord);
+      for (const id of validatedIds) everValidated.add(id);
+      o = { ...o, validated: validatedIds };
+      selTapes = validatedTapes(allEngine, validatedIds, o);
+      groups = modeGroups(selTapes, o);
+    }
+    stepOpts = o;
     // every order closed before the step counts for this step's decisions (hedge hours, coordination state)
     yield* settle(t);
     if (o.signalRank && sigTapes.length) {
@@ -7603,7 +7634,7 @@ export function* walkForwardGen(
     // Strategy Base reports Signals from the same own-context history/Last-N
     // evaluator as activation and entry, never from a pooled representative.
     const signalChecks: ValidationCheck[] = [];
-    const validationSummary = sel?.validationSummary ?? (o.recordValidation === "summary"
+    const validationSummary = validationRecord?.summary ?? sel?.validationSummary ?? (o.recordValidation === "summary"
       ? { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {}, setPf: emptyValidatedSetPf() } as ValidationSummary : null);
     if (o.recordValidation) {
       let checked = 0;
@@ -7798,6 +7829,25 @@ export function* walkForwardGen(
               sym: tr.sym,
               side: tr.side,
             });
+        // The explicit processed-orders book has an independent gate-qualified unit predecessor.
+        // It can keep learning with Ordinary/Block Active off. No raw rejected, cap-conflicting,
+        // open-mark or future result qualifies it; actual accepted-orders history remains unchanged.
+        // A configured persistent stage chain still requires its own Active admissions, below.
+        if (!why && !processed && book?.processedOnly && !fx.blockProcessed &&
+            !blockPredecessors.dupe(tr.sym, tr.cfg, tr.side) &&
+            blockPredecessors.perSymbol(tr.sym, cls, capScope) < caps.perSymbol &&
+            blockPredecessors.open(cls, capScope) < caps.maxOpen &&
+            blockPredecessors.perSide(tr.side, cls, capScope) < caps.perSide &&
+            !blockPredecessors.positionsFull(tr.sym, tr.side, cls, cls ? o.signalMaxPositions : o.maxPositions, capScope)) {
+          const predecessor = execDecision(tp, tr.entryT,
+            {...stepOpts, toggles:{...stepOpts.toggles,normal:true,block:false,blockActive:false}}, {
+              book:null,guard,direction,relate:relateBook,relateBase:baseForBlock,sym:tr.sym,side:tr.side,
+            });
+          if (predecessor.ok) {
+            fx.blockProcessed = true;
+            blockPredecessors.add(tr, 1);
+          }
+        }
         if (dec && !dec.ok) why = dec.why;
         if (why || !dec || !dec.ok) {
           if (dec && !dec.ok && dec.why === "relateActive" && o.relate?.enabled) {
@@ -7901,7 +7951,7 @@ export function* walkForwardGen(
       skipped,
       net,
       byRange,
-      ...(o.recordValidation === true ? { checks: [...(sel?.checks ?? []), ...signalChecks] } : {}),
+      ...(o.recordValidation === true ? { checks: [...(validationRecord?.checks ?? sel?.checks ?? []), ...signalChecks] } : {}),
       ...(validationSummary ? { validationSummary } : {}),
     });
     yield t;
@@ -8002,7 +8052,7 @@ export function* walkForwardGen(
           yield { identity: processed.identity(tp, sym, side, minPf), minPf };
       }
     })()) } : {}),
-    ...(validatedIds ? { validated: [...validatedIds] } : {}),
+    ...(validatedIds ? { validated: [...everValidated] } : {}),
     endT: stopT,
     opts: rest,
     trades,
