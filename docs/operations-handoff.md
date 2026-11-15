@@ -1,3 +1,19 @@
+## 2026-11-15 — historical request-parent retention
+
+The bounded follow-up to #281 checkpoints the original exact request parents and
+account fingerprint hash before dispatch, separately from the active reservation
+map. Terminal cleanup and final lane closure can no longer erase this join to
+durable order/fill rows. It is identity provenance only, never execution proof or
+per-parent quantity allocation. Exact baseline failures and final tests, build,
+typecheck and required CI must be observed before claiming publication.
+
+Unchanged market scope: twelve symbols, 12h+12h retrospective replay starting
+2026-10-16 09:00 UTC; Post-Base 0/153,298 (0%, insufficient), passing/funded
+settled PF unavailable, modeled funded positions/orders 0 opened/settled/held.
+No account or service changes. Keep #219 draft/open and obtain current journals
+and exclusive writer clearance before any financing.
+See `docs/verification/entry-parent-history-20261115.md`.
+
 ## 2026-11-15 — retain exact pending entry parent after first partial attribution
 
 Tested source checkpoint `c1b94badd9e99273f82c783ed8e7ad56e2faf2cc` on audited main
