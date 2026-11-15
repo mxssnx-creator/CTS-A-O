@@ -32,12 +32,15 @@ interface PositionTapeColumns {
   side: ArrayLike<number>;
   r: ArrayLike<number>;
 }
-const sourceChecks = new WeakMap<object, { n: number; columns: unknown[]; valid: boolean }>();
+// A live stored-tape wrapper must not pin an evicted decompressed arena through
+// validation metadata. Weak column identities still invalidate on replacement
+// or reloading, and the ordinary in-memory owner retains its own columns.
+const sourceChecks = new WeakMap<object, { n: number; columns: WeakRef<object>[]; valid: boolean }>();
 /** Published columns are immutable. Unknown ownership or chronology anywhere makes the last N unknowable. */
 export function positionTapeValid(tp: PositionTapeColumns): boolean {
   const columns = [tp.syms, tp.exitT, tp.entryT, tp.symI, tp.side, tp.r];
   const cached = sourceChecks.get(tp);
-  if (cached?.n === tp.n && columns.every((v, i) => v === cached.columns[i])) return cached.valid;
+  if (cached?.n === tp.n && columns.every((v, i) => v !== undefined && v === cached.columns[i].deref())) return cached.valid;
   let valid =
     Number.isSafeInteger(tp.n) &&
     tp.n >= 0 &&
@@ -64,7 +67,11 @@ export function positionTapeValid(tp: PositionTapeColumns): boolean {
         break;
       }
     }
-  sourceChecks.set(tp, { n: tp.n, columns, valid });
+  // Malformed/null columns are not cacheable WeakRef targets. Keep their
+  // fail-closed verdict, without retaining them or changing the next check.
+  if (columns.every((v) => v !== null && (typeof v === 'object' || typeof v === 'function')))
+    sourceChecks.set(tp, { n: tp.n, columns: columns.map((v) => new WeakRef(v as object)), valid });
+  else sourceChecks.delete(tp);
   return valid;
 }
 export function checkPositionWindows(p: Partial<PositionWindows>): void {

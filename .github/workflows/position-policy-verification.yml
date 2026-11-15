@@ -32,6 +32,7 @@ jobs:
           src/core/completeness.test.ts src/core/count-acceptance.test.ts
           src/core/step-pf.test.ts src/core/model-cost.test.ts
           src/core/sim/position-windows.test.ts src/core/sim/position-variants.test.ts
+          src/core/server/position-history-retention.test.ts
           src/core/sim/count-execution.test.ts src/core/sim/low-range-base-feedback.test.ts
           src/core/server/position-windows-migration.test.ts src/core/server/low-range-settings.test.ts
           src/core/server/cost-default-runtime.test.ts src/core/server/fee-schedule.test.ts
