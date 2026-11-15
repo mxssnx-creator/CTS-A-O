@@ -1,3 +1,21 @@
+## 2026-11-15 — count Signal cache correctness and bounded history reuse
+
+Continuation starts at `e462ce19b58ba59bd6caeb6eab416ab03aa56a3c`. A current-source bounded Real CPU diagnostic
+and two red-before regressions identify repeated unrelated-history work and stale count-cache admissions after
+policy changes. Count activation now retains bounded exact-own scalar summaries, including compact stored
+rejections; every own close, policy/source/ownership revision and reverse clock keeps the scalar boundary.
+Stored reset/closure invalidates summaries through a browser-safe generation token; no evicted binary arena is held.
+Exact behavior, profiling evidence, failed fixture attempts and limits:
+`docs/verification/count-signal-activation-cache-20261115.md`.
+
+Local focused verification 69/69 and eight complete before/after synthetic replays pass; every replay has 2,880
+modeled orders with identical complete decisions and returns. Typecheck passes, scoped lint has zero errors and
+two pre-existing warnings. Full Core, required exact-head CI and a complete frozen twelve-symbol market replay
+remain prerequisites to release claims. No economics or policy floor was lowered. No account, venue, service or
+deployment write occurred. Post-Base PF, passed/evaluated validation and execution PF remain unavailable for a
+new completed market cohort; all earlier losses and failures remain intact. Draft #219 and full forward acceptance
+stay open. No additional funded x02 run is cleared by this source work.
+
 ## 2026-11-15 — final deterministic-universe verification
 
 Tested production/test source: `7daa3da9569eff30d04abddb01dcbb7ed0f153f0`, tree

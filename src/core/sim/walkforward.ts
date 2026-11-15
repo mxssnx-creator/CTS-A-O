@@ -11,6 +11,7 @@ import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
 import { returnWindow } from "../metrics/return-window.ts";
 import { DerivedCache } from "./derived-cache.ts";
+import { immutableHistoryGeneration } from "./immutable-history-generation.ts";
 import { exitScopeSuffix, isHistoricExitConfig } from "../exit-scope.ts";
 import { isLowRangeInd, lowRangeGridProtects, lowRangeEnabled } from "../indications/low-range.ts";
 import {
@@ -6331,6 +6332,67 @@ interface SignalWindowRow {
   kind: string;
   bySym: Record<string, SymStat>;
 }
+const COUNT_SOURCE_COLUMNS = ["syms", "exitT", "entryT", "symI", "side", "r"] as const;
+type CountSignalSource = { generation: object; symbols: WeakRef<object> } | { columns: WeakRef<object>[] };
+function countSignalSource(tp: ConfigTape): CountSignalSource | undefined {
+  if (!Array.isArray(tp.syms)) return;
+  const generation = immutableHistoryGeneration(tp);
+  if (generation) return { generation, symbols: new WeakRef(tp.syms) };
+  const columns: WeakRef<object>[] = [];
+  for (const key of COUNT_SOURCE_COLUMNS) {
+    const field = Object.getOwnPropertyDescriptor(tp, key);
+    // An arbitrary getter is not evidence of immutable storage. Unknown sources stay on the scalar path.
+    if (!field || !("value" in field) || !field.value || typeof field.value !== "object") return;
+    columns.push(new WeakRef(field.value));
+  }
+  return { columns };
+}
+function sameCountSignalSource(tp: ConfigTape, source: CountSignalSource): boolean {
+  if ("generation" in source)
+    return immutableHistoryGeneration(tp) === source.generation && source.symbols.deref() === tp.syms;
+  return COUNT_SOURCE_COLUMNS.every((key, i) => {
+    const field = Object.getOwnPropertyDescriptor(tp, key);
+    return !!field && "value" in field && field.value !== undefined && field.value === source.columns[i].deref();
+  });
+}
+type CountSignalRow = {
+  row: SignalWindowRow; source: CountSignalSource; at: number; until: number; bytes: number; pass: number;
+  n: number; id: string; bot: string; ind: string; kind: string; tag: Protect["tag"];
+  tp: number; sl: number; trail: number; trailOnly: boolean | undefined;
+  heldOnly: boolean | undefined; carried: boolean | undefined; fromT: number | undefined;
+};
+type CountEmptyRows = {
+  capacity: number; bytes: number;
+  at: Float64Array; until: Float64Array; n: Float64Array; fromT: Float64Array; floor: Float64Array; flags: Uint8Array;
+  generation: Array<object | undefined>; id: Array<string | undefined>; symbols: Array<readonly string[] | undefined>;
+};
+function countEmptyRows(capacity: number): CountEmptyRows {
+  // 41 binary bytes and three reference slots per immutable catalog row, plus conservative array overhead.
+  return { capacity, bytes: capacity * 80, at: new Float64Array(capacity), until: new Float64Array(capacity),
+    n: new Float64Array(capacity), fromT: new Float64Array(capacity), floor: new Float64Array(capacity),
+    flags: new Uint8Array(capacity), generation: new Array(capacity), id: new Array(capacity), symbols: new Array(capacity) };
+}
+/** Earliest own close that could make a currently rejected count context judgeable; never a future-return read. */
+function countRejectedUntil(tp: ConfigTape, t: number, o: WalkForwardOptions, fallback: number): number {
+  const policy = o.gates.positionWindows!;
+  const counts = positionCounts(policy, "sig", tp.id);
+  const range = o.rangeGate && tapeRangeGateOn(o.rangeGate, tp) ? o.rangeGate : undefined;
+  const need = Math.max(...(["main", "real", "entry"] as const).map(stage =>
+    policy.blocks?.[stage] ? blockRequired(policy.blocks[stage]!) : counts[stage]), range?.lastN ?? 0);
+  if (!Number.isSafeInteger(need) || need < 1) return fallback;
+  let until = Infinity;
+  const exitT = tp.exitT, before = lowerBound(exitT, t);
+  for (const sym of new Set(tp.syms)) for (const side of [1, -1]) {
+    const indices = signalContextOf(tp, sym, side);
+    if (!indices || indices.length < need) continue;
+    const end = lowerBound(indices, before);
+    // Insufficient own samples cannot recover before the required close. A mature losing window may
+    // recover at its very next own close. Both boundaries remain strict: exit === t is not settled yet.
+    const next = end < need ? need - 1 : end;
+    if (next < indices.length) until = Math.min(until, exitT[indices[next]]);
+  }
+  return until;
+}
 /**
  * Stream one tape at a time. Each context carries only its current hour/block and totals; no expanded per-config
  * hourly arrays are retained or recreated. Own completed closes count as the sample, so empty/losing sibling
@@ -6596,9 +6658,12 @@ function* activeSignalsAtGen(
  * Only statically qualifying keys are retained; no config × symbol × hour history expansion.
  */
 export class SignalActivationBook {
-  private countAt = -Infinity;
-  private countUntil = -Infinity;
-  private countActive = new Set<string>();
+  private countRows = new Map<ConfigTape, CountSignalRow>();
+  private countBytes = 0;
+  private countLimit = 64 * 1024 * 1024;
+  private countPass = 0;
+  private countPolicy = "";
+  private countEmpty?: CountEmptyRows;
   private hour = NaN;
   private ranked: Array<{
     key: string;
@@ -6668,20 +6733,100 @@ export class SignalActivationBook {
     this.options = options;
   }
 
+  /** Count windows change at their own strict settled-close boundary, not a sibling's close or a reporting hour. */
+  private *countWindowRows(t: number): Generator<SignalWindowRow | null> {
+    const policy = JSON.stringify([signalEvaluationPolicyKey(0, this.options), this.options.mode,
+      this.options.durableSplits, this.options.durableFrac]);
+    if (policy !== this.countPolicy) {
+      this.countRows.clear(); this.countBytes = 0; this.countPolicy = policy;
+      if (this.countEmpty) { this.countEmpty.generation.fill(undefined); this.countBytes = this.countEmpty.bytes; }
+    }
+    const capacity = Math.min(this.index.length, Math.max(0, Math.floor(this.countLimit / 80)));
+    if (capacity !== (this.countEmpty?.capacity ?? 0)) {
+      this.countBytes -= this.countEmpty?.bytes ?? 0;
+      this.countEmpty = capacity ? countEmptyRows(capacity) : undefined;
+      this.countBytes += this.countEmpty?.bytes ?? 0;
+    }
+    const remove = (tp: ConfigTape) => {
+      const old = this.countRows.get(tp);
+      if (old) { this.countBytes -= old.bytes; this.countRows.delete(tp); }
+    };
+    while (this.countBytes > this.countLimit && this.countRows.size)
+      remove(this.countRows.keys().next().value!);
+    const pass = ++this.countPass;
+    let visited = 0;
+    for (const item of this.index) {
+      const tp = item.tp;
+      const slot = visited;
+      if (++visited % 8 === 0) yield null;
+      if (tp.heldOnly) continue;
+      const empty = this.countEmpty, generation = immutableHistoryGeneration(tp);
+      const flags = (tp.carried ? 1 : 0) | (tp.heldOnly ? 2 : 0);
+      if (empty && slot < empty.capacity && generation && empty.generation[slot] === generation &&
+          empty.at[slot] <= t && t <= empty.until[slot] && empty.n[slot] === tp.n &&
+          empty.id[slot] === tp.id && empty.symbols[slot] === tp.syms && empty.flags[slot] === flags &&
+          Object.is(empty.fromT[slot], tp.fromT ?? NaN) && Object.is(empty.floor[slot], minPfForTape(tp, this.options)))
+        continue;
+      let cached = this.countRows.get(tp);
+      const p = tp.protect;
+      if (cached && cached.at <= t && t <= cached.until && cached.n === tp.n && cached.id === tp.id &&
+          cached.bot === tp.bot && cached.ind === tp.ind && cached.kind === tp.kind && cached.tag === p.tag &&
+          cached.tp === p.tp && cached.sl === p.sl && cached.trail === p.trail && cached.trailOnly === p.trailOnly &&
+          cached.heldOnly === tp.heldOnly && cached.carried === tp.carried && cached.fromT === tp.fromT &&
+          sameCountSignalSource(tp, cached.source)) {
+        cached.pass = pass;
+        this.countRows.delete(tp); this.countRows.set(tp, cached);
+        yield cached.row;
+        continue;
+      }
+      if (cached) remove(tp);
+      const next = signalWindowRows([item], t, this.windowH, this.sig.validateH ?? 24, undefined, this.options).next();
+      if (next.done || !next.value) continue;
+      const row = next.value;
+      const source = countSignalSource(tp);
+      if (source && positionTapeValid(tp)) {
+        const exitT = tp.exitT, end = lowerBound(exitT, t);
+        const until = end < tp.n ? exitT[end] : Infinity;
+        if (empty && slot < empty.capacity && generation && Object.keys(row.bySym).length === 0) {
+          empty.generation[slot] = generation; empty.at[slot] = t;
+          empty.until[slot] = countRejectedUntil(tp, t, this.options, until); empty.n[slot] = tp.n;
+          empty.id[slot] = tp.id; empty.symbols[slot] = tp.syms; empty.flags[slot] = flags;
+          empty.fromT[slot] = tp.fromT ?? NaN; empty.floor[slot] = minPfForTape(tp, this.options);
+          yield row;
+          continue;
+        }
+        if (empty && slot < empty.capacity) empty.generation[slot] = undefined;
+        const bytes = 4096 + 2 * (row.cfg.length + row.ind.length + row.bot.length) +
+          Object.entries(row.bySym).reduce((sum, [sym, stat]) => sum + 512 + 2 * sym.length +
+            512 * Object.keys(stat.sides ?? {}).length, 0);
+        cached = { row, source, at: t, until, bytes, pass,
+          n: tp.n, id: tp.id, bot: tp.bot, ind: tp.ind, kind: tp.kind, tag: p.tag, tp: p.tp, sl: p.sl,
+          trail: p.trail, trailOnly: p.trailOnly, heldOnly: tp.heldOnly, carried: tp.carried, fromT: tp.fromT };
+        while (this.countBytes + bytes > this.countLimit && this.countRows.size) {
+          const first = this.countRows.keys().next().value!;
+          // A scan beyond the budget keeps its current useful working set; overflow is scalar and unretained.
+          if (this.countRows.get(first)!.pass === pass) break;
+          remove(first);
+        }
+        if (this.countBytes + bytes <= this.countLimit) {
+          this.countRows.set(tp, cached); this.countBytes += bytes;
+        }
+      }
+      yield row;
+    }
+  }
+
   *at(t: number): Generator<number, Set<string>> {
     if (this.options.gates.positionWindows) {
-      if (t >= this.countAt && t <= this.countUntil) return new Set(this.countActive);
-      const active = yield* activeSignalsAtGen(this.index, t, this.sig, this.windowH, this.options);
-      let until = Infinity;
-      for (const { tp } of this.index) {
-        const i = lowerBound(tp.exitT, t);
-        if (i < tp.n) until = Math.min(until, tp.exitT[i]);
+      this.own.clear(); this.ownBytes = 0; this.ranked = []; this.hour = NaN;
+      const gen = activeSignalsGen(this.countWindowRows(t), { ...this.sig, minTrades: 1 });
+      for (;;) {
+        const next = gen.next();
+        if (next.done) return withSignalExitKeys(next.value, this.options.signalActive);
+        yield -15;
       }
-      this.countAt = t;
-      this.countUntil = until;
-      this.countActive = active;
-      return new Set(active);
     }
+    this.countRows.clear(); this.countBytes = 0; this.countPolicy = ""; this.countEmpty = undefined;
     const hour = Math.floor(t / H);
     if (hour !== this.hour) {
       // Apply family caps AFTER the current own-context verdicts, exactly as activeSignalsAt does.

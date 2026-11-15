@@ -15,6 +15,7 @@ import { createHash } from "node:crypto";
 import * as zlib from "node:zlib";
 import { StringDecoder } from "node:string_decoder";
 import { inTapeLayout, tapeBytes, tapeViews, type ConfigTape } from "../sim/walkforward.ts";
+import { registerImmutableHistoryGeneration } from "../sim/immutable-history-generation.ts";
 
 const MiB = 1048576;
 export const HISTORY_CACHE_BYTES = 64 * MiB;
@@ -148,6 +149,7 @@ export class TapeHistoryStore {
   private cached = new Map<HistoryRecord, Columns>();
   private cachedBytes = 0;
   private last: { record: HistoryRecord; columns: Columns } | null = null;
+  private derivedGeneration: object = {};
   readonly stats = {
     tapes: 0,
     rawBytes: 0,
@@ -273,6 +275,7 @@ export class TapeHistoryStore {
     const tape = { ...meta } as Stored;
     Object.defineProperty(tape, slot, { value: { store: this, record }, enumerable: false });
     Object.defineProperties(tape, descriptors);
+    registerImmutableHistoryGeneration(tape, () => this.resource.closed ? undefined : this.derivedGeneration);
     return tape;
   }
 
@@ -329,6 +332,7 @@ export class TapeHistoryStore {
   }
 
   clearCache() {
+    this.derivedGeneration = {};
     this.cached.clear();
     this.cachedBytes = 0;
     this.last = null;
