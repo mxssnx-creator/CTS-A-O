@@ -9,6 +9,9 @@ original bars, short-series market input and causal evaluation boundary. No old 
 
 The focused publication/incremental/Signal/stored-history inventory passes 96/96; two new permutation regressions,
 typecheck and diff check pass. Exact-head required CI and broader Core verification remain prerequisites to merge.
+The first full Core attempt found two positional Break/Relate fixture assumptions. Their scalar subject is now
+selected by symbol rather than `caches[0]`; all 25 Break/Relate/permutation cases pass with original assertions.
+Required CI includes those families. Retain the first full-inventory failures rather than calling that attempt green.
 Details and retained failed fixture attempts: `docs/verification/old-pr-132-universe-order-20261115.md`.
 The separate twelve-symbol replay stays frozen on its original source. Current-policy post-Base PF,
 passed/evaluated validation and execution PF are unavailable. No exchange, account, service or deployment changed.

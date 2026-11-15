@@ -51,6 +51,13 @@ source publication does not certify or migrate an existing live cache.
   inventory: **96/96 pass**, no failures, skips or TODOs.
 - Typecheck and diff check pass. Required exact-head CI and broader Core
   verification remain prerequisites to merging this correction.
+- The first complete Core inventory attempt exposed two legacy positional
+  fixture assumptions in Break/Relate: they selected `caches[0]` while their
+  scalar oracle used the named target symbol. Both fixtures now select that
+  target by symbol; causal z-score, activity and prefix assertions are intact.
+  All **25/25** Break/Relate/permutation checks pass, and these families are
+  included in required CI. The initial full-inventory failures remain in the
+  continuation log; they are not relabeled as a clean full run.
 - Failed test-construction attempts are retained: the first fixture supplied
   the synthetic generator's ending clock as a starting clock; the next warmup
   assertion overlooked its first-bar offset. Typecheck also rejected the
