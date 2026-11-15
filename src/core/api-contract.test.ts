@@ -1045,6 +1045,11 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
     ...unset("wf", ["bestFirst", "symH", "sideGateN", "microSeats"]),
     ...unset(
       "wf",
+      ["processedStages.validationN", "processedStages.realN"],
+      "the persistent own-stage adapter is opt-in",
+    ),
+    ...unset(
+      "wf",
       [
         "engineSideAccept.enabled",
         "engineSideAccept.minPf",

@@ -11220,7 +11220,12 @@ export function mainnetRangeFloors(ro: Partial<Record<RangeOptTag, RangeOpts>>):
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
 export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
   const p = pickWf(o) as Record<string, unknown>;
-  if (p.processedStages !== undefined) {
+  // Settings/UI uses an explicit null to turn the opt-in adapter off. Keep the
+  // key so the sanitized patch overwrites a previously persisted policy with
+  // undefined; merely omitting the key means "leave the current policy alone".
+  if (p.processedStages === null || p.processedStages === false) {
+    p.processedStages = undefined;
+  } else if (p.processedStages !== undefined) {
     const raw = p.processedStages as Record<string, unknown>;
     const validationN = Number(raw?.validationN), realN = Number(raw?.realN);
     if (!raw || !Number.isSafeInteger(validationN) || validationN < 1 || validationN > 200 ||

@@ -1,3 +1,23 @@
+## 2026-11-15 — old PR #219 current-target Settings and preset control
+
+Old draft #219 was compared from common base `a50a10e297654f6f90a731d8f269ffde7bcf2d94` and head
+`ad9271b3f93bb0ddfac742805103b9ae3eefefc4` against current `main`
+`abaff28ee098b08fe257209eea63a47ef28e761c`. The stale Stage/UI tree was not overlaid. Current main already has the
+newer opt-in adapter, durable paper checkpoint and exact venue-admission provenance; the remaining current-target
+operator-control gap was integrated.
+
+Settings and presets now expose the optional Main/Real predecessor counts and can explicitly remove a previously
+persisted policy. Omission continues to mean “leave unchanged”; explicit null means “disable”. The default stays off,
+counts remain range-checked and no history or result is manufactured. Exact mapping, behavior and limits:
+`docs/verification/old-pr-219-settings-ui-20261115.md`.
+
+Focused adapter/runtime/API verification passes 89 tests: 86 passed, zero failed/cancelled and three explicit skips.
+The complete Core inventory passes 4,961 tests: 4,958 passed, zero failed/cancelled and three explicit skips.
+Typecheck and production/core-worker build pass; exact-head required CI remains mandatory before merge. No
+exchange/account/deployment write was made and no PF was measured. Exact funded per-parent quantities,
+partial-fill/reduction/restart parity, Active-to-Live evidence, twelve-symbol x02 acceptance, venue parity and
+sufficient independent forward samples remain open. Keep draft #219 open and retain every earlier loss/failure.
+
 ## 2026-11-15 — old PR #238 prefix-cancellation integration
 
 Old draft #238 was compared from common base `d677b05d3ac4dc3571e58641cc8e4324b8d17acb` and head
