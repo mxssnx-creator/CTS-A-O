@@ -47,10 +47,15 @@ market fixture does not activate every Tactic-DCA cell on both sides. The same f
 exact base `63c2a1bf`; they were not introduced by this adapter. They remain visible work rather than being skipped or
 rewritten as an adapter pass.
 
-This is not the whole #219 draft. The 15 November follow-up repairs a publication mismatch: the key was present in
+This is not the whole #219 draft. The first 15 November follow-up repairs a publication mismatch: the key was present in
 SQLite but had been omitted from the actual restart-state allowlist, so a crash before the next database snapshot could
 lose it. The new immediate atomic checkpoint and unwritable-store regression close that paper-parent durability gap.
-A separate persistent venue-own-stage ledger, partial-fill/restart correlation,
-Settings/UI controls, full repository CI, a fresh bounded twelve-symbol x02 forward run, venue-return parity, and
-sufficient independent forward samples remain required before any live or profitability conclusion. The current
-paper checkpoint must not be described as venue-stage proof.
+
+The second 15 November follow-up adds durable venue-stage **admission provenance** on current main: the exact active
+stage and windows/cost revision now travel from the paper parent into the pre-dispatch parent reservation, pending
+restart state, open lane and terminal lane ledger. Missing, stale or predecessor evidence fails closed before a new
+open/increase. See `old-pr-219-venue-stage-provenance-20261115.md`.
+
+That follow-up does not turn nominal netted lane attribution into exact funded per-parent allocation. Partial-fill and
+reduction quantity correlation, Settings/UI controls, a fresh bounded twelve-symbol x02 forward run, venue-return
+parity and sufficient independent forward samples remain required before any live or profitability conclusion.

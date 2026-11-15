@@ -886,6 +886,8 @@ export interface PaperBook {
       heldAt?: number;
       /** Entry-time native Base -> Main -> Real result. It stays frozen while this parent remains held. */
       processedStage?: "postBase" | "validated" | "active";
+      /** Exact processed-stage windows and modeled-cost revision frozen with processedStage. */
+      processedPolicy?: string;
       /**
        * the market price when the book first held it (a fresh ticker, else the last bar's close): the executable
        * record — the sim's entry may lie a compute in the past (relation.ts executableR)
@@ -9774,6 +9776,7 @@ export class CoreRuntime {
         heldAt?: number;
         heldPx?: number;
         processedStage?: "postBase" | "validated" | "active";
+        processedPolicy?: string;
       }
     > = [];
     const saved =
@@ -10245,6 +10248,7 @@ export class CoreRuntime {
         continue;
       }
       let processedStage = prev?.processedStage;
+      let processedPolicy = prev?.processedPolicy;
       if (!held && this.wf.processedStages) {
         if (!nativeStages || this.processedNativeError) {
           pSkip(`${pre}exec:processedUnavailable`);
@@ -10253,6 +10257,7 @@ export class CoreRuntime {
         try {
           const minProcessedPf = Math.max(this.wf.lastNMinPf, minPfForTape(tp, this.wf));
           processedStage = nativeStages.enter(tp, op.sym, op.side > 0 ? 1 : -1, op.entryT, minProcessedPf).stage;
+          processedPolicy = nativeStages.revision;
           if (!this.persistNativeProcessedStages()) {
             pSkip(`${pre}exec:processedUnavailable`);
             continue;
@@ -10302,6 +10307,7 @@ export class CoreRuntime {
       positions.push({
         ...op,
         ...(processedStage ? { processedStage } : {}),
+        ...(processedPolicy ? { processedPolicy } : {}),
         // when the book first held it (kept across steps): adopted now, or as it was
         heldAt: prevByKey.get(posId(op))?.heldAt ?? Date.now(),
         ...(heldPx ? { heldPx } : {}),

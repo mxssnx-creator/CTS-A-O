@@ -52,6 +52,13 @@ function checkedPolicy(policy: ProcessedReplayPolicy): ProcessedReplayPolicy {
   };
 }
 
+/** Stable native paper/venue stage identity for the exact windows, filters, blocks and modeled cost. */
+export function nativeProcessedRevision(policy: ProcessedReplayPolicy, cost: number): string {
+  if (!Number.isFinite(cost) || cost < 0)
+    throw new RangeError("invalid native processed-stage cost");
+  return JSON.stringify(["processed-native-v1", cost, checkedPolicy(policy)]);
+}
+
 /**
  * Durable paper-stage bridge for the native Base -> Main -> Real pipeline.
  *
@@ -62,16 +69,15 @@ function checkedPolicy(policy: ProcessedReplayPolicy): ProcessedReplayPolicy {
 export class NativeProcessedStageAdapter {
   readonly book: ProcessedSetBook;
   readonly policy: ProcessedReplayPolicy;
-  private readonly revision: string;
+  /** Exact processed-stage policy and modeled-cost identity frozen into every admitted parent. */
+  readonly revision: string;
   private readonly open = new Map<string, ProcessedOpen>();
   private readonly settledQueue: string[];
   private readonly settled: Set<string>;
 
   constructor(policy: ProcessedReplayPolicy, cost: number, snapshot?: NativeProcessedSnapshot) {
     this.policy = checkedPolicy(policy);
-    if (!Number.isFinite(cost) || cost < 0)
-      throw new RangeError("invalid native processed-stage cost");
-    this.revision = JSON.stringify(["processed-native-v1", cost, this.policy]);
+    this.revision = nativeProcessedRevision(this.policy, cost);
     if (snapshot) {
       if (
         snapshot.version !== 1 ||

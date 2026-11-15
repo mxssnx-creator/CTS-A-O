@@ -49,6 +49,7 @@ import { exchangePositionLimit, MAX_EXTERNAL_STACK, type LiveSettings } from "..
 import { promoteLaneKey, validPromotedLaneProof } from "../live-promote.ts";
 import { promotionStatus, type LiveGate } from "../live-validation.ts";
 import { isolateNewParents } from "./live-parent-isolation.ts";
+import { nativeProcessedRevision } from "./processed-stage-adapter.ts";
 import { observedUnlinkedExits, orphanCancelledZero, orphanFilled, orphanFenceId, orphanFenceKeys, orphanObservationId,
   type OrphanExitFence } from "./orphan-exit-fence.ts";
 import {
@@ -106,7 +107,15 @@ const orphanFencePollAt = new WeakMap<CoreDb, Map<string, number>>();
 const orphanFenceReplies = new WeakMap<CoreDb, Map<string, unknown>>();
 const orphanFenceInFlight = new WeakMap<CoreDb, Set<string>>();
 
-type LiveEntryParent = { id: string; lk: string; cfg: string; sym: string; side: 1 | -1 };
+type LiveEntryParent = {
+  id: string;
+  lk: string;
+  cfg: string;
+  sym: string;
+  side: 1 | -1;
+  processedStage?: "postBase" | "validated" | "active";
+  processedPolicy?: string;
+};
 type LiveEntryAllocation = { key: string; at: number; parents: LiveEntryParent[] };
 
 /**
@@ -2986,6 +2995,8 @@ export function* laneContributionsGen(
         cfg: p.cfg,
         sym: p.sym,
         side: p.side,
+        ...(p.processedStage ? { processedStage: p.processedStage } : {}),
+        ...(p.processedPolicy ? { processedPolicy: p.processedPolicy } : {}),
         vol: v,
         mult,
         blockVol: v / (p.volFactor ?? 1),
@@ -3093,7 +3104,7 @@ export function recordLanes(
   const { open, closed } = attributeLanes(prev, { ...x, cost, now: x.now ?? Date.now() });
   for (const t of closed)
     rt.db.runDurable(
-      "INSERT OR REPLACE INTO live_lane_trades (id, exit_t, cfg, sym, side, entry_t, entry, exit, r, reason, px_src) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT OR REPLACE INTO live_lane_trades (id, exit_t, cfg, sym, side, entry_t, entry, exit, r, reason, px_src, processed_stage, processed_policy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       t.id,
       t.exitT,
       t.cfg,
@@ -3105,6 +3116,8 @@ export function recordLanes(
       t.r,
       t.reason,
       t.pxSrc ?? null,
+      t.processedStage ?? null,
+      t.processedPolicy ?? null,
     );
   liveKvSet(rt.db, "liveLaneOpen", open, true);
   return closed;
@@ -3411,9 +3424,25 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       for (const lane of liveLanes) {
         if (!lane.id || `${lane.sym}|${lane.side}` !== key) continue;
         const lk = lane.lk ?? laneKeyOf({ id: lane.id, cfg: lane.cfg, sym: lane.sym, side: lane.side });
-        parents.set(lk, { id: lane.id, lk, cfg: lane.cfg, sym: lane.sym, side: lane.side });
+        parents.set(lk, {
+          id: lane.id,
+          lk,
+          cfg: lane.cfg,
+          sym: lane.sym,
+          side: lane.side,
+          ...(lane.processedStage ? { processedStage: lane.processedStage } : {}),
+          ...(lane.processedPolicy ? { processedPolicy: lane.processedPolicy } : {}),
+        });
       }
       if (!parents.size) throw holdOn("no exact active config identity for the entry — not opening");
+      if (rt.wf?.processedStages) {
+        const already = liveKvView<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {};
+        const evidence = [...parents.values()].map((parent) => already[parent.lk] ?? parent);
+        const revision = nativeProcessedRevision(rt.wf.processedStages, rt.settings.cost);
+        if (evidence.some((parent) =>
+          parent.processedStage !== "active" || parent.processedPolicy !== revision))
+          throw holdOn("processed-stage identity is missing, stale or not active — not opening");
+      }
       entryParentAllocations[coid] = { key, at: Date.now(), parents: [...parents.values()] };
       // The exact configs are checkpointed before market dispatch so a delayed fill or restart cannot be adopted
       // by a different set that later happens to use the same symbol and side.
@@ -4877,7 +4906,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const key = allocation.key;
       if ((ledger.get(key) ?? 0) <= 1e-12 && !pendingKeys.has(key) && !lagging.has(key) && !held.has(key)) continue;
       for (const parent of allocation.parents)
-        trackedLanes[parent.lk] ??= { cfg: parent.cfg, sym: parent.sym, side: parent.side, t: allocation.at, px: 0 };
+        trackedLanes[parent.lk] ??= {
+          cfg: parent.cfg,
+          sym: parent.sym,
+          side: parent.side,
+          t: allocation.at,
+          px: 0,
+          ...(parent.processedStage ? { processedStage: parent.processedStage } : {}),
+          ...(parent.processedPolicy ? { processedPolicy: parent.processedPolicy } : {}),
+        };
     }
     const onExchangeLanes = new Set(Object.keys(trackedLanes));
     let chased = 0;

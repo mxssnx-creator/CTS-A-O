@@ -101,11 +101,13 @@ describe("post-Base modeled unit provenance", () => {
 
 describe("live record: lanes at the exchange's prices", () => {
   it("joins at the fill that grew the position, leaves at the fill that shrank it", () => {
-    const a = lane("b|ema|a", 1);
+    const a = { ...lane("b|ema|a", 1), processedStage: "active" as const, processedPolicy: "policy-v1" };
     const b = lane("b|ema|b", 2);
     // a opens the position: filled at 101 (the market said 100)
     let r = step({}, { lanes: [a], heldAfter: new Set([K]), grew: new Map([[K, 101]]) });
     assert.equal(r.open[laneKeyOf(a)].px, 101);
+    assert.equal(r.open[laneKeyOf(a)].processedStage, "active");
+    assert.equal(r.open[laneKeyOf(a)].processedPolicy, "policy-v1");
     // b joins with an increase filled at 103; a stays at its own entry
     r = step(r.open, { lanes: [a, b], heldAfter: new Set([K]), grew: new Map([[K, 103]]), now: 2_000 });
     assert.equal(r.open[laneKeyOf(a)].px, 101);
@@ -126,6 +128,8 @@ describe("live record: lanes at the exchange's prices", () => {
     assert.equal(r.closed[0].cfg, "b|ema|a");
     assert.ok(Math.abs(r.closed[0].r - (-2 / 101 - 0.001)) < 1e-12);
     assert.equal(r.closed[0].reason, "exit");
+    assert.equal(r.closed[0].processedStage, "active");
+    assert.equal(r.closed[0].processedPolicy, "policy-v1");
     assert.deepEqual(Object.keys(r.open), [laneKeyOf(b)]);
   });
 

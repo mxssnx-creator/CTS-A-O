@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { CoreDb } from "./db.server.ts";
 import { recordLanes } from "./live.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
@@ -27,6 +28,33 @@ const coids = (db: CoreDb) =>
   db.all<{ coid: string }>("SELECT coid FROM live_orders ORDER BY coid").map((r) => r.coid);
 
 describe("ledger journal", () => {
+  it("upgrades a legacy lane ledger without rewriting its historical rows", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-lane-ledger-upgrade-"));
+    const path = join(dir, "core.sqlite");
+    try {
+      const legacy = new DatabaseSync(path);
+      legacy.exec("CREATE TABLE live_lane_trades (id TEXT NOT NULL, exit_t INTEGER NOT NULL, cfg TEXT NOT NULL, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, px_src TEXT, PRIMARY KEY (id, exit_t)) WITHOUT ROWID");
+      legacy.prepare("INSERT INTO live_lane_trades (id,exit_t,cfg,sym,side,entry_t,entry,exit,r,reason,px_src) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+        .run("old", 2, "cfg", "A-USDT", 1, 1, 100, 101, .01, "target", "fill");
+      legacy.close();
+
+      const upgraded = new CoreDb(path);
+      const columns = upgraded.all<{ name: string }>("SELECT name FROM pragma_table_info('live_lane_trades')").map((row) => row.name);
+      assert.ok(columns.includes("processed_stage"));
+      assert.ok(columns.includes("processed_policy"));
+      // relation: all rows — the fixture verifies that its one legacy row remains intact.
+      const row = upgraded.get<{ r: number; processed_stage: string | null; processed_policy: string | null }>(
+        "SELECT r,processed_stage,processed_policy FROM live_lane_trades WHERE id='old'",
+      );
+      assert.equal(row?.r, .01);
+      assert.equal(row?.processed_stage, null);
+      assert.equal(row?.processed_policy, null);
+      upgraded.db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("a lane's execution result survives a crash between database snapshots", () => {
     const dir = mkdtempSync(join(tmpdir(), "cts-fill-journal-"));
     try {
@@ -34,7 +62,8 @@ describe("ledger journal", () => {
       const a = new CoreDb(":memory:");
       a.journalPath = journal;
       const rt = { db: a, settings: DEFAULT_SETTINGS };
-      const lane = { id: "cfg|A-USDT|100", cfg: "cfg", sym: "A-USDT", side: 1 as const };
+      const lane = { id: "cfg|A-USDT|100", cfg: "cfg", sym: "A-USDT", side: 1 as const,
+        processedStage: "active" as const, processedPolicy: "policy-v1" };
       const common = { grew: new Map<string, number>(), shrank: new Map<string, number>(), external: new Map<string, number | null>(), prices: new Map([["A-USDT", 100]]) };
       recordLanes(rt, { ...common, lanes: [lane], heldAfter: new Set(["A-USDT|1"]), now: 100 });
       recordLanes(rt, { ...common, lanes: [], heldAfter: new Set(), shrank: new Map([["A-USDT|1", 98]]), now: 200 });
@@ -42,11 +71,15 @@ describe("ledger journal", () => {
       b.journalPath = journal;
       assert.equal(b.replayJournal(), 1);
       // relation: all rows — the fixture reads back the one row it replayed
-      const rows = b.all<{ entry: number; exit: number; r: number }>("SELECT entry, exit, r FROM live_lane_trades");
+      const rows = b.all<{ entry: number; exit: number; r: number; processed_stage: string; processed_policy: string }>(
+        "SELECT entry, exit, r, processed_stage, processed_policy FROM live_lane_trades",
+      );
       assert.equal(rows.length, 1);
       assert.equal(rows[0].entry, 100);
       assert.equal(rows[0].exit, 98);
       assert.ok(Math.abs(rows[0].r - (-.02 - DEFAULT_SETTINGS.cost)) < 1e-12);
+      assert.equal(rows[0].processed_stage, "active");
+      assert.equal(rows[0].processed_policy, "policy-v1");
       assert.equal(b.replayJournal(), 1);
       // relation: all rows — the fixture counts the rows it replayed
       assert.equal(b.get<{ n: number }>("SELECT COUNT(*) AS n FROM live_lane_trades")?.n, 1, "replaying twice is idempotent");

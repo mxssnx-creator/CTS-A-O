@@ -1,3 +1,25 @@
+## 2026-11-15 — old PR #219 venue-stage admission provenance
+
+This continuation is based on current `main` `fee2c520910d12224e0668c1a175bcff5b400bbc`, after the durable
+paper-parent checkpoint repair. Native requests already checkpointed exact parent IDs before dispatch, but neither
+that reservation nor the terminal lane ledger retained the parent's processed stage and exact windows/cost revision.
+
+With `wf.processedStages` enabled, paper parents now freeze that evidence; native open/increase fails closed before any
+venue call unless every contributing parent is `active` under the exact current revision. The durable pre-dispatch
+reservation, pending/restart path, open-lane state, terminal ledger and journal replay retain it. Legacy ledger tables
+gain nullable columns without rewriting historical rows. Existing exposure can still be protected and reduced after
+a policy change. Full evidence and limits:
+`docs/verification/old-pr-219-venue-stage-provenance-20261115.md`.
+
+This is admission provenance, not verified funded allocation across a netted venue position. No account or exchange
+request was made, no PF was measured, and no deployment changed. Exact per-parent quantities across partial fills,
+increases, reductions, protection exits and restart; Settings/UI; fresh twelve-symbol x02 acceptance; venue parity and
+sufficient independent samples remain open. Keep draft #219 open and preserve every earlier loss/failure.
+
+Local current-source verification is green: complete Core 4,954 tests / 4,951 pass / 0 fail / 3 explicit skips,
+strategy-feature 18/18, Last-N Block 3/3, the broad live/native/control inventory, typecheck, scoped lint with no errors,
+and development/core-worker build. This new source-bound pass does not rewrite the earlier failed adapter-base attempt.
+
 ## 2026-11-15 — old PR #219 paper checkpoint durability follow-up
 
 This continuation is based on exact current `main` `1cf7742d329e01a0a859bae4c3026da026964468`

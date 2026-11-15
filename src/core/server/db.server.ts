@@ -41,7 +41,7 @@ CREATE INDEX IF NOT EXISTS live_fills_at ON live_fills (at);
 CREATE TABLE IF NOT EXISTS venue_income (scope TEXT NOT NULL, id TEXT NOT NULL, asset TEXT NOT NULL, type TEXT NOT NULL, sym TEXT NOT NULL, trade_id TEXT, at INTEGER NOT NULL, amount REAL NOT NULL, PRIMARY KEY(scope,asset,type,id)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS venue_income_scope_at ON venue_income(scope,at);
 -- px_src: where the exit price comes from (fill / history / bar / ticker; NULL on rows from before it was recorded)
-CREATE TABLE IF NOT EXISTS live_lane_trades (id TEXT NOT NULL, exit_t INTEGER NOT NULL, cfg TEXT NOT NULL, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, px_src TEXT, PRIMARY KEY (id, exit_t)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS live_lane_trades (id TEXT NOT NULL, exit_t INTEGER NOT NULL, cfg TEXT NOT NULL, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, px_src TEXT, processed_stage TEXT, processed_policy TEXT, PRIMARY KEY (id, exit_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS live_lane_trades_exit ON live_lane_trades (exit_t);
 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, level TEXT NOT NULL, msg TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS events_at ON events (at);
@@ -79,6 +79,8 @@ const ADDED_COLUMNS: ReadonlyArray<readonly [table: string, column: string, type
   ["paper_book_trades", "exit", "REAL"],
   ["paper_book_trades", "mult", "REAL"],
   ["live_lane_trades", "px_src", "TEXT"],
+  ["live_lane_trades", "processed_stage", "TEXT"],
+  ["live_lane_trades", "processed_policy", "TEXT"],
 ];
 function addColumns(db: DatabaseSync) {
   for (const [t, c, type] of ADDED_COLUMNS) {
