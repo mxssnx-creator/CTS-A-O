@@ -1,3 +1,18 @@
+## 2026-11-15 — old PR #132 deterministic universe continuation
+
+Current-target audit starts at `d70a470f735fe5a43953a9c5bbd09c5a41009047`, common base
+`22d8482b9babec202cbb12805dbfc4e86e16fa8d`, old shared head `ddebc9d2d3c5dcd53c93f6ff43ad6d660141af59`.
+The 124-commit/396-path draft is only partially audited and stays open. Its old deterministic symbol ordering
+correction `d15f809` is missing from current native universe construction and independently reproduces two failures.
+The current `makeUniverse` boundary now canonicalizes symbols while retaining each symbol's configured lane order,
+original bars, short-series market input and causal evaluation boundary. No old branch tree or economics is restored.
+
+The focused publication/incremental/Signal/stored-history inventory passes 96/96; two new permutation regressions,
+typecheck and diff check pass. Exact-head required CI and broader Core verification remain prerequisites to merge.
+Details and retained failed fixture attempts: `docs/verification/old-pr-132-universe-order-20261115.md`.
+The separate twelve-symbol replay stays frozen on its original source. Current-policy post-Base PF,
+passed/evaluated validation and execution PF are unavailable. No exchange, account, service or deployment changed.
+
 ## 2026-11-15 — old PR #244 current-target audit
 
 Old draft #244 was compared from common base `9f054c30250b5998fef173da8d11e6c93ef0f646` and head
