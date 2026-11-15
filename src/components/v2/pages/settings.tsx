@@ -1878,6 +1878,19 @@ export function RangeEditor(props: {
             onChange={(v) => props.set(p("slOfTp"), v)}
           />
           <Field
+            label={`${props.title} own minimum stop distance (% net of cost)`}
+            hint="The initial stop is never inside the round-trip cost plus this distance. Unset = the global minimum (0.1–1 %). Operator, 12 Nov: each range uses its own minimum."
+          >
+            <Num
+              pct
+              step={0.05}
+              min={0.1}
+              max={1}
+              value={(s as { minSlDistancePct?: number }).minSlDistancePct ?? 0.1}
+              onChange={(v) => props.set(p("minSlDistancePct"), v)}
+            />
+          </Field>
+          <Field
             label={`${props.title} maximum hold (minutes)`}
             hint="Independent time limit for this range's Normal and Trailing cells. Earlier target, stop and trail exits still apply. 0 uses the grid's hold times. A limit shorter than a lane's bar excludes that lane; e.g. 15 minutes excludes 30-minute lanes. Historic Exit uses its own hold setting."
           >
@@ -2562,6 +2575,19 @@ export function LowRangeShortSettings(props: {
             max={0.008}
             value={lr.step}
             onChange={(step) => put({ step })}
+          />
+        </Field>
+        <Field
+          label="Low-Range own minimum stop distance (% net of cost)"
+          hint="Low-Range's own minimum net initial-stop distance, 0.1–1 %. Unset = the global minimum."
+        >
+          <Num
+            pct
+            step={0.05}
+            min={0.1}
+            max={1}
+            value={lr.minSlDistancePct ?? 0.1}
+            onChange={(v) => put({ minSlDistancePct: v })}
           />
         </Field>
         <Field

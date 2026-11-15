@@ -58,7 +58,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: false,
         dca: false,
         dcaActive: false,
-        axis: false,
+        axis: true,
       },
     },
     wf: {
@@ -181,7 +181,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: true,
         dca: true,
         dcaActive: true,
-        axis: false,
+        axis: true,
       },
     },
     wf: {
@@ -304,7 +304,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: true,
         dca: false,
         dcaActive: false,
-        axis: false,
+        axis: true,
       },
     },
     wf: {
@@ -427,7 +427,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: false,
         dca: false,
         dcaActive: false,
-        axis: false,
+        axis: true,
       },
     },
     wf: {
@@ -550,7 +550,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: false,
         dca: true,
         dcaActive: false,
-        axis: false,
+        axis: true,
       },
     },
     wf: {
@@ -673,7 +673,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: false,
         dca: true,
         dcaActive: false,
-        axis: false,
+        axis: true,
       },
     },
     wf: {
@@ -796,7 +796,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: true,
         dca: false,
         dcaActive: false,
-        axis: false,
+        axis: true,
       },
     },
     wf: {
@@ -919,7 +919,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: false,
         dca: true,
         dcaActive: false,
-        axis: false,
+        axis: true,
       },
     },
     wf: {

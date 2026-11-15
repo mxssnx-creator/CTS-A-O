@@ -937,7 +937,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
       blockActive: false,
       dca: true,
       dcaActive: false,
-      axis: false,
+      axis: true,
     },
   },
   normal: {
@@ -949,7 +949,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
       blockActive: false,
       dca: false,
       dcaActive: false,
-      axis: false,
+      axis: true,
     },
   },
   "normal-trailing": {
@@ -961,7 +961,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
       blockActive: false,
       dca: false,
       dcaActive: false,
-      axis: false,
+      axis: true,
     },
   },
   trailing: {
@@ -973,7 +973,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
       blockActive: false,
       dca: false,
       dcaActive: false,
-      axis: false,
+      axis: true,
     },
   },
   block: {
@@ -985,7 +985,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
       blockActive: false,
       dca: false,
       dcaActive: false,
-      axis: false,
+      axis: true,
     },
   },
   "block-active": {
@@ -997,7 +997,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
       blockActive: true,
       dca: false,
       dcaActive: false,
-      axis: false,
+      axis: true,
     },
   },
   "normal-off+block": {
@@ -1009,7 +1009,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
       blockActive: false,
       dca: true,
       dcaActive: false,
-      axis: false,
+      axis: true,
     },
   },
   dca: {
@@ -1021,7 +1021,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
       blockActive: false,
       dca: true,
       dcaActive: false,
-      axis: false,
+      axis: true,
     },
   },
   "dca-active": {
@@ -1033,7 +1033,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
       blockActive: false,
       dca: true,
       dcaActive: true,
-      axis: false,
+      axis: true,
     },
   },
   "trailing+block-active": {
@@ -1045,7 +1045,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
       blockActive: true,
       dca: false,
       dcaActive: false,
-      axis: false,
+      axis: true,
     },
   },
   "normal+dca-active": {
@@ -1057,7 +1057,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
       blockActive: false,
       dca: true,
       dcaActive: true,
-      axis: false,
+      axis: true,
     },
   },
   "trailing+dca": {
@@ -1069,7 +1069,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
       blockActive: false,
       dca: true,
       dcaActive: false,
-      axis: false,
+      axis: true,
     },
   },
   "normal-trailing+block-active": {
@@ -1081,7 +1081,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
       blockActive: true,
       dca: false,
       dcaActive: false,
-      axis: false,
+      axis: true,
     },
   },
   axis: {
@@ -1141,7 +1141,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
       blockActive: true,
       dca: true,
       dcaActive: true,
-      axis: false,
+      axis: true,
     },
   },
 };
