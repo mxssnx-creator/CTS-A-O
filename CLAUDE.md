@@ -10,3 +10,7 @@
 - The system↔exchange relation is the primary invariant: read `docs/execution-fidelity.md` before changing live
   control, the live record, the paper book or any reader of live_lane_trades / live_orders / live_fills; every reader
   uses `src/core/relation.ts`; manual quantity is never own; `src/core/relation.test.ts` must pass.
+
+## How to read PF (owner, 2026-11-15)
+
+Pool PF (every configuration, every signal, before validation) is normally under 1 and is not a defect; what decides is the post-Base PF and above all the executed PF, on the development AND the sealed window. See `docs/pf-reading-20261115.md`.
