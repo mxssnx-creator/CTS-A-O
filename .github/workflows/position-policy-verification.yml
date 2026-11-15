@@ -49,6 +49,12 @@ jobs:
           src/core/server/fine-ladder-migration.test.ts src/core/market/base-history-cut.test.ts
           src/core/server/grid-cost-budget.test.ts src/core/regression.test.ts
           src/core/server/cycle-serial.test.ts
+          src/core/sl-ratios.test.ts src/core/block-lane.test.ts
+          src/core/pipeline/short-lane-evaluation.test.ts
+          src/core/sim/block-independent-processing.test.ts
+          src/core/sim/validation-progression.test.ts src/core/sim/validated-sets.test.ts
+          src/core/indications/micro-rel.test.ts src/core/replay-evaluation-window.test.ts
+          src/core/server/preset-exit.test.ts
       - name: Report provenance and verification inventory
         run: >-
           node --require ./scripts/lib/core-test-offline-guard.cjs --test
