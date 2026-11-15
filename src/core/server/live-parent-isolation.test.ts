@@ -149,7 +149,11 @@ for (const side of [1, -1] as const) for (const terminal of ["FILLED", "CANCELLE
     const into = side === 1 ? request.side === "BUY" : request.side === "SELL";
     if (request.type !== "MARKET" || !into) return place(request);
     ex.sent++; ex.log.push(request); requested = Number(request.quantity); partial = +(requested * .4).toFixed(6);
-    entryCoid = String(request.clientOrderID); ex.positions.set(key, partial);
+    entryCoid = String(request.clientOrderID);
+    const history = rt.db.kvGet<{ parents: Array<{ cfg: string; processedPolicy?: string }> }>(`liveEntryParentHistory:${entryCoid}`);
+    assert.equal(history?.parents[0]?.cfg, A, "frozen request parent is durable before dispatch");
+    assert.equal(history?.parents[0]?.processedPolicy, policy);
+    ex.positions.set(key, partial);
     return { order: { orderId: "partial-processed-parent", status: "PARTIALLY_FILLED", executedQty: partial, avgPrice: 10 } };
   };
   ex.orderStatus = async (symbol, id) => id === "partial-processed-parent"
@@ -166,6 +170,7 @@ for (const side of [1, -1] as const) for (const terminal of ["FILLED", "CANCELLE
     assert.deepEqual(allocations()[entryCoid]?.parents.map(p => [p.cfg, p.side, p.processedStage, p.processedPolicy]), [[A, side, "active", policy]], "partial attribution cannot retire a still-pending request's frozen parent");
     flushLiveKv(rt.db); rt.db.db.close(); rt = make(); rt.paper.positions = [parent];
     assert.equal(allocations()[entryCoid]?.parents[0]?.cfg, A, "request identity survives disk restart");
+    assert.equal(rt.db.kvGet<{parents: Array<{cfg:string}>}>(`liveEntryParentHistory:${entryCoid}`)?.parents[0]?.cfg,A);
     phase = "stale"; mock.timers.tick(20_000); await step();
     assert.equal(ex.positions.get(key), partial); assert.equal(entryCount(), 1);
     assert.equal(allocations()[entryCoid]?.parents[0]?.processedPolicy, policy, "a stale zero cumulative poll keeps the exact pending policy");
@@ -174,12 +179,17 @@ for (const side of [1, -1] as const) for (const terminal of ["FILLED", "CANCELLE
     ex.positions.set(key, terminalQty); mock.timers.tick(20_000); await step();
     assert.equal(ex.positions.get(key), terminalQty); assert.equal(entryCount(), 1);
     assert.equal(Object.keys(allocations()).length, 0, "terminal attributed entry can retire its request checkpoint");
+    assert.equal(rt.db.kvGet<{ parents: Array<{ cfg: string }> }>(`liveEntryParentHistory:${entryCoid}`)?.parents[0]?.cfg, A, "terminal cleanup keeps the historical exact request-to-parent link");
     const held = Object.values(liveKv<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {});
     assert.equal(held[0]?.processedPolicy, policy); assert.equal(held[0]?.processedStage, "active");
     rt.paper.positions = []; mock.timers.tick(20_000); await step();
     assert.equal(ex.positions.has(key), false);
     const rows = rt.db.all<{ cfg: string; processed_stage: string; processed_policy: string }>("SELECT cfg,processed_stage,processed_policy FROM live_lane_trades");
     assert.deepEqual(rows.map(r => [r.cfg, r.processed_stage, r.processed_policy]), [[A, "active", policy]]);
+    flushLiveKv(rt.db); rt.db.db.close(); rt = make();
+    const historical = rt.db.kvGet<{conn:string;parents:Array<{cfg:string;processedPolicy?:string}>}>(`liveEntryParentHistory:${entryCoid}`);
+    assert.equal(historical?.parents[0]?.processedPolicy,policy,"exact policy survives terminal cleanup, final close and another disk restart");
+    assert.match(historical?.conn ?? "", /^[a-f0-9]{64}$/);
   } finally {
     for (const db of databases) try { flushLiveKv(db); db.db.close(); } catch { /* closed before restart */ }
     mock.timers.reset(); rmSync(dir, { recursive: true, force: true });
@@ -468,4 +478,15 @@ for (const side of [1, -1] as const) it(`legacy mixed parents on side ${side} st
     flushLiveKv(finishing.rt.db);
     finishing.rt.db.db.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it("a failed historical parent checkpoint prevents market dispatch", async () => {
+  const {rt,ex,step}=setup();
+  const write=rt.db.runDurable.bind(rt.db);
+  const instrument=mock.method(rt.db,"runDurable",(sql:string,...params:unknown[])=>{
+    if(String(params[0]).startsWith("liveEntryParentHistory:")) throw new Error("injected history journal failure");
+    return write(sql,...params as Parameters<typeof write> extends [string,...infer P] ? P : never);
+  });
+  try {rt.paper.positions=[pos(A,1)];await step();assert.equal(ex.log.filter(o=>o.type === "MARKET").length,0);}
+  finally {instrument.mock.restore();flushLiveKv(rt.db);rt.db.db.close();}
 });

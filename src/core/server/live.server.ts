@@ -3444,6 +3444,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           throw holdOn("processed-stage identity is missing, stale or not active — not opening");
       }
       entryParentAllocations[coid] = { key, at: Date.now(), parents: [...parents.values()] };
+      // The active reservation can retire after terminal reconciliation. Keep its original request-to-parent
+      // provenance separately so later durable fills can still be joined to the exact source/policy. This is
+      // historical identity only: multiple parents do not imply a measured per-parent quantity allocation.
+      rt.db.runDurable("INSERT OR IGNORE INTO kv (k, v, at) VALUES (?, ?, ?)",
+        `liveEntryParentHistory:${coid}`, JSON.stringify({ ...entryParentAllocations[coid], conn: orphanConn }), Date.now());
       // The exact configs are checkpointed before market dispatch so a delayed fill or restart cannot be adopted
       // by a different set that later happens to use the same symbol and side.
       persistEntryParentAllocations();
