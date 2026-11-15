@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, it } from "node:test";
+import { afterEach, it, mock } from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -125,6 +125,64 @@ it("a pending processed venue request keeps its exact active policy across resta
     reopened.db.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+for (const side of [1, -1] as const) for (const terminal of ["FILLED", "CANCELLED"] as const) it(`a partially filled processed entry retains its exact request parent until ${terminal} reconciliation, side ${side}`, async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cts-processed-partial-parent-")), path = join(dir, "core.sqlite");
+  mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  const databases: CoreDb[] = [];
+  const make = () => {
+    const fixture = setup(new CoreDb(path)); databases.push(fixture.rt.db);
+    Object.assign(fixture.rt.settings.live, { positionSize: "lanes", laneOrders: false, positionMode: "hedge" });
+    (fixture.rt as unknown as { wf: { processedStages: { validationN: number; realN: number } } }).wf = { processedStages: { validationN: 2, realN: 2 } };
+    return fixture.rt;
+  };
+  let rt = make();
+  const ex = new SimExchange().withEquity(100), key = `${SYM}|${side === 1 ? "LONG" : "SHORT"}`;
+  ex.px.set(SYM, 10);
+  const policy = JSON.stringify(["processed-native-v1", rt.settings.cost, { validationN: 2, realN: 2 }]);
+  const parent = { ...pos(A, side), processedStage: "active" as const, processedPolicy: policy };
+  const place = ex.order.bind(ex), status = ex.orderStatus.bind(ex);
+  let phase: "partial" | "stale" | "full" = "partial", requested = 0, partial = 0, entryCoid = "";
+  ex.order = async request => {
+    const into = side === 1 ? request.side === "BUY" : request.side === "SELL";
+    if (request.type !== "MARKET" || !into) return place(request);
+    ex.sent++; ex.log.push(request); requested = Number(request.quantity); partial = +(requested * .4).toFixed(6);
+    entryCoid = String(request.clientOrderID); ex.positions.set(key, partial);
+    return { order: { orderId: "partial-processed-parent", status: "PARTIALLY_FILLED", executedQty: partial, avgPrice: 10 } };
+  };
+  ex.orderStatus = async (symbol, id) => id === "partial-processed-parent"
+    ? { order: { orderId: id, status: phase === "full" ? terminal : phase === "stale" ? "NEW" : "PARTIALLY_FILLED",
+      executedQty: phase === "full" && terminal === "FILLED" ? requested : phase === "stale" ? 0 : partial, avgPrice: phase === "stale" ? 0 : 10 } }
+    : status(symbol, id);
+  const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+  const allocations = () => liveKv<Record<string, { parents: Array<{ cfg: string; side: number; processedStage?: string; processedPolicy?: string }> }>>(rt.db, "liveEntryParents") ?? {};
+  const entryCount = () => ex.log.filter(x => x.type === "MARKET" && (side === 1 ? x.side === "BUY" : x.side === "SELL")).length;
+  try {
+    rt.paper.positions = [parent]; await step();
+    assert.ok(partial > 0 && partial < requested); assert.equal(ex.positions.get(key), partial);
+    assert.equal(Object.values(liveKv<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {}).length, 1, "first fill is already attributed");
+    assert.deepEqual(allocations()[entryCoid]?.parents.map(p => [p.cfg, p.side, p.processedStage, p.processedPolicy]), [[A, side, "active", policy]], "partial attribution cannot retire a still-pending request's frozen parent");
+    flushLiveKv(rt.db); rt.db.db.close(); rt = make(); rt.paper.positions = [parent];
+    assert.equal(allocations()[entryCoid]?.parents[0]?.cfg, A, "request identity survives disk restart");
+    phase = "stale"; mock.timers.tick(20_000); await step();
+    assert.equal(ex.positions.get(key), partial); assert.equal(entryCount(), 1);
+    assert.equal(allocations()[entryCoid]?.parents[0]?.processedPolicy, policy, "a stale zero cumulative poll keeps the exact pending policy");
+    phase = "full"; const terminalQty = terminal === "FILLED" ? requested : partial;
+    if (terminal === "CANCELLED") rt.paper.positions = [{ ...parent, vol: (parent.vol ?? 1) * .4 }];
+    ex.positions.set(key, terminalQty); mock.timers.tick(20_000); await step();
+    assert.equal(ex.positions.get(key), terminalQty); assert.equal(entryCount(), 1);
+    assert.equal(Object.keys(allocations()).length, 0, "terminal attributed entry can retire its request checkpoint");
+    const held = Object.values(liveKv<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {});
+    assert.equal(held[0]?.processedPolicy, policy); assert.equal(held[0]?.processedStage, "active");
+    rt.paper.positions = []; mock.timers.tick(20_000); await step();
+    assert.equal(ex.positions.has(key), false);
+    const rows = rt.db.all<{ cfg: string; processed_stage: string; processed_policy: string }>("SELECT cfg,processed_stage,processed_policy FROM live_lane_trades");
+    assert.deepEqual(rows.map(r => [r.cfg, r.processed_stage, r.processed_policy]), [[A, "active", policy]]);
+  } finally {
+    for (const db of databases) try { flushLiveKv(db); db.db.close(); } catch { /* closed before restart */ }
+    mock.timers.reset(); rmSync(dir, { recursive: true, force: true });
   }
 });
 
