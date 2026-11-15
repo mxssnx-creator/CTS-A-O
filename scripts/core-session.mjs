@@ -827,7 +827,8 @@ async function runEngine() {
     return (
       `${st.state} ${st.stage} ${pct(st.progress)} (job ${pct(st.overall)}) ${st.label} · ` +
       `symbols ${rt.candles.size}/${Math.max(target(), rt.candles.size)} · computes ${st.computes} · ` +
-      `paper on #${st.paperCompute ?? 0} · rss ${Math.round(process.memoryUsage().rss / 1e6)} MB` +
+      `paper on #${st.paperCompute ?? 0} · rss ${Math.round(process.memoryUsage().rss / 1e6)} MB · ` +
+      `available ${memAvailMb() ?? "unknown"} MB` +
       `${st.error ? ` · error ${String(st.error).slice(0, 240)}` : ""}`
     );
   };
