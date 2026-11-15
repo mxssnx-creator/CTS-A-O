@@ -69,6 +69,7 @@ import {
 } from "./lib/session-owned-returns.mjs";
 import { createMinuteBookCache } from "./lib/session-minute-book.mjs";
 import { RT_COST } from "../src/core/model-cost.ts";
+import { blockLane } from "../src/core/block-lane.ts";
 import {
   SESSION_EXECUTION_RETURNS,
   SESSION_QUALIFICATION,
@@ -2832,6 +2833,16 @@ const blockLevels = groupRows(
   },
   ["plain", ...Array.from({ length: 12 }, (_, i) => `level ${i}`)],
 );
+// Block as its own lane (docs/…; src/core/block-lane.ts): raised entries of the normal and trailing book on their unit returns
+const blockLaneOut = blockLane(
+  inBook
+    .filter((x) => {
+      const k = kindOfTrade(x);
+      return k === "normal" || k === "trailing";
+    })
+    .map((x) => ({ r: x.r, mult: x.mult ?? 1, coordVol: x.coordVol ?? 1, level: x.level ?? 0 })),
+  { minCloses: 30 },
+);
 const multRows = groupRows(
   (x) => {
     const m = (x.mult ?? 1) / (x.coordVol ?? 1);
@@ -4354,6 +4365,7 @@ const data = clean({
   classes,
   subTypes,
   blockLevels,
+  blockLane: blockLaneOut,
   mult: multRows,
   typeHours,
   typeCum,
@@ -5305,6 +5317,7 @@ ${sec(
 <h3>By type and sub-type</h3><div class="tw" id="tSub"></div>
 <h3>Engine vs signals</h3><div class="tw" id="tClasses"></div>
 <h3>Normal / Trailing by Block level</h3><div class="tw" id="tLevels"></div>
+<h3>Block as its own lane</h3><div id="bLane"></div>
 <h3>By Block volume multiple</h3><div class="tw" id="tMult"></div>
 <h3>By timeframe lane</h3><div class="tw" id="tLanes"></div>
 <h3>By protect range</h3><p class="note">Range of the order's protect cell (TP in multiples of the position cost); signal configs carry no range tag and form their own row, Signals.</p><div class="tw" id="tRanges"></div>
@@ -5618,6 +5631,11 @@ ${sec(
   table("tSub", groupCols("type · sub-type"), D.subTypes, { foot: totFoot(D.subTypes, "total") });
   table("tClasses", groupCols("class"), D.classes, { foot: totFoot(D.classes, "total") });
   table("tLevels", groupCols("Block level"), D.blockLevels);
+  {
+    const bl = D.blockLane;
+    const fmtPf = (x) => (x.pf === null ? "–" : typeof x.pf === "number" ? x.pf.toFixed(3) : x.pf);
+    $("bLane").innerHTML = `<p>Block as its own lane (unit returns, minimum ${bl.minCloses} closes): plain n ${bl.plain.n}, PF ${fmtPf(bl.plain)}, net ${bl.plain.net.toFixed(4)} · raised n ${bl.raised.n}, PF ${fmtPf(bl.raised)}, net ${bl.raised.net.toFixed(4)} · ${bl.raised.judged ? "judged" : "not judged (below the minimum)"}</p>`;
+  }
   table("tMult", groupCols("volume ×"), D.mult, { foot: totFoot(D.mult, "total") });
   table("tLanes", groupCols("lane"), D.lanes, { foot: totFoot(D.lanes, "total") });
   // ranges only: what Base said about these sets, next to what the book did with them, on the same (unit) basis

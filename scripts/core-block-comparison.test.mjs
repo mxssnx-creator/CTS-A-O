@@ -49,7 +49,7 @@ test("actual stopped runtime settings remain default-positive and retain full ex
   assert.equal(p.actualSettings.toggles.normal, true);
   assert.equal(p.actualSettings.toggles.trailing, true);
   assert.equal(p.actualSettings.toggles.dca, true);
-  assert.equal(p.actualSettings.toggles.axis, false);
+  assert.equal(p.actualSettings.toggles.axis, true);
   assert.equal(p.actualSettings.toggles.blockActive, false);
   assert.equal(p.actualSettings.block.ratio, 0.2);
   assert.equal(p.actualSettings.block.steps, 0);

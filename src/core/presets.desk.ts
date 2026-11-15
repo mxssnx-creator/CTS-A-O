@@ -111,7 +111,7 @@ export const DESK_PRESETS: Preset[] = [
         blockActive: false,
         dca: false,
         dcaActive: false,
-        axis: false,
+        axis: true,
       },
       focus: [
         "follow|rsi-mom-10-25",
@@ -229,7 +229,7 @@ export const DESK_PRESETS: Preset[] = [
         blockActive: false,
         dca: false,
         dcaActive: false,
-        axis: false,
+        axis: true,
       },
       focus: [
         "follow|rsi-mom-10-25",
