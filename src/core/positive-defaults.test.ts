@@ -28,9 +28,9 @@ describe("positive coordinations stay on", () => {
     assert.equal(SIGNAL_EVAL_MIN_PF, 1.3);
     assert.deepEqual(DEFAULT_SIGNALS.accept, { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 });
     assert.equal(DEFAULT_SIGNALS.sideAccept.minPf, 1.3);
-    // the signals' direction acceptance is a positive coordination: on by default (it was off while the doc said on)
-    assert.equal(DEFAULT_SIGNALS.sideAccept.enabled, true);
-    assert.equal(signalSettings({}).sideAccept.enabled, true);
+    // operator override, 19 Oct: both sides trade by default; the PF-qualified gate remains available as an opt-in
+    assert.equal(DEFAULT_SIGNALS.sideAccept.enabled, false);
+    assert.equal(signalSettings({}).sideAccept.enabled, false);
     assert.equal(DEFAULT_SIGNALS.ownBase, true);
     assert.equal(DEFAULT_SIGNALS.filter.volFloor, 0.003);
     const n = signalSettings({});
@@ -42,6 +42,19 @@ describe("positive coordinations stay on", () => {
     assert.deepEqual(defaultWalkForward(DEFAULT_SETTINGS).engineSideAccept, { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 });
     assert.ok(!positiveCoordWarnings({}, defaultWalkForward(DEFAULT_SETTINGS)).some((w) => w.includes("engine direction")));
     assert.ok(!positiveCoordWarnings({}, { engineSideAccept: { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 } }).some((w) => w.includes("engine direction")));
+  });
+
+  it("signal direction acceptance is optional off and only warns when enabled below PF 1.3", () => {
+    const base = { ...DEFAULT_SIGNALS, sideAccept: { ...DEFAULT_SIGNALS.sideAccept } };
+    const wf = { coord: { ...DEFAULT_COORD } };
+    const toggles = { axis: true, normal: true, trailing: true };
+    assert.ok(!positiveCoordWarnings({ signals: base, toggles }, wf).some((w) => w.includes("signal direction")));
+    assert.ok(
+      positiveCoordWarnings(
+        { signals: { ...base, sideAccept: { ...base.sideAccept, enabled: true, minPf: 1.05 } }, toggles },
+        wf,
+      ).some((w) => w.includes("signal direction acceptance below PF 1.3")),
+    );
   });
 
   it("control orders Overall by default: per position, the partials by the system (operator, 7 Oct)", () => {

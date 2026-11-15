@@ -47,20 +47,21 @@ direction acceptance and account risk limits remain separate coordinations. Coun
 its independent acceptance group while return PF includes every settled close. This is an operator-directed
 identity change, not new evidence that any configuration has a positive execution PF.
 
-The operator's standing instruction: the coordinations below were validated as positive and stay on in every future
-change (code defaults, presets, x01's settings and patches). A change that turns one off or weakens it needs a new
-causal comparison that beats it, recorded here. `src/core/positive-defaults.test.ts` pins the code defaults, and a
-desk prints a warning at start and on every patch that leaves one of them off (`positiveCoordWarnings`).
+The operator's standing instruction: the mandatory coordinations below were validated as positive and stay on in every
+future change (code defaults, presets, x01's settings and patches). A change that turns one off or weakens it needs a
+new causal comparison that beats it, recorded here. Explicitly documented operator overrides and optional gates retain
+their stated defaults instead. `src/core/positive-defaults.test.ts` pins the code defaults, and a desk warns when a
+mandatory coordination is off or an enabled optional gate is weakened (`positiveCoordWarnings`).
 
 | Coordination | Setting | Evidence |
 |---|---|---|
 | Signal confirmation: a signal enters only while an engine candidate (taken or not, since 6 Oct — see below) is open on its symbol in its direction | `wf.coord = { enabled: true, confirm: true }` | 8 causal days × 12 symbols: signal PF 1.32 → 1.58, drawdown halved (signals-validation.md). x01 paper, 15 h on 5 Oct: confirmed signal trades PF 7.29 (595, +27.5 %), unconfirmed PF 0.57 (333, −10.4 %) |
 | Hour lock, losing-hour cooldown, opposite-entry blocking | `coord.hourLock 0`, `cooldown "off"`, `conflict false` | each cost net on every variant (signals-validation.md) |
 | Signal acceptance (source × symbol × direction × type) | `signals.accept = { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 }` | without acceptance signal units PF 0.4–0.7; the operator's evaluation is PF 1.3 |
-| Signal direction acceptance (each side's signals pooled — the run's active candidates, counted per signal entry since 6 Oct) | `signals.sideAccept = { enabled: true, minPf: 1.3, hours: 24, minTrades: 20 }` | x01, 48 h on 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h |
+| Signal direction acceptance (each side's signals pooled — optional since the 19 Oct operator override) | `signals.sideAccept = { enabled: false, minPf: 1.3, hours: 24, minTrades: 20 }`; the Settings switch may enable it | x01, 48 h on 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h. This historical split is retained; it does not override the later instruction to let both sides process by default |
 | Signals trade their own base | `signals.ownBase: true` | the engine's Normal off / Block Active skip left signals ~16 closes a day |
 | Signal volatility floor | `signals.filter.volFloor: 0.003` | the move must be worth the 0.2 % round trip (worst drawdown 523 vs 660) |
-| Engine direction acceptance (type family × range × side) — **operator: ON, 6 Oct evening** (see below) | `wf.engineSideAccept = { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 }` — code default on since 6 Oct evening (off earlier that day) | x01 paper replay, 5 Oct: opened shorts PF 1.25 / held 0.51; everything opened PF 1.70 vs 1.0. Same tapes, 12 symbols, 6 h + 6 h, 5–6 Oct: OFF let in 187 shorts at PF 0.05 (net −2,222 % in trade units), the window's PF 3.62 → 1.82 |
+| Engine direction acceptance (type family × range × side) — **operator: OFF by default, 11 Oct** (see below) | `wf.engineSideAccept = { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 }` | The 6 Oct ON evidence and the later five-window OFF comparison are both retained below; the later operator decision controls the default |
 | Normal and Trailing enabled and running, Block Active off | `toggles.normal: true`, `trailing: true`, `blockActive: false` (code default) | operator, 5 Oct: with Block Active (minimum level 5) only Block-raised entries opened — a 2 h Micro run traded Axis alone |
 | Axis on x01 | `toggles.axis: true` | profitable on both sides on x01 (24 h: long PF 1.37, short PF 1.19) |
 | DCA off on x01 | `toggles.dca: false` | lost in every last-N variant of the x01 simulation (PF 0.60–0.81) |
@@ -495,6 +496,19 @@ orders 3,918 → 5,502 and PF D1 0.33 → 0.46, D1a 0.47 → 0.55, D1b 0.24 → 
 
 The x01 desk's patch (`docs/live-coordination/signals.patch.json`) still sets `engineSideAccept.enabled` true explicitly;
 the running desk keeps that setting until its next relaunch with a changed patch, which the operator approves.
+
+The 19 Oct session (12 symbols, 24 h prehistory + 24 h run) was another contrary observation: ON recorded PF 2.59,
+net +455.9 % and 52 orders; OFF recorded PF 1.13, net +260.4 % and 177 orders. It does not erase the earlier five-window
+result and did not silently change the operator-selected default. A future default change requires a fresh, separately
+qualified forward comparison; these historic numbers are not live or profitability proof.
+
+## Signal direction acceptance OFF by default (operator, 19 Oct)
+
+The signal-side gate is an independent optional coordination. The 19 Oct operator override makes its default
+`{ enabled: false, minPf: 1.3, hours: 24, minTrades: 20 }`, so both signal directions remain eligible while their exact
+configuration and downstream stage gates continue to apply. Enabling it in Settings restores the preserved PF-qualified
+policy; the startup warning rejects only an enabled gate weakened below PF 1.3. The 5 Oct pooled side split in the table
+above remains historical evidence and is not presented as a fresh forward or live result.
 
 ## Last-N gate, direction acceptance off (12 Oct) — measured, default unchanged
 
