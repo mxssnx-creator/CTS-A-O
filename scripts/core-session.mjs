@@ -70,6 +70,7 @@ import {
 import { createMinuteBookCache } from "./lib/session-minute-book.mjs";
 import { RT_COST } from "../src/core/model-cost.ts";
 import { blockLane } from "../src/core/block-lane.ts";
+import { validationProgressOf } from "../src/core/validation-progress.ts";
 import {
   SESSION_EXECUTION_RETURNS,
   SESSION_QUALIFICATION,
@@ -1486,6 +1487,7 @@ async function runEngine() {
     validation: (sim.steps ?? [])
       .filter((x) => x.checks)
       .map((x) => ({ t: x.t, real: x.real, checks: x.checks })),
+    validationSummary: (sim.steps ?? []).map((x) => ({ t: x.t, summary: x.validationSummary ?? null })),
     // every step per range: tapes, configs validated, candidates, orders taken (the continuity of each range)
     stepsByRange: (sim.steps ?? []).map((x) => ({ t: x.t, byRange: x.byRange ?? null })),
     // the tape trades of every config that was validated at a step or executed (measurement: the lookback and the
@@ -4243,6 +4245,9 @@ const data = clean({
   settings: report.settings,
   engine: minuteSelection ? { ...raw.engine, signalSteps: [] } : raw.engine,
   evalStats: raw.tapeAgg?.evalStats ?? null,
+  validationProgress: (raw.validationSummary ?? []).map((x) => ({
+    t: x.t, progress: validationProgressOf(x.summary, x.t), failures: x.summary?.failures ?? null,
+  })),
   marketDataLabel: sessionMarketDataLabel(
     raw.settings.marketDataSource,
     raw.settings.marketDataDetails,
@@ -5306,7 +5311,7 @@ ${sec(
 <div class="card" style="margin-top:14px"><h3>Cumulative net per strategy type</h3><div class="cap">Closed orders, $, at every hour end</div><div class="chart" id="cTy"></div></div>
 `,
 )}
-${sec("hourly", "Hour by hour", `<p class="note">One row per hour (UTC). Settled orders and PF / net use the owned cohort <i>closed</i> in the hour; positions are native virtual symbol × direction episodes (opened / closed in the hour / open at its end). Entry requests and open-order counts are virtual diagnostics. DD % and DDT now are on the minute equity; DDR (hour) is the hour's own closed curve, cum columns add every hour so far. Click a header to sort.</p><div class="tw tall" id="tHours"></div>`)}
+${sec("hourly", "Hour by hour", `<p class="note">One row per hour (UTC). Settled orders and PF / net use the owned cohort <i>closed</i> in the hour; positions are native virtual symbol × direction episodes (opened / closed in the hour / open at its end). Entry requests and open-order counts are virtual diagnostics. DD % and DDT now are on the minute equity; DDR (hour) is the hour's own closed curve, cum columns add every hour so far. Click a header to sort.</p><div class="tw tall" id="tHours"></div><h3>Post-Base validation at each decision clock</h3><p class="note">All eligible configs, including failed evaluations, are counted at their actual decision time using only their own settled history. These repeated hourly cohorts are not unique-set totals. Passing-set mean PF, no-loss sets and pooled-window PF are separate from subsequent execution PF. Missing archived evidence remains unavailable.</p><div class="tw tall" id="tValidationHours"></div>`)}
 ${sec(
   "types",
   "Strategy types",
@@ -5529,6 +5534,19 @@ ${sec(
   };
   const totFoot = (rows, label) =>
     sumRow(rows, label, { positions: "(" + T.settledSlicePositions + ")", wr: pct(T.wr, 1) });
+
+  // The full denominator is captured during evaluation, before failed configs are filtered out.
+  table("tValidationHours", [
+    { k: "t", l: "decision (UTC)", f: (r) => dt(r.t), v: (r) => r.t },
+    { l: "evaluated", f: (r) => r.progress ? n2(r.progress.evaluated, 0) : "unavailable" },
+    { l: "passed", f: (r) => r.progress ? n2(r.progress.passed, 0) : "unavailable" },
+    { l: "validated %", f: (r) => r.progress?.evaluated ? pct(r.progress.passed / r.progress.evaluated) : "–" },
+    { l: "mean PF, finite passing sets", f: (r) => n2(r.progress?.setPf?.finiteMean, 4) },
+    { l: "no-loss sets", f: (r) => r.progress?.setPf ? n2(r.progress.setPf.noLossSets, 0) : "–" },
+    { l: "unavailable PF sets", f: (r) => r.progress?.setPf ? n2(r.progress.setPf.unavailableSets, 0) : "–" },
+    { l: "pooled window PF diagnostic", f: (r) => r.progress?.noLoss ? "∞ (no loss)" : n2(r.progress?.pooledPf, 4) },
+    { l: "failed gates", f: (r) => r.failures ? esc(Object.entries(r.failures).map(([k, n]) => k + ": " + n).join(" · ")) : "unavailable" },
+  ], D.validationProgress ?? []);
 
   // hourly
   table(

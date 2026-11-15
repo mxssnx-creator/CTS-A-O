@@ -28,7 +28,7 @@ const fixture = (): Bars[] =>
 const pairs = [1, 5, 15, 30].map((tf) => ({ bot: "follow", ind: `sig-ema-cross-s@m${tf}` }));
 
 describe("replay: indicator warmup is separate from evaluation evidence", () => {
-  it("retains warmed lanes while physically truncating six-hour history removes slower lanes", () => {
+  it("retains actual short lanes while warmup readiness remains specific to each indicator", () => {
     const bars = fixture().map((b) => headBars(b, CUT));
     const physical = bars.map((b) => {
       const a = b.t.findIndex((t) => t >= FROM);
@@ -45,8 +45,11 @@ describe("replay: indicator warmup is separate from evaluation evidence", () => 
     });
     assert.deepEqual(
       makeUniverse(physical).bars.map((b) => b.tfMin),
-      [1],
+      [1, 5, 15, 30],
     );
+    const short = makeUniverse(physical);
+    assert.ok(short.caches.find(k => k.b.tfMin === 30)!.ema(50).every(Number.isNaN),
+      "retaining a short lane cannot invent the missing EMA warmup");
     const warmed = makeUniverse(bars, FROM);
     assert.deepEqual(
       warmed.bars.map((b) => b.tfMin),

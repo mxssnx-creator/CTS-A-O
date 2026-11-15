@@ -28,7 +28,7 @@ const settings={grid,signals:{normal:{...DEFAULT_SETTINGS.signals.normal,slAuto:
   exitStrategy:{lookbackH:12},gates:{positionWindows:{...DEFAULT_SETTINGS.gates.positionWindows,main:mainN}}};
 const toggles={axis:true,...(profile==="independent"?{normal:false,block:true,blockActive:true}:{})};
 if(profile==="independent")settings.block={...DEFAULT_SETTINGS.block,historySource:"processed-orders",excludeKinds:["axis"]};
-const wf={signalLongH:12};
+const wf={signalLongH:12,recordValidation:"summary"};
 mkdirSync(out,{recursive:true});
 const feedHash=createHash("sha256").update(readFileSync(feed)).digest("hex");
 writeFileSync(join(out,"protocol.json"),JSON.stringify({version:1,profile,mainN,source:execFileSync("git",["rev-parse","HEAD"],{encoding:"utf8"}).trim(),
@@ -41,4 +41,5 @@ const cli=["--experimental-strip-types","--no-warnings","scripts/core-session.mj
 const run=spawnSync(process.execPath,cli,{stdio:"inherit",env:{...process.env,CTS_CORE_LIVE:"0",CTS_CORE_AUTOSTART:"0",CTS_CORE_VARIANTS:"0",
   MALLOC_ARENA_MAX:"2",MALLOC_MMAP_THRESHOLD_:"1048576"},timeout:3600000});
 if(run.error)throw run.error;
+if(run.signal)throw new Error(`Offline study terminated by ${run.signal}; incomplete outputs are not a completed report`);
 process.exitCode=run.status??1;
