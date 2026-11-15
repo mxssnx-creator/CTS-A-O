@@ -1,3 +1,4 @@
+import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL, slRatioCandidates, type AutoSlRatios } from "@/core/sl-ratios";
 import {BlockPolicyFields} from "../../../../shared/cts-lastn/fields";
 import { DEFAULT_POSITION_WINDOWS, checkPositionWindows, type PositionWindows } from "@/core/position-windows";
 import {dcaTacticConfigs,dcaTacticId,DCA_TACTIC_GRID} from "@/core/indications/dca-tactic";
@@ -367,7 +368,7 @@ export function BlockSources(props: {
       </Field>
       <Field
         label="History source"
-        hint="Accepted orders: Real executions that passed all entry gates and have an exit, before account allocation, judged by net unit returns after costs. Candidate history is a diagnostic that also includes skipped orders; neither is venue fill evidence."
+        hint="Accepted orders learn only actual modeled Real admissions. Independent processed orders also learn from their own gate-qualified, capacity-limited virtual predecessors while Ordinary is off. Both use settled unit returns; neither is venue fill evidence. Persistent stage chains still require Active admissions. Candidate history includes rejected orders and is diagnostic."
       >
         <select
           className="v2-select"
@@ -376,6 +377,7 @@ export function BlockSources(props: {
           onChange={(e) => props.set(["block", "historySource"], e.target.value)}
         >
           <option value="accepted-orders">Accepted Real orders</option>
+          <option value="processed-orders">Independent processed orders</option>
           <option value="real-candidates">
             Legacy Real candidates · includes skips (diagnostic)
           </option>
@@ -906,7 +908,7 @@ export function SignalsSettings(props: {
         >
           <div className="v2-grid v2-cols-2" style={{ gap: 6 }}>
             <List pct value={normal.tp} onChange={(v) => set(["normal", "tp"], v)} />
-            <List value={normal.slOfTp} onChange={(v) => set(["normal", "slOfTp"], v)} />
+            <SlRatioEditor title="Signal Normal" spec={normal} set={(field,value)=>set(["normal",field],value)}/>
           </div>
         </Field>
         <Field
@@ -1039,7 +1041,7 @@ export function SignalsSettings(props: {
         >
           <div className="v2-grid v2-cols-2" style={{ gap: 6 }}>
             <List value={hist.trailOfTp} onChange={(v) => set(["hist", "trailOfTp"], v)} />
-            <List value={hist.slOfTp} onChange={(v) => set(["hist", "slOfTp"], v)} />
+            <SlRatioEditor title="Signal Historic" spec={hist} set={(field,value)=>set(["hist",field],value)}/>
           </div>
         </Field>
         <Field
@@ -1659,6 +1661,7 @@ type RangeSpec = {
   volumeFactor?: number;
   tp: readonly number[];
   slOfTp: readonly number[];
+  slAuto?: AutoSlRatios;
   trailOfTp: readonly number[];
   trailSlOfTp?: number;
   minSl?: number;
@@ -1789,6 +1792,40 @@ export function StepList(props: {
   );
 }
 
+/** Auto generates bounded candidates; the existing own-cell gates choose which may trade. */
+export function SlRatioEditor(props: {
+  spec: {slOfTp:readonly number[];slAuto?:AutoSlRatios}; title:string; fine?:boolean;
+  set:(field:string,value:unknown)=>void;
+}) {
+  const policy=props.spec.slAuto ?? (props.fine ? DEFAULT_FINE_AUTO_SL : DEFAULT_AUTO_SL);
+  const result=slRatioCandidates(props.spec,props.fine?24:64);
+  const put=(patch:Partial<AutoSlRatios>)=>props.set("slAuto",{...policy,...patch});
+  return <div className="v2-lines">
+    <Field label={`${props.title} SL calculation`} hint="Auto generates independent stop candidates within these bounds. Each must pass its own causal PF and sample gates. A fallback builds a candidate; it never authorizes a trade.">
+      <select className="v2-select" aria-label={`${props.title} SL calculation`} value={policy.enabled && props.spec.slAuto ? "auto":"manual"}
+        onChange={e=>{
+          const enabled=e.target.value==="auto";
+          if(!enabled) props.set("slOfTp",result.ratios);
+          put({enabled});
+        }}><option value="auto">Auto · bounded ratios</option><option value="manual">Manual · saved ratios</option></select>
+    </Field>
+    {props.spec.slAuto?.enabled ? <>
+      <div className="v2-grid v2-cols-3">
+        <Field label={`${props.title} minimum SL / TP`}><Num value={policy.min} min={.2} max={policy.max} step={.05}
+          onChange={v=>put({min:v,fallback:Math.max(v,policy.fallback)})}/></Field>
+        <Field label={`${props.title} maximum SL / TP`}><Num value={policy.max} min={policy.min} max={2.5} step={.05}
+          onChange={v=>put({max:v,fallback:Math.min(v,policy.fallback)})}/></Field>
+        <Field label={`${props.title} SL ratio step`}><Num value={policy.step} min={.01} max={2.3} step={.05} onChange={v=>put({step:v})}/></Field>
+      </div>
+      <Field label={`${props.title} fallback SL / TP`} hint="Used only to reconstruct an unusable saved policy. The initial stop floor still applies; missing validation keeps entry closed.">
+        <Num value={policy.fallback} min={policy.min} max={policy.max} step={.05} onChange={v=>put({fallback:v})}/>
+      </Field>
+      <p className="v2-hint">{result.ratios.length} {result.source} candidates: {result.ratios.join(", ")}. Defaults define a search range, not a measured optimum.</p>
+    </> : <StepList label={`${props.title} SL / target min · max · step`} value={props.spec.slOfTp} max={props.fine?24:64} lo={props.fine?.2:.25} hi={2.5}
+      onChange={v=>props.set("slOfTp",v)}/>}
+  </div>;
+}
+
 /** One protect range beside the wide grid: switch, TP / SL ranges (min / max / step), trails, own floors. */
 export function RangeEditor(props: {
   grid: Record<string, unknown>;
@@ -1869,14 +1906,8 @@ export function RangeEditor(props: {
             value={s.tp}
             onChange={(v) => props.set(p("tp"), v)}
           />
-          <StepList
-            label={`${props.title} SL × ${net ? "price target (net + cost)" : "TP"} min · max · step`}
-            max={props.k === "micro" ? 24 : 64}
-            lo={0.2}
-            hi={5}
-            value={s.slOfTp}
-            onChange={(v) => props.set(p("slOfTp"), v)}
-          />
+          <SlRatioEditor title={props.title} spec={s} fine={props.k === "micro"}
+            set={(field,value)=>props.set(p(field),value)}/>
           <Field
             label={`${props.title} own minimum stop distance (% net of cost)`}
             hint="The initial stop is never inside the round-trip cost plus this distance. Unset = the global minimum (0.1–1 %). Operator, 12 Nov: each range uses its own minimum."
@@ -2605,14 +2636,8 @@ export function LowRangeShortSettings(props: {
         <Field label="Target steps" hint="Whole numbers from 2 to 6, comma separated.">
           <List value={lr.steps} onChange={(steps) => put({ steps })} />
         </Field>
-        <StepList
-          label="Stop ratios · minimum / maximum / increment"
-          lo={0.2}
-          hi={2.5}
-          max={64}
-          value={lr.slRatios}
-          onChange={(slRatios) => put({ slRatios })}
-        />
+        <SlRatioEditor title="Low-Range" spec={{slOfTp:lr.slRatios,slAuto:lr.slAuto}} fine
+          set={(field,value)=>put(field==="slOfTp"?{slRatios:value as number[]}:{slAuto:value as AutoSlRatios})}/>
         <StepList
           label="Trailing ratios · minimum / maximum / increment"
           lo={0}
@@ -4630,9 +4655,7 @@ export function SettingsPage() {
             >
               <List pct allowEmpty value={s.grid.tp} onChange={(v) => set(["grid", "tp"], v)} />
             </Field>
-            <Field label="SL × TP (0.25–2.5, step 0.25)">
-              <List value={s.grid.slOfTp} onChange={(v) => set(["grid", "slOfTp"], v)} />
-            </Field>
+            <SlRatioEditor title="Wide" spec={s.grid} set={(field,value)=>set(["grid",field],value)}/>
             <Field label="Trail share of TP (0 = off)">
               <List value={s.grid.trailOfTp} onChange={(v) => set(["grid", "trailOfTp"], v)} />
             </Field>

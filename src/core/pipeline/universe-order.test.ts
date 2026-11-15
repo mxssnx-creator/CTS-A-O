@@ -22,7 +22,7 @@ test("loaded-symbol order cannot change universe slots, market inputs or indicat
   const b = makeUniverse([short, ...[...source].reverse().flat()], start + 12 * H);
   const slots = (u: ReturnType<typeof makeUniverse>) => u.bars.map((v) => [v.sym, v.tfMin]);
   assert.deepEqual(slots(a), slots(b));
-  assert.deepEqual(slots(a), ["BTC-USDT", "SOL-USDT", "XRP-USDT"].flatMap((s) => [15, 1, 5].map((tf) => [s, tf])));
+  assert.deepEqual(slots(a), [["AAA-USDT",1], ...["BTC-USDT", "SOL-USDT", "XRP-USDT"].flatMap((s) => [15, 1, 5].map((tf) => [s, tf]))]);
   assert.deepEqual(a.series, b.series, "short series stay in the canonical market reference");
   assert.equal(a.series[0], short);
   assert.equal(a.startT, start + 12 * H);

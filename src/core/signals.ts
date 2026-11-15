@@ -1,3 +1,4 @@
+import { slRatiosOf } from "./sl-ratios.ts";
 import { CountAcceptanceIndex } from "./count-acceptance.ts";
 // Signals processing: proven classic signal sources (see SIGNAL_SOURCES in the registry) processed per
 // source × symbol, independently of the engine's bot × indication combos.
@@ -88,7 +89,7 @@ export function signalProtects(sig: SignalSettings): Protect[] {
   const exits = sig.exits ?? "pct";
   if (exits !== "atr") {
     for (const tp of sig.normal.tp)
-      for (const k of sig.normal.slOfTp) out.push({ tp, sl: +(tp * k).toFixed(4), trail: 0, hold });
+      for (const k of slRatiosOf(sig.normal)) out.push({ tp, sl: +(tp * k).toFixed(4), trail: 0, hold });
     for (const tp of sig.trailing.tp)
       for (const t of sig.trailing.trailOfTp)
         out.push({

@@ -2835,12 +2835,12 @@ const blockLevels = groupRows(
 );
 // Block as its own lane (docs/…; src/core/block-lane.ts): raised entries of the normal and trailing book on their unit returns
 const blockLaneOut = blockLane(
-  inBook
+  ownedReturns(trades).rows
     .filter((x) => {
       const k = kindOfTrade(x);
       return k === "normal" || k === "trailing";
     })
-    .map((x) => ({ r: x.r, mult: x.mult ?? 1, coordVol: x.coordVol ?? 1, level: x.level ?? 0 })),
+    .map((x) => sessionAllocation(x, sized.units, orderKey) === "unknown" ? { ...x, unitR: null } : x),
   { minCloses: 30 },
 );
 const multRows = groupRows(
@@ -5633,8 +5633,9 @@ ${sec(
   table("tLevels", groupCols("Block level"), D.blockLevels);
   {
     const bl = D.blockLane;
-    const fmtPf = (x) => (x.pf === null ? "–" : typeof x.pf === "number" ? x.pf.toFixed(3) : x.pf);
-    $("bLane").innerHTML = `<p>Block as its own lane (unit returns, minimum ${bl.minCloses} closes): plain n ${bl.plain.n}, PF ${fmtPf(bl.plain)}, net ${bl.plain.net.toFixed(4)} · raised n ${bl.raised.n}, PF ${fmtPf(bl.raised)}, net ${bl.raised.net.toFixed(4)} · ${bl.raised.judged ? "judged" : "not judged (below the minimum)"}</p>`;
+    const fmtPf = (x) => (x.pf === null ? "– (" + (x.state ?? "unavailable") + ")" : typeof x.pf === "number" ? x.pf.toFixed(3) : x.pf);
+    const fmtNet = (x) => Number.isFinite(x.net) ? x.net.toFixed(4) : "–";
+    $("bLane").innerHTML = bl ? `<p>Block settled funded-model lane (unit returns, minimum ${bl.minCloses} closes): plain n ${bl.plain.n}, PF ${fmtPf(bl.plain)}, net ${fmtNet(bl.plain)} · raised n ${bl.raised.n}, PF ${fmtPf(bl.raised)}, net ${fmtNet(bl.raised)} · unknown membership ${bl.unknown?.n ?? "unrecorded"} · ${bl.raised.judged ? "sample ready" : "not judged (insufficient or unavailable evidence)"}</p>` : "<p>Block lane was not recorded in this archived report.</p>";
   }
   table("tMult", groupCols("volume ×"), D.mult, { foot: totFoot(D.mult, "total") });
   table("tLanes", groupCols("lane"), D.lanes, { foot: totFoot(D.lanes, "total") });

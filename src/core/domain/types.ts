@@ -155,6 +155,8 @@ export interface RangeGrid {
   volumeFactor?: number;
   /** targets of this range (fractions of price; Micro: net of the round-trip cost unless `tpNetOfCost` is false) */
   tp: readonly number[];
+  /** Optional bounded auto ladder; each resulting cell still requires its own validation. */
+  slAuto?: import("../sl-ratios.ts").AutoSlRatios;
   /** stop as a multiple of the target */
   slOfTp: readonly number[];
   /** trailing distance as a share of the target (0 = no trail) */
@@ -415,7 +417,7 @@ export interface BlockConfig {
   /** Retain each raised relation's qualified level until its realized extra-leg net recovers to zero. */
   holdUntilNet?: boolean;
   /** Closed accepted Real orders, or the explicitly labeled legacy candidate-learning diagnostic. */
-  historySource?: "accepted-orders" | "real-candidates";
+  historySource?: "accepted-orders" | "processed-orders" | "real-candidates";
   /** last-N windows 1..maxLevel are checked independently */
   maxLevel: number;
   minActiveLevel: number;
@@ -888,6 +890,7 @@ export interface LowRangeGrid {
   step: number;
   steps: readonly number[];
   slRatios: readonly number[];
+  slAuto?: import("../sl-ratios.ts").AutoSlRatios;
   trailRatios: readonly number[];
   maxHoldMin: number;
 }
@@ -898,6 +901,7 @@ export interface ProtectGridSpec {
   /** execution volume relative to the normal factor for untagged Wide configs (0.2–5 in 0.2 steps; default 1) */
   volumeFactor?: number;
   tp: readonly number[];
+  slAuto?: import("../sl-ratios.ts").AutoSlRatios;
   /** SL as a multiple of TP (max ratio e.g. 2 or 2.5) */
   slOfTp: readonly number[];
   /** trailing distance as a share of TP (0 = no trail) */
