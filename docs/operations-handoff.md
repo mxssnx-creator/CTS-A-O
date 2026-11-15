@@ -1,3 +1,21 @@
+## 2026-11-15 — old PR #244 current-target audit
+
+Old draft #244 was compared from common base `9f054c30250b5998fef173da8d11e6c93ef0f646` and head
+`c28b730a034dbaa0577ace6fed492970a7058e3f` against current `main`
+`231e776dd2ca4c738ad12f441d5deed56e7c2e57`. The old head combines the already merged PR #246 release with a
+disabled research-stage branch; it is not a safe current-target merge.
+
+Every production claim is already integrated or replaced: independent Trailing-only Base cells, capped minute
+execution/hard holds and PF-neutral-at-one are mainline releases; the old draft conflict is now a passing native
+processed-replay regression; and its research-only StageChain/settings/source/window implementation is superseded
+by the current persistent `ProcessedSetBook`/replay/adapter, durable checkpoint, venue-provenance and Settings/preset
+paths. Exact mapping: `docs/verification/old-pr-244-current-target-audit-20261115.md`.
+
+The combined current-target verification passes 105 tests with zero failures, skips or todos. No credential,
+account, order, position, service, deployment or PF measurement was involved. Close old draft #244 without merging
+its stale branch. Funded parent-quantity attribution, fresh twelve-symbol x02 acceptance, Sim/Venue parity and
+sufficient independent forward samples remain open under #219 and the cross-project acceptance.
+
 ## 2026-11-15 — old PR #219 current-target Settings and preset control
 
 Old draft #219 was compared from common base `a50a10e297654f6f90a731d8f269ffde7bcf2d94` and head
