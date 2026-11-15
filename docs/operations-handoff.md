@@ -1,3 +1,33 @@
+## 2026-11-15 — retain exact pending entry parent after first partial attribution
+
+Tested source checkpoint `c1b94badd9e99273f82c783ed8e7ad56e2faf2cc` on audited main
+`4009a6e73d7e1c38e131733484c050b9b375b368`; remote backup
+`backup/own-parent-start-20261115` preserves that target. The common base and old
+draft #219 had the same premature parent-map cleanup; current main's newer
+Active/policy metadata must survive initial attribution while entry execution
+is pending. Cleanup now waits for terminal reconciliation. No old branch tree
+was copied over newer fixes.
+
+Final unchanged-target fixture fails four of 28 cases; repaired target passes
+all 28 and all 199 expanded control/protection/journal cases, zero failures/skips.
+Long/Short, partial/full or cancelled fills, sparse stale zero replies, disk
+restart, frozen Active policy, no duplicate entries and final owned closure are
+covered. Typecheck and production/core-worker build pass; scoped lint has no
+errors and one existing warning. Local browser launch is blocked by the managed
+Unix-socket restriction; bounded idle dev/production desktop/mobile checks are
+included in required exact-head CI. Do not claim those hosted results until read.
+
+Post-Base market measurements are unchanged: the earlier completed twelve-symbol
+12h+12h replay reports run-start 2026-10-16 09:00 UTC validation 0/153,298 (0%),
+passing/settled execution PF unavailable, modeled funded positions/orders
+0 opened / 0 settled / 0 held. This patch adds synthetic ownership tests only.
+Keep #219 draft/open: multi-parent funded quantity allocation, genuine Active-to-
+Live qualification/fills, fresh twelve-symbol x02, venue parity and sufficient
+independent positive forward evidence remain open. No production instance,
+account, order, x01 service or health automation was changed.
+
+Details: `docs/verification/old-pr-219-partial-parent-retention-20261115.md`.
+
 ## 2026-11-15 — completed twelve-symbol replay and lossless Signal detail storage
 
 The exact PR279 tree `78cf4ac4caa4c89806f9470fded86a2e717f9e23` completed the full
