@@ -49,3 +49,10 @@ export function slRatioCandidates(
 export function slRatiosOf(value: { slOfTp?: readonly number[]; slAuto?: AutoSlRatios }, limit = 64): readonly number[] {
   return slRatioCandidates(value, limit).ratios;
 }
+
+/** A supplied manual list must not be shadowed by the previous automatic policy. */
+export function mergeSlRatioSettings<T extends { slOfTp: readonly number[]; slAuto?: AutoSlRatios }>(base: T, patch?: Partial<T>): T {
+  const out = { ...base, ...patch };
+  if (patch?.slOfTp !== undefined && patch.slAuto === undefined) delete out.slAuto;
+  return out;
+}

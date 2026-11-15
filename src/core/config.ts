@@ -1,4 +1,5 @@
 import { DEFAULT_POSITION_WINDOWS } from "./position-windows.ts";
+import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL } from "./sl-ratios.ts";
 import { DEFAULT_MIN_SL_DISTANCE_PCT, SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
 import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "./indications/micro-family.ts";
 import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "./indications/low-range.ts";
@@ -424,6 +425,8 @@ export type GridSettingsPatch = Omit<Partial<ProtectGridSpec>, "lowRange"> & { l
 export function mergeGridSettings(base: ProtectGridSpec, patch?: GridSettingsPatch): ProtectGridSpec {
   if (!patch) return { ...base };
   const out = { ...base, ...patch } as ProtectGridSpec;
+  // An explicit manual list is a mode change unless the same patch supplies an auto policy.
+  if (patch.slOfTp !== undefined && patch.slAuto === undefined) delete out.slAuto;
   if (patch.lowRange !== undefined) {
     if (!patch.lowRange || typeof patch.lowRange !== "object" || Array.isArray(patch.lowRange))
       throw new Error("Low-Range: settings object required");
@@ -433,6 +436,7 @@ export function mergeGridSettings(base: ProtectGridSpec, patch?: GridSettingsPat
       patch.lowRange.steps !== undefined && patch.lowRange.slRatios !== undefined &&
       patch.lowRange.trailRatios !== undefined && patch.lowRange.maxHoldMin !== undefined && patch.lowRange.coordination === undefined;
     out.lowRange = { ...(legacy ? {} : base.lowRange ?? DEFAULT_LOW_RANGE_GRID), ...patch.lowRange } as LowRangeGrid;
+    if (patch.lowRange.slRatios !== undefined && patch.lowRange.slAuto === undefined) delete out.lowRange.slAuto;
   }
   return out;
 }
@@ -895,6 +899,23 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   },
   signals: DEFAULT_SIGNALS,
 };
+
+/** Fresh untouched desks start in bounded automatic mode with the exact existing factory candidates.
+ * Saved/manual desks use DEFAULT_SETTINGS plus their original patch and are never silently converted.
+ */
+export function newDefaultSettings(): CoreSettings {
+  const s = structuredClone(DEFAULT_SETTINGS);
+  s.grid.slAuto = { ...DEFAULT_AUTO_SL };
+  for (const key of ["minimal", "short", "general", "long"] as const) {
+    const range = s.grid[key];
+    if (range) range.slAuto = { ...DEFAULT_AUTO_SL };
+  }
+  if (s.grid.micro) s.grid.micro.slAuto = { ...DEFAULT_FINE_AUTO_SL };
+  if (s.grid.lowRange) s.grid.lowRange.slAuto = { ...DEFAULT_FINE_AUTO_SL };
+  s.signals.normal.slAuto = { ...DEFAULT_AUTO_SL };
+  s.signals.hist.slAuto = { enabled: true, min: 1, max: 2, step: 1, fallback: 1 };
+  return s;
+}
 
 /** Symbol selection rankings (engine universe and preset settings). */
 export const SYMBOL_RANK_CHOICES = [

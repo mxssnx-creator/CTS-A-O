@@ -1,4 +1,4 @@
-import { slRatiosOf } from "./sl-ratios.ts";
+import { mergeSlRatioSettings, slRatiosOf } from "./sl-ratios.ts";
 import { RT_COST } from "./model-cost.ts";
 import { SL_TP_RATIOS, SL_TP_MIN, SL_TP_MAX, minimumStopFraction } from "./protection-policy.ts";
 // Signals processing settings and sources (pure, no engine imports: shared by the engine, config and the UI).
@@ -849,14 +849,14 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     ...(s ?? {}),
     ranges: { ...DEFAULT_SIGNALS.ranges, ...(s?.ranges ?? {}) },
     rangeVolumeFactors: { ...DEFAULT_SIGNALS.rangeVolumeFactors, ...(s?.rangeVolumeFactors ?? {}) },
-    normal: { ...DEFAULT_SIGNALS.normal, ...(s?.normal ?? {}) },
+    normal: mergeSlRatioSettings(DEFAULT_SIGNALS.normal, s?.normal),
     trailing: { ...DEFAULT_SIGNALS.trailing, ...(s?.trailing ?? {}) },
     trailingOnly: { ...DEFAULT_SIGNALS.trailingOnly, ...(s?.trailingOnly ?? {}) },
     atr: {
       ...DEFAULT_SIGNALS.atr,
       ...(s?.atr ?? {}),
     },
-    hist: { ...DEFAULT_SIGNALS.hist, ...(s?.hist ?? {}) },
+    hist: mergeSlRatioSettings(DEFAULT_SIGNALS.hist, s?.hist),
     guard: { ...DEFAULT_SIGNALS.guard, ...(s?.guard ?? {}) },
     cluster: { ...DEFAULT_SIGNALS.cluster, ...(s?.cluster ?? {}) },
     coordination: {
@@ -1009,11 +1009,11 @@ export function mergeSignals(
     ...a,
     ...p,
     ranges: { ...a.ranges, ...(p.ranges ?? {}) },
-    normal: { ...a.normal, ...(p.normal ?? {}) },
+    normal: mergeSlRatioSettings(a.normal, p.normal),
     trailing: { ...a.trailing, ...(p.trailing ?? {}) },
     trailingOnly: { ...a.trailingOnly, ...(p.trailingOnly ?? {}) },
     atr: { ...a.atr, ...(p.atr ?? {}) },
-    hist: { ...a.hist, ...(p.hist ?? {}) },
+    hist: mergeSlRatioSettings(a.hist, p.hist),
     guard: { ...a.guard, ...(p.guard ?? {}) },
     cluster: { ...a.cluster, ...(p.cluster ?? {}) },
     coordination: {

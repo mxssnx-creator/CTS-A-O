@@ -2,11 +2,12 @@ import { it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL, checkAutoSlRatios, slRatioCandidates, slRatiosOf } from "./sl-ratios.ts";
 import { MICRO_RANGE, MINIMAL_RANGE } from "./minimal-coord.ts";
-import { DEFAULT_SETTINGS } from "./config.ts";
+import { DEFAULT_SETTINGS, newDefaultSettings } from "./config.ts";
 import { protectGrid, checkGridVariantBudget } from "./sim/walkforward.ts";
 import { completeBaseRangeProtects, baseRangeProtects } from "./pipeline/pipeline.ts";
 import { checkSettings } from "./settings-check.ts";
-import { normalizeLanes } from "./server/runtime.server.ts";
+import { CoreRuntime, normalizeLanes } from "./server/runtime.server.ts";
+import { CoreDb } from "./server/db.server.ts";
 import { DEFAULT_SIGNALS, signalSettings } from "./signal-config.ts";
 import { lowRangeGridProtects, DEFAULT_LOW_RANGE_GRID } from "./indications/low-range.ts";
 
@@ -14,6 +15,46 @@ it("auto stop ratios use inclusive bounded integer steps and independent fine de
   assert.deepEqual(slRatiosOf({ slAuto: DEFAULT_AUTO_SL }), [.25,.5,.75,1,1.25,1.5,1.75,2,2.25,2.5]);
   assert.deepEqual(slRatiosOf({ slAuto: DEFAULT_FINE_AUTO_SL }), [.2,.3,.4,.5,.6,.7,.8,.9,1,1.1,1.2,1.3,1.4,1.5,1.6]);
   assert.deepEqual(slRatiosOf({ slAuto: { ...DEFAULT_AUTO_SL, min:.3,max:1,step:.2,fallback:.5 } }), [.3,.5,.7,.9]);
+});
+it("fresh automatic defaults preserve every existing factory candidate and leave saved manual settings untouched", () => {
+  const s = newDefaultSettings();
+  assert.equal(s.grid.slAuto?.enabled, true);
+  assert.deepEqual(slRatiosOf(s.grid), DEFAULT_SETTINGS.grid.slOfTp);
+  for (const key of ["micro", "minimal", "short", "general", "long"] as const) {
+    const range = s.grid[key], original = DEFAULT_SETTINGS.grid[key];
+    assert.ok(range && original);
+    assert.equal(range.slAuto?.enabled, true);
+    assert.deepEqual(slRatiosOf(range), original.slOfTp);
+  }
+  assert.deepEqual(slRatiosOf({slOfTp:s.grid.lowRange!.slRatios,slAuto:s.grid.lowRange!.slAuto}), DEFAULT_SETTINGS.grid.lowRange!.slRatios);
+  for (const key of ["normal", "hist"] as const) {
+    assert.equal(s.signals[key].slAuto?.enabled, true);
+    assert.deepEqual(slRatiosOf(s.signals[key]), DEFAULT_SETTINGS.signals[key].slOfTp);
+  }
+  assert.equal(DEFAULT_SETTINGS.grid.slAuto, undefined, "legacy/manual defaults are not mutated");
+  s.grid.slAuto!.min = .5;
+  assert.equal(newDefaultSettings().grid.slAuto!.min, .25, "desks do not share mutable policy objects");
+});
+it("new runtime desks start automatic while saved custom manual ratios survive restart", () => {
+  const db = new CoreDb(":memory:");
+  let rt: CoreRuntime | undefined;
+  try {
+    rt = new CoreRuntime(db, undefined, {market:"synthetic",priceStream:null});
+    rt.stop();
+    assert.equal(rt.settings.grid.slAuto?.enabled, true);
+    rt.updateSettings({grid:{slOfTp:[.25,.75,2.5],lowRange:{slRatios:[.25,1.25,2.5]}},
+      signals:{normal:{tp:[.01],slOfTp:[.25,1.25,2.5]}}});
+    assert.equal(rt.settings.grid.slAuto, undefined, "an explicit manual patch changes calculation mode");
+    assert.equal(rt.settings.grid.lowRange!.slAuto, undefined);
+    assert.equal(rt.settings.signals.normal.slAuto, undefined);
+    assert.deepEqual(rt.settings.signals.normal.slOfTp, [.25,1.25,2.5]);
+    rt.dispose(); rt = undefined;
+    db.kvSet("settings", {grid:{slOfTp:[.25,.75,2.5]}});
+    rt = new CoreRuntime(db, undefined, {market:"synthetic",priceStream:null});
+    rt.stop();
+    assert.equal(rt.settings.grid.slAuto, undefined);
+    assert.deepEqual(rt.settings.grid.slOfTp, [.25,.75,2.5]);
+  } finally { rt?.dispose(); db.db.close(); }
 });
 it("manual custom ladders retain their exact values; invalid persisted auto policies recover bounded candidates", () => {
   const manual = [.25,.75,2.5];

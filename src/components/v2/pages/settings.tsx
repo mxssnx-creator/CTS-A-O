@@ -1844,6 +1844,7 @@ export function RangeEditor(props: {
       volumeFactor: props.defaults.volumeFactor ?? 1,
       tp: [...props.defaults.tp],
       slOfTp: [...props.defaults.slOfTp],
+      slAuto: { ...(props.k === "micro" ? DEFAULT_FINE_AUTO_SL : DEFAULT_AUTO_SL) },
       trailOfTp: [...props.defaults.trailOfTp],
       trailSlOfTp: props.defaults.trailSlOfTp,
       holdAuto: true, ownBase: true, baseBest: true,
@@ -1863,7 +1864,7 @@ export function RangeEditor(props: {
   };
   // Micro's targets are net of the round-trip cost by default: the price target is tp + cost
   const net = props.k === "micro" && s.tpNetOfCost !== false;
-  const cells = s.tp.length * s.slOfTp.length * s.trailOfTp.length;
+  const cells = s.tp.length * slRatioCandidates(s, props.k === "micro" ? 24 : 64).ratios.length * s.trailOfTp.length;
   // the engine's own defaults (pipeline.ts baseCells): best = range ?? grid ?? true; ownBase = range ?? the range's
   // default (RANGE_OWN_BASE: Micro and Minimal on) ?? best
   const baseBest = s.baseBest ?? (props.grid.baseBest as boolean | undefined) ?? true;

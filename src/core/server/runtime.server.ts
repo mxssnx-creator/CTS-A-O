@@ -27,6 +27,7 @@ import { validationProgressOf, type ValidationProgress } from "../validation-pro
 import {
   DEFAULT_PROTECT,
   DEFAULT_SETTINGS,
+  newDefaultSettings,
   FORMER_FOCUS_13OCT,
   PREVIOUS_DEFAULT_FOCUS_17OCT,
   PREVIOUS_DEFAULT_FOCUS_20OCT,
@@ -1277,7 +1278,7 @@ export class CoreRuntime {
       saved.cycleMs = DEFAULT_SETTINGS.cycleMs;
       saved.tickMs = DEFAULT_SETTINGS.tickMs;
     }
-    this.settings = mergeSettings(DEFAULT_SETTINGS, saved, settings);
+    this.settings = mergeSettings(!saved && !settings ? newDefaultSettings() : DEFAULT_SETTINGS, saved, settings);
     if (this.conn) this.settings.live = { ...this.settings.live, connId: this.conn };
     this.settings.gates.minPf = Math.min(1.5, Math.max(1.05, this.settings.gates.minPf));
     // once: every saved preset and the running gates move to a 35 h drawdown max (the old ceiling was 20)
