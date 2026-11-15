@@ -1,3 +1,23 @@
+## 2026-11-15 — final deterministic-universe verification
+
+Tested production/test source: `7daa3da9569eff30d04abddb01dcbb7ed0f153f0`, tree
+`6f32dd33cef9f97d75f874bccd415db06446b028` (PR #278). The final complete Core rerun passes
+4,968 tests: 4,965 passed, zero failed/cancelled/TODO and three explicit skips. The 96 focused parity checks,
+31 affected/permutation cases, typecheck and all three required workflows also pass on that source. The earlier
+4,967-case inventory with three failures is retained; its two subject-slot fixtures and one historical-default
+fixture were corrected without changing production gates. This handoff-only checkpoint changes no executable code.
+
+The separate fixed twelve-symbol/72-hour offline market replay stays bound to `d70a470`, not the later correction.
+It failed after 3,020.615 seconds at its 50-minute limit, with 1/12 forward hours and no completed raw dump.
+Post-Base PF, passed/evaluated validation and settled execution PF remain unavailable. Physical 72-hour data does
+not certify the complete independent 150-hour Signal fitting default; Axis/Active and Ordinary-off acceptance
+also remain outside this replay. Concurrent offline fixtures mean its elapsed time is not an isolated benchmark.
+No exchange/account/service/deployment write occurred. No new funded x02 run is cleared by these tests.
+
+Keep #132 open for its remaining claims and #219 open for funded parent/stage/partial/restart evidence. Next:
+bounded current-source profiling of count-based Signal activation, scalar parity-preserving performance repair,
+then another frozen complete replay. Existing writer/ownership/venue clearance remains required before funding.
+
 ## 2026-11-15 — old PR #132 deterministic universe continuation
 
 Current-target audit starts at `d70a470f735fe5a43953a9c5bbd09c5a41009047`, common base
