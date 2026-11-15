@@ -116,7 +116,8 @@ export const DEFAULT_TOGGLES: StrategyToggles = {
   blockActive: false,
   dca: true,
   dcaActive: false,
-  axis: false,
+  // Axis on by default (docs/positive-coordinations.md: "Axis on x01 — profitable on both sides"; 12 Nov operator: Axis on)
+  axis: true,
 };
 
 /** Tactics: trend strength + volatility regime on by default (docs/block-sweep.md, tactics); the others in docs/tactics.md. */

@@ -182,3 +182,9 @@ it("the default Wide grid is off: no untagged cells and no Wide targets (12 Nov 
   const s = normalizeLanes(structuredClone(DEFAULT_SETTINGS));
   assert.equal(protectGrid(15, s.grid, s.cost).filter((p) => !p.tag).length, 0);
 });
+
+it("Axis and Block are on by default; Block Active stays off (positive coordination)", () => {
+  assert.equal(DEFAULT_SETTINGS.toggles.axis, true);
+  assert.equal(DEFAULT_SETTINGS.toggles.block, true);
+  assert.equal(DEFAULT_SETTINGS.toggles.blockActive, false);
+});
