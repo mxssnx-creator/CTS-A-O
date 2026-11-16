@@ -5875,6 +5875,7 @@ export class CoreRuntime {
     )
       return;
     // Count the exact finished cohort, not the temporary worker inputs or a partially built next cohort.
+    this.setStage("Real", steps, steps, `${wf.simH}h sim complete · auditing configuration and position histories`);
     const strategyCoverage = await drive("Strategy coverage", strategyCoverageGen(tapes), () => undefined, gen);
     const lastNSamples = await drive("Last-N sample coverage", lastNSamplesGen(tapes, sim.endT, wf), () => undefined, gen);
     // the realtime entry step stands aside while the new tapes and run replace the old ones, until the full paper
