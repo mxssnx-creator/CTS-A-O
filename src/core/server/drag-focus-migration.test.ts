@@ -79,3 +79,14 @@ test("a runtime on the previous factory selection enables Drag while retaining e
     assert.deepEqual(runtime.settings.disabledKinds, ["inverse"]);
   } finally { runtime.dispose(); db.db.close(); }
 });
+
+test("a saved custom focus with no forced symbols retains its former empty selection", () => {
+  const db = new CoreDb(":memory:");
+  db.kvSet("wfCapsV", 38);
+  db.kvSet("settings", { focus: ["follow|ema-9-21"] });
+  const runtime = new CoreRuntime(db, undefined, { market: "synthetic", priceStream: null });
+  try {
+    assert.deepEqual(runtime.settings.focus, ["follow|ema-9-21"]);
+    assert.deepEqual(runtime.settings.forceSymbols, []);
+  } finally { runtime.dispose(); db.db.close(); }
+});

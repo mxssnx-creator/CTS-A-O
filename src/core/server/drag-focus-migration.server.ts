@@ -36,7 +36,15 @@ export function migrateDragFactoryFocus(db: CoreDb): void {
       return changed;
     };
     let any = false;
-    if (move(settings)) { db.kvSet("settings", settings); any = true; }
+    let settingsChanged = move(settings);
+    // Before Drag the default forced-symbol list was empty. A saved custom focus
+    // without its own list must not silently inherit the new factory BTC symbol.
+    if (settings && Array.isArray(settings.focus) &&
+        JSON.stringify(settings.focus) !== JSON.stringify(DEFAULT_SETTINGS.focus) && settings.forceSymbols === undefined) {
+      settings.forceSymbols = [];
+      settingsChanged = true;
+    }
+    if (settingsChanged) { db.kvSet("settings", settings); any = true; }
     if (Array.isArray(presets)) {
       let changed = false;
       for (const preset of presets) {
