@@ -76,3 +76,21 @@ it("contexts are independent: wins on the long side admit longs only", () => {
   assert.ok(sim.trades.length > 0);
   assert.ok(sim.trades.every((t) => t.r > 0), "no losing short context is admitted");
 });
+
+it("progress: no work slice of the simulation counts as a completed hour; the bar ends full only at the end", async () => {
+  const { walkForwardGen } = await import("./walkforward.ts");
+  const { simulationProgress } = await import("../progress.ts");
+  // many tapes so the selection loop yields work slices inside every decision
+  const tapes = Array.from({ length: 200 }, (_, k) => tape([...history(5), ...run(18)], `follow|${IND}|tp1|sl1|tr0|h${32 + k}`));
+  const fractions: number[] = [];
+  let clock = 0;
+  const report = simulationProgress(6, 6, "", (f) => fractions.push(f), () => (clock += 1000));
+  const gen = walkForwardGen(u, tapes, options());
+  for (;;) { const r = gen.next(); if (r.done) break; report(r.value as number); }
+  const before = fractions.slice(0, -1);
+  assert.ok(before.length > 10, `samples ${before.length}`);
+  for (let i = 1; i < fractions.length; i++) assert.ok(fractions[i] + 1e-9 >= fractions[i - 1], "monotone");
+  // halfway through the samples the bar is not yet near the end
+  assert.ok(before[Math.floor(before.length / 2)] < 6 * 0.9, `mid-run fraction ${before[Math.floor(before.length / 2)]}`);
+  assert.ok(Math.max(...fractions) <= 6);
+});

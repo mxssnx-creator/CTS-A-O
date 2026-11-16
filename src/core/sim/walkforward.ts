@@ -4356,7 +4356,7 @@ function* selectPositionsGen(
             : ev.lcb * (0.5 + ev.gh),
         window: w,
       });
-    if (i % 64 === 0) yield i;
+    if (i % 64 === 0) yield -14; // a work slice, not a completed simulated step (a non-negative yield counts as one)
   }
   const byId = new Map(tapes.map((tp) => [tp.id, tp]));
   const eligible = beatsBase(
@@ -6480,7 +6480,7 @@ export function* signalIndexGen(
     const tp = sigTapes[i];
     // Historic Exit signal configs are independently qualified and do not consume the Normal/Trailing active cap.
     if (!tp.heldOnly && tp.kind !== "exit") out.push({ tp, pair: `${tp.bot}|${tp.ind}` });
-    if (i > 0 && i % 1000 === 0) yield i;
+    if (i > 0 && i % 1000 === 0) yield -4; // a work slice, not a completed simulated step
   }
   if (cacheKey) signalIndexCache.set(cacheKey, out);
   return out;

@@ -687,9 +687,10 @@ async function runEngine() {
             priceStream: null,
             evaluationFromT,
             replayPreloadAll,
-            // A frozen window read from the exchange is one job: load the whole universe, then compute once. The progressive
-            // start batches (5, 10, 20 …) are for a live desk; here each batch would recompute a partial universe from scratch.
-            ...(!feedFile ? { completeReplayUniverse: true } : {}),
+            // A frozen window (read from the exchange or from a recorded --feed) is one job: load the whole universe, then
+            // compute once. The progressive start batches (5, 10, 20 …) are for a live desk; here each batch would recompute a
+            // partial universe from scratch (a 6-symbol feed replay computed 5/6, then 6/6 again: half the wall time).
+            completeReplayUniverse: true,
             feed: {
               ...replayFeed(cutT),
               ...(feedFile || recordFile ? { tickers: fetchTickers } : {}),
