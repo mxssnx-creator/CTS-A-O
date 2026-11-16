@@ -26,6 +26,9 @@ export function signalCadence(
   for (let i = 0; i < bars.n; i++) {
     const now = bars.t[i];
     if (!Number.isFinite(now)) break;
+    // A backward or duplicate timestamp is not a missing candle: later order is no longer trustworthy. Preserve
+    // the already-decided prefix and refuse the remainder rather than accidentally counting a future onset.
+    if (i && now <= bars.t[i - 1]) break;
     if (i && now - bars.t[i - 1] !== period) lastGapEnd = now;
     const from = now + period - window;
     while (left < i && bars.t[left] + period < from) {

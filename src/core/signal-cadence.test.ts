@@ -50,6 +50,15 @@ test("a candle gap makes the trailing interval unknown until it moves outside se
   assert.notEqual(out[384], 0, "a fresh complete week restores qualification");
 });
 
+test("out-of-order candles cannot make a prior decision depend on a later onset", () => {
+  const { bars, source } = sample();
+  const clean = signalCadence(source, source, bars, 2);
+  bars.t[210] = bars.t[209] - hour;
+  const invalid = signalCadence(source, source, bars, 2);
+  assert.deepEqual(invalid.slice(0, 210), clean.slice(0, 210));
+  assert.equal(invalid.slice(210).some(Boolean), false);
+});
+
 test("entrySignal applies cadence to Signal sources while leaving ordinary indications unchanged", () => {
   const n = 24 * 15 * 9;
   const bars = barsFromCandles("A-USDT", 4, syntheticCandles("A", 4, n, Date.UTC(2026, 9, 1)));
