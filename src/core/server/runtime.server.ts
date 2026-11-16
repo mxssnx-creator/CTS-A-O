@@ -9,6 +9,7 @@ import { returnWindow } from "../metrics/return-window.ts";
 import { migrateMinuteCaps } from "./minute-cap-migration.server.ts";
 import { migrateMinimumProtectionPolicy } from "./protection-policy-migration.server.ts";
 import { migrateFineLadders } from "./fine-ladder-migration.server.ts";
+import { migrateDragFactoryFocus } from "./drag-focus-migration.server.ts";
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
 import { isHistoricExitConfig } from "../exit-scope.ts";
 import { lstatSync } from "node:fs";
@@ -1286,6 +1287,7 @@ export class CoreRuntime {
     migrateDcaTwoSteps(db);
     migrateMicroBreakoutFocus(db);
     migrateMicroContextFocus(db);
+    migrateDragFactoryFocus(db);
     migrateHistoricExitOptIn(db);
     migrateMinimumProtectionPolicy(db);
     migratePositionWindows(db);

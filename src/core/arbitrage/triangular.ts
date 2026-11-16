@@ -80,10 +80,12 @@ function leg(edge: Edge, input: number, policy: ArbitragePolicy): ArbitrageLeg |
   const price = edge.side === "buy" ? q.ask * (1 + policy.slippage) : q.bid * (1 - policy.slippage);
   const available = edge.side === "buy" ? q.askSize : q.bidSize;
   const budget = edge.side === "buy" ? input / price : input;
-  // Never assume deeper liquidity. Rounding down leaves dust outside the profit calculation.
-  if (!pos(price) || !pos(budget) || budget > available) return null;
+  // Rounding down leaves dust outside the profit calculation. Check depth against the
+  // actual submitted quantity, not the unrounded budget; never assume deeper liquidity.
+  if (!pos(price) || !pos(budget)) return null;
   let quantity = Math.floor(budget / q.quantityStep) * q.quantityStep;
   if (quantity > budget) quantity = Math.max(0, quantity - q.quantityStep);
+  if (quantity > available) return null;
   const notional = quantity * price;
   if (!pos(quantity) || quantity < q.minQuantity || notional < q.minNotional) return null;
   const acquired = edge.side === "buy" ? quantity : notional;
@@ -126,10 +128,12 @@ export function findTriangularPlans(
       list.push(edge);
       from.set(edge.from, list);
     }
+    // Ambiguous pairs were removed above, so there is at most one returning edge per asset.
+    const returns = new Map(edges.filter(edge => edge.to === startAsset).map(edge => [edge.from, edge]));
     for (const a of from.get(startAsset) ?? []) for (const b of from.get(a.to) ?? []) {
       if (b.to === startAsset || b.to === a.to || b.market === a.market) continue;
-      for (const c of from.get(b.to) ?? []) {
-        if (c.to !== startAsset || c.market === a.market || c.market === b.market) continue;
+      const c = returns.get(b.to);
+      if (c && c.market !== a.market && c.market !== b.market) {
         const times = [a.market.timestamp, b.market.timestamp, c.market.timestamp];
         if (Math.max(...times) - Math.min(...times) > policy.maxSkewMs) continue;
         const x = leg(a, startAmount, policy);

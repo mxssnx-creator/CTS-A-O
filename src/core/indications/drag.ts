@@ -1,6 +1,7 @@
 /** BTC-relative, completed-bar research signals. Each profile is evaluated as its own config. */
 import type { IndicationSpec } from "./registry.ts";
 import type { SeriesCache } from "./cache.ts";
+import { MAX_FORCED_SYMBOLS, normSymbol } from "../market/bingx.ts";
 
 export const DRAG_REFERENCE = "BTC-USDT";
 export const DRAG_TIMEFRAMES = [1, 5, 15] as const;
@@ -11,6 +12,14 @@ export type DragMethod = (typeof DRAG_METHODS)[number];
 export const DRAG_IDS = DRAG_WINDOWS.flatMap(window => DRAG_RATIOS.flatMap(ratio =>
   DRAG_METHODS.map(method => `drag-${method}-${window}-r${Math.round(ratio * 100)}`)));
 export const isDragInd = (id: string) => id.startsWith("drag-");
+
+/** Keep existing forced symbols; a full list cannot silently drop one to make room for BTC. */
+export function dragReferenceSelection(symbols: readonly string[]): { symbols: string[]; included: boolean } {
+  if (symbols.some(symbol => normSymbol(symbol) === DRAG_REFERENCE))
+    return { symbols: [...symbols], included: true };
+  if (symbols.length >= MAX_FORCED_SYMBOLS) return { symbols: [...symbols], included: false };
+  return { symbols: [...symbols, DRAG_REFERENCE], included: true };
+}
 
 /**
  * The fit uses only the previous `window` aligned returns. A three-bar BTC move and

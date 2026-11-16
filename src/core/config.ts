@@ -771,6 +771,14 @@ export const PREVIOUS_MICRO_FOCUS_21OCT: readonly string[] = [
   ...MICRO_IDS_BEFORE_CHANNELS_21OCT.map((id) => `follow|inverse-${id}`),
 ];
 
+/** The factory focus immediately before BTC Drag; custom selections are never migrated. */
+export const PRE_DRAG_FACTORY_FOCUS: readonly string[] = [
+  ...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_FOCUS_20OCT,
+  ...MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
+  ...INVERSE_MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
+  ...LOW_RANGE_IDS.map((id) => `follow|${id}`),
+];
+
 export const DEFAULT_SETTINGS: CoreSettings = {
   tfMin: 1,
   tfs: [1, 5, 15, 30],
@@ -829,11 +837,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
   tactics: DEFAULT_TACTICS,
-  focus: [...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_FOCUS_20OCT,
-    ...MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
-    ...INVERSE_MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
-    ...LOW_RANGE_IDS.map((id) => `follow|${id}`),
-    ...DRAG_IDS.map((id) => `follow|${id}`)],
+  focus: [...PRE_DRAG_FACTORY_FOCUS, ...DRAG_IDS.map((id) => `follow|${id}`)],
   pinned: [...PROVEN_WIDE_TRAIL_PAIRS],
   disabledKinds: [],
   block: DEFAULT_BLOCK,

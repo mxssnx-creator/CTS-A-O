@@ -45,6 +45,19 @@ test("fees, per-leg slippage, rounding and minimum edge can eliminate an apparen
   assert.deepEqual(findTriangularPlans(min, "USDT", 1000, now, noSlip), []);
 });
 
+test("liquidity is checked after lot rounding without assuming deeper quotes", () => {
+  const quotes = pack();
+  quotes[0].quantityStep = 1;
+  quotes[0].askSize = 10;
+  const plan = findTriangularPlans(quotes, "USDT", 1090, now, noSlip)[0];
+  assert.ok(plan);
+  assert.equal(plan.legs[0].quantity, 10);
+  // The unspent 90 USDT is excluded, making this estimate conservative.
+  assert.equal(plan.legs[0].input, 1090);
+  quotes[0].askSize = 9;
+  assert.deepEqual(findTriangularPlans(quotes, "USDT", 1090, now, noSlip), []);
+});
+
 test("stale, crossed, unsynchronized, future, missing and ambiguous markets fail closed", () => {
   for (const change of [
     (p: ArbitrageQuote[]) => { p[0].timestamp = now - 1001; },

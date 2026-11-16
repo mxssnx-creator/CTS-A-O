@@ -104,6 +104,7 @@ export const MAJORS = [
 ];
 
 /** "xrp", "XRPUSDT", "xrp-usdt" → "XRP-USDT" */
+export const MAX_FORCED_SYMBOLS = 50;
 export const normSymbol = (s: string) => {
   const u = s.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
   if (!u) return "";
