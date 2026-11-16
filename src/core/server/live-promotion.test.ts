@@ -32,7 +32,7 @@ const close = (r: number, i: number, opts: Partial<Trade> = {}): Trade => ({
   entry: 100, exit: 100 * (1 + r), r, mult: 1, vol: 1, kind: "normal", reason: "time", bars: 1, mfe: 0, mae: 0, ...opts,
 });
 function fixture(path = ":memory:", n = 3) {
-  const r = new CoreRuntime(new CoreDb(path), { gates: { minTrades: 1 }, live: { liveLastN: n, engineProofN: 0 } }, { market: "synthetic", priceStream: null });
+  const r = new CoreRuntime(new CoreDb(path), { grid: { tp: [0.018, 0.026, 0.035, 0.05] }, gates: { minTrades: 1 }, live: { liveLastN: n, engineProofN: 0 } }, { market: "synthetic", priceStream: null });
   r.stop(); runtimes.push(r); return r;
 }
 function install(r: CoreRuntime, trades = [.02, -.01, .02].map((v, i) => close(v, i))) {
