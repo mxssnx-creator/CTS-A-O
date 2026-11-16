@@ -18,6 +18,7 @@ finished, so neither attempt established post-Base PF, validation percentage or 
   approximately 2.8 GB of spill files. When temporary storage is RAM-backed and the application working directory
   is known to be disk-backed, spills now use `.cts-core/history` there. `CTS_CORE_HISTORY_DIR` explicitly overrides
   the location. When no disk-backed location can be selected, the original temp location remains with a warning.
+  Spill-directory creation failures are classified as storage errors, preventing an unbounded worker fallback.
 - Automatic spill cleanup now checks the Linux PID namespace as well as the PID. The same shared temp filesystem can
   be visible from different namespaces, so an apparently absent PID was not proof that another session had stopped.
   Unscoped legacy spills and spills from another or unknown namespace are preserved for safe manual identification.

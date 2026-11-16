@@ -81,6 +81,10 @@ export function historyProcessNamespace(): string | null {
 }
 const historyPrefix = (transfer = false) =>
   `cts-history${transfer ? "-transfer" : ""}-ns${historyProcessNamespace() ?? "unknown"}-${process.pid}-`;
+function makeHistoryDirectory(root: string, transfer = false): string {
+  try { return mkdtempSync(join(root, historyPrefix(transfer))); }
+  catch (error) { throw new HistoryStorageError(`Cannot create calculation history directory: ${String(error)}`); }
+}
 const STALE_DIRECTORY = /^cts-history(?:-transfer)?-ns(\d+)-(\d+)-/;
 const processExists = (pid: number): boolean => {
   try {
@@ -287,7 +291,7 @@ export class TapeHistoryStore {
     if (root && !options.directory) sweepOnce(root);
     const directory = options.path
       ? undefined
-      : mkdtempSync(join(root!, historyPrefix()));
+      : makeHistoryDirectory(root!);
     this.path = options.path ?? join(directory!, "columns.bin");
     try {
       this.resource = {
@@ -491,7 +495,7 @@ export class HistoryTransfer {
   constructor() {
     const root = historySpillRoot();
     sweepOnce(root);
-    const directory = mkdtempSync(join(root, historyPrefix(true)));
+    const directory = makeHistoryDirectory(root, true);
     this.path = join(directory, "manifest.jsonl");
     try {
       this.resource = { fd: openSync(this.path, "wx", 0o600), directory, closed: false };

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { it } from "node:test";
-import { HistoryTransfer, TapeHistoryStore, chooseHistorySpillRoot, historyProcessNamespace, historySpillRoot, sweepStaleHistoryDirectories } from "./history-store.server.ts";
+import { HistoryStorageError, HistoryTransfer, TapeHistoryStore, chooseHistorySpillRoot, historyProcessNamespace, historySpillRoot, sweepStaleHistoryDirectories } from "./history-store.server.ts";
 
 const namespace = historyProcessNamespace();
 it("chooses disk-backed application storage when temporary storage is RAM-backed", () => {
@@ -68,4 +68,13 @@ it("configured history root contains both tape spills and transfer manifests", (
     else process.env.CTS_CORE_HISTORY_DIR = previous;
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+it("a spill-directory creation failure is classified as a storage error", () => {
+  const root = mkdtempSync(join(tmpdir(), "history-error-test-"));
+  try {
+    const notDirectory = join(root, "file"); writeFileSync(notDirectory, "occupied");
+    assert.throws(() => new TapeHistoryStore({ directory: notDirectory }), (error) =>
+      error instanceof HistoryStorageError && /history directory/.test(error.message));
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
