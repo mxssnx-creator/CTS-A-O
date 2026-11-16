@@ -50,3 +50,8 @@ The replacement replay was launched with source tree `9f18b87ead6f3d25fad980ce5c
 budget and a 128 MiB decoded cache. No other heavy verification is run concurrently. The launcher stops if the
 memory guard aborts the compute instead of accepting an incomplete fallback. At this checkpoint the replacement
 had just begun; its hourly results, post-Base PF, validated percentage and executed PF are unavailable.
+
+The replacement execution session was subsequently interrupted at 1,266 seconds, with Base at 59% and
+sampled RSS approximately 1,526 MB. The memory guard had not fired. No raw result or report was completed,
+so hourly results and post-Base/settled PF remain unavailable. Reproduce the same source tree and causal feed
+above rather than interpreting this partial Base progress as a completed test.
