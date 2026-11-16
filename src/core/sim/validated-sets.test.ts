@@ -96,7 +96,7 @@ describe("B2: the validated set V", () => {
   ]);
   const s = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.0, minTrades: 3, maxDdr: 0 } };
   const tapes: ConfigTape[] = buildTapes(u2, protectGrid(15, { ...DEFAULT_SETTINGS.grid, holdH: [16] }), 0.002, undefined, new Set(["follow|ema-21-55", "follow|rsi-mom-14-20", "revert|z-50-2", "revert|ema-21-55"]));
-  const base = { ...defaultWalkForward(s), seatSet: "pool" as const, longH: 96, preH: 20, simH: 48, stepH: 1 };
+  const base = { ...defaultWalkForward(s), wideEnabled: true, seatSet: "pool" as const, longH: 96, preH: 20, simH: 48, stepH: 1 };
   const vset = (o = base) => {
     const g = validatedSetGen(tapes, u2.nowT - 48 * H, o);
     for (let r = g.next(); ; r = g.next()) if (r.done) return r.value;
@@ -230,7 +230,7 @@ describe("B3: Base pass keyed by cell", () => {
     ]);
     const all = buildTapes(u4, protectGrid(15, { ...DEFAULT_SETTINGS.grid, holdH: [16] }), 0.002, undefined, new Set(["follow|ema-21-55", "revert|z-50-2"]));
     const byId = new Map(all.map((x) => [x.id, x]));
-    const o = { ...defaultWalkForward(s3), longH: 96, preH: 20, gates: { ...s3.gates, minPf: 1.0, minTrades: 3, maxDdr: 0 } };
+    const o = { ...defaultWalkForward(s3), wideEnabled: true, longH: 96, preH: 20, gates: { ...s3.gates, minPf: 1.0, minTrades: 3, maxDdr: 0 } };
     let checked = 0;
     for (let i = 1; i <= 40 && !checked; i++) {
       const t = u4.nowT - (40 - i) * 6 * H;

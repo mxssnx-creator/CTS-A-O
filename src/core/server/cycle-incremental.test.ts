@@ -118,7 +118,8 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
     assert.equal(rt.executionEntryBlocked(), false, "the completed matching paper step releases new entry admission");
     assert.ok(R.inc, "the heavy compute captured the validated set");
     const ids: Set<string> = R.inc.ids;
-    assert.ok(ids.size > 50, `validated ${ids.size}`);
+    // thin Micro/Minimal/Short ladders (Stable-04) leave fewer configs passing the bounded synthetic fixture
+    assert.ok(ids.size >= 5, `validated ${ids.size}`);
     // Explicitly exercise a held position whose exact tape is unavailable. Do not rely on an unrelated
     // enabled strategy or on a particular synthetic market outcome to happen to leave such a position behind.
     const missingId = "follow|ema-9-21@m15|tp17|sl18|tr0|h32";

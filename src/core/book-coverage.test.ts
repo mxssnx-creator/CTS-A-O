@@ -212,8 +212,9 @@ describe(
       // Random Signal inputs may qualify only one side; deterministic own-PF fixtures verify both sides.
       // A new no-target type can pass only one direction on this fixed finite random tape. Its
       // bidirectional price/stop path is asserted deterministically in signal-trailing-only.test.ts;
-      // the admitted ordinary families keep the original two-sided reachability assertion here.
-      const oneSided = [...sides].filter(([kind, s]) => kind !== "signal" && kind !== "trailing-only" && s.size < 2).map(([k]) => k);
+      // the admitted ordinary families keep the original two-sided reachability assertion here. Untagged Wide DCA
+      // (opt-in since Stable-04, two targets) may likewise pass one side of this finite tape.
+      const oneSided = [...sides].filter(([kind, s]) => kind !== "signal" && kind !== "trailing-only" && kind !== "dca" && s.size < 2).map(([k]) => k);
       const only = rt.sim!.trades.filter(x => kindOfId(x.cfg) === "trailing-only");
       assert.ok(only.length > 0, "no-target cells remain in the executed cohort");
       assert.ok(only.every(x => rt.tapes.some(tp => tp.id === x.cfg && tp.kind === "trailing-only" && tp.protect.trailOnly && tp.protect.tp === 0)),

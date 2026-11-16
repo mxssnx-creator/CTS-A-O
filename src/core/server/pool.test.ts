@@ -50,7 +50,7 @@ describe("worker pool", { timeout: 300_000 }, () => {
   );
   const u = makeUniverse(bars);
   const s = { ...DEFAULT_SETTINGS, tfMin: 15 };
-  const wf = defaultWalkForward(s);
+  const wf = { ...defaultWalkForward(s), wideEnabled: true };
   const combos = allCombos().slice(0, 60);
   const pairs = combos.map((c) => `${c.bot}|${c.ind}`);
   // Worker parity exercises transport, ordering and strategy variants; the production range grid grows independently.

@@ -20,9 +20,10 @@ it("releasing processed Real candidates preserves every settled order, deduplica
   assert.equal(r.settled, 42);
   assert.equal(r.feed, 48);
   assert.equal(r.inactive, 0);
+  // 16 Nov 2026 (Stable-04): the echoed options also gained the Wide-admission and Signal-cadence fields; counts, settled, feed and steps are unchanged.
   // 16 Nov 2026: the echoed options gained `continuous: true, decisionMin: 1` (continuous evaluation). Every other field of the
   // result - trades, feed, steps, diagnostics - hashes exactly as before (checked field by field against the previous code).
-  assert.equal(r.fullResultSha256, "ebcd1199fed6d0674e42f1764014456eaa6f167f8c719a2a61d1541046646e22");
+  assert.equal(r.fullResultSha256, "9381a43f07572d25a408579551ac1535a445ff49720ffcd6f6f8e216b117743b");
   assert.equal(r.stepProgressSha256, "9b11bef4ae499a18825a4df9d13223436fe392839fbdbd07240611de0404a59a");
   assert.deepEqual(r.heap.map((x: { step: number }) => x.step), [1, 2, 3, 4]);
 });

@@ -18,6 +18,8 @@ export const H = 3_600_000;
 export function runtimeFixtureGrid(): CoreSettings["grid"] {
   const grid = structuredClone(DEFAULT_SETTINGS.grid);
   grid.holdH = [4];
+  // Wide is off by default since Stable-04; lifecycle fixtures that cover untagged Wide books opt in with two targets.
+  grid.tp = [0.018, 0.035];
   for (const key of ["micro", "minimal", "short", "general", "long"] as const) {
     const range = grid[key];
     if (range) grid[key] = { ...range, tp: [range.tp[0], range.tp.at(-1)!],
