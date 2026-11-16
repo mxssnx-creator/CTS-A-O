@@ -16,7 +16,8 @@ import { mergeWorkerTapesGen } from "./tape-merge.ts";
 import { strategyCoverageGen, type StrategyCoverage } from "./strategy-coverage.ts";
 import { lastNSamplesGen, type LastNSamples } from "./last-n-samples.ts";
 import { ProcessingPredecessors } from "./processing-predecessors.ts";
-import { isProcessingOnly } from "../processing-only.ts";
+import { realtimeStageCohortGen, type RealtimeStageCoverage } from "./realtime-stage-cohort.ts";
+import { isProcessingOnly, type ProcessingOwnership } from "../processing-only.ts";
 import { validationProgressOf, type ValidationProgress } from "../validation-progress.ts";
 // Core v2 continuous runtime. One per server process (globalThis singleton).
 //
@@ -208,6 +209,7 @@ import {
   buildTapesBoundedGen as buildTapesGen,
   baseAllowsTape,
   stageBaseAllowsTape,
+  summarizeSignalValidationGen,
   configEval,
   engineContextValid,
   configDirectionEval,
@@ -815,6 +817,7 @@ export interface RuntimeStatus {
     cycles?: number;
     maxMs?: number;
     overBudget?: number;
+    stageCoverage?: RealtimeStageCoverage;
   };
   /** runtime.cycle "incremental": the last cycle's mode and the light cycles since the last heavy compute */
   cycleMode?: { mode: "full" | "light"; lightSince: number; heavyBar: number; validated: number; continued: number; rebuilt: number; why?: string };
@@ -1777,6 +1780,8 @@ export class CoreRuntime {
   private fastEpoch = 0;
   private fastReady = false;
   private fastCount = 0;
+  private fastStageCursor = 0;
+  private fastStageCoverage?: RealtimeStageCoverage;
   private fastEnds: Record<string, number> = {};
   private fastPreparing: Promise<void> | null = null;
   private fastTask: Promise<void> | null = null;
@@ -1790,6 +1795,7 @@ export class CoreRuntime {
     this.fastBarDone = 0;
     this.fastReady = false;
     this.fastCount = 0;
+    this.fastStageCoverage = undefined;
     this.fastEnds = {};
     this.fastPreparing = null;
     this.fastWorker.dispose(new Error(reason));
@@ -1817,7 +1823,20 @@ export class CoreRuntime {
     const task = (async () => {
       const byId = this.tapeIndex();
       const held = new Set(this.paper.positions.map((p) => p.cfg));
-      const cohort = new Set([...this.paper.selected, ...held]);
+      let cohort = new Set([...this.paper.selected, ...held]);
+      let stageCoverage: RealtimeStageCoverage | undefined, nextCursor = this.fastStageCursor;
+      if (this.wf.processedStages) {
+        const work = realtimeStageCohortGen(this.tapes, this.wf, cohort, held, FAST_ENTRY_MODE, nextCursor);
+        for (;;) {
+          const step = work.next();
+          if (step.done) {
+            cohort = step.value.ids; stageCoverage = step.value.coverage; nextCursor = step.value.nextCursor;
+            break;
+          }
+          await yieldNow();
+          if (gen !== this.gen || epoch !== this.fastEpoch || this.stopped || this.fastArgs !== a) return;
+        }
+      }
       const groups: RealtimeTapeGroup[] = [];
       for (const key of ["main", "sig", "coord", "exit", "exitSig"] as const) {
         const ids = new Set<string>(),
@@ -1858,10 +1877,15 @@ export class CoreRuntime {
       if (gen !== this.gen || epoch !== this.fastEpoch) return;
       this.fastCount = groups.reduce((n, g) => n + (g.floors.onlyIds?.size ?? 0), 0);
       if (!groups.length) {
+        this.fastStageCursor = nextCursor;
+        this.fastStageCoverage = stageCoverage;
         this.fastReady = true;
         this.fastEnds = Object.fromEntries(
           a.bars.map((b) => [`${b.sym}|${b.tfMin}`, b.t[b.n - 1]]),
         );
+        this.status.fast = { at: Date.now(), bar: this.status.lastBarT, ms: 0, seated: 0,
+          open: this.paper.positions.length, added: 0, error: null, phase: "ready",
+          ...(stageCoverage ? {stageCoverage} : {}) };
         return;
       }
       this.status.fast = {
@@ -1873,6 +1897,7 @@ export class CoreRuntime {
         added: 0,
         error: null,
         phase: "warming",
+        ...(stageCoverage ? {stageCoverage} : {}),
       };
       if (groups.some((g) => g.key === "sig" || g.key === "coord" || g.key === "exitSig")) {
         const signalBars = shareBars(a.signalBars ?? a.bars);
@@ -1891,6 +1916,8 @@ export class CoreRuntime {
       );
       if (gen !== this.gen || epoch !== this.fastEpoch || this.stopped) return;
       this.fastEnds = result.ends;
+      this.fastStageCursor = nextCursor;
+      this.fastStageCoverage = stageCoverage;
       this.fastReady = true;
       if (this.status.fast) this.status.fast.phase = "ready";
     })()
@@ -2123,6 +2150,7 @@ export class CoreRuntime {
         cycles: (previous?.cycles ?? 0) + 1,
         maxMs: Math.max(previous?.maxMs ?? 0, ms),
         overBudget: (previous?.overBudget ?? 0) + Number(ms >= 500),
+        ...(this.fastStageCoverage ? { stageCoverage: this.fastStageCoverage } : {}),
         error: allowEntries ? null : "state caught up; stale entries suppressed",
       };
       this.emit("paper");
@@ -2801,6 +2829,7 @@ export class CoreRuntime {
     for (const field of [
       "fastEpoch",
       "fastCount",
+      "fastStageCursor",
       "fastRetryAt",
       "nextResearchAt",
       "tickEpoch",
@@ -6130,7 +6159,8 @@ export class CoreRuntime {
           base.startsWith("break-mc-rel-") ||
           base.startsWith("micro-") ||
           base.startsWith("low-range-") ||
-          base.startsWith("inverse-")
+          base.startsWith("inverse-") ||
+          base.startsWith("drag-")
         );
       };
       const measuredRuns = pipeline.s1.filter((r) => isMeasuredIndication(r.ind));
@@ -6148,7 +6178,7 @@ export class CoreRuntime {
       const kinds = (["normal", "trailing", "trailing-only", "dca", "dca-active", "axis"] as const).filter((kind) =>
         kindExecutable(kind, wf.toggles),
       );
-      const enabled = ["tactic", "relate", "break", "micro", "inverse", ...(s.grid.lowRange?.enabled ? ["low-range"] : [])].some(
+      const enabled = ["tactic", "relate", "break", "micro", "inverse", "drag", ...(s.grid.lowRange?.enabled ? ["low-range"] : [])].some(
         (kind) => !s.disabledKinds?.includes(kind),
       );
       const reason = !enabled
@@ -9531,7 +9561,7 @@ export class CoreRuntime {
       side: number;
       entryT: number;
       stopHit?: number;
-    }>,
+    } & ProcessingOwnership>,
   ): ConfirmPool {
     // built on the first signal that asks (the pending entries run every tick; most ticks have no signal entry)
     let openNow: ReadonlyMap<string, number> | null = null;
@@ -9552,7 +9582,7 @@ export class CoreRuntime {
           if (lo > 0 && g.mx[lo - 1] > t) return true;
         }
         return positions.some(
-          (x) => x.sym === sym && x.side === side && x.entryT <= t && !x.stopHit && !sigCfg(x.cfg) && !isHistoricExitConfig(x.cfg),
+          (x) => !isProcessingOnly(x) && x.sym === sym && x.side === side && x.entryT <= t && !x.stopHit && !sigCfg(x.cfg) && !isHistoricExitConfig(x.cfg),
         );
       },
     };
@@ -9592,17 +9622,19 @@ export class CoreRuntime {
       side: number;
       entryT: number;
       stopHit?: number;
-    }>,
+    } & ProcessingOwnership>,
     srcClosed: ReadonlyMap<string, Array<{ exitT: number; r: number }>>,
     confirmPool?: ConfirmPool | null,
     /** entries that hold a crowd seat without a position (refused by the live validation after the simulation's rules) */
     crowdSeats?: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number }>,
+    /** Stage-only learning may defer confirmation; this never permits a funded entry. */
+    deferConfirmation = false,
   ): string | null {
     const hk = Math.floor(op.entryT / H);
     if (this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
     // (coordination reads only the entry's own symbol: the whole book filtered per candidate was ~340 MB of garbage in
     // 5 min on x02, 8 Oct allocation profile)
-    const at = open.filter((x) => x.sym === op.sym && x.entryT <= op.entryT && !x.stopHit);
+    const at = open.filter((x) => !isProcessingOnly(x) && x.sym === op.sym && x.entryT <= op.entryT && !x.stopHit);
     // entry crowding: at most entryCrowd[range] configs of a range on one symbol × side × entry time (as simulated)
     if (this.wf.entryCrowd) {
       const cap = crowdCapOf(this.wf, op.cfg);
@@ -9610,7 +9642,7 @@ export class CoreRuntime {
         const k = crowdKey(op.cfg, op.sym, op.side, op.entryT);
         let n = 0;
         for (const x of open)
-          if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
+          if (!isProcessingOnly(x) && x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
         if (crowdSeats)
           for (const x of crowdSeats)
             if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
@@ -9627,7 +9659,7 @@ export class CoreRuntime {
         (hourNet.get(hk - 1) ?? 0) < 0;
       if (!losing) return "hedgeIdle";
       if (coordWhy && coordWhy !== "confirm") return coordWhy;
-    } else if (coordWhy) return coordWhy;
+    } else if (coordWhy && !(deferConfirmation && coordWhy === "confirm")) return coordWhy;
     // Stable-02 coordination: symbols the simulation ended holding back take no new entries. The paused keys are
     // sym|±1 (S2Coord): with coord.s2Side the entry's own symbol × direction is the key; off, the bare symbol
     // (as before)
@@ -9702,7 +9734,7 @@ export class CoreRuntime {
     // an old tape position can be adopted as fresh and passed toward Live after a delayed startup or recompute.
     // Historical replays and synthetic fixtures intentionally use their own simulated clock.
     const freshnessT = () => this.market === "bingx" && !this.replay
-      ? Math.max(t, Math.floor(Date.now() / H) * H) : t;
+      ? Math.max(t, Date.now()) : t;
     const held = new Set(this.sim.steps[this.sim.steps.length - 1]?.real ?? []);
     // Each Signal protection config needs its own active symbol/direction evidence before taking a paper seat.
     // Held configs are kept separately below to manage their existing exits only.
@@ -9760,9 +9792,11 @@ export class CoreRuntime {
     const { picks, eligible } = selection;
     // Report the evaluated cohort before filtering to seats. Counting the already-qualified list made
     // an empty result look unevaluated and made every nonempty result falsely read as 100% validated.
-    const postBaseValidation = refreshedValidation
-      ? validationProgressOf(refreshedValidation, t)
-      : captureValidation ? validationProgressOf((selection as { validationSummary?: ValidationSummary }).validationSummary, t) : null;
+    const postBaseSummary = refreshedValidation ?? (captureValidation
+      ? (selection as { validationSummary?: ValidationSummary }).validationSummary : undefined);
+    if (postBaseSummary && !fast && !reuse)
+      yield* summarizeSignalValidationGen(signalCandidates, t, this.wf, postBaseSummary);
+    const postBaseValidation = postBaseSummary ? validationProgressOf(postBaseSummary, t) : null;
     if (!fast && !reuse) {
       this.lastSelection = { picks, eligible };
       this.lastSelectionAt = t;
@@ -9998,11 +10032,13 @@ export class CoreRuntime {
       if (representedHeld.has(k)) continue;
       provisionalHeld.add(k);
       positions.push({ ...p, vol: p.vol ?? 1, level: p.level ?? 0 });
-      const cls = orderCapScope(p.cfg);
-      perSym.set(`${cls}|${p.sym}`, (perSym.get(`${cls}|${p.sym}`) ?? 0) + 1);
-      perSide.set(`${cls}|${p.side}`, (perSide.get(`${cls}|${p.side}`) ?? 0) + 1);
-      openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
-      openPos.add(`${cls}|${p.sym}|${p.side}`);
+      if (!isProcessingOnly(p)) {
+        const cls = orderCapScope(p.cfg);
+        perSym.set(`${cls}|${p.sym}`, (perSym.get(`${cls}|${p.sym}`) ?? 0) + 1);
+        perSide.set(`${cls}|${p.side}`, (perSide.get(`${cls}|${p.side}`) ?? 0) + 1);
+        openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
+        openPos.add(`${cls}|${p.sym}|${p.side}`);
+      }
     }
     const releases = [...provisionalHeld].flatMap((key) => {
       const p = prevByKey.get(key)!;
@@ -10117,7 +10153,7 @@ export class CoreRuntime {
     const openKeys = new Set<string>();
     for (const { op, held } of cands) if (held) openKeys.add(openDupKey(op));
     for (const p of positions) if (provisionalHeld.has(orderKey(p))) openKeys.add(openDupKey(p));
-    let releaseIndex = 0;
+    let releaseIndex = 0, processedDirty = false;
     const releaseDue = (at: number) => {
       const due: Array<(typeof releases)[number]> = [];
       while (releaseIndex < releases.length && releases[releaseIndex].at <= at) due.push(releases[releaseIndex++]);
@@ -10127,12 +10163,14 @@ export class CoreRuntime {
       for (const p of positions) if (!keys.has(orderKey(p))) positions[write++] = p;
       positions.length = write;
       for (const { p } of due) {
-        const cls = orderCapScope(p.cfg);
-        const sym = `${cls}|${p.sym}`, side = `${cls}|${p.side}`, pos = `${cls}|${p.sym}|${p.side}`;
-        perSym.set(sym, (perSym.get(sym) ?? 1) - 1);
-        perSide.set(side, (perSide.get(side) ?? 1) - 1);
-        openBy.set(cls, (openBy.get(cls) ?? 1) - 1);
-        if (!positions.some((x) => `${orderCapScope(x.cfg)}|${x.sym}|${x.side}` === pos)) openPos.delete(pos);
+        if (!isProcessingOnly(p)) {
+          const cls = orderCapScope(p.cfg);
+          const sym = `${cls}|${p.sym}`, side = `${cls}|${p.side}`, pos = `${cls}|${p.sym}|${p.side}`;
+          perSym.set(sym, (perSym.get(sym) ?? 1) - 1);
+          perSide.set(side, (perSide.get(side) ?? 1) - 1);
+          openBy.set(cls, (openBy.get(cls) ?? 1) - 1);
+          if (!positions.some((x) => !isProcessingOnly(x) && `${orderCapScope(x.cfg)}|${x.sym}|${x.side}` === pos)) openPos.delete(pos);
+        }
         openKeys.delete(openDupKey(p));
       }
       if (nativeStages) {
@@ -10141,8 +10179,8 @@ export class CoreRuntime {
           if (!nativeStages.stageFor(id)) continue;
           const close = heldCloseOf(p);
           nativeStages.settle(id, exitT, close && Number.isFinite(unitReturn(close)) ? unitReturn(close) : null);
+          processedDirty = true;
         }
-        this.persistNativeProcessedStages();
       }
     };
     // A legacy hit key has no side. Never copy that ambiguous hit to both sides of an otherwise identical entry.
@@ -10189,8 +10227,17 @@ export class CoreRuntime {
           crowdSeats,
         );
         if (back) {
-          pSkip(`${sigCfg(op.cfg) ? "sig:" : ""}heldBack:${back}`);
-          continue;
+          if (back !== "confirm" || !nativeStages || !stageBaseAllowsTape(tp, this.wf)) {
+            pSkip(`${sigCfg(op.cfg) ? "sig:" : ""}heldBack:${back}`);
+            continue;
+          }
+          const other = this.entryHeldBack(
+            { cfg: op.cfg, sym: op.sym, side: op.side, entryT: op.entryT },
+            isHistoricExitConfig(op.cfg) ? (exitHourNet.get(op.cfg) ?? new Map()) : hourNet,
+            positions, srcClosed, confirmPool, crowdSeats, true,
+          );
+          if (other) { pSkip(`${sigCfg(op.cfg) ? "sig:" : ""}heldBack:${other}`); continue; }
+          executionEligible = false;
         }
         // The entry's own side; missing side provenance cannot qualify.
         const lvSide = lvSideOfEntry(lvBySide, op.side);
@@ -10202,7 +10249,7 @@ export class CoreRuntime {
         ) {
           lvSkipped++;
           pSkip("liveValidation");
-          crowdSeats.push(op);
+          if (executionEligible) crowdSeats.push(op);
           executionEligible = false;
           if (!stageBaseAllowsTape(tp, this.wf)) continue;
         }
@@ -10307,22 +10354,24 @@ export class CoreRuntime {
         }
         try {
           const minProcessedPf = Math.max(this.wf.lastNMinPf, minPfForTape(tp, this.wf));
+          processedDirty = true;
           processedStage = nativeStages.enter(tp, op.sym, op.side > 0 ? 1 : -1, op.entryT, minProcessedPf, allowActive).stage;
           processedPolicy = nativeStages.revision;
-          if (!this.persistNativeProcessedStages()) {
-            pSkip(`${pre}exec:processedUnavailable`);
-            continue;
-          }
         } catch (err) {
           this.db.event("error", `native processed-stage admission failed: ${err instanceof Error ? err.message : err}`);
           pSkip(`${pre}exec:processedUnavailable`);
           continue;
         }
       }
-      openPos.add(`${cls}|${posKey}`);
-      perSym.set(`${cls}|${op.sym}`, c + 1);
-      perSide.set(`${cls}|${op.side}`, sd + 1);
-      openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
+      const processingOnly = held && prev ? isProcessingOnly(prev) : isProcessingOnly({
+        processedStage, ...(d.blockPredecessor ? { blockPredecessor: true as const } : {}),
+      });
+      if (!processingOnly) {
+        openPos.add(`${cls}|${posKey}`);
+        perSym.set(`${cls}|${op.sym}`, c + 1);
+        perSide.set(`${cls}|${op.side}`, sd + 1);
+        openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
+      }
       // new entries take the relation volume the simulation ended with (within the Block maximum)
       const vf = held ? 1 : volumeFactorForStrategy(tp, this.wf)*relationalVolumeFactor(this.wf.relationalVolumeRatios,{indicationType:kindOfInd(tp.ind),indication:laneOf(tp.ind).base,strategy:tp.kind,range:tp.kind==="exit"?"exit":isSignalInd(tp.ind)?"sig":tp.protect.tag??"wide",symbol:op.sym});
       const positionVf = held ? (prev?.volFactor ?? 1) : vf;
@@ -10410,6 +10459,12 @@ export class CoreRuntime {
     }
     // Settle every exact held parent that closed by this snapshot, including a step with no later new entry.
     releaseDue(closeT);
+    // No newly built position is visible to execution until the complete stage batch is durable.
+    // One checkpoint per paper step avoids cloning and writing the growing book for every candidate.
+    if (processedDirty && !this.persistNativeProcessedStages()) {
+      this.db.event("error", "paper stage batch not published: durable checkpoint unavailable");
+      throw new Error("paper stage batch not published: durable checkpoint unavailable");
+    }
     // Provisional orders have reserved capacity. Remove their temporary copies now so the exact close check decides
     // whether each should be carried or settled; never remove any other position that joined during the step.
     if (provisionalHeld.size) {
@@ -12839,6 +12894,7 @@ function mergeSettings(
     exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, ...(base.exitStrategy ?? {}) },
     signals: mergeSignals(base.signals),
     sizing: sizingSettings(base.sizing),
+    arbitrageResearch: { ...DEFAULT_SETTINGS.arbitrageResearch!, ...(base.arbitrageResearch ?? {}) },
   };
   for (const p of patches) {
     if (!p) continue;
@@ -12866,6 +12922,7 @@ function mergeSettings(
       adjust: { ...out.adjust, ...(p.adjust ?? {}) },
       signals: mergeSignals(out.signals, p.signals),
       sizing: sizingSettings({ ...out.sizing, ...(p.sizing ?? {}) }),
+      arbitrageResearch: { ...out.arbitrageResearch, ...(p.arbitrageResearch ?? {}) },
       tfs: p.tfs ? [...p.tfs] : out.tfs,
       tfDays: { ...out.tfDays, ...(p.tfDays ?? {}) },
     };

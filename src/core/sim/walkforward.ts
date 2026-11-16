@@ -4198,6 +4198,35 @@ function positionAggregate(
 export function configEvalSummary(tp: ConfigTape, t: number, o: WalkForwardOptions): ConfigEval {
   return o.gates.positionWindows ? positionAggregate(tp, t, o, undefined, false) : configEval(tp, t, o);
 }
+
+/** Report the same Base-proven Signal cohort in replay and paper, before active-seat filtering. */
+export function* summarizeSignalValidationGen(
+  tapes: readonly ConfigTape[], t: number, o: WalkForwardOptions,
+  summary: ValidationSummary | null, checks?: ValidationCheck[],
+): Generator<number, void> {
+  let visited = 0, sliceAt = performance.now();
+  for (const tp of tapes) {
+    const pair = `${tp.bot}|${tp.ind}`;
+    const base = tp.kind === "exit" ? o.exitBasePassed : o.signalBasePassed;
+    const baseAdmitted = o.processedStages ? !!base?.has(pair) : (!base || base.has(pair));
+    if (!tp.heldOnly && !tp.carried && baseAdmitted && tapeExecutable(tp, o)) {
+      const main = o.gates.positionWindows ? sampleWindowsForTape(tp, o).main : 0;
+      if (summary && !checks && Array.isArray(tp.syms) && Number.isSafeInteger(tp.n) && tp.n >= 0 &&
+          Number.isSafeInteger(main) && main > 0 && tp.n < main) {
+        // This tape cannot supply even one complete own Main window. The aggregate summary records
+        // only the rejection reason, while detailed check rows still use the full evaluator below.
+        positionTapeValid(tp);
+        summary.evaluated++;
+        summary.failures.closes = (summary.failures.closes ?? 0) + 1;
+      } else {
+        const ev = configEvalSummary(tp, t, o), gp = (ev.gp ?? 0) / 100, gl = (ev.gl ?? 0) / 100;
+        checks?.push([tp.id, ev.ok ? 1 : 0, ev.n, ev.pf, gp, gl]);
+        summarizeValidation(summary, ev, ev.n, gp, gl);
+      }
+    }
+    if (++visited % 16 === 0 && performance.now() - sliceAt >= 8) { yield -6; sliceAt = performance.now(); }
+  }
+}
 function* selectPositionsGen(
   tapes: readonly ConfigTape[],
   t: number,
@@ -5995,7 +6024,7 @@ export function execDecision(
     )
       return { ok: false, why: "signalInactive" };
     if (
-      o.signalGuardN &&
+      !ctx.stageLearning && o.signalGuardN &&
       ctx.guard?.disabled(guardKey(tp.id, ctx.sym, ctx.side, tp.kind), o.signalGuardN)
     )
       return { ok: false, why: "signalGuard" };
@@ -6012,8 +6041,10 @@ export function execDecision(
     )
       return { ok: false, why: "signalCluster" };
     if (
-      o.signalAccept?.enabled &&
+      !ctx.stageLearning && o.signalAccept?.enabled &&
       ctx.guard &&
+      // Own-config acceptance remains mandatory for execution. Stage-only samples keep its own
+      // predecessor progressing even when this gate is immature or paused; they can never fund an order.
       // Own-config acceptance is separate from the explicit shared side/cluster coordination below.
       !ctx.guard.accepts(
         acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind, tp.id),
@@ -6777,6 +6808,8 @@ export class SignalActivationBook {
   private pass = 0;
   private rejectionPolicy = "";
   private rejectionGeneration = 0;
+  private readonly sealedCatalog: boolean;
+  private compactCountIndex?: { policy: string; rows: SignalIndexRow[]; stores: Array<{ tp: ConfigTape; generation: object }> };
 
   private context(
     row: (typeof this.ranked)[number],
@@ -6820,11 +6853,41 @@ export class SignalActivationBook {
     sig: SignalSettings,
     windowH: number,
     options: WalkForwardOptions,
+    /** The owner promises tape metadata and in-memory columns stay unchanged for this replay. */
+    sealedCatalog = false,
   ) {
     this.index = index;
     this.sig = sig;
     this.windowH = windowH;
     this.options = options;
+    this.sealedCatalog = sealedCatalog;
+  }
+
+  /** Exclude provably impossible whole tapes once per sealed replay and policy, without reading future returns. */
+  private *countIndex(policy: string): Generator<null, readonly SignalIndexRow[]> {
+    if (!this.sealedCatalog) return this.index;
+    const cached = this.compactCountIndex;
+    if (cached?.policy === policy && cached.stores.every(({tp,generation}) => immutableHistoryGeneration(tp) === generation))
+      return cached.rows;
+    const rows: SignalIndexRow[] = [], stores = new Map<object, ConfigTape>();
+    let visited = 0, sliceAt = performance.now();
+    for (const item of this.index) {
+      const tp = item.tp, windows = sampleWindowsForTape(tp, this.options);
+      const required = Math.max(windows.main, windows.real, windows.entry, windows.range);
+      const generation = immutableHistoryGeneration(tp);
+      // Unknown getters may change without a generation notification and remain on the ordinary scalar path.
+      const known = !!generation || COUNT_SOURCE_COLUMNS.every((key) => {
+        const field = Object.getOwnPropertyDescriptor(tp, key);
+        return !!field && "value" in field;
+      });
+      if (known && Number.isSafeInteger(tp.n) && tp.n >= 0 && Number.isSafeInteger(required) && required > 0 && tp.n < required) {
+        positionTapeValid(tp); // The same strict storage check as the non-compacted scan.
+        if (generation && !stores.has(generation)) stores.set(generation, tp);
+      } else rows.push(item);
+      if (++visited % 16 === 0 && performance.now() - sliceAt >= 8) { yield null; sliceAt = performance.now(); }
+    }
+    this.compactCountIndex = { policy, rows, stores: [...stores].map(([generation,tp]) => ({tp,generation})) };
+    return rows;
   }
 
   /** Count windows change at their own strict settled-close boundary, not a sibling's close or a reporting hour. */
@@ -6835,7 +6898,8 @@ export class SignalActivationBook {
       this.countRows.clear(); this.countBytes = 0; this.countPolicy = policy;
       if (this.countEmpty) { this.countEmpty.generation.fill(undefined); this.countBytes = this.countEmpty.bytes; }
     }
-    const capacity = Math.min(this.index.length, Math.max(0, Math.floor(this.countLimit / 80)));
+    const index = yield* this.countIndex(policy);
+    const capacity = Math.min(index.length, Math.max(0, Math.floor(this.countLimit / 80)));
     if (capacity !== (this.countEmpty?.capacity ?? 0)) {
       this.countBytes -= this.countEmpty?.bytes ?? 0;
       this.countEmpty = capacity ? countEmptyRows(capacity) : undefined;
@@ -6849,7 +6913,7 @@ export class SignalActivationBook {
       remove(this.countRows.keys().next().value!);
     const pass = ++this.countPass;
     let visited = 0, sliceAt = performance.now();
-    for (const item of this.index) {
+    for (const item of index) {
       const tp = item.tp;
       const slot = visited;
       // Warm rejected rows are metadata-only. Yield on elapsed work rather than millions of
@@ -7598,7 +7662,9 @@ export function* walkForwardGen(
   // entries per range × symbol × side × entry time (entryCrowd)
   const crowd = new Map<string, number>();
   const open = new ExitHeap<Trade>(); // taken, by exit
-  const counts = new OpenCounts(); // the caps' counts of the taken orders still open
+  const counts = new OpenCounts(); // funded orders alone consume account / strategy capacity
+  const stageOnlyCounts = new OpenCounts(); // keep each learning config's own open position independent
+  const activeOpen: Trade[] = []; // coordination conflicts consider funded orders, not stage-only samples
   const blockPredecessors = new OpenCounts(); // independent virtual admissions never reserve funded slots
   const hourNet = new Map<number, number>();
   const exitHourNet = new Map<string, Map<number, number>>();
@@ -7691,8 +7757,14 @@ export function* walkForwardGen(
     }
     while (open.size && open.peekT() <= t) {
       const x = open.pop()!;
-      counts.add(x, -1);
       const owned = processedOpen.get(x);
+      const stageOnly = !!owned && (owned.stage !== "active" || !!x.blockPredecessor);
+      if (stageOnly) stageOnlyCounts.add(x, -1);
+      else {
+        counts.add(x, -1);
+        const at = activeOpen.indexOf(x);
+        if (at >= 0) activeOpen.splice(at, 1);
+      }
       if (owned) {
         // An endpoint mark is held exposure, never a completed Last-N observation.
         if (!x.markedOpen) processed!.settle(owned, x.exitT, unitReturn(x));
@@ -7760,7 +7832,7 @@ export function* walkForwardGen(
   }
   let stepOpts: WalkForwardOptions = o;
   const signalActivation = o.signalRank && sigIdx.length
-    ? new SignalActivationBook(sigIdx, o.signalRank, signalHistoryHours(o), o) : null;
+    ? new SignalActivationBook(sigIdx, o.signalRank, signalHistoryHours(o), o, true) : null;
   const recordSignalStep = (t: number, keys: Set<string>) => {
     const before = signalSteps.at(-1)?.keys;
     // Identical ordered sets share their preceding snapshot; replay/audit reads the last change at or before t.
@@ -7860,14 +7932,8 @@ export function* walkForwardGen(
     const validationSummary = validationRecord?.summary ?? sel?.validationSummary ?? (o.recordValidation === "summary"
       ? { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {}, setPf: emptyValidatedSetPf() } as ValidationSummary : null);
     if (o.recordValidation) {
-      let checked = 0;
-      for (const tp of sigTapes) {
-        const ev = configEvalSummary(tp, t, o);
-        if (o.recordValidation === true)
-          signalChecks.push([tp.id, ev.ok ? 1 : 0, ev.n, ev.pf, (ev.gp ?? 0) / 100, (ev.gl ?? 0) / 100]);
-        summarizeValidation(validationSummary, ev, ev.n, (ev.gp ?? 0) / 100, (ev.gl ?? 0) / 100);
-        if (++checked % 32 === 0) yield -6;
-      }
+      yield* summarizeSignalValidationGen(sigTapes, t, o, validationSummary,
+        o.recordValidation === true ? signalChecks : undefined);
     }
     held = new Set(picks.map((p) => p.id));
     let taken = 0;
@@ -7977,6 +8043,18 @@ export function* walkForwardGen(
         currentScores.set(key, score);
         return score;
       };
+      // Score simultaneous competitors outside the sort comparator. One score can read many exact-context
+      // histories, so doing 128 of them inside a single sort slice can freeze progress for seconds.
+      if (continuousIndependent && stepOpts.bestFirst !== false) {
+        const perClock = new Map<number, number>();
+        for (const { tr } of cands) if (!sigCfg(tr.cfg))
+          perClock.set(tr.entryT, (perClock.get(tr.entryT) ?? 0) + 1);
+        let scored = 0, scoreSlice = performance.now();
+        for (const { tr, tp } of cands) {
+          if (!sigCfg(tr.cfg) && (perClock.get(tr.entryT) ?? 0) > 1) currentScore(tp, tr.entryT);
+          if (++scored % 4 === 0 && performance.now() - scoreSlice >= 8) { yield -8; scoreSlice = performance.now(); }
+        }
+      }
       // best first: at the same entry time the better candidate takes a capped slot first
       yield* stableSortGen(
         cands,
@@ -8089,15 +8167,15 @@ export function* walkForwardGen(
         const bookLosing =
           (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
           (hourNet.get(hourKey - 1) ?? 0) < 0;
-        const coordRaw = coordBlock(o.coord, tr, ownHours, open.items, engineOpen);
+        const coordRaw = coordBlock(o.coord, tr, ownHours, activeOpen, engineOpen);
+        const entryCoordWhy = hedging
+          ? bookLosing ? (coordRaw === "confirm" ? null : coordRaw) : "hedgeIdle"
+          : coordRaw;
+        // Confirmation governs funded execution. A Base-proven Signal may still collect its own
+        // stage-only samples while no matching ordinary position exists; all other gates still apply.
+        const confirmDeferred = entryCoordWhy === "confirm" && !!processed && canLearnStage(tp);
         const coordWhy =
-          (hedging
-            ? bookLosing
-              ? coordRaw === "confirm"
-                ? null
-                : coordRaw
-              : "hedgeIdle"
-            : coordRaw) ??
+          (confirmDeferred ? null : entryCoordWhy) ??
           ownS2?.blocked(tr.sym, tr.side) ??
           (gateOn &&
           sourceUnstable(
@@ -8109,7 +8187,7 @@ export function* walkForwardGen(
             : null);
         if (o.guardPct > 0 && (ownHours.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
         else if (coordWhy) why = coordWhy;
-        else if (counts.dupe(tr.sym, tr.cfg, tr.side)) why = "dupe";
+        else if (counts.dupe(tr.sym, tr.cfg, tr.side) || stageOnlyCounts.dupe(tr.sym, tr.cfg, tr.side)) why = "dupe";
         else if (counts.perSymbol(tr.sym, cls, capScope) >= caps.perSymbol) why = "perSymbol";
         else if (counts.open(cls, capScope) >= caps.maxOpen) why = "maxOpen";
         else if (counts.perSide(tr.side, cls, capScope) >= caps.perSide) why = "perSide";
@@ -8139,7 +8217,7 @@ export function* walkForwardGen(
               sym: tr.sym,
               side: tr.side,
             });
-        const allowActive = seatEligible && !!dec?.ok;
+        const allowActive = !confirmDeferred && seatEligible && !!dec?.ok;
         if (!why && processed && !allowActive && canLearnStage(tp)) {
           const learning = execDecision(tp, tr.entryT, entryOpts, {
             processedBase: true, stageLearning: true, blockPredecessor: !!book?.processedOnly,
@@ -8237,7 +8315,7 @@ export function* walkForwardGen(
             : {}),
         };
         executedKeys.add(dk);
-        if (o.entryCrowd) {
+        if (active && o.entryCrowd) {
           const ck = crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT);
           crowd.set(ck, (crowd.get(ck) ?? 0) + 1);
         }
@@ -8259,7 +8337,8 @@ export function* walkForwardGen(
           skipR(skipName(reason), tr.r);
         }
         open.push(x.exitT, x);
-        counts.add(x, 1);
+        if (active) { counts.add(x, 1); activeOpen.push(x); }
+        else stageOnlyCounts.add(x, 1);
       }
       // Every candidate belongs to exactly one disjoint entry window. Keep its feed object in feed/vopen, but its
       // long deduplication key and materialized Trade are no longer needed after that window has been processed.

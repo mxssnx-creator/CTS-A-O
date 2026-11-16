@@ -142,6 +142,7 @@ export class ProcessedSetBook {
   private readonly open = new Map<string, ProcessedOpen>();
   private readonly seenAtClock = new Set<string>();
   private clock = -1;
+  private revision = 0;
 
   constructor(basis: ProcessedBasis, capacity: number) {
     if (!(["model", "paper", "venue"] as string[]).includes(basis) ||
@@ -154,6 +155,7 @@ export class ProcessedSetBook {
     if (!Number.isFinite(t) || t < 0 || t < this.clock) throw new RangeError("processed events must be chronological");
     if (t > this.clock) this.seenAtClock.clear();
     this.clock = t;
+    this.revision++;
   }
 
   private rows(identity: ProcessedSetIdentity): SetRows {
@@ -341,9 +343,30 @@ export class ProcessedSetBook {
       evaluations: structuredClone(rows.evaluations), ...(rows.deferredActive ? { deferredActive: rows.deferredActive } : {}) };
   }
 
+  /** Copy large model books cooperatively; an owner must not mutate a book while this iterator runs. */
+  *snapshotGen(clock: () => number = () => performance.now()): Generator<number, ProcessedSetSnapshot> {
+    const sets: SetRows[] = [], open: ProcessedOpen[] = [], seenAtClock: string[] = [];
+    const snapshotClock = this.clock, snapshotRevision = this.revision;
+    let copied = 0, lastYield = clock();
+    for (const row of this.sets.values()) {
+      sets.push(structuredClone(row));
+      if (++copied % 64 === 0 && clock() - lastYield >= 8) { yield -20; lastYield = clock(); }
+    }
+    for (const row of this.open.values()) {
+      open.push(structuredClone(row));
+      if (++copied % 64 === 0 && clock() - lastYield >= 8) { yield -20; lastYield = clock(); }
+    }
+    for (const key of this.seenAtClock) {
+      seenAtClock.push(key);
+      if (++copied % 256 === 0 && clock() - lastYield >= 8) { yield -20; lastYield = clock(); }
+    }
+    if (this.revision !== snapshotRevision) throw new Error("processed book changed during snapshot");
+    return { version: 3, basis: this.basis, capacity: this.capacity, clock: snapshotClock, sets, open, seenAtClock };
+  }
+
   snapshot(): ProcessedSetSnapshot {
-    return structuredClone({ version: 3 as const, basis: this.basis, capacity: this.capacity, clock: this.clock,
-      sets: [...this.sets.values()], open: [...this.open.values()], seenAtClock: [...this.seenAtClock] });
+    const gen = this.snapshotGen();
+    for (;;) { const result = gen.next(); if (result.done) return result.value; }
   }
 
   /** Restore only structurally consistent books; corrupted state is not turned into qualification evidence. */

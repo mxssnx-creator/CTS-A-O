@@ -64,13 +64,26 @@ describe("paper entry age after a delayed computation", () => {
       const now = Math.floor(Date.now() / H) * H;
       const recent = fixture(false, now - H / 4, now);
       const held = fixture(false, now - 3 * H + H / 2, now - 2 * H);
+      const originalNow = Date.now;
       try {
+        Date.now = () => now + H / 2;
         run(recent, now);
         assert.equal(recent.rt.paper.positions.length, 1, JSON.stringify(recent.rt.status.paperSkips));
         held.rt.paper.positions = [{ ...held.op, vol: 1, level: 0 }];
         run(held, now - 2 * H);
         assert.equal(held.rt.paper.positions.length, 1, "existing protection remains managed");
-      } finally { recent.rt.dispose(); recent.db.db.close(); held.rt.dispose(); held.db.db.close(); }
+      } finally { Date.now = originalNow; recent.rt.dispose(); recent.db.db.close(); held.rt.dispose(); held.db.db.close(); }
+    });
+
+    it(`${mode}: the wall clock cannot be rounded down to admit an expired entry`, () => {
+      const now = Math.floor(Date.now() / H) * H;
+      const f = fixture(false, now - H / 2, now), originalNow = Date.now;
+      try {
+        Date.now = () => now + 3 * H / 4;
+        run(f, now);
+        assert.equal(f.rt.paper.positions.length, 0, "the entry is already 75 minutes old");
+        assert.equal(f.rt.status.paperSkips?.stale, 1);
+      } finally { Date.now = originalNow; f.rt.dispose(); f.db.db.close(); }
     });
 
     it(`${mode}: a sliced paper step rechecks the clock if it is delayed`, () => {

@@ -24,6 +24,17 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     if (v !== undefined && !validVolumeRatio(v))
       throw new Error(`${name} must be 0.1–5 in 0.1 steps`);
   };
+  const arb = s.arbitrageResearch;
+  if (arb !== undefined) {
+    if (!arb || typeof arb !== "object" || Array.isArray(arb)) throw new Error("Arbitrage research settings required");
+    num(arb.maxAgeMs, 1, 60_000, "Arbitrage maximum quote age (ms)");
+    num(arb.maxSkewMs, 0, 60_000, "Arbitrage maximum quote skew (ms)");
+    num(arb.slippage, 0, 0.1, "Arbitrage per-leg slippage");
+    num(arb.minNetReturn, 0, 0.5, "Arbitrage minimum net return");
+    num(arb.startAmount, 0.00000001, 1_000_000_000, "Arbitrage start amount");
+    if (arb.startAsset !== undefined && (typeof arb.startAsset !== "string" || !/^[A-Z0-9]{1,20}$/.test(arb.startAsset)))
+      throw new Error("Arbitrage start asset must be 1–20 uppercase letters or digits");
+  }
   volumeFactor(s.exitStrategy?.volumeFactor, "Exit volume factor");
   num(s.symbols, 1, 120, "symbols");
   if (

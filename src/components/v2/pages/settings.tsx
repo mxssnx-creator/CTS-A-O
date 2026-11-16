@@ -9,6 +9,8 @@ import { SIGNAL_VALID_LAST_N } from "@/core/signal-policy";
 import { roundTripCostFromFees, DEFAULT_MODEL_FEES, MAX_MODEL_RT_COST } from "@/core/model-cost";
 import { MICRO_CONFIG_IDS, MICRO_METHODS } from "@/core/indications/micro-family";
 import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "@/core/indications/low-range";
+import { DRAG_IDS } from "@/core/indications/drag";
+import { ArbitrageResearch } from "../arbitrage-research";
 import { sizeText } from "@/core/live-labels";
 import { TACTIC_TECHNIQUES } from "@/core/indications/tactic";
 import {
@@ -2747,7 +2749,7 @@ export function FocusText(props: { value: readonly string[]; onChange: (v: strin
 
 const TACTIC_HELP: Record<string, string> = {
   session: "EU/US session only — signals on bars opening 07:00–20:59 UTC",
-  volRegime: "volatility regime — ATR% in the upper half of its last ~2 weeks",
+  volRegime: "volatility regime — ATR% in the upper half of 336 prior completed lane bars. With 12 hours of history, 5m/15m lanes cannot warm this filter; provide roughly 30/90 hours or switch it off explicitly.",
   trendStrength: "trend strength — ADX(14) ≥ 20",
   chopRegime: "choppiness regime — no entry while CHOP(14) ≥ 61.8 (a sideways range)",
   onRun:
@@ -3960,6 +3962,18 @@ export function SettingsPage() {
             />
           </div>
           <div style={{ marginTop: 10 }}>
+            <button type="button" className="v2-btn" onClick={() => {
+              set(["focus"], includeIndicationsInFocus(s.focus ?? [], DRAG_IDS));
+              set(["disabledKinds"], (s.disabledKinds ?? []).filter((kind: string) => kind !== "drag"));
+              if (!(s.forceSymbols ?? []).includes("BTC-USDT")) set(["forceSymbols"], [...(s.forceSymbols ?? []), "BTC-USDT"]);
+            }}>Include BTC Drag and BTC in selection</button>
+            <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 5 }}>
+              {indicationFocusCoverage(s.focus ?? [], DRAG_IDS, s.pinned ?? []).covered}/{DRAG_IDS.length} variants in focus.
+              Uses completed BTC-USDT and symbol bars on 1/5/15m; BTC must be in the selected universe.
+              Missing or out-of-sync BTC data produces no signal. Each config is independently gated.
+            </div>
+          </div>
+          <div style={{ marginTop: 10 }}>
             <InverseFocusInfo focus={s.focus ?? []} pinned={s.pinned ?? []}
               disabled={(s.disabledKinds ?? []).includes("inverse")}
               onInclude={() => {
@@ -4068,6 +4082,10 @@ export function SettingsPage() {
           </div>
         </Panel>
       </div>
+
+      <Panel title="Arbitrage" sub="three-market quote research">
+        <ArbitrageResearch value={s.arbitrageResearch} onChange={v => set(["arbitrageResearch"], v)} />
+      </Panel>
 
       <div className="v2-grid v2-cols-4">
         <Panel title="Block">

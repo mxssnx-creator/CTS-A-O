@@ -61,6 +61,7 @@ import {
 import { isRelateInd, relateAnchorTf } from "../indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "../indications/break-config.ts";
 import { isLowRangeInd, LOW_RANGE_TIMEFRAMES, lowRangeGridProtects, lowRangeEnabled, lowRangeTag } from "../indications/low-range.ts";
+import { DRAG_TIMEFRAMES, isDragInd } from "../indications/drag.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { MarketSource } from "../indications/market.ts";
 import {
@@ -276,6 +277,7 @@ export function laneInds(base: string, tfs: readonly number[]): string[] {
     const anchor = microAnchorTf(base);
     return anchor !== null && tfs.includes(anchor) ? [laneInd(base, anchor)] : [];
   }
+  if (isDragInd(base)) return tfs.filter(tf => (DRAG_TIMEFRAMES as readonly number[]).includes(tf)).map(tf => laneInd(base, tf));
   const lanes = isLowRangeInd(base)
     ? tfs.filter((tf) => (LOW_RANGE_TIMEFRAMES as readonly number[]).includes(tf))
     : isInverseInd(base)
@@ -403,7 +405,8 @@ export function allCombos(
     for (const ind of INDICATIONS)
       if (!off.has(ind.kind) && !ind.id.startsWith("sig-") && !ind.id.startsWith("s2-") &&
           (!isLowRangeInd(ind.id) || (lowRangeEnabled && b.type === "follow")) &&
-          (!isInverseInd(ind.id) || b.type === "follow"))
+          (!isInverseInd(ind.id) || b.type === "follow") &&
+          (!isDragInd(ind.id) || b.type === "follow"))
         plain.push({ bot: b.type, ind: ind.id });
   }
   const out = tfs?.length

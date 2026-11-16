@@ -5,7 +5,8 @@ import { DEFAULT_POSITION_WINDOWS } from "../position-windows.ts";
 import { signalSettings } from "../signal-config.ts";
 import type { Trade } from "../domain/types.ts";
 import { activeSignalsAt, defaultWalkForward, makeTape, signalIndex, SignalActivationBook,
-  positionConfigEval, type ConfigTape, type WalkForwardOptions } from "./walkforward.ts";
+  positionConfigEval, summarizeSignalValidationGen, type ConfigTape, type ValidationSummary, type WalkForwardOptions } from "./walkforward.ts";
+import { emptyValidatedSetPf } from "../validated-set-pf.ts";
 import { signalActiveHas } from "../signals.ts";
 import { TapeHistoryStore } from "../server/history-store.server.ts";
 import { truncateSync } from "node:fs";
@@ -77,6 +78,51 @@ test('whole-tape count bound follows policy changes, replacement histories and s
   store.clearCache();truncateSync(store.path,0);
   assert.throws(()=>drain(storedBook.at(start)),/history/i,'sparse rejection must not hide corrupted storage');
  }finally{store.close()}
+});
+
+test('sealed replay compaction preserves exact decisions and invalidates changed storage',()=>{
+ const {tapes,sig,options,policy}=fixture(),source=tapes[0];
+ const rows:Trade[]=Array.from({length:3},(_,i)=>({cfg:source.id,sym:symbols[0],side:1 as const,
+  entryT:start-(3-i)*M-1,exitT:start-(3-i)*M,r:.02,mult:1,entry:100,exit:102,
+  reason:'tp' as const,bars:1,mfe:0,mae:0,kind:'normal' as const}));
+ const sparse=makeTape(source.id,source.bot,source.ind,source.protect,source.kind,symbols,rows,[],[]);
+ const store=new TapeHistoryStore({cacheBytes:1});
+ try{
+  const saved=store.append(sparse),all=[saved,tapes[1],tapes[2]];
+  const sealed=new SignalActivationBook(signalIndex(all),sig,150,options,true);
+  for(const t of [start,start+M,start+M+1,start+30*M,start])
+   assert.deepEqual([...drain(sealed.at(t))],[...activeSignalsAt(all,t,sig,150,options)]);
+  policy.main=2;policy.real=2;policy.entry=2;
+  assert.deepEqual([...drain(sealed.at(start))],[...activeSignalsAt(all,start,sig,150,options)]);
+  assert.ok(drain(sealed.at(start)).size>0,'changed count policy rebuilds the compact index');
+  policy.main=4;
+  drain(sealed.at(start));store.clearCache();truncateSync(store.path,0);
+  assert.throws(()=>drain(sealed.at(start)),/history/i,'a compacted rejection cannot hide invalidated storage');
+ }finally{store.close()}
+});
+
+test('sparse Signal summary uses the same passing sets and failure counts as detailed evaluation',()=>{
+ const {tapes,options}=fixture(),source=tapes[0];
+ const sparse=makeTape(source.id,source.bot,source.ind,source.protect,source.kind,symbols,[],[],[]);
+ const own=[sparse,tapes[1],tapes[2]];
+ const empty=():ValidationSummary=>({evaluated:0,passed:0,closes:0,gp:0,gl:0,failures:{},setPf:emptyValidatedSetPf()});
+ for(const t of [start,start+M,start+20*M,start+40*M+1]){
+  const fast=empty(),detailed=empty();
+  drain(summarizeSignalValidationGen(own,t,options,fast));
+  drain(summarizeSignalValidationGen(own,t,options,detailed,[]));
+  assert.deepEqual(fast,detailed);
+ }
+});
+
+test('persistent Signal progress excludes missing Base provenance',()=>{
+ const {tapes,options}=fixture();
+ const empty=():ValidationSummary=>({evaluated:0,passed:0,closes:0,gp:0,gl:0,failures:{},setPf:emptyValidatedSetPf()});
+ const summary=empty();
+ drain(summarizeSignalValidationGen(tapes,start,{...options,processedStages:{validationN:12,realN:12},signalBasePassed:undefined},summary));
+ assert.equal(summary.evaluated,0);
+ const proven=empty();
+ drain(summarizeSignalValidationGen(tapes,start,{...options,processedStages:{validationN:12,realN:12},signalBasePassed:new Set([`${tapes[0].bot}|${tapes[0].ind}`])},proven));
+ assert.equal(proven.evaluated,1);
 });
 
 test('count activation does not reopen unaffected histories after another config settles',(ctx)=>{

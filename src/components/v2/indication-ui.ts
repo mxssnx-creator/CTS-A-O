@@ -1,6 +1,7 @@
 /** Keep the registered first-class indication name visible in every type selector. */
 export function indicationKindLabel(kind: string): string {
   if (kind === "low-range") return "Low-Range";
+  if (kind === "drag") return "Drag";
   if (kind === "inverse") return "Inverse";
   if (kind === "micro") return "Micro";
   if (kind === "tactic") return "Tactic";

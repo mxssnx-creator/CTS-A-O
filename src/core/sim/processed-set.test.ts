@@ -13,6 +13,25 @@ const enterAndClose = (book: ProcessedSetBook, i: ProcessedSetIdentity, at: numb
   return admission;
 };
 
+test("large processed checkpoints yield and restore the same complete state",()=>{
+  const book=new ProcessedSetBook("model",2),p={validationN:1,realN:1,minPf:1.1};
+  for(let i=0;i<512;i++){
+    const own={...identity,baseConfigId:`${identity.baseConfigId}|${i}`};
+    book.acceptPostBase(own,`entry-${i}`,i*2,p,false);
+    if(i%2===0) book.close(own,`entry-${i}`,i*2,"final",i*2+1,i%4===0?.02:-.01,true);
+  }
+  const expected=book.snapshot(),gen=book.snapshotGen((()=>{let at=0;return()=>at+=9;})());
+  let yields=0,actual;
+  for(;;){const step=gen.next();if(step.done){actual=step.value;break;}assert.equal(step.value,-20);yields++;}
+  assert.ok(yields>0);
+  assert.deepEqual(actual,expected);
+  assert.deepEqual(ProcessedSetBook.restore(JSON.parse(JSON.stringify(actual))).snapshot(),expected);
+  const stale=book.snapshotGen((()=>{let at=0;return()=>at+=9;})());
+  assert.equal(stale.next().done,false);
+  book.acceptPostBase({...identity,baseConfigId:"same-clock"},"new",expected.clock,p,false);
+  assert.throws(()=>{for(const _ of stale){}},/changed during snapshot/);
+});
+
 test("an independently blocked active entry stays validated across a checkpoint",()=>{
   const p={validationN:1,realN:1,minPf:1.1};
   let book=new ProcessedSetBook("model",2);

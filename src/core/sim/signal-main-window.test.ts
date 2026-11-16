@@ -100,3 +100,73 @@ for (const side of [1, -1] as const)
     assert.equal(stages.active.closedOrders, 6);
     assert.ok(result.trades.every(tr => tr.side === side));
   });
+
+test("Signal stage research continues while own acceptance and loss guards block funded entries", () => {
+  const H=3_600_000,M=60_000,start=Date.UTC(2026,10,16),ind="sig-continuous-research-s@m1",sym="OWN-USDT";
+  const id=`follow|${ind}|tp1|sl1|tr0|h24`;
+  const rows: Trade[] = Array.from({length:20},(_,i)=>({cfg:id,sym,side:1,entryT:start+(1+i*2)*M,
+    exitT:start+(2+i*2)*M,entry:100,exit:98,r:-.02,mult:1,kind:"normal",reason:"sl",bars:1,mfe:0,mae:0}));
+  const tape=makeTape(id,"follow",ind,{tp:.01,sl:.01,trail:0,hold:24},"normal",[sym],rows,[],[]);
+  const d=defaultWalkForward(DEFAULT_SETTINGS);
+  const o={...d,preH:12,longH:12,simH:1,startT:start,mode:"fixed" as const,seatPer:"config" as const,
+    portfolio:0,maxPositions:0,symGate:"off" as const,rangeGate:undefined,signalRank:undefined,
+    signalBasePassed:new Set([`follow|${ind}`]),signalActive:new Set<string>(),signalOwnBase:true,
+    signalGuardN:2,signalAccept:{enabled:true,minPf:1.3,hours:48,minTrades:6},signalCluster:undefined,
+    toggles:{...d.toggles,normal:false,block:true,blockActive:true},
+    coord:{...d.coord!,enabled:false},engineSideAccept:undefined,processedStages:{validationN:2,realN:2}};
+  const u={bars:[],caches:[],startT:start-12*H,endT:start+H,splitT:start,nowT:start+H,baseTf:1} as never;
+  const result=walkForward(u,[tape],o),own=result.processedStages!.sets[0];
+  assert.ok(own, 'Base-proven Signals must collect stage samples');
+  assert.equal(own.stages.postBase.closedOrders,rows.length);
+  assert.equal(own.stages.postBase.returnPf,0,'losses remain in their own window');
+  assert.equal(own.stages.active.openedOrders,0,'research is never a funded admission');
+  assert.equal(result.trades.length,0);
+});
+
+test("mature Signal stage windows do not bypass their own funded acceptance gate", () => {
+  const H=3_600_000,M=60_000,start=Date.UTC(2026,10,16),ind="sig-guarded-research-s@m1",sym="OWN-USDT";
+  const id=`follow|${ind}|tp1|sl1|tr0|h24`;
+  const row=(entryT:number,i:number):Trade=>({cfg:id,sym,side:1,entryT,exitT:entryT+M,
+    entry:100,exit:i%2?99.5:102,r:i%2?-.005:.02,mult:1,kind:"normal",reason:i%2?"sl":"tp",bars:1,mfe:0,mae:0});
+  const history=Array.from({length:15},(_,i)=>row(start-(30-i*2)*M,i));
+  const future=Array.from({length:20},(_,i)=>row(start+(1+i*2)*M,i));
+  const tape=makeTape(id,"follow",ind,{tp:.01,sl:.01,trail:0,hold:24},"normal",[sym],[...history,...future],[],[]);
+  const d=defaultWalkForward(DEFAULT_SETTINGS);
+  const o={...d,preH:12,longH:12,simH:1,startT:start,mode:"fixed" as const,seatPer:"config" as const,
+    portfolio:0,maxPositions:0,symGate:"off" as const,rangeGate:undefined,signalRank:undefined,
+    signalBasePassed:new Set([`follow|${ind}`]),signalActive:new Set([sigActiveKey("follow",ind,sym,1,"normal",id)]),signalOwnBase:true,
+    signalGuardN:0,signalAccept:{enabled:true,minPf:10,hours:48,minTrades:6},signalCluster:undefined,
+    toggles:{...d.toggles,normal:true,block:false,blockActive:false},
+    coord:{...d.coord!,enabled:false},engineSideAccept:undefined,processedStages:{validationN:2,realN:2}};
+  const u={bars:[],caches:[],startT:start-12*H,endT:start+H,splitT:start,nowT:start+H,baseTf:1} as never;
+  const result=walkForward(u,[tape],o),own=result.processedStages!.sets[0];
+  assert.equal(own.stages.postBase.closedOrders,future.length);
+  assert.ok(own.stages.validated.closedOrders>=2);
+  assert.equal(own.stages.active.openedOrders,0);
+  assert.equal(result.trades.length,0,'a ready research context is not permission to bypass its gate');
+});
+
+test("Signal stage learning advances without ordinary confirmation but never funds an unconfirmed entry", () => {
+  const H=3_600_000,M=60_000,start=Date.UTC(2026,10,16),ind="sig-confirm-research-s@m1",sym="OWN-USDT";
+  const id=`follow|${ind}|tp1|sl1|tr0|h24`;
+  const row=(entryT:number):Trade=>({cfg:id,sym,side:1,entryT,exitT:entryT+M,entry:100,exit:102,
+    r:.02,mult:1,kind:"normal",reason:"tp",bars:1,mfe:0,mae:0});
+  const history=Array.from({length:15},(_,i)=>row(start-(30-i*2)*M));
+  const future=Array.from({length:12},(_,i)=>row(start+(1+i*2)*M));
+  const tape=makeTape(id,"follow",ind,{tp:.01,sl:.01,trail:0,hold:24},"normal",[sym],[...history,...future],[],[]);
+  const d=defaultWalkForward(DEFAULT_SETTINGS);
+  const o={...d,preH:12,longH:12,simH:1,startT:start,mode:"fixed" as const,seatPer:"config" as const,
+    portfolio:0,maxPositions:0,symGate:"off" as const,rangeGate:undefined,signalRank:undefined,
+    signalBasePassed:new Set([`follow|${ind}`]),signalActive:new Set([sigActiveKey("follow",ind,sym,1,"normal",id)]),signalOwnBase:true,
+    signalGuardN:0,signalAccept:undefined,signalCluster:undefined,
+    toggles:{...d.toggles,normal:true,block:false,blockActive:false},
+    coord:{...d.coord!,enabled:true,confirm:true,hourLock:0,cooldown:"off" as const,conflict:false},
+    engineSideAccept:undefined,processedStages:{validationN:2,realN:2}};
+  const u={bars:[],caches:[],startT:start-12*H,endT:start+H,splitT:start,nowT:start+H,baseTf:1} as never;
+  const result=walkForward(u,[tape],o),own=result.processedStages!.sets[0];
+  assert.ok(own,'Base-proven unconfirmed Signal still needs independent samples');
+  assert.equal(own.stages.postBase.closedOrders,future.length);
+  assert.ok(own.stages.validated.closedOrders>=2);
+  assert.equal(own.stages.active.openedOrders,0);
+  assert.equal(result.trades.length,0,'confirmation still applies to actual execution');
+});

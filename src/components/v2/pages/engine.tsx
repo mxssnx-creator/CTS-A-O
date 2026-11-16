@@ -135,9 +135,12 @@ export function EnginePage() {
             {st.fast && (
               <>
                 <Line
-                  k="Validated updates"
+                  k="Incremental updates"
                   v={`${st.fast.phase} · ${st.fast.cycles ?? 0} completed`}
                 />
+                {st.fast.stageCoverage && (
+                  <Line k="Stage learning" v={`${fmt.num(st.fast.stageCoverage.tracked)} / ${fmt.num(st.fast.stageCoverage.eligible)} sets · ${fmt.num(st.fast.stageCoverage.waiting)} waiting`} />
+                )}
                 <Line
                   k="500 ms overruns"
                   v={`${st.fast.overBudget ?? 0} · max ${fmt.num(st.fast.maxMs ?? 0)} ms`}

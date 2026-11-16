@@ -26,6 +26,7 @@ import {
 import { relateSpecs } from "./relate.ts";
 import { breakSpecs } from "./break.ts";
 import { isLowRangeInd, LOW_RANGE_TIMEFRAMES, lowRangeSpecs } from "./low-range.ts";
+import { dragSpecs } from "./drag.ts";
 
 export { SIGNAL_SOURCES, signalId };
 
@@ -1250,6 +1251,7 @@ for (const x of inverseSpecs([...BASE_INDICATIONS, ...VARIANTS])) add(x);
 for (const x of inverseMicroSpecs()) add(x);
 // Low-Range uses its own Short protection cells and explicit enablement.
 for (const x of lowRangeSpecs()) add(x);
+for (const x of dragSpecs()) add(x);
 
 // ── combined timeframes ─────────────────────────────────────
 // "<id>@x4": the indication on this timeframe, kept only where it agrees on the 4× timeframe (1h → 4h, 15m → 1h),

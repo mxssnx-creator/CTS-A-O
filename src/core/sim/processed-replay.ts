@@ -59,6 +59,8 @@ export class ProcessedReplay {
   readonly book: ProcessedSetBook;
   readonly policy: ProcessedReplayPolicy;
   private readonly revision: string;
+  /** Many exact sets share an indication and stage policy; reuse one immutable lane value. */
+  private readonly lanes = new Map<string, string>();
 
   constructor(policy: ProcessedReplayPolicy, cost: number) {
     if (!policy || ![policy.validationN, policy.realN].every(n => Number.isSafeInteger(n) && n >= 1 && n <= 200) ||
@@ -74,15 +76,19 @@ export class ProcessedReplay {
 
   identity(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, minPf: number): ProcessedSetIdentity {
     if (!Number.isFinite(minPf) || minPf <= 1) throw new RangeError("processed PF floor must exceed one");
-    return { baseConfigId: tp.id, symbol, side, kind: tp.kind,
-      lane: JSON.stringify([tp.ind, this.policy.validationN, this.policy.realN, minPf]), economicRevision: this.revision };
+    const label = JSON.stringify([tp.ind, this.policy.validationN, this.policy.realN, minPf]);
+    let lane = this.lanes.get(label);
+    if (lane === undefined) { lane = label; this.lanes.set(label, lane); }
+    return { baseConfigId: tp.id, symbol, side, kind: tp.kind, lane, economicRevision: this.revision };
   }
 
   enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number,
     allowActive = true): ProcessedOpen {
     const identity = this.identity(tp, symbol, side, minPf);
     // An onset has one parent. Future exit price/time/return cannot change its identity.
-    const entryId = JSON.stringify([tp.id, symbol, side, entryT]);
+    // The surrounding processed-set identity already owns config, symbol and side. The clock is
+    // the remaining parent identity, so repeating the full configuration in every close wastes memory.
+    const entryId = String(entryT);
     return this.book.acceptPostBase(identity, entryId, entryT, { ...this.policy, minPf }, allowActive);
   }
 
@@ -106,8 +112,9 @@ export class ProcessedReplay {
         lastYield = clock();
       }
     }
+    const snapshot = yield* this.book.snapshotGen(clock);
     return { basis: "model", at, coverageScope: "visible-config-symbol-direction",
-      seededFromCandidates: false, validation, real, sets, snapshot: this.book.snapshot() };
+      seededFromCandidates: false, validation, real, sets, snapshot };
   }
 
   report(at: number, contexts: Iterable<{ identity: ProcessedSetIdentity; minPf: number }>): ProcessedReplayReport {

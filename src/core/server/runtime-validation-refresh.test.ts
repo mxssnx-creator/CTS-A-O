@@ -3,12 +3,40 @@ import { mock, test } from "node:test";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { OpenPosition, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
+import { sigActiveKey } from "../signals.ts";
 import { defaultWalkForward, makeTape, walkForward } from "../sim/walkforward.ts";
 import { CoreDb } from "./db.server.ts";
 import { CoreRuntime } from "./runtime.server.ts";
 
 const H = 3_600_000, M = 60_000, T = Math.floor(Date.now() / H) * H;
 const ind = "ema-9-21@m1", protect = { tp: .0215, sl: .0085, trail: 0, hold: 60, tag: "mn" as const };
+
+test("post-Base progress includes Signal configs before their active-seat filter",()=>{
+  const db=new CoreDb(":memory:"),rt=new CoreRuntime(db,{live:{liveLastN:0}},{market:"synthetic",priceStream:null});rt.stop();
+  try {
+    const sig="sig-count-fixture-s@m1",sym="OWN-USDT",d=defaultWalkForward(DEFAULT_SETTINGS);
+    const ordinary=configId("follow",ind,protect),sig1=configId("follow",sig,protect);
+    const sig2=configId("follow",sig,{...protect,tp:.03}),
+      deniedInd="sig-other-fixture-s@m1",denied=configId("follow",deniedInd,protect);
+    const tape=(id:string,name:string,n:number)=>makeTape(id,"follow",name,protect,"normal",[sym],
+      Array.from({length:n},(_,i):Trade=>({cfg:id,sym,side:1,entryT:T-(n-i)*2*M,exitT:T-(n-i)*2*M+M,
+        entry:100,exit:102,r:.02,mult:1,kind:"normal",reason:"tp",bars:1,mfe:0,mae:0})),[],[]);
+    rt.wf={...d,preH:12,longH:12,simH:12,startT:T,mode:"fixed",seatSet:"validated",seatPer:"config",
+      portfolio:0,symGate:"off",rangeGate:undefined,rangeOpts:undefined,
+      gates:{...d.gates,minTrades:12,positionWindows:{base:12,main:12,real:12,entry:12,maxDrawdownPositions:12,
+        byRange:{sig:{main:15}}}},
+      basePassed:new Set([`follow|${ind}`]),basePassedRanges:{[`follow|${ind}`]:["mn"]},
+      signalBasePassed:new Set([`follow|${sig}`]),signalRank:undefined,
+      signalActive:new Set([sigActiveKey("follow",sig,sym,1,"normal",sig1),
+        sigActiveKey("follow",deniedInd,sym,1,"normal",denied)]),
+      toggles:{...d.toggles,normal:true,block:false},coord:{...d.coord!,enabled:false},engineSideAccept:undefined};
+    const u={bars:[],caches:[],startT:T-12*H,endT:T,splitT:T,nowT:T,baseTf:1} as never;
+    rt.sim=walkForward(u,[],rt.wf);rt.tapes=[tape(ordinary,ind,12),tape(sig1,sig,15),tape(sig2,sig,5),tape(denied,deniedInd,15)];
+    (rt as unknown as {stepPaper():void}).stepPaper();
+    assert.deepEqual([rt.status.postBaseValidation?.evaluated,rt.status.postBaseValidation?.passed],[3,2],
+      "the inactive same-pair config is counted and the different unproven pair is excluded");
+  } finally {rt.dispose();db.db.close();}
+});
 for (const kind of ["normal", "axis"] as const) test(`${kind}: runtime reevaluates newly mature own histories after an empty simulation`, () => {
   const db = new CoreDb(":memory:"), rt = new CoreRuntime(db, { live: { liveLastN: 0 } }, { market: "synthetic", priceStream: null });
   rt.stop();
