@@ -17,7 +17,10 @@ it("releasing processed Real candidates preserves every settled order, deduplica
   assert.equal(r.settled, 42);
   assert.equal(r.feed, 48);
   assert.equal(r.inactive, 0);
-  assert.equal(r.fullResultSha256, "3cb19d3ccbdcfee51af67b142eec24b9efd7a81b90cbd62a7cca781193942a66");
+  // Re-pinned: the hash covers the echoed `opts` (preH, longH, exit minimums, indication factors), whose defaults changed
+  // after e2cff247 (not in this repository). Against the pre-lifetime tree (ea85aba~1, same exact-Signal-key fixture)
+  // every other output key is identical: trades, feed, steps, stats, accepted markers and skips.
+  assert.equal(r.fullResultSha256, "24ba7003a352ac8133b00fcabfb463a00246b012e1f398c81ddb06fa38ae53c6");
   assert.equal(r.stepProgressSha256, "9b11bef4ae499a18825a4df9d13223436fe392839fbdbd07240611de0404a59a");
   assert.deepEqual(r.heap.map((x: { step: number }) => x.step), [1, 2, 3, 4]);
 });

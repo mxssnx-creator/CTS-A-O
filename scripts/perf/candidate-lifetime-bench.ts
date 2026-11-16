@@ -11,8 +11,8 @@ const configs = small ? 3 : 12;
 const hours = small ? 4 : 24;
 const perHour = small ? 4 : 24;
 const load = (name: string) => import(pathToFileURL(`${root}/src/core/${name}`).href);
-const [{ makeTape, defaultWalkForward, walkForwardGen }, { DEFAULT_SETTINGS }] = await Promise.all([
-  load("sim/walkforward.ts"), load("config.ts"),
+const [{ makeTape, defaultWalkForward, walkForwardGen }, { DEFAULT_SETTINGS }, { sigActiveKey }] = await Promise.all([
+  load("sim/walkforward.ts"), load("config.ts"), load("signals.ts"),
 ]);
 const gc = (globalThis as { gc?: () => void }).gc;
 if (!gc) throw new Error("Run with --expose-gc for comparable retained-heap measurements");
@@ -29,7 +29,8 @@ const fixture = () => {
     for (let hour = 0; hour < hours; hour++) for (let i = 0; i < perHour; i++) {
       const side = i % 2 ? 1 : -1;
       const sym = syms[i % syms.length];
-      active.add(`follow|${ind}|${sym}|${side}|normal`);
+      // exact configuration identity (sigActiveKey, cfg suffix): a bare pair key never matches a candidate
+      active.add(sigActiveKey("follow", ind, sym, side, "normal", id));
       const entryT = start + hour * H + i * 60_000;
       const r = (i + k) % 7 ? 0.004 : -0.006;
       const holdMs = small && i === 0 && hour < hours - 1 ? 1.5 * H : 30_000;

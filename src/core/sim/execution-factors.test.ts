@@ -30,7 +30,8 @@ describe("captured independent execution factors", () => {
     const tp = makeTape(ID, "follow", IND, P, "normal", ["AAA-USDT"], history, [open], []);
     const defaults = defaultWalkForward(DEFAULT_SETTINGS);
     const run = walkForward({ bars: [], caches: [], startT: START - 100 * H, endT: NOW, splitT: START, nowT: NOW, baseTf: 60 } as never, [tp], {
-      ...defaults, startT: START, simH: 6, validLastN: 0, lastN: 0,
+      // the 100 h history pins the 336 h selection window; the production selection window is 24 h (commit 4779175)
+      ...defaults, longH: 336, startT: START, simH: 6, validLastN: 0, lastN: 0,
       symGate: "off", rangeGate: undefined, preGate: false,
       toggles: { ...defaults.toggles, normal: true, block: false },
       indicationVolumeFactors: { coordination: 8, combined: { trend: 3 } },
@@ -68,6 +69,8 @@ describe("captured independent execution factors", () => {
       entryI: 0, entry: 100, stop: 99, target: 101, peak: 100, trailOn: false, mtm: 0,
       coordVol: 1.4, volFactor: 3, hedgeVol: 1.6, rangeVol: 1.8,
       vol: 1.4 * 3 * 1.6 * 1.8,
+      // the restore keeps the pinned shape of runtime.test.ts (exitProtection present, undefined for a non-historic protect)
+      exitProtection: undefined,
     };
     db.kvSet("paperBook", { at: Date.now(), startedAt: NOW - 2 * H, selected: [ID], positions: [position] });
     const settings = structuredClone(DEFAULT_SETTINGS);

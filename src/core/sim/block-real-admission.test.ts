@@ -28,7 +28,9 @@ function tape(n: number, sym: string, open = false) {
 }
 function options(mode: "overall" | "shared" | "additive" = "overall"): WalkForwardOptions {
   const base = defaultWalkForward(DEFAULT_SETTINGS);
-  return { ...base, mode: "fixed", simH: 6, seatPer: "config", validLastN: 0, lastN: 0,
+  // the 14-day-history fixtures pin the 336 h selection window; the production selection window is 24 h (commit 4779175),
+  // where each tape has fewer closes in its window than gates.minTrades (12), so nothing is selected
+  return { ...base, longH: 336, mode: "fixed", simH: 6, seatPer: "config", validLastN: 0, lastN: 0,
     normalBaseMinPf: 0, robustFrac: 0, symGate: "off", blockTrace: true,
     maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0,
     coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
