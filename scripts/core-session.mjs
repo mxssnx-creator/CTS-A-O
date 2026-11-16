@@ -98,6 +98,9 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "  --symbols N             symbols to load (default 12)",
       "  --pre H --run H         prehistory and simulated window (default 6 h each)",
       "  --end-at ISO            end time of the session",
+      "  --label NAME            name of the saved result (default: symbols, hours, tactics)",
+      "  --archive-dir DIR       where the compact result is saved (default docs/sim-results; compare with scripts/sim-compare.mjs)",
+      "  --no-archive            do not save the result (replays and synthetic markets are never saved)",
       "  --evaluation-from ISO   start of evaluated entries after prehistory",
       "  --selection-hours H     replay-only Base/config selection lookback",
       "  --replay-preload-all    load the entire offline universe before its first compute",
@@ -4485,6 +4488,21 @@ const writeup = arg("writeup");
 if (writeup) {
   mkdirSync(dirname(writeup), { recursive: true });
   writeFileSync(writeup, renderWriteup(data, htmlDir));
+}
+// Every real session keeps a compact, comparable record (docs/sim-results, scripts/sim-compare.mjs). A replay rebuilds a
+// session that was archived when it ran, and a synthetic market is not evidence, so neither is saved; --no-archive opts out.
+if (!arg("replay") && !flag("no-archive") && process.env.CTS_CORE_MARKET !== "synthetic") {
+  try {
+    const { archiveSession } = await import("./lib/sim-archive.mjs");
+    const { execFileSync } = await import("node:child_process");
+    let commit = null;
+    try { commit = execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim(); } catch { /* not a checkout */ }
+    const label = arg("label", `${symbols}sym-${preH}h+${runH}h-tactics-${tacticsMode}`);
+    const file = archiveSession(data, { label, dir: arg("archive-dir", "docs/sim-results"), commit, command: process.argv.slice(2).join(" ") });
+    process.stderr.write(`archived ${file}\n`);
+  } catch (e) {
+    process.stderr.write(`archive failed (the session itself is complete): ${e instanceof Error ? e.message : e}\n`);
+  }
 }
 process.stderr.write(
   `checks: ${checks.filter((c) => c.ok).length}/${checks.length} ok${
