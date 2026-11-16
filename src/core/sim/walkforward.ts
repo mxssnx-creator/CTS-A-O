@@ -7226,22 +7226,28 @@ export function* signalEntryQueueGen(
   return queue;
 }
 
-/** Drain due entries only. Selection changes at the hour; entry timestamps never move with it. */
+/** Drain due entries only. Unselected histories may advance to the end of a caller-frozen
+ * selection interval. The boundary entry is retained for the next selection; no return is changed. */
 export function* scheduledEngineEntriesGen(
   queue: ExitHeap<SignalEntryCursor>, endT: number, selected: ReadonlySet<string>, markT: number,
+  selectionEndT = endT,
 ): Generator<number, Array<{ tr: Trade; tp: ConfigTape }>> {
   const out: Array<{ tr: Trade; tp: ConfigTape }> = [];
   let visited = 0;
   while (queue.peekT() < endT) {
     const c = queue.pop()!;
     const tp = c.tp, accept = selected.has(tp.id);
-    while (c.nextT < endT) {
+    // These sets cannot produce an admitted entry until selection changes. Reopening their compressed
+    // history at every minute dominated the full-catalog replay. Advance once within that exact interval.
+    const until = accept ? endT : Math.max(endT, selectionEndT);
+    const entryT = c.nextT < until ? tp.entryT : undefined;
+    while (c.nextT < until) {
       const i = c.order[c.next++];
-      c.nextT = c.next < c.order.length ? tp.entryT[c.order[c.next]] : Infinity;
+      c.nextT = c.next < c.order.length ? entryT![c.order[c.next]] : Infinity;
       if (accept) out.push({ tr: tradeAt(tp, i), tp });
       if (++visited % 2048 === 0) yield -6;
     }
-    while (c.nextOpen < c.openOrder.length && tp.open[c.openOrder[c.nextOpen]].entryT < endT) {
+    while (c.nextOpen < c.openOrder.length && tp.open[c.openOrder[c.nextOpen]].entryT < until) {
       const op = tp.open[c.openOrder[c.nextOpen++]];
       if (accept) out.push({ tr: markedOpenTrade(tp, op, markT), tp });
     }
@@ -7736,7 +7742,7 @@ export function* walkForwardGen(
       }
       const prio = bestFirst(picks, stepOpts, engineRank);
       const batchEnd = Math.min(stepEnd, batchT + batchMs);
-      const cands = yield* scheduledEngineEntriesGen(engineEntries, batchEnd, selectedEntries, stopT);
+      const cands = yield* scheduledEngineEntriesGen(engineEntries, batchEnd, selectedEntries, stopT, stepEnd);
       let mergedSignals = 0;
       while (signalEntries.peekT() < batchEnd) {
         const cursor = signalEntries.pop()!;
