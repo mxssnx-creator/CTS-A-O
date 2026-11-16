@@ -35,11 +35,13 @@ import { isSignalCoordinationInd } from "./signal-coordination.ts";
 import { capSignalProtect } from "./sim/trailing.ts";
 import { POSITION_COST_RT } from "./model-cost.ts";
 import { SIGNAL_MIN_PF, SIGNAL_VALID_LAST_N } from "./signal-policy.ts";
+import { protectSlRatio, protectStepPct, stepPfFloor } from "./step-pf.ts";
 
 export interface SignalHistValidation {
   positionWindows?: PositionWindows | null;
   cost: number;
   minPf: number;
+  stepPf?: Gates["stepPf"];
   minTrades: number;
   maxDdr?: number;
   lastN?: number;
@@ -68,17 +70,23 @@ export function signalHistPassingRanges(
 /** Signals retain the configured stage PF floor; the lower engine Wide prefilter cannot relax it. */
 export function signalHistValidationOf(
   cost: number,
-  gates: Pick<Gates, "minPf" | "rangeMinPf" | "baseSetsMinPf" | "minTrades" | "maxDdr" | "positionWindows">,
+  gates: Pick<Gates, "minPf" | "rangeMinPf" | "baseSetsMinPf" | "minTrades" | "maxDdr" | "positionWindows" | "stepPf">,
   lastN = SIGNAL_VALID_LAST_N,
 ): SignalHistValidation {
   return {
     cost,
     positionWindows:gates.positionWindows,
     minPf: Math.max(SIGNAL_MIN_PF, minPfOf(gates, undefined), gates.baseSetsMinPf ?? gates.minPf),
+    stepPf: gates.stepPf,
     lastN,
     minTrades: gates.minTrades,
     maxDdr: gates.maxDdr,
   };
+}
+
+/** Historic fitting and later admission must use the same effective protection-cell floor. */
+export function signalHistMinPf(validation: SignalHistValidation, protect: Protect): number {
+  return stepPfFloor(Math.max(SIGNAL_MIN_PF, validation.minPf), protectStepPct(protect), validation.stepPf, protectSlRatio(protect));
 }
 
 export interface SignalHistDiagnostics {
@@ -474,7 +482,8 @@ export function* signalHistProtectsGen(
               if (diagnostics) diagnostics.insufficientTrades++;
               continue;
             }
-            const minPf = Math.max(SIGNAL_MIN_PF, validation.minPf);
+            const effective = capSignalProtect(adjustProtect(lane, { minSl: sig.minSl, minTrail: sig.minTrail }));
+            const minPf = signalHistMinPf(validation, effective);
             const profitable = sampled.filter(({ history, last }) => history.net > 0 && history.pf >= minPf && last.net > 0 && last.pf >= minPf);
             if (!profitable.length) {
               if (diagnostics) diagnostics.pfRejected++;

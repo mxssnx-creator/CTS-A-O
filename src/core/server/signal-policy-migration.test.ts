@@ -12,10 +12,10 @@ function open(db: CoreDb) {
   const r = new CoreRuntime(db, undefined, { market: "synthetic", priceStream: null });
   r.stop(); runtimes.push(r); return r;
 }
-it("fresh Signals and Exit use Last-12 while keeping 1m candles and fitting samples", () => {
+it("fresh Signals use Last-15 and Exit retains Last-12 with 1m candles and fitting samples", () => {
   const r = open(new CoreDb(":memory:"));
   assert.equal(r.wf.signalLongH, 150);
-  assert.equal(r.wf.signalValidLastN, 12);
+  assert.equal(r.wf.signalValidLastN, 15);
   assert.equal(r.wf.exitMinTrades, 12);
   assert.equal(MAINNET_SIGNAL_VALID_LAST_N, 12);
   assert.equal(r.settings.gates.baseLastN, 40);
@@ -51,7 +51,7 @@ it("upgrades old saved settings and presets once, preserves custom choices and a
   const reopened = open(db);
   assert.equal(reopened.wf.signalLongH, 336, "new explicit choices after migration are preserved");
   assert.equal(reopened.wf.signalValidLastN, 12);
-  assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 12);
+  assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 15);
 });
 
 it("backs up and upgrades saved 100h desks/presets once without changing custom horizons", () => {

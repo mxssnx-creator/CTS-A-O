@@ -1041,8 +1041,8 @@ type CoordRangeLike = {
   baseBest?: boolean;
 };
 /**
- * The stops (× target) Micro's Base tries at every target: its whole default ladder, MICRO_SL (0.2–1.6 step 0.1
- * since 11 Nov 2026). Every ratio here is one MICRO_SL actually offers: a Base cell at a ratio no Micro config can
+ * The stops (× target) Micro's Base tries at every target: its whole default ladder, MICRO_SL (0.2–1.2 step 0.1).
+ * Every ratio here is one MICRO_SL actually offers: a Base cell at a ratio no Micro config can
  * trade would validate targets on a stop that never reaches the tape stage.
  */
 export const MICRO_BASE_SL: readonly number[] = MICRO_SL;

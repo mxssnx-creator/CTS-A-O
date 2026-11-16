@@ -36,7 +36,7 @@ import {
 import type { RangeTag } from "../domain/types.ts";
 import { createExitProtection } from "./exit-protection.ts";
 import { capSignalProtect, capTrailingOnlyProtect, trailingOnlyProtects, isSignalConfig } from "./trailing.ts";
-import { SIGNAL_HISTORY_H, SIGNAL_VALID_LAST_N } from "../signal-policy.ts";
+import { SIGNAL_HISTORY_H, SIGNAL_VALID_LAST_N, SIGNAL_EVALUATION_LAST_N } from "../signal-policy.ts";
 // Walk-forward trade simulation ("simulated trade runs") — the Base → Main → Real → Live coordination.
 //
 //   Base  every indication × bot type × protect × sub-strategy (normal, trailing, DCA, DCA Active) has a
@@ -928,7 +928,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // Saved stricter choices and independent Signal/Exit/range overrides retain their own values.
     validLastN: 12,
     // Signal and Exit contexts default to their own last 12 completed results.
-    signalValidLastN: SIGNAL_VALID_LAST_N,
+    signalValidLastN: SIGNAL_EVALUATION_LAST_N,
     exitMinTrades: s.exitStrategy.minValidationTrades,
     exitMinPf: s.exitStrategy.minPf,
     exitMinGreenHourShare: s.exitStrategy.minGreenHourShare,

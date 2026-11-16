@@ -450,6 +450,10 @@ export interface BlockConfig {
    * 30). Default off.
    */
   windowAuto?: boolean;
+  /** Evaluate each source key independently rather than using one shared auto-window winner. */
+  windowIndependent?: boolean;
+  /** Minimum settled, attributed observations needed for each candidate (30–5000). */
+  windowMinSamples?: number;
   /** candidate windows for windowAuto (1–500). Default 5, 10, 15, 25, 35. */
   windowCandidates?: number[];
   /** raised closes per candidate window that windowAuto judges on. Default 300. */

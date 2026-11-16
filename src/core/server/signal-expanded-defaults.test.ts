@@ -33,7 +33,7 @@ const former = () => ({ signals: { ...structuredClone(DEFAULT_SIGNALS),
   exitStrategy: { minValidationTrades: 8 },
 });
 
-it("fresh Expanded defaults match the verified source/grid catalog with own Last-12", () => {
+it("fresh Expanded defaults preserve the catalog and current independent Signal counts", () => {
   const rt = open();
   const recorded = JSON.parse(readFileSync(new URL("../../../docs/signals-coverage-20261023/receipts/final/all-sources/protocol.json", import.meta.url), "utf8"));
   const expected = recorded.actualSettings.signals;
@@ -42,6 +42,7 @@ it("fresh Expanded defaults match the verified source/grid catalog with own Last
   expected.trailing.slOfTp = 1;
   expected.guard.lastN = 12;
   expected.hist.lookbackH = 150;
+  expected.sideAccept.enabled = false; // Explicit later desk default; keep both directions available independently.
   expected.coordination.volumeFactor = 1; // Operator neutral-sizing default; archived receipt stays immutable.
   assert.equal(Object.hasOwn(expected.combinedVolumeFactors, "low-range"), false, "archived receipt predates Low-Range");
   assert.equal(DEFAULT_SIGNALS.combinedVolumeFactors["low-range"], 1);
@@ -51,7 +52,7 @@ it("fresh Expanded defaults match the verified source/grid catalog with own Last
   assert.deepEqual(normalized, expected);
   assert.deepEqual(signalCombos(rt.settings.signals, rt.settings.tfs), signalCombos(expected, recorded.actualSettings.tfs));
   assert.deepEqual(signalProtects(rt.settings.signals), signalProtects(expected));
-  assert.equal(rt.wf.signalValidLastN, 12);
+  assert.equal(rt.wf.signalValidLastN, 15);
   assert.equal(rt.wf.exitMinTrades, 12);
   assert.equal(rt.settings.exitStrategy.minValidationTrades, 12);
   assert.equal(rt.wf.signalLongH, 150);

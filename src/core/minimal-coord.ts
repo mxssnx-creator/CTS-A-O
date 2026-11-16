@@ -1,4 +1,4 @@
-import { FINE_SL_TP_RATIOS, FINE_TRAIL_RATIOS, SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
+import { FINE_SL_TP_RATIOS, FINE_TRAIL_RATIOS, SL_TP_RATIOS, THIN_SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
 import { stepPfFloor } from "./step-pf.ts";
 /**
  * Minimal Coord.
@@ -153,27 +153,27 @@ export const costTps = (lo: number, hi: number, step: number): number[] =>
  * resolve this for the connection's current cost; held positions retain their captured protection. */
 export const EVAL_MIN_SL = minimumStopFraction(RT_COST);
 
-/** Every range uses the same ten requested SL/TP ratios. Distinct requested ratios may hit the same floor. */
-export const MINIMAL_SL: readonly number[] = SL_TP_RATIOS;
+/** Micro, Minimal and Short use the requested 0.2–1.2 grid; stop floors may collapse cells. */
+export const MINIMAL_SL: readonly number[] = THIN_SL_TP_RATIOS;
 export const MINIMAL_RANGE: CoordRange = {
   volumeFactor: 1,
   tp: costTps(4, 8, 0.5),
   slOfTp: MINIMAL_SL,
   trailOfTp: TRAIL_CONFIGS,
-  trailSlOfTp: SL_TP_RATIOS[0],
+  trailSlOfTp: THIN_SL_TP_RATIOS[0],
   minSl: EVAL_MIN_SL,
   minTrail: +(RANGE_COST_BASIS * 1.5).toFixed(4),
 };
 
-/** Short's stop ratios: 1–2.5× the target, step 0.25 (13 Oct, was 1 / 1.5 / 2). */
-export const SHORT_SL: readonly number[] = SL_TP_RATIOS;
+/** Short's stop ratios: 0.2–1.2× the target, step 0.1. */
+export const SHORT_SL: readonly number[] = THIN_SL_TP_RATIOS;
 /** Short: 9–14× cost (1.8–2.8 %), step 1× (8× belongs to Minimal). Stops 1–2.5× the target, trailing cells too. */
 export const SHORT_RANGE: CoordRange = {
   volumeFactor: 1,
   tp: costTps(9, 14, 1),
   slOfTp: SHORT_SL,
   trailOfTp: TRAIL_CONFIGS,
-  trailSlOfTp: SL_TP_RATIOS[0],
+  trailSlOfTp: THIN_SL_TP_RATIOS[0],
   minSl: EVAL_MIN_SL,
   minTrail: +RANGE_COST_BASIS.toFixed(4),
 };
@@ -210,7 +210,7 @@ export const LONG_RANGE: CoordRange = {
 /**
  * Micro (operator, 13 Oct: "Micro range 2–5×"): price targets are the reference-basis net target plus configured cost;
  * the 1–4× reference-basis net targets are 0.2–0.8 %, and default-cost price targets are 0.376–0.976 %. Every stop
- * ratio is 0.2–1.6× (step 0.1, MICRO_SL's 15 ratios) of the price target, plain and six trailing distances.
+ * ratio is 0.2–1.2× (step 0.1) of the price target, plain and six trailing distances.
  * Traded only by the Micro indications (ownInds); the Base PF evaluation decides which cells run. Before (price
  * targets 0.20–0.40 %): no cell above PF 1 — a 0.2 % target nets nothing after the 0.2 % cost, a 0.4 % one needs a
  * win rate above 75 % at a 1× stop, and the one-bar reversal events have no gross edge on the 1m lane. With the net
@@ -222,12 +222,11 @@ export const MICRO_TP: readonly number[] = costTps(1, 4, 0.5);
 /** The Micro net targets before 13 Oct (price 1.5–3× cost): the settings migration v25 moves a stored copy. */
 export const FORMER_MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025, 0.003, 0.0035, 0.004];
 /**
- * Micro stop ratios (operator, 11 Nov 2026): 0.2–1.6 × the PRICE target, step 0.1 (FINE_SL_TP_RATIOS, fifteen
- * requested ratios; 0.25–2.5 step 0.25 from 8 Nov, 1–5 before). The price target already includes the round-trip
+ * Micro stop ratios: 0.2–1.2 × the PRICE target, step 0.1. The price target already includes the round-trip
  * cost (tpNetOfCost) and the initial stop is never inside cost + the global net distance, so the tight requests of a
  * small target resolve to that floor and share one cell. Every distinct TP × SL × trail × hold is its own config.
  */
-export const MICRO_SL: readonly number[] = FINE_SL_TP_RATIOS;
+export const MICRO_SL: readonly number[] = THIN_SL_TP_RATIOS;
 /** Micro trailing shares: plain plus 0.1–0.6 of the price target, step 0.1 (was ¼ / ½ / ¾). */
 export const MICRO_TRAIL: readonly number[] = FINE_TRAIL_RATIOS;
 export const MICRO_RANGE: CoordRange = {
@@ -538,7 +537,8 @@ const RANGE_MIN_PF_KEY: Readonly<Record<RangeTag, RangeMinPfKey>> = {
 export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf" | "stepPf">, tag: string | null | undefined, ind?: string, stepPct?: number, slRatio?: number): number {
   // A coordination Signal may borrow tagged protection distances. Its economic range is still Signals;
   // the ordinary range's PF floor must neither raise nor lower its independent stage floor.
-  if (ind?.startsWith("sig-")) return Math.max(SIGNAL_MIN_PF, gates.minPf);
+  if (ind?.startsWith("sig-"))
+    return stepPfFloor(Math.max(SIGNAL_MIN_PF, gates.minPf), stepPct, gates.stepPf, slRatio);
   const key = tag ? RANGE_MIN_PF_KEY[tag as RangeTag] : undefined;
   const v = key ? gates.rangeMinPf?.[key] : undefined;
   const configured = typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;

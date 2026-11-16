@@ -1,4 +1,5 @@
 import {blockPrefix,blockRequired,checkBlockPolicy,evaluateBlocks,type BlockPolicy} from "../../shared/cts-lastn/blocks.ts";
+import { SIGNAL_EVALUATION_LAST_N } from "./signal-policy.ts";
 /** Position-count evaluation policy. Time controls data availability, never membership of these samples. */
 export interface PositionCounts {
   base: number;
@@ -19,7 +20,10 @@ export const DEFAULT_POSITION_WINDOWS: PositionWindows = {
   real: 12,
   entry: 12,
   maxDrawdownPositions: 40,
-  byRange: { mc: { base: 30 }, mn: { base: 30 } },
+  byRange: { mc: { base: 30 }, mn: { base: 30 }, sig: {
+    base: SIGNAL_EVALUATION_LAST_N, main: SIGNAL_EVALUATION_LAST_N,
+    real: SIGNAL_EVALUATION_LAST_N, entry: SIGNAL_EVALUATION_LAST_N,
+  } },
 };
 const stages = ["base", "main", "real", "entry"] as const;
 

@@ -111,12 +111,12 @@ export const DEFAULT_GATES: Gates = {
 export const DEFAULT_TOGGLES: StrategyToggles = {
   normal: true,
   trailing: true,
-  exit: true,
+  exit: false,
   block: true,
   blockActive: false,
   dca: true,
   dcaActive: false,
-  axis: false,
+  axis: true,
 };
 
 /** Tactics: trend strength + volatility regime on by default (docs/block-sweep.md, tactics); the others in docs/tactics.md. */
@@ -152,6 +152,11 @@ export const DEFAULT_BLOCK: BlockConfig = {
   historySource: "accepted-orders",
   // Each raised Block group keeps its last applied extra volume until that group's realized extra net is recovered.
   holdUntilNet: true,
+  windowAuto: true,
+  windowIndependent: true,
+  windowMinSamples: 30,
+  windowLookback: 300,
+  windowCandidates: [5, 10, 15, 25, 35],
   ratio: 0.5,
   maxLevel: 8,
   minActiveLevel: 2,

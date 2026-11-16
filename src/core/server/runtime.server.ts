@@ -1,4 +1,5 @@
-import { migratePositionWindows } from "./position-windows-migration.server.ts";
+import { migratePositionWindows, migrateSignalEvaluation15 } from "./position-windows-migration.server.ts";
+import { migrateThinRanges } from "./thin-ranges-migration.server.ts";
 import { mainnetPositionWindows } from "../position-windows.ts";
 import {relationalVolumeFactor,relationalVolumeSettings} from "../../../shared/cts-volume/ratios.ts";
 import { minimumStopFraction, normalizeMinSlDistancePct } from "../protection-policy.ts";
@@ -1269,7 +1270,9 @@ export class CoreRuntime {
     migrateHistoricExitOptIn(db);
     migrateMinimumProtectionPolicy(db);
     migratePositionWindows(db);
+    migrateSignalEvaluation15(db);
     migrateFineLadders(db);
+    migrateThinRanges(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
     if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {

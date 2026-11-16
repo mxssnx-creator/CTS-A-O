@@ -114,7 +114,7 @@ const volumeFactor: Case = {
 const rangeKeys = (r: string): Record<string, Case> => ({
   [`grid.${r}.volumeFactor`]: volumeFactor,
   [`grid.${r}.tp`]: list(0.002, 0.2, { max: 64 }),
-  [`grid.${r}.slOfTp`]: list(0.25, 2.5, { max: 64 }),
+  [`grid.${r}.slOfTp`]: list(r === "minimal" || r === "short" ? 0.2 : 0.25, 2.5, { max: 64 }),
   [`grid.${r}.trailOfTp`]: list(0, 1, { max: 64 }),
   [`grid.${r}.trailSlOfTp`]: num(0.2, 5),
   [`grid.${r}.minSl`]: num(0, 0.2),
@@ -125,6 +125,7 @@ const CASES: Record<string, Case> = {
   ...Object.fromEntries(["base","main","real","entry","maxDrawdownPositions"].map(k=>[`gates.positionWindows.${k}`,num(1,500,{int:true})])),
   "gates.positionWindows.byRange.mc.base":num(1,500,{int:true}),
   "gates.positionWindows.byRange.mn.base":num(1,500,{int:true}),
+  ...Object.fromEntries(["base","main","real","entry"].map(k=>[`gates.positionWindows.byRange.sig.${k}`,num(1,500,{int:true})])),
   tfMin: oneOf([1, 5, 15, 30, 60], [0, 2, 240]),
   tfs: oneOf([[1], [1, 5, 15, 30]], [[5], [1, 2], [1, 60]]),
   "tfDays.1": num(1, 45),
@@ -221,6 +222,9 @@ const CASES: Record<string, Case> = {
   "block.maxMult": num(1, 8),
   "block.pause": num(0, 12),
   "block.steps": num(0, 12),
+  "block.windowMinSamples": { ...num(30, 5000, { int: true }), with: [["block.windowLookback", 5000]] },
+  "block.windowLookback": num(30, 5000, { int: true }),
+  "block.windowCandidates": list(1, 500, { int: true, max: 12 }),
   "block.increase": num(0.05, 1),
   "block.ranges.levels": span(1, 12),
   "block.ranges.volRatio": span(0.05, 2),
@@ -767,7 +771,9 @@ const UNDOCUMENTED: Record<string, string[]> = {};
  * already raise (signal direction acceptance and Axis are x01 desk settings, code default off — the doc's table rows
  * for x01) are subtracted: a preset is judged on what IT changes.
  */
-const BASELINE = new Set(positiveCoordWarnings(DEFAULT_SETTINGS, wfOf({})));
+// Historical strategy-isolation presets intentionally retain their explicit Axis switch.
+const BASELINE = new Set(positiveCoordWarnings({ ...DEFAULT_SETTINGS,
+  toggles: { ...DEFAULT_SETTINGS.toggles, axis: false } }, wfOf({})));
 function offBy(p: (typeof PRESETS)[number]): string[] {
   const s = applied(p.settings);
   const found = positiveCoordWarnings(s, wfOf(p)).filter((w) => !BASELINE.has(w));

@@ -186,6 +186,20 @@ describe("automatic windows preserve entry-time accepted-order evidence and expl
 });
 
 describe("opt-in Block trace follows the judging history without changing execution", () => {
+  it("independent auto windows keep the same causal admissions when diagnostics are enabled", () => {
+    const original = options("overall");
+    const o = { ...original, block: { ...original.block, maxLevel: 2, window: 2,
+      windowAuto: true, windowIndependent: true, windowMinSamples: 30, windowCandidates: [1, 2] } };
+    const tapes = [tape(1, "A"), tape(2, "B")];
+    const traced = walkForward(u, tapes, o);
+    const plain = walkForward(u, tapes, { ...o, blockTrace: false });
+    const withoutTrace = (rows: Trade[]) => rows.map(({ blockLevels: _levels,
+      blockEffectiveLevels: _effective, blockSampleCounts: _counts, ...row }) => row);
+    assert.deepEqual(withoutTrace(traced.trades), plain.trades);
+    assert.deepEqual(traced.stats, plain.stats);
+    assert.deepEqual(traced.feed, plain.feed);
+    assert.ok(traced.trades.length > 0);
+  });
   const own = { cfg: "cfg", sym: "A", side: 1, kind: "osc", ind: IND, r: .01, accepted: true };
 
   it("legacy raw config traces count the whole available own tail beyond an unknown newest outcome", () => {
@@ -207,7 +221,7 @@ describe("opt-in Block trace follows the judging history without changing execut
   it("fixed and automatic sample counts use config window 1 and the selected pooled window, retaining unknown rows", () => {
     const fixed = new BlockBook(0, 2, true);
     const automatic = new AutoBlockBook({ ...options().block, maxLevel: 3, window: 2,
-      windowAuto: true, windowCandidates: [1, 2] }, false);
+      windowAuto: true, windowIndependent: false, windowCandidates: [1, 2] }, false);
     for (const book of [fixed, automatic]) {
       for (let i = 0; i < 7; i++) book.add({ ...own, r: i === 6 ? NaN : .01 });
       assert.equal(book.window, 2);
@@ -223,7 +237,7 @@ describe("opt-in Block trace follows the judging history without changing execut
       it(`${mode}, auto ${windowAuto}: tracing changes metadata only, retaining causal accepted counts`, () => {
         const original = options(mode);
         const o = { ...original, block: { ...original.block, maxLevel: 2, window: 2, windowAuto,
-          windowCandidates: [1, 2] } };
+          windowIndependent: false, windowCandidates: [1, 2] } };
         const tapes = [tape(1, "A"), tape(2, "B")];
         const traced = walkForward(u, tapes, o);
         const plain = walkForward(u, tapes, { ...o, blockTrace: false });
