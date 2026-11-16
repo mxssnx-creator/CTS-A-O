@@ -349,3 +349,7 @@ auth/db: OFF by default — sign-in, @/lib/db or migrations ONLY on an accounts 
 never:   build an app for a greeting/number/question; invent imagine_* calls;
          ask the user to run commands; delete or abandon /workspace/startup.sh
 ```
+
+## How to read PF (owner, 2026-11-15)
+
+Pool PF (every configuration, every signal, before validation) is normally under 1 and is not a defect; what decides is the post-Base PF and above all the executed PF, on the development AND the sealed window. See `docs/pf-reading-20261115.md`.
