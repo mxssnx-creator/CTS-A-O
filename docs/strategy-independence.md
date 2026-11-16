@@ -14,6 +14,14 @@ opened **0 orders**: every entry that passed its own symbol × side window was r
 - **Relate Active** skipped the base entry of any type once a relation was ready below its active step.
 - The optional direction gate (`sideGateN`) pooled the closes of all non-exit types into one record per side.
 
+## Active sub-types: off by default
+
+Block Active, DCA Active and Relate Active (`activeStep`) are **off by default** (code defaults and the live desk preset;
+operator, 16 Nov). An Active mode skips its own lane's first steps and executes only the ongoing ones — Block from its
+minimum level, DCA Active on its own `dca-active` tapes, Relate from its active step — and it relies on its own lane's
+records and progress only. Named study presets that switch one on (`Block Active`, `Block Active + DCA Active`) stay
+opt-in.
+
 ## The rules now
 
 | gate | what it can veto | scope |

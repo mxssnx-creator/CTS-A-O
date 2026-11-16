@@ -859,7 +859,7 @@ describe("presets: valid and keeping the positive coordinations", () => {
     const bad = [
       {
         id: "t1",
-        settings: { toggles: { ...DEFAULT_SETTINGS.toggles, blockActive: true } },
+        settings: { toggles: { ...DEFAULT_SETTINGS.toggles, normal: false, blockActive: true } },
         offered: true,
       },
       {

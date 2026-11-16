@@ -3324,8 +3324,9 @@ export function signalGuardFor(
 }
 
 /** Each strategy type keeps its own direction record: a losing DCA side never closes the Normal or Axis side. */
+// (a close or a lookup without a type is the plain base type, as legacy feeds record it)
 const directionKey = (side: number, cfg?: string, type?: string) =>
-  `${side}${exitScopeSuffix(cfg, type) || `|t:${type ?? ""}`}`;
+  `${side}${exitScopeSuffix(cfg, type) || (!type || type === "normal" ? "" : `|t:${type}`)}`;
 
 /** The raw Real-candidate direction record: separate from accepted-order Block sizing evidence. */
 export class CandidateDirectionBook {
