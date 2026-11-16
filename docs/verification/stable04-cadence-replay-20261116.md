@@ -44,3 +44,9 @@ digests must match. On one BTC one-minute case with 34 tapes and 936 closes, a 1
 median CPU 41.02 → 33.43 ms for 480-bar holds in isolation, with identical digest; another run under concurrent
 load measured 38.70 → 50.54 ms. The 15-bar case did not consistently improve. These variable single-symbol
 measurements do not establish a faster complete run or lower peak memory.
+
+The replacement replay was launched with source tree `9f18b87ead6f3d25fad980ce5c63bf557f611a2a`
+(remote commit `6dfd4d6a3dd4c429bf7df502c015456a9ff511e8`), three workers, a 256 MiB retained-history
+budget and a 128 MiB decoded cache. No other heavy verification is run concurrently. The launcher stops if the
+memory guard aborts the compute instead of accepting an incomplete fallback. At this checkpoint the replacement
+had just begun; its hourly results, post-Base PF, validated percentage and executed PF are unavailable.
