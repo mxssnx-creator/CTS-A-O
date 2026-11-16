@@ -1,6 +1,6 @@
 import { slCalibrationOf, slRatiosOf, type AutoSlRatios } from "../sl-ratios.ts";
 import { calibrateSlBounds, slWithinBounds, type SlBounds, type SlSample } from "../sl-calibration.ts";
-import { positionCounts } from "../position-windows.ts";
+import { partialFloorOf, positionCounts } from "../position-windows.ts";
 import { SL_TP_RATIOS, minimumStopFraction } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { profitFactorRatio } from "../metrics/profit-factor.mjs";
@@ -328,7 +328,9 @@ function basePositionMiss(
   )
     return ["lastN"];
   const miss: BaseGate[] = [];
-  if (recent.n !== requested) miss.push("closes");
+  // a window shorter than requested is judged on its closes when gates.lastNFloor admits it (strict policies never)
+  const partial = partialFloorOf(g.positionWindows, g.lastNFloor);
+  if (recent.n !== requested && !(partial > 0 && recent.n >= partial && recent.n < requested)) miss.push("closes");
   const net = recent.gp - recent.gl;
   const loss = recent.gl + (g.lossPrior ? recent.stop : 0);
   if (!(net > 0)) miss.push("net");

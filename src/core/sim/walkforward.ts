@@ -1,6 +1,6 @@
 import { slRatiosOf } from "../sl-ratios.ts";
 import { slWithinBounds, type SlBounds } from "../sl-calibration.ts";
-import {positionStageStats} from "../position-windows.ts";
+import {partialFloorOf, positionStageStats} from "../position-windows.ts";
 import {blockRequired} from "../../../shared/cts-lastn/blocks.ts";
 import { positionCounts, positionStats, positionTapeValid } from "../position-windows.ts";
 import {relationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
@@ -4071,11 +4071,13 @@ function positionContextEval(
   const indices = slot >= 0 && (side === 1 || side === -1)
     ? input.contexts.get(slot * 2 + (side > 0 ? 1 : 0)) : undefined,
     end = indices ? lowerBound(indices, input.before) : 0;
+  // gates.lastNFloor: a window with fewer closes than requested but at least this many is judged on the closes it has
+  const partial = partialFloorOf(policy, o.gates.lastNFloor);
   const take = (n: number, stage?: "base"|"main"|"real"|"entry") => {
     const blocks=stage?policy.blocks?.[stage]:undefined; if(blocks)n=blockRequired(blocks);
     const values: number[] = [];
     for (let j = Math.max(0, end - n); j < end; j++) values.push(input.returns[indices![j]]);
-    return positionStageStats(values,n,blocks,minPfForTape(tp,o));
+    return positionStageStats(values,n,blocks,minPfForTape(tp,o),partial);
   };
   const main = take(counts.main,"main"),
     floor = minPfForTape(tp, o),

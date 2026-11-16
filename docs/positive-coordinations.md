@@ -707,3 +707,37 @@ variant beats the as-is setting and Block off in D1a and D1b — recorded here.
   identity carries a side of 0 today.
 - **Stays off** until a causal comparison on the paper or the live book, recorded in this section, says otherwise. Until
   then the default is the pooled record, which is the code as it was before the option.
+
+## Own-close windows judge a short sample again — `lastNFloor` honored (16 Nov 2026) — measured
+
+**Fault.** The position-count policy of 11 Nov (`140c1d89`) made every own-close window all-or-nothing: Base, Main, Real, Entry
+and the range gate required exactly N own closes, and `gates.lastNFloor` / `warmup` (the positive coordination "`lastNFloor`
+still admits a shorter sample", above) had no effect on that path. A context with 36 of 40 closes and PF 6 was refused for
+"closes". In a 12–24 h window almost no config × symbol × direction context reaches 40 (Base/Main) or 75 (range gate), so the
+reports of 12–15 Nov show 0 passing configs and 0 orders at every decision hour.
+
+**Change.** `positionStats` / `positionStageStats` take a partial floor: a window with fewer closes than requested but at
+least `gates.lastNFloor` (default 9) is judged on the closes it has. Everything else is unchanged: PF, net, drawdown,
+`lcb`, green share, the `closes` rule for a window below the floor, and independent block policies (always exact). Wired in
+Base (`basePositionMiss`), Main/Real/Entry and the range gate (`positionContextEval`), the evaluator and the Last-N
+optimizer. **Off switch:** `gates.lastNFloor = 0` restores the 11 Nov behaviour (exact counts) everywhere.
+**Mainnet is strict:** `mainnetPositionWindows` sets `strictCounts`, so the native mainnet sample sizes (Real 12, Entry 25,
+Signals) are never replaced by a partial window.
+
+**Causal comparison (in process, `scripts/core-session.mjs --feed`, 3 symbols, planted trending edge — an evaluation test,
+not profitability evidence).** Same feed, same settings; only the code differs. Short evidence (2 days of data, 24 h
+pre-history, 12 h run), Wide cells only:
+
+| code | funded closes | balance (start 10) |
+|---|---:|---:|
+| before the count policy (`819b6621`) | 3,340 | 52.3 |
+| exact counts (`11a52314`, 15 Nov) | 1,044 | 15.2 |
+| partial windows honored (this change) | 3,425 | 53.7 |
+
+Single pair, 4 days, PF 6.4 on 36 closes: `passes` true / **false** / true for the same three. With the default grid (every range,
+Axis, Block, DCA) and 6 days of data, the 15 Nov code (`11a52314`, `e17d77c7`) admits 0 orders; `819b6621` admits 14,879 and this
+change 156,894 (a planted trend of PF > 20, so the balances are meaningless — the admission counts are the point).
+
+**Still true.** Fewer closes are weaker evidence: the floor is 9, the result half is never waived, and a desk that wants the
+11 Nov policy sets `lastNFloor` 0. The old behaviour is pinned in `sim/position-windows.test.ts` and
+`sim/validation-progression.test.ts` (both with `lastNFloor: 0`); the new one in `position-partial-windows.test.ts`.

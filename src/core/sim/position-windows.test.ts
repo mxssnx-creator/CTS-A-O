@@ -162,11 +162,23 @@ test("a config cannot borrow a symbol, direction, sibling config or incomplete s
   assert.equal(engineValidationLastNOk(tp, T, o, -1), false);
   assert.equal(execDecision(tp, T, o, { sym: "B", side: -1 }).ok, false);
   assert.equal(execDecision(tp, T, o, { sym: "A", side: 1 }).ok, true);
+  // strict counts (lastNFloor 0): an incomplete sample is never borrowed from siblings or judged short
   assert.equal(
     positionConfigEval(
       tape([0.02, 0.02, 0.02]),
       T,
-      { ...o, gates: { ...o.gates, warmup: true, lastNFloor: 1 } },
+      { ...o, gates: { ...o.gates, warmup: true, lastNFloor: 0 } },
+      "A",
+      1,
+    ).ok,
+    false,
+  );
+  // a strict policy (the mainnet minimums) refuses it whatever the floor says
+  assert.equal(
+    positionConfigEval(
+      tape([0.02, 0.02, 0.02]),
+      T,
+      { ...o, gates: { ...o.gates, warmup: true, lastNFloor: 1, positionWindows: { ...o.gates.positionWindows!, strictCounts: true } } },
       "A",
       1,
     ).ok,

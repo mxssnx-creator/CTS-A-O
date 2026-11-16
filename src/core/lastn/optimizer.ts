@@ -1,5 +1,5 @@
 import {blockRequired} from "../../../shared/cts-lastn/blocks.ts";
-import { positionCounts, positionStats, positionStageStats } from "../position-windows.ts";
+import { partialFloorOf, positionCounts, positionStats, positionStageStats } from "../position-windows.ts";
 import { rangeOfId } from "../minimal-coord.ts";
 // Walk-forward last-N gate optimizer.
 //
@@ -146,7 +146,7 @@ export interface LastNOptions {
 }
 
 function countGate(rows:readonly Trade[],n:number,g:Gates):boolean {
-  const sample=positionStageStats(rows.map(r=>r.r),n,g.positionWindows?.blocks?.entry,Math.max(1.05,g.minPf));
+  const sample=positionStageStats(rows.map(r=>r.r),n,g.positionWindows?.blocks?.entry,Math.max(1.05,g.minPf),partialFloorOf(g.positionWindows,g.lastNFloor));
   const prior=g.lossPrior?Number(/\|sl([\d.]+)/.exec(rows[0]?.cfg??"")?.[1])/100:0;
   return sample.blocksPassed&&sample.complete&&sample.known&&sample.net>0&&sample.gp>=Math.max(1.05,g.minPf)*(sample.gl+prior)&&
     sample.maxDrawdownPositions<=g.positionWindows!.maxDrawdownPositions&&

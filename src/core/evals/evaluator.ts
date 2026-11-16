@@ -1,4 +1,4 @@
-import { positionCounts, positionStageStats } from "../position-windows.ts";
+import { partialFloorOf, positionCounts, positionStageStats } from "../position-windows.ts";
 import { minPfOf, rangeOfId } from "../minimal-coord.ts";
 import { parseConfigId } from "../pipeline/pipeline.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
@@ -46,7 +46,7 @@ export function evaluateConfig(cfg: string, tape: readonly Trade[], o: EvalOptio
       const values=rows.map(unitReturn);
       const [sym,side]=JSON.parse(key) as [string,number];let all=true,mainScore=0;
       for(const stage of ["base","main","real","entry"] as const) {
-        const sample=positionStageStats(values,counts[stage],policy.blocks?.[stage],floor);
+        const sample=positionStageStats(values,counts[stage],policy.blocks?.[stage],floor,partialFloorOf(policy,g.lastNFloor));
         const pass=!corrupt&&sample.blocksPassed&&sample.complete&&sample.known&&sample.net>0&&sample.gp>=floor*(sample.gl+prior)&&
           sample.maxDrawdownPositions<=policy.maxDrawdownPositions&&!(g.maxDdr&&sample.mdd/sample.net>g.maxDdr)&&
           sample.positiveShare>=(g.minGreen??.5)&&sample.lcb>0;

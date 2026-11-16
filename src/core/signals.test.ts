@@ -1,5 +1,5 @@
 import { SL_TP_RATIOS } from "./protection-policy.ts";
-// Signals processing: sources, combos, the 70 Normal + 35 Trailing configs, the active ranking, the last-8 guard,
+// Signals processing: sources, combos, the 35 Normal + 35 Trailing configs, the active ranking, the last-8 guard,
 // settings and the engine running with signals on.
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -149,16 +149,16 @@ describe("signals: sources and combos", () => {
     assert.deepEqual([...new Set(trailing.map((p) => p.hold))].sort((a, b) => a - b), [64, 96, 192]);
   });
 
-  it("builds all 70 Normal + 35 capped Trailing configs beside nine independent Trailing only sets", () => {
+  it("builds all 35 Normal (7 targets × 5 stops, 0.5–1.5) + 35 capped Trailing configs beside nine independent Trailing only sets", () => {
     const p = signalProtects({ ...on, exits: "pct" });
     const normal = p.filter((x) => x.trail === 0);
     const trailing = p.filter((x) => x.trail > 0 && !x.trailOnly);
-    assert.equal(normal.length, 70);
+    assert.equal(normal.length, 35);
     assert.equal(trailing.length, 35);
-    assert.equal(new Set(p.map((x) => `${x.tp}|${x.sl}|${x.trail}`)).size, 114, "all distinct");
+    assert.equal(new Set(p.map((x) => `${x.tp}|${x.sl}|${x.trail}`)).size, 79, "all distinct");
     for (const x of p) assert.ok((x.trailOnly ? x.tp === 0 : x.tp >= 0.01) && x.hold > 0);
     assert.deepEqual(on.normal.tp, [0.01, 0.015, 0.025, 0.03, 0.04, 0.05, 0.06]);
-    assert.deepEqual(on.normal.slOfTp, [...SL_TP_RATIOS]);
+    assert.deepEqual(on.normal.slOfTp, [0.5, 0.75, 1, 1.25, 1.5]);
     assert.deepEqual(on.trailing.tp, [0.01, 0.015, 0.03, 0.04, 0.05, 0.06, 0.08]);
     assert.deepEqual(on.trailing.trailOfTp, [0.2, 0.3, 0.4, 0.6, 0.8]);
     assert.equal(on.minTrail, 0.002, "the 1 % TP × 0.2 trail remains eligible");
@@ -183,9 +183,9 @@ describe("signals: sources and combos", () => {
     const pct = signalProtects({ ...on, exits: "pct" });
     const atr = signalProtects({ ...on, exits: "atr" });
     const both = signalProtects({ ...on, exits: "both" });
-    assert.equal(pct.length, 114);
+    assert.equal(pct.length, 79);
     assert.equal(atr.length, 27);
-    assert.equal(both.length, 132, "percent + ATR + nine additional Trailing only sets");
+    assert.equal(both.length, 97, "percent + ATR + nine additional Trailing only sets");
     assert.ok(pct.every((x) => !x.atr) && atr.every((x) => x.atr || x.trailOnly));
     assert.equal(atr.filter((x) => x.atr && x.trail > 0).length, 9);
     // Stable-02 max hold: 3 × 15m bars
@@ -703,7 +703,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     const sel = new Set(rt.paper.selected);
     for (const t of sigTapes)
       if (signalSeatSymbols(t, rt.wf.signalActive!).size) assert.ok(sel.has(t.id), t.id);
-    // 70 Normal + 35 capped Trailing + nine Trailing-only configs per percent-mode signal pair; ATR adds 18 in ATR /
+    // 35 Normal + 35 capped Trailing + nine Trailing-only configs per percent-mode signal pair; ATR adds 18 in ATR /
     // both mode. Coordinators use their own enabled range grid and historic additions qualify independently.
     const sourcePairs = st.pairs - (st.coordinationPairs ?? 0);
     const pct = sourcePairs * signalProtects(rt.settings.signals).length + (st.coordinationPairs ?? 0) * signalCoordinationProtects(rt.settings.grid, rt.settings.cost, rt.settings.signals.coordination.ranges, rt.settings.signals).length;
