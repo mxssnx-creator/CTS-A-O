@@ -29,7 +29,11 @@ it("a Base-qualified config with initially insufficient own closes is re-evaluat
   assert.equal(sim.steps[1].validationSummary?.evaluated,1);
   assert.equal(sim.steps[1].validationSummary?.passed,1);
   assert.ok(sim.trades.length>0);
-  assert.ok(sim.trades.every(t=>t.entryT>=start+H),"future closes cannot qualify an earlier entry");
+  // Continuous evaluation: the 12th own close settles at +30 min (eleven earlier closes + the first run trade, exit +30), so the
+  // first admissible entry is the next one at +40 min - not the next hourly mark. Nothing earlier: a close that has not settled
+  // before an entry can never qualify it.
+  assert.equal(Math.min(...sim.trades.map(t=>t.entryT)),start+40*M,"the first entry follows the close that completes the window");
+  assert.ok(sim.trades.every(t=>t.entryT>=start+40*M),"future closes cannot qualify an earlier entry");
   assert.ok(sim.validated?.includes(cfg),"the reported union includes every config validated at an actual causal clock");
 });
 it("losing configs and an explicitly frozen empty validation snapshot remain ineligible",()=>{
