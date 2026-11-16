@@ -1173,7 +1173,7 @@ describe("live sizing: fixed % of equity", () => {
         ...DEFAULT_SETTINGS,
         paperBalance: 500,
         sizing: { mode: "equityPct" as const, pct: 0.04 },
-        live: { ...DEFAULT_SETTINGS.live, notionalUsd: 7 },
+        live: { ...DEFAULT_SETTINGS.live, excludeRanges: [], notionalUsd: 7 },
       },
     } as unknown as CoreRuntime;
     assert.equal(
@@ -1546,7 +1546,7 @@ describe("volume factor: sizes follow volume × factor up to the per-position ca
     );
 
   it("plainOnly ignores the configured indication factor but still excludes a Block raise", () => {
-    const { sendable } = liveLaneFilter({ ...DEFAULT_SETTINGS.live, plainOnly: true }, null, null);
+    const { sendable } = liveLaneFilter({ ...DEFAULT_SETTINGS.live, excludeRanges: [], plainOnly: true }, null, null);
     const cfg = "follow|sig-coord-v1-r60-n3-i1-b1|tp1|sl1|tr0|h32";
     assert.equal(sendable({ cfg, vol: 8, blockVol: 1 }), true);
     assert.equal(sendable({ cfg, vol: 16, blockVol: 2 }), false);
@@ -1728,7 +1728,7 @@ describe("exposure scaler switch", () => {
     const { checkSettings } = await import("../settings-check.ts");
     const live = (x: unknown) => ({
       ...DEFAULT_SETTINGS,
-      live: { ...DEFAULT_SETTINGS.live, exposureScaler: x },
+      live: { ...DEFAULT_SETTINGS.live, excludeRanges: [], exposureScaler: x },
     });
     assert.doesNotThrow(() => checkSettings(live(false) as never));
     assert.throws(() => checkSettings(live("no") as never), /exposureScaler/);

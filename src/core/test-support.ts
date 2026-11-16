@@ -540,6 +540,8 @@ export function fakeRt(db: CoreDb = new CoreDb(":memory:"), symbols = 12) {
       sizing: { mode: "fixed" as const, pct: 0.02 },
       live: {
         ...DEFAULT_SETTINGS.live,
+        // the live tests exercise lanes of every range: the Wide default (off in the live book) is tested apart
+        excludeRanges: [],
         enabled: true,
         mode: "overall" as const,
         notionalUsd: 10,

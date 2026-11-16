@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { isOwnCoid, makeCoid, ownSymbols, planLive, type LiveIntentLite } from "./live.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 
-const S = { ...DEFAULT_SETTINGS.live, enabled: true, maxPositions: 2 };
+const S = { ...DEFAULT_SETTINGS.live, excludeRanges: [], enabled: true, maxPositions: 2 };
 const intent = (sym: string, cfg = "c"): LiveIntentLite => ({
   cfg,
   sym,

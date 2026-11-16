@@ -726,6 +726,8 @@ describe("control orders: audit regressions", () => {
         sizing: { mode: "minQty", pct: 0.02 },
         live: {
           ...DEFAULT_SETTINGS.live,
+          // these fixtures test lanes of every range: nothing left out (the Wide default is the live book's, tested apart)
+          excludeRanges: [],
           enabled: true,
           mode: "overall",
           notionalUsd: 10,

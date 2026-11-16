@@ -17,10 +17,10 @@ describe("USD ceilings are removed and snapshot restore", () => {
     assert.equal(positionCapOf({ maxNotionalUsd: 0, notionalUsd: 1 }), Infinity);
     assert.equal(positionCapOf({ maxNotionalUsd: 25, notionalUsd: 1 }), Infinity);
     assert.doesNotThrow(() =>
-      checkSettings({ live: { ...DEFAULT_SETTINGS.live, maxNotionalUsd: 0 } } as never),
+      checkSettings({ live: { ...DEFAULT_SETTINGS.live, excludeRanges: [], maxNotionalUsd: 0 } } as never),
     );
     assert.throws(
-      () => checkSettings({ live: { ...DEFAULT_SETTINGS.live, maxNotionalUsd: 25 } } as never),
+      () => checkSettings({ live: { ...DEFAULT_SETTINGS.live, excludeRanges: [], maxNotionalUsd: 25 } } as never),
       /fixed USD per-position ceilings are disabled/,
     );
     const lanes = [
@@ -28,8 +28,8 @@ describe("USD ceilings are removed and snapshot restore", () => {
       { id: "b", cfg: "follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32|2", sym: "A-USDT", side: 1 as const, vol: 4, sl: 0.02 },
     ];
     const prices = new Map([["A-USDT", 1]]);
-    const legacy = controlTargets(lanes, prices, controlSettingsOf({ ...DEFAULT_SETTINGS.live, maxNotionalUsd: 25 }, 10));
-    const free = controlTargets(lanes, prices, controlSettingsOf({ ...DEFAULT_SETTINGS.live, maxNotionalUsd: 0 }, 10));
+    const legacy = controlTargets(lanes, prices, controlSettingsOf({ ...DEFAULT_SETTINGS.live, excludeRanges: [], maxNotionalUsd: 25 }, 10));
+    const free = controlTargets(lanes, prices, controlSettingsOf({ ...DEFAULT_SETTINGS.live, excludeRanges: [], maxNotionalUsd: 0 }, 10));
     const q = (r: typeof legacy) => r.targets.find((t) => t.key === "A-USDT|1")?.qty ?? 0;
     assert.equal(q(legacy), q(free), "legacy dollar values cannot cap configured volume");
     assert.ok(q(free) >= 120 - 1e-9, `volume sizing: 10 × (8 + 4) = 120, got ${q(free)}`);

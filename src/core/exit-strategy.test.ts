@@ -82,6 +82,8 @@ describe("independent historic exit strategy", () => {
       32,
       {
         ...DEFAULT_SETTINGS.exitStrategy,
+        // the Exit family is off by default (owner, 20 Oct): these fixtures test it
+        enabled: true,
         quantiles: [0.75],
         stopQuantiles: [0.75],
         stopMultiples: [1.5],
@@ -419,6 +421,8 @@ describe("independent historic exit strategy", () => {
     );
     const settings = {
       ...DEFAULT_SETTINGS.exitStrategy,
+      // the Exit family is off by default (owner, 20 Oct): these fixtures test it
+      enabled: true,
       minEntries: 2,
       minValidationTrades: 2,
       maxDdr: 0,
@@ -569,6 +573,7 @@ describe("independent historic exit strategy", () => {
         gates: { ...DEFAULT_SETTINGS.gates, minTrades: 500 },
         exitStrategy: {
           ...DEFAULT_SETTINGS.exitStrategy,
+          // the Exit family is off by default (owner, 20 Oct): these fixtures test it
           enabled: true,
           lookbackH: 168,
           trainFraction: 0.6,
@@ -629,6 +634,8 @@ describe("independent historic exit strategy", () => {
     assert.equal(pairs.length, EXIT_HISTORY_MAX_PAIRS + 1);
     const settings = {
       ...DEFAULT_SETTINGS.exitStrategy,
+      // the Exit family is off by default (owner, 20 Oct): these fixtures test it
+      enabled: true,
       lookbackH: 72,
       minEntries: 2,
       minValidationTrades: 2,
@@ -774,6 +781,7 @@ describe("independent historic exit strategy", () => {
     );
     const settings = {
       ...DEFAULT_SETTINGS.exitStrategy,
+      // the Exit family is off by default (owner, 20 Oct): these fixtures test it
       enabled: true,
       lookbackH: 400,
       trainFraction: 0.6,
@@ -857,6 +865,8 @@ describe("independent historic exit strategy", () => {
     const pair = `${EXIT_BOT}|ema-9-21@m15`;
     const settings = {
       ...DEFAULT_SETTINGS.exitStrategy,
+      // the Exit family is off by default (owner, 20 Oct): these fixtures test it
+      enabled: true,
       lookbackH: 240,
       trainFraction: 0.6,
       minEntries: 5,
@@ -1046,6 +1056,8 @@ describe("independent historic exit strategy", () => {
       checkSettings({
         exitStrategy: {
           ...DEFAULT_SETTINGS.exitStrategy,
+          // the Exit family is off by default (owner, 20 Oct): these fixtures test it
+          enabled: true,
           maxConfigsPerPair: 24,
           quantiles: [0.5, 0.75],
         },
@@ -1060,6 +1072,8 @@ describe("independent historic exit strategy", () => {
         checkSettings({
           exitStrategy: {
             ...DEFAULT_SETTINGS.exitStrategy,
+            // the Exit family is off by default (owner, 20 Oct): these fixtures test it
+            enabled: true,
             quantiles: [0.2, 0.4, 0.6, 0.8],
             trailShares: [0.2, 0.4, 0.6],
             stopMultiples: [1, 2],

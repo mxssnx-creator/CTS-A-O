@@ -62,6 +62,8 @@ function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: n
       sizing,
       live: {
         ...DEFAULT_SETTINGS.live,
+        // these fixtures test lanes of every range: nothing left out (the Wide default is the live book's, tested apart)
+        excludeRanges: [],
         enabled: true,
         mode: "overall" as const,
         positionMode: "hedge" as const,

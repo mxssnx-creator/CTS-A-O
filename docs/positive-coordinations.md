@@ -608,3 +608,12 @@ the funded count is low because the account reached its ruin point under the unc
 that switch Axis off stay as they are: the strategy-type isolation presets (see "Strategy-type isolation presets (13 Oct)")
 and the two desk presets, which keep their x01 desk setting. Measured effect of Axis on the 20-symbol run: not yet measured
 at the default; to be recorded with its causal comparison.
+
+## Wide off the live book and Exit strategies off by default (operator, 20 Oct)
+
+Operator decision: `live.excludeRanges` defaults to `["wide"]` (Wide is left out of the live book; the engine keeps
+computing and paper-trading it, as documented on the field), and `exitStrategy.enabled` defaults to `false` (no historic
+Exit config seats, no exit-strategy position closes). Evidence already measured on the 20-symbol run (session.md): the
+forward PF of the Exit family was 0.48 after 106 qualified configs (winner's curse on a noise null test: holdout 2.00 falls
+to 0.90), and Wide's executed orders PF was 0.19 (99 orders). Not yet measured: a causal comparison of these defaults on
+the 6-symbol 24 h / 48 h runs; to be recorded with its numbers when run.

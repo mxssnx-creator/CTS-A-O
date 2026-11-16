@@ -622,7 +622,9 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   fees: { ...DEFAULT_MODEL_FEES },
   adjust: DEFAULT_ADJUST,
   exitStrategy: {
-    enabled: true,
+    // off by default (owner, 20 Oct): no historic exit configs seat and no exit-strategy position closes; measured
+    // forward PF of the exit set was 0.48 on the 20-symbol run (docs/positive-coordinations.md)
+    enabled: false,
     timeframes: [1, 5, 15],
     includeTactics: true,
     includeRelations: true,
@@ -712,6 +714,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   },
   live: {
     enabled: false,
+    // Wide is left out of the live book by default (owner, 20 Oct); the engine keeps computing and paper-trading it
+    excludeRanges: ["wide"],
     connId: "bingx-vst-02",
     notionalUsd: 6,
     // Final Live Exchange admission: at most 100 occupied symbol-direction positions across all lanes and strategies.
