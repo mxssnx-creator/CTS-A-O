@@ -19,7 +19,7 @@ function tape(rows: Array<{ entryOffset: number; r: number; sym?: string; side?:
 }
 function options(over: { lastNFloor?: number; stepH?: number } = {}): WalkForwardOptions {
   const d = defaultWalkForward(DEFAULT_SETTINGS);
-  return { ...d, mode: "fixed", seatSet: "validated", preH: 12, longH: 12, simH: 6, stepH: over.stepH ?? 1,
+  return { ...d, wideEnabled: true, mode: "fixed", seatSet: "validated", preH: 12, longH: 12, simH: 6, stepH: over.stepH ?? 1,
     robustFrac: 0, preGate: false, normalBaseMinPf: 0, symGate: "off", sideGateN: 0, lastN: 0, validLastN: 12,
     gates: { ...d.gates, minTrades: 9, minPf: 1.05, lastNFloor: over.lastNFloor ?? 9,
       positionWindows: { base: 12, main: 12, real: 12, entry: 12, maxDrawdownPositions: 12 } },

@@ -296,7 +296,7 @@ describe("Block sources", () => {
     const book = new BlockBook();
     for (let i = 0; i < 3; i++) book.add({ sym: "A", side: 1, kind: ind.kind, ind: ind.id, r: 0.01 });
     const base = {
-      ...defaultWalkForward(DEFAULT_SETTINGS),
+      ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true,
       longH: 96,
       preGate: false,
       validLastN: 0,
@@ -725,7 +725,7 @@ describe("Block types, Active, steps and pause", () => {
     for (let i = 0; i < 3; i++) book.add({ sym: "A", side: 1, kind: ind.kind, ind: ind.id, r: 0.01 });
     for (let i = 0; i < 2; i++) book.add({ sym: "B", side: -1, kind: "zz", r: -0.01 });
     const o = {
-      ...defaultWalkForward(DEFAULT_SETTINGS),
+      ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true,
       longH: 96,
       preGate: false,
       validLastN: 0,
@@ -770,7 +770,7 @@ describe("Block accepted Real order evidence", () => {
   const tp = makeTape(cfg, "magnet", ind.id, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"],
     [...qualifiedRows(cfg), ...Array.from({ length: 30 }, (_, i) => i + 1).map((h) => ({ cfg, sym: "A", side: 1 as const, r: .1, entryT: (h - 1) * H, exitT: h * H,
       entry: 100, exit: 110, reason: "tp" as const, bars: 1, mfe: 0, mae: 0 }))], [], []);
-  const o = { ...defaultWalkForward(DEFAULT_SETTINGS), longH: 96, block: b, lastN: 0, symGate: undefined,
+  const o = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true, longH: 96, block: b, lastN: 0, symGate: undefined,
     toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: false } };
 
   it("skipped profitable candidates never become accepted config or pooled evidence; accepted losses remain", () => {
@@ -1005,7 +1005,7 @@ describe("AutoBlockBook (windowAuto)", () => {
       { bars: [], caches: [], startT: T0, endT: NOW, splitT: T0, nowT: NOW, baseTf: 60 } as never,
       [tape(1, 2), tape(1.2, 8)],
       {
-        ...defaultWalkForward(DEFAULT_SETTINGS),
+        ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true,
         toggles: { ...DEFAULT_TOGGLES, block: true, blockActive: false },
         block: alt,
         // This replay-stamp fixture's PF is1.2; keep its original qualification policy explicit.
@@ -1050,7 +1050,7 @@ describe("Direction gate (sideGateN)", () => {
   const t = makeTape("x", "magnet", ind.id, { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"],
     [...qualifiedRows("x"), ...qualifiedRows("x", -1)], [], []);
   const o = {
-    ...defaultWalkForward(DEFAULT_SETTINGS),
+    ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true,
     longH: 96,
     preGate: false,
     validLastN: 0,
@@ -1106,7 +1106,7 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
   }))));
   const sig = makeTape("s", "follow", "sig-ema-trend-s", { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A","Z"], own, [], []);
   const o = {
-    ...defaultWalkForward(DEFAULT_SETTINGS),
+    ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true,
     lastN: 0,
     validLastN: 0,
     signalValidLastN: 0,

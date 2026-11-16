@@ -12,7 +12,7 @@ function tape(loss=false) {
 }
 function options():WalkForwardOptions {
   const d=defaultWalkForward(DEFAULT_SETTINGS);
-  return {...d,mode:"fixed",seatSet:"validated",preH:12,longH:12,simH:6,stepH:1,
+  return {...d,wideEnabled:true,mode:"fixed",seatSet:"validated",preH:12,longH:12,simH:6,stepH:1,
     robustFrac:0,preGate:false,normalBaseMinPf:0,symGate:"off",sideGateN:0,lastN:0,validLastN:12,
     // strict counts: eleven own closes must not satisfy Last-12 (lastNFloor 0; the partial-window rule has its own tests)
     gates:{...d.gates,minTrades:12,minPf:1.05,lastNFloor:0,positionWindows:{base:12,main:12,real:12,entry:12,maxDrawdownPositions:12}},

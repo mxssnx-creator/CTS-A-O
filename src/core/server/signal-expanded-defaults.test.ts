@@ -50,7 +50,6 @@ it("fresh Expanded defaults preserve the catalog and current independent Signal 
   expected.dropLosing = true;
   expected.hist.slOfTp = [...SIGNAL_SL_RATIOS];
   expected.hist.slAuto = { ...DEFAULT_SIGNAL_AUTO_SL };
-  expected.sideAccept.enabled = false; // Explicit later desk default; keep both directions available independently.
   expected.coordination.volumeFactor = 1; // Operator neutral-sizing default; archived receipt stays immutable.
   assert.equal(expected.sideAccept.enabled, true, "archived receipt predates the 19 Oct optional-side-gate override");
   assert.equal(DEFAULT_SIGNALS.sideAccept.enabled, false);
