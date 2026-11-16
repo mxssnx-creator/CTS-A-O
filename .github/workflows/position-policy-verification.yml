@@ -34,6 +34,8 @@ jobs:
           src/core/sim/position-windows.test.ts src/core/sim/position-variants.test.ts
           src/core/server/position-history-retention.test.ts
           src/core/sim/position-context-index.test.ts
+          src/core/sim/engine-entry-schedule.test.ts
+          src/core/evals/evaluator.test.ts src/core/server/last-n-samples.test.ts
           src/core/sim/signal-count-activation-cache.test.ts
           src/core/pipeline/universe-order.test.ts
           src/core/indications/break.test.ts src/core/indications/relate.test.ts
@@ -43,12 +45,19 @@ jobs:
           src/core/server/cost-default-runtime.test.ts src/core/server/fee-schedule.test.ts
           src/core/server/live-state-lifecycle.test.ts src/core/server/native-order-kind-safety.test.ts
           src/core/server/pool-progress-timeout.test.ts
+          src/core/server/stage-lifecycle.test.ts
           src/core/indications/low-range-auto.test.ts src/core/indications/low-range-integration.test.ts
           src/core/indications/low-range-research.test.ts
           src/core/fine-ladder-sets.test.ts src/core/micro-range.test.ts
           src/core/server/fine-ladder-migration.test.ts src/core/market/base-history-cut.test.ts
           src/core/server/grid-cost-budget.test.ts src/core/regression.test.ts
           src/core/server/cycle-serial.test.ts
+          src/core/sl-ratios.test.ts src/core/block-lane.test.ts
+          src/core/pipeline/short-lane-evaluation.test.ts
+          src/core/sim/block-independent-processing.test.ts
+          src/core/sim/validation-progression.test.ts src/core/sim/validated-sets.test.ts
+          src/core/indications/micro-rel.test.ts src/core/replay-evaluation-window.test.ts
+          src/core/server/preset-exit.test.ts
       - name: Report provenance and verification inventory
         run: >-
           node --require ./scripts/lib/core-test-offline-guard.cjs --test

@@ -39,9 +39,11 @@ it("fresh Expanded defaults match the verified source/grid catalog with own Last
   const expected = recorded.actualSettings.signals;
   expected.minSl = minimumStopFraction(DEFAULT_SETTINGS.cost, .1);
   expected.normal.slOfTp = [...SL_TP_RATIOS];
+  expected.normal.slAuto = {enabled:true,min:.25,max:2.5,step:.25,fallback:1};
   expected.trailing.slOfTp = 1;
   expected.guard.lastN = 12;
   expected.hist.lookbackH = 150;
+  expected.hist.slAuto = {enabled:true,min:1,max:2,step:1,fallback:1};
   expected.coordination.volumeFactor = 1; // Operator neutral-sizing default; archived receipt stays immutable.
   assert.equal(expected.sideAccept.enabled, true, "archived receipt predates the 19 Oct optional-side-gate override");
   assert.equal(DEFAULT_SIGNALS.sideAccept.enabled, false);

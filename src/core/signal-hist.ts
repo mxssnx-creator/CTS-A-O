@@ -1,3 +1,4 @@
+import { slRatiosOf } from "./sl-ratios.ts";
 import { positionCounts, type PositionWindows } from "./position-windows.ts";
 // Historic trailing configs of a signal (operator, 13 Oct: "Signals run with multiple trailing configs related to the
 // historic calcs in their spec"). Every signal has the same 42 Normal + 35 Trailing percent configs; these add
@@ -429,7 +430,7 @@ export function* signalHistProtectsGen(
     const ps: Protect[] = [];
     const seen = new Set<string>();
     const trails = [0, ...h.trailOfTp.filter((t) => t > 0)];
-    const candidateTotal = h.quantiles.length * h.slOfTp.length *
+    const candidateTotal = h.quantiles.length * slRatiosOf(h).length *
       trails.reduce((n, t) => n + (t > 0 && sig.trailRatios?.length ? sig.trailRatios.length : 1), 0);
     let candidate = 0;
     for (const q of h.quantiles) {
@@ -440,7 +441,7 @@ export function* signalHistProtectsGen(
           (ref) => laneProtect({ tp: ref, sl: 0, trail: 0, hold }, ind).tp,
         ) ?? laneTp,
       );
-      for (const m of h.slOfTp)
+      for (const m of slRatiosOf(h))
         for (const t of trails)
         for (const ratio of t > 0 && sig.trailRatios?.length ? sig.trailRatios : [1]) {
           // Yield before every candidate, including duplicates/rejections, so the runtime can check cancellation

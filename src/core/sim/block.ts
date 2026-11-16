@@ -78,6 +78,8 @@ export interface BlockBookOpts {
   sideKeys?: boolean;
   /** BlockConfig.historySource "accepted-orders": only settled accepted Real orders enter the book */
   acceptedOnly?: boolean;
+  /** Explicit independently processed, gate-qualified modeled predecessor book. */
+  processedOnly?: boolean;
 }
 
 const HOUR_MS = 3_600_000;
@@ -107,6 +109,8 @@ export interface BlockBookEntry {
   cfg?: string;
   /** Passed every Real entry gate. Missing/false is never an accepted order. */
   accepted?: boolean;
+  /** All independent predecessor gates/caps passed; modeled only, never funded execution evidence. */
+  blockProcessed?: boolean;
   bsrc?: readonly BlockSource[];
   /** AutoBlockBook: bit i set when candidate window i would have raised it at its entry (stampEntry) */
   autoRaise?: number;
@@ -159,6 +163,7 @@ export class BlockBook {
   readonly pause: number;
   /** Only settled accepted Real orders can contribute evidence; missing acceptance is unknown. */
   readonly acceptedOnly: boolean;
+  readonly processedOnly: boolean;
   /** pooled sources' judging window (BlockConfig.window; the window in use for an AutoBlockBook) */
   window: number;
   /** activity-scaled window: a source's window is its closes in the last windowHours ÷ maxLevel (0 = off) */
@@ -176,6 +181,7 @@ export class BlockBook {
   constructor(pause = 0, window = 1, options: BlockBookOpts | boolean = {}) {
     const opts: BlockBookOpts = typeof options === "boolean" ? { acceptedOnly: options } : options;
     this.acceptedOnly = !!opts.acceptedOnly;
+    this.processedOnly = !!opts.processedOnly;
     this.holdUntilNet = !!opts.holdUntilNet;
     this.poolSignals = opts.poolSignals !== false;
     this.poolDedupe = !!opts.poolDedupe;
@@ -206,8 +212,11 @@ export class BlockBook {
    * kept out of the pooled sources still counts down its config's pause. An accepted-orders book takes only settled
    * accepted Real orders (anything else never enters it, not even a pause countdown).
    */
+  accepts(t: Pick<BlockBookEntry, "accepted" | "blockProcessed">): boolean {
+    return !this.acceptedOnly || t.accepted === true || (this.processedOnly && t.blockProcessed === true);
+  }
   add(t: BlockBookEntry, signal = false, pooledIn?: boolean) {
-    if (this.acceptedOnly && t.accepted !== true) return;
+    if (!this.accepts(t)) return;
     const pooled = pooledIn ?? this.pooledClose(t, signal);
     if (this.holdUntilNet && t.accepted === true && t.blockAttribution) {
       for (const s of BLOCK_SOURCES) {
@@ -512,7 +521,8 @@ const bookOpts = (b: BlockConfig): BlockBookOpts => ({
   poolSignals: b.poolSignals,
   poolDedupe: b.poolDedupe,
   sideKeys: b.sideKeys,
-  acceptedOnly: b.historySource === "accepted-orders",
+  acceptedOnly: b.historySource === "accepted-orders" || b.historySource === "processed-orders",
+  processedOnly: b.historySource === "processed-orders",
 });
 
 export const DEFAULT_WINDOW_CANDIDATES: readonly number[] = [5, 10, 15, 25, 35];
@@ -581,7 +591,7 @@ export class AutoBlockBook extends BlockBook {
     if (sources) t.autoSources = sources;
   }
   override add(t: BlockBookEntry, signal = false, pooledIn?: boolean) {
-    if (this.acceptedOnly && t.accepted !== true) return;
+    if (!this.accepts(t)) return;
     const pooled = pooledIn ?? this.pooledClose(t, signal);
     const scope = exitScopeSuffix(t.cfg, t.type);
     const recent = this.recentFor(scope);

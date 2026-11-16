@@ -1,3 +1,4 @@
+import { slRatiosOf } from "../sl-ratios.ts";
 import { positionCounts } from "../position-windows.ts";
 import { SL_TP_RATIOS, minimumStopFraction } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
@@ -93,7 +94,7 @@ export interface Universe {
   bars: Bars[];
   /**
    * every series given (a short one too): the market reference is built from them. A worker rebuilds the universe
-   * from these, not from `bars` (≥ 120 bars only), or its market misses the short series the main thread's holds
+   * from these, not from `bars` (nonempty tradable lanes only), or its market misses the short series the main thread's holds
    */
   series: Bars[];
   caches: SeriesCache[];
@@ -117,7 +118,10 @@ export function makeUniverse(bars: Bars[], evaluationFromT?: number): Universe {
   // local, worker, replay and incremental tie-breaking identical; retain each symbol's
   // explicitly configured lane order and the original immutable bar objects.
   const ordered = [...bars].sort((a, b) => a.sym < b.sym ? -1 : a.sym > b.sym ? 1 : 0);
-  const ok = ordered.filter((b) => b.n >= 120);
+  // Indicator functions retain their own NaN warmup. A common 120-bar floor discarded entire
+  // valid slower lanes (e.g. 48 completed 30m bars) before their configured combinations were even evaluated.
+  // Two real bars are enough to represent a signal and its next-bar entry; no candle is padded or invented.
+  const ok = ordered.filter((b) => b.n >= 2);
   let startT = Infinity;
   let endT = 0;
   let nowT = 0;
@@ -821,7 +825,7 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
     }
   };
   for (const tp of g.tp)
-    for (const k of g.slOfTp)
+    for (const k of slRatiosOf(g))
       for (const tr of g.trailOfTp)
         for (const h of g.holdH) emit(tp, k, tr, h, g.minSl, g.minTrail);
   forEachCoord(g, emit);
@@ -883,7 +887,7 @@ export function baseRangeProtects(
     ["gn", g.general],
     ["lg", g.long],
   ] as const) {
-    if (!r || !r.tp?.length || !r.slOfTp?.length) continue;
+    if (!r || !r.tp?.length || !slRatiosOf(r).length) continue;
     // the range's MAXIMUM hold (maxHoldMin) is the hold Base judges it at, as the grid builds its cells: before, Base
     // measured Micro at 16 h while it traded 15 min (a Base PF of another config than the one that trades)
     const hold =
@@ -910,7 +914,7 @@ export function baseRangeProtects(
       // every config of the range: each target × each stop (Micro: MICRO_BASE_SL, a spread of its 17 stops); no trail.
       // rangeBaseStats keeps the range's best cell
       const ks =
-        tag === "mc" ? microBaseSl(r.slOfTp) : [...new Set(r.slOfTp)].sort((a, b) => a - b);
+        tag === "mc" ? microBaseSl(slRatiosOf(r)) : [...new Set(slRatiosOf(r))].sort((a, b) => a - b);
       // Micro's net targets after minNetOfCost (microNetTps), as the grid builds them: a target the tape stage drops
       // is never validated at Base
       for (const tp0 of [...new Set(tag === "mc" ? microNetTps(r, cost) : r.tp)].sort(
@@ -1005,7 +1009,7 @@ export function baseRangeProtects(
     const tp0 = mid([...(tag === "mc" ? microNetTps(r, cost) : r.tp)].sort((a, b) => a - b));
     if (tp0 === undefined) continue;
     const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
-    const k = mid([...r.slOfTp].sort((a, b) => a - b));
+    const k = mid([...slRatiosOf(r)].sort((a, b) => a - b));
     out.push({
       tp,
       sl: distanceAtFloor(tp * k, Math.max(floorR, minSlR), digits),
@@ -1032,6 +1036,7 @@ export function baseRangeProtects(
   return out;
 }
 type CoordRangeLike = {
+  slAuto?: import("../sl-ratios.ts").AutoSlRatios;
   maxHoldMin?: number;
   holdAuto?: boolean;
   holdCandidatesMin?: readonly number[];

@@ -139,8 +139,13 @@ describe("B2: the validated set V", () => {
     }
     assert.ok(r.trades.length > 0, "the run executed trades");
     assert.ok(sides.size === 2, "both sides executed");
-    // the pool executes configs outside V (the restriction is real)
-    assert.ok(pool.trades.some((tr) => !v.has(tr.cfg)), "the pool executes outside V");
+    // A dynamic union can legitimately contain every config the pool executes later.
+    // An explicit run-start snapshot must still fence every later step to that snapshot.
+    const initial = vset();
+    const frozen = walkForward(u2, tapes, { ...base, seatSet: "validated", validated: initial });
+    assert.ok(frozen.trades.length > 0, "the frozen-cohort comparison executes orders");
+    assert.ok(frozen.trades.every((tr) => initial.has(tr.cfg)), "explicit snapshots cannot admit later configs");
+    assert.ok(pool.trades.some((tr) => !initial.has(tr.cfg)), "the pool executes outside the explicit frozen V");
   });
 
   it("defaults to the Base-validated config set", () => {

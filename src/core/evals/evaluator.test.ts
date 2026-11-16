@@ -21,3 +21,41 @@ test("every evaluation window and score stops at its requested clock, including 
   assert.equal(evaluateConfig("fixture", future, options).score, 0);
   assert.equal(evaluateConfig("fixture", [...closed, ...future], { ...options, nowT: NOW + 2 * H }).success, false);
 });
+
+const countOptions=()=>({gates:{...DEFAULT_GATES,stepPf:{enabled:false,ratio:.2,max:2},minPf:1.1,maxDdr:0,minGreen:0,lossPrior:false,
+ positionWindows:{base:4,main:4,real:2,entry:2,maxDrawdownPositions:40}},nowT:NOW});
+test('count evaluations cannot qualify older wins by dropping a corrupt own timestamp',()=>{
+ const rows=Array.from({length:8},(_,i)=>trade(NOW-(8-i)*60000,.02));
+ assert.equal(evaluateConfig('fixture',rows,countOptions()).success,true);
+ rows.push({...trade(NaN,-.9)});
+ assert.equal(evaluateConfig('fixture',rows,countOptions()).success,false);
+});
+test('unrelated config symbols cannot dilute own evaluation progress',()=>{
+ const rows=Array.from({length:8},(_,i)=>trade(NOW-(8-i)*60000,.02));
+ const expected=evaluateConfig('fixture',rows,countOptions());
+ assert.deepEqual(evaluateConfig('fixture',[...rows,{...trade(NOW-1,-.9),cfg:'sibling',sym:'OTHER'}],countOptions()),expected);
+});
+test('disjoint evaluation PF and count describe the actual long block and complete requested sample',()=>{
+ const rows=[.02,-.005,.02,.02,-.10,-.10,-.01].map((r,i)=>trade(NOW-(8-i)*60000,r));
+ const o=countOptions(),block={long:4,short:2,minimal:1,shortPolarity:'negative' as const,minimalPolarity:'negative' as const};
+ o.gates.positionWindows={...o.gates.positionWindows,blocks:{base:block,main:block,real:block,entry:block}} as typeof o.gates.positionWindows;
+ const result=evaluateConfig('fixture',rows,o),main=result.windows.find(w=>w.key.startsWith('A/1/main/'))!;
+ assert.equal(result.success,true);
+ assert.equal(main.pf,12,'PF uses the independent long block, not the negative tail');
+ assert.equal(main.span,7);assert.equal(main.n,7);assert.equal(main.key,'A/1/main/N7');
+});
+
+test('a failed sibling context cannot supply the successful config ranking score',()=>{
+ const good=Array.from({length:40},(_,i)=>({...trade(NOW-(41-i)*60000,.02),sym:'GOOD'}));
+ const failed=Array.from({length:40},(_,i)=>({...trade(NOW-(41-i)*60000,i<38?1:i===38?.001:-.002),sym:'FAILED'}));
+ const o=countOptions();o.gates.positionWindows={...o.gates.positionWindows,base:40,main:40};
+ const expected=evaluateConfig('fixture',good,o),mixed=evaluateConfig('fixture',[...good,...failed],o);
+ assert.equal(mixed.success,true);assert.equal(mixed.score,expected.score);
+});
+
+test('count evaluation removes an explicit external multiplier once and retains unknown unit returns',()=>{
+ const rows=[-.02,.1,.1,.1].map((r,i)=>({...trade(NOW-(5-i)*60000,r),mult:i===0?1:10}));
+ assert.equal(evaluateConfig('fixture',rows,countOptions()).success,false,'sized gains cannot qualify a weaker unit window');
+ const unknown=Array.from({length:8},(_,i)=>({...trade(NOW-(9-i)*60000,.02),unitR:null}));
+ assert.equal(evaluateConfig('fixture',unknown,countOptions()).success,false);
+});
