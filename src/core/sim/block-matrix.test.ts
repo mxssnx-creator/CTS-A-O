@@ -261,7 +261,7 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
     assert.ok(volAd >= volSh - 1e-9, `additive ${volAd} vs shared ${volSh}`);
   });
 
-  it("Normal off removes exactly the unadjusted base; Block Active skips every entry below its min level", () => {
+  it("Normal off removes exactly the unadjusted base; Block Active raises only from its min level and keeps the Normal lane", () => {
     for (const mode of ["shared", "additive", "overall"] as const)
       for (const blockActive of [false, true]) {
         const block = {
@@ -307,17 +307,18 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
               .every((x) => (x.mult ?? 1) === 1),
           );
         } else {
-          // Block Active: every executed plain / trailing entry is at or above the min level (also with Normal on),
-          // and Active only removes entries
+          // Block Active is Block's own lane: with Normal on an entry below the min level trades at its unit (never
+          // raised), a raised entry is at or above the min level; Normal off keeps only the raised ones (checked above)
           assert.ok(
-            on.sim.trades.every((x) => !base(x.kind) || (x.level ?? 0) >= 6),
-            `${mode}: an entry below level 6 executed with Block Active`,
+            on.sim.trades.every((x) => !base(x.kind) || (x.level ?? 0) >= 6 || ((x.level ?? 0) === 0 && (x.mult ?? 1) === 1)),
+            `${mode}: Block raised below its Active level 6`,
           );
           assert.ok(
-            on.sim.trades.every((x) => !base(x.kind) || (x.mult ?? 1) > 1),
-            `${mode}: Active entries are raised`,
+            on.sim.trades.filter((x) => base(x.kind) && (x.level ?? 0) >= 6).every((x) => (x.mult ?? 1) > 1),
+            `${mode}: Active raises are raised`,
           );
-          assert.ok(onNg.sim.trades.length <= offBlock.sim.trades.length);
+          // Block Active never removes the Normal lane's entries: the same entries as Block off
+          assert.deepEqual(keys(onNg.sim.trades), keys(offBlock.sim.trades), `${mode}: Active keeps every Normal entry`);
         }
         assert.ok(off.sim.trades.length <= on.sim.trades.length);
       }

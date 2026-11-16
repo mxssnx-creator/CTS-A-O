@@ -43,7 +43,9 @@ const tiny = {
   signals: { sourcesMode: "allow", sources: { "ema-cross": true, "rsi-reversal": true }, lanes: [15],
     exits: "pct", normal: { tp: [0.02], slOfTp: [1] }, trailing: { tp: [0.03], trailOfTp: [0.5], slOfTp: 1 },
     trailingOnly: { enabled: true, sl: [0.02], trail: [0.01], trailStep: 1 },
-    hist: { enabled: true, quantiles: [0.6], trailOfTp: [0.5], slOfTp: [1], minN: 5, lookbackH: 72 } },
+    hist: { enabled: true, quantiles: [0.6], trailOfTp: [0.5], slOfTp: [1], minN: 5, lookbackH: 72 },
+    // the source filters would drop both sparse synthetic sources and skip the Signal history phase this test aborts
+    minPerDay: 0, dropLosing: false },
   gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
 };
 const until = async (cond: () => boolean, ms = 600_000) => {
