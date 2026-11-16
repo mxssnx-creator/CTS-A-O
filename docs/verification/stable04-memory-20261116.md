@@ -34,6 +34,8 @@ finished, so neither attempt established post-Base PF, validation percentage or 
   temporary buffers in an active calculation and is not a total-process memory limit.
 - Chunked session reports now project allocation rows as they are written instead of building a second full array
   of per-order objects. The non-chunked format remains unchanged, and the streamed sidecars retain all rows in order.
+- Worker replies now intern repeated tape and open-position strings as each reply is retained, instead of waiting
+  until the full tape cohort has accumulated. The final merge still preserves pair order and exact position data.
 
 ## Evidence
 
@@ -59,6 +61,10 @@ history round trips, and preservation of legacy and foreign-namespace spill dire
 The chunked-report test confirms allocation projection is lazy and repeatable; a complete sidecar replay also
 matched the former hydrated report and standalone HTML evidence exactly.
 
+On a local 20,000-tape fixture with four open and four pending rows per tape, early interning reduced retained heap
+from approximately 39.0 MB to 24.5 MB with identical data SHA-256. A runtime test exercised the actual worker-reply
+path. This isolated measurement is not a full-run RSS result.
+
 ## Full replay
 
 A fresh offline 12-symbol replay was run on remote commit `5e901cf53c96ef27f2813579650c97f833d1287f`, source tree
@@ -83,4 +89,7 @@ The disk-backed retry started from remote commit `500c54d56081f01f4987c919b11111
 24-hour simulation and seven-day Signal warmup. Two workers use 128 MiB retained-history, 32 MiB decoded-history and
 64 MiB derived-index budgets, with an RSS soft guard of 2,800 MiB and hard guard of 3,200 MiB. Its private spill root
 was verified on disk-backed workspace storage. This checkpoint records the launch, not an outcome; hourly results,
-post-Base PF, validated percentage and execution PF remain unavailable until the run completes.
+post-Base PF, validated percentage and execution PF remain unavailable until the run completes. The guard later
+stopped this attempt at 70% of strategy tape construction when RSS reached its 3,200 MiB limit; the sampled disk
+spill had reached 1,943,790,477 bytes. The fallback was rejected and no hourly result was produced. The next attempt
+must use a smaller worker footprint and the early-interning change while retaining the same full input and policy.

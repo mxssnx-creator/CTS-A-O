@@ -1,16 +1,7 @@
 import type { ConfigTape } from "../sim/walkforward.ts";
 
-/**
- * Restore the Main pair order after worker replies, interning repeated strings without changing any tape identity.
- * Yield within large open/pending arrays as well as between tapes: one busy tape can itself contain many positions.
- * The caller owns the replies until the complete cohort is published.
- */
-export function* mergeWorkerTapesGen(
-  replies: readonly { tapes: ConfigTape[] }[],
-  order: readonly string[],
-): Generator<void, ConfigTape[]> {
-  const rank = new Map(order.map((key, i) => [key, i]));
-  const buckets: ConfigTape[][] = Array.from({ length: order.length + 1 }, () => []);
+/** Share repeated worker-cloned strings while each reply is retained, before all replies accumulate. */
+export function createTapeInterner() {
   const intern = new Map<string, string>();
   const one = (x: string) => {
     const previous = intern.get(x);
@@ -19,7 +10,7 @@ export function* mergeWorkerTapesGen(
     return x;
   };
   let work = 0;
-  for (const reply of replies) for (const tape of reply.tapes) {
+  return function* (tape: ConfigTape): Generator<void> {
     tape.bot = one(tape.bot) as typeof tape.bot;
     tape.ind = one(tape.ind);
     tape.kind = one(tape.kind) as typeof tape.kind;
@@ -32,6 +23,25 @@ export function* mergeWorkerTapesGen(
       pending.sym = one(pending.sym);
       if ((++work & 255) === 0) yield;
     }
+  };
+}
+
+/**
+ * Restore the Main pair order after worker replies, interning repeated strings without changing any tape identity.
+ * Yield within large open/pending arrays as well as between tapes: one busy tape can itself contain many positions.
+ * The caller owns the replies until the complete cohort is published.
+ */
+export function* mergeWorkerTapesGen(
+  replies: readonly { tapes: ConfigTape[] }[],
+  order: readonly string[],
+  alreadyInterned = false,
+): Generator<void, ConfigTape[]> {
+  const rank = new Map(order.map((key, i) => [key, i]));
+  const buckets: ConfigTape[][] = Array.from({ length: order.length + 1 }, () => []);
+  const intern = alreadyInterned ? null : createTapeInterner();
+  let work = 0;
+  for (const reply of replies) for (const tape of reply.tapes) {
+    if (intern) yield* intern(tape);
     buckets[rank.get(`${tape.bot}|${tape.ind}`) ?? 0].push(tape);
     if ((++work & 255) === 0) yield;
   }
