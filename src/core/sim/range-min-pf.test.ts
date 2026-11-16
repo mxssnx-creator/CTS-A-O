@@ -52,6 +52,8 @@ const opts = (rangeMinPf?: WalkForwardOptions["gates"]["rangeMinPf"]): WalkForwa
   const o = defaultWalkForward(DEFAULT_SETTINGS);
   return {
     ...o,
+    // the record spans 120 h: the selection window must hold it (the production default is 24 h, longH)
+    longH: 336,
     gates: { ...o.gates, minPf: 1.05, minGreen: 0, rangeMinPf },
     toggles: { normal: true, trailing: true, block: false, blockActive: false, dca: true, dcaActive: false, axis: true },
     symGate: undefined,
