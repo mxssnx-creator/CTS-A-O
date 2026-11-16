@@ -183,24 +183,26 @@ describe("Relate settled-order sizing", () => {
     assert.equal(b.decide(identity).volume, 1);
   });
 
-  it("applies Active as a skip gate and permits the entry after its relation reaches the selected step", () => {
+  it("Active confines the relation to its own raise: below the step the entry trades its base, the raise starts at the step", () => {
     const b = new RelateBook(config({ ratio: 0.2, steps: 5, activeStep: 2, minTrades: 60 }));
     assert.equal(b.decide(identity).allowed, true, "base entries bootstrap an insufficient sample");
     for (let i = 0; i < 59; i++) b.add(bookEntry(0.01));
     b.add(bookEntry(-0.01)); // qualified PF, but the current win streak is below Active 2
     const zero = b.decide(identity);
-    assert.equal(zero.allowed, false);
-    b.advanceShadow(bookEntry(0.01, { accepted: false, relateParts: zero.parts }));
+    assert.equal(zero.allowed, true, "Relate Active never vetoes the entry's own base");
+    assert.equal(zero.volume, 1, "below the active step the relation adds nothing");
+    // the base entry is accepted and carries the relation's hypothetical part: its close advances the step
+    b.add(bookEntry(0.01, { relateParts: zero.parts, relateMeasured: true, relateBase: 1 }));
     const one = b.decide(identity);
-    assert.equal(one.allowed, false);
+    assert.equal(one.allowed, true);
+    assert.equal(one.volume, 1);
     assert.equal(one.parts.config?.shadow, true);
-    b.advanceShadow(bookEntry(0.01, { accepted: false, relateParts: one.parts }));
+    b.add(bookEntry(0.01, { relateParts: one.parts, relateMeasured: true, relateBase: 1 }));
     const d = b.decide(identity);
     assert.equal(d.allowed, true);
-    assert.equal(d.volume, 1.44);
-    assert.equal(b.summary().closes, 60, "shadow closes never enter accepted PF evidence");
-    assert.equal(b.summary().shadowCloses, 2);
-    assert.equal(b.decide(identity).stats.config?.n, 60);
+    assert.equal(d.volume, 1.44, "at the active step the raise applies, compounded from the shadow progression");
+    assert.equal(b.summary().closes, 62, "the base entries below the step are real accepted closes");
+    assert.equal(b.summary().shadowCloses, 0, "nothing was skipped");
   });
 
   it("combines independent relation levels in Shared or Additive mode and caps the total stack", () => {
@@ -586,7 +588,7 @@ describe("Relate settled-order sizing", () => {
     assert.equal(checks.get("execution: modeled volume within Max stack")?.ok, true);
   });
 
-  it("Active recovers from its own skipped closes without adding them to accepted PF, on Micro and Minimal", () => {
+  it("Active never skips: after a loss the base trades its unit and the raise returns at the active step, on Micro and Minimal", () => {
     const hour = 3_600_000;
     const endT = Date.UTC(2026, 9, 20);
     const startT = endT - 82 * hour;
@@ -616,23 +618,23 @@ describe("Relate settled-order sizing", () => {
       const at = (i: number) => sim.feed.find((row) => row.entryT === startT + i * hour);
       assert.equal(at(lossAt)?.accepted, true, `${tag}: the loss is an accepted close`);
       for (const i of [lossAt + 1, lossAt + 2]) {
-        assert.equal(at(i)?.accepted, undefined, `${tag}: skipped step ${i} is not accepted`);
-        assert.equal(at(i)?.relateShadow, true, `${tag}: skipped step ${i} is explicitly marked`);
-        assert.ok(!sim.trades.some((row) => row.entryT === startT + i * hour));
+        assert.equal(at(i)?.accepted, true, `${tag}: below the active step entry ${i} trades its base`);
+        assert.equal(at(i)?.relateShadow, undefined, `${tag}: nothing is skipped`);
+        assert.equal(sim.trades.find((row) => row.entryT === startT + i * hour)?.relateVol ?? 1, 1, `${tag}: at unit volume`);
       }
       const recovered = lossAt + 3;
-      assert.equal(at(recovered)?.accepted, true, `${tag}: the entry recovers after the two shadow closes`);
+      assert.equal(at(recovered)?.accepted, true, `${tag}: the entry at the active step is accepted`);
       assert.equal(sim.trades.find((row) => row.entryT === startT + recovered * hour)?.relateVol ?? 1,
         maxSl >= .01 ? 1.44 : 1, `${tag}: only eligible stops receive a raise`);
-      if (maxSl < .01) {
+      if (maxSl < .01)
         assert.equal(at(recovered)?.relateParts, undefined, `${tag}: no hypothetical raise enters the accepted feed`);
-        assert.equal(at(recovered + 1)?.relateShadow, true, `${tag}: the accepted neutral close restarts Active progression`);
-      }
+      // after the own-close window's warm-up (12 closes) every entry trades: Relate Active removes none
+      for (let i = 12; i < 81; i++)
+        assert.ok(sim.trades.some((row) => row.entryT === startT + i * hour), `${tag}: entry ${i} trades`);
       const replay = relateBookFor({ relate })!;
       for (const row of sim.feed) feedBooks(row, null, null, null, replay);
-      assert.deepEqual(replay.summary(), sim.relate, `${tag}: a replay reconstructs accepted and shadow histories`);
+      assert.deepEqual(replay.summary(), sim.relate, `${tag}: a replay reconstructs the relation histories`);
       assert.equal(sim.relate?.closes, sim.feed.filter((row) => row.accepted === true && !row.open).length);
-      assert.ok((sim.relate?.shadowCloses ?? 0) >= 2);
     }
   });
 

@@ -3323,12 +3323,16 @@ export function signalGuardFor(
   return g;
 }
 
+/** Each strategy type keeps its own direction record: a losing DCA side never closes the Normal or Axis side. */
+const directionKey = (side: number, cfg?: string, type?: string) =>
+  `${side}${exitScopeSuffix(cfg, type) || `|t:${type ?? ""}`}`;
+
 /** The raw Real-candidate direction record: separate from accepted-order Block sizing evidence. */
 export class CandidateDirectionBook {
   private tails = new Map<string, number[]>();
   add(e: Pick<BlockFeedEntry, "side" | "r" | "open" | "cfg" | "type">) {
     if (e.open || (e.side !== 1 && e.side !== -1)) return;
-    const key = `${e.side}${exitScopeSuffix(e.cfg, e.type)}`;
+    const key = directionKey(e.side, e.cfg, e.type);
     let tail = this.tails.get(key);
     if (!tail) this.tails.set(key, (tail = []));
     // The configured direction gate is limited to 64 closes. Keep each side's full supported last-N history.
@@ -3336,7 +3340,7 @@ export class CandidateDirectionBook {
     if (tail.length > 64) tail.splice(0, tail.length - 64);
   }
   tailSum(side: number, n: number, identity?: { cfg?: string; type?: string }): { n: number; sum: number } {
-    const tail = this.tails.get(`${side}${exitScopeSuffix(identity?.cfg, identity?.type)}`) ?? [];
+    const tail = this.tails.get(directionKey(side, identity?.cfg, identity?.type)) ?? [];
     const k = Math.min(Math.max(0, Math.floor(n)), tail.length);
     let sum = 0;
     for (let i = tail.length - k; i < tail.length; i++) sum += tail[i];
@@ -6321,9 +6325,10 @@ export function execDecision(
         ),
       }
     : {};
-  // Block Active: only entries at the minimum level or above are opened — every lower entry is skipped; a signal's
-  // own base trades at its unit then
-  if (tg.blockActive && !d.adjusted && !sigBase) return { ok: false, why: "blockActive" };
+  // Block Active is the Block lane's own rule: Block raises only from its minimum level. It never vetoes another lane:
+  // an un-raised entry falls through to its own type's rules (an enabled Normal / Trailing base trades at its unit,
+  // DCA / Axis / Exit / Signals run on their own). Only a plain entry whose base is off needs the Block raise.
+  if (tg.blockActive && !d.adjusted && plain && !kindBaseOn && !sigBase) return { ok: false, why: "blockActive" };
   if (!d.adjusted && gatedBase)
     return baseOk() ? applyRelate({ ok: true, level: 0, vol: 1, ...trace }) : { ok: false, why: "normalPf" };
   // Normal off: a plain Normal / Trailing entry needs Block (DCA / Axis are not plain and run on their own)

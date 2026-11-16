@@ -88,7 +88,7 @@ describe("Relate modeled maximum stop distance", () => {
       }
     });
 
-  it("keeps Active, shadow progression, and accepted evidence independent of raise eligibility", () => {
+  it("keeps Active, step progression, and accepted evidence independent of raise eligibility; Active never vetoes the base", () => {
     const variants: Array<{ kind: StratKind; protect: Protect; eligible: boolean }> = [
       { kind: "normal", protect: { ...protect, sl: .005 }, eligible: true },
       { kind: "normal", protect: { ...protect, sl: .01 }, eligible: false },
@@ -123,14 +123,14 @@ describe("Relate modeled maximum stop distance", () => {
       const tp = makeTape(cfg, "follow", ind, p, kind, [identity.sym], [], [], []);
       const at = () => execDecision(tp, 100 * H, options, { sym: identity.sym, side, relate: book });
       for (let i = 0; i < 2; i++) {
-        const skipped = at();
-        assert.equal(skipped.ok, false, label);
-        if (skipped.ok) throw new Error("unexpected admitted entry");
-        assert.equal(skipped.why, "relateActive", label);
-        assert.equal(skipped.relateParts?.config?.shadow, true, label);
-        book.advanceShadow({ ...identity, r: .01, accepted: false, relateMeasured: true,
-          relateBase: skipped.relateBase, relateParts: skipped.relateParts });
-        assert.equal(book.decide(identity).stats.config?.n, 60, `${label}: shadows excluded from accepted PF`);
+        const below = at();
+        assert.equal(below.ok, true, `${label}: below the active step the base trades`);
+        if (!below.ok) throw new Error("unexpected rejection");
+        assert.equal(below.relateVol ?? 1, 1, `${label}: at unit volume`);
+        // the accepted base close carries the relation's step (shadow part when the stop is eligible)
+        book.add({ ...identity, r: .01, accepted: true, relateMeasured: true,
+          relateBase: below.relateBase ?? 1, relateParts: below.relateParts });
+        assert.equal(book.decide(identity).stats.config?.n, 61 + i, `${label}: the base close is accepted evidence`);
       }
       const allowed = at();
       assert.equal(allowed.ok, true, label);
@@ -139,11 +139,12 @@ describe("Relate modeled maximum stop distance", () => {
       if (!eligible) {
         assert.equal(allowed.relateParts, undefined, `${label}: no simulated raise recorded as funded`);
         book.add(accepted(.01));
-        assert.equal(book.decide(identity).stats.config?.n, 61, `${label}: actual neutral close counted once`);
+        assert.equal(book.decide(identity).stats.config?.n, 63, `${label}: actual neutral close counted once`);
         const next = at();
-        assert.equal(next.ok, false, `${label}: neutral prior close has no raised Active step`);
+        assert.equal(next.ok, true, `${label}: a neutral prior close restarts the step; the base still trades`);
+        assert.equal(next.ok && (next.relateVol ?? 1), 1);
       }
-      assert.equal(book.summary().shadowCloses, 2, label);
+      assert.equal(book.summary().shadowCloses, 0, `${label}: nothing skipped`);
     }
   });
 

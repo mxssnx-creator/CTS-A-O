@@ -56,6 +56,6 @@ export function positiveCoordWarnings(
     out.push(
       "Trailing is on with Normal and Block both off: no trailing config is executable (Trailing runs on the Normal base). Use live.kinds = [\"trailing\"] to send only Trailing to the exchange",
     );
-  if (s.toggles?.blockActive) out.push("Block Active is on: only Block-raised entries open — Normal / Trailing barely run");
+  if (s.toggles?.blockActive && s.toggles.normal === false) out.push("Block Active is on with Normal off: only Block-raised Normal / Trailing entries open (with Normal on, Block Active only confines Block's own raises)");
   return out.map((x) => `positive coordination: ${x} — docs/positive-coordinations.md`);
 }

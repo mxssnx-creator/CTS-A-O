@@ -161,16 +161,16 @@ describe("per-range stage min PF", () => {
     };
     const ctx = { sym: "AAA-USDT", side: 1 };
     const why = (d: object) => ("why" in d ? d.why : "ok");
-    // Block Active skips every entry below its level, even before adding the base-PF requirement.
+    // Block Active is Block's own lane: with Normal on an un-raised entry trades at its unit.
     const active = { ...o, toggles: { ...o.toggles, blockActive: true } };
-    assert.equal(why(execDecision(good, NOW, active, ctx)), "blockActive");
+    assert.equal(why(execDecision(good, NOW, active, ctx)), "ok");
     const gated = { ...o, normalBaseMinPf: 2 };
     assert.equal(why(execDecision(good, NOW, gated, ctx)), "ok");
     assert.equal(why(execDecision(weak, NOW, gated, ctx)), "normalPf");
-    // A passing base PF cannot waive Block Active; rejected raw winners are not accepted Block history.
+    // With Block Active the enabled Normal lane keeps its own base-PF gate; Block Active neither waives nor replaces it.
     const gatedActive = { ...gated, toggles: { ...gated.toggles, blockActive: true } };
-    assert.equal(why(execDecision(good, NOW, gatedActive, ctx)), "blockActive");
-    assert.equal(why(execDecision(weak, NOW, gatedActive, ctx)), "blockActive");
+    assert.equal(why(execDecision(good, NOW, gatedActive, ctx)), "ok");
+    assert.equal(why(execDecision(weak, NOW, gatedActive, ctx)), "normalPf");
     // Normal off: the base PF does not open the base (Block-raised only)
     const off = { ...gated, toggles: { ...gated.toggles, normal: false } };
     assert.notEqual(why(execDecision(good, NOW, off, ctx)), "ok");
@@ -194,8 +194,11 @@ describe("per-range stage min PF", () => {
     const d = execDecision(gn, NOW, ex, ctx);
     assert.equal(why(d), "ok");
     assert.equal(d.ok && d.vol, 1);
-    // another range stays with Block
-    assert.notEqual(why(execDecision(tape("mn", 20, 4), NOW, ex, ctx)), "ok");
+    // another range stays with Block; Block Active never vetoes the enabled Normal lane, so it trades its unit
+    const other = execDecision(tape("mn", 20, 4), NOW, ex, ctx);
+    assert.equal(why(other), "ok");
+    assert.equal(other.ok && other.vol, 1);
+    assert.equal(why(execDecision(tape("mn", 20, 4), NOW, disabled, ctx)), "blockActive", "Normal off: Block-raised only");
   });
 
   it("block.excludeRanges 'wide' is the untagged Normal / Trailing grid (as live.excludeRanges); signals and Axis are not Wide", () => {
@@ -219,11 +222,13 @@ describe("per-range stage min PF", () => {
     const d = execDecision(wide, NOW, ex, ctx);
     assert.equal(why(d), "ok");
     assert.equal(d.ok && d.vol, 1);
-    // a tagged range is not Wide, and an untagged Axis ladder is not the Wide grid
-    assert.notEqual(why(execDecision(tape("gn", 20, 4), NOW, ex, ctx)), "ok");
+    // a tagged range is not Wide (Normal off there: Block-raised only), and an untagged Axis ladder is not the Wide grid
+    assert.equal(why(execDecision(tape("gn", 20, 4), NOW, disabled, ctx)), "blockActive");
     const axId = `follow|${IND}|tp4|sl1|tr0|h32|ax`;
     const ax = makeTape(axId, "follow", IND, wide.protect, "axis", ["AAA-USDT"], trades(axId, 20), [], []);
-    assert.equal(why(execDecision(ax, NOW, ex, ctx)), "blockActive");
+    // Axis is its own lane: Block Active never vetoes it
+    assert.equal(why(execDecision(ax, NOW, ex, ctx)), "ok");
+    assert.equal(why(execDecision(ax, NOW, disabled, ctx)), "ok");
   });
 
   it("settings check: block.excludeRanges takes only the range tags and 'wide'", () => {
