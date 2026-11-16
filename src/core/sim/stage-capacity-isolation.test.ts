@@ -37,3 +37,29 @@ test("an unselected stage-only order cannot consume a funded Signal slot",()=>{
   assert.ok(result.trades.length>0);
   assert.ok(result.trades.every(t=>t.cfg===tb.id),'unselected research never becomes funded');
 });
+
+test("a funded opposite position still enforces conflict without lending its result to the other set",()=>{
+  const a="sig-funded-opponent-s@m1",b="sig-rejected-entry-s@m1",sym="A-USDT";
+  const rowSide=(ind:string,side:1|-1,entryT:number,hold:number):Trade=>({
+    cfg:`follow|${ind}|tp1|sl1|tr0|h60`,sym,side,entryT,exitT:entryT+hold*M,
+    entry:100,exit:100*(1+side*.02),r:.02,mult:1,kind:"normal",reason:"tp",bars:hold,mfe:0,mae:0});
+  const history=(ind:string,side:1|-1)=>Array.from({length:40},(_,i)=>rowSide(ind,side,start-(80-i*2)*M,1));
+  const futureA=[1,3,5,7].map(i=>rowSide(a,1,start+i*M,1)).concat(rowSide(a,1,start+9*M,20));
+  const futureB=[rowSide(b,-1,start+10*M,1)];
+  const ta=tape(a,sym,history(a,1),futureA),tb=tape(b,sym,history(b,-1),futureB);
+  const d=defaultWalkForward(DEFAULT_SETTINGS);
+  const o={...d,preH:12,longH:12,simH:1,startT:start,mode:"fixed" as const,seatPer:"config" as const,
+    portfolio:0,maxPositions:0,signalMaxOpen:0,signalMaxPositions:0,signalPerSymbol:0,symGate:"off" as const,
+    rangeGate:undefined,signalRank:undefined,signalOwnBase:true,signalGuardN:0,signalAccept:undefined,signalCluster:undefined,
+    signalBasePassed:new Set([`follow|${a}`,`follow|${b}`]),
+    signalActive:new Set([sigActiveKey("follow",a,sym,1,"normal",ta.id),sigActiveKey("follow",b,sym,-1,"normal",tb.id)]),
+    toggles:{...d.toggles,normal:true,block:false,blockActive:false},
+    coord:{...d.coord!,enabled:true,conflict:true,confirm:false,hourLock:0,cooldown:"off" as const},
+    engineSideAccept:undefined,processedStages:{validationN:2,realN:2}};
+  const u={bars:[],caches:[],startT:start-12*H,endT:start+H,splitT:start,nowT:start+H,baseTf:1} as never;
+  const result=walkForward(u,[ta,tb],o);
+  assert.ok(result.trades.some(t=>t.cfg===ta.id && t.entryT===start+9*M), 'the opponent is actually funded');
+  assert.equal(result.skips['sig:conflict'],1);
+  assert.ok(!result.processedStages!.sets.some(x=>x.identity.baseConfigId===tb.id), 'a funded conflict supplies no stage sample');
+  assert.ok(result.trades.every(t=>t.cfg!==tb.id));
+});

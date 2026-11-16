@@ -20,6 +20,7 @@ import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { isMicroCalculationInd as isMicroFamilyInd, microAnchorTf } from "./indications/micro-family.ts";
 import { INVERSE_TIMEFRAMES, isInverseInd } from "./indications/inverse-config.ts";
 import { isLowRangeInd, LOW_RANGE_TIMEFRAMES } from "./indications/low-range.ts";
+import { isDragInd, DRAG_TIMEFRAMES } from "./indications/drag.ts";
 import { SeriesCache } from "./indications/cache.ts";
 import { MarketSource } from "./indications/market.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
@@ -129,7 +130,7 @@ describe("every indication works", () => {
     const declines = new Map(dcaTacticConfigs().map((c) => [dcaTacticId(c), c]));
     for (const x of engine) {
       let fired = 0;
-      const referencePair = x.id.startsWith("inverse-pair-");
+      const referencePair = x.id.startsWith("inverse-pair-") || x.kind === "drag";
       const decline = declines.get(x.id);
       const cases = decline ? [false, true].map((mirror) => barsFromCandles("DCA-USDT", 1,
         declineCellBars(decline, mirror).map((c) => ({ t: c.timestamp, o: c.open, h: c.high, l: c.low, c: c.close, v: c.volume }))))
@@ -201,6 +202,7 @@ describe("every indication works", () => {
       }
       else for (const tf of tfs) {
         const eligible = isLowRangeInd(x.id) ? (LOW_RANGE_TIMEFRAMES as readonly number[]).includes(tf)
+          : isDragInd(x.id) ? (DRAG_TIMEFRAMES as readonly number[]).includes(tf)
           : !isInverseInd(x.id) || (INVERSE_TIMEFRAMES as readonly number[]).includes(tf);
         if (eligible && !got.has(String(tf)) && !got.has(`${tf}c`)) missing.push(`${x.id}@m${tf}`);
         if (!eligible && (got.has(String(tf)) || got.has(`${tf}c`))) missing.push(`${x.id}@m${tf}: ineligible lane`);

@@ -72,7 +72,7 @@ test("own processed Last-12 retains the admitted losses and excludes conflict-re
   assert.equal(configDirectionEval(f.tape, f.decisionTime, f.options, 1).ok, true);
 });
 
-test("native processed replay excludes conflict-rejected wins from Main and Real", () => {
+test("native replay keeps unfunded opposing research independent without lending it to the losing context", () => {
   const f = fixture();
   const native = walkForward(f.universe, f.tapes, { ...f.options, processedStages: { validationN: 12, realN: 12 } });
   assert.equal(native.trades.some(row => row.cfg === f.tape.id && row.entryT === f.decisionTime), false,
@@ -83,7 +83,11 @@ test("native processed replay excludes conflict-rejected wins from Main and Real
   assert.equal(own.evaluations.validation.failed, 2);
   assert.equal(own.stages.validated.openedOrders, 0);
   assert.equal(own.stages.active.openedOrders, 0);
-  assert.equal(native.skips.conflict, 14, "rejected winning siblings never enter a processed set");
+  const independent = native.processedStages!.sets.filter(row => row.identity.baseConfigId === f.tape.id && row.identity.symbol !== f.identity.symbol);
+  assert.equal(independent.reduce((sum, row) => sum + row.stages.postBase.closedOrders, 0), 14,
+    "unfunded opposing research cannot block a sibling's own stage history");
+  assert.ok(independent.every(row => row.stages.active.openedOrders === 0), "unqualified siblings remain unfunded");
+  assert.equal(native.skips.conflict ?? 0, 0, "only an actual funded opponent can cause an execution conflict");
 });
 
 test("persistent owned paper Main → Real freezes entry stage and survives restart", () => {
