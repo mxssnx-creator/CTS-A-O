@@ -79,3 +79,21 @@ it("with the Base gate on, the filters apply on top of the representative gate",
   const out = signalEvaluationPairs(configured as never, runs as never, { ...sig, baseGate: true }, () => true, days);
   assert.deepEqual([...out], ["follow|sig-a@m5"]);
 });
+
+it("the rate is the mean over the last rateDays days: a one-day burst does not carry a silent source", () => {
+  const dayRun = (ind: string, dayN: number[]) => ({ bot: "follow", ind, bySym: { A: { n: dayN.reduce((a, b) => a + b, 0), dayN } }, full: { n: 40, net: 5, pf: 1.5 } });
+  const burst = dayRun("sig-burst@m5", [14, 0, 0, 0, 0, 0, 0, 0, 0, 0]);  // 14 closes on the last day, nothing else
+  const steady = dayRun("sig-steady@m5", [2, 2, 3, 2, 2, 3, 2, 0, 0, 0]);  // 2+ a day over the week
+  const pairs = new Set(["follow|sig-burst@m5", "follow|sig-steady@m5"]);
+  const off = { ...sig, dropLosing: false };
+  // 7-day mean of the burst = 2/day -> it passes exactly at 2; a stricter minimum drops it, the steady source stays
+  assert.deepEqual([...signalSourcesToDrop([burst, steady], pairs, { ...off, rateDays: 7 }, () => 10)], []);
+  assert.deepEqual([...signalSourcesToDrop([burst, steady], pairs, { ...off, rateDays: 7, minPerDay: 2.1 }, () => 10)], ["follow|sig-burst@m5"]);
+  // a 1-day window sees the burst as 14 a day
+  assert.deepEqual([...signalSourcesToDrop([burst], pairs, { ...off, rateDays: 1, minPerDay: 10 }, () => 10)], []);
+  // history shorter than the window: the mean is over the history, not over seven days
+  assert.deepEqual([...signalSourcesToDrop([burst], pairs, { ...off, rateDays: 7 }, () => 2)], []);
+  assert.equal(signalSettings({}).rateDays, 7);
+  assert.throws(() => checkSettings({ signals: { rateDays: 0 } }), /signal/i);
+  assert.throws(() => checkSettings({ signals: { rateDays: 15 } }), /signal/i);
+});

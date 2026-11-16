@@ -543,6 +543,12 @@ export function SignalsSettings(props: {
           <Num value={g.minPerDay ?? 2} min={0} max={1000} step={0.5} onChange={(v) => set(["minPerDay"], v)} />
         </Field>
         <Field
+          label="Days averaged for the signal rate"
+          hint="The minimum above is compared with the mean number of signal entries a day over the last N days of the source's Base history (default 7). A burst on one day does not carry a source that is otherwise silent."
+        >
+          <Num value={g.rateDays ?? 7} min={1} max={14} step={1} onChange={(v) => set(["rateDays"], v)} />
+        </Field>
+        <Field
           label="Drop losing sources"
           hint="A source whose own Base history is losing (pooled net not positive and PF below 1, over at least the minimum closes on some symbol) is not evaluated. A source without Base history is kept."
         >

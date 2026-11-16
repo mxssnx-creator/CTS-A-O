@@ -1127,6 +1127,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     bool(g.ownBase, "signals trade their own base");
     bool(g.baseGate, "signal Base gate");
     num(g.minPerDay, 0, 1000, "signal minimum signals a day");
+    num(g.rateDays, 1, 14, "signal rate averaging days");
     bool(g.dropLosing, "drop losing signal sources");
     num(g.perSymbol, 0, 1000, "signal orders per symbol");
     num(g.maxOpen, 0, 100_000, "signal open orders");
