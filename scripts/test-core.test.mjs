@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
-import { coreTestInvocation } from "./test-core.mjs";
+import { coreTestInvocation, defaultTestConcurrency } from "./test-core.mjs";
 
 const runner = resolve("scripts/test-core.mjs");
 
@@ -31,7 +31,11 @@ test("core compute workers default to one and an explicit two leaves serial file
   assert.equal(defaults.workers, 1);
   assert.equal(parallel.env.CTS_CORE_WORKERS, "2");
   assert.equal(parallel.workers, 2);
-  assert.equal(parallel.concurrency, 1);
+  assert.equal(parallel.concurrency, defaultTestConcurrency());
+  assert.equal(defaultTestConcurrency(4, 15e9), 2);
+  assert.equal(defaultTestConcurrency(16, 64e9), 4);
+  assert.equal(defaultTestConcurrency(1, 64e9), 1);
+  assert.equal(defaultTestConcurrency(8, 2e9), 1, "low memory runs serially");
   assert.deepEqual(parallel.files, defaults.files);
   assert.deepEqual(parallel.args, defaults.args, "worker throughput cannot alter test inventory or filters");
   assert.equal(parallel.env.CTS_CORE_LIVE, "0");

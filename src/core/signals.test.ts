@@ -426,8 +426,9 @@ describe("signals trade their own base", () => {
       assert.equal(d.ok && d.vol, 1);
     }
     assert.notEqual(execDecision(mk("rsi-mom-14-20@m15"), NOW, x01(true), ctx).ok, true);
-    // off: signals follow the engine toggles (skipped below the Block Active level)
-    assert.equal(why(execDecision(mk("sig-ema-cross-s@m15"), NOW, x01(false), ctx)), "blockActive");
+    // off: signals follow the engine Normal toggle; Block Active no longer skips them (it acts only on the plain
+    // engine Normal / Trailing lanes, 16 Nov)
+    assert.equal(why(execDecision(mk("sig-ema-cross-s@m15"), NOW, x01(false), ctx)), "normalOff");
     // Block off and Normal off: the signal base still trades, the engine base does not
     const noBlock = (b: boolean) => ({ ...x01(b), toggles: { ...x01(b).toggles, block: false } });
     assert.equal(execDecision(mk("sig-ema-cross-s@m15"), NOW, noBlock(true), ctx).ok, true);

@@ -4,6 +4,16 @@ import { spawn } from "node:child_process";
 import { readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { availableParallelism, freemem } from "node:os";
+
+/**
+ * Files are independent (in-memory databases, offline guard, no ports), so they run side by side. Half the CPUs, at
+ * most four, and one process per ~3 GB of free memory (a fixture runtime holds about 1 GB); 1 on small hosts.
+ * CTS_CORE_TEST_CONCURRENCY overrides it (1-8). Measured on 4 CPUs / 16 GB: 24 min serial -> 10.7 min at 2.
+ */
+export function defaultTestConcurrency(cpus = availableParallelism(), freeBytes = freemem()) {
+  return Math.max(1, Math.min(4, Math.floor(cpus / 2), Math.floor(freeBytes / 3e9)));
+}
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -38,7 +48,7 @@ export function coreTestInvocation(argv = [], sourceEnv = process.env, root = RO
     else files.push(arg);
   }
   if (slow && files.length) throw new Error("Use --slow without explicit test files");
-  const concurrency = Number(sourceEnv.CTS_CORE_TEST_CONCURRENCY ?? 1);
+  const concurrency = Number(sourceEnv.CTS_CORE_TEST_CONCURRENCY ?? defaultTestConcurrency());
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8)
     throw new Error("CTS_CORE_TEST_CONCURRENCY must be an integer from 1 to 8");
   const testWorkers = String(sourceEnv.CTS_CORE_TEST_WORKERS ?? "1");

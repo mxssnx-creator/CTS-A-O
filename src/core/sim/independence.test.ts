@@ -234,9 +234,10 @@ describe("independent configs (seatPer config)", () => {
     };
     const at = NOW - 2 * H + 10 * 60_000;
     assert.deepEqual(execDecision(ax, at, o, { sym: "AAA-USDT", side: 1, book: null }), { ok: true, level: 0, vol: 1 });
-    // without the exclusion Block Active decides (raise or skip), never a plain unit entry
+    // without the exclusion Block may raise it, but Block Active never skips an Axis entry (it acts only on the
+    // plain Normal / Trailing lanes, 16 Nov)
     const d = execDecision(ax, at, { ...o, block: { ...o.block, excludeKinds: [] } }, { sym: "AAA-USDT", side: 1, book: null });
-    assert.ok(!d.ok || d.vol !== 1 || d.level > 0);
+    assert.equal(d.ok, true);
   });
 });
 

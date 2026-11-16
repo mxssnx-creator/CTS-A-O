@@ -223,7 +223,8 @@ describe("per-range stage min PF", () => {
     assert.notEqual(why(execDecision(tape("gn", 20, 4), NOW, ex, ctx)), "ok");
     const axId = `follow|${IND}|tp4|sl1|tr0|h32|ax`;
     const ax = makeTape(axId, "follow", IND, wide.protect, "axis", ["AAA-USDT"], trades(axId, 20), [], []);
-    assert.equal(why(execDecision(ax, NOW, ex, ctx)), "blockActive");
+    // Block Active acts only on the plain Normal / Trailing lanes (16 Nov): the Axis ladder trades its own unit
+    assert.equal(why(execDecision(ax, NOW, ex, ctx)), "ok");
   });
 
   it("settings check: block.excludeRanges takes only the range tags and 'wide'", () => {
