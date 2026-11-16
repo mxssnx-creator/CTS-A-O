@@ -18,6 +18,41 @@ export const DONE_STAGE = "Realtime";
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : 0);
 
+const SIMULATION_WORK: Readonly<Record<number, string>> = {
+  [-2]: "settling order books", [-3]: "preparing Signal candidates", [-4]: "indexing Signal histories",
+  [-5]: "ranking Signals", [-6]: "evaluating configuration histories", [-7]: "processing Signal candidates",
+  [-8]: "ordering candidates", [-9]: "checking entry qualification", [-10]: "summarizing trades",
+  [-11]: "settling final orders", [-12]: "finishing candidate histories", [-13]: "ordering Signal candidates",
+  [-14]: "selecting qualified sets", [-15]: "evaluating Signals", [-16]: "evaluating hedge qualification",
+  [-17]: "advancing candidate entries",
+  [-18]: "auditing strategy coverage", [-19]: "counting own Last-N samples",
+  [-20]: "auditing persistent stage readiness",
+};
+
+export function simulationWorkLabel(value: number): string {
+  return value >= 0 ? "completed simulation step" : SIMULATION_WORK[value] ?? "evaluating strategy histories";
+}
+
+/** Long intra-hour work updates its label, never masquerading as another completed trading hour. */
+export function simulationProgress(
+  steps: number,
+  hours: number,
+  validation: string,
+  publish: (completed: number, label: string) => void,
+  clock: () => number = () => performance.now(),
+): (value: number) => void {
+  let completed = 0, nextLabelAt = -Infinity;
+  return (value) => {
+    if (!Number.isFinite(value)) return;
+    const now = clock();
+    if (value < 0 && now < nextLabelAt) return;
+    if (value >= 0) completed = Math.min(steps, completed + 1);
+    nextLabelAt = now + 500;
+    publish(completed, `${hours}h sim · completed intervals ${completed}/${steps} · ${validation}` +
+      (value < 0 ? ` · ${simulationWorkLabel(value)}` : ""));
+  };
+}
+
 /**
  * Overall fraction of the job: the stage's span scaled by its own fraction, never below `prev` (a job's bar only
  * moves forward). A job without a backfill batch (a compute on new bars) spreads over the whole bar instead of

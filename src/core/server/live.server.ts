@@ -11,6 +11,7 @@ import { roundTripCostFromFees } from "../model-cost.ts";
 //  - SL/TP are priced from a fresh ticker; if protection cannot be placed, the position is closed at market
 //  - own stop/target orders left behind on a flat symbol are cancelled
 import { sizingSettings, unitNotional } from "../sizing.ts";
+import { isProcessingOnly } from "../processing-only.ts";
 import { createHash } from "node:crypto";
 import { isSignalInd } from "../indications/registry.ts";
 import { signalActiveHas } from "../signals.ts";
@@ -2938,6 +2939,7 @@ export function* laneContributionsGen(
   let seen = 0;
   for (const p of positions) {
     if (++seen % LANE_SLICE === 0) yield;
+    if (p.blockPredecessor) continue;
     // Preserve the immutable position identity used by laneStringsOf's hot-path cache.
     // Projection is read-only; legacy wide Signal stops are bounded without cloning every lane per tick.
     const stop = isBoundedTrailingPosition(p) ? signalStopAt(p.entry, p.side, p.stop, positionTrailMax(p)) : p.stop;
@@ -4938,6 +4940,16 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (l.id && suppressed[l.id]) {
         f.suppressed++;
         return false;
+      }
+      // A virtual Main/Real entry may advance its own history but must not add exposure. If a prior version
+      // already attributed a venue parent to this exact identity, keep its existing protection instead of
+      // flattening it merely because this version now recognizes the processing-only stage.
+      if (isProcessingOnly(l)) {
+        const own = !!l.id && held.has(`${l.sym}|${l.side}`) &&
+          onExchangeLanes.has(l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }));
+        if (own) { promotionHeldKeys.add(`${l.sym}|${l.side}`); f.sent++; }
+        else { notSent++; f.notSent++; }
+        return own;
       }
       if (
         maxChase > 0 &&

@@ -15,7 +15,8 @@ parentPort.on('message', m => {
   let n = 0;
   const timer = setInterval(() => {
     n++;
-    parentPort.postMessage({ id: m.wrongId ? m.id + 1 : m.id, progress: m.stagnant ? 1 : n, total: 1000 });
+    parentPort.postMessage({ id: m.wrongId ? m.id + 1 : m.id, progress: m.stagnant || m.workOnly ? 1 : n, total: 1000,
+      ...(m.workOnly ? { workDone: m.stagnant ? 1 : n, work: -6 } : {}) });
     if (m.finish && n === 7) { clearInterval(timer); parentPort.postMessage({ id: m.id, ok: true }); }
   }, 100);
 });
@@ -33,6 +34,9 @@ const run = async (message, hard) => {
 const timedOut = e => isWorkerTimeout(e) && /worker timed out/.test(String(e));
 try {
   assert.equal((await run({ finish: true }, 2000))[0].ok, true);
+  assert.equal((await run({ finish: true, workOnly: true }, 2000))[0].ok, true);
+  await assert.rejects(run({ workOnly: true, stagnant: true }, 1500), timedOut);
+  await assert.rejects(run({ workOnly: true }, 1200), timedOut);
   await assert.rejects(run({ finish: true }), timedOut);
   await assert.rejects(run({ stagnant: true }, 1500), timedOut);
   await assert.rejects(run({ wrongId: true }, 1500), timedOut);

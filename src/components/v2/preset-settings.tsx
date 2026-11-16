@@ -502,7 +502,7 @@ export function PresetSettingsDialog(props: {
                   onChange={(e) => setW("mode", e.target.value)}
                 >
                   <option value="durable">durable winners</option>
-                  <option value="hourly">re-rank hourly</option>
+                  <option value="hourly">re-rank at evaluation</option>
                   <option value="fixed">fixed set</option>
                 </select>
               </Field>

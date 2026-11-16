@@ -1,3 +1,82 @@
+## 16 November 2026 — persistent stage enabled; Signal Main 15 (replays in progress)
+
+User explicitly requested the formerly disabled persistent-stage path and Signal Main Last-15,
+then asked for a full run of the branch active two days earlier. Fresh count defaults now set
+`byRange.sig.main=15`; saved explicit range/config policies retain precedence. The new offline
+12-symbol 12h-prehistory +12h-trading replay explicitly sets `processedStages` Main/Real=12/12,
+Signal Main=15, Ordinary off, Block Active and Axis on, with an isolated durable paper checkpoint.
+Its preflight matches every other previous effective setting and the same feed/cost. The native
+UI switch remains an explicit per-desk setting; no live account or persisted desk was modified.
+
+Frozen replay application source `e7fa04b364069b063766395ae9d740e72bf6add7`, tree
+`c1423307b319b2251d809c87edc287aadbf6f251`. Later local commit `6f3d8eac` strengthens
+only tests; `5f6112c4` closes the temporary checkpoint timer cleanly after offline replay.
+The canonical 64-file suite passes807/807 after a retained first attempt exposed an omitted
+settings-completeness test row. Production build/typecheck pass. Full and incremental paper
+fixtures each exercise27 causal entries:12 Main predecessors,12 Real predecessors, one
+Active Block precursor, then raised executions; no precursor may be funded or promoted.
+
+The actual main revision active 14 November CET is `c699c0108359dcaac5fd729694f6b1082e24a585`.
+It is running the same feed, Signal Main15, stage windows12/12 and toggles. Its code predates
+`processed-orders`, so it necessarily uses `accepted-orders`; its Micro absolute floor inputs
+are adjusted to match actual distance values and newer SL metadata is absent. The original
+runner is memory-only for its paper adapter. Two failed preflights (including one harmless
+binary rounding difference) are retained before the verified old-source preflight/run.
+Synthetic 160-history/30-forward cases show the old accepted-order Block Active path processes
+0 predecessors, while the current processed-order path processes30 and executes5 after the
+12+12+1 causal warmup (six cases across three Block modes and both directions). This is a
+mechanical test with winning synthetic returns, not a market-profitability comparison.
+
+Both market jobs are offline and still running. Their source/protocol/log/receipts are under
+`stage-enabled-20261116` in the shared workspace. Until they complete, latest measured hourly
+post-Base remains0/246,345 (0%) on16 October09:00–21:00 UTC, with historical/funded PF
+unavailable. The earlier tape audit finds216/4,184,856 Signal exact contexts reach Last-15
+by the endpoint (180/174,369 configs with at least one); none reach15 at start. Readiness
+is not a passing PF or funded execution. All live engines and monitoring remain stopped.
+GitHub publication remains blocked by the earlier automatic approval-review rejection;
+do not bypass via another route.
+
+## 16 November 2026 — independent stage/async follow-up (offline verification complete)
+
+Final work is isolated on `fix/independent-stage-release-20261116`, based on the exact source of PR #286.
+See [independent-stage verification](verification/independent-stage-async-20261116.md) for the reproduced
+Block/persistent-stage deadlock, runtime reevaluation/denominator fixes, immutable-history optimization
+and owned-worker coverage/progress changes. Application source`f1019c59` passes804 tests, typecheck
+and production/core-worker build; test-only cleanup`908076f2` passes8 focused checks. Changed-file
+lint has0 errors/8 existing warnings. Original failed reproductions and launcher failure remain archived.
+The sealed replay source`5da5c96f` completes12 symbols ×12h prehistory +12h trading,77/77 integrity
+checks. October16 09:00–21:00 UTC has0/246,345 validated(0%) every hour; historical passing and
+funded PF are unavailable, funded positions/orders0 opened/settled/held. Own maximum31 at start/62
+at end remains below range Last-75. All candidate hashes and hourly outcomes match the prior
+independent profile. No profitability or optimum-default claim follows.
+
+Measured cold compute1,998.94s/end-to-end2,274.69s/peakRSS2,405 decimalMB/maxloop2,965.37ms.
+History fixture timing1,894.69→665.07ms/RSS273.19→187.79MB has identical800/800 decisions, PF20;
+no funded fixture execution. Warm20k-position mark/protection p95204.66ms excludes selection,
+DB/network and worker startup. Full500ms-cycle acceptance and complete venue parity remain open.
+Live engines and monitoring remain stopped. GitHub publication of the new branch is blocked by
+automatic approval review for unverified explicit authorization to disclose code/history; do not
+bypass via another publication route. New commits are local only. PR#286's earlier merge request
+was unresolved at last check; no duplicate merge or force update of main was issued.
+
+## 2026-11-16 — evaluation provenance, simulation progress and scheduling
+
+PR #286 repairs stale ownership/evaluator provenance, disjoint-window statistics,
+progress-phase reporting and repeated unselected-history reloads. Exact application
+source863dda46/treee5569a46 passes all three required CI workflows (679engine +118report
+cases in policy; dev/production desktop/mobile inspected). See
+[verification](verification/evaluation-progress-performance-20261116.md) for source seals,
+November14 comparisons, all replay timings and remaining limits.
+
+The requested12symbols/12h prehistory+12h trade replay completes. Final hourly
+post-Base0/246,345 (0%) at every decision; passing/funded PF unavailable, funded
+orders and positions0/0/0. The unchanged Last-75 gate exceeds the maximum62 own
+closes in the full24h fixture. November14 gate comparisons agree; later-qualification
+and replaced-ownership synthetic defects are repaired without gate reductions.
+Independent Ordinary-off Block/Axis controls pass, but the market cohort is empty.
+No optimal economic defaults, complete500ms live cycle or venue profitability is
+established. No live engines, monitoring or accounts started. Draft#219 remains separate.
+
 ## 2026-11-15 — historical request-parent retention
 
 The bounded follow-up to #281 checkpoints the original exact request parents and
@@ -5266,3 +5345,97 @@ four stale failing expectations and three intentional slow skips; all four affec
 Compute default/independent1,004.0/986.9s, peak recorded RSS2,388/2,382MiB, worst foreground636/819ms.
 The sub-500ms target, profitable independent market cohorts, stable positive post-Base/execution PF, optimum
 sample counts and complete venue parity remain unestablished. Keep all live engines and monitoring stopped.
+
+## 16 November 2026 — persistent stage accounting and Signal Main window
+
+Offline bounded market replay explicitly enables processed stages with 12 own validated and 12 own Real closes,
+Signal Main 15 and isolated temporary durable paper state; it does not change or start a saved desk. The modeled
+replay starts its processed book empty at the trading start. Prehistory supports the separately evaluated Base and
+config gates but cannot manufacture processed-stage evidence. The durable paper runtime is separately exercised
+through all stages on synthetic exact-config/symbol/side long and short sequences; a replay endpoint checkpoint
+alone is not evidence of continuous native paper admissions or venue fills.
+
+Older saved factory Main-40 range maps now pick Signal Main 15 when Signal had no explicit Main override. Explicit
+Signal/config overrides and custom global Main values are preserved. Existing saved desks take effect only when
+loaded/updated; no running desk is modified by this code change.
+
+An ordinary or Signal post-Base/validated paper parent previously received an allocation even though only Active
+may be funded. It now remains in its durable learning book with zero funding, is excluded from funded paper closes,
+owned allocations and open-order counters, and cannot add live exposure. Existing exact venue attribution remains
+under protection. A Block Active predecessor is also processing-only. The Overview separates processing-only open
+orders from funded orders. Prior incorrectly recorded rows do not carry enough stage provenance for a safe automatic
+historical rewrite; these fixes do not certify old paper PF records.
+
+The prior independent market profile attributed substantial sampled CPU to history decompression and GC. The
+decoded-history cache remains 64 MiB by default, with a bounded `CTS_CORE_HISTORY_CACHE_MB` override of 1–1024 MiB;
+restored workers share that configured cache budget across source stores, aside from each currently accessed oversized
+history. A 110.18 MiB synthetic working set reread all 1,100 tapes on each scan with a 64 MiB limit; a 192 MiB limit
+retained 110.18 MiB and needed no rereads on the next two scans, with identical checksums. This is an isolated cache
+fixture, not a market or live-cycle benchmark. Larger caches use more memory; no full-cycle latency guarantee follows.
+
+The earlier completed 12-symbol/12+12h market cohort remains 0/246,345 post-Base decisions (0%), historical passing
+PF unavailable, no funded orders and execution PF unavailable. A fresh stage-enabled Signal-15 replay and November 14
+branch comparisons are in progress; their market outcomes must be recorded separately after they finish. No account,
+exchange, live engine or monitoring is started by these tests.
+
+### Continuous qualification, not hourly qualification
+
+The operator clarified that hourly is an outcome-reporting interval, not an instruction to delay evaluation. A
+reproduced Last-12 fixture had eleven prehistory closes, a twelfth close at minute 30 and a candidate at minute 40:
+the prior simulation kept the set out until a later hourly seat refresh. Both November 14 source versions took no
+entries at all after the initially rejected snapshot in this fixture. The repaired independent count/config-seat
+path wakes on the earliest own close that could provide its full required sample, then checks actual PF, costs,
+range, symbol and direction at the candidate's exact entry clock. Same-time closes cannot qualify the entry, and
+unknown/losing histories remain failing evidence. Scheduling inspects future close timestamps only as a lower bound;
+it does not read future returns or validate earlier entries. Time-stamped intrahour qualifications are recorded
+separately from the hourly reporting snapshots. The complete two-window 12/12 modeled chain reaches Active within a
+single hour in synthetic Normal and Axis tests, both directions; this is not a financial performance result.
+
+Full paper selection now uses the actual completed snapshot timestamp rather than rounding back to the hour, and an
+independent entry within a reporting hour is checked against its own entry-time proof instead of a stale hourly seat.
+Count-based paired and portfolio-limited modeled seats also re-rank at their entry clocks, reusing the ranking until a
+relevant own close. Full paper selection can recheck those entry-time rankings. Explicit frozen cohorts remain frozen,
+and sub-hour seat lookup honors its configured step. Inverted/probe modes and fast-path unselected discovery do not
+yet have an equivalent continuously updated book; do not claim that all live lanes now refresh on each close. The
+current stage-enabled 12-symbol replay predates these continuous
+changes and passed 0/246,345 post-Base checks at each hourly snapshot, with no funded execution. Its empty paper
+checkpoint and a subsequent cleanup error do not establish populated durable paper replay or venue parity.
+
+When the fast cohort is empty, a new closed bar now requests another serialized research cycle instead of waiting
+for the periodic research timer. The same bar alone cannot trigger a loop, and existing generation/memory guards
+remain in force. This is a recovery path, not a substitute for a continuously maintained, bounded unselected-candidate
+book: a large full research cycle can still be slow and can consume substantial CPU.
+
+The Signal activation scan now skips scoring an exact context when its own settled-close count cannot satisfy
+the configured Main, Real, Entry and applicable range windows. This is only a necessary-sample check: a mature
+context still runs the same PF, costs, loss, block and ranking gates. A 600-tape synthetic fixture with 95% immature
+contexts returned identical 720 active contexts and reduced the measured median scan time from about 355 ms to
+192 ms under concurrent load; it is not a full-cycle benchmark. A separate 56-case comparison covered losing
+returns, disjoint block windows, range/config overrides, duplicate symbol slots and strict close boundaries.
+
+Settings now describe the count-based Exit threshold as a winning-close share and describe its validation slices
+as partitions of the context's most recent closes. In explicitly selected legacy time-window mode the older
+green-active-hour description remains accurate; that mode still retains its historical hourly consistency gate.
+The re-ranking and pair-seat labels no longer imply that the count-based path waits for an hourly progress cycle.
+
+A further whole-tape bound skips Signal ranking when the tape's total close count is below one of the context's
+required windows. It still validates the underlying history, recalculates the bound after policy/history changes,
+and never suppresses a potentially mature context. In the completed market tape inventory 160,355 of 174,369
+Signal tapes have fewer than 15 closes across the entire captured history; this is an upper bound on readiness,
+not a passing count. A separate 6,000-tape synthetic fixture with a 1 MiB rejection cache produced the same
+300 active contexts in both versions; median scan time under contention changed from about 2,217 ms to 473 ms against the immediately preceding code.
+Sixty-four mixed-policy comparisons matched, and the corrupt-history and replacement-history tests passed. These
+are scoped measurements; the attempted full-market replay predates this optimization and did not complete.
+
+After that replay was terminated by signal 9 under concurrent resource pressure, a systematic sample of every
+35th Signal tape from the earlier completed market run was checked independently. All 4,982 sampled tapes used
+their recorded close times, symbols, directions and net returns. At five historical clocks, the old and new scans
+selected identical (empty) active sets. With a 1 MiB rejection cache, their median wall times were about 362 ms
+and 71 ms respectively. This is a Signal-activation microbenchmark, not a completed staged trade replay or PF.
+
+The Base worker now publishes approximately 200 completed-work updates per partition instead of 20, with the
+runtime's existing 250 ms UI coalescing. A 240-combination regression verified monotonic updates, the final count,
+and identical calculated results with and without the callback. A single unusually expensive combination can still
+take time; this change does not claim an instantaneous Base cycle or change the economic calculations.
+Real-stage status now calls completed slices "intervals" and separately names the evaluation work in progress;
+these labels are reports of completed work, not an instruction to defer entry qualification to an hourly boundary.

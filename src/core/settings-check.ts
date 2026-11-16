@@ -120,7 +120,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     if (s.gates.warmup !== undefined && typeof s.gates.warmup !== "boolean")
       throw new Error("sample warm-up (gates.warmup): true or false");
     if (s.gates.minGreen !== undefined)
-      num(s.gates.minGreen, 0, 1, "minimum hourly success (green-hour share)");
+      num(s.gates.minGreen, 0, 1, "minimum positive share");
     if (s.gates.stepPf !== undefined) {
       const p = s.gates.stepPf;
       if (!p || typeof p !== "object" || Array.isArray(p)) throw new Error("step PF: settings object required");
@@ -342,7 +342,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     num(e.minEntries, 5, 1000, "historic exit fit entries");
     num(e.minValidationTrades, 2, 500, "historic exit validation closes");
     num(e.minPf, 1.05, 10, "historic exit validation PF");
-    num(e.minGreenHourShare, 0, 1, "historic exit minimum green-hour share");
+    num(e.minGreenHourShare, 0, 1, "historic exit minimum positive share");
     num(e.maxDdr, 0, 10, "historic exit max drawdown / net ratio");
     num(e.holdH, 0.5, 96, "historic exit maximum hold (hours)");
     num(e.maxConfigsPerPair, 6, 512, "historic exit configs per pair");

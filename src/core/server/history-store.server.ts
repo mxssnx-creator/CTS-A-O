@@ -18,7 +18,14 @@ import { inTapeLayout, tapeBytes, tapeViews, type ConfigTape } from "../sim/walk
 import { registerImmutableHistoryGeneration } from "../sim/immutable-history-generation.ts";
 
 const MiB = 1048576;
-export const HISTORY_CACHE_BYTES = 64 * MiB;
+/** Bound decoded history independently from the input-history budget; the operator may trade RAM for fewer rereads. */
+export function historyCacheBytes(value = process.env.CTS_CORE_HISTORY_CACHE_MB): number {
+  const mb = value === undefined ? 64 : Number(value);
+  if (!Number.isSafeInteger(mb) || mb < 1 || mb > 1024)
+    throw new Error("Invalid decoded history cache budget (1–1024 MiB)");
+  return mb * MiB;
+}
+export const HISTORY_CACHE_BYTES = historyCacheBytes();
 /** Bound automatic in-memory accumulation; this does not limit any historical sample. */
 export function historyMemoryBytes(): number {
   const value = Number(process.env.CTS_CORE_HISTORY_MEMORY_MB ?? 256);
@@ -272,7 +279,12 @@ export class TapeHistoryStore {
       !/^[0-9a-f]{64}$/.test(record.digest)
     )
       throw new HistoryStorageError("Invalid calculation history record");
-    const tape = { ...meta } as Stored;
+    // The symbol table is part of immutable ownership, just like the column bytes. Copy/freeze it so
+    // external metadata edits cannot silently reuse a previously verified generation.
+    const syms = [...meta.syms];
+    Object.freeze(syms);
+    record = Object.freeze({ ...record });
+    const tape = { ...meta, syms } as unknown as Stored;
     Object.defineProperty(tape, slot, { value: { store: this, record }, enumerable: false });
     Object.defineProperties(tape, descriptors);
     registerImmutableHistoryGeneration(tape, () => this.resource.closed ? undefined : this.derivedGeneration);
@@ -308,9 +320,15 @@ export class TapeHistoryStore {
           createHash("sha256").update(raw).digest("hex") !== record.digest
         )
           throw new Error("History checksum mismatch");
-        const buffer = new ArrayBuffer(record.bytes);
-        new Uint8Array(buffer).set(raw);
-        view = tapeViews(buffer, 0, record.n);
+        // Reuse a standalone decoded arena when aligned. A pooled or oversized Buffer still needs
+        // an exact copy, otherwise thousands of small histories retain unbudgeted allocator slabs.
+        if (raw.byteOffset === 0 && raw.buffer.byteLength === record.bytes)
+          view = tapeViews(raw.buffer, 0, record.n);
+        else {
+          const buffer = new ArrayBuffer(record.bytes);
+          new Uint8Array(buffer).set(raw);
+          view = tapeViews(buffer, 0, record.n);
+        }
         this.stats.reads++;
         while (this.cachedBytes + record.bytes > this.cacheLimit && this.cached.size) {
           const oldest = this.cached.keys().next().value!;
@@ -476,7 +494,7 @@ export function readHistoryManifest(path: string) {
         throw new HistoryStorageError("Unexpected extra calculation history");
       let store = stores.get(row.path);
       if (!store) {
-        // One shared book normally has one or two owners. The whole reader keeps at most 64 MiB of columns.
+        // One shared book normally has one or two owners. The whole reader shares the configured cache budget.
         const budget = Math.max(1, Math.floor(HISTORY_CACHE_BYTES / (stores.size + 1)));
         for (const previous of stores.values()) previous.setCacheLimit(budget);
         store = new TapeHistoryStore({ path: row.path, cacheBytes: budget });
@@ -522,12 +540,18 @@ export function describeStoredTape(tape: ConfigTape): StoredTapeDescriptor | nul
   const value = historyOf(tape);
   return value ? { path: value.store.path, record: value.record, meta: metadata(tape) } : null;
 }
-export function restoreStoredTapes(rows: readonly StoredTapeDescriptor[]) {
+export function restoreStoredTapes(rows: readonly StoredTapeDescriptor[], cacheBytes = HISTORY_CACHE_BYTES) {
+  if (!Number.isSafeInteger(cacheBytes) || cacheBytes < 1)
+    throw new HistoryStorageError("Invalid history cache budget");
   const stores = new Map<string, TapeHistoryStore>();
   try {
     const tapes = rows.map((row) => {
       let store = stores.get(row.path);
-      if (!store) stores.set(row.path, (store = new TapeHistoryStore({ path: row.path })));
+      if (!store) {
+        const budget = Math.max(1, Math.floor(cacheBytes / (stores.size + 1)));
+        for (const previous of stores.values()) previous.setCacheLimit(budget);
+        stores.set(row.path, (store = new TapeHistoryStore({ path: row.path, cacheBytes: budget })));
+      }
       return store.restore(row.meta, row.record);
     });
     return {

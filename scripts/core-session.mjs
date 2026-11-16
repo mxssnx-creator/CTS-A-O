@@ -25,6 +25,7 @@
 //   --record-feed f.json  keep the candles and tickers read (needs --end-at); --feed f.json replays them offline
 //   --evaluation-from ISO with --feed: older bars warm indicators only; performance entries start at this time
 //   --selection-hours H with --feed --end-at --evaluation-from: replay-only Base/config selection lookback override
+//   --paper-stage-state   isolated temporary durable paper-stage checkpoint for a bounded offline replay
 //   --live-since ISO with --feed: replay the causal post-Base modeled-execution PF gate from this window time
 //   --min-green R with the same replay bounds: replay-only minimum profitable-hour fraction for config selection
 //   --signal-progress    capture every Signal protection cell/stage and exact shared-book order allocations
@@ -44,8 +45,9 @@
 //   stops the variants below that much available memory. --replay-unit 2 / --replay-min 2: the replay's lane unit and
 //   exchange minimum (USD).
 import { profitFactorRatio } from "../src/core/metrics/profit-factor.mjs";
-import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { columnarStore, pruneFeed, RANK_TF, readStored, boundedReplayFeed, readSessionFeed } from "./lib/session-feed.mjs";
 import { closesIn } from "./lib/candles.mjs";
 import { captureSignalProgress } from "./lib/signal-progress.mjs";
@@ -101,6 +103,7 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "  --evaluation-from ISO   start of evaluated entries after prehistory",
       "  --selection-hours H     replay-only Base/config selection lookback",
       "  --replay-preload-all    load the entire offline universe before its first compute",
+      "  --paper-stage-state     isolate a durable paper-stage checkpoint for an offline replay",
       "  --signals on|off        include Signal processing",
       "  --desk FILE             apply a saved settings snapshot",
       "  --frozen-session FILE   verify a frozen runtime/feed protocol before scoring",
@@ -143,6 +146,11 @@ if (flag("replay-preload-all")) {
     throw new Error(
       "--replay-preload-all needs an offline --feed, explicit --end-at and --evaluation-from",
     );
+}
+if (flag("paper-stage-state")) {
+  const end = Date.parse(arg("end-at")), from = Date.parse(arg("evaluation-from"));
+  if (!arg("feed") || !Number.isFinite(end) || !Number.isFinite(from) || from >= end || arg("replay") || arg("render"))
+    throw new Error("--paper-stage-state needs an offline --feed, explicit --end-at and --evaluation-from");
 }
 /** min / max of a large array (spreading 100k+ values into Math.min / Math.max overflows the call stack) */
 const minOf = (xs) => xs.reduce((a, x) => (x < a ? x : a), Infinity);
@@ -294,7 +302,10 @@ async function coverageOf(rt, s) {
     if (sessionOwnRangePassed(r, s.gates)) a.rangePass++;
   }
   const seated = new Set();
-  for (const st of rt.sim?.steps ?? []) for (const id of st.real ?? []) seated.add(id);
+  for (const st of rt.sim?.steps ?? []) {
+    for (const id of st.real ?? []) seated.add(id);
+    for (const row of st.continuousReal ?? []) seated.add(row.id);
+  }
   const executedIds = new Set();
   for (const t of rt.sim?.trades ?? []) executedIds.add(t.cfg);
   const exitModel = (p) => (p?.atr ? "atr" : (p?.trail ?? 0) > 0 ? "trailing" : "fixed");
@@ -664,8 +675,9 @@ async function runEngine() {
       : cut;
     return boundedReplayFeed(fetchHistory, fetchKlines, cut, rankingAt);
   }
+  const paperStateDir = flag("paper-stage-state") ? mkdtempSync(join(tmpdir(), "cts-session-stage-")) : null;
   const rt = new CoreRuntime(
-    new CoreDb(":memory:"),
+    new CoreDb(":memory:", paperStateDir ? { statePath: join(paperStateDir, "state.json") } : {}),
     {
       symbols,
       ...(tacticsMode === "all"
@@ -1333,6 +1345,25 @@ async function runEngine() {
       [...m.entries()].map(([k, c]) => [k, { ...c, pf: profitFactor(c.gp, c.gl) }]),
     );
   const s = rt.settings;
+  const processedModel = sim.processedStages ? {
+    basis: sim.processedStages.basis,
+    at: sim.processedStages.at,
+    coverageScope: sim.processedStages.coverageScope,
+    seededFromCandidates: sim.processedStages.seededFromCandidates,
+    validation: sim.processedStages.validation,
+    real: sim.processedStages.real,
+    setsWithActivity: sim.processedStages.sets.length,
+    orders: Object.fromEntries(["postBase", "validated", "active"].map(stage => [stage,
+      sim.processedStages.sets.reduce((a, s) => ({ opened: a.opened + s.stages[stage].openedOrders,
+        closed: a.closed + s.stages[stage].closedOrders, held: a.held + s.stages[stage].heldOrders }),
+      { opened: 0, closed: 0, held: 0 })])),
+  } : null;
+  const paperCheckpoint = rt.db.kvGet("processedNativePaperV1");
+  const paperStage = !rt.wf.processedStages ? { state: "disabled" } : !paperStateDir
+    ? { state: "unavailable", reason: "No isolated durable paper-stage state was requested" }
+    : !paperCheckpoint ? { state: "unavailable", reason: "No persistent paper-stage checkpoint was published" }
+    : { state: "available", basis: paperCheckpoint.book.basis,
+        sets: paperCheckpoint.book.sets.length, open: paperCheckpoint.book.open.length };
   const result = {
     at: new Date().toISOString(),
     runSeconds: Math.round((Date.now() - t0) / 1000),
@@ -1486,8 +1517,10 @@ async function runEngine() {
     // the validation checks of every step (--wf '{"recordValidation":true}'): per hour, the configs that reached the check
     validation: (sim.steps ?? [])
       .filter((x) => x.checks)
-      .map((x) => ({ t: x.t, real: x.real, checks: x.checks })),
+      .map((x) => ({ t: x.t, real: x.real, continuousReal: x.continuousReal ?? [], checks: x.checks })),
     validationSummary: (sim.steps ?? []).map((x) => ({ t: x.t, summary: x.validationSummary ?? null })),
+    // Actual within-step decisions are separate from hourly snapshot totals and retain their own timestamps.
+    continuousSeats: (sim.steps ?? []).flatMap((x) => x.continuousReal ?? []),
     // every step per range: tapes, configs validated, candidates, orders taken (the continuity of each range)
     stepsByRange: (sim.steps ?? []).map((x) => ({ t: x.t, byRange: x.byRange ?? null })),
     // the tape trades of every config that was validated at a step or executed (measurement: the lookback and the
@@ -1499,6 +1532,7 @@ async function runEngine() {
       const want = new Set([
         ...(sim.trades ?? []).map((x) => x.cfg),
         ...(sim.steps ?? []).flatMap((x) => x.real ?? []),
+        ...(sim.steps ?? []).flatMap((x) => (x.continuousReal ?? []).map((row) => row.id)),
       ]);
       return (rt.tapes ?? [])
         .filter((tp) => flag("tape-trades-all") || want.has(tp.id))
@@ -1524,6 +1558,7 @@ async function runEngine() {
     closes,
     presets: rt.db.kvGet("presetSims")?.presets ?? {},
     engine: {
+      processedStages: { policy: rt.wf.processedStages ?? null, model: processedModel, paper: paperStage },
       computeMs: rt.status.lastComputeMs,
       baseEvaluated: rt.status.baseEvaluated,
       basePassed: rt.status.basePassed,
@@ -1638,7 +1673,15 @@ async function runEngine() {
     clearInterval(rssT);
     rt.dispose();
     const { closePool } = await import("../src/core/server/pool.server.ts");
-    await closePool();
+    try { await closePool(); }
+    finally {
+      if (paperStateDir) {
+        // Clear CoreDb's pending durable-state timer before closing/removing the isolated store.
+        rt.db.flushState();
+        rt.db.db.close();
+        rmSync(paperStateDir, { recursive: true, force: true });
+      }
+    }
   }
 }
 

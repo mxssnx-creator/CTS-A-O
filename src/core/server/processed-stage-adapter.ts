@@ -172,12 +172,13 @@ export class NativeProcessedStageAdapter {
     side: 1 | -1,
     at: number,
     minPf: number,
+    allowActive = true,
   ): ProcessedOpen {
     const id = entryId(tp.id, symbol, side, at);
     if (this.open.has(id) || this.settled.has(id))
       throw new Error("duplicate native processed-stage parent");
     const identity = this.identity(tp, symbol, side, minPf);
-    const opened = this.book.acceptPostBase(identity, id, at, { ...this.policy, minPf });
+    const opened = this.book.acceptPostBase(identity, id, at, { ...this.policy, minPf }, allowActive);
     this.open.set(id, opened);
     return structuredClone(opened);
   }

@@ -32,7 +32,9 @@ export function* lastNSamplesGen(tapes: readonly ConfigTape[], at: number, o: Wa
   if (!Number.isFinite(at)) throw new Error("Invalid sample clock");
   const groups = new Map<string, LastNSamples["rows"][number]>();
   let configs = 0, heldOnly = 0, work = 0;
+  let sliceAt = performance.now();
   for (const tp of tapes) {
+    if (performance.now() - sliceAt >= 8) { yield; sliceAt = performance.now(); }
     if (tp.heldOnly) { heldOnly++; continue; }
     configs++;
     const windows = sampleWindowsForTape(tp, o);
@@ -40,26 +42,31 @@ export function* lastNSamplesGen(tapes: readonly ConfigTape[], at: number, o: Wa
     const countMode=!!o.gates.positionWindows;
     const historyFrom = countMode ? -Infinity : at - history.hours * 3_600_000;
     const cap = Math.max(0, ...Object.values(windows));
-    const own = new Map<string, { recent: number[]; historyN: number; historyKnown: number }>();
-    for (const sym of new Set(tp.syms)) for (const side of [1, -1])
-      own.set(JSON.stringify([sym, side]), { recent: [], historyN: 0, historyKnown: 0 });
-    let remaining = cap > 0 ? own.size : 0;
+    const symbols = [...new Set(tp.syms)], slots = new Map(symbols.map((sym, i) => [sym, i]));
+    const canonical = tp.syms.map(sym => slots.get(sym)!);
+    const own = symbols.flatMap(() => [1, -1].map(() => ({ recent: [] as number[], historyN: 0, historyKnown: 0 })));
+    let remaining = cap > 0 ? own.length : 0;
     let corrupt = countMode&&!positionTapeValid(tp), nextExit = Infinity;
-    if (!tp.carried) for (let i = tp.n - 1; i >= 0; i--) {
-      if ((++work & 4095) === 0) yield;
-      const exit = tp.exitT[i];
+    // Capture each immutable column once. Stored accessors may otherwise reopen/decompress the same
+    // history for every scalar lookup; only this bounded tape is retained across cooperative yields.
+    const exits = tp.exitT, returns = tp.r, symbolSlots = tp.symI, sides = tp.side;
+    if (!tp.carried && !corrupt) for (let i = tp.n - 1; i >= 0; i--) {
+      if ((++work & 4095) === 0 && performance.now() - sliceAt >= 8) { yield; sliceAt = performance.now(); }
+      const exit = exits[i];
       if (!Number.isFinite(exit) || exit > nextExit) { corrupt = true; break; }
       nextExit = exit;
       if (!(exit < at)) continue;
       if ((countMode || exit < historyFrom) && !remaining) break;
-      const rows = own.get(JSON.stringify([tp.syms[tp.symI[i]], tp.side[i]]));
+      const direction = sides[i], slot = canonical[symbolSlots[i]];
+      const rows = (direction === 1 || direction === -1) && slot !== undefined
+        ? own[slot * 2 + (direction === 1 ? 0 : 1)] : undefined;
       if (!rows) { corrupt = true; break; }
       if (exit >= historyFrom) {
         rows.historyN++;
-        if (Number.isFinite(tp.r[i])) rows.historyKnown++;
+        if (Number.isFinite(returns[i])) rows.historyKnown++;
       }
       if (rows.recent.length < cap) {
-        rows.recent.push(tp.r[i]);
+        rows.recent.push(returns[i]);
         if (rows.recent.length === cap) remaining--;
       }
     }
@@ -70,7 +77,7 @@ export function* lastNSamplesGen(tapes: readonly ConfigTape[], at: number, o: Wa
       const key = JSON.stringify([tp.kind, range, source, window, n, historyH]);
       let row = groups.get(key);
       if (!row) groups.set(key, row = { ...empty(), kind: tp.kind, range, source, window, n, historyH });
-      for (const values of own.values()) {
+      for (const values of own) {
         row.contexts++;
         if (n <= 0) { row.disabled++; continue; }
         if (tp.carried || corrupt) { row.unknown++; continue; }
@@ -83,7 +90,6 @@ export function* lastNSamplesGen(tapes: readonly ConfigTape[], at: number, o: Wa
         else row.unknown++;
       }
     }
-    if ((configs & 255) === 0) yield;
   }
   const rows = [...groups.values()];
   for (const row of rows) {

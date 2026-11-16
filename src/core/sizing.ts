@@ -1,3 +1,5 @@
+import { isProcessingOnly, type ProcessingOwnership } from "./processing-only.ts";
+
 // Order sizing. equityPct (default legacy key): every order's unit notional is a fixed share of the account balance at
 // its entry — realized balance, compounding from the starting balance, so a drawdown shrinks the next orders and a profit grows
 // them. fixed: every order's unit notional is the same amount. The Block volume multiplies the unit (the 8× stack
@@ -49,8 +51,8 @@ export const orderKey = (x: { cfg: string; sym: string; side: number; entryT: nu
  * that exited at or before it count), each exit adds r × unit. Open orders get their unit the same way.
  */
 export function sizeBook(
-  trades: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; exitT: number; r: number }>,
-  open: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number }>,
+  trades: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; exitT: number; r: number } & ProcessingOwnership>,
+  open: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number } & ProcessingOwnership>,
   opt: { balance: number; sizing: SizingSettings; fixedNotional: number },
 ): SizedBook {
   const g = sizeBookGen(trades, open, opt);
@@ -62,8 +64,8 @@ export function sizeBook(
 
 /** sizeBook in slices: yields every 20,000 events (a desk's book is 100k+ orders: 0.3 s in one piece). */
 export function* sizeBookGen(
-  trades: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; exitT: number; r: number }>,
-  open: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number }>,
+  trades: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; exitT: number; r: number } & ProcessingOwnership>,
+  open: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number } & ProcessingOwnership>,
   opt: { balance: number; sizing: SizingSettings; fixedNotional: number },
 ): Generator<number, SizedBook> {
   // events: exits before entries at the same instant (a close frees its result before the next entry), closed
@@ -73,13 +75,14 @@ export function* sizeBookGen(
   let pnl = 0;
   const step = (kind: number, isOpen: boolean, i: number) => {
     if (kind === 1) {
-      const u = unitNotional(opt.sizing, opt.balance + pnl, opt.fixedNotional);
+      const u = isProcessingOnly(isOpen ? open[i] : trades[i]) ? 0
+        : unitNotional(opt.sizing, opt.balance + pnl, opt.fixedNotional);
       if (isOpen) units.set(orderKey(open[i]), u);
       else {
         unitOf[i] = u;
         units.set(orderKey(trades[i]), u);
       }
-    } else pnl += trades[i].r * unitOf[i];
+    } else if (!isProcessingOnly(trades[i])) pnl += trades[i].r * unitOf[i];
   };
   const keys = packedEvents(trades, open);
   if (keys) {

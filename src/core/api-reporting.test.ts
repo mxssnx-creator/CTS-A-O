@@ -111,6 +111,32 @@ test("Overview, Sim and Trading keep a position open until its last independentl
   assert.equal(closed.orderCounts.openedPositions, 1);assert.equal(closed.orderCounts.openOrders, 0);
 });
 
+test("Overview and Trading separate processing-only entries from funded open orders", async () => {
+  const r = fixture();
+  const base = { ...r.sim!.trades[0], entryI: 0, stop: 95, target: 110, peak: 100, trailOn: false, mtm: .2, vol: 1, level: 0 };
+  r.paper.positions = [
+    { ...base, sym: "MAIN-USDT", processedStage: "postBase" },
+    { ...base, sym: "REAL-USDT", processedStage: "validated" },
+    { ...base, sym: "BLOCK-USDT", processedStage: "active", blockPredecessor: true },
+    { ...base, sym: "ACTIVE-USDT", processedStage: "active" },
+    { ...base, sym: "LEGACY-USDT" },
+  ];
+  r.paper.units = undefined;
+  r.paper.trades = [{ ...r.sim!.trades[0], r: NaN, processedStage: "validated" }];
+  const overview = await coreOverviewData(connInput()) as Any;
+  const trading = await coreTradingData(connInput()) as Any;
+  assert.equal(overview.paper.positions, 2);
+  assert.deepEqual(overview.paper.book, { positions: 2, orders: 2, long: 2, short: 0 });
+  assert.deepEqual(overview.paper.processing, { positions: 3, orders: 3, long: 3, short: 0, postBase: 1, validated: 1, block: 1 });
+  assert.equal(overview.paper.balance, r.settings.paperBalance, "a virtual historical row cannot create realized P&L");
+  assert.deepEqual(trading.processing, overview.paper.processing);
+  assert.deepEqual(trading.book, overview.paper.book);
+  assert.deepEqual(trading.positions.map((p: Any) => p.sym).sort(), ["ACTIVE-USDT", "LEGACY-USDT"]);
+  assert.equal(trading.orderCounts.openOrders, 2);
+  assert.equal(trading.orderCounts.settledOrders, 0);
+  assert.equal(trading.balance, r.settings.paperBalance);
+});
+
 test("closed Main PF matches its exact execution cohort while endpoint losses stay in separate marks", async () => {
   const r = fixture();
   const held = { ...r.sim!.trades[0], cfg: r.sim!.trades[0].cfg + "|held",

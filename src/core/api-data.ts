@@ -8,8 +8,17 @@ import { statsOf, modeledUnitStatsOf as unitStatsOf } from "./metrics/stats.ts";
 import { returnGroup, modeledReturnReport as unitReturnReport, unitStatsReport, type ReturnStatsReport } from "./reporting-stats.ts";
 import { runBlocks, runStable, type WalkForwardResult } from "./sim/walkforward.ts";
 import { hasCompleteAccountMark, hasCompleteOwnership } from "./account-mark.ts";
+import { isProcessingOnly, type ProcessingOwnership } from "./processing-only.ts";
 
 type ReturnGroup = ReturnType<typeof returnGroup>;
+function paperOpenPartitions<T extends ProcessingOwnership & { sym: string; side: number }>(positions: readonly T[]) {
+  const funded: T[] = [], processing: T[] = [];
+  for (const p of positions) (isProcessingOnly(p) ? processing : funded).push(p);
+  return { funded, processing: { ...openBook(processing),
+    postBase: processing.filter(p => p.processedStage === "postBase").length,
+    validated: processing.filter(p => p.processedStage === "validated").length,
+    block: processing.filter(p => p.blockPredecessor).length } };
+}
 type EffectiveReturnReport = {
   n: number;
   pf: number | null;
@@ -325,6 +334,7 @@ export async function coreStatusData(data: ReturnType<typeof connInput>) {
 
 export async function coreOverviewData(data: ReturnType<typeof connInput>) {
   const r = await rt(data.conn);
+  const paperOpen = paperOpenPartitions(r.paper.positions);
   const db = r.db;
   const sim = r.sim;
   const primary = sim ? primarySimSummary(sim) : null;
@@ -382,8 +392,9 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
     paper: {
       selected: r.paper.selected,
       eligible: r.paper.eligible,
-      positions: r.paper.positions.length,
-      book: openBook(r.paper.positions),
+      positions: paperOpen.funded.length,
+      book: openBook(paperOpen.funded),
+      processing: paperOpen.processing,
       equity: r.paper.equity,
       // the realized balance, from the same reader as Trading's (paperRealizedOf)
       balance: r.settings.paperBalance + (await paperRealizedOf(r)).realized,
@@ -455,7 +466,7 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
   const indOf = (cfg: string) => cfg.split("|")[1] ?? "";
   for (const t of r.sim?.trades ?? []) row(lab(indOf(t.cfg))).trades.push(t);
   for (const p of r.sim?.openAtEnd ?? []) row(lab(indOf(p.cfg))).simOpen.push(p);
-  for (const p of r.paper.positions) row(lab(indOf(p.cfg))).open.push(p);
+  for (const p of r.paper.positions) if (!isProcessingOnly(p)) row(lab(indOf(p.cfg))).open.push(p);
   const order = ["1m", "1m+", "5m", "5m+", "15m", "15m+", "30m", "plain"];
   return [...rows.values()]
     .sort((a, b) => order.indexOf(a.lane) - order.indexOf(b.lane))
@@ -678,10 +689,10 @@ const TRADES_SHOWN = 300;
 async function paperRealizedOf(r: Awaited<ReturnType<typeof rt>>) {
   const units = r.paper.units;
   const { orderKey } = await import("./sizing.ts");
-  const unitOf = (x: { cfg: string; sym: string; side: number; entryT: number }) =>
-    units?.get(orderKey(x)) ?? r.settings.paperNotional;
+  const unitOf = (x: { cfg: string; sym: string; side: number; entryT: number } & ProcessingOwnership) =>
+    isProcessingOnly(x) ? 0 : units?.get(orderKey(x)) ?? r.settings.paperNotional;
   let realized = r.paper.carried ?? 0;
-  for (const t of r.paper.trades) realized += t.r * unitOf(t);
+  for (const t of r.paper.trades) if (!isProcessingOnly(t)) realized += t.r * unitOf(t);
   return { realized, unitOf };
 }
 
@@ -712,7 +723,7 @@ export async function coreLiveDiffData(data: ReturnType<typeof liveDiffInput>) {
     system: r.db.all(rel.relationSystemSql(), from - rel.RELATION_SYSTEM_SLACK_MS) as never,
     lanes: r.db.all(rel.RELATION_LANES_SQL, from) as never,
     trades: liveTrades(r.db.all(rel.RELATION_LEDGER_SQL, from - rel.RELATION_LEDGER_LOOKBACK_MS) as never, tag.length, r.settings.cost),
-    open: r.paper.positions.map((p) => rel.laneIdOfRow({ cfg: p.cfg, sym: p.sym, side: p.side, entry_t: p.entryT })),
+    open: r.paper.positions.filter(p => !isProcessingOnly(p)).map((p) => rel.laneIdOfRow({ cfg: p.cfg, sym: p.sym, side: p.side, entry_t: p.entryT })),
     from,
     to: now,
     coverageFrom: (r.db.get(rel.RELATION_COVERAGE_SQL) as { t?: number | null } | undefined)?.t ?? null,
@@ -740,10 +751,11 @@ export async function coreLiveDiffData(data: ReturnType<typeof liveDiffInput>) {
 export async function coreTradingData(data: ReturnType<typeof connInput>) {
   const r = await rt(data.conn);
   const { realized, unitOf } = await paperRealizedOf(r);
-  const counts = positionOrderCounts(r.paper.trades, r.paper.positions);
+  const paperOpen = paperOpenPartitions(r.paper.positions);
+  const counts = positionOrderCounts(r.paper.trades.filter(t => !isProcessingOnly(t)), paperOpen.funded);
   return ser({
     // open orders from the in-memory book (the database copy trails it): with Block level, volume and unit
-    positions: [...r.paper.positions]
+    positions: [...paperOpen.funded]
       .sort((a, b) => b.entryT - a.entryT)
       .map((p) => ({
         cfg: p.cfg,
@@ -763,7 +775,8 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
     carried: r.paper.carried ?? 0,
     adjustWindow: r.settings.adjust.window,
     // positions = symbol × direction; orders = every lane's partial (open and closed)
-    book: openBook(r.paper.positions),
+    book: openBook(paperOpen.funded),
+    processing: paperOpen.processing,
     closed: { orders: counts.settledOrders, positions: counts.closedPositions },
     orderCounts: counts,
     trades: r.db.all<Row>(`SELECT * FROM paper_trades ORDER BY exit_t DESC LIMIT ${TRADES_SHOWN}`),

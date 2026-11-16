@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import type { OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
 import { ProcessedSetBook } from "./processed-set.ts";
+import { ProcessedReplay } from "./processed-replay.ts";
 import { defaultWalkForward, execDecision, makeTape, packTapes, walkForward,
   type WalkForwardOptions, type WalkForwardResult } from "./walkforward.ts";
 import { retireOwnedIdleWorkers, runOnWorkers } from "../server/pool.server.ts";
@@ -13,6 +14,24 @@ const symbols = ["ADA", "APT", "ARB", "ATOM", "AVAX", "BCH", "BNB", "BTC"].map(x
 const ind = "ema-9-21@m1";
 const protect: Protect = { tp: .0215, sl: .0085, trail: 0, hold: 60, tag: "mn" };
 const id = configId("follow", ind, protect);
+
+test("large processed-stage reports yield while retaining the same exact coverage", () => {
+  const replay = new ProcessedReplay({ validationN: 2, realN: 2 }, .0015);
+  const contexts = Array.from({ length: 1_024 }, (_, i) => ({
+    identity: replay.identity({ id: `${id}|${i}`, ind, kind: "normal" }, symbols[i % symbols.length], 1, 1.05),
+    minPf: 1.05,
+  }));
+  const expected = replay.report(T, contexts), gen = replay.reportGen(T, contexts, (() => {
+    let n = 0; return () => ++n * 9;
+  })());
+  let yields = 0, result;
+  for (;;) { const step = gen.next(); if (step.done) { result = step.value; break; }
+    assert.equal(step.value, -20); yields++; }
+  assert.ok(yields > 0);
+  assert.deepEqual(result, expected);
+  assert.equal(result.validation.contexts, 1_024);
+  assert.equal(result.validation.insufficient, 1_024);
+});
 function trade(r: number, entryT: number, side: 1 | -1 = 1, sym = symbols[0], cfg = id): Trade & { unitR: number } {
   return { cfg, sym, side, entryT, exitT: entryT + M, entry: 100, exit: 100 * (1 + side * (r + .0015)),
     r, unitR: r, mult: 1, kind: "normal", reason: r > 0 ? "tp" : "sl", bars: 1, mfe: 0, mae: 0 };

@@ -64,8 +64,7 @@ it("processed mode rejects a non-active venue parent and persists active stage e
     rt.paper.positions = [{ ...pos(A, 1), processedStage: "validated", processedPolicy: policy }];
     await step();
     assert.equal(ex.log.filter((row) => row.type === "MARKET").length, 0);
-    const rejectedControl = liveKv<ControlStatus>(rt.db, "controlStatus")!;
-    assert.ok(rejectedControl.actions.some((row) => /processed-stage identity/.test(row.msg ?? "")), JSON.stringify(rejectedControl.actions));
+    assert.deepEqual(liveKv(rt.db, "liveEntryParents") ?? {}, {}, "a processing-only parent cannot reserve an entry");
 
     rt.paper.positions = [{ ...pos(A, 1), processedStage: "active", processedPolicy: `${policy}-stale` }];
     await step();
@@ -93,6 +92,26 @@ it("processed mode rejects a non-active venue parent and persists active stage e
     flushLiveKv(rt.db);
     rt.db.db.close();
   }
+});
+
+it("an already attributed venue parent keeps its protection if its paper stage is inconsistent", async () => {
+  const { rt, ex, step } = setup();
+  Object.assign(rt.settings.live, { positionSize: "lanes", laneOrders: false, positionMode: "hedge" });
+  (rt as unknown as { wf: { processedStages: { validationN: number; realN: number } } }).wf = {
+    processedStages: { validationN: 2, realN: 2 },
+  };
+  const policy = JSON.stringify(["processed-native-v1", rt.settings.cost, { validationN: 2, realN: 2 }]);
+  try {
+    rt.paper.positions = [{ ...pos(A, 1), processedStage: "active", processedPolicy: policy }];
+    await step();
+    const priorMarket = ex.log.filter(row => row.type === "MARKET").length;
+    assert.equal(priorMarket, 1);
+    rt.paper.positions = [{ ...pos(A, 1), vol: 10, processedStage: "validated", processedPolicy: policy }];
+    await step();
+    assert.equal(ex.log.filter(row => row.type === "MARKET").length, priorMarket,
+      "recognizing an earlier stage must neither close nor increase an already attributed parent");
+    assert.equal(Object.keys(liveKv<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {}).length, 1);
+  } finally { rt.db.db.close(); }
 });
 
 it("a pending processed venue request keeps its exact active policy across restart", async () => {

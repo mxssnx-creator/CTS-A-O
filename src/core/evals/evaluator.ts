@@ -1,10 +1,12 @@
-import { positionCounts, positionStats, positionStageStats } from "../position-windows.ts";
-import { rangeOfId } from "../minimal-coord.ts";
+import { positionCounts, positionStageStats } from "../position-windows.ts";
+import { minPfOf, rangeOfId } from "../minimal-coord.ts";
+import { parseConfigId } from "../pipeline/pipeline.ts";
+import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 // Continuous independent evaluations: each config is scored on its own, over several time windows and
 // last-trade windows ending "now". A window with too few trades is idle (neither pass nor fail).
 import { EVAL_TIME_WINDOWS_H, EVAL_TRADE_WINDOWS } from "../config.ts";
 import type { EvalResult, EvalWindow, Gates, Trade } from "../domain/types.ts";
-import { scoreStats, statsOf } from "../metrics/stats.ts";
+import { profitFactor, scoreStats, statsOf, unitReturn } from "../metrics/stats.ts";
 
 const H = 3_600_000;
 
@@ -24,28 +26,35 @@ function minTradesFor(hours: number, g: Gates): number {
 export function evaluateConfig(cfg: string, tape: readonly Trade[], o: EvalOptions): EvalResult {
   const g = o.gates;
   if(g.positionWindows) {
-    const policy=g.positionWindows, counts=positionCounts(policy,cfg.split("|")[1]?.startsWith("sig-")?"sig":/\|hx/.test(cfg)?"exit":rangeOfId(cfg)||"wide",cfg);
+    const policy=g.positionWindows, parsed=parseConfigId(cfg),ind=parsed?.ind??cfg.split("|")[1],
+      counts=positionCounts(policy,ind?.startsWith("sig-")?"sig":/\|hx/.test(cfg)?"exit":rangeOfId(cfg)||"wide",cfg);
+    const floor=Math.max(1.05,parsed?minPfOf(g,parsed.protect.tag,ind,protectStepPct(parsed.protect),protectSlRatio(parsed.protect)):g.minPf);
+    const stop=parsed?.protect.sl??Number(/\|sl([\d.]+)/.exec(cfg)?.[1])/100;
+    const prior=g.lossPrior?stop:0;
     const groups=new Map<string,Trade[]>();
-    for(const tr of tape) if(tr.cfg===cfg&&tr.exitT<o.nowT) {
-      const key=JSON.stringify([tr.sym,tr.side]);if(!groups.has(key))groups.set(key,[]);groups.get(key)!.push(tr);
+    let corrupt=!Number.isFinite(o.nowT);
+    for(const tr of tape) if(tr.cfg===cfg) {
+      // Unknown chronology/ownership cannot be dropped to qualify an older winning window.
+      if(!tr.sym||![1,-1].includes(tr.side)||!Number.isFinite(tr.entryT)||!Number.isFinite(tr.exitT)||tr.exitT<tr.entryT)corrupt=true;
+      // Only this config declares its contexts. A sibling or its future symbols cannot dilute this denominator.
+      for(const side of [1,-1]){const key=JSON.stringify([tr.sym,side]);if(!groups.has(key))groups.set(key,[]);}
+      if(tr.exitT<o.nowT){const key=JSON.stringify([tr.sym,tr.side]);groups.get(key)?.push(tr);}
     }
-    // Empty opposite sides are explicit unavailable contexts, never a pooled success.
-    for(const tr of tape) for(const side of [1,-1]) {const key=JSON.stringify([tr.sym,side]);if(!groups.has(key))groups.set(key,[]);}
     const windows:EvalWindow[]=[],scores:number[]=[];let valid=0;
     for(const [key,rows] of groups) {
       rows.sort((a,b)=>a.exitT-b.exitT||a.entryT-b.entryT);
-      const [sym,side]=JSON.parse(key) as [string,number];let all=true;
+      const values=rows.map(unitReturn);
+      const [sym,side]=JSON.parse(key) as [string,number];let all=true,mainScore=0;
       for(const stage of ["base","main","real","entry"] as const) {
-        const n=counts[stage],sample=positionStageStats(rows.map(r=>r.r),n,policy.blocks?.[stage],Math.max(1.05,g.minPf)),stop=Number(/\|sl([\d.]+)/.exec(cfg)?.[1])/100;
-        const prior=g.lossPrior?stop:0;
-        const pass=sample.blocksPassed&&sample.complete&&sample.known&&sample.net>0&&sample.gp>=Math.max(1.05,g.minPf)*(sample.gl+prior)&&
+        const sample=positionStageStats(values,counts[stage],policy.blocks?.[stage],floor);
+        const pass=!corrupt&&sample.blocksPassed&&sample.complete&&sample.known&&sample.net>0&&sample.gp>=floor*(sample.gl+prior)&&
           sample.maxDrawdownPositions<=policy.maxDrawdownPositions&&!(g.maxDdr&&sample.mdd/sample.net>g.maxDdr)&&
           sample.positiveShare>=(g.minGreen??.5)&&sample.lcb>0;
-        windows.push({key:`${sym}/${side}/${stage}/N${n}`,kind:"trades",span:n,n:sample.n,pf:sample.known?statsOf(rows.slice(-n)).pf:NaN,
+        windows.push({key:`${sym}/${side}/${stage}/N${sample.requested}`,kind:"trades",span:sample.requested,n:sample.n,pf:sample.known&&!corrupt?profitFactor(sample.gp,sample.gl):NaN,
           net:sample.net*100,ddt:0,wr:sample.positiveShare,pass});
-        all&&=pass;if(stage==="main"&&pass)scores.push(sample.lcb);
+        all&&=pass;if(stage==="main")mainScore=sample.lcb;
       }
-      if(all)valid++;
+      if(all){valid++;scores.push(mainScore);}
     }
     const passed=windows.filter(w=>w.pass).length;
     return {cfg,at:o.nowT,windows,passRatio:windows.length?passed/windows.length:0,success:valid>0,score:valid?Math.max(0,...scores):0};

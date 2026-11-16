@@ -38,6 +38,8 @@ import type {
 import { BaseConfigCounter } from "../base-config-counts.ts";
 import { RealtimeTapeSet, type RealtimeTapeGroup } from "../sim/realtime.ts";
 import { TickMathBook, type TickPosition } from "./tick-math.ts";
+import { strategyCoverageGen } from "./strategy-coverage.ts";
+import { lastNSamplesGen } from "./last-n-samples.ts";
 
 type Msg = { evaluationFromT?: number } & (
   | {
@@ -60,6 +62,7 @@ type Msg = { evaluationFromT?: number } & (
   | {
       id: number;
       type: "research-real";
+      coverage?: boolean;
       nowT: number;
       baseTf: number;
       packed?: PackedTapes;
@@ -210,20 +213,40 @@ parentPort!.on("message", (m: Msg) => {
       const history = m.historyManifest ? readHistoryManifest(m.historyManifest) : null;
       try {
       if (!history && !m.packed) throw new Error("Missing complete research histories");
-      const g = walkForwardGen(u as never, history?.tapes ?? unpackTapes(m.packed!), m.wf as never);
+      const tapes = history?.tapes ?? unpackTapes(m.packed!);
+      const g = walkForwardGen(u as never, tapes, m.wf as never);
       const total = Math.max(1, walkForwardSteps(u as never, m.wf as never));
       let done = 0,
-        last = 0;
+        last = 0, workDone = 0;
       for (;;) {
         const result = g.next();
+        workDone++;
         if (result.done) {
-          parentPort!.postMessage({ id: m.id, ok: true, sim: result.value });
+          const finish = <T>(gen: Generator<unknown, T>, work: number): T => {
+            for (;;) {
+              const item = gen.next();
+              workDone++;
+              if (item.done) return item.value;
+              if (Date.now() - last >= 400) {
+                last = Date.now();
+                parentPort!.postMessage({ id: m.id, progress: done, total, work, workDone });
+              }
+            }
+          };
+          // The same worker already owns the exact immutable histories. Return only bounded coverage
+          // summaries instead of scanning/decompressing the complete catalog again on the ticker thread.
+          const coverage = m.coverage ? {
+            strategyCoverage: finish(strategyCoverageGen(tapes), -18),
+            lastNSamples: finish(lastNSamplesGen(tapes, result.value.endT, m.wf as never), -19),
+          } : undefined;
+          parentPort!.postMessage({ id: m.id, ok: true, sim: result.value, ...(coverage ? { coverage } : {}) });
           return;
         }
         if (result.value >= 0) done++;
         if (Date.now() - last >= 400) {
           last = Date.now();
-          parentPort!.postMessage({ id: m.id, progress: done, total });
+          parentPort!.postMessage({ id: m.id, progress: done, total, workDone,
+            ...(result.value < 0 ? { work: result.value } : {}) });
         }
       }
       } finally { history?.close(); }

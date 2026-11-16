@@ -5,7 +5,8 @@ import { DEFAULT_POSITION_WINDOWS } from "../position-windows.ts";
 import { signalSettings } from "../signal-config.ts";
 import type { Trade } from "../domain/types.ts";
 import { activeSignalsAt, defaultWalkForward, makeTape, signalIndex, SignalActivationBook,
-  type ConfigTape, type WalkForwardOptions } from "./walkforward.ts";
+  positionConfigEval, type ConfigTape, type WalkForwardOptions } from "./walkforward.ts";
+import { signalActiveHas } from "../signals.ts";
 import { TapeHistoryStore } from "../server/history-store.server.ts";
 import { truncateSync } from "node:fs";
 import { setImmediate } from "node:timers/promises";
@@ -34,6 +35,49 @@ function fixture(){
    positionWindows:{...DEFAULT_POSITION_WINDOWS,base:4,main:4,real:3,entry:2,byRange:{},byConfig:{},blocks:undefined}}};
  return{tapes,sig,options,policy:options.gates.positionWindows!};
 }
+
+test('Signal readiness prefilter matches scalar exact-context evaluation at the close boundary',()=>{
+ const {tapes,sig,options,policy}=fixture();
+ policy.main=15;policy.real=12;policy.entry=12;
+ const checks=[start,start+2*M+1,start+3*M,start+3*M+1,start+4*M+1];
+ for(const t of checks){
+  const active=activeSignalsAt(tapes,t,sig,150,options);
+  for(const tp of tapes)for(const sym of symbols)for(const side of [1,-1] as const){
+   const expected=positionConfigEval(tp,t,options,sym,side).ok;
+   assert.equal(signalActiveHas(active,tp.bot,tp.ind,sym,side,tp.kind,tp.id),expected,
+    `${tp.id} ${sym} ${side} at ${t}`);
+  }
+ }
+ const before=activeSignalsAt(tapes,start+3*M,sig,150,options);
+ const after=activeSignalsAt(tapes,start+3*M+1,sig,150,options);
+ assert.equal(before.size,0,'a close at the decision clock is not available');
+ assert.ok(after.size>0,'a mature positive context qualifies immediately after its own close');
+});
+
+test('whole-tape count bound follows policy changes, replacement histories and storage corruption',()=>{
+ const {tapes,sig,options,policy}=fixture(),original=tapes[0],rows:Trade[]=[];
+ for(let i=0;i<12;i++){
+  const exitT=start-(12-i)*M,r=i%4===0?-.001:.02;
+  rows.push({cfg:original.id,sym:symbols[0],side:1,entryT:exitT-1,exitT,r,mult:1,
+   entry:100,exit:101,reason:'time',bars:1,mfe:0,mae:0,kind:'normal'});
+ }
+ const make=(n:number)=>makeTape(original.id,original.bot,original.ind,original.protect,original.kind,
+  symbols,rows.slice(0,n),[],[]);
+ const sparse=make(6);policy.main=8;policy.real=4;policy.entry=2;
+ const book=new SignalActivationBook(signalIndex([sparse]),sig,150,options);
+ const check=()=>assert.deepEqual([...drain(book.at(start))],[...activeSignalsAt([sparse],start,sig,150,options)]);
+ check();assert.equal(drain(book.at(start)).size,0);
+ policy.main=4;check();assert.ok(drain(book.at(start)).size>0,'a shorter explicit window can become mature');
+ policy.main=8;check();Object.assign(sparse,make(10));check();
+ assert.ok(drain(book.at(start)).size>0,'a replacement history can mature at the same clock');
+ const store=new TapeHistoryStore({cacheBytes:1});
+ try{
+  const saved=store.append(make(6)),storedBook=new SignalActivationBook(signalIndex([saved]),sig,150,options);
+  assert.equal(drain(storedBook.at(start)).size,0);
+  store.clearCache();truncateSync(store.path,0);
+  assert.throws(()=>drain(storedBook.at(start)),/history/i,'sparse rejection must not hide corrupted storage');
+ }finally{store.close()}
+});
 
 test('count activation does not reopen unaffected histories after another config settles',(ctx)=>{
  const {tapes,sig,options}=fixture(),reads={exitT:0,r:0,symI:0,side:0};

@@ -41,7 +41,10 @@ it("independent predecessor caps, losing gates and persistent predecessor stages
   assert.equal(sim.feed.filter(e=>e.blockProcessed).length,6,"independent maxOpen=1 rejects simultaneous sibling precursors");
   assert.equal(walkForward(u,[tape("A",1,"normal",true)],o).trades.length,0);
   const staged=walkForward(u,[tape("A")],{...o,processedStages:{validationN:2,realN:2}});
-  assert.equal(staged.trades.length,0,"raw shadow predecessors cannot substitute for the persistent Active stage");
+  assert.equal(staged.trades.length,1,"own processed Main and Real histories may bootstrap Block after both qualify");
+  assert.equal(staged.trades[0].entryT,START+310*M,"raw shadows cannot skip the two Main, two Real and one Block precursor closes");
+  assert.equal(staged.feed.filter(e=>e.blockProcessed&&!e.accepted).length,1);
+  assert.equal(staged.processedStages!.sets[0].stages.postBase.closedOrders,6);
 });
 it("Axis keeps processing when Ordinary is off and Block is independently excluded for its type",()=>{
   const o=opts("overall");

@@ -11,6 +11,13 @@ const position = (side: 1 | -1, tag: string, stopDistance = .02, tf = 1): TickPo
   peak: 100, trailOn: false, trail: 0, mtm: 0,
 });
 
+test("a zero-funded processing mark does not contaminate the funded paper mark", () => {
+  const processing = { ...position(1, "virtual"), mtm: NaN }, funded = { ...position(1, "funded"), mtm: .1 };
+  const book = new TickMathBook([processing, funded], Float64Array.of(0, 10), 0, 1, false);
+  assert.equal(book.advance({}, M).open, 1, "missing virtual marks carry no funded exposure");
+  assert.ok(Number.isFinite(book.advance({ "A-USDT": 100 }, M + 1).open));
+});
+
 test("stop gaps use the adverse observed quote for each independent range and charge one cost", () => {
   for (const cost of [.0012, .0015]) for (const side of [1, -1] as const) {
     for (const tag of ["mc", "mn", "sh", "gn", "lg", "wide"]) {

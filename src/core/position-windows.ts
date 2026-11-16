@@ -1,4 +1,5 @@
 import {blockPrefix,blockRequired,checkBlockPolicy,evaluateBlocks,type BlockPolicy} from "../../shared/cts-lastn/blocks.ts";
+import { immutableHistoryGeneration } from "./sim/immutable-history-generation.ts";
 /** Position-count evaluation policy. Time controls data availability, never membership of these samples. */
 export interface PositionCounts {
   base: number;
@@ -19,7 +20,9 @@ export const DEFAULT_POSITION_WINDOWS: PositionWindows = {
   real: 12,
   entry: 12,
   maxDrawdownPositions: 40,
-  byRange: { mc: { base: 30 }, mn: { base: 30 } },
+  // Signal Main has its own requested window; Real and Entry retain their
+  // independently configured counts. Explicit per-range/config values win.
+  byRange: { mc: { base: 30 }, mn: { base: 30 }, sig: { main: 15 } },
 };
 const stages = ["base", "main", "real", "entry"] as const;
 
@@ -35,33 +38,39 @@ interface PositionTapeColumns {
 // A live stored-tape wrapper must not pin an evicted decompressed arena through
 // validation metadata. Weak column identities still invalidate on replacement
 // or reloading, and the ordinary in-memory owner retains its own columns.
-const sourceChecks = new WeakMap<object, { n: number; columns: WeakRef<object>[]; valid: boolean }>();
+const sourceChecks = new WeakMap<object, { n: number; columns?: WeakRef<object>[]; generation?: object;
+  symbols?: WeakRef<object>; valid: boolean }>();
 /** Published columns are immutable. Unknown ownership or chronology anywhere makes the last N unknowable. */
 export function positionTapeValid(tp: PositionTapeColumns): boolean {
-  const columns = [tp.syms, tp.exitT, tp.entryT, tp.symI, tp.side, tp.r];
   const cached = sourceChecks.get(tp);
-  if (cached?.n === tp.n && columns.every((v, i) => v !== undefined && v === cached.columns[i].deref())) return cached.valid;
+  const generation = immutableHistoryGeneration(tp);
+  if (generation && cached?.generation === generation && cached.n === tp.n && cached.symbols?.deref() === tp.syms)
+    return cached.valid;
+  const syms = tp.syms, exits = tp.exitT, entries = tp.entryT, symbolSlots = tp.symI, sides = tp.side, returns = tp.r;
+  const columns = [syms, exits, entries, symbolSlots, sides, returns];
+  if (!generation && cached?.n === tp.n && cached.columns &&
+      columns.every((v, i) => v !== undefined && v === cached.columns![i].deref())) return cached.valid;
   let valid =
     Number.isSafeInteger(tp.n) &&
     tp.n >= 0 &&
-    Array.isArray(tp.syms) &&
-    [tp.exitT, tp.entryT, tp.symI, tp.side, tp.r].every((a) => a && a.length >= tp.n);
+    Array.isArray(syms) &&
+    [exits, entries, symbolSlots, sides, returns].every((a) => a && a.length >= tp.n);
   if (valid)
     for (let i = 0; i < tp.n; i++) {
-      const symbol = tp.symI[i],
-        exit = tp.exitT[i],
-        entry = tp.entryT[i];
+      const symbol = symbolSlots[i],
+        exit = exits[i],
+        entry = entries[i];
       if (
         !Number.isInteger(symbol) ||
         symbol < 0 ||
-        symbol >= tp.syms.length ||
-        !tp.syms[symbol] ||
-        ![1, -1].includes(tp.side[i]) ||
+        symbol >= syms.length ||
+        !syms[symbol] ||
+        (sides[i] !== 1 && sides[i] !== -1) ||
         !Number.isFinite(exit) ||
         !Number.isFinite(entry) ||
         exit < entry ||
         (i > 0 &&
-          (exit < tp.exitT[i - 1] || (exit === tp.exitT[i - 1] && entry < tp.entryT[i - 1])))
+          (exit < exits[i - 1] || (exit === exits[i - 1] && entry < entries[i - 1])))
       ) {
         valid = false;
         break;
@@ -70,7 +79,9 @@ export function positionTapeValid(tp: PositionTapeColumns): boolean {
   // Malformed/null columns are not cacheable WeakRef targets. Keep their
   // fail-closed verdict, without retaining them or changing the next check.
   if (columns.every((v) => v !== null && (typeof v === 'object' || typeof v === 'function')))
-    sourceChecks.set(tp, { n: tp.n, columns: columns.map((v) => new WeakRef(v as object)), valid });
+    sourceChecks.set(tp, generation
+      ? { n: tp.n, generation, symbols: new WeakRef(syms), valid }
+      : { n: tp.n, columns: columns.map((v) => new WeakRef(v as object)), valid });
   else sourceChecks.delete(tp);
   return valid;
 }

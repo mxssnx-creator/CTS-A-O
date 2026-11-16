@@ -15,6 +15,8 @@ import {
 import { runOnWorkers, retireOwnedIdleWorkers } from "./pool.server.ts";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
+import { lastNSamplesGen } from "./last-n-samples.ts";
+import { strategyCoverageGen } from "./strategy-coverage.ts";
 
 describe("background Real worker", () => {
   it("matches every full-history result, loss, feed and validation field on 20 symbols and 1/5/15m", async () => {
@@ -66,11 +68,13 @@ describe("background Real worker", () => {
     const expected = walkForward(u, tapes, wf);
     const owner = {};
     try {
-      const [reply] = await runOnWorkers<{ sim: WalkForwardResult }>(
-        [{ type: "research-real", nowT: u.nowT, baseTf: u.baseTf, packed: packTapes(tapes), wf }],
+      const finish = <T>(g: Generator<unknown,T>): T => { for (;;) { const r = g.next(); if (r.done) return r.value; } };
+      const phases: number[] = [];
+      const [reply] = await runOnWorkers<{ sim: WalkForwardResult; coverage: unknown }>(
+        [{ type: "research-real", nowT: u.nowT, baseTf: u.baseTf, packed: packTapes(tapes), wf, coverage: true }],
         1,
         30_000,
-        undefined,
+        (_fraction, work) => { if (work !== undefined) phases.push(work); },
         false,
         undefined,
         owner,
@@ -80,6 +84,9 @@ describe("background Real worker", () => {
         "nonempty candidate and loss history is compared even when gates refuse entries",
       );
       assert.deepEqual(reply.sim, expected);
+      assert.deepEqual(reply.coverage, structuredClone({ strategyCoverage: finish(strategyCoverageGen(tapes)),
+        lastNSamples: finish(lastNSamplesGen(tapes, expected.endT, wf)) }));
+      assert.ok(phases.length > 0 && phases.every(x => x < 0), "worker forwards work phases separately from completed hours");
     } finally {
       await retireOwnedIdleWorkers(owner);
     }

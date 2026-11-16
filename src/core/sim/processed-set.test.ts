@@ -13,6 +13,29 @@ const enterAndClose = (book: ProcessedSetBook, i: ProcessedSetIdentity, at: numb
   return admission;
 };
 
+test("an independently blocked active entry stays validated across a checkpoint",()=>{
+  const p={validationN:1,realN:1,minPf:1.1};
+  let book=new ProcessedSetBook("model",2);
+  for(const at of [0,2]) {
+    book.acceptPostBase(identity,`seed-${at}`,at,p,false);
+    book.close(identity,`seed-${at}`,at,"final",at+1,.02,true);
+  }
+  const pending=book.acceptPostBase(identity,"deferred",4,p,false);
+  assert.equal(pending.real?.state,"qualified");
+  assert.equal(pending.stage,"validated");
+  assert.equal(pending.activeDeferred,true);
+  assert.equal(book.activePositions().length,0);
+  assert.equal(book.summary(identity)!.deferredActive,1);
+  book=ProcessedSetBook.restore(JSON.parse(JSON.stringify(book.snapshot())));
+  assert.equal(book.activePositions().length,0);
+  book.close(identity,"deferred",4,"final",5,-.03,true);
+  assert.equal(book.verdict(identity,"validated",1,1.1).state,"failed");
+  assert.equal(book.summary(identity)!.stages.active.closedOrders,0);
+  const corrupted=book.snapshot();
+  corrupted.sets[0].deferredActive=0;
+  assert.throws(()=>ProcessedSetBook.restore(corrupted),/invalid processed-stage progression/);
+});
+
 test("processed negative windows retain losses, reject only later admission and survive restart",()=>{
  let book=new ProcessedSetBook("model",20);
  for(let n=0;n<18;n++)enterAndClose(book,identity,2*n,.02);

@@ -3571,14 +3571,18 @@ export function SettingsPage() {
                 </Field>
                 <Field
                   label="Exit validation slices"
-                  hint="Split held-out history into 1–4 chronological parts. Every part must independently meet minimum closes, PF and drawdown gates. PF 1 is neutral; above 1 is profitable after modeled costs."
+                  hint={s.gates.positionWindows
+                    ? "Split each context's most recent closes into 1–4 chronological parts. Each part must meet its PF and drawdown gates. PF 1 is neutral."
+                    : "Split held-out history into 1–4 chronological parts. Every part must independently meet minimum closes, PF and drawdown gates. PF 1 is neutral."}
                 >
                   <Num min={1} max={4} step={1} value={exits.validationSlices ?? 1}
                     onChange={(v) => set(["exitStrategy", "validationSlices"], Math.round(v))} />
                 </Field>
                 <Field
-                  label="Green active-hour share"
-                  hint="0.5 = at least half of active UTC close-hours green when 6+ hours are present"
+                  label={s.gates.positionWindows ? "Winning close share" : "Green active-hour share"}
+                  hint={s.gates.positionWindows
+                    ? "0.5 = at least half of the context's evaluated closes are positive. The stricter general minimum also applies."
+                    : "0.5 = at least half of active UTC close-hours green when 6+ hours are present"}
                 >
                   <Num
                     step={0.05}
@@ -4892,7 +4896,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Robust share"
-              hint="hourly pair-seat coordination: share of sibling variants that must pass · 0 – 1; config seats evaluate independently"
+              hint="pair-seat coordination: share of sibling variants that must pass · 0 – 1; config seats evaluate independently"
             >
               <Num
                 step={0.05}
@@ -4955,7 +4959,7 @@ export function SettingsPage() {
                 onChange={(e) => setW("mode", e.target.value)}
               >
                 <option value="durable">durable winners</option>
-                <option value="hourly">re-rank hourly</option>
+                <option value="hourly">re-rank at evaluation</option>
                 <option value="fixed">fixed set</option>
               </select>
             </Field>

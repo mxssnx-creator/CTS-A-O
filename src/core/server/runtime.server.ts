@@ -14,7 +14,9 @@ import { isHistoricExitConfig } from "../exit-scope.ts";
 import { lstatSync } from "node:fs";
 import { mergeWorkerTapesGen } from "./tape-merge.ts";
 import { strategyCoverageGen, type StrategyCoverage } from "./strategy-coverage.ts";
-import { lastNSamplesGen } from "./last-n-samples.ts";
+import { lastNSamplesGen, type LastNSamples } from "./last-n-samples.ts";
+import { ProcessingPredecessors } from "./processing-predecessors.ts";
+import { isProcessingOnly } from "../processing-only.ts";
 import { validationProgressOf, type ValidationProgress } from "../validation-progress.ts";
 // Core v2 continuous runtime. One per server process (globalThis singleton).
 //
@@ -205,6 +207,7 @@ import { IncrementalState } from "./incremental.ts";
 import {
   buildTapesBoundedGen as buildTapesGen,
   baseAllowsTape,
+  stageBaseAllowsTape,
   configEval,
   engineContextValid,
   configDirectionEval,
@@ -273,6 +276,10 @@ import {
   minPfForTape,
   freshEntry,
   seatedForEntry,
+  continuousConfigSeatAllowed,
+  continuousRankedSeatPolicy,
+  continuousRankedSelectionGen,
+  rangeOptsOf,
   stepSeats,
   pendingAsOpen,
   carryGuardIndices,
@@ -392,6 +399,8 @@ import {
   estimatedFraction,
   overallOf,
   pipelineStage,
+  simulationProgress,
+  simulationWorkLabel,
 } from "../progress.ts";
 import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
 
@@ -497,6 +506,12 @@ export function fastBarFresh(
 export function researchIntervalMs(raw = process.env.CTS_CORE_RESEARCH_MS): number {
   const n = Number(raw);
   return Number.isFinite(n) && n >= 60_000 && n <= 3_600_000 ? n : 300_000;
+}
+/** Empty fast cohorts cannot learn a newly maturing candidate; revisit discovery on each new closed bar. */
+export function researchDue(
+  dirty: boolean, newBars: boolean, incremental: boolean, now: number, nextAt: number, emptyFastCohort: boolean,
+): boolean {
+  return dirty || (newBars && (!incremental || emptyFastCohort || now >= nextAt));
 }
 /** the live step's share of one tick for advancing the Block / acceptance books over a fresh run's feed, ms */
 const BOOK_CATCHUP_MS = 15;
@@ -1719,7 +1734,7 @@ export class CoreRuntime {
       return m.a;
     const a = new Float64Array(positions.length);
     for (let i = 0; i < positions.length; i++)
-      a[i] = units?.get(orderKey(positions[i])) ?? notional;
+      a[i] = isProcessingOnly(positions[i]) ? 0 : units?.get(orderKey(positions[i])) ?? notional;
     this.unitMemo = { positions, units, notional, a };
     return a;
   }
@@ -3269,8 +3284,8 @@ export class CoreRuntime {
         !!this.fastArgs &&
         this.paperStepped &&
         this.fastWorker.available;
-      const wantsResearch =
-        this.dirty || (newBars && (!incremental || Date.now() >= this.nextResearchAt));
+      const wantsResearch = researchDue(this.dirty, newBars, incremental, Date.now(), this.nextResearchAt,
+        this.fastReady && this.fastCount === 0);
       const memWait =
         wantsResearch &&
         (Date.now() < Math.max(this.memRetryAt, this.memFreshAt) || this.memStartBlocked());
@@ -4178,26 +4193,7 @@ export class CoreRuntime {
     let maxStep = 0;
     const label = (v: unknown) => {
       if (name === "Simulation" && typeof v === "number") {
-        if (v >= 0) return "complete simulation step";
-        const simulationSlices: Record<number, string> = {
-          [-2]: "settle simulated order books",
-          [-3]: "expand signal tape candidates",
-          [-4]: "build signal rank index",
-          [-5]: "rank signal units",
-          [-6]: "assemble engine tape candidates",
-          [-7]: "merge signal candidates",
-          [-8]: "sort step candidates",
-          [-9]: "run candidate entry gates",
-          [-10]: "finalize trade summaries",
-          [-11]: "settle final orders",
-          [-12]: "drain final candidate feed",
-          [-13]: "sort signal candidates",
-          [-14]: "fixed seat selection",
-          [-15]: "causal signal ranking",
-          [-16]: "negative-hour hedge qualification",
-          [-17]: "completed one-minute candidate batch",
-        };
-        return simulationSlices[v] ?? (v < 0 ? "simulation helper" : "");
+        return simulationWorkLabel(v);
       }
       const x = v as { stage?: string; label?: string } | null;
       return x && typeof x === "object" ? `${x.stage ?? ""} ${x.label ?? ""}`.trim() : "";
@@ -4272,6 +4268,7 @@ export class CoreRuntime {
     gen: number,
     progress: (value: number) => void,
     signal?: AbortSignal,
+    coverageReady?: (coverage: { strategyCoverage: StrategyCoverage; lastNSamples: LastNSamples }) => void,
   ): Promise<WalkForwardResult> {
     signal?.throwIfAborted();
     if (this.market !== "bingx" || this.replay || !workersAvailable() || this.workersBroken)
@@ -4295,7 +4292,7 @@ export class CoreRuntime {
     const started = performance.now();
     const steps = Math.max(1, walkForwardSteps(u, wf));
     let publishedSteps = 0;
-    const report = (fraction: number) => {
+    const report = (fraction: number, work?: number) => {
       if (gen !== this.gen || controller.signal.aborted) return;
       this.status.heartbeat = Date.now();
       const completed = Math.min(steps, Math.round(fraction * steps));
@@ -4303,6 +4300,7 @@ export class CoreRuntime {
         publishedSteps++;
         progress(0);
       }
+      if (work !== undefined && Number.isFinite(work) && work < 0) progress(work);
     };
     let transfer: HistoryTransfer | undefined;
     try {
@@ -4311,16 +4309,20 @@ export class CoreRuntime {
         ? { historyManifest: (transfer = await this.drive("Share Real histories", transferHistoriesGen(tapes), () => check(), gen)).path }
         : { packed: await this.drive("Pack Real tapes", packTapesGen(tapes), () => check(), gen) };
       check();
-      const [result] = await runOnWorkers<{ sim: WalkForwardResult }>(
-        [{ type: "research-real", nowT: u.nowT, baseTf: u.baseTf, ...payload, wf }],
+      const [result] = await runOnWorkers<{ sim: WalkForwardResult; coverage?: { strategyCoverage: StrategyCoverage; lastNSamples: LastNSamples } }>(
+        [{ type: "research-real", nowT: u.nowT, baseTf: u.baseTf, ...payload, wf, coverage: !!coverageReady }],
         1,
-        15 * 60_000,
+        3 * 60_000,
         report,
         false,
         controller.signal,
         owner,
+        undefined,
+        60 * 60_000,
       );
       check();
+      if (coverageReady && !result.coverage) throw new Error("Research worker omitted exact-cohort coverage");
+      if (result.coverage) coverageReady?.(result.coverage);
       report(1);
       this.status.phases.Simulation = {
         ms: performance.now() - started,
@@ -5873,7 +5875,6 @@ export class CoreRuntime {
     // wf and fastArgs remain private to this computation until its matching tapes and simulation are ready.
     // Publishing Base/Signal qualifiers here mixed old active tapes with new gates during every yielded slice,
     // and an interrupted computation left that mixed state in service indefinitely.
-    let step = 0;
     // the steps the simulation really takes (its start is floored to the hour: up to one step more than
     // simH / stepH, which ran the bar past 100 %)
     const steps = Math.max(1, walkForwardSteps(wu, wf));
@@ -5881,18 +5882,11 @@ export class CoreRuntime {
     const validationProgress = positionPolicy
       ? `positions Main / Real / Entry ${positionPolicy.main} / ${positionPolicy.real} / ${positionPolicy.entry} · own range/config overrides apply`
       : `engine ${wf.preH}h pre / Last-${wf.validLastN ?? 0}${sig.enabled ? ` · Signals ${signalHistoryHours(wf)}h / Last-${wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN ?? 0}` : ""} · entry Last-${wf.lastN}`;
-    this.setStage("Real", 0, steps, `${wf.simH}h sim · step 0/${steps}`);
-    const sim = await this.researchSimulation(wu, tapes, wf, gen, (v) => {
-      if (v >= 0) {
-        step++;
-        this.setStage(
-          "Real",
-          step,
-          steps,
-          `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · ${validationProgress}`,
-        );
-      }
-    }, signal);
+    this.setStage("Real", 0, steps, `${wf.simH}h sim · completed intervals 0/${steps}`);
+    const reportSimulation = simulationProgress(steps, wf.simH, validationProgress,
+      (completed, label) => this.setStage("Real", completed, steps, label));
+    let workerCoverage: { strategyCoverage: StrategyCoverage; lastNSamples: LastNSamples } | undefined;
+    const sim = await this.researchSimulation(wu, tapes, wf, gen, reportSimulation, signal, c => { workerCoverage = c; });
     signal.throwIfAborted();
     if (
       gen !== this.gen ||
@@ -5901,8 +5895,9 @@ export class CoreRuntime {
     )
       return;
     // Count the exact finished cohort, not the temporary worker inputs or a partially built next cohort.
-    const strategyCoverage = await drive("Strategy coverage", strategyCoverageGen(tapes), () => undefined, gen);
-    const lastNSamples = await drive("Last-N sample coverage", lastNSamplesGen(tapes, sim.endT, wf), () => undefined, gen);
+    this.setStage("Real", steps, steps, `${wf.simH}h sim complete · auditing configuration and position histories`);
+    const strategyCoverage = workerCoverage?.strategyCoverage ?? await drive("Strategy coverage", strategyCoverageGen(tapes), () => undefined, gen);
+    const lastNSamples = workerCoverage?.lastNSamples ?? await drive("Last-N sample coverage", lastNSamplesGen(tapes, sim.endT, wf), () => undefined, gen);
     // the realtime entry step stands aside while the new tapes and run replace the old ones, until the full paper
     // step has seated on them (it re-checks the hold at every slice)
     if (
@@ -7636,8 +7631,11 @@ export class CoreRuntime {
       );
     return model.byConfigSide;
   }
+  private processingPredecessors = new ProcessingPredecessors();
   /** Settled post-Base model outcomes and funded OWNED PAPER executions are distinct evidence, never venue fills. */
-  livePromotionGate(lane: { cfg: string; sym: string; side: number; entryT?: number; id?: string }, now = Date.now()): LiveGate {
+  livePromotionGate(lane: { cfg: string; sym: string; side: number; entryT?: number; id?: string; blockPredecessor?: true }, now = Date.now()): LiveGate {
+    if (this.processingPredecessors.has(this.paper.positions, lane))
+      return { ok: false, n: 0, pf: null, state: "ineligible" };
     const n = Math.max(
       1,
       this.settings.gates.minTrades ?? 0,
@@ -9203,8 +9201,12 @@ export class CoreRuntime {
   private *appendRealtimeLearningGen(deltas: readonly ConfigTape[]): Generator<number, void> {
     const sim = this.sim;
     if (!sim) return;
-    if (this.realtimeLearning?.sim !== sim)
+    if (this.realtimeLearning?.sim !== sim) {
       this.realtimeLearning = { sim, feed: [...(sim.feed ?? [])], accepted: [] };
+      // Existing cursors may still own sim.feed. The new incremental feed is a different array;
+      // keeping that cursor would permanently hide all newly settled predecessor/accepted closes.
+      this.liveBooks = null;
+    }
     const state = this.realtimeLearning;
     const held = new Map(this.paper.positions.map((p) => [orderKey(p), p]));
     const feed: BlockFeedEntry[] = [];
@@ -9216,6 +9218,7 @@ export class CoreRuntime {
         const trade = tradeAt(tp, i);
         const key = orderKey(trade);
         const p = held.get(key);
+        const executionAccepted = !!p && !isProcessingOnly(p);
         const shadow = p ? undefined : this.relateShadowPending.get(key);
         const sources = p?.legs
           ? Object.entries(p.legs)
@@ -9225,7 +9228,8 @@ export class CoreRuntime {
         feed.push({
           ...blockEntryOf(trade, "candidate-unit"),
           exitT: trade.exitT,
-          accepted: !!p,
+          accepted: executionAccepted,
+          ...(p?.blockPredecessor && p.processedStage === "active" ? { blockProcessed: true } : {}),
           ...(p?.relateMeasured ? { relateMeasured: true } : {}),
           ...(p?.relateBase !== undefined ? { relateBase: p.relateBase } : {}),
           ...(p?.relateParts ? { relateParts: p.relateParts } : {}),
@@ -9234,7 +9238,7 @@ export class CoreRuntime {
           ...(sources?.length ? { bsrc: sources } : {}),
         });
         if (shadow || p) this.relateShadowPending.delete(key);
-        if (p) {
+        if (p && executionAccepted) {
           const mult = positionMult(p);
           accepted.push({ ...trade, r: trade.r * mult, vol: (trade.vol ?? 1) * mult, mult });
         }
@@ -9688,10 +9692,10 @@ export class CoreRuntime {
     const nativeStages = this.wf.processedStages ? this.nativeProcessedStages() : null;
     // sub-timings (the Paper phase is one synchronous slice: its slowest part is named in the phase record)
     const tp0 = performance.now();
-    const nowT = Math.floor(Date.now() / H) * H;
-    const t = fast ? fast.t : Math.min(nowT, this.sim.endT);
-    // Selection uses hour boundaries, but a completed market snapshot can contain later closed bars in that hour.
-    // Keep the close cutoff on the actual snapshot clock (or incremental clock), not the earlier selection clock.
+    // Evaluate the completed snapshot at its actual clock. Flooring to the hour left mature Last-N windows
+    // invisible until the next hour even after the relevant closes had already arrived.
+    const t = fast ? fast.t : Math.min(Date.now(), this.sim.endT);
+    // Keep the close cutoff on the actual snapshot clock (or incremental clock).
     const closeT = fast ? fast.t : this.sim.endT;
     // A long market compute may finish hours after its candle snapshot. Keep selection and replay on the
     // snapshot's causal clock, but judge *new* live-market paper entries against the current step too. Otherwise
@@ -9711,15 +9715,20 @@ export class CoreRuntime {
     const { engine: engineTapes, signal: signalCandidates } = splitSignalTapes(selectedTapes, this.wf);
     const signalActive = this.wf.signalActive;
     const sigTapes = yield* signalSeatTapesGen(signalCandidates, signalActive, !!fast);
-    // wf.seatSet "validated": the step selects from the validated set V of the last simulation (its ids), never from the
-    // pool; V is refreshed only by the next compute's Base + set evaluation
+    // A completed simulation's ever-qualified IDs are a report, not a permanently frozen runtime whitelist.
+    // Re-evaluate own current evidence on full selection steps; fast/reused seats retain their captured cohort.
+    // Only an explicit operator-supplied validated snapshot stays frozen.
     let selTapes = engineTapes;
     let wfSel = this.wf;
+    let refreshedValidation: ValidationSummary | undefined;
     if (!fast && this.wf.seatSet === "validated") {
       assertSeatSet(this.wf);
       let vc = this.validatedCache;
-      if (!vc || vc.sim !== this.sim || vc.tapes !== engineTapes) {
-        const v = this.sim.validated ? new Set(this.sim.validated) : yield* validatedSetGen(engineTapes, t, this.wf);
+      if (!vc || vc.sim !== this.sim || vc.tapes !== engineTapes || !reuseSeats || !this.lastSelection) {
+        if (!this.wf.validated) refreshedValidation = { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0,
+          failures: {}, setPf: emptyValidatedSetPf() };
+        const v = this.wf.validated ? new Set(this.wf.validated) : yield* validatedSetGen(engineTapes, t, this.wf,
+          refreshedValidation ? { summary: refreshedValidation } : undefined);
         vc = this.validatedCache = { sim: this.sim, tapes: engineTapes, v, list: validatedTapes(engineTapes, v, this.wf) };
       }
       selTapes = vc.list;
@@ -9749,14 +9758,30 @@ export class CoreRuntime {
           wfSel,
         );
     const { picks, eligible } = selection;
-    const postBaseValidation = captureValidation
-      ? validationProgressOf((selection as { validationSummary?: ValidationSummary }).validationSummary, t) : null;
+    // Report the evaluated cohort before filtering to seats. Counting the already-qualified list made
+    // an empty result look unevaluated and made every nonempty result falsely read as 100% validated.
+    const postBaseValidation = refreshedValidation
+      ? validationProgressOf(refreshedValidation, t)
+      : captureValidation ? validationProgressOf((selection as { validationSummary?: ValidationSummary }).validationSummary, t) : null;
     if (!fast && !reuse) {
       this.lastSelection = { picks, eligible };
       this.lastSelectionAt = t;
     }
     const tSelect = performance.now() - tp0;
     const sel = new Set([...picks.map((p) => p.id), ...sigTapes.map((tp) => tp.id)]);
+    const rankedEntrySeats = new Map<number, Set<string>>();
+    const wf = this.wf;
+    const continuousSeat = function* (tp: ConfigTape, op: OpenPosition): Generator<number, boolean> {
+      if (continuousConfigSeatAllowed(tp, op.entryT, wf, op.sym, op.side)) return true;
+      // Fast continuation owns only its selected subset and cannot safely rank the missing catalog.
+      if (fast || !continuousRankedSeatPolicy(wf)) return false;
+      let ids = rankedEntrySeats.get(op.entryT);
+      if (!ids) {
+        ids = (yield* continuousRankedSelectionGen(engineTapes, op.entryT, wf, held)).ids;
+        rankedEntrySeats.set(op.entryT, ids);
+      }
+      return ids.has(tp.id);
+    };
     // sets that still hold an open position stay processed until that position is closed (even when no longer
     // selected): their tape carries the open position forward until its exit
     const holding = new Set(this.paper.positions.map((p) => p.cfg));
@@ -9801,7 +9826,7 @@ export class CoreRuntime {
     const openPos = new Set<string>();
     // held positions first (they are never pushed out by a cap), then new entries by the Real-stage rules
     const prevByKey = new Map(this.paper.positions.map((p) => [posId(p), p]));
-    const cands: Array<{ tp: ConfigTape; op: OpenPosition; held: boolean }> = [];
+    const cands: Array<{ tp: ConfigTape; op: OpenPosition; held: boolean; seatEligible?: boolean }> = [];
     let stale = 0;
     // every tape position the step does not open, by reason (status.paperSkips: none of them is dropped silently)
     const pSkips: Record<string, number> = {};
@@ -9811,7 +9836,7 @@ export class CoreRuntime {
     // an entry made before this step's time is judged on the seats of its own step (the simulation's, as it took it):
     // the seats at t were picked on closes that came after that entry (bug hunt, 13 Oct: paper and live opened
     // positions the simulation never executed and skipped ones it did)
-    const stepMs = Math.max(1, this.wf.stepH) * H;
+    const stepMs = Math.max(1 / 60, this.wf.stepH) * H;
     const seatsAt = stepSeats(this.sim.steps);
     if (fast) {
       // the realtime entry step: every held position stays (closes are the full step's); new entries are the seated
@@ -9829,20 +9854,19 @@ export class CoreRuntime {
       }
       for (const [id, ops] of fast.opens) {
         const tp = byId.get(id);
-        if (!tp || !sel.has(id)) continue;
+        if (!tp || (!sel.has(id) && !stageBaseAllowsTape(tp, this.wf))) continue;
         const isSig = isSignalInd(tp.ind);
         for (const op of ops) {
           if (prevByKey.has(posId(op))) continue;
-          if (!isSig && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
-            pSkip("notSelected");
-            continue;
-          }
+          const seatEligible = isSig ? sel.has(id) :
+            (seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel) || (yield* continuousSeat(tp, op)));
+          if (!seatEligible && !stageBaseAllowsTape(tp, this.wf)) { pSkip("notSelected"); continue; }
           if (!freshEntry(op.entryT, freshnessT(), this.wf.stepH)) {
             stale++;
             pSkip("stale");
             continue;
           }
-          cands.push({ tp, op, held: false });
+          cands.push({ tp, op, held: false, seatEligible });
         }
       }
     }
@@ -9852,7 +9876,16 @@ export class CoreRuntime {
     if (!fast)
       for (const st of this.sim.steps)
         if (st.t >= t - stepMs && st.t < t) for (const id of st.real) visit.add(id);
+    if (!fast && nativeStages) {
+      let scanned=0;
+      for (const tp of this.tapes) {
+        if (stageBaseAllowsTape(tp, this.wf)) visit.add(tp.id);
+        if (++scanned % 256 === 0) yield scanned;
+      }
+    }
+    let visited = 0;
     for (const id of fast ? [] : visit) {
+      if (++visited % 256 === 0) yield visited;
       const tp = byId.get(id);
       if (!tp) continue;
       const isSig = isSignalInd(tp.ind);
@@ -9860,10 +9893,10 @@ export class CoreRuntime {
         // held = this exact position was already in the paper book; a set that is no longer selected keeps
         // only those (its other tape positions were never taken and must not bypass the caps)
         const held = prevByKey.has(posId(op));
-        if (!held && !isSig && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
-          pSkip("notSelected");
-          continue;
-        }
+        const seatEligible = held || (isSig ? sel.has(id) :
+          (!(continuousRankedSeatPolicy(this.wf) || !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) ||
+            (yield* continuousSeat(tp, op))));
+        if (!seatEligible && !stageBaseAllowsTape(tp, this.wf)) { pSkip("notSelected"); continue; }
         // a new entry only from the current step, as the simulation takes them (an older tape position is left
         // to its tape: adopting it opened Wide's 8–24 h holds late, at today's price)
         if (!held && !freshEntry(op.entryT, freshnessT(), this.wf.stepH)) {
@@ -9871,7 +9904,7 @@ export class CoreRuntime {
           pSkip("stale");
           continue;
         }
-        cands.push({ tp, op, held });
+        cands.push({ tp, op, held, seatEligible });
       }
     }
     yield 0;
@@ -10122,7 +10155,7 @@ export class CoreRuntime {
     if (ambiguousLegacyHits.length)
       this.db.event("warn", `paper: ${ambiguousLegacyHits.length} legacy stop hit(s) have ambiguous sides; exact hits are kept independent`);
     const crowdSeats: OpenPosition[] = [];
-    for (const { tp, op, held } of cands) {
+    for (const { tp, op, held, seatEligible = true } of cands) {
       if (++slice % 32 === 0) yield slice;
       if (!held) releaseDue(op.entryT);
       // Candidate collection, sorting and book preparation are also sliced. A position can age out while they run.
@@ -10135,6 +10168,7 @@ export class CoreRuntime {
         pSkip("duplicate");
         continue;
       }
+      let executionEligible = seatEligible;
       if (!held) {
         while (ci < closedBy.length && closedBy[ci].exitT <= op.entryT) {
           const x = closedBy[ci++];
@@ -10169,7 +10203,8 @@ export class CoreRuntime {
           lvSkipped++;
           pSkip("liveValidation");
           crowdSeats.push(op);
-          continue;
+          executionEligible = false;
+          if (!stageBaseAllowsTape(tp, this.wf)) continue;
         }
       }
       // a held position continues regardless of the entry rules (they decided at its entry) and keeps its execution
@@ -10179,11 +10214,14 @@ export class CoreRuntime {
       if(!this.trailingProcessingFor(op.cfg))op.trailingProcessingEnabled=false;
       const tr = carryTrail(op, prev);
       const stopNow = tr.stop ?? op.stop;
-      const d = held
+      const rangeMode = rangeOptsOf(this.wf, tp)?.mode;
+      const entryOpts = rangeMode && rangeMode !== this.wf.mode ? { ...this.wf, mode: rangeMode } : this.wf;
+      let d = held
         ? ({
             ok: true,
             vol: prev ? positionMult(prev) : 1,
             level: prev?.level ?? 0,
+            blockPredecessor: prev?.blockPredecessor,
             relateVol: prev?.relateVol ?? 1,
             relateParts: prev?.relateParts,
             legs: prev?.legs,
@@ -10192,13 +10230,23 @@ export class CoreRuntime {
             blockEffectiveLevels: prev?.blockEffectiveLevels,
             blockSampleCounts: prev?.blockSampleCounts,
           } as const)
-        : execDecision(tp, op.entryT, this.wf, {
+        : execDecision(tp, op.entryT, entryOpts, {
             processedBase: !!nativeStages,
+            blockPredecessor: !!nativeStages && this.wf.block.historySource === "processed-orders",
             ...booksAt(op.entryT),
             sym: op.sym,
             side: op.side,
             relateBase: () => 1,
           });
+      const allowActive = held || (executionEligible && d.ok);
+      if (!held && nativeStages && !allowActive && stageBaseAllowsTape(tp, this.wf)) {
+        const learning = execDecision(tp, op.entryT, entryOpts, {
+          processedBase: true, stageLearning: true,
+          blockPredecessor: this.wf.block.historySource === "processed-orders",
+          ...booksAt(op.entryT), sym: op.sym, side: op.side, relateBase: () => 1,
+        });
+        if (learning.ok) d = learning;
+      }
       // Exit keeps its own cap counts, while inheriting the configured caps of its source class.
       const cls = orderCapScope(op.cfg);
       const signalClass = sigCfg(op.cfg);
@@ -10259,7 +10307,7 @@ export class CoreRuntime {
         }
         try {
           const minProcessedPf = Math.max(this.wf.lastNMinPf, minPfForTape(tp, this.wf));
-          processedStage = nativeStages.enter(tp, op.sym, op.side > 0 ? 1 : -1, op.entryT, minProcessedPf).stage;
+          processedStage = nativeStages.enter(tp, op.sym, op.side > 0 ? 1 : -1, op.entryT, minProcessedPf, allowActive).stage;
           processedPolicy = nativeStages.revision;
           if (!this.persistNativeProcessedStages()) {
             pSkip(`${pre}exec:processedUnavailable`);
@@ -10309,6 +10357,7 @@ export class CoreRuntime {
       const heldPx = prev ? prev.heldPx : this.heldPxOf(op.sym);
       positions.push({
         ...op,
+        ...((held ? prev?.blockPredecessor : d.blockPredecessor) ? { blockPredecessor: true as const } : {}),
         ...(processedStage ? { processedStage } : {}),
         ...(processedPolicy ? { processedPolicy } : {}),
         // when the book first held it (kept across steps): adopted now, or as it was
@@ -10395,7 +10444,9 @@ export class CoreRuntime {
       heldCloses.set(k, ownClose);
       // A close before this paper book's accounting window can retire the held identity, but its unknown old
       // allocation must not be invented as a gain in today's equity (nor vanish again on the next step).
-      if (ownClose.exitT >= since) {
+      if (isProcessingOnly(p)) {
+        if (indices.length) excludeHeldCloses.add(k);
+      } else if (ownClose.exitT >= since) {
         if (indices.length) trades[indices[0]] = ownClose;
         else trades.push(ownClose);
       }
@@ -10437,6 +10488,7 @@ export class CoreRuntime {
       const now = Date.now();
       const rows: Array<Array<string | number | null>> = [];
       for (const p of prevByKey.values()) {
+        if (isProcessingOnly(p)) continue;
         const k = orderKey(p);
         if (openNow.has(k)) continue;
         const x = tradeOf.get(k);
@@ -10510,6 +10562,7 @@ export class CoreRuntime {
     });
     const ownedEntryAllocations = new Map<string, { unitUsd: number; vol: number }>();
     for (const p of positions) {
+      if (isProcessingOnly(p)) continue;
       const k = orderKey(p);
       // A legacy held position is never retroactively funded by a new simulation's reconstructed unit.
       const prior = this.paperOwnedAllocations?.get(k);
@@ -10694,7 +10747,7 @@ export class CoreRuntime {
       positions,
       trades,
       equity:
-        carried + sized.pnl + positions.reduce((a, p) => a + p.mtm * (p.vol ?? 1) * unitOf(p), 0),
+        carried + sized.pnl + positions.reduce((a, p) => a + (isProcessingOnly(p) ? 0 : p.mtm * (p.vol ?? 1) * unitOf(p)), 0),
       balance: 0,
       units: sized.units,
       carried,
@@ -10711,7 +10764,7 @@ export class CoreRuntime {
     });
     // signal positions (symbol × direction) and orders open now, shown apart
     if (this.status.signals) {
-      const sp = positions.filter((p) => sigCfg(p.cfg) && !isHistoricExitConfig(p.cfg));
+      const sp = positions.filter((p) => sigCfg(p.cfg) && !isHistoricExitConfig(p.cfg) && !isProcessingOnly(p));
       this.status.signals.openOrders = sp.length;
       this.status.signals.openPositions = new Set(sp.map((p) => `${p.sym}|${p.side}`)).size;
     }

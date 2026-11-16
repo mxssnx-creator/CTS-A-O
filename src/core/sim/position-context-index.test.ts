@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {DEFAULT_SETTINGS} from '../config.ts';
 import {DEFAULT_POSITION_WINDOWS} from '../position-windows.ts';
-import {configEval,defaultWalkForward,makeTape,positionConfigEval} from './walkforward.ts';
+import {configEval,configEvalSummary,defaultWalkForward,makeTape,positionConfigEval,symStats,sampleWindowsForTape} from './walkforward.ts';
 import type {Trade} from '../domain/types.ts';
 import {TapeHistoryStore} from '../server/history-store.server.ts';
+import {positionTapeValid} from '../position-windows.ts';
 
 test('all-context count evaluation matches scalar contexts with bounded column traversal',(ctx)=>{
  const symbols=Array.from({length:12},(_,i)=>'S'+i),end=Date.UTC(2026,10,15),rows:Trade[]=[];
@@ -44,4 +45,67 @@ test('all-context count evaluation matches scalar contexts with bounded column t
  assert.deepEqual(configEval(observed,end,o).contexts,expectedAfterEviction,'bounded-cache eviction rebuilds the same contexts');
  assert.ok(reads.symI<tape.n*3,'eviction must rebuild all contexts without per-symbol rescans');
  ctx.diagnostic(JSON.stringify({n:tape.n,traversals}));
+});
+
+test('count context ownership follows replaced symbol and side columns',()=>{
+ const end=Date.UTC(2026,10,16),rows:Trade[]=Array.from({length:6},(_,i)=>({
+  cfg:'own',sym:'A',side:1,entryT:end-(6-i)*60000,exitT:end-(6-i)*60000+1,
+  entry:100,exit:102,r:.02,mult:1,reason:'tp',kind:'normal',bars:1,mfe:0,mae:0}));
+ const tape=makeTape('own','follow','ema-9-21@m1',{tp:.01,sl:.01,trail:0,hold:1},'normal',['A','B'],rows,[],[]);
+ const d=defaultWalkForward(DEFAULT_SETTINGS),o={...d,rangeGate:undefined,
+  gates:{...d.gates,minPf:1.05,maxDdr:0,lossPrior:false,positionWindows:{...DEFAULT_POSITION_WINDOWS,main:4,real:3,entry:2}}};
+ assert.equal(positionConfigEval(tape,end,o,'A',1).ok,true);
+ assert.equal(symStats(tape,'A',1,0,end).n,6);
+ configEval(tape,end,o);
+ tape.symI=tape.symI.map(()=>1);tape.side=tape.side.map(()=>-1);
+ assert.equal(positionConfigEval(tape,end,o,'A',1).ok,false,'old ownership cannot qualify a replacement generation');
+ assert.equal(positionConfigEval(tape,end,o,'B',-1).ok,true,'replacement ownership must progress');
+ assert.equal(symStats(tape,'A',1,0,end).n,0);
+ assert.equal(symStats(tape,'B',-1,0,end).n,6);
+ assert.deepEqual(configEval(tape,end,o),configEval({...tape},end,o),'cached and fresh generations must agree');
+});
+
+test('empty count catalogs check source columns once while preserving every declared context',(ctx)=>{
+ const symbols=Array.from({length:12},(_,i)=>'S'+i),d=defaultWalkForward(DEFAULT_SETTINGS);
+ const tp=makeTape('own','follow','ema-9-21@m1',{tp:.01,sl:.01,trail:0,hold:1},'normal',symbols,[],[],[]);
+ const reads={symI:0,side:0,r:0,exitT:0};
+ const observed=new Proxy(tp,{get(target,key,receiver){if(key in reads)reads[key as keyof typeof reads]++;return Reflect.get(target,key,receiver);}});
+ const detail=configEval(observed,100,d);
+ assert.equal(detail.contexts?.length,24);
+ const {contexts:_contexts,...summary}=detail;
+ assert.deepEqual(configEvalSummary(observed,100,d),summary);
+ ctx.diagnostic(JSON.stringify({reads}));
+ for(const value of Object.values(reads))assert.ok(value<=10,'one tape must not recheck columns for all 24 empty contexts');
+});
+
+test('count readiness reports the complete disjoint windows used by the evaluator',()=>{
+ const tp=makeTape('own','follow','ema-9-21@m1',{tp:.01,sl:.01,trail:0,hold:1},'normal',['A'],[],[],[]);
+ const d=defaultWalkForward(DEFAULT_SETTINGS),block={long:20,short:10,minimal:3,shortPolarity:'positive' as const,minimalPolarity:'positive' as const};
+ const o={...d,rangeGate:undefined,gates:{...d.gates,positionWindows:{...DEFAULT_POSITION_WINDOWS,blocks:{main:block,real:{...block,long:10,short:4,minimal:1}}}}};
+ assert.deepEqual(sampleWindowsForTape(tp,o),{main:33,real:15,entry:12,range:0});
+});
+
+test('immutable ownership validation survives LRU eviction without reloading or retaining arenas',()=>{
+ const row:Trade={cfg:'own',sym:'A',side:1,entryT:10,exitT:20,entry:100,exit:102,r:.02,mult:1,reason:'tp',bars:1,mfe:0,mae:0};
+ const raw=makeTape('own','follow','ema-9-21@m1',{tp:.01,sl:.01,trail:0,hold:1},'normal',['A'],[row],[],[]);
+ const store=new TapeHistoryStore({cacheBytes:1});
+ try {
+  const first=store.append(raw),second=store.append({...raw,id:'other'});
+  assert.equal(positionTapeValid(first),true);
+  assert.equal(positionTapeValid(second),true);
+  const reads=store.stats.reads,hits=store.stats.hits;
+  assert.equal(positionTapeValid(first),true);
+  assert.deepEqual([store.stats.reads,store.stats.hits],[reads,hits], 'cached provenance must not fetch six binary columns');
+  assert.throws(()=>Array.prototype.push.call(first.syms,'mutated'),TypeError,'stored symbol membership is immutable');
+  first.syms=[];
+  assert.equal(positionTapeValid(first),false,'replacement ownership invalidates the verdict');
+  first.syms=['A'];
+  assert.equal(positionTapeValid(first),true);
+  store.clearCache();
+  const before=store.stats.reads;
+  assert.equal(positionTapeValid(first),true);
+  assert.equal(store.stats.reads,before+1,'explicit cache retirement rechecks the immutable generation');
+  store.close();
+  assert.throws(()=>positionTapeValid(first),/closed/,'retired storage cannot qualify from cached metadata');
+ } finally {store.close();}
 });

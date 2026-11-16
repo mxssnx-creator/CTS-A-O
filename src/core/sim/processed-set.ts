@@ -43,6 +43,8 @@ interface SetRows {
   active: Close[];
   counts: Record<ProcessedStage, StageCounts>;
   evaluations: { validation: VerdictCounts; real: VerdictCounts };
+  /** Real-qualified entries held at Validation by an independent execution gate. */
+  deferredActive?: number;
 }
 interface StageCounts {
   openedOrders: number;
@@ -59,6 +61,7 @@ export interface ProcessedSetSummary {
   basis: ProcessedBasis;
   stages: Record<ProcessedStage, StageCounts & { heldOrders: number; returnPf: number | null }>;
   evaluations: { validation: VerdictCounts; real: VerdictCounts };
+  deferredActive?: number;
 }
 export interface ProcessedOpen {
   identity: ProcessedSetIdentity;
@@ -69,6 +72,8 @@ export interface ProcessedOpen {
   validation: ProcessedVerdict;
   real: ProcessedVerdict | null;
   stage: ProcessedStage;
+  /** Real passed, but separate execution eligibility did not. */
+  activeDeferred?: true;
   /** Already settled slices for this still-open order, preventing repeated cumulative updates. */
   slices: string[];
   /** Sum of settled net contributions on the original parent notional. Null retains any unknown slice. */
@@ -233,7 +238,9 @@ export class ProcessedSetBook {
   }
 
   /** Record one actually processed, Base-qualified entry and freeze its stage at admission. */
-  acceptPostBase(identity: ProcessedSetIdentity, entryId: string, entryT: number, policy: ProcessedPolicy): ProcessedOpen {
+  acceptPostBase(identity: ProcessedSetIdentity, entryId: string, entryT: number, policy: ProcessedPolicy,
+    allowActive = true): ProcessedOpen {
+    if (typeof allowActive !== "boolean") throw new TypeError("invalid active admission");
     if (!identityValid(identity) || !nonempty(entryId)) throw new TypeError("invalid processed entry");
     if (!Number.isFinite(entryT) || entryT < 0 || entryT < this.clock) throw new RangeError("processed events must be chronological");
     // Validate both windows before mutating the clock or records.
@@ -245,12 +252,15 @@ export class ProcessedSetBook {
     const key = entryKey(identity, entryId, entryT);
     if (this.open.has(key) || (entryT === this.clock && this.seenAtClock.has(key))) throw new Error("duplicate processed entry");
     this.advance(entryT);
-    const stage = validation.state !== "qualified" ? "postBase" : real?.state === "qualified" ? "active" : "validated";
+    const deferred = real?.state === "qualified" && !allowActive;
+    const stage = validation.state !== "qualified" ? "postBase" : real?.state === "qualified" && allowActive ? "active" : "validated";
     const rows = this.rows(identity);
     rows.evaluations.validation[validation.state]++;
     if (real) rows.evaluations.real[real.state]++;
+    if (deferred) rows.deferredActive = (rows.deferredActive ?? 0) + 1;
     for (let i = 0; i <= stages.indexOf(stage); i++) rows.counts[stages[i]].openedOrders++;
-    const opened: ProcessedOpen = { identity: { ...identity }, entryId, entryT, policy: structuredClone(policy), validation, real, stage, slices: [], settledUnitReturn: 0 };
+    const opened: ProcessedOpen = { identity: { ...identity }, entryId, entryT, policy: structuredClone(policy), validation, real, stage,
+      ...(deferred ? { activeDeferred: true as const } : {}), slices: [], settledUnitReturn: 0 };
     this.open.set(key, opened);
     this.seenAtClock.add(key);
     return structuredClone(opened);
@@ -328,7 +338,7 @@ export class ProcessedSetBook {
         returnPf: pf !== null && Number.isFinite(pf) ? pf : null };
     }
     return { identity: { ...rows.identity }, basis: this.basis, stages: byStage,
-      evaluations: structuredClone(rows.evaluations) };
+      evaluations: structuredClone(rows.evaluations), ...(rows.deferredActive ? { deferredActive: rows.deferredActive } : {}) };
   }
 
   snapshot(): ProcessedSetSnapshot {
@@ -379,9 +389,10 @@ export class ProcessedSetBook {
         (["insufficient", "unknown", "failed", "qualified"] as const).every((k) => Number.isSafeInteger(v[k]) && v[k] >= 0);
       const v = set.evaluations?.validation, r = set.evaluations?.real;
       const total = (x: VerdictCounts) => x.insufficient + x.unknown + x.failed + x.qualified;
-      if (!validCounts(v) || !validCounts(r) || total(v) !== set.counts.postBase.openedOrders ||
+      const deferred = set.deferredActive ?? 0;
+      if (!Number.isSafeInteger(deferred) || deferred < 0 || !validCounts(v) || !validCounts(r) || total(v) !== set.counts.postBase.openedOrders ||
         v.qualified !== set.counts.validated.openedOrders || total(r) !== set.counts.validated.openedOrders ||
-        r.qualified !== set.counts.active.openedOrders ||
+        r.qualified !== set.counts.active.openedOrders + deferred ||
         set.counts.validated.closedOrders > set.counts.postBase.closedOrders ||
         set.counts.active.closedOrders > set.counts.validated.closedOrders ||
         set.counts.validated.settledSlices > set.counts.postBase.settledSlices ||
@@ -395,14 +406,16 @@ export class ProcessedSetBook {
       const decisionValid = validPolicy(p, snapshot.capacity) && validVerdict(item.validation, p.validationN, p.minPf, p.negativeFilter,p.blocks?.validation) &&
         (item.validation.state === "qualified"
           ? validVerdict(item.real, p.realN, p.minPf, p.negativeFilter,p.blocks?.real) &&
-            (item.real.state === "qualified" ? item.stage === "active" : item.stage === "validated")
-          : item.real === null && item.stage === "postBase");
+            (item.real.state === "qualified"
+              ? (item.activeDeferred === true ? item.stage === "validated" : item.activeDeferred === undefined && item.stage === "active")
+              : item.activeDeferred === undefined && item.stage === "validated")
+          : item.real === null && item.stage === "postBase" && item.activeDeferred === undefined);
       if (!nonempty(item.entryId) || !Number.isFinite(item.entryT) || item.entryT < 0 || item.entryT > snapshot.clock ||
         !stages.includes(item.stage) || !Array.isArray(item.slices) || item.slices.some((s) => !nonempty(s)) ||
         new Set(item.slices).size !== item.slices.length ||
         (item.settledUnitReturn !== null && !Number.isFinite(item.settledUnitReturn)) ||
         (!item.slices.length && item.settledUnitReturn !== 0) || !book.sets.has(processedSetKey(item.identity)) ||
-        book.open.has(key) || !decisionValid)
+        book.open.has(key) || !decisionValid || (item.activeDeferred && item.real?.state !== "qualified"))
         throw new TypeError("invalid processed open entry");
       book.open.set(key, structuredClone(item));
     }

@@ -78,11 +78,12 @@ export class ProcessedReplay {
       lane: JSON.stringify([tp.ind, this.policy.validationN, this.policy.realN, minPf]), economicRevision: this.revision };
   }
 
-  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number): ProcessedOpen {
+  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number,
+    allowActive = true): ProcessedOpen {
     const identity = this.identity(tp, symbol, side, minPf);
     // An onset has one parent. Future exit price/time/return cannot change its identity.
     const entryId = JSON.stringify([tp.id, symbol, side, entryT]);
-    return this.book.acceptPostBase(identity, entryId, entryT, { ...this.policy, minPf });
+    return this.book.acceptPostBase(identity, entryId, entryT, { ...this.policy, minPf }, allowActive);
   }
 
   settle(open: ProcessedOpen, exitT: number, unitReturn: number | null): void {
@@ -90,15 +91,27 @@ export class ProcessedReplay {
       unitReturn !== null && Number.isFinite(unitReturn) ? unitReturn : null, true);
   }
 
-  report(at: number, contexts: Iterable<{ identity: ProcessedSetIdentity; minPf: number }>): ProcessedReplayReport {
+  /** Sliced because a full built catalog can contain millions of exact contexts. */
+  *reportGen(at: number, contexts: Iterable<{ identity: ProcessedSetIdentity; minPf: number }>,
+    clock: () => number = () => performance.now()): Generator<number, ProcessedReplayReport> {
     const validation = coverage(), real = coverage(), sets: ProcessedSetSummary[] = [];
+    let visited = 0, lastYield = clock();
     for (const { identity, minPf } of contexts) {
       count(validation, this.book.verdict(identity, "postBase", this.policy.validationN, minPf, at, this.policy.negativeFilter,this.policy.blocks?.validation), this.policy.blocks?.validation?blockRequired(this.policy.blocks.validation):this.policy.validationN);
       count(real, this.book.verdict(identity, "validated", this.policy.realN, minPf, at, this.policy.negativeFilter,this.policy.blocks?.real), this.policy.blocks?.real?blockRequired(this.policy.blocks.real):this.policy.realN);
       const summary = this.book.summary(identity);
       if (summary) sets.push(summary);
+      if (++visited % 128 === 0 && clock() - lastYield >= 8) {
+        yield -20;
+        lastYield = clock();
+      }
     }
     return { basis: "model", at, coverageScope: "visible-config-symbol-direction",
       seededFromCandidates: false, validation, real, sets, snapshot: this.book.snapshot() };
+  }
+
+  report(at: number, contexts: Iterable<{ identity: ProcessedSetIdentity; minPf: number }>): ProcessedReplayReport {
+    const gen = this.reportGen(at, contexts);
+    for (;;) { const value = gen.next(); if (value.done) return value.value; }
   }
 }

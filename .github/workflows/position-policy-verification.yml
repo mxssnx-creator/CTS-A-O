@@ -34,6 +34,15 @@ jobs:
           src/core/sim/position-windows.test.ts src/core/sim/position-variants.test.ts
           src/core/server/position-history-retention.test.ts
           src/core/sim/position-context-index.test.ts
+          src/core/sim/signal-main-window.test.ts src/core/sim/processed-replay.test.ts
+          src/core/sim/engine-entry-schedule.test.ts
+          src/core/sim/block-stage-processing.test.ts src/core/server/block-stage-runtime.test.ts
+          src/core/server/signal-stage-runtime.test.ts src/core/sizing.test.ts
+          src/core/server/live-parent-isolation.test.ts src/core/api-reporting.test.ts
+          src/core/server/runtime-validation-refresh.test.ts src/core/server/research-real.worker.test.ts
+          src/core/server/processing-predecessors.test.ts
+          src/core/server/history-store.test.ts src/core/server/processed-admission-boundary.test.ts
+          src/core/evals/evaluator.test.ts src/core/server/last-n-samples.test.ts
           src/core/sim/signal-count-activation-cache.test.ts
           src/core/pipeline/universe-order.test.ts
           src/core/indications/break.test.ts src/core/indications/relate.test.ts
@@ -43,6 +52,7 @@ jobs:
           src/core/server/cost-default-runtime.test.ts src/core/server/fee-schedule.test.ts
           src/core/server/live-state-lifecycle.test.ts src/core/server/native-order-kind-safety.test.ts
           src/core/server/pool-progress-timeout.test.ts
+          src/core/server/stage-lifecycle.test.ts
           src/core/indications/low-range-auto.test.ts src/core/indications/low-range-integration.test.ts
           src/core/indications/low-range-research.test.ts
           src/core/fine-ladder-sets.test.ts src/core/micro-range.test.ts

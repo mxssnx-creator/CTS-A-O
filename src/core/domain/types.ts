@@ -548,6 +548,10 @@ export interface DcaConfig {
 }
 
 export interface Trade {
+  /** Independently processed Block precursor; never a funded or accepted execution. */
+  blockPredecessor?: true;
+  /** Frozen entry-time processed stage; only Active entries may be funded. */
+  processedStage?: "postBase" | "validated" | "active";
   /** Immutable entry-time extra-leg ownership for independent Block recovery accounting. */
   blockAttribution?: BlockAttribution;
   cfg: string;
@@ -603,6 +607,10 @@ export interface Trade {
 }
 
 export interface OpenPosition {
+  /** Independently processed paper precursor, retained across restart and ineligible for venue mirroring. */
+  blockPredecessor?: true;
+  /** Frozen entry-time processed stage; only Active entries may be funded. */
+  processedStage?: "postBase" | "validated" | "active";
   trailingProcessingEnabled?: boolean;
   blockAttribution?: BlockAttribution;
   cfg: string;

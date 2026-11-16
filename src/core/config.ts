@@ -310,8 +310,8 @@ export interface CoreSettings {
   /**
    * the cycle's compute mode. "full" (default, also when unset): every new bar recomputes Base → Main → tapes → run.
    * "incremental": between heavy computes the validated set's tapes are continued over the new bars and the paper step
-   * runs on them (src/core/server/incremental.ts); the heavy compute runs again every `heavyEveryBars` bars, at each
-   * hour (the seats are hourly) and whenever the settings, the universe or the tapes cannot be continued.
+   * runs on them (src/core/server/incremental.ts); heavy discovery also runs periodically and whenever the settings,
+   * universe or tapes cannot be continued. Count-based entry gates use their own completed closes.
    */
   runtime?: { cycle?: "full" | "incremental"; heavyEveryBars?: number };
   /** tick: open paper positions marked to market from the price stream and the live step (ms) */
@@ -450,8 +450,14 @@ export function mergeGateSettings(base: CoreSettings["gates"], patch?: GateSetti
   if (patch?.stepPf !== undefined && (!patch.stepPf || typeof patch.stepPf !== "object" || Array.isArray(patch.stepPf)))
     throw new Error("step PF: settings object required");
   const { stepPf, positionWindows, ...rest } = patch ?? {};
+  const windows = positionWindows === null ? null : positionWindows === undefined ? undefined :
+    { ...DEFAULT_POSITION_WINDOWS, ...base.positionWindows, ...positionWindows };
+  // Older saved range maps replaced the new Signal default wholesale. Give the formerly inherited factory
+  // Main-40 profile its own Signal Main-15 window, while preserving explicit Signal/config and custom Main values.
+  if (windows && windows.main === DEFAULT_POSITION_WINDOWS.main && windows.byRange?.sig?.main === undefined)
+    windows.byRange = { ...windows.byRange, sig: { ...windows.byRange?.sig, main: 15 } };
   return { ...base, ...rest, ...(positionWindows === undefined ? {} : { positionWindows: positionWindows === null ? null :
-    { ...DEFAULT_POSITION_WINDOWS, ...base.positionWindows, ...positionWindows } }), ...(stepPf === undefined ? {} : {
+    windows }), ...(stepPf === undefined ? {} : {
     stepPf: { ...DEFAULT_STEP_PF, ...base.stepPf, ...stepPf },
   }) };
 }
@@ -527,9 +533,8 @@ export interface LiveSettings {
    */
   foreignSides?: "avoid" | "independent";
   /**
-   * overall: signal lanes' volume weight against engine lanes (default 1). Signals trade only while their hourly
-   * index clears its gate; in the simulations and on x01's paper book they are the strongest category (PF 1.9–2.9
-   * simulated, 8–12 forward), so they can carry more volume than an engine lane.
+   * Overall Signal lanes' volume weight against engine lanes (default 1). Each Signal entry must clear its own
+   * configured qualification and ranking gates.
    */
   signalWeight?: number;
   /**

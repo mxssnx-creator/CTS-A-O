@@ -77,6 +77,28 @@ describe("sizing: packed event order", () => {
 });
 
 describe("sizing", () => {
+  it("does not fund or compound Main, Real, or Block processing entries", () => {
+    const opt = { balance: 1000, sizing: sizingSettings({ mode: "equityPct", pct: .02 }), fixedNotional: 100 };
+    const rows = [
+      { ...tr("main", 0, 1, .5), processedStage: "postBase" as const },
+      { ...tr("real", 2, 3, -.5), processedStage: "validated" as const },
+      { ...tr("block", 4, 5, .5), processedStage: "active" as const, blockPredecessor: true as const },
+      { ...tr("active", 6, 7, .1), processedStage: "active" as const },
+      tr("legacy", 8, 9, .1),
+    ];
+    const open = [
+      { cfg: "open-main", sym: "A", side: 1, entryT: 10 * H, processedStage: "postBase" as const },
+      { cfg: "open-real", sym: "A", side: -1, entryT: 10 * H, processedStage: "validated" as const },
+      { cfg: "open-active", sym: "A", side: 1, entryT: 10 * H, processedStage: "active" as const },
+    ];
+    const s = sizeBook(rows, open, opt);
+    for (const row of [...rows.slice(0, 3), ...open.slice(0, 2)]) assert.equal(s.units.get(orderKey(row)), 0);
+    assert.equal(s.units.get(orderKey(rows[3])), 20);
+    assert.equal(s.units.get(orderKey(rows[4])), 20.04);
+    assert.ok(s.units.get(orderKey(open[2]))! > 20);
+    assert.ok(Math.abs(s.pnl - 4.004) < 1e-9);
+  });
+
   it("defaults to 0.2 % of account balance per order unit", () => {
     assert.deepEqual(DEFAULT_SIZING, { mode: "equityPct", pct: 0.002 });
     assert.equal(unitNotional(DEFAULT_SIZING, 1000, 6), 2);

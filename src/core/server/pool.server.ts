@@ -370,7 +370,7 @@ export async function runOnWorkers<R>(
   size = poolSize(),
   timeoutMs = 15 * 60_000,
   /** fraction 0..1 across every message, from worker progress posts (no `ok`) */
-  onProgress?: (fraction: number) => void,
+  onProgress?: (fraction: number, work?: number) => void,
   /** served before non-priority messages waiting for a worker */
   priority = false,
   /** Cancel only this call, including a wholly queued priority call. */
@@ -408,7 +408,7 @@ async function runOnWorkersNow<R>(
   messages: Array<Record<string, unknown>>,
   size = poolSize(),
   timeoutMs = 15 * 60_000,
-  onProgress?: (fraction: number) => void,
+  onProgress?: (fraction: number, work?: number) => void,
   priority = false,
   signal?: AbortSignal,
   owner: object = {},
@@ -443,8 +443,8 @@ async function runOnWorkersNow<R>(
     // (a Base part holds its worker for minutes: terminated now, not finished)
     for (const x of running) stopOwned(x);
   };
-  const progress = (f: number) => {
-    if (onProgress && !failed) onProgress(f);
+  const progress = (f: number, work?: number) => {
+    if (onProgress && !failed) onProgress(f, work);
   };
   const lane = async () => {
     while (!failed && next < messages.length) {
@@ -460,6 +460,7 @@ async function runOnWorkersNow<R>(
         const activeSlot = slot;
         const w = activeSlot.w;
         const reply = await new Promise<R>((resolve, reject) => {
+          let lastWorkDone = 0;
           const timeout = () => {
             cleanup();
             stopOwned(activeSlot);
@@ -474,6 +475,8 @@ async function runOnWorkersNow<R>(
               id?: number;
               progress?: number;
               total?: number;
+              work?: number;
+              workDone?: number;
             } & R,
           ) => {
             if (failed) return cancel(failed);
@@ -487,9 +490,12 @@ async function runOnWorkersNow<R>(
               const previous = frac.get(id) ?? 0;
               const next = m.total && Number.isFinite(m.total) && m.total > 0 && Number.isFinite(m.progress)
                 ? Math.max(0, Math.min(1, m.progress / m.total)) : 0;
-              if (progressDeadlineMs !== undefined && id === i && next > previous) timer.refresh();
+              const workDone = Number.isSafeInteger(m.workDone) && m.workDone! >= 0 ? m.workDone! : 0;
+              if (progressDeadlineMs !== undefined && id === i && (next > previous || workDone > lastWorkDone)) timer.refresh();
+              lastWorkDone = Math.max(lastWorkDone, workDone);
               frac.set(id, Math.max(previous, next));
-              if (messages.length) progress(sumOf(frac) / messages.length);
+              if (messages.length) progress(sumOf(frac) / messages.length,
+                messages.length === 1 && Number.isFinite(m.work) && m.work! < 0 ? m.work : undefined);
               return;
             }
             activity.at = Date.now();

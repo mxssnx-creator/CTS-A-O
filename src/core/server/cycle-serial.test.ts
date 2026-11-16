@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { setImmediate as yieldNow } from "node:timers/promises";
-import { CoreRuntime, researchIntervalMs } from "./runtime.server.ts";
+import { CoreRuntime, researchDue, researchIntervalMs } from "./runtime.server.ts";
 import { CandleSeries } from "../market/candle-series.ts";
 import { CoreDb } from "./db.server.ts";
 
@@ -347,5 +347,13 @@ describe("completion-paced engine intervals", () => {
     assert.equal(researchIntervalMs("3600000"), 3_600_000);
     for (const raw of ["nan", "-1", "0", "500", "3600001"])
       assert.equal(researchIntervalMs(raw), 300_000);
+  });
+  it("revisits an empty fast cohort on a new bar without repeatedly researching the same bar", () => {
+    assert.equal(researchDue(false, true, true, 1_000, 300_000, true), true);
+    assert.equal(researchDue(false, false, true, 1_000, 300_000, true), false);
+    assert.equal(researchDue(false, true, true, 1_000, 300_000, false), false);
+    assert.equal(researchDue(false, true, true, 300_000, 300_000, false), true);
+    assert.equal(researchDue(false, true, false, 1_000, 300_000, false), true);
+    assert.equal(researchDue(true, false, true, 1_000, 300_000, false), true);
   });
 });

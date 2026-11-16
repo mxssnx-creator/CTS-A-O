@@ -385,7 +385,7 @@ export function OverviewPage() {
           label="Paper P&L (virtual)"
           value={fmt.usd(d.paper.equity)}
           className={tone(d.paper.equity)}
-          sub={`virtual balance ${fmt.usd(d.paper.balance)} · equity ${fmt.usd(d.paper.accountEquity)} · ${d.paper.positions} open orders · ${realSel} Real${sigSel || d.status?.signals?.enabled ? ` · ${sigSel} signal` : ""} configs`}
+          sub={`virtual balance ${fmt.usd(d.paper.balance)} · equity ${fmt.usd(d.paper.accountEquity)} · ${d.paper.positions} funded open orders · ${d.paper.processing?.orders ?? 0} processing-only · ${realSel} Real${sigSel || d.status?.signals?.enabled ? ` · ${sigSel} signal` : ""} configs`}
         />
       </div>
       {s && !knownReturns && <div className="v2-muted">Unit-return evidence is unavailable for {fmt.num(s.unknownReturns)} modeled closes. All {fmt.num(s.n)} outcomes remain counted; return charts are unavailable for this sample.</div>}

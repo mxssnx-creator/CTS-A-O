@@ -638,6 +638,25 @@ describe("session reports: return PF primary, simulated provenance", () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
+  it("refuses a durable paper-stage checkpoint outside an explicitly bounded offline replay", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-session-stage-guard-"));
+    try {
+      const feed = join(dir, "feed.json");
+      writeFileSync(feed, JSON.stringify({ tickers: [], candles: {} }));
+      for (const args of [[], ["--feed", feed], ["--feed", feed, "--end-at", "2026-10-17T21:00:00Z"],
+        ["--feed", feed, "--end-at", "2026-10-17T21:00:00Z", "--evaluation-from", "2026-10-18T21:00:00Z"],
+        ["--feed", feed, "--end-at", "2026-10-17T21:00:00Z", "--evaluation-from", "2026-10-15T21:00:00Z", "--replay", feed]]) {
+        const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script, "--paper-stage-state", ...args], {
+          encoding: "utf8", timeout: 5_000,
+          env: { ...process.env, CTS_CORE_VARIANTS: "0", NODE_OPTIONS: `--require ${new URL("./lib/core-test-offline-guard.cjs", import.meta.url).pathname}` },
+        });
+        assert.notEqual(result.status, 0, result.stdout);
+        assert.match(result.stderr, /--paper-stage-state needs an offline --feed/);
+        assert.doesNotMatch(result.stderr, /session: \d+ symbols|computing Base/);
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
   it("reports an empty Base run as unavailable PF with passing consistency checks", () => {
     const { data, md } = replay({ noBase: true });
     assert.equal(data.total.orders, 0);

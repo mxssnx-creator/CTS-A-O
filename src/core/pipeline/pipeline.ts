@@ -2151,7 +2151,9 @@ export function baseRuns(
   }
   let done = 0;
   const total = combos.length;
-  const step = Math.max(1, Math.floor(total / 20));
+  // Large Base partitions can spend minutes on 5% of their combos. Publish completed work in smaller
+  // bounded increments; the runtime already coalesces UI notifications without inventing progress.
+  const step = Math.max(1, Math.floor(total / 200));
   for (const g of groups.values()) {
     for (const c of g) {
       const pass = gates ? rangeCellPass(gates, c.ind) : undefined;

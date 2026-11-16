@@ -56,7 +56,7 @@ export class TickMathBook {
       indices,
       px: NaN,
       // A missing quote leaves the held mark in equity, including before this book receives its first price.
-      sum: indices.reduce((sum, i) => sum + positions[i].mtm * (positions[i].vol ?? 1) * units[i], 0),
+      sum: indices.reduce((sum, i) => sum + (units[i] === 0 ? 0 : positions[i].mtm * (positions[i].vol ?? 1) * units[i]), 0),
       nextBarT: Infinity,
     }));
   }
@@ -150,7 +150,7 @@ export class TickMathBook {
               ((p.tkBar ?? Math.floor(now / protectTf)) + 1) * protectTf,
             );
           if (!p.stopHit) g.nextBarT = Math.min(g.nextBarT, deadline);
-          sum += p.mtm * (p.vol ?? 1) * this.units[index];
+          if (this.units[index] !== 0) sum += p.mtm * (p.vol ?? 1) * this.units[index];
         }
         g.px = px;
         g.sum = sum;

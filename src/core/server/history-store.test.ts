@@ -28,11 +28,34 @@ import {
   historyOf,
   transferHistoriesGen,
   readHistoryManifest,
+  historyCacheBytes,
 } from "./history-store.server.ts";
 import { runOnWorkers, retireOwnedIdleWorkers } from "./pool.server.ts";
 
 const end = Date.UTC(2026, 9, 17),
   H = 3_600_000;
+test("decoded history cache is bounded and has an explicit operator override", () => {
+  assert.equal(historyCacheBytes("64"), 64 * 1048576);
+  assert.equal(historyCacheBytes("256"), 256 * 1048576);
+  for (const value of ["", "0", "-1", "1.5", "1025", "NaN"]) assert.throws(() => historyCacheBytes(value));
+});
+test("restored worker histories share one decoded cache budget across source stores", () => {
+  const stores = [new TapeHistoryStore(), new TapeHistoryStore()];
+  try {
+    const rows = Array.from({ length: 2 }, (_, i) => ({ cfg: `c${i}`, sym: "A", side: 1 as const,
+      entryT: i * 2, exitT: i * 2 + 1, entry: 100, exit: 101, r: .01, mult: 1,
+      reason: "tp" as const, bars: 1, mfe: 0, mae: 0 }));
+    const saved = stores.map((store, i) => store.append(makeTape(`c${i}`, "follow", "ema-9-21@m1",
+      { ...DEFAULT_PROTECT }, "normal", ["A"], rows.map(r => ({ ...r, cfg: `c${i}` })), [], [])));
+    const restored = restoreStoredTapes(saved.map(t => describeStoredTape(t)!), 256);
+    try {
+      for (const tape of restored.tapes) assert.equal(tape.r[0], .01);
+      const readStores = restored.tapes.map(t => historyOf(t)!.store);
+      assert.equal(readStores[0].stats.peakCacheBytes + readStores[1].stats.peakCacheBytes, 0,
+        "each two-row tape exceeds its half of the shared budget");
+    } finally { restored.close(); }
+  } finally { for (const store of stores) store.close(); }
+});
 function fixture() {
   const u = makeUniverse(
     ["A", "B"].flatMap((sym) => {
