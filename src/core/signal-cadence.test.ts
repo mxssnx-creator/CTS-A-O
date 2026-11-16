@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { signalCadence } from "./signal-cadence.ts";
 import { DEFAULT_SETTINGS, DEFAULT_TACTICS } from "./config.ts";
-import { entrySignal } from "./bots/bots.ts";
+import { comboSignal, entrySignal } from "./bots/bots.ts";
 import { laneInd } from "./indications/registry.ts";
 import { SeriesCache } from "./indications/cache.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
@@ -71,6 +71,11 @@ test("entrySignal applies cadence to Signal sources while leaving ordinary indic
   const ordinary = laneInd("ema-9-21", 4);
   assert.deepEqual(entrySignal("follow", ordinary, new SeriesCache(bars), tactics),
     entrySignal("follow", ordinary, new SeriesCache(bars), { ...tactics, signalMinDaily: 0 }));
+  const onRun = { ...tactics, onRun: true, session: true };
+  const delayed = entrySignal("follow", ind, new SeriesCache(bars), { ...onRun, signalMinDaily: 0 })!;
+  const onsets = comboSignal("follow", ind, new SeriesCache(bars))!;
+  assert.deepEqual(entrySignal("follow", ind, new SeriesCache(bars), onRun),
+    signalCadence(delayed, onsets, bars, .1), "on-run entries retain the source's raw cadence");
   assert.equal(DEFAULT_SETTINGS.tactics.signalMinDaily, 2);
   const u = makeUniverse([bars]);
   const cached = entrySignal("follow", ind, u.caches[0], tactics);

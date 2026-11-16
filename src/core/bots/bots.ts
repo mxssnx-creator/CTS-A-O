@@ -227,14 +227,18 @@ export function entrySignal(
   const e = entryKeys(bot, ind);
   const key = tacticKeyFor(tactics, e.base);
   if (bot === "exit") return comboSignal(bot, ind, k);
+  const minDaily = tactics?.signalMinDaily ?? 0;
+  const cadence = isSignalInd(ind) && (minDaily > 0 || !Number.isFinite(minDaily));
+  // Ordinary/on-run tactics do not need a second raw-onset series just to apply a Signal-only frequency policy.
+  if (!cadence && key && tactics?.onRun && (bot === "follow" || bot === "revert"))
+    return runEntries(bot, ind, k, key);
   const sig = comboSignal(bot, ind, k);
   if (!sig) return null;
   const entries = key && tactics?.onRun && (bot === "follow" || bot === "revert")
     ? runEntries(bot, ind, k, key)
     : key ? withTactics(sig, k, key, e.bi, tacKeys(e, key).tac) : sig;
   if (!entries) return null;
-  const minDaily = tactics?.signalMinDaily ?? 0;
-  return isSignalInd(ind) && (minDaily > 0 || !Number.isFinite(minDaily))
+  return cadence
     ? k.memo(`signalCadence:${key}:${Number(!!tactics?.onRun)}:${minDaily}:${bot}:${ind}`,
         () => signalCadence(entries, sig, k.b, minDaily))
     : entries;
