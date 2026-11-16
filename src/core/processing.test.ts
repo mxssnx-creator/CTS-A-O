@@ -222,7 +222,8 @@ describe("processing through the stages, every strategy type, every toggle combi
   // Preserve every range's floors/ownership/gates, two distinct target/stop values, both exit modes and both holds.
   const ends = <T>(xs: readonly T[]): T[] => xs.length > 1 ? [xs[0], xs[xs.length - 1]] : [...xs];
   const range = <T extends RangeGrid>(r: T | false | undefined): T | false | undefined => r && ({
-    ...r, tp: ends(r.tp), slOfTp: ends(r.slOfTp),
+    // (the thin 0.2-1.2 ladders keep their middle ratio too: both extremes alone are the tightest and loosest stops)
+    ...r, tp: ends(r.tp), slOfTp: r.slOfTp.length > 2 && r.slOfTp[r.slOfTp.length - 1] <= 1.6 ? [r.slOfTp[0], r.slOfTp[Math.floor(r.slOfTp.length / 2)], r.slOfTp[r.slOfTp.length - 1]] : ends(r.slOfTp),
     trailOfTp: [0, ...r.trailOfTp.filter((x) => x > 0).slice(0, 1)],
   });
   const grid = {
@@ -262,6 +263,10 @@ describe("processing through the stages, every strategy type, every toggle combi
         gates: { positionWindows:null, minPf: 1.1, baseSetsMinPf: 1.1, stepPf: { enabled: false },
           rangeMinPf: { micro: 1.1, minimal: 1.1, short: 1.1, general: 1.1, long: 1.1 } },
         grid,
+        // untagged DCA / Axis ladders: Axis per-range is on by default since Stable-04 and would tag them to a range
+        axis: { perRange: false },
+        // the seven-day Signal cadence gate (Stable-04) cannot warm up in this 72 h fixture
+        tactics: { signalMinDaily: 0 },
         // This 128-toggle matrix exercises the ordinary range/DCA/Axis pipeline. Keep its former Signal
         // scalar lane explicit; the full Expanded catalog has a separate frozen native replay.
         signals: { lanes: [15], exits: "pct", trailRatios: [1],
@@ -273,7 +278,7 @@ describe("processing through the stages, every strategy type, every toggle combi
       } as never,
       { market: "synthetic" },
     );
-    assert.ok(rt.wf.protects.length > 0 && rt.wf.protects.length <= 144,
+    assert.ok(rt.wf.protects.length > 0 && rt.wf.protects.length <= 200,
       `representative grid must remain bounded (${rt.wf.protects.length} cells)`);
     for (const tag of ["mc", "mn", "sh", "gn", "lg"]) {
       const own = rt.wf.protects.filter((p) => p.tag === tag);

@@ -159,7 +159,8 @@ it(`${worker ? "worker" : "local"} runtime Signal tapes retain their independent
       normal: { tp: [0.02], slOfTp: [1] }, trailing: { tp: [0.03], slOfTp: 1, trailOfTp: [0.5] },
       trailingOnly: { ...signalSettings().trailingOnly, enabled: false } }),
     gates: { minPf: 1.05, minTrades: 1, maxDdr: 0 },
-    tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false },
+    // the seven-day Signal cadence gate (Stable-04) needs a warm-up this raw history contract does not model
+    tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, signalMinDaily: 0 },
   } as never, { market: "synthetic", priceStream: null });
   try {
     rt.stop();
