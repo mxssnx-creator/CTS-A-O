@@ -655,6 +655,15 @@ describe("axis: signal strategy sets", () => {
     assert.ok(both.some((t) => t.kind === "axis" && !t.protect.tag));
     assert.ok(both.some((t) => t.kind === "dca" && !t.protect.tag));
     assert.equal(both.filter((t) => t.kind === "axis" && t.protect.tag === "mn").length, 2);
+    const wideHeld = both.find((t) => t.kind === "axis" && !t.protect.tag)!;
+    const noWide = buildTapes(u, grid, 0.002, { protects: wf.dcaProtects, dca: wf.dca, axis },
+      new Set([key]), null, null, { minSl: 0.005, minTrail: 0.005, wideEnabled: false,
+        pairTags: { [key]: ["", "mn"] }, heldIds: new Set([wideHeld.id]) });
+    const untagged = noWide.filter((t) => (t.kind === "axis" || t.kind.startsWith("dca")) && !t.protect.tag);
+    assert.deepEqual(untagged.map((t) => t.id), [wideHeld.id]);
+    assert.equal(untagged[0].heldOnly, true, "a previously owned Wide ladder only manages its exit");
+    assert.equal(noWide.filter((t) => t.kind === "axis" && t.protect.tag === "mn").length, 2,
+      "Minimal's independent Axis ladders still run");
   });
 
   it("noDca builds the Axis sets without the DCA sets; signals run Normal + Trailing by default", () => {

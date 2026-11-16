@@ -19,7 +19,14 @@ import { inTapeLayout, tapeBytes, tapeViews, type ConfigTape } from "../sim/walk
 import { registerImmutableHistoryGeneration } from "../sim/immutable-history-generation.ts";
 
 const MiB = 1048576;
-export const HISTORY_CACHE_BYTES = 64 * MiB;
+/** Bound decoded history independently from retained input history. */
+export function historyCacheBytes(value = process.env.CTS_CORE_HISTORY_CACHE_MB): number {
+  const mb = value === undefined ? 64 : Number(value);
+  if (!Number.isSafeInteger(mb) || mb < 1 || mb > 1024)
+    throw new Error("Invalid decoded history cache budget (1–1024 MiB)");
+  return mb * MiB;
+}
+export const HISTORY_CACHE_BYTES = historyCacheBytes();
 /** Bound automatic in-memory accumulation; this does not limit any historical sample. */
 export function historyMemoryBytes(): number {
   const value = Number(process.env.CTS_CORE_HISTORY_MEMORY_MB ?? 256);

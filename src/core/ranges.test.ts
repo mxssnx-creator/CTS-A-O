@@ -1,4 +1,4 @@
-import { SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
+import { SL_TP_RATIOS, THIN_SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS } from "./config.ts";
@@ -45,8 +45,8 @@ test("the position-cost ranges: Minimal 4–8× step 0.5, Short 9–14×, Genera
   assert.deepEqual(mult(GENERAL_RANGE), [15, 16, 17, 18, 19, 20, 21, 22]);
   assert.deepEqual(mult(LONG_RANGE), [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
   // stops: Minimal 1.5–3, Short 1–2.5, General / Long 0.25–1.5, step 0.25
-  assert.deepEqual([...MINIMAL_RANGE.slOfTp], [...SL_TP_RATIOS]);
-  assert.deepEqual([...SHORT_RANGE.slOfTp], [...SL_TP_RATIOS]);
+  assert.deepEqual([...MINIMAL_RANGE.slOfTp], [...THIN_SL_TP_RATIOS]);
+  assert.deepEqual([...SHORT_RANGE.slOfTp], [...THIN_SL_TP_RATIOS]);
   for (const r of [GENERAL_RANGE, LONG_RANGE]) assert.deepEqual([...r.slOfTp], [...SL_TP_RATIOS]);
   // three trailing distances in every range (a whole-target trail arms only as the target fills: the plain cell)
   for (const r of [MINIMAL_RANGE, SHORT_RANGE, GENERAL_RANGE, LONG_RANGE])

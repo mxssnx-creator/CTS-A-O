@@ -388,6 +388,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       if (s.tactics[k] !== undefined && typeof s.tactics[k] !== "boolean")
         throw new Error(`tactic ${k} must be boolean`);
     num(s.tactics.cooldownBars, 0, 96, "cooldown bars");
+    num(s.tactics.signalMinDaily, 0, 1000, "Signal minimum daily onsets");
   }
   if (s.disabledKinds !== undefined) {
     if (
@@ -455,6 +456,14 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       num(s.block.window, 1, 500, "block pooled-source window (closes per level)");
     if (s.block.windowAuto !== undefined && typeof s.block.windowAuto !== "boolean")
       throw new Error("block window auto: on / off");
+    if (s.block.windowIndependent !== undefined && typeof s.block.windowIndependent !== "boolean")
+      throw new Error("block window independence: on / off");
+    if (s.block.windowMinSamples !== undefined) {
+      num(s.block.windowMinSamples, 30, 5000, "block auto minimum samples");
+      int(s.block.windowMinSamples, "block auto minimum samples");
+      if (s.block.windowLookback !== undefined && s.block.windowLookback < s.block.windowMinSamples)
+        throw new Error("block window lookback must cover the minimum samples");
+    }
     if (s.block.windowCandidates !== undefined) {
       if (
         !Array.isArray(s.block.windowCandidates) ||
@@ -462,9 +471,15 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
         s.block.windowCandidates.length > 12
       )
         throw new Error("block window candidates: 1–12 windows");
-      for (const w of s.block.windowCandidates) num(w, 1, 500, "block window candidate");
+      for (const w of s.block.windowCandidates) {
+        num(w, 1, 500, "block window candidate");
+        int(w, "block window candidate");
+      }
     }
-    if (s.block.windowLookback !== undefined) num(s.block.windowLookback, 30, 5000, "block window lookback");
+    if (s.block.windowLookback !== undefined) {
+      num(s.block.windowLookback, 30, 5000, "block window lookback");
+      int(s.block.windowLookback, "block window lookback");
+    }
     if (s.block.stepFloor !== undefined && typeof s.block.stepFloor !== "boolean")
       throw new Error("block step floor: on / off");
     if (s.block.windowHours !== undefined) num(s.block.windowHours, 0, 168, "block activity window (hours, 0 = off)");
@@ -752,7 +767,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       if (!r || typeof r !== "object") return;
       const g = r as { tp?: unknown; slOfTp?: unknown; trailOfTp?: unknown };
       list(g.tp, 0.002, 0.2, `${name} TP`);
-      list(g.slOfTp, SL_TP_MIN, SL_TP_MAX, `${name} SL×TP`);
+      list(g.slOfTp, name === "short" || name === "minimal" ? FINE_SL_TP_MIN : SL_TP_MIN, SL_TP_MAX, `${name} SL×TP`);
       list(g.trailOfTp, 0, 1, `${name} trail share`);
       rangeShared(r, name);
       microOnly(r, name);

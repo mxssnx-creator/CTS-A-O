@@ -389,6 +389,8 @@ export type AxisRange = "atr" | "linear" | "geo" | "fib" | "volume";
 /** Tactics: causal entry filters and pacing applied to every combo's signal (Base, Main, Real, Live alike).
  *  Each one only removes entries; with all off the engine computes the plain signals. */
 export interface Tactics {
+  /** Minimum raw Signal onsets per day, averaged over seven complete preceding days (0 disables). */
+  signalMinDaily?: number;
   /** EU/US session only: signal bar opens 07:00–20:59 UTC */
   session: boolean;
   /** volatility regime: ATR% in the upper half of its last ~2 weeks of bars */
@@ -458,6 +460,10 @@ export interface BlockConfig {
    * 30). Default off.
    */
   windowAuto?: boolean;
+  /** Evaluate each source key independently rather than using one shared auto-window winner. */
+  windowIndependent?: boolean;
+  /** Minimum settled, attributed observations needed for each candidate (30–5000). */
+  windowMinSamples?: number;
   /** candidate windows for windowAuto (1–500). Default 5, 10, 15, 25, 35. */
   windowCandidates?: number[];
   /** raised closes per candidate window that windowAuto judges on. Default 300. */

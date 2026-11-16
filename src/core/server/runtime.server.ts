@@ -1,6 +1,8 @@
 import { slRatiosOf } from "../sl-ratios.ts";
 import type { SlBounds } from "../sl-calibration.ts";
-import { migratePositionWindows } from "./position-windows-migration.server.ts";
+import { migrateAxisPerRange, migratePositionWindows, migrateSignalEvaluation15 } from "./position-windows-migration.server.ts";
+import { SIGNAL_CADENCE_DAYS } from "../signal-cadence.ts";
+import { migrateThinRanges } from "./thin-ranges-migration.server.ts";
 import { mainnetPositionWindows } from "../position-windows.ts";
 import {relationalVolumeFactor,relationalVolumeSettings} from "../../../shared/cts-volume/ratios.ts";
 import { minimumStopFraction, normalizeMinSlDistancePct } from "../protection-policy.ts";
@@ -1278,7 +1280,10 @@ export class CoreRuntime {
     migrateHistoricExitOptIn(db);
     migrateMinimumProtectionPolicy(db);
     migratePositionWindows(db);
+    migrateSignalEvaluation15(db);
+    migrateAxisPerRange(db);
     migrateFineLadders(db);
+    migrateThinRanges(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
     if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {
@@ -2980,6 +2985,7 @@ export class CoreRuntime {
       gates: this.settings.gates,
       cost: this.settings.cost,
       toggles: this.settings.toggles,
+      wideEnabled: this.settings.grid.tp.length > 0,
       block: this.settings.block,
       dca: this.settings.dca,
       relate: { ...this.settings.relate, maxStack: Math.floor(Math.min(MAX_EXTERNAL_STACK, Math.max(1, this.settings.relate.maxStack))) },
@@ -12663,7 +12669,7 @@ export function basePass(
     ]),
   );
   const wideLadderPairs = new Set(
-    qualified
+    (s.grid.tp.length ? qualified : [])
       .map((r) => `${r.bot}|${r.ind}`)
       .filter((pair) => qualifiedTags[pair].length > 0 && (!s.axis.perRange || qualifiedTags[pair].includes(""))),
   );
@@ -12727,6 +12733,7 @@ function protectFloors(s: CoreSettings, rangeFitCutT?: number): EntryFloors {
   return {
     minSl: minimumStopFraction(s.cost, s.minSlDistancePct),
     minTrail: s.protectFloor?.minTrail ?? DEFAULT_SETTINGS.protectFloor.minTrail,
+    wideEnabled: s.grid.tp.length > 0,
     // range cells fitted to the indication's horizon only when the fit is on; every computed tape is kept (the
     // gates decide the seats; a tape that cannot seat yet still shows in the evaluation and statistics)
     rangeFit: fit && fit.enabled !== false ? { ...DEFAULT_RANGE_FIT, ...fit } : null,
@@ -12903,7 +12910,8 @@ export function signalDataHours(s: CoreSettings, wf: WalkForwardOptions): number
  * shortening it changed recursive/cross-lane source decisions at the evaluation boundary. */
 export function signalLaneDataHours(s: CoreSettings, wf: WalkForwardOptions, tf: number): number {
   const warmupTf = tf === s.tfMin ? tf : Math.max(tf, ...s.signals.lanes.filter((lane) => s.tfs.includes(lane)));
-  return 24 + signalHistoryHours(wf) + wf.simH + tacticWarmupBars(s.tactics) * warmupTf / 60;
+  const cadenceWarmup = (s.tactics.signalMinDaily ?? 0) > 0 ? SIGNAL_CADENCE_DAYS * 24 : 0;
+  return 24 + cadenceWarmup + signalHistoryHours(wf) + wf.simH + tacticWarmupBars(s.tactics) * warmupTf / 60;
 }
 function signalLaneSeriesOf(sym: string, cs: CandleSeries, s: CoreSettings, wf: WalkForwardOptions): Bars[] {
   const lanes = Object.freeze([...s.tfs]);

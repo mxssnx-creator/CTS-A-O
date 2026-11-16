@@ -103,7 +103,7 @@ describe("no silent caps", () => {
   it("Micro stops start at ratio 0.2 of the price target (which already carries the round-trip cost)", async () => {
     const { MICRO_SL, MICRO_RANGE, microPriceTp, EVAL_MIN_SL } = await import("./minimal-coord.ts");
     assert.equal(Math.min(...MICRO_SL), 0.2, "the tightest Micro stop ratio");
-    assert.equal(Math.max(...MICRO_SL), 1.6, "the widest Micro stop ratio");
+    assert.equal(Math.max(...MICRO_SL), 1.2, "the widest Micro stop ratio");
     assert.equal(MICRO_RANGE.tpNetOfCost, true, "Micro targets are net of the cost");
     // a 0.1 % net target at the 0.2 % cost is a 0.3 % price target; its ratio-1 stop is 0.3 %, floored at 0.5 %
     const tp = microPriceTp(0.001, MICRO_RANGE, 0.002);

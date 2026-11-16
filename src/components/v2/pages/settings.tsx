@@ -413,6 +413,7 @@ export function SignalsSettings(props: {
   grid?: Any;
   positionMode?: boolean;
   positionMainN?: number;
+  signalMinDaily?: number;
 }) {
   const g = { ...DEFAULT_SIGNALS, ...(props.signals ?? {}) } as Any;
   const guard = { ...DEFAULT_SIGNALS.guard, ...(g.guard ?? {}) };
@@ -453,6 +454,11 @@ export function SignalsSettings(props: {
         type, symbol and direction. Ordinary Short / General / Long and Micro grids are not expanded
         into Signals. Short / Medium below are Signal source parameter ranges.
       </div>
+      <Field label="Minimum Signals per day · 7-day average"
+        hint="Each source, symbol, range and lane counts its own raw onsets over the preceding seven complete days; missing history pauses new entries. 0 disables this filter.">
+        <Num min={0} max={1000} value={props.signalMinDaily ?? 2}
+          onChange={(v) => props.set(["tactics", "signalMinDaily"], v)} />
+      </Field>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <Switch
           label="Signals processing"
@@ -1483,6 +1489,12 @@ export function PositionWindowSettings(props: {
             onChange={(v) => put("maxDrawdownPositions", v)}
           />
         </Field>
+        <Field label="Signals Main positions N · set all"
+          hint="Shows the Main count; editing sets Base, Main, Real and Entry for Signals. Per-config overrides and block policies remain independent. The table below shows each stage.">
+          <Num int min={1} max={500} value={p.byRange?.sig?.main ?? p.main}
+            onChange={(v) => put("byRange", { ...p.byRange, sig: { ...p.byRange?.sig,
+              base: v, main: v, real: v, entry: v } })} />
+        </Field>
       </div>
       {(["base","main","real","entry"] as const).map(stage=><BlockPolicyFields key={stage} label={stage+" Last-N blocks"} value={p.blocks?.[stage]} onChange={block=>{const blocks={...p.blocks};if(block)blocks[stage]=block;else delete blocks[stage];put("blocks",blocks)}}/>)}
       <details style={{ marginTop: 12 }}>
@@ -2016,8 +2028,8 @@ export function RangeEditor(props: {
               hint="trailing cells use at least this stop (higher stops)"
             >
               <Num
-                step={0.25}
-                min={1}
+                step={0.1}
+                min={0.2}
                 max={5}
                 value={s.trailSlOfTp ?? 2}
                 onChange={(v) => props.set(p("trailSlOfTp"), v)}
@@ -3143,7 +3155,7 @@ export function SettingsPage() {
         title="Signals"
         sub="Signals range + independent Exit · own candidate grid, historical ranking and entry gates"
       >
-        <SignalsSettings signals={s.signals} set={set} status={status?.signals} grid={s.grid} positionMode={!!s.gates.positionWindows} positionMainN={s.gates.positionWindows?.main} />
+        <SignalsSettings signals={s.signals} set={set} status={status?.signals} grid={s.grid} positionMode={!!s.gates.positionWindows} positionMainN={s.gates.positionWindows?.main} signalMinDaily={s.tactics?.signalMinDaily} />
       </Panel>
 
       <div className="v2-grid v2-cols-2">
@@ -4098,6 +4110,32 @@ export function SettingsPage() {
       <div className="v2-grid v2-cols-4">
         <Panel title="Block">
           <div className="v2-grid v2-cols-2">
+            <Field label="Automatic Block counts"
+              hint="Evaluate candidate counts from accepted, settled orders. Each source uses its own entry-time attribution.">
+              <Switch label="Automatic Block counts" checked={!!s.block.windowAuto}
+                onChange={(v) => set(["block", "windowAuto"], v)} />
+            </Field>
+            <Field label="Independent Block sources"
+              hint="Select a count separately for each config, symbol, direction, indication, type and overall source.">
+              <Switch label="Independent Block sources" checked={!!s.block.windowIndependent}
+                onChange={(v) => set(["block", "windowIndependent"], v)} />
+            </Field>
+            <Field label="Block auto minimum completed samples"
+              hint="At least 30 settled, attributed results for a candidate. Fewer results cannot select it.">
+              <Num int min={30} max={5000} value={s.block.windowMinSamples ?? 30}
+                onChange={(v) => { set(["block", "windowMinSamples"], v);
+                  if ((s.block.windowLookback ?? 300) < v) set(["block", "windowLookback"], v); }} />
+            </Field>
+            <Field label="Block auto evaluation last-N" hint="Maximum retained sample for each candidate, at least the minimum samples.">
+              <Num int min={s.block.windowMinSamples ?? 30} max={5000} value={s.block.windowLookback ?? 300}
+                onChange={(v) => set(["block", "windowLookback"], v)} />
+            </Field>
+            <Field label="Block auto candidate counts" hint="Independent candidate windows, 1–500; each needs its own evidence.">
+              <List value={s.block.windowCandidates ?? [5, 10, 15, 25, 35]}
+                onChange={(v) => set(["block", "windowCandidates"], v)} />
+            </Field>
+          </div>
+          <div className="v2-grid v2-cols-2">
             <Field
               label="Ratio per level"
               hint="common extra base volume per passing level · 0.2 = +20% with continuous steps · Shared can use its own override"
@@ -4871,7 +4909,7 @@ export function SettingsPage() {
                 onChange={(v) => setW("validLastN", Math.round(v))}
               />
             </Field>
-            <Field
+            <Field hidden={!!s.gates.positionWindows}
               label="Signals range · validation N"
               hint={`Signals range only: config validation uses this many of its own closed results · 0 = off · 0 – 200 · mainnet (${MAINNET_CONN}): at least ${MAINNET_SIGNAL_VALID_LAST_N} enforced${onMainnet ? " — active now" : ""}`}
             >
@@ -4885,7 +4923,7 @@ export function SettingsPage() {
                 })}
               />
             </Field>
-            <Field
+            <Field hidden={!!s.gates.positionWindows}
               label="Signals range · entry N"
               hint={`Signals range only: skip new entries unless this config's own latest results pass · 0 = off · 0 – 200 · mainnet (${MAINNET_CONN}): at least ${MAINNET_LAST_N} enforced${onMainnet ? " — active now" : ""}`}
             >

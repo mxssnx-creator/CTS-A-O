@@ -55,6 +55,7 @@ function fixture(tag?: RangeTag) {
   const d = defaultWalkForward(DEFAULT_SETTINGS);
   const o = {
     ...d,
+    wideEnabled: true, // Exercise the historical Wide cases as well as tagged ranges independently of desk defaults.
     preH: 6,
     longH: 24,
     lastN: 0,
@@ -516,6 +517,14 @@ describe("continuous post-Base qualification", () => {
     tp.heldOnly = true;
     assert.equal(selectFixed(list, at, o).picks.length, 0);
     tp.heldOnly = false;
+    assert.equal(selectFixed(list, at, o).picks.length, 1);
+  });
+
+  it("cached selection reflects the Wide switch immediately on the same tape list", () => {
+    const { tp, o } = fixture();
+    const list = [tp], at = T + 30 * 60_000 + 1;
+    assert.equal(selectFixed(list, at, o).picks.length, 1);
+    assert.equal(selectFixed(list, at, { ...o, wideEnabled: false }).picks.length, 0);
     assert.equal(selectFixed(list, at, o).picks.length, 1);
   });
 

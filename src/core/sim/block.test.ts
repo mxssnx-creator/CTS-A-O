@@ -827,6 +827,7 @@ describe("AutoBlockBook (windowAuto)", () => {
     minActiveLevel: 2,
     window: 50,
     windowAuto: true,
+    windowIndependent: false, // this suite verifies the legacy shared-window policy
     windowCandidates: [1, 50],
   };
   const entry = (r: number) => ({ sym: "AAA-USDT", side: 1, kind: "trend", r });

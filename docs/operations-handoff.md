@@ -1,3 +1,68 @@
+## 2026-11-16 — seven-day Signal cadence and Wide admission follow-up
+
+This follow-up supersedes the frequency-gate and untagged-ladder limitations in the immediately following
+checkpoint. Signal source entries now require an average of two raw onsets per day over seven complete trailing
+days, configurable in Settings. A source/range/timeframe/symbol has its own onset stream, both directions count,
+and the current onset and duplicate protection-config trades do not contribute. Insufficient or gapped history
+does not grant eligibility; setting zero disables the gate. The extra seven-day physical warmup is distinct from
+the requested evaluation prehistory, whose entry boundary remains unchanged. Focused tests cover completeness,
+gaps, prefix causality, cache release, ordinary-indication isolation and worker/local tape parity. This still needs a full production-path
+replay with sufficient older candles and evaluation-to-venue parity; no source is deleted based on an unmeasured
+claim of underperformance.
+
+Ordinary Wide tapes cannot gain new admission when the Wide grid is disabled, including untagged Axis/DCA.
+Exact held ladders remain available only to manage their exits. Axis per-range is on by default and migrated
+once with a backup, so qualified tagged ranges can build independent ladders. Tests cover a held Wide ladder and
+the continuing Minimal Axis lane. Historic Signal fitting computes on the full warmed source but simulates only
+the eligible evaluation tail; this is a bounded-work optimization, not a measured end-to-end speedup.
+
+The frozen feed contains more than seven prior days for the 12-symbol cohort. The earlier 24h-prehistory + 24h
+offline replay used the previous checkpoint before the cadence and Wide follow-up; it was interrupted after
+1,149 seconds in strategy-tape construction (61% of that stage, approximately 2,677 MB sampled RSS). It
+produced no final report. No hourly returns, post-Base PF, percentage validated, modeled settlement PF or venue
+execution PF can be inferred. An end-to-end replay of this exact follow-up, comprehensive UI/stats verification,
+independent Block source-memory profiling and performance optimization remain open. This is not a deployment or
+live-trading acceptance. The synthetic UI test could not launch Chromium because local browser socket creation
+was denied; browser and visual verification therefore remain open.
+
+## 2026-11-16 — Stable-04 partial Signal, Block and thin-range checkpoint
+
+This checkpoint is based on Stable-04 `4bb45cc0a3c8cad2230a5d156afe89a7053bb16c`. It is incomplete:
+do not treat it as evidence of profitability, deploy it, or start an exchange account on its strength.
+The requested seven-day Signal-onset frequency gate (minimum average two/day) is not implemented; raw
+Signal onsets must be counted causally with complete seven-day coverage, not inferred from duplicated
+protection-config trades. No source has been removed without current, independent performance evidence.
+
+Fresh count-based Signal Base/Main/Real/entry defaults are 15; explicit saved range/config policies remain
+independent. The saved-settings migration backs up prior settings, disables new Historic Exit work, empties
+the default Wide TP grid, enables Axis/Block and enables independent Block auto-window evaluation. Untagged
+Axis/DCA ladders have separate ownership and still need a complete Wide-coordination audit. The migration
+does not rewrite held positions. Micro, Minimal and Short factory SL/TP grids are 0.2–1.2 by 0.1; actual
+stops still respect costs and minimum-distance rules. Former factory ladders migrate with a backup and
+custom ladders remain unchanged. The prior protection migration is prevented from rounding current fine
+ladders back onto 0.25 increments. Tactics' trend and volatility filters remain enabled with Settings controls.
+
+Signal step-PF thresholds now apply to fitted historic protections and later admission, with existing independent
+Signal and stricter range/cell floors. Block auto candidates keep source-keyed, entry-stamped observations;
+each candidate needs at least 30 settled attributed results. Unknown/rejected observations do not create a
+winning score. This is implementation and fixture evidence, not proof of profitable volume, venue parity or
+complete coverage of every strategy lane. The decoded history cache remains 64 MiB by default; the bounded
+`CTS_CORE_HISTORY_CACHE_MB` override permits 1–1024 MiB and is included in existing memory accounting.
+
+Local checks: 299 Settings-completeness checks, 61 Block checks, 34 Block admission/recovery/isolation checks,
+20 tactics/range-protection checks, targeted migration/Signal/step-PF checks, typecheck and development plus
+worker build passed. An earlier broad check failed on old factory/legacy-window expectations; the relevant
+fixtures were pinned to their intended historical mode or updated for the new explicit operator defaults,
+then rerun. This is not the full Core inventory, a live test, or a browser verification.
+
+Retrospective offline replay: 12 symbols, exactly 24h prehistory and 24h simulation, ending 2026-10-16 21:00 UTC;
+feed SHA256 `1730009721a75ce90b82b5023bf229f105a43f9dca0c1d3452a7f1be653a4164`. A predecessor snapshot was
+interrupted during Base after about 10 minutes, last recorded 42% Base and 804 MB sampled process RSS. A later
+snapshot was started with four workers and a 256 MiB decoded-history cache; it had not finished at this checkpoint.
+No hourly table, current post-Base return PF, passed/evaluated count, validated percentage, modeled settlement PF,
+venue PF, or execution acceptance has been established. Prior CTS-G studies do not prove a profitable imported
+range or Block configuration; the shared Micro/range-family source files are already identical to CTS-A-O's.
+
 ## 2026-11-16 — evaluation provenance, simulation progress and scheduling
 
 PR #286 repairs stale ownership/evaluator provenance, disjoint-window statistics,
