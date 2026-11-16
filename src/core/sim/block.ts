@@ -180,6 +180,8 @@ export class BlockBook {
   readonly sideKeys: boolean;
   private seenCloses = new Set<string>();
   private keep: number;
+  /** A follower has independent pause state but reads another candidate's identical close history. */
+  private historyFollower = false;
   /** `opts`: the book options, or (a boolean) acceptedOnly alone */
   constructor(pause = 0, window = 1, options: BlockBookOpts | boolean = {}) {
     const opts: BlockBookOpts = typeof options === "boolean" ? { acceptedOnly: options } : options;
@@ -197,6 +199,19 @@ export class BlockBook {
     // the tail a level can read (up to 12 levels × window), kept with room to spare
     this.keep = Math.max(64, 12 * this.window);
   }
+  /** Automatic windows all receive the same closes; retain their history once, with the longest required tail. */
+  protected static shareCandidateHistory(books: readonly BlockBook[]): void {
+    const owner = books[0];
+    if (!owner) return;
+    owner.keep = Math.max(...books.map((book) => book.keep));
+    for (let i = 1; i < books.length; i++) {
+      books[i].lists = owner.lists;
+      books[i].times = owner.times;
+      books[i].historyFollower = true;
+    }
+  }
+  /** Auto's own base book is used for recovery, while its candidates hold the settled history. */
+  protected stopRecordingHistory(): void { this.historyFollower = true; }
   /**
    * Whether a close enters the pooled sources: a signal's only with poolSignals, a close identical to one already in
    * (same symbol, side, entry, exit and result: one entry under two indication names) only once with poolDedupe.
@@ -247,6 +262,7 @@ export class BlockBook {
         if (left <= 1) this.pauseLeft.delete(k);
         else this.pauseLeft.set(k, left - 1);
       }
+      if (this.historyFollower) continue;
       if (k.startsWith("c:") && !this.acceptedOnly) continue; // legacy config source judges its raw tape
       const l = this.lists.get(k);
       if (l) {
@@ -563,6 +579,8 @@ export class AutoBlockBook extends BlockBook {
     this.windows = ws;
     this.independent = b.windowIndependent === true;
     this.books = ws.map((w) => new BlockBook(b.pause ?? 0, w, { ...bookOpts(b), holdUntilNet: false, configWindow: this.independent }));
+    AutoBlockBook.shareCandidateHistory(this.books);
+    this.stopRecordingHistory();
     this.recent = ws.map(() => []);
     this.cur = ws.indexOf(fallback);
     this.initial = this.cur;
@@ -607,9 +625,13 @@ export class AutoBlockBook extends BlockBook {
     const updated = new Set<string>();
     // Recovery is tied to actual entry attribution, not rewritten when an automatic window changes.
     if (this.holdUntilNet) super.add(t, signal, pooled);
+    // Legacy unstamped closes must be judged against each candidate's pre-close state. Once the first book
+    // records the shared history, the other candidates see that close as well, so take all verdicts first.
+    const priorRaised = pooled && t.autoRaise === undefined
+      ? this.books.map((_, i) => this.decide(i, t).vol > 1) : undefined;
     for (let i = 0; i < this.books.length; i++) {
       // stamped at its entry (a run's feed); unstamped, judged on the closes before this one
-      if (pooled && (t.autoRaise !== undefined ? (t.autoRaise >> i) & 1 : this.decide(i, t).vol > 1)) {
+      if (pooled && (priorRaised ? priorRaised[i] : ((t.autoRaise ?? 0) >> i) & 1)) {
         const r = recent[i];
         r.push(t.r);
         if (r.length > 2 * this.lookback) r.splice(0, r.length - this.lookback);

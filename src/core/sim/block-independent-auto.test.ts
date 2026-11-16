@@ -66,3 +66,13 @@ test("unknown settled returns cannot turn an already measured source into a winn
   assert.equal(book.sourceScores(key)[0].pf, null);
   assert.equal(book.level(key, 1), 0);
 });
+
+test("unstamped closes judge every candidate window before recording the new close", () => {
+  const book = new AutoBlockBook({ ...policy, windowIndependent: false, maxLevel: 1, pause: 0,
+    windowCandidates: [1, 2] }, false);
+  const first = { ...entry("A", .01, 0), autoRaise: 0, autoSources: undefined };
+  book.add(first);
+  book.add({ ...first, autoRaise: undefined });
+  assert.deepEqual(book.scores().map((score) => score.n), [1, 0],
+    "the one-close window may raise; the two-close window must not see the close being scored");
+});
