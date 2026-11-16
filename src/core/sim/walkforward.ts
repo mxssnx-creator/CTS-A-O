@@ -13,7 +13,7 @@ import { minimumStopFraction } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
 import { returnWindow } from "../metrics/return-window.ts";
-import { DerivedCache } from "./derived-cache.ts";
+import { DerivedCache, derivedCacheBytes } from "./derived-cache.ts";
 import { immutableHistoryGeneration } from "./immutable-history-generation.ts";
 import { exitScopeSuffix, isHistoricExitConfig } from "../exit-scope.ts";
 import { isLowRangeInd, lowRangeGridProtects, lowRangeEnabled } from "../indications/low-range.ts";
@@ -4467,6 +4467,8 @@ function configEvalRaw(tp: ConfigTape, t: number, o: WalkForwardOptions): Config
 // A complete Signal scan visits hundreds of thousands of tapes. Weak maps alone retain every
 // derived context while the immutable source catalog is alive; bound the working set instead.
 const signalEvaluationCache = new DerivedCache<ConfigTape, { key: string; contexts: Map<string, ConfigEval> }>(512);
+// Indexes and compact views have variable-sized typed buffers. A key-count cap alone cannot bound their memory.
+const derivedIndexBytes = Math.floor(derivedCacheBytes() / 4);
 /** The same exact history + Last-N verdict for Strategy Base, causal ranking and native/model entry. */
 function signalEvaluationPolicyKey(t: number, o: WalkForwardOptions): string {
   return JSON.stringify([
@@ -5297,13 +5299,14 @@ export function* selectGroupsGen(
  */
 const symIdxMemo = new DerivedCache<ConfigTape, {
   source: CountSignalSource; n: number; values: Map<string, Int32Array | null>;
-}>(512);
+}>(512, derivedIndexBytes);
 function symTradeIdx(tp: ConfigTape, sym: string): Int32Array | null {
   const cached = symIdxMemo.get(tp);
   const m = cached && cached.n === tp.n && sameCountSignalSource(tp, cached.source) ? cached.values : new Map<string, Int32Array | null>();
   if (m !== cached?.values) {
     const source = countSignalSource(tp);
     if (source) symIdxMemo.set(tp, { source, n: tp.n, values: m });
+    else symIdxMemo.delete(tp);
   }
   let x = m.get(sym);
   if (x !== undefined) return x;
@@ -5324,6 +5327,12 @@ function symTradeIdx(tp: ConfigTape, sym: string): Int32Array | null {
     for (let i = 0; i < tp.n; i++) if (mask[tp.symI[i]]) x[k++] = i;
   }
   m.set(sym, x);
+  const record = symIdxMemo.get(tp);
+  if (record?.values === m) {
+    let bytes = 0;
+    for (const indices of m.values()) bytes += indices?.byteLength ?? 0;
+    symIdxMemo.set(tp, record, bytes);
+  }
   return x;
 }
 
@@ -5617,20 +5626,23 @@ export function engineValidationLastNOk(
 
 /** Independent config × direction proof. Symbols remain subject to their separate configured gate. */
 const directionViews = new WeakSet<ConfigTape>();
-const directionIndices = new DerivedCache<ConfigTape, Map<number, Uint32Array>>(512);
+const directionIndices = new DerivedCache<ConfigTape, Map<number, Uint32Array>>(512, derivedIndexBytes);
 const directionTapes = new DerivedCache<
   ConfigTape,
   Map<number, { start: number; end: number; tape: ConfigTape }>
->(512);
+>(512, derivedIndexBytes);
 
 function directionIndexOf(tp: ConfigTape, side: number): Uint32Array {
   let bySide = directionIndices.get(tp);
-  if (!bySide) directionIndices.set(tp, (bySide = new Map()));
+  if (!bySide) bySide = new Map();
   let idx = bySide.get(side);
   if (!idx) {
     const rows: number[] = [];
     for (let i = 0; i < tp.n; i++) if (tp.side[i] === side) rows.push(i);
     bySide.set(side, (idx = Uint32Array.from(rows)));
+    let bytes = 0;
+    for (const indices of bySide.values()) bytes += indices.byteLength;
+    directionIndices.set(tp, bySide, bytes);
   }
   return idx;
 }
@@ -5685,7 +5697,7 @@ function directionTape(tp: ConfigTape, t: number, o: WalkForwardOptions, side: n
   const required = Math.max(validationLastNForTape(tp, o), range?.lastN ?? 0, o.lastN);
   const start = Math.min(from, Math.max(0, end - required));
   let cached = directionTapes.get(tp);
-  if (!cached) directionTapes.set(tp, (cached = new Map()));
+  if (!cached) cached = new Map();
   const old = cached.get(side);
   if (old && old.end === end && old.start <= start) {
     old.tape.heldOnly = tp.heldOnly;
@@ -5696,6 +5708,9 @@ function directionTape(tp: ConfigTape, t: number, o: WalkForwardOptions, side: n
   const own = indexedEvaluationTape(tp, idx, start, end);
   directionViews.add(own);
   cached.set(side, { start, end, tape: own });
+  let bytes = 0;
+  for (const view of cached.values()) bytes += view.tape.exitT.buffer.byteLength;
+  directionTapes.set(tp, cached, bytes);
   return own;
 }
 
@@ -5761,7 +5776,13 @@ function qualifiedDirectionTape(
 /** Only queried config contexts allocate an index; original tape returns/times are never copied. */
 const signalContextIndices = new DerivedCache<ConfigTape, {
   source: CountSignalSource; n: number; contexts: Map<number, Uint32Array>;
-}>(512);
+}>(512, derivedIndexBytes);
+/** Conservative accounting for disposable indexes; actual active calculations can temporarily use more. */
+export function derivedIndexCacheStats() {
+  return { perCacheLimit: derivedIndexBytes, symbol: symIdxMemo.retainedBytes,
+    direction: directionIndices.retainedBytes, views: directionTapes.retainedBytes,
+    signal: signalContextIndices.retainedBytes };
+}
 const completeSignalContexts = new WeakSet<Map<number, Uint32Array>>();
 function currentSignalContexts(tp: ConfigTape): Map<number, Uint32Array> {
   const cached = signalContextIndices.get(tp);
@@ -5769,7 +5790,15 @@ function currentSignalContexts(tp: ConfigTape): Map<number, Uint32Array> {
   const contexts = new Map<number, Uint32Array>(), source = countSignalSource(tp);
   // Unknown getters can replace their columns without a generation notification; remain uncached.
   if (source) signalContextIndices.set(tp, { source, n: tp.n, contexts });
+  else signalContextIndices.delete(tp);
   return contexts;
+}
+function accountSignalContexts(tp: ConfigTape, contexts: Map<number, Uint32Array>): void {
+  const record = signalContextIndices.get(tp);
+  if (record?.contexts !== contexts) return;
+  let bytes = 0;
+  for (const indices of contexts.values()) bytes += indices.byteLength;
+  signalContextIndices.set(tp, record, bytes);
 }
 /** A caller which needs every context indexes the immutable columns together.
  * Keep the same bounded cache and chronological indices; single-context native
@@ -5791,6 +5820,7 @@ function prepareSignalContexts(tp: ConfigTape): Map<number, Uint32Array> {
     contexts.get(slot)![offsets[slot]++] = i;
   }
   completeSignalContexts.add(contexts);
+  accountSignalContexts(tp, contexts);
   return contexts;
 }
 function signalContextOf(tp: ConfigTape, sym: string, side: number): Uint32Array | null {
@@ -5807,6 +5837,7 @@ function signalContextOf(tp: ConfigTape, sym: string, side: number): Uint32Array
     const symbols = tp.syms, slots = tp.symI, sides = tp.side;
     for (let i = 0; i < tp.n; i++) if (symbols[slots[i]] === sym && sides[i] === side) own.push(i);
     contexts.set(slot, (indices = Uint32Array.from(own)));
+    accountSignalContexts(tp, contexts);
   }
   return indices;
 }

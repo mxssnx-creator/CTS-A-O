@@ -8,6 +8,8 @@
 //   CTS_CORE_MEM_HARD_MB (default 1200): below this — abort the running compute (its workers are terminated; the
 //                        compute is never continued in-process), and never start one: one level lighter, or at the
 //                        lightest level wait 15 s doubling up to 10 min (memRetryDelayMs)
+//   CTS_CORE_MEM_RSS_HARD_MB: optional process RSS ceiling for environments whose container limit is not visible.
+//                        CTS_CORE_MEM_RSS_SOFT_MB defaults to 85% of that ceiling when it is set.
 import { freemem } from "node:os";
 import { readFileSync } from "node:fs";
 import { getHeapStatistics } from "node:v8";
@@ -32,6 +34,8 @@ export interface MemInfo {
   cgroup?: CgroupMemoryEstimate;
   /** this process, MB (its workers included: they are threads) */
   rssMb: number;
+  rssSoftMb?: number;
+  rssHardMb?: number;
   heapMb: number;
   heapLimitMb?: number;
   heapAvailMb?: number;
@@ -47,6 +51,23 @@ export interface MemInfo {
 
 export const memSoftMb = () => Number(process.env.CTS_CORE_MEM_SOFT_MB) || 2500;
 export const memHardMb = () => Number(process.env.CTS_CORE_MEM_HARD_MB) || 1200;
+
+function rssLimit(name: string): number | undefined {
+  const value = process.env[name];
+  if (value === undefined || value === "") return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) throw new Error(`${name} must be a positive number of MiB`);
+  return n;
+}
+export const memRssHardMb = () => rssLimit("CTS_CORE_MEM_RSS_HARD_MB");
+export const memRssSoftMb = (hard = memRssHardMb()) =>
+  rssLimit("CTS_CORE_MEM_RSS_SOFT_MB") ?? (hard === undefined ? undefined : hard * .85);
+
+/** RSS includes worker threads and native buffers that the main V8 heap limit cannot see. */
+export function rssMemLevel(rssMb: number, soft?: number, hard?: number): MemLevel {
+  if (!Number.isFinite(rssMb) || rssMb < 0) return "ok";
+  return hard !== undefined && rssMb >= hard ? "hard" : soft !== undefined && rssMb >= soft ? "soft" : "ok";
+}
 
 /** "MemAvailable:   1234567 kB" → MB; null when the line is missing */
 export function parseMemAvailable(meminfo: string): number | null {
@@ -174,19 +195,23 @@ export function memInfo(now = Date.now(), force = false): MemInfo {
   const heapLimitMb = getHeapStatistics().heap_size_limit / 1048576;
   const heapLevel = heapMemLevel(mu.heapUsed / 1048576, heapLimitMb);
   const ramLevel = memLevel(availMb);
+  const rssHardMb = memRssHardMb(), rssSoftMb = memRssSoftMb(rssHardMb);
+  const rssLevel = rssMemLevel(mu.rss / 1048576, rssSoftMb, rssHardMb);
   cached = {
     availMb,
     hostAvailMb: host,
     ...(cgroup ? { cgroup } : {}),
     rssMb: Math.round(mu.rss / 1048576),
+    ...(rssSoftMb === undefined ? {} : { rssSoftMb }),
+    ...(rssHardMb === undefined ? {} : { rssHardMb }),
     heapMb: Math.round(mu.heapUsed / 1048576),
     heapLimitMb: Math.round(heapLimitMb),
     heapAvailMb: Math.max(0, Math.round(heapLimitMb - mu.heapUsed / 1048576)),
     heapTotalMb: Math.round(mu.heapTotal / 1048576),
     arrayBuffersMb: Math.round(mu.arrayBuffers / 1048576),
     nativeMb: Math.max(0, Math.round((mu.rss - mu.heapTotal - mu.arrayBuffers) / 1048576)),
-    level: ramLevel === "hard" || heapLevel === "hard" ? "hard"
-      : ramLevel === "soft" || heapLevel === "soft" ? "soft" : "ok",
+    level: ramLevel === "hard" || heapLevel === "hard" || rssLevel === "hard" ? "hard"
+      : ramLevel === "soft" || heapLevel === "soft" || rssLevel === "soft" ? "soft" : "ok",
     at: now,
   };
   return cached;

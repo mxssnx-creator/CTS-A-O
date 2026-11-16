@@ -595,6 +595,8 @@ export interface RuntimeStatus {
     hostAvailMb?: number;
     cgroup?: MemInfo["cgroup"];
     rssMb: number;
+    rssSoftMb?: number;
+    rssHardMb?: number;
     level: MemLevel;
     fallback: number;
     fallbackLabel: string;
@@ -4051,7 +4053,7 @@ export class CoreRuntime {
         this.memSoftNoted = true;
         this.db.event(
           "warn",
-          `memory low: ${m.availMb} MB available (soft ${memSoftMb()} MB), heap headroom ${m.heapAvailMb ?? "unknown"} MB, this process ${m.rssMb} MB${gc ? " — garbage collected" : ""}`,
+          `memory low: ${m.availMb} MB available (soft ${memSoftMb()} MB), heap headroom ${m.heapAvailMb ?? "unknown"} MB, this process ${m.rssMb} MB${m.rssSoftMb === undefined ? "" : ` (RSS soft ${m.rssSoftMb} MB)`}${gc ? " — garbage collected" : ""}`,
         );
       }
     }
@@ -4060,7 +4062,7 @@ export class CoreRuntime {
     if (m.level === "hard" && (!this.memPressured || workerActivity().inFlight > 0)) {
       const first = !this.memPressured;
       this.memPressured = true;
-      const reason = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), heap headroom ${m.heapAvailMb ?? "unknown"} MB, this process ${m.rssMb} MB — compute aborted`;
+      const reason = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), heap headroom ${m.heapAvailMb ?? "unknown"} MB, this process ${m.rssMb} MB${m.rssHardMb === undefined ? "" : ` (RSS hard ${m.rssHardMb} MB)`} — compute aborted`;
       const busy = abortWorkers(reason);
       if (first) {
         this.memLastAbort = reason;
@@ -4094,7 +4096,7 @@ export class CoreRuntime {
       this.memFreshAt = m.at + MEM_READ_MS;
       this.db.event(
         "warn",
-        `memory fallback ${fallbackLabel(before)} → ${fallbackLabel(this.memFallback)} (pressure before the compute: ${m.availMb} MB available)`,
+        `memory fallback ${fallbackLabel(before)} → ${fallbackLabel(this.memFallback)} (pressure before the compute: ${m.availMb} MB available, RSS ${m.rssMb} MB${m.rssHardMb === undefined ? "" : ` / ${m.rssHardMb} MB`})`,
       );
       this.memStatus(m);
       return true;
@@ -4102,7 +4104,7 @@ export class CoreRuntime {
     this.memMaxAborts++;
     const wait = memRetryDelayMs(MEM_FALLBACK_MAX, this.memMaxAborts);
     this.memRetryAt = Date.now() + wait;
-    this.memLastAbort = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB — compute not started`;
+    this.memLastAbort = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB${m.rssHardMb === undefined ? "" : ` (RSS hard ${m.rssHardMb} MB)`} — compute not started`;
     this.db.event(
       "warn",
       `${this.memLastAbort}; ${this.memMaxAborts} time(s) in a row at the lightest level — next try in ${Math.round(wait / 1000)} s`,
@@ -4159,6 +4161,8 @@ export class CoreRuntime {
       hostAvailMb: m.hostAvailMb,
       cgroup: m.cgroup,
       rssMb: m.rssMb,
+      rssSoftMb: m.rssSoftMb,
+      rssHardMb: m.rssHardMb,
       level: m.level,
       fallback: this.memFallback,
       fallbackLabel: fallbackLabel(this.memFallback),
