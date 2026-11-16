@@ -15,7 +15,7 @@ import { migrateFineLadders } from "./fine-ladder-migration.server.ts";
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
 import { isHistoricExitConfig } from "../exit-scope.ts";
 import { lstatSync } from "node:fs";
-import { mergeWorkerTapesGen } from "./tape-merge.ts";
+import { createTapeInterner, mergeWorkerTapesGen } from "./tape-merge.ts";
 import { strategyCoverageGen, type StrategyCoverage } from "./strategy-coverage.ts";
 import { lastNSamplesGen } from "./last-n-samples.ts";
 import { validationProgressOf, type ValidationProgress } from "../validation-progress.ts";
@@ -5510,6 +5510,9 @@ export class CoreRuntime {
         const eluT = nodePerf.eventLoopUtilization();
         let maxRetainMs = 0;
         let maxConsumeSliceMs = 0;
+        const internTape = createTapeInterner();
+        const traceTapeMemory = process.env.CTS_CORE_TAPE_MEMORY_TRACE === "1";
+        let traceAt = performance.now(), traceTapes = 0, traceOpen = 0, tracePending = 0, traceCloses = 0;
         try {
           const res = await runOnWorkers<{ tapes: ConfigTape[]; buildStats?: TapeBuildStat[] }>(
             parts
@@ -5539,6 +5542,28 @@ export class CoreRuntime {
               for (let i = 0; i < reply.tapes.length; i++) {
                 signal.throwIfAborted();
                 if (gen !== this.gen) throw new Error("history superseded by a newer generation");
+                if (traceTapeMemory) {
+                  const tape = reply.tapes[i];
+                  traceTapes++; traceOpen += tape.open.length; tracePending += tape.pending.length; traceCloses += tape.n;
+                  const at = performance.now();
+                  if (at - traceAt >= 30_000) {
+                    const m = process.memoryUsage();
+                    process.stderr.write(`[tape-memory] ${JSON.stringify({ stage: what, tapes: traceTapes, open: traceOpen,
+                      pending: tracePending, closes: traceCloses, rssMb: Math.round(m.rss / 1048576),
+                      heapMb: Math.round(m.heapUsed / 1048576), buffersMb: Math.round(m.arrayBuffers / 1048576) })}\n`);
+                    traceAt = at;
+                  }
+                }
+                for (const _ of internTape(reply.tapes[i])) {
+                  signal.throwIfAborted();
+                  if (gen !== this.gen) throw new Error("history superseded by a newer generation");
+                  const now = performance.now();
+                  if (now - slice > SLICE_MS) {
+                    maxConsumeSliceMs = Math.max(maxConsumeSliceMs, now - slice);
+                    await yieldNow();
+                    slice = performance.now();
+                  }
+                }
                 const retainStarted = performance.now();
                 reply.tapes[i] = history.retain(reply.tapes[i]);
                 const now = performance.now();
@@ -5557,7 +5582,7 @@ export class CoreRuntime {
           if (gen !== this.gen) return null;
           // A reply can contain hundreds of thousands of opens. Yield during interning and bucket flattening so
           // execution and protection checks can run, while preserving exactly the former pair/reply order.
-          const merged = await drive("Tape merge", mergeWorkerTapesGen(res, order), () => undefined, gen);
+          const merged = await drive("Tape merge", mergeWorkerTapesGen(res, order, true), () => undefined, gen);
           if (floors.buildStats)
             for (const r of res) mergeBuildStats(floors.buildStats, r.buildStats ?? []);
           workerTapes = merged;

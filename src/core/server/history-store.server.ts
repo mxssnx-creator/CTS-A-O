@@ -7,11 +7,14 @@ import {
   writeSync,
   openSync,
   mkdtempSync,
+  mkdirSync,
+  readlinkSync,
+  statfsSync,
   rmSync,
   ftruncateSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import * as zlib from "node:zlib";
 import { StringDecoder } from "node:string_decoder";
@@ -36,7 +39,53 @@ export function historyMemoryBytes(): number {
 }
 export class HistoryStorageError extends Error {}
 
-const STALE_DIRECTORY = /^cts-history(?:-transfer)?-(\d+)-/;
+const TMPFS_MAGIC = 0x01021994, RAMFS_MAGIC = 0x858458f6;
+const memoryFilesystem = (type: number | null) => type === TMPFS_MAGIC || type === RAMFS_MAGIC;
+const filesystemType = (path: string): number | null => {
+  try { return Number(statfsSync(path).type) >>> 0; } catch { return null; }
+};
+/** Prefer the existing application-data area only when tmp is RAM-backed and cwd is known to be disk-backed. */
+export function chooseHistorySpillRoot(temporary: string, working: string, typeOf: (path: string) => number | null): string {
+  const tmpType = typeOf(temporary), workType = typeOf(working);
+  return memoryFilesystem(tmpType) && workType !== null && !memoryFilesystem(workType)
+    ? join(working, ".cts-core", "history") : temporary;
+}
+let warnedMemorySpill = false;
+/** A dedicated disk-backed root avoids using RAM-backed /tmp for large spilled histories. */
+export function historySpillRoot(): string {
+  const configured = process.env.CTS_CORE_HISTORY_DIR?.trim();
+  const temporary = tmpdir();
+  const root = configured ? resolve(configured) : chooseHistorySpillRoot(temporary, process.cwd(), filesystemType);
+  if (root !== temporary || configured) {
+    try { mkdirSync(root, { recursive: true, mode: 0o700 }); }
+    catch (error) {
+      if (configured) throw new HistoryStorageError(`Cannot create calculation history root: ${String(error)}`);
+      if (!warnedMemorySpill) {
+        warnedMemorySpill = true;
+        process.emitWarning("History spill storage is RAM-backed; set CTS_CORE_HISTORY_DIR to a writable disk-backed directory.");
+      }
+      return temporary;
+    }
+  }
+  if (!configured && memoryFilesystem(filesystemType(root)) && !warnedMemorySpill) {
+    warnedMemorySpill = true;
+    process.emitWarning("History spill storage is RAM-backed; set CTS_CORE_HISTORY_DIR to a writable disk-backed directory.");
+  }
+  return root;
+}
+
+/** PID liveness is meaningful only in the same PID namespace. */
+export function historyProcessNamespace(): string | null {
+  try { return /^pid:\[(\d+)\]$/.exec(readlinkSync("/proc/self/ns/pid"))?.[1] ?? null; }
+  catch { return null; }
+}
+const historyPrefix = (transfer = false) =>
+  `cts-history${transfer ? "-transfer" : ""}-ns${historyProcessNamespace() ?? "unknown"}-${process.pid}-`;
+function makeHistoryDirectory(root: string, transfer = false): string {
+  try { return mkdtempSync(join(root, historyPrefix(transfer))); }
+  catch (error) { throw new HistoryStorageError(`Cannot create calculation history directory: ${String(error)}`); }
+}
+const STALE_DIRECTORY = /^cts-history(?:-transfer)?-ns(\d+)-(\d+)-/;
 const processExists = (pid: number): boolean => {
   try {
     process.kill(pid, 0);
@@ -47,10 +96,13 @@ const processExists = (pid: number): boolean => {
 };
 /**
  * Remove spill directories left behind by processes that no longer exist. A run that is killed or crashes never reaches its
- * own cleanup, and each orphan holds the compressed tapes of a whole session (gigabytes): they accumulated until the next run
- * failed with ENOSPC. Only names of the form cts-history[-transfer]-<pid>-… of a dead pid are touched.
+ * own cleanup, and each orphan holds the compressed tapes of a whole session (gigabytes). A shared temp root can
+ * be visible across PID namespaces: a PID that is absent here may belong to a live process elsewhere. Only a dead
+ * PID explicitly tagged with this process's namespace is eligible; legacy or unknown-namespace names stay intact.
  */
-export function sweepStaleHistoryDirectories(root: string = tmpdir(), alive: (pid: number) => boolean = processExists): number {
+export function sweepStaleHistoryDirectories(root: string = historySpillRoot(), alive: (pid: number) => boolean = processExists,
+  namespace: string | null = historyProcessNamespace()): number {
+  if (!namespace) return 0;
   let entries: import("node:fs").Dirent[];
   try {
     entries = readdirSync(root, { withFileTypes: true });
@@ -62,7 +114,8 @@ export function sweepStaleHistoryDirectories(root: string = tmpdir(), alive: (pi
     const name = entry.name;
     const m = entry.isDirectory() ? STALE_DIRECTORY.exec(name) : null;
     if (!m) continue;
-    const pid = Number(m[1]);
+    if (m[1] !== namespace) continue;
+    const pid = Number(m[2]);
     if (pid === process.pid || alive(pid)) continue;
     try {
       rmSync(join(root, name), { recursive: true, force: true });
@@ -73,12 +126,12 @@ export function sweepStaleHistoryDirectories(root: string = tmpdir(), alive: (pi
   }
   return removed;
 }
-let swept = false;
-const sweepOnce = () => {
-  if (swept) return;
-  swept = true;
+const sweptRoots = new Set<string>();
+const sweepOnce = (root: string) => {
+  if (sweptRoots.has(root)) return;
+  sweptRoots.add(root);
   try {
-    sweepStaleHistoryDirectories();
+    sweepStaleHistoryDirectories(root);
   } catch {
     /* a sweep never blocks a run */
   }
@@ -234,10 +287,11 @@ export class TapeHistoryStore {
     this.cacheLimit = options.cacheBytes ?? HISTORY_CACHE_BYTES;
     if (!Number.isSafeInteger(this.cacheLimit) || this.cacheLimit < 1)
       throw new Error("Invalid history cache budget");
-    if (!options.path && !options.directory) sweepOnce();
+    const root = !options.path ? (options.directory ?? historySpillRoot()) : undefined;
+    if (root && !options.directory) sweepOnce(root);
     const directory = options.path
       ? undefined
-      : mkdtempSync(join(options.directory ?? tmpdir(), `cts-history-${process.pid}-`));
+      : makeHistoryDirectory(root!);
     this.path = options.path ?? join(directory!, "columns.bin");
     try {
       this.resource = {
@@ -439,8 +493,9 @@ export class HistoryTransfer {
   private owners = new Set<TapeHistoryStore>();
   private copy: TapeHistoryStore | null = null;
   constructor() {
-    sweepOnce();
-    const directory = mkdtempSync(join(tmpdir(), `cts-history-transfer-${process.pid}-`));
+    const root = historySpillRoot();
+    sweepOnce(root);
+    const directory = makeHistoryDirectory(root, true);
     this.path = join(directory, "manifest.jsonl");
     try {
       this.resource = { fd: openSync(this.path, "wx", 0o600), directory, closed: false };
