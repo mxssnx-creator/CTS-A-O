@@ -76,3 +76,10 @@ A further retry started on commit `1a9cb896b74d3b3a1c4e47bcdd4534315d520ed8`, tr
 windows. It was deliberately stopped at 96% of Base after identifying the RAM-backed spill location; the memory
 guard did not fire. This partial attempt produced no result. The next retry uses disk-backed spill storage; the
 streamed-report change can render its raw dump without recalculating trades.
+
+The disk-backed retry started from remote commit `500c54d56081f01f4987c919b11111cb5917f8fb`, tree
+`c6b35f554ae7c8a70d0f3e50144b2418c1586e0e`. It uses the same frozen feed, 12 symbols, 24-hour evaluation history,
+24-hour simulation and seven-day Signal warmup. Two workers use 128 MiB retained-history, 32 MiB decoded-history and
+64 MiB derived-index budgets, with an RSS soft guard of 2,800 MiB and hard guard of 3,200 MiB. Its private spill root
+was verified on disk-backed workspace storage. This checkpoint records the launch, not an outcome; hourly results,
+post-Base PF, validated percentage and execution PF remain unavailable until the run completes.
