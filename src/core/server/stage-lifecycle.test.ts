@@ -2,6 +2,7 @@ import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
+import { simulationProgress } from "../progress.ts";
 
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
@@ -20,6 +21,31 @@ function fixture() {
   inner.beginJob(false);
   return { rt, inner };
 }
+
+test("long intra-hour evaluation publishes real work without inventing completed hours", () => {
+  const {rt,inner}=fixture(),paper=rt.paper;let now=0,published=0;
+  const report=simulationProgress(12,12,"own position windows",(done,label)=>{
+    published++;inner.setStage("Real",done,12,label);
+  },()=>now);
+  report(-15);
+  assert.equal(rt.status.progress,0);
+  assert.match(rt.status.label!,/evaluating Signals/);
+  for(let i=0;i<10000;i++)report(-6);
+  assert.equal(published,1,"rapid helper yields must not flood status updates");
+  now=500;report(-6);
+  assert.match(rt.status.label!,/evaluating configuration histories/);
+  assert.equal(rt.status.progress,0,"work inside an hour is not an hour completed");
+  report(0);
+  assert.equal(rt.status.progress,1/12,"a completed worker step publishes immediately");
+  now+=500;report(-9);
+  assert.equal(rt.status.progress,1/12);
+  assert.match(rt.status.label!,/checking entry qualification/);
+  const snapshot=rt.status.label;report(NaN);assert.equal(rt.status.label,snapshot);
+  for(let i=0;i<11;i++)report(0);
+  assert.equal(rt.status.progress,1);
+  assert.ok(rt.status.overall!<1,"Real completion still requires Paper/publication");
+  assert.equal(rt.status.computes,0);assert.equal(rt.paper,paper);
+});
 
 test("each repeated Tapes subphase starts at zero while its updates and overall job progress remain monotonic", () => {
   const { rt, inner } = fixture();

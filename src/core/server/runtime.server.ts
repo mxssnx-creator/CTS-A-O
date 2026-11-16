@@ -392,6 +392,8 @@ import {
   estimatedFraction,
   overallOf,
   pipelineStage,
+  simulationProgress,
+  simulationWorkLabel,
 } from "../progress.ts";
 import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
 
@@ -4178,26 +4180,7 @@ export class CoreRuntime {
     let maxStep = 0;
     const label = (v: unknown) => {
       if (name === "Simulation" && typeof v === "number") {
-        if (v >= 0) return "complete simulation step";
-        const simulationSlices: Record<number, string> = {
-          [-2]: "settle simulated order books",
-          [-3]: "expand signal tape candidates",
-          [-4]: "build signal rank index",
-          [-5]: "rank signal units",
-          [-6]: "assemble engine tape candidates",
-          [-7]: "merge signal candidates",
-          [-8]: "sort step candidates",
-          [-9]: "run candidate entry gates",
-          [-10]: "finalize trade summaries",
-          [-11]: "settle final orders",
-          [-12]: "drain final candidate feed",
-          [-13]: "sort signal candidates",
-          [-14]: "fixed seat selection",
-          [-15]: "causal signal ranking",
-          [-16]: "negative-hour hedge qualification",
-          [-17]: "completed one-minute candidate batch",
-        };
-        return simulationSlices[v] ?? (v < 0 ? "simulation helper" : "");
+        return simulationWorkLabel(v);
       }
       const x = v as { stage?: string; label?: string } | null;
       return x && typeof x === "object" ? `${x.stage ?? ""} ${x.label ?? ""}`.trim() : "";
@@ -5873,7 +5856,6 @@ export class CoreRuntime {
     // wf and fastArgs remain private to this computation until its matching tapes and simulation are ready.
     // Publishing Base/Signal qualifiers here mixed old active tapes with new gates during every yielded slice,
     // and an interrupted computation left that mixed state in service indefinitely.
-    let step = 0;
     // the steps the simulation really takes (its start is floored to the hour: up to one step more than
     // simH / stepH, which ran the bar past 100 %)
     const steps = Math.max(1, walkForwardSteps(wu, wf));
@@ -5882,17 +5864,9 @@ export class CoreRuntime {
       ? `positions Main / Real / Entry ${positionPolicy.main} / ${positionPolicy.real} / ${positionPolicy.entry} · own range/config overrides apply`
       : `engine ${wf.preH}h pre / Last-${wf.validLastN ?? 0}${sig.enabled ? ` · Signals ${signalHistoryHours(wf)}h / Last-${wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN ?? 0}` : ""} · entry Last-${wf.lastN}`;
     this.setStage("Real", 0, steps, `${wf.simH}h sim · step 0/${steps}`);
-    const sim = await this.researchSimulation(wu, tapes, wf, gen, (v) => {
-      if (v >= 0) {
-        step++;
-        this.setStage(
-          "Real",
-          step,
-          steps,
-          `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · ${validationProgress}`,
-        );
-      }
-    }, signal);
+    const reportSimulation = simulationProgress(steps, wf.simH, validationProgress,
+      (completed, label) => this.setStage("Real", completed, steps, label));
+    const sim = await this.researchSimulation(wu, tapes, wf, gen, reportSimulation, signal);
     signal.throwIfAborted();
     if (
       gen !== this.gen ||
