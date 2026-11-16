@@ -24,7 +24,7 @@ import { SeriesCache } from "./indications/cache.ts";
 import { MarketSource } from "./indications/market.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
 import type { Candle, RangeGrid, StrategyToggles } from "./domain/types.ts";
-import { DEFAULT_SETTINGS } from "./config.ts";
+import { DEFAULT_SETTINGS, PROTECT_GRID } from "./config.ts";
 
 // the same synthetic market on every run: it otherwise ends at the current minute, and whether that minute's market
 // seats any DCA / Axis config decided how many toggle combinations trade (a run at the wrong minute failed)
@@ -227,7 +227,7 @@ describe("processing through the stages, every strategy type, every toggle combi
   });
   const grid = {
     ...DEFAULT_SETTINGS.grid,
-    tp: ends(DEFAULT_SETTINGS.grid.tp),
+    tp: ends([...PROTECT_GRID.tp]),
     slOfTp: ends(DEFAULT_SETTINGS.grid.slOfTp),
     trailOfTp: [0, ...DEFAULT_SETTINGS.grid.trailOfTp.filter((x) => x > 0).slice(0, 1)],
     minimal: range(DEFAULT_SETTINGS.grid.minimal), short: range(DEFAULT_SETTINGS.grid.short),
