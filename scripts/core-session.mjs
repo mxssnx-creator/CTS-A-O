@@ -49,6 +49,7 @@ import { dirname, join } from "node:path";
 import { columnarStore, pruneFeed, RANK_TF, readStored, boundedReplayFeed, readSessionFeed } from "./lib/session-feed.mjs";
 import { closesIn } from "./lib/candles.mjs";
 import { captureSignalProgress } from "./lib/signal-progress.mjs";
+import { mappedRows } from "./lib/lazy-rows.mjs";
 import {
   iterateSessionTapeTrades,
   iterateSessionArray,
@@ -4412,8 +4413,9 @@ if (raw.frozenBlockComparison)
   };
 // Exact allocations from this report's shared capped book, without rounding individual small P&L slices.
 // A Signal contribution uses these same allocations; it never invents a second independently sized balance.
+const allocationRows = (rows, project) => flag("chunk-allocations") ? mappedRows(rows, project) : rows.map(project);
 if (flag("signal-progress") || flag("chunk-allocations"))
-  data.sizedOrders = trades.map((x, closeIndex) => {
+  data.sizedOrders = allocationRows(trades, (x, closeIndex) => {
     const key = orderKey(x),
       known = sized.units.has(key),
       unitNotional = known ? sized.units.get(key) : null;
@@ -4439,7 +4441,7 @@ if (flag("signal-progress") || flag("chunk-allocations"))
     };
   });
 if (flag("signal-progress") || flag("chunk-allocations"))
-  data.sizedOpenOrders = openEnd.map((x, openIndex) => {
+  data.sizedOpenOrders = allocationRows(openEnd, (x, openIndex) => {
     const key = orderKey(x),
       known = sized.units.has(key),
       unitNotional = known ? sized.units.get(key) : null;
