@@ -50,7 +50,7 @@ describe("walk-forward variants", () => {
     const types = vs.filter((v) => /^type:[A-Za-z]+$/.test(v.id));
     assert.equal(types.length, 8);
     assert.equal(vs.find((v) => v.id === "type:dca")!.status, "recompute");
-    assert.equal(vs.find((v) => v.id === "type:exit")!.status, "na");
+    assert.equal(vs.find((v) => v.id === "type:exit")!.status, "recompute", "Historic Exit is off by default (16 Nov) and has no tapes");
     assert.equal(vs.find((v) => v.id === "type:axis")!.status, "run");
     assert.equal(vs.find((v) => v.id === "type:axis")!.opts!.toggles.axis, true);
     // no signal tapes: signals on needs a recompute, confirmation has nothing to act on
