@@ -558,10 +558,14 @@ export class BoundedHistory {
   retain = (tape: ConfigTape): ConfigTape => {
     if (historyOf(tape)) return tape;
     const buffer = tape.exitT.buffer;
-    if (this.buffers.has(buffer)) return tape;
-    if (this.residentBytes + buffer.byteLength <= this.memoryBytes) {
-      this.buffers.add(buffer);
-      this.residentBytes += buffer.byteLength;
+    // Buffers can be shared by an entire worker reply, but each tape still owns metadata and potentially many
+    // endpoint positions. Count that per tape even when its binary arena has already been admitted.
+    const newBuffer = !this.buffers.has(buffer);
+    const metadataBytes = 1024 + (tape.open.length + tape.pending.length) * 512;
+    const bytes = (newBuffer ? buffer.byteLength : 0) + metadataBytes;
+    if (this.residentBytes + bytes <= this.memoryBytes) {
+      if (newBuffer) this.buffers.add(buffer);
+      this.residentBytes += bytes;
       return tape;
     }
     return (this.store ??= new TapeHistoryStore()).append(tape);

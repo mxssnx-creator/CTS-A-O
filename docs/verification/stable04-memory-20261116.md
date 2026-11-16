@@ -113,3 +113,10 @@ the arrays, their current values are transferred. Corrupt or truncated position 
 30,000-tape, 180,000-position comparison measured 54,048,424 bytes retained heap using the previous store versus
 16,664,712 bytes with lazy positions, with identical sampled position hashes. This is a synthetic allocation
 measurement, not a claim that the full simulation now completes or that its PF is positive.
+
+The resident-history admission budget also charges a conservative per-tape and per-position metadata estimate,
+even when tapes share a binary worker arena. This prevents a large collection of small histories from bypassing the
+budget solely because their columns share a buffer. Heap protection reserves more space on large V8 heaps and is
+rechecked at worker-reply retention yields, giving the runtime more opportunity to cancel safely before a fatal GC.
+The replay started from `0f405149aa58fc0d77bee5042f3be95af3d89eff` predates this subsequent guard/accounting change;
+its outcome must be attributed to that exact source tree rather than to the later safety patch.

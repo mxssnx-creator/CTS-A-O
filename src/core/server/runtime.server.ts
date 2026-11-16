@@ -5539,6 +5539,10 @@ export class CoreRuntime {
             computeWorkerOwner,
             async (reply, _index, signal) => {
               let slice = performance.now();
+              const checkRetainMemory = () => {
+                if (heapPressure() !== "ok") this.memGuardTick(true);
+                if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
+              };
               for (let i = 0; i < reply.tapes.length; i++) {
                 signal.throwIfAborted();
                 if (gen !== this.gen) throw new Error("history superseded by a newer generation");
@@ -5561,6 +5565,7 @@ export class CoreRuntime {
                   if (now - slice > SLICE_MS) {
                     maxConsumeSliceMs = Math.max(maxConsumeSliceMs, now - slice);
                     await yieldNow();
+                    checkRetainMemory();
                     slice = performance.now();
                   }
                 }
@@ -5571,6 +5576,7 @@ export class CoreRuntime {
                 if (now - slice > SLICE_MS) {
                   maxConsumeSliceMs = Math.max(maxConsumeSliceMs, now - slice);
                   await yieldNow();
+                  checkRetainMemory();
                   slice = performance.now();
                 }
               }
