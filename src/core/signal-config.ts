@@ -486,6 +486,14 @@ export interface SignalAccept {
   hours: number;
   minTrades: number;
   /**
+   * trade frequency (signals only, 0 = off): a signal group's closed entries in the trailing `tradeDaysWindow` days
+   * before the entry must average at least this many a day (entries before the entry only; a group below it does not
+   * trade). Applied per signal group (indication × symbol × direction × type), like the PF test above.
+   */
+  minTradesPerDay?: number;
+  /** the trailing window of the trade frequency, in days (1–14) */
+  tradeDaysWindow?: number;
+  /**
    * engine direction acceptance only: ranges ("mc" … "lg", "wide") whose direction group is judged per indication
    * (with its lane) instead of pooled over the range — one losing indication no longer blocks a winning one
    */
@@ -800,7 +808,8 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // all losses: PF 1.05 / 1.5 / 2 / 3 gave identical results on 3 Oct / 2 Oct / 23 Sep, PR #65); the operator's
   // setting: PF 1.3 over 48 h. Current qualification uses each exact config's own record; historical pooled evidence
   // does not certify this independent-config correction. Sparse windows retain acceptOnWindow semantics.
-  accept: { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 },
+  // trade frequency (owner, 16 Nov): at least 2 closed entries a day, averaged over the trailing 7 days; 0 = off
+  accept: { enabled: true, minPf: 1.3, hours: 48, minTrades: 6, minTradesPerDay: 2, tradeDaysWindow: 7 },
   // on (a positive coordination, docs/positive-coordinations.md; x01 runs it): the pooled side record split cleanly
   // (48 h, 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h); the operator's signal evaluation: PF 1.3, as the acceptance
   sideAccept: { enabled: true, minPf: 1.3, hours: 24, minTrades: 20 },
@@ -885,6 +894,15 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   out.accept.minTrades = Math.min(
     200,
     Math.max(1, Math.round(Number(out.accept.minTrades) || DEFAULT_SIGNALS.accept.minTrades)),
+  );
+  // 0 is a real value here (the frequency check off), so only a missing or non-numeric setting takes the default
+  const tpd = Number(out.accept.minTradesPerDay);
+  out.accept.minTradesPerDay = Number.isFinite(tpd)
+    ? Math.min(20, Math.max(0, Math.round(tpd * 10) / 10))
+    : DEFAULT_SIGNALS.accept.minTradesPerDay;
+  out.accept.tradeDaysWindow = Math.min(
+    14,
+    Math.max(1, Math.round(Number(out.accept.tradeDaysWindow) || (DEFAULT_SIGNALS.accept.tradeDaysWindow ?? 7))),
   );
   const sa = out.sideAccept;
   sa.enabled = sa.enabled === true;

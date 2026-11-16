@@ -2726,7 +2726,7 @@ export function signalGuardFor(
   o: Pick<WalkForwardOptions, "signalAccept" | "signalSideAccept" | "engineSideAccept">,
 ): SignalGuard {
   const g = new SignalGuard();
-  if (o.signalAccept?.enabled || o.signalSideAccept?.enabled)
+  if (o.signalAccept?.enabled || o.signalSideAccept?.enabled || (o.signalAccept?.minTradesPerDay ?? 0) > 0)
     g.acceptIndex = drain(signalAcceptIndexGen(tapes));
   if (o.engineSideAccept?.enabled) g.engineSide = drain(engineSideIndexGen(tapes));
   return g;
@@ -4343,6 +4343,13 @@ export function execDecision(
       )
     )
       return { ok: false, why: "signalPf" };
+    // trade frequency of the same group: its closed entries over the trailing window must average minTradesPerDay
+    if (
+      o.signalAccept &&
+      ctx.guard &&
+      !ctx.guard.tradesEnough(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind, tp.id), entryT, o.signalAccept)
+    )
+      return { ok: false, why: "signalTrades" };
     // direction acceptance: this side's signal candidates, pooled over every source and symbol, must clear the PF
     if (
       o.signalSideAccept?.enabled &&
@@ -5274,7 +5281,7 @@ export function* walkForwardGen(
   const direction = candidateDirectionFor(o);
   // acceptance on the tapes' record: every candidate of the source closed before the entry (before the run too)
   const guard = new SignalGuard();
-  if (o.signalAccept?.enabled || o.signalSideAccept?.enabled)
+  if (o.signalAccept?.enabled || o.signalSideAccept?.enabled || (o.signalAccept?.minTradesPerDay ?? 0) > 0)
     guard.acceptIndex = yield* signalAcceptIndexGen(tapes);
   if (o.engineSideAccept?.enabled) guard.engineSide = yield* engineSideIndexGen(tapes);
   // every candidate in exit order, collected as they settle (the heap pops in the order of a stable sort by exit:

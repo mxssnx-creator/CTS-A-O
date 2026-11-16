@@ -955,6 +955,17 @@ export class SignalGuard {
       acceptOnWindow((h) => this.acceptStats(key, t, h), a),
     );
   }
+  /**
+   * trade frequency (`minTradesPerDay`, 0 = off): the group's closed signal entries in (t − tradeDaysWindow days, t]
+   * must average at least `minTradesPerDay` a day. Only closes before t count (acceptStats is causal). A group with no
+   * history in its window does not trade, unlike a thin PF sample: the frequency is what is being tested.
+   */
+  tradesEnough(key: string, t: number, a: Pick<SignalAccept, "minTradesPerDay" | "tradeDaysWindow">): boolean {
+    const perDay = a.minTradesPerDay ?? 0;
+    if (!(perDay > 0)) return true;
+    const days = Math.max(1, a.tradeDaysWindow ?? 7);
+    return this.acceptStats(key, t, days * 24).n >= perDay * days;
+  }
   /** true when the last n results average below zero (a set with fewer than n results is not judged) */
   disabled(key: string, n: number): boolean {
     const l = this.lists.get(key);

@@ -41,7 +41,10 @@ describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
           minBlockShare: 0,
           validate: false,
           filter: { trendH: 0, volFloor: 0 },
-          accept: { ...DEFAULT_SIGNALS.accept, enabled: false },
+          // the trade-frequency gate (2 a day over 7 days) is off in this fixture: 18 to 90 days of synthetic history
+          // and 3 to 8 symbols never gave a per-config group 14 closes in a week (1,044 to 1,443 candidates refused,
+          // zero executed). Its own behaviour is covered by signals.test (tradesEnough).
+          accept: { ...DEFAULT_SIGNALS.accept, enabled: false, minTradesPerDay: 0 },
           sideAccept: { ...DEFAULT_SIGNALS.sideAccept, enabled: false },
           coordination: { ...DEFAULT_SIGNALS.coordination, enabled: false },
           sourcesMode: "allow",

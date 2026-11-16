@@ -349,6 +349,8 @@ const CASES: Record<string, Case> = {
   "signals.accept.minPf": num(1, 5),
   "signals.accept.hours": num(6, 336, { int: true }),
   "signals.accept.minTrades": num(1, 200, { int: true }),
+  "signals.accept.minTradesPerDay": num(0, 20),
+  "signals.accept.tradeDaysWindow": num(1, 14, { int: true }),
   "signals.sideAccept.minPf": num(1, 5),
   "signals.sideAccept.hours": num(6, 336, { int: true }),
   "signals.sideAccept.minTrades": num(1, 1000, { int: true }),

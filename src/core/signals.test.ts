@@ -1106,6 +1106,8 @@ describe("signals: PF acceptance", () => {
       minPf: 1.3,
       hours: 48,
       minTrades: 6,
+      minTradesPerDay: 2,
+      tradeDaysWindow: 7,
     });
     assert.equal(signalSettings({ accept: { minPf: 0.5 } as never }).accept.minPf, 1);
     assert.equal(signalSettings({ accept: { enabled: false } as never }).accept.enabled, false);
@@ -1231,5 +1233,61 @@ describe("signal seats in the session report", () => {
         .size,
       0,
     );
+  });
+});
+
+describe("signal trade frequency: minTradesPerDay over the trailing window (causal)", () => {
+  const H = 3_600_000;
+  const DAY = 24 * H;
+  const opts = { minTradesPerDay: 2, tradeDaysWindow: 7 };
+  // closes at the given times (ms); each a win on its own onset, so every close counts once
+  function guardWith(key: string, closesAt: number[]): SignalGuard {
+    const g = new SignalGuard();
+    for (const x of closesAt) g.addAccept(key, 1, x);
+    return g;
+  }
+
+  it("14 closes over 7 days pass at 2 a day; 13 fail", () => {
+    // 14 closes at 2 h + 12 h × k: all inside (t − 7 d, t] for t = 169 h
+    const fourteen = Array.from({ length: 14 }, (_, k) => (2 + 12 * k) * H);
+    const thirteen = fourteen.slice(0, 13);
+    const t = 169 * H;
+    assert.equal(guardWith("g", fourteen).tradesEnough("g", t, opts), true);
+    assert.equal(guardWith("g", thirteen).tradesEnough("g", t, opts), false);
+  });
+
+  it("a group that closed only in the last 2 days fails", () => {
+    const t = 10 * DAY;
+    const lastTwoDays = [t - 40 * H, t - 30 * H, t - 20 * H, t - 10 * H];
+    assert.equal(guardWith("g", lastTwoDays).tradesEnough("g", t, opts), false);
+  });
+
+  it("only closes before the evaluation time count (causal)", () => {
+    // the 14 closes of the pass case all exit after t = 100 h, so none counts there
+    const fourteen = Array.from({ length: 14 }, (_, k) => (2 + 12 * k) * H);
+    assert.equal(guardWith("g", fourteen).tradesEnough("g", 100 * H, opts), false);
+  });
+
+  it("the window is trailing: closes older than 7 days drop out", () => {
+    const old = Array.from({ length: 14 }, (_, k) => (2 + 12 * k) * H);
+    assert.equal(guardWith("g", old).tradesEnough("g", 400 * H, opts), false);
+  });
+
+  it("minTradesPerDay 0 leaves acceptance unchanged: no closes needed", () => {
+    const g = guardWith("g", []);
+    assert.equal(g.tradesEnough("g", 50 * H, { minTradesPerDay: 0, tradeDaysWindow: 7 }), true);
+    assert.equal(g.tradesEnough("g", 50 * H, {}), true);
+    assert.equal(
+      signalSettings({ accept: { ...DEFAULT_SIGNALS.accept, minTradesPerDay: 0 } }).accept.minTradesPerDay,
+      0,
+    );
+  });
+
+  it("the default is 2 a day over 7 days, and a missing setting takes the default", () => {
+    assert.equal(DEFAULT_SIGNALS.accept.minTradesPerDay, 2);
+    assert.equal(DEFAULT_SIGNALS.accept.tradeDaysWindow, 7);
+    const s = signalSettings({ accept: { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 } as typeof DEFAULT_SIGNALS.accept });
+    assert.equal(s.accept.minTradesPerDay, 2);
+    assert.equal(s.accept.tradeDaysWindow, 7);
   });
 });

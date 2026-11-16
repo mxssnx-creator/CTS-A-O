@@ -689,6 +689,27 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field
+          label="Min. trades per day"
+          hint="a signal trades only while its closed entries over the window below average at least this many a day (entries closed before the entry only) · 0 = off"
+        >
+          <Num
+            value={g.accept?.minTradesPerDay ?? 2}
+            min={0}
+            max={20}
+            step={0.1}
+            onChange={(v) => set(["accept", "minTradesPerDay"], v)}
+          />
+        </Field>
+        <Field label="Trade-frequency window (days)">
+          <Num
+            int
+            value={g.accept?.tradeDaysWindow ?? 7}
+            min={1}
+            max={14}
+            onChange={(v) => set(["accept", "tradeDaysWindow"], v)}
+          />
+        </Field>
+        <Field
           label="Direction acceptance"
           hint="signals only (the engine has its own switch under Real). ON: a side (long / short) trades signals only while all its signal candidates, every source and symbol pooled, have PF ≥ the minimum over the window — a losing direction stops until it recovers; too few closes in the window are judged on twice the hours, and still too few count as valid. OFF: signals trade both directions on their own acceptance alone. Positions are never closed by it."
         >

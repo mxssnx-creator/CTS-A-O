@@ -878,6 +878,11 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.accept.minTrades, 1, 200, "signal acceptance minimum trades");
       int(g.accept.hours, "signal acceptance window (h)");
       int(g.accept.minTrades, "signal acceptance minimum trades");
+      if (g.accept.minTradesPerDay !== undefined) {
+        num(g.accept.minTradesPerDay, 0, 20, "signal minimum trades per day (0 = off)");
+        num(g.accept.tradeDaysWindow, 1, 14, "signal trade-frequency window (days)");
+        int(g.accept.tradeDaysWindow, "signal trade-frequency window (days)");
+      }
     }
     if (g.sideAccept) {
       bool(g.sideAccept.enabled, "signal direction acceptance");
