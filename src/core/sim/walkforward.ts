@@ -4646,6 +4646,7 @@ function selSig(o: WalkForwardOptions): string {
     objId(o.basePassedRanges),
     objId(o.basePassedTargets),
     objId(o.baseWideLadderPairs),
+    o.wideEnabled === false ? 0 : 1,
     o.seatSet === "validated" ? objId(o.validated) : 0,
     objId(o.basePassedCells),
     objId(o.basePassedTrailingOnlyCells),
