@@ -74,8 +74,12 @@ it("auto ratios reach runtime, Base, executable grids and budgets without changi
   const manual={...grid,slAuto:undefined,slOfTp:[.5,.75,1],micro:{...micro,slAuto:undefined,slOfTp:[.2,.3,.4]},minimal:{...grid.minimal,slAuto:undefined,slOfTp:[.5,.75,1]}};
   checkSettings({grid});
   assert.deepEqual(protectGrid(15,grid,DEFAULT_SETTINGS.cost),protectGrid(15,manual,DEFAULT_SETTINGS.cost));
-  assert.deepEqual(completeBaseRangeProtects(grid,DEFAULT_SETTINGS.cost),completeBaseRangeProtects(manual,DEFAULT_SETTINGS.cost));
-  assert.deepEqual(baseRangeProtects(grid,DEFAULT_SETTINGS.cost),baseRangeProtects(manual,DEFAULT_SETTINGS.cost));
+  // Base cells: the same cells (same keys); an automatic range's cells also carry its adaptive policy (slCal), a manual one none
+  const bare=(ps:ReturnType<typeof baseRangeProtects>)=>ps.map(({slCal:_,...p})=>p);
+  assert.ok(completeBaseRangeProtects(grid,DEFAULT_SETTINGS.cost).some(p=>p.slCal),"automatic cells carry the policy");
+  assert.ok(completeBaseRangeProtects(manual,DEFAULT_SETTINGS.cost).every(p=>!p.slCal),"manual cells carry none");
+  assert.deepEqual(bare(completeBaseRangeProtects(grid,DEFAULT_SETTINGS.cost)),bare(completeBaseRangeProtects(manual,DEFAULT_SETTINGS.cost)));
+  assert.deepEqual(bare(baseRangeProtects(grid,DEFAULT_SETTINGS.cost)),bare(baseRangeProtects(manual,DEFAULT_SETTINGS.cost)));
   assert.equal(checkGridVariantBudget(grid,DEFAULT_SETTINGS.cost),checkGridVariantBudget(manual,DEFAULT_SETTINGS.cost));
   const s=normalizeLanes({...DEFAULT_SETTINGS,grid});
   assert.deepEqual(s.grid.minimal && s.grid.minimal.slOfTp,[.5,.75,1]);

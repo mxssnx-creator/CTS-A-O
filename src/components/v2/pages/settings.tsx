@@ -1822,7 +1822,23 @@ export function SlRatioEditor(props: {
       <Field label={`${props.title} fallback SL / TP`} hint="Used only to reconstruct an unusable saved policy. The initial stop floor still applies; missing validation keeps entry closed.">
         <Num value={policy.fallback} min={policy.min} max={policy.max} step={.05} onChange={v=>put({fallback:v})}/>
       </Field>
-      <p className="v2-hint">{result.ratios.length} {result.source} candidates: {result.ratios.join(", ")}. Defaults define a search range, not a measured optimum.</p>
+      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+        <Switch label={`${props.title} calculate the best minimal and maximal ratio`} checked={policy.adaptive!==false} onChange={v=>put({adaptive:v})}/>
+        <div className="v2-muted" style={{fontSize:"var(--v-fs-xs)"}}>
+          For each TP step the system calculates the best minimal and maximal stop ratio from its last N samples and simulates only the ratios between them.
+          The minimum and maximum above are the limits; with fewer samples than the minimum below, the limits themselves are used.
+        </div>
+      </div>
+      {policy.adaptive!==false ? <div className="v2-grid v2-cols-3">
+        <Field label={`${props.title} near-optimal tolerance`} hint="A ratio belongs to the calculated interval while its score is at least (1 − tolerance) × the best score. 0 = only the best ratio; larger = a wider interval.">
+          <Num value={policy.tolerance ?? .1} min={0} max={.9} step={.05} onChange={v=>put({tolerance:v})}/>
+        </Field>
+        <Field label={`${props.title} minimum samples`} hint="Fewer settled samples than this keep the minimum and maximum above unchanged (the defaults).">
+          <Num value={policy.minSamples ?? 20} min={5} max={500} step={1} onChange={v=>put({minSamples:Math.round(v)})}/>
+        </Field>
+      </div> : null}
+      <p className="v2-hint">{result.ratios.length} {result.source} candidate limits: {result.ratios.join(", ")}.
+        {policy.adaptive!==false ? " Base narrows them per TP step from the last N samples; the settled interval is shown with each range's Base result." : " Every ratio is built."} A calculated interval is a search range, not a measured optimum: each cell is still judged by its own causal gates.</p>
     </> : <StepList label={`${props.title} SL / target min · max · step`} value={props.spec.slOfTp} max={props.fine?24:64} lo={props.fine?.2:.25} hi={2.5}
       onChange={v=>props.set("slOfTp",v)}/>}
   </div>;

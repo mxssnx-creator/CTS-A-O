@@ -79,6 +79,12 @@ export type BotType = (typeof BOT_TYPES)[number] | "exit";
 export interface Protect {
   tp: number;
   sl: number;
+  /**
+   * Base only: the automatic stop policy of this cell's range (AutoSlRatios, adaptive). Base calculates the best minimal
+   * and maximal stop ratio of the cell's TP step from its last N samples and simulates only the ratios inside it.
+   * Not part of the cell key; the tape stage reads the result (ComboRun.rangeSl), never this field.
+   */
+  slCal?: { min: number; max: number; step: number; tolerance: number; minSamples: number };
   /** trailing distance from peak; 0 = off. Activates once MFE >= trail. */
   trail: number;
   /** Internal Short-grid ownership: this cell is only for Low-Range sources. */

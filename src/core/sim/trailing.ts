@@ -119,18 +119,23 @@ export interface TrailingPosition {
   target?: number;
 }
 
-/** Restore/tick defense applies even before trailing arms; report every protection repair to live controls. */
-export function enforceSignalPosition(p: TrailingPosition): boolean {
-  if (!isBoundedTrailingPosition(p)) return false;
+/** `flags` is cfgFlags(p.cfg), looked up once by the caller: ratchetTrail runs for every bar of every open position. */
+function enforceWithFlags(p: TrailingPosition, flags: number): boolean {
+  if ((flags & 3) === 0 && !p.trailOnly) return false;
   const stop = p.stop, target = p.target, trail = p.trail, gap = p.trailDist,
     only = p.trailOnly, free = p.trailFree;
-  const max = positionTrailMax(p);
+  const max = (flags & 1) !== 0 || p.trailMax !== undefined ? signalTrailMax(p) : SIGNAL_STOP_LIMIT;
   p.stop = signalStopAt(p.entry, p.side, p.stop, max);
   if (p.trail !== undefined && Number.isFinite(p.trail)) p.trail = Math.min(p.trail, max);
   if (p.trailDist !== undefined && Number.isFinite(p.trailDist)) p.trailDist = Math.min(p.trailDist, max);
-  if (p.trailOnly || (cfgFlags(p.cfg) & 2) !== 0) { p.trailOnly = true; p.target = 0; p.trailFree = false; }
+  if (p.trailOnly || (flags & 2) !== 0) { p.trailOnly = true; p.target = 0; p.trailFree = false; }
   return !Object.is(p.stop, stop) || !Object.is(p.target, target) || !Object.is(p.trail, trail) ||
     !Object.is(p.trailDist, gap) || p.trailOnly !== only || p.trailFree !== free;
+}
+
+/** Restore/tick defense applies even before trailing arms; report every protection repair to live controls. */
+export function enforceSignalPosition(p: TrailingPosition): boolean {
+  return enforceWithFlags(p, cfgFlags(p.cfg));
 }
 
 /**
@@ -140,12 +145,13 @@ export function enforceSignalPosition(p: TrailingPosition): boolean {
  */
 export function ratchetTrail(p: TrailingPosition, activation: number, gap: number, high: number, low: number): boolean {
   const before = p.stop;
-  enforceSignalPosition(p);
+  const flags = cfgFlags(p.cfg);
+  enforceWithFlags(p, flags);
   if (!(Number.isFinite(p.entry) && p.entry > 0 && (p.side === 1 || p.side === -1) &&
     Number.isFinite(activation) && activation > 0 && Number.isFinite(gap) && gap > 0 &&
     Number.isFinite(high) && Number.isFinite(low) && high >= low && low > 0)) return p.stop !== before;
-  const signal = isBoundedTrailingPosition(p);
-  const max = signal ? positionTrailMax(p) : Infinity;
+  const signal = (flags & 3) !== 0 || !!p.trailOnly;
+  const max = signal ? ((flags & 1) !== 0 || p.trailMax !== undefined ? signalTrailMax(p) : SIGNAL_STOP_LIMIT) : Infinity;
   const arm = signal ? Math.min(activation, max) : activation;
   const distance = signal ? Math.min(gap, max) : gap;
   const priorPeak = Number.isFinite(p.peak) && p.peak > 0 ? p.peak : p.entry;

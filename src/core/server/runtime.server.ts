@@ -1,4 +1,5 @@
 import { slRatiosOf } from "../sl-ratios.ts";
+import type { SlBounds } from "../sl-calibration.ts";
 import { migratePositionWindows } from "./position-windows-migration.server.ts";
 import { mainnetPositionWindows } from "../position-windows.ts";
 import {relationalVolumeFactor,relationalVolumeSettings} from "../../../shared/cts-volume/ratios.ts";
@@ -4750,6 +4751,7 @@ export class CoreRuntime {
       wideLadderPairs,
       pairTags,
       pairTps,
+      pairSl,
       pairCells,
       pairTrailingOnlyCells,
       added: baseBuilt,
@@ -4809,6 +4811,19 @@ export class CoreRuntime {
           const t = (pairTps[m] ??= {});
           for (const [tag, tps] of Object.entries(pairTps[k]))
             t[tag] = [...new Set([...(t[tag] ?? []), ...tps])];
+        }
+        if (pairSl[k]) {
+          // a mirrored pair takes the union of both intervals per target, never narrower than either
+          const t = (pairSl[m] ??= {});
+          for (const [tag, per] of Object.entries(pairSl[k])) {
+            const u = (t[tag] ??= {});
+            for (const [tp, b] of Object.entries(per)) {
+              const o = u[tp];
+              u[tp] = o && o.source === "samples" && b.source === "samples"
+                ? { ...b, min: Math.min(o.min, b.min), max: Math.max(o.max, b.max), n: Math.max(o.n, b.n) }
+                : o && o.source === "default" ? o : b;
+            }
+          }
         }
         if (pairCells[k]) pairCells[m] = [...new Set([...(pairCells[m] ?? []), ...pairCells[k]])];
       }
@@ -5595,6 +5610,7 @@ export class CoreRuntime {
       ...protectFloors(s, rangeFitCutT),
       pairTags,
       pairTps,
+      pairSl,
       pairCells,
       ...(s.grid?.trailingOnly === true ? { pairTrailingOnlyCells } : {}),
       ...(wf.seatSet === "validated"
@@ -5669,6 +5685,7 @@ export class CoreRuntime {
             ...protectFloors(s, rangeFitCutT),
             pairTags,
             pairTps,
+            pairSl,
             pairCells,
             ...(s.grid?.trailingOnly === true ? { pairTrailingOnlyCells } : {}),
             heldIds,
@@ -5781,6 +5798,7 @@ export class CoreRuntime {
           ...protectFloors(s, rangeFitCutT),
           pairTags,
           pairTps,
+          pairSl,
           pairCells,
           ...(s.grid?.trailingOnly === true ? { pairTrailingOnlyCells } : {}),
           heldIds,
@@ -8077,6 +8095,7 @@ export class CoreRuntime {
     wideLadderPairs: Set<string>;
     pairTags: Record<string, string[]>;
     pairTps: Record<string, Record<string, readonly number[]>>;
+    pairSl: Record<string, Record<string, Record<string, SlBounds>>>;
     exitBasePassed: Set<string>;
     exitBaseEvaluated: number;
     pairCells: Record<string, readonly string[]>;
@@ -8164,7 +8183,7 @@ export class CoreRuntime {
     // in combo order (as the engine's S1), whichever path computed them
     const runs = [...combos, ...exitCombos, ...signalExitCombos].flatMap((c) => byPair.get(`${c.bot}|${c.ind}`) ?? []);
     const engineRuns = runs.filter((r) => r.bot !== EXIT_BOT);
-    const { passed, qualified, qualifiedTags, qualifiedTps, qualifiedCells, wideLadderPairs, pairTags, pairTps, pairCells, pairTrailingOnlyCells } = basePass(
+    const { passed, qualified, qualifiedTags, qualifiedTps, qualifiedCells, wideLadderPairs, pairTags, pairTps, pairSl, pairCells, pairTrailingOnlyCells } = basePass(
       engineRuns,
       s,
     );
@@ -8182,6 +8201,7 @@ export class CoreRuntime {
       wideLadderPairs,
       pairTags,
       pairTps,
+      pairSl,
       pairCells,
       pairTrailingOnlyCells,
       exitBasePassed: exitBase.passed,
@@ -8444,7 +8464,7 @@ export class CoreRuntime {
     const exitLookBars = exitU?.series.map(beforeT) ?? [];
     const signalExitLookBars = signalU.series.map(beforeT);
     const base = await this.presetBase(job, s, combos, lookBars, exitCombos, exitLookBars, signalExitCombos, signalExitLookBars);
-    const { main, pairTags, pairTps, pairCells, pairTrailingOnlyCells } = base;
+    const { main, pairTags, pairTps, pairSl, pairCells, pairTrailingOnlyCells } = base;
     wf.basePassed = new Set([...base.qualified, ...base.exitBasePassed]);
     wf.exitBasePassed = base.exitBasePassed;
     wf.basePassedRanges = base.qualifiedTags;
@@ -8463,6 +8483,7 @@ export class CoreRuntime {
       ...protectFloors(s, startT),
       pairTags,
       pairTps,
+      pairSl,
       ...(pairCells ? { pairCells } : {}),
       ...(s.grid.trailingOnly === true ? { pairTrailingOnlyCells } : {}),
       microOwnInds: microOwnInds(s.grid),
@@ -12556,6 +12577,8 @@ export function basePass(
   wideLadderPairs: Set<string>;
   pairTags: Record<string, string[]>;
   pairTps: Record<string, Record<string, readonly number[]>>;
+  /** per pair, range and target: the calculated best minimal / maximal stop ratio (ComboRun.rangeSl); absent = every ratio */
+  pairSl: Record<string, Record<string, Record<string, SlBounds>>>;
   /** grid.baseCells: per pair, the passed cells of the ranges it passed (protectCellKey); absent while the option is off */
   pairCells: Record<string, readonly string[]>;
   /** No-TP candidates require an exact passed Base cell even while ordinary cells use target-level proof. */
@@ -12575,6 +12598,7 @@ export function basePass(
   // per pair, the range targets whose Base cells passed: the tape stage builds only those (baseTargets, on by
   // default — a range tag used to unlock every target of the range, most of them never Base-evaluated)
   const pairTps: Record<string, Record<string, readonly number[]>> = {};
+  const pairSl: Record<string, Record<string, Record<string, SlBounds>>> = {};
   const targetsOn = s.grid?.baseTargets !== false;
   // grid.baseRanges off: a passed pair builds every range its indication applies to, not only the ones it passed
   const rangesOn = s.grid?.baseRanges !== false;
@@ -12603,6 +12627,12 @@ export function basePass(
       const per: Record<string, readonly number[]> = {};
       for (const t of tags) if (t && r.rangeTps[t]?.length) per[t] = r.rangeTps[t];
       if (Object.keys(per).length) pairTps[`${r.bot}|${r.ind}`] = per;
+    }
+    // the calculated stop-ratio interval of each passed range's targets: the tape stage builds only the ratios inside it
+    if (r.rangeSl) {
+      const sl: Record<string, Record<string, SlBounds>> = {};
+      for (const t of tags) if (t && r.rangeSl[t]) sl[t] = r.rangeSl[t];
+      if (Object.keys(sl).length) pairSl[`${r.bot}|${r.ind}`] = sl;
     }
     // cell level: the passed cells of the passed ranges (a range without cells keeps the target / range level)
     if ((cellsOn || isLowRangeInd(r.ind)) && r.rangeCells?.length) {
@@ -12647,6 +12677,7 @@ export function basePass(
       const k = `${r.bot}|${r.ind}`;
       pairTags[k] = ["", ...ALL_RANGE_TAGS].filter((t) => rangeAppliesTo(r.ind, t, applies));
       delete pairTps[k];
+      delete pairSl[k];
       delete pairCells[k];
       if (!inPassed.has(k)) {
         passed.push(r);
@@ -12656,7 +12687,7 @@ export function basePass(
       }
     }
   }
-  return { passed, qualified, qualifiedTags, qualifiedTps, qualifiedCells, wideLadderPairs, pairTags, pairTps, pairCells, pairTrailingOnlyCells, added, addedKeys };
+  return { passed, qualified, qualifiedTags, qualifiedTps, qualifiedCells, wideLadderPairs, pairTags, pairTps, pairSl, pairCells, pairTrailingOnlyCells, added, addedKeys };
 }
 
 /** Paper deactivation and native admission preserve the same indication/range floor. */

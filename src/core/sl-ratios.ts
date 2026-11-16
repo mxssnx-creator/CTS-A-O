@@ -6,6 +6,22 @@ export interface AutoSlRatios {
   step: number;
   /** Single construction candidate when a persisted legacy policy is unusable; never an admission override. */
   fallback: number;
+  /**
+   * Calculate the best minimal and maximal ratio of each TP step from its last N samples (src/core/sl-calibration.ts);
+   * min / max above are then the hard limits, and too few samples keep them as the defaults. Default on (false = every
+   * ratio from min to max is built, as before).
+   */
+  adaptive?: boolean;
+  /** a ratio is near-optimal while its score is at least (1 − tolerance) × the best (default 0.1) */
+  tolerance?: number;
+  /** fewer samples than this keep min / max unchanged (default 20) */
+  minSamples?: number;
+}
+
+/** The calibration parameters of an automatic policy, or undefined while it is off or manual. */
+export function slCalibrationOf(p: AutoSlRatios | undefined): { min: number; max: number; step: number; tolerance: number; minSamples: number } | undefined {
+  if (!p?.enabled || p.adaptive === false) return undefined;
+  return { min: p.min, max: p.max, step: p.step, tolerance: p.tolerance ?? 0.1, minSamples: p.minSamples ?? 20 };
 }
 
 export const DEFAULT_AUTO_SL: Readonly<AutoSlRatios> = { enabled: true, min: .25, max: 2.5, step: .25, fallback: 1 };
@@ -24,6 +40,11 @@ export function checkAutoSlRatios(value: unknown, limit = 64): asserts value is 
       !Number.isFinite(p.step) || p.step < .01 || p.step > 2.3 || p.min > p.max ||
       p.fallback < p.min || p.fallback > p.max)
     throw new Error("Auto SL: ordered min/max in 0.2–2.5, step 0.01–2.3 and fallback inside bounds required");
+  if (p.adaptive !== undefined && typeof p.adaptive !== "boolean") throw new Error("Auto SL: adaptive must be true or false");
+  if (p.tolerance !== undefined && !(Number.isFinite(p.tolerance) && p.tolerance >= 0 && p.tolerance <= 0.9))
+    throw new Error("Auto SL: tolerance 0–0.9 required");
+  if (p.minSamples !== undefined && !(Number.isInteger(p.minSamples) && p.minSamples >= 5 && p.minSamples <= 500))
+    throw new Error("Auto SL: minimum samples 5–500 required");
   if (Math.floor((p.max - p.min) / p.step + 1e-9) + 1 > limit)
     throw new Error(`Auto SL: at most ${limit} independent ratios`);
 }

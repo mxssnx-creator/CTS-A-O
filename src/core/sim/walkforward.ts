@@ -1,4 +1,5 @@
 import { slRatiosOf } from "../sl-ratios.ts";
+import { slWithinBounds, type SlBounds } from "../sl-calibration.ts";
 import {positionStageStats} from "../position-windows.ts";
 import {blockRequired} from "../../../shared/cts-lastn/blocks.ts";
 import { positionCounts, positionStats, positionTapeValid } from "../position-windows.ts";
@@ -1741,6 +1742,12 @@ export type EntryFloors = {
    */
   pairTps?: Record<string, Record<string, readonly number[]>>;
   /**
+   * per pair, range tag and target (String(tp)): the best minimal and maximal stop ratio Base calculated from the last N
+   * samples of that TP step (ComboRun.rangeSl). Only the cells with a stop ratio inside it are built; a target without an
+   * entry, or one whose interval is the configured defaults (too few samples), keeps every ratio. Absent = off.
+   */
+  pairSl?: Record<string, Record<string, Record<string, SlBounds>>>;
+  /**
    * grid.baseCells, per pair, the cells Base validated (`protectCellKey`, tag|tp|sl|trail|hold): of a range with cells
    * listed here only those cells are built (not every stop × trail × hold of a passed target). A range without an entry
    * and the Wide grid keep the pair / target level. Absent = off.
@@ -1813,6 +1820,7 @@ export function floorsForPairs(floors: EntryFloors): (pairs: readonly string[]) 
     ...floors,
     ...(floors.pairTags ? { pairTags: pick(floors.pairTags, pairs) } : {}),
     ...(floors.pairTps ? { pairTps: pick(floors.pairTps, pairs) } : {}),
+    ...(floors.pairSl ? { pairSl: pick(floors.pairSl, pairs) } : {}),
     ...(floors.pairCells ? { pairCells: pick(floors.pairCells, pairs) } : {}),
     ...(floors.pairTrailingOnlyCells ? { pairTrailingOnlyCells: pick(floors.pairTrailingOnlyCells, pairs) } : {}),
     ...(floors.pairProtects ? { pairProtects: pick(floors.pairProtects, pairs) } : {}),
@@ -2377,6 +2385,7 @@ export function* buildTapesGen(
       // failing a filter it is built held-only and takes no new seat
       const held = floors?.heldIds?.has(id) ?? false;
       const tps = p0.tag ? floors?.pairTps?.[`${c.bot}|${c.ind}`]?.[p0.tag] : undefined;
+      const slb = p0.tag && !p0.trailOnly ? floors?.pairSl?.[`${c.bot}|${c.ind}`]?.[p0.tag]?.[String(p0.tp)] : undefined;
       // the structural exclusions first (a cell below its range's lane floor, a Micro cell off a Micro indication):
       // neither is a Base-gate hold, and a pair's tags already leave a floored range out (rangeAppliesTo), so
       // testing baseRange first labelled every lane-floor cell a gate hold (13 Oct: grid.allSets "cells held back")
@@ -2397,6 +2406,9 @@ export function* buildTapesGen(
                 : // only the targets of this range that passed Base
                   !exitConfig && !!tps && !(p0.trailOnly && !!noTpCells) && !tps.includes(p0.tp)
                   ? "baseTarget"
+                  : // the stop ratios inside the interval Base calculated for this target (src/core/sl-calibration.ts)
+                    !exitConfig && !!slb && slb.source === "samples" && !slWithinBounds(protectSlRatio(p0) ?? NaN, slb)
+                    ? "baseStop"
                   : !exitConfig && !isSignalInd(c.ind) && p0.trailOnly && !!noTpCells &&
                     !noTpCells.has(protectCellKey(p))
                     ? "baseCell"
