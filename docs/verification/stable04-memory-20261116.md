@@ -24,6 +24,8 @@ finished, so neither attempt established post-Base PF, validation percentage or 
   among the caches (`CTS_CORE_DERIVED_CACHE_MB`, 1–1024 MiB). Oversized values remain available to the current
   calculation and are recomputed on demand rather than retained. The budget does not include source histories or
   temporary buffers in an active calculation and is not a total-process memory limit.
+- Chunked session reports now project allocation rows as they are written instead of building a second full array
+  of per-order objects. The non-chunked format remains unchanged, and the streamed sidecars retain all rows in order.
 
 ## Evidence
 
@@ -43,6 +45,9 @@ With the derived-index budget set to 1 MiB, six tapes of 20,000 closes each exer
 symbol, direction and Signal evaluations matched their original results, and the recorded retained buffers in each
 index cache stayed within its quarter of the budget.
 
+The chunked-report test confirms allocation projection is lazy and repeatable; a complete sidecar replay also
+matched the former hydrated report and standalone HTML evidence exactly.
+
 ## Full replay
 
 A fresh offline 12-symbol replay was run on remote commit `5e901cf53c96ef27f2813579650c97f833d1287f`, source tree
@@ -54,3 +59,8 @@ at approximately 79% of strategy tape construction; peak child RSS was 3,828,148
 and another verification task briefly ran concurrently, but the kernel's precise kill reason is unavailable. No
 completed hourly results, post-Base PF, validation percentage or execution PF were produced. A subsequent retry must
 use fewer workers and reserve memory for the process rather than treating this partial run as an acceptance.
+
+A further retry started on commit `1a9cb896b74d3b3a1c4e47bcdd4534315d520ed8`, tree
+`250630be3081445684c72f0841700dc95251bc96`, with two workers, 128 MiB retained-history, 32 MiB decoded-history,
+64 MiB derived-index budgets and a 3,200 MiB RSS hard guard. It retains the same 12-symbol feed and simulation
+windows. Its result is pending; the later streamed-report change can render its raw dump without recalculating trades.
