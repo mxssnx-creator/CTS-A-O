@@ -80,8 +80,17 @@ export function parseSignalCoordinationId(ind: string): SignalCoordinationId | n
   return { version, ratio, minSources, inputMask, sourceNames };
 }
 
+// A pure function of the identity string, called per row of the signal loops (regex + BigInt decode each time):
+// the boolean is memoized, bounded by a clear when full.
+const coordIndMemo = new Map<string, boolean>();
 export function isSignalCoordinationInd(ind: string): boolean {
-  return parseSignalCoordinationId(ind) !== null;
+  let hit = coordIndMemo.get(ind);
+  if (hit === undefined) {
+    hit = parseSignalCoordinationId(ind) !== null;
+    if (coordIndMemo.size >= 100_000) coordIndMemo.clear();
+    coordIndMemo.set(ind, hit);
+  }
+  return hit;
 }
 
 export function signalCoordinationSourceLabel(ind: string): string {
