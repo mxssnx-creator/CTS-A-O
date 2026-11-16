@@ -20,6 +20,7 @@ const { CoreDb } = await import("./server/db.server.ts");
 const { CoreRuntime } = await import("./server/runtime.server.ts");
 const { compareOn } = await import("./test-support.ts");
 const { DEFAULT_SETTINGS } = await import("./config.ts");
+const { MINIMAL_RANGE } = await import("./minimal-coord.ts");
 const { SIGNAL_SOURCES, signalSettings } = await import("./signal-config.ts");
 const api = await import("./api-data.ts");
 
@@ -1340,7 +1341,8 @@ const small = {
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
-  grid: { tp: [0.018, 0.026, 0.035, 0.05], short: false as const },
+  // (wider stop ratios than the thin 0.2-1.2 ladder so the bounded synthetic market has Base-qualified rows to page)
+  grid: { tp: [0.018, 0.026, 0.035, 0.05], short: false as const, minimal: { ...MINIMAL_RANGE, slOfTp: [1, 1.5, 2, 2.5] } },
   axis: { perRange: false },
   tactics: {
     session: false,
