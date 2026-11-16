@@ -6333,10 +6333,14 @@ export function execDecision(
       ? (ctx?.book?.level(sourceKey("config", t), blk.maxLevel) ?? 0)
       : blockLevel(tp, entryT, blk, ctx, observed);
   const levels = { config: configLevel, ...bookLevels(book, t, blk.maxLevel) };
+  // Block Active belongs to Block's own lanes: the plain Normal / Trailing entries Block raises. DCA, DCA Active, Axis,
+  // Historic Exit and Signals keep their own sets and qualification; Block Active neither skips them nor raises their
+  // minimum level (operator, 16 Nov: an Active switch must not act on the whole system).
+  const blockActiveLane = !!tg.blockActive && plain && tp.kind !== "exit" && !isSignalInd(tp.ind);
   const d = blockDecide(
     levels,
     blk,
-    !!tg.blockActive,
+    blockActiveLane,
     (src) => !!ctx?.book?.paused(sourceKey(src, t)),
   );
   const traceSources = o.blockTrace ? sourcesOf(blk) : null;
@@ -6363,7 +6367,7 @@ export function execDecision(
     : {};
   // Block Active: only entries at the minimum level or above are opened — every lower entry is skipped; a signal's
   // own base trades at its unit then
-  if (tg.blockActive && !d.adjusted && !sigBase) return { ok: false, why: "blockActive" };
+  if (blockActiveLane && !d.adjusted && !sigBase) return { ok: false, why: "blockActive" };
   if (!d.adjusted && gatedBase)
     return baseOk() ? applyRelate({ ok: true, level: 0, vol: 1, ...trace }) : { ok: false, why: "normalPf" };
   // Normal off: a plain Normal / Trailing entry needs Block (DCA / Axis are not plain and run on their own)
