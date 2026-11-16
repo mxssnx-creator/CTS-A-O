@@ -78,3 +78,13 @@ it("a tape with no newly settled close is not opened again", () => {
   assert.ok(moved.length < tapes.length, "the step must leave some tapes unchanged for the test to mean something");
   assert.deepEqual(new Set(opened.map((x) => x.id)), new Set(moved.map((x) => x.id)), "only tapes with a newly settled close are opened");
 });
+
+it("a finished walk-forward result carries no memo: its options serialize small", async () => {
+  const { walkForward, defaultWalkForward } = await import("./walkforward.ts");
+  const { DEFAULT_SETTINGS } = await import("../config.ts");
+  const d = defaultWalkForward(DEFAULT_SETTINGS);
+  const u = { bars: [], caches: [], startT: 0, endT: 3_600_000, splitT: 0, nowT: 3_600_000, baseTf: 1 } as never;
+  const sim = walkForward(u, [], { ...d, simH: 1 });
+  assert.equal("evalMemo" in sim.opts, false);
+  assert.ok(JSON.stringify(sim.opts).length < 200_000);
+});

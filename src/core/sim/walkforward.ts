@@ -8207,7 +8207,7 @@ export function* walkForwardGen(
   const bySide = { long: sideStat(1), short: sideStat(-1) };
   yield -10;
   const stable = runStable(stats, blocks, o.gates.minPf);
-  const { protects: _p, dcaProtects: _d, validated: _v, ...rest } = o;
+  const { protects: _p, dcaProtects: _d, validated: _v, evalMemo: _m, ...rest } = o;
   // the end-of-run state paper / live continue from: every order closed by the end counts
   yield -11;
   yield* settle(stopT);
