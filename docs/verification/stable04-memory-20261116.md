@@ -14,6 +14,13 @@ finished, so neither attempt established post-Base PF, validation percentage or 
   `CTS_CORE_MEM_RSS_SOFT_MB` defaulting to 85% of the ceiling) includes worker threads and native allocations in
   pressure decisions and diagnostics. It also limits automatic worker sizing. No RSS ceiling is assumed when the
   setting is absent; a configured ceiling is an additional guard, not proof a kernel kill is impossible.
+- History spills previously used `/tmp` unconditionally; on this host `/tmp` is a RAM-backed tmpfs and contained
+  approximately 2.8 GB of spill files. When temporary storage is RAM-backed and the application working directory
+  is known to be disk-backed, spills now use `.cts-core/history` there. `CTS_CORE_HISTORY_DIR` explicitly overrides
+  the location. When no disk-backed location can be selected, the original temp location remains with a warning.
+- Automatic spill cleanup now checks the Linux PID namespace as well as the PID. The same shared temp filesystem can
+  be visible from different namespaces, so an apparently absent PID was not proof that another session had stopped.
+  Unscoped legacy spills and spills from another or unknown namespace are preserved for safe manual identification.
 - Automatic Block candidate windows previously stored separate copies of identical accepted close histories. They
   now share one history with sufficient retention for the longest window, while preserving independent pauses,
   source-specific evidence and entry-time decisions. Legacy unstamped candidates are all judged before the incoming
@@ -45,6 +52,9 @@ With the derived-index budget set to 1 MiB, six tapes of 20,000 closes each exer
 symbol, direction and Signal evaluations matched their original results, and the recorded retained buffers in each
 index cache stayed within its quarter of the budget.
 
+History-storage tests verify disk-root selection, configured root use by both tapes and transfer manifests, exact
+history round trips, and preservation of legacy and foreign-namespace spill directories.
+
 The chunked-report test confirms allocation projection is lazy and repeatable; a complete sidecar replay also
 matched the former hydrated report and standalone HTML evidence exactly.
 
@@ -63,4 +73,6 @@ use fewer workers and reserve memory for the process rather than treating this p
 A further retry started on commit `1a9cb896b74d3b3a1c4e47bcdd4534315d520ed8`, tree
 `250630be3081445684c72f0841700dc95251bc96`, with two workers, 128 MiB retained-history, 32 MiB decoded-history,
 64 MiB derived-index budgets and a 3,200 MiB RSS hard guard. It retains the same 12-symbol feed and simulation
-windows. Its result is pending; the later streamed-report change can render its raw dump without recalculating trades.
+windows. It was deliberately stopped at 96% of Base after identifying the RAM-backed spill location; the memory
+guard did not fire. This partial attempt produced no result. The next retry uses disk-backed spill storage; the
+streamed-report change can render its raw dump without recalculating trades.
