@@ -48,7 +48,7 @@ jobs:
           src/core/server/stage-lifecycle.test.ts
           src/core/indications/low-range-auto.test.ts src/core/indications/low-range-integration.test.ts
           src/core/indications/low-range-research.test.ts
-          src/core/fine-ladder-sets.test.ts src/core/sl-calibration.test.ts src/core/sl-calibration-base.test.ts src/core/position-partial-windows.test.ts src/core/signal-source-filter.test.ts src/core/sim/continuous-evaluation.test.ts src/core/progress-clock.test.ts src/core/server/history-store-sweep.test.ts src/core/server/progress-inprocess.test.ts src/core/micro-range.test.ts
+          src/core/fine-ladder-sets.test.ts src/core/sl-calibration.test.ts src/core/sl-calibration-base.test.ts src/core/position-partial-windows.test.ts src/core/signal-source-filter.test.ts src/core/sim/continuous-evaluation.test.ts src/core/progress-clock.test.ts src/core/server/history-store-sweep.test.ts src/core/sim/eval-memo.test.ts src/core/server/progress-inprocess.test.ts src/core/micro-range.test.ts
           src/core/server/fine-ladder-migration.test.ts src/core/market/base-history-cut.test.ts
           src/core/server/grid-cost-budget.test.ts src/core/regression.test.ts
           src/core/server/cycle-serial.test.ts

@@ -424,7 +424,7 @@ export interface WalkForwardOptions {
   /** minutes between re-derivations while `continuous` (1–60, default 1) */
   decisionMin?: number;
   /** Per-run memo of position evaluations by tape and settled-close count (created by walkForwardGen; exact). */
-  evalMemo?: Map<ConfigTape, { before: number; ev: ConfigEval }>;
+  evalMemo?: EvalMemo;
   /** Measurement only. Summary retains passed/evaluated counts and accepted-window sums without one row per config/hour. */
   recordValidation?: boolean | "summary";
   /** simulation start; default = end - simH */
@@ -4211,18 +4211,84 @@ function positionAggregate(
       };
 }
 
+/**
+ * Run-scoped memo of position evaluations. A tape's verdict depends on the clock only through the number of closes settled
+ * before it, so a cached verdict stays exact until one of that tape's closes settles. With the run's exit events attached
+ * (`attach`), the memo learns which tapes have a newly settled close from one sorted list, without opening any tape's columns
+ * (they live compressed on disk): an unchanged tape costs a set lookup, a changed one a fresh evaluation.
+ */
+export class EvalMemo {
+  readonly byTape = new Map<ConfigTape, { before: number; ev: ConfigEval }>();
+  /** tapes with a close settled since their verdict was computed (only while events are attached) */
+  readonly dirty = new Set<ConfigTape>();
+  private times = new Float64Array(0);
+  private owner = new Int32Array(0);
+  private tapes: readonly ConfigTape[] = [];
+  private ptr = 0;
+  private clock = -Infinity;
+  tracking = false;
+
+  /** Index the exit times of every tape inside [fromT, toT), sorted; slices (yields −1) so a long scan stays responsive. */
+  *attach(tapes: readonly ConfigTape[], fromT: number, toT: number): Generator<number, void> {
+    let count = 0;
+    const lo: number[] = [];
+    let at = performance.now();
+    for (let i = 0; i < tapes.length; i++) {
+      const x = tapes[i].exitT;
+      let j = lowerBound(x, fromT);
+      const start = j;
+      for (; j < x.length && j < tapes[i].n && x[j] < toT; j++);
+      lo.push(j - start);
+      count += j - start;
+      if (performance.now() - at > 8) { yield -1; at = performance.now(); }
+    }
+    const times = new Float64Array(count), owner = new Int32Array(count);
+    let k = 0;
+    for (let i = 0; i < tapes.length; i++) {
+      if (!lo[i]) continue;
+      const x = tapes[i].exitT;
+      let j = lowerBound(x, fromT);
+      for (let n = 0; n < lo[i]; n++, j++) { times[k] = x[j]; owner[k] = i; k++; }
+      if (performance.now() - at > 8) { yield -1; at = performance.now(); }
+    }
+    const order = new Uint32Array(count);
+    for (let i = 0; i < count; i++) order[i] = i;
+    order.sort((a, b) => times[a] - times[b]);
+    yield -1;
+    const t2 = new Float64Array(count), o2 = new Int32Array(count);
+    for (let i = 0; i < count; i++) { t2[i] = times[order[i]]; o2[i] = owner[order[i]]; }
+    this.times = t2; this.owner = o2; this.tapes = tapes; this.ptr = 0; this.clock = fromT; this.tracking = true;
+    this.dirty.clear();
+  }
+
+  /** Move the clock to t: every tape with a close settling in [clock, t) becomes dirty. False when t is not a forward move. */
+  advance(t: number): boolean {
+    if (!this.tracking) return false;
+    if (t < this.clock) return false;
+    if (t === this.clock) return true;
+    while (this.ptr < this.times.length && this.times[this.ptr] < t) this.dirty.add(this.tapes[this.owner[this.ptr++]]);
+    this.clock = t;
+    return true;
+  }
+}
+
 /** Identical verdict and arithmetic without retaining per-context diagnostics for a complete catalog scan. */
 export function configEvalSummary(tp: ConfigTape, t: number, o: WalkForwardOptions): ConfigEval {
   if (!o.gates.positionWindows) return configEval(tp, t, o);
-  // The verdict depends on the clock only through the number of closes settled before it: a run-scoped memo by that
-  // count returns exactly what a fresh evaluation would, and re-evaluates a tape only when one of its closes settles.
   const memo = o.evalMemo;
   if (!memo) return positionAggregate(tp, t, o, undefined, false);
+  const forward = memo.advance(t);
+  const hit = memo.byTape.get(tp);
+  // no close of this tape has settled since its verdict was computed: the cached verdict is exact, no column is opened
+  if (hit && forward && !memo.dirty.has(tp)) return hit.ev;
   const before = lowerBound(tp.exitT, t);
-  const hit = memo.get(tp);
-  if (hit && hit.before === before) return hit.ev;
+  if (hit && hit.before === before) {
+    memo.dirty.delete(tp);
+    return hit.ev;
+  }
   const ev = positionAggregate(tp, t, o, undefined, false);
-  memo.set(tp, { before, ev });
+  memo.byTape.set(tp, { before, ev });
+  memo.dirty.delete(tp);
   return ev;
 }
 function* selectPositionsGen(
@@ -7476,7 +7542,7 @@ export function* walkForwardGen(
   const startT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
   // seatSet "validated": each step selects only its causally validated cohort; explicit snapshots remain frozen.
   assertSeatSet(o);
-  if (o.gates.positionWindows && !o.evalMemo) o = { ...o, evalMemo: new Map() };
+  if (o.gates.positionWindows && !o.evalMemo) o = { ...o, evalMemo: new EvalMemo() };
   const frozenValidation = o.validated !== undefined;
   const newValidationRecord = (): { summary: ValidationSummary; checks?: ValidationCheck[] } | undefined => o.recordValidation ? {
     summary: { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {}, setPf: emptyValidatedSetPf() },
@@ -7679,6 +7745,8 @@ export function* walkForwardGen(
   let groups = modeGroups(selTapes, o);
   const continuousPicks = o.continuous !== false && !!o.gates.positionWindows && o.mode === "fixed" &&
     o.seatSet === "validated" && !frozenValidation && !groups;
+  // the run's exit events, so a re-derivation touches only the tapes whose closes changed
+  if (continuousPicks && o.evalMemo && !o.evalMemo.tracking) yield* o.evalMemo.attach(allEngine, startT, stopT);
   for (let t = startT; t < stopT; t += stepH * H) {
     // A short/losing run-start window is not a permanent rejection. Re-evaluate the same Base-qualified
     // built cohort on each new decision clock, using only its own already settled history. Explicit caller
@@ -7795,11 +7863,15 @@ export function* walkForwardGen(
       }
       if (continuousPicks && batchT > t && batchT >= nextPickAt) {
         nextPickAt = batchT + decisionMs;
-        const fresh = yield* selectPositionsGen(allEngine, batchT,
-          { ...stepOpts, seatSet: "pool", validated: undefined, recordValidation: undefined });
-        picks = fresh.picks;
-        engineRank = rankOf(picks);
-        seat(picks);
+        // only when a close has settled since the last derivation (the memo knows which tapes: no column is opened to ask)
+        o.evalMemo!.advance(batchT);
+        if (o.evalMemo!.dirty.size > 0) {
+          const fresh = yield* selectPositionsGen(allEngine, batchT,
+            { ...stepOpts, seatSet: "pool", validated: undefined, recordValidation: undefined });
+          picks = fresh.picks;
+          engineRank = rankOf(picks);
+          seat(picks);
+        }
       }
       const prio = bestFirst(picks, stepOpts, engineRank);
       const batchEnd = Math.min(stepEnd, batchT + batchMs);
