@@ -10,11 +10,20 @@ finished, so neither attempt established post-Base PF, validation percentage or 
   the lowest available headroom among visible cgroup-v1/v2 ancestors, treats a zero limit as binding, and reports the
   scope responsible for the estimate. Existing cache-credit rules are unchanged. Missing/unreadable limits remain
   unknown; this is not a claim that limits outside the visible hierarchy can be detected.
+- An optional process RSS ceiling (`CTS_CORE_MEM_RSS_HARD_MB`, with
+  `CTS_CORE_MEM_RSS_SOFT_MB` defaulting to 85% of the ceiling) includes worker threads and native allocations in
+  pressure decisions and diagnostics. It also limits automatic worker sizing. No RSS ceiling is assumed when the
+  setting is absent; a configured ceiling is an additional guard, not proof a kernel kill is impossible.
 - Automatic Block candidate windows previously stored separate copies of identical accepted close histories. They
   now share one history with sufficient retention for the longest window, while preserving independent pauses,
   source-specific evidence and entry-time decisions. Legacy unstamped candidates are all judged before the incoming
   close is recorded. Scoring also reads each bounded tail directly instead of copying it on every close. No
   configurations or trade outcomes are discarded to achieve this reduction.
+- Four disposable symbol, direction, evaluation-view and Signal index caches previously bounded only their key
+  counts. They now account for retained typed-array bytes, with a combined default budget of 128 MiB divided evenly
+  among the caches (`CTS_CORE_DERIVED_CACHE_MB`, 1–1024 MiB). Oversized values remain available to the current
+  calculation and are recomputed on demand rather than retained. The budget does not include source histories or
+  temporary buffers in an active calculation and is not a total-process memory limit.
 
 ## Evidence
 
@@ -30,10 +39,18 @@ The deterministic trace in `scripts/perf/compare-block-trace.mjs` produced the s
 Its scenarios include both history sources, independent and shared windows, timed and fixed windows, pauses,
 unknown returns, and stamped and unstamped closes.
 
+With the derived-index budget set to 1 MiB, six tapes of 20,000 closes each exercised cache eviction. Recomputed
+symbol, direction and Signal evaluations matched their original results, and the recorded retained buffers in each
+index cache stayed within its quarter of the budget.
+
 ## Full replay
 
-A fresh offline 12-symbol replay was started on remote commit `5e901cf53c96ef27f2813579650c97f833d1287f`, source tree
+A fresh offline 12-symbol replay was run on remote commit `5e901cf53c96ef27f2813579650c97f833d1287f`, source tree
 `474bfaf575c390791266f3e633af39935edbdf5d`, using the causal feed and 24-hour prehistory / 24-hour simulation described
 in `stable04-cadence-replay-20261116.md`. It uses three workers, 192 MiB retained-history and 64 MiB decoded-cache
 budgets. The dump contains ever-seated or executed histories rather than every rejected configuration; the engine
-evaluation itself is unchanged. This run started before the fixes above, and its outcome must be reported separately.
+evaluation itself is unchanged. This run started before the fixes above. It received SIGKILL after 1,271 seconds
+at approximately 79% of strategy tape construction; peak child RSS was 3,828,148 KiB. Host available memory was low
+and another verification task briefly ran concurrently, but the kernel's precise kill reason is unavailable. No
+completed hourly results, post-Base PF, validation percentage or execution PF were produced. A subsequent retry must
+use fewer workers and reserve memory for the process rather than treating this partial run as an acceptance.

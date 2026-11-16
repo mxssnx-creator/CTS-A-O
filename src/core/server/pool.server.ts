@@ -136,7 +136,8 @@ export function poolSize(): number {
   const env = Number(process.env.CTS_CORE_WORKERS);
   if (Number.isInteger(env) && env > 0) return env;
   const memory = memInfo();
-  return memoryPoolSize(availableParallelism(), memory.availMb + memory.rssMb, workerHeapMb(), memHardMb());
+  const budget = Math.min(memory.availMb + memory.rssMb, memory.rssHardMb ?? Infinity);
+  return memoryPoolSize(availableParallelism(), budget, workerHeapMb(), memHardMb());
 }
 
 // Workers are kept and reused across calls (and released after IDLE_MS without work). Spawning fresh worker
