@@ -1340,7 +1340,8 @@ const small = {
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  grid: { tp: [0.018, 0.026, 0.035, 0.05], short: false as const },
+  axis: { perRange: false },
   tactics: {
     session: false,
     volRegime: false,

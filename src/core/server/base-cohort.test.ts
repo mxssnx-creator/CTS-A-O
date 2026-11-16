@@ -23,7 +23,9 @@ const s = {
   // Freeze this diagnostic expansion/ownership fixture's historical partial-sample policy.
   // Complete count admission and exact-config ownership have independent regressions.
   gates: { ...DEFAULT_SETTINGS.gates, positionWindows:null, baseRangeLastN: { micro: 40, minimal: 40 }, minPf: 1.1, minTrades: 3, maxDdr: 0 },
-  grid: { ...DEFAULT_SETTINGS.grid, allSets: true, baseRanges: true },
+  // (Axis perRange is on by default since Stable-04; this fixture exercises the untagged-ladder builder path)
+  axis: { ...DEFAULT_SETTINGS.axis, perRange: false },
+  grid: { ...DEFAULT_SETTINGS.grid, tp: [0.018, 0.026, 0.035, 0.05], allSets: true, baseRanges: true },
 };
 const applies = { enabled: (tag: string) => tag === "mn" || tag === "sh" };
 function fixture() {

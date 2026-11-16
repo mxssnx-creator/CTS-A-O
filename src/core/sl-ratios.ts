@@ -26,6 +26,8 @@ export function slCalibrationOf(p: AutoSlRatios | undefined): { min: number; max
 
 export const DEFAULT_AUTO_SL: Readonly<AutoSlRatios> = { enabled: true, min: .25, max: 2.5, step: .25, fallback: 1 };
 export const DEFAULT_FINE_AUTO_SL: Readonly<AutoSlRatios> = { enabled: true, min: .2, max: 1.6, step: .1, fallback: 1 };
+/** Stable-04 thin ranges (Micro, Minimal, Short): 0.2 to 1.2 in steps of 0.1. */
+export const DEFAULT_THIN_AUTO_SL: Readonly<AutoSlRatios> = { enabled: true, min: .2, max: 1.2, step: .1, fallback: 1 };
 /** Signal Normal and Signal Historic stops (operator, 16 Nov 2026): 0.5 to 1.5 in steps of 0.25. */
 export const DEFAULT_SIGNAL_AUTO_SL: Readonly<AutoSlRatios> = { enabled: true, min: .5, max: 1.5, step: .25, fallback: 1 };
 /** The same candidates as the manual list a Signal falls back to when its automatic policy is off or unusable. */
