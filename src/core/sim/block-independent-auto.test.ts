@@ -67,6 +67,18 @@ test("unknown settled returns cannot turn an already measured source into a winn
   assert.equal(book.level(key, 1), 0);
 });
 
+test("auto Block scores exactly the latest source samples, including unknown outcomes", () => {
+  const book = new AutoBlockBook(policy, false);
+  const key = sourceKey("symbol", entry("A", 1, 0));
+  for (let i = 0; i < 35; i++) book.add(entry("A", -.01, 0));
+  for (let i = 0; i < 30; i++) book.add(entry("A", .01, 0));
+  assert.deepEqual(book.sourceScores(key)[0], { window: 1, n: 30, pf: Infinity });
+  book.add(entry("A", NaN, 0));
+  assert.equal(book.sourceScores(key)[0].pf, null);
+  for (let i = 0; i < 30; i++) book.add(entry("A", .01, 0));
+  assert.equal(book.sourceScores(key)[0].pf, Infinity, "the unknown result leaves the same last-30 window");
+});
+
 test("unstamped closes judge every candidate window before recording the new close", () => {
   const book = new AutoBlockBook({ ...policy, windowIndependent: false, maxLevel: 1, pause: 0,
     windowCandidates: [1, 2] }, false);

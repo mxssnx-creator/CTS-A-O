@@ -671,32 +671,31 @@ export class AutoBlockBook extends BlockBook {
     const at = key.lastIndexOf("|#exit:");
     return at < 0 ? this.cur : this.state(key.slice(at)).cur;
   }
+  /** Score the bounded tail in place; scoring each source must not allocate a copy on every close. */
+  private score(window: number, rows: readonly number[] | undefined): { window: number; n: number; pf: number | null } {
+    const length = rows?.length ?? 0;
+    // Array.slice(-NaN) and slice(-Infinity) start at zero, including for malformed legacy settings.
+    const start = Number.isNaN(this.lookback) ? 0 : Math.max(0, length - this.lookback);
+    const n = length - start;
+    if (n < this.minSamples) return { window, n, pf: null };
+    let gp = 0, gl = 0;
+    for (let i = start; i < length; i++) {
+      const x = rows![i];
+      if (!Number.isFinite(x)) return { window, n, pf: null };
+      if (x > 0) gp += x;
+      else gl -= x;
+    }
+    return { window, n, pf: !Number.isFinite(gp) || !Number.isFinite(gl) ? null : gl > 0 ? gp / gl : gp > 0 ? Infinity : 0 };
+  }
   /** PF of each candidate's last `lookback` raised closes (null below 30). */
   scores(scope = ""): Array<{ window: number; n: number; pf: number | null }> {
     const recent = this.recentFor(scope);
-    return this.windows.map((w, i) => {
-      const xs = recent[i].slice(-this.lookback);
-      if (xs.length < this.minSamples || xs.some((x) => !Number.isFinite(x))) return { window: w, n: xs.length, pf: null };
-      let gp = 0;
-      let gl = 0;
-      for (const x of xs) {
-        if (x > 0) gp += x;
-        else gl -= x;
-      }
-      if (!Number.isFinite(gp) || !Number.isFinite(gl)) return { window: w, n: xs.length, pf: null };
-      return { window: w, n: xs.length, pf: gl > 0 ? gp / gl : gp > 0 ? Infinity : 0 };
-    });
+    return this.windows.map((window, i) => this.score(window, recent[i]));
   }
   /** The candidate evidence for one exact source key. */
   sourceScores(key: string): Array<{ window: number; n: number; pf: number | null }> {
     const state = this.sourceStates.get(key);
-    return this.windows.map((window, i) => {
-      const xs = state?.recent[i].slice(-this.lookback) ?? [];
-      if (xs.length < this.minSamples || xs.some((x) => !Number.isFinite(x))) return { window, n: xs.length, pf: null };
-      let gp = 0, gl = 0;
-      for (const x of xs) { if (x > 0) gp += x; else gl -= x; }
-      return { window, n: xs.length, pf: !Number.isFinite(gp) || !Number.isFinite(gl) ? null : gl > 0 ? gp / gl : gp > 0 ? Infinity : 0 };
-    });
+    return this.windows.map((window, i) => this.score(window, state?.recent[i]));
   }
   private chooseSource(key: string) {
     const state = this.sourceStates.get(key)!;

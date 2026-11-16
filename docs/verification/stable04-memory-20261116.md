@@ -13,7 +13,8 @@ finished, so neither attempt established post-Base PF, validation percentage or 
 - Automatic Block candidate windows previously stored separate copies of identical accepted close histories. They
   now share one history with sufficient retention for the longest window, while preserving independent pauses,
   source-specific evidence and entry-time decisions. Legacy unstamped candidates are all judged before the incoming
-  close is recorded. No configurations or trade outcomes are discarded to achieve this reduction.
+  close is recorded. Scoring also reads each bounded tail directly instead of copying it on every close. No
+  configurations or trade outcomes are discarded to achieve this reduction.
 
 ## Evidence
 
