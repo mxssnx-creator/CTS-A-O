@@ -191,6 +191,7 @@ import {
   baseRangeProtects,
   completeBaseRangeProtects,
   laneInds,
+  laneFromT,
   makeUniverse,
   seriesOf,
   forgetCombo,
@@ -393,6 +394,7 @@ import {
   estimatedFraction,
   overallOf,
   pipelineStage,
+  simulationClock,
   simulationProgress,
   simulationWorkLabel,
 } from "../progress.ts";
@@ -4291,11 +4293,13 @@ export class CoreRuntime {
     const report = (fraction: number) => {
       if (gen !== this.gen || controller.signal.aborted) return;
       this.status.heartbeat = Date.now();
-      const completed = Math.min(steps, Math.round(fraction * steps));
+      const completed = Math.min(steps, Math.floor(fraction * steps + 1e-9));
       while (publishedSteps < completed) {
         publishedSteps++;
         progress(0);
       }
+      // between completed hours the bar follows the worker's simulated clock
+      progress(simulationClock(fraction * wf.simH * 60));
     };
     let transfer: HistoryTransfer | undefined;
     try {
@@ -4870,7 +4874,9 @@ export class CoreRuntime {
         (!evalFams || evalFams.some((f) => evalFamilyMatch(f, c.bot, c.ind, []))),
     );
     const representativePass = (r: ComboRun) => passesBase(r.full, { ...setsGates, minPf: minPfOf(setsGates, undefined, r.ind) });
-    const sigPairs = signalEvaluationPairs(configuredSignals, pipeline.s1, sig, representativePass);
+    // source filters (signals.minPerDay / dropLosing): days of Base history behind a run = its lane's first bar to the cut
+    const sigHistoryDays = (r: { ind: string }) => (uStage.nowT - laneFromT(uStage, r.ind)) / 86_400_000;
+    const sigPairs = signalEvaluationPairs(configuredSignals, pipeline.s1, sig, representativePass, sigHistoryDays);
     const representativePassed = signalEvaluationPairs(
       configuredSignals,
       pipeline.s1,
@@ -8842,6 +8848,7 @@ export class CoreRuntime {
       );
       const sigPairs = signalEvaluationPairs(initialized, runs, sig, (r) =>
         passesBase(r.full, { ...baseSetsGates(s.gates), minPf: minPfOf(baseSetsGates(s.gates), undefined, r.ind) }),
+        (r) => (look.nowT - laneFromT(look, r.ind)) / 86_400_000,
       );
       if (sigPairs.size) {
         const coordinationPairs = new Set(
@@ -11119,6 +11126,8 @@ export const WF_KEYS = [
   "preH",
   "simH",
   "stepH",
+  "continuous",
+  "decisionMin",
   "recordValidation",
   "blockTrace",
   "portfolio",
@@ -11252,6 +11261,8 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   // every short session report covered a window nobody asked for)
   num("simH", 1, 240);
   num("stepH", 1 / 60, 48); // re-evaluation down to 1 minute (BingX has no sub-minute history)
+  num("decisionMin", 1, 60); // continuous evaluation: minutes between re-derivations of the seat picks inside a step
+  if (p.continuous !== undefined) p.continuous = Boolean(p.continuous);
   num("portfolio", 0, 10_000, true); // 0 = no limit
   num("lastN", 0, 200, true);
   num("lastNMinPf", 0, 5);

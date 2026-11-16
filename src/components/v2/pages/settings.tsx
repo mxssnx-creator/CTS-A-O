@@ -537,6 +537,18 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field
+          label="Minimum signals a day per symbol"
+          hint="A signal source is evaluated only if its own Base history shows at least this many signal entries a day on some symbol (default 2). Sources that fire less often cannot fill the Last-N windows and only cost tapes, so dropping them speeds up every stage. 0 = off."
+        >
+          <Num value={g.minPerDay ?? 2} min={0} max={1000} step={0.5} onChange={(v) => set(["minPerDay"], v)} />
+        </Field>
+        <Field
+          label="Drop losing sources"
+          hint="A source whose own Base history is losing (pooled net not positive and PF below 1, over at least the minimum closes on some symbol) is not evaluated. A source without Base history is kept."
+        >
+          <Switch label="Drop losing signal sources" checked={g.dropLosing !== false} onChange={(v) => set(["dropLosing"], v)} />
+        </Field>
+        <Field
           label="Stable sources only"
           hint={props.positionMode ? "An additional source-level veto from its last N accepted positions; each config still qualifies independently." : "A source pauses on its recent accepted orders."}
         >

@@ -1,6 +1,7 @@
 import { slRatiosOf } from "../sl-ratios.ts";
 import { slWithinBounds, type SlBounds } from "../sl-calibration.ts";
 import {partialFloorOf, positionStageStats} from "../position-windows.ts";
+import { simulationClock } from "../progress.ts";
 import {blockRequired} from "../../../shared/cts-lastn/blocks.ts";
 import { positionCounts, positionStats, positionTapeValid } from "../position-windows.ts";
 import {relationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
@@ -413,6 +414,17 @@ export interface WalkForwardOptions {
   preH: number;
   simH: number;
   stepH: number;
+  /**
+   * Continuous evaluation (default on, position-count policy and fixed seat mode): inside each step the seat picks are
+   * re-derived every `decisionMin` minutes from the closes settled so far, so a config enters as soon as its own windows
+   * qualify and stops as soon as they no longer do, instead of waiting for the next hourly boundary. Entries were
+   * always judged on the closes before the entry; this releases the hourly pick list that gated them. false = hourly.
+   */
+  continuous?: boolean;
+  /** minutes between re-derivations while `continuous` (1–60, default 1) */
+  decisionMin?: number;
+  /** Per-run memo of position evaluations by tape and settled-close count (created by walkForwardGen; exact). */
+  evalMemo?: Map<ConfigTape, { before: number; ev: ConfigEval }>;
   /** Measurement only. Summary retains passed/evaluated counts and accepted-window sums without one row per config/hour. */
   recordValidation?: boolean | "summary";
   /** simulation start; default = end - simH */
@@ -918,6 +930,8 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     preH: PRECALC_HISTORY_H,
     simH: 48,
     stepH: 1,
+    continuous: true,
+    decisionMin: 1,
     // Real seats per strategy family: 0 = no limit — every config that passes the evaluation (PF, DDT, DDR,
     // validation) trades (12 windows × 12 symbols: PF 1.223 → 1.226, orders +5 % vs 16 seats; docs/block-sweep.md)
     portfolio: 0,
@@ -4199,7 +4213,17 @@ function positionAggregate(
 
 /** Identical verdict and arithmetic without retaining per-context diagnostics for a complete catalog scan. */
 export function configEvalSummary(tp: ConfigTape, t: number, o: WalkForwardOptions): ConfigEval {
-  return o.gates.positionWindows ? positionAggregate(tp, t, o, undefined, false) : configEval(tp, t, o);
+  if (!o.gates.positionWindows) return configEval(tp, t, o);
+  // The verdict depends on the clock only through the number of closes settled before it: a run-scoped memo by that
+  // count returns exactly what a fresh evaluation would, and re-evaluates a tape only when one of its closes settles.
+  const memo = o.evalMemo;
+  if (!memo) return positionAggregate(tp, t, o, undefined, false);
+  const before = lowerBound(tp.exitT, t);
+  const hit = memo.get(tp);
+  if (hit && hit.before === before) return hit.ev;
+  const ev = positionAggregate(tp, t, o, undefined, false);
+  memo.set(tp, { before, ev });
+  return ev;
 }
 function* selectPositionsGen(
   tapes: readonly ConfigTape[],
@@ -7452,6 +7476,7 @@ export function* walkForwardGen(
   const startT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
   // seatSet "validated": each step selects only its causally validated cohort; explicit snapshots remain frozen.
   assertSeatSet(o);
+  if (o.gates.positionWindows && !o.evalMemo) o = { ...o, evalMemo: new Map() };
   const frozenValidation = o.validated !== undefined;
   const newValidationRecord = (): { summary: ValidationSummary; checks?: ValidationCheck[] } | undefined => o.recordValidation ? {
     summary: { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {}, setPf: emptyValidatedSetPf() },
@@ -7652,6 +7677,8 @@ export function* walkForwardGen(
   let hedgeKeys = new Set<string>();
   // per-range selection modes (wf.rangeOpts[tag].mode); null = one selection over every engine tape, as without them
   let groups = modeGroups(selTapes, o);
+  const continuousPicks = o.continuous !== false && !!o.gates.positionWindows && o.mode === "fixed" &&
+    o.seatSet === "validated" && !frozenValidation && !groups;
   for (let t = startT; t < stopT; t += stepH * H) {
     // A short/losing run-start window is not a permanent rejection. Re-evaluate the same Base-qualified
     // built cohort on each new decision clock, using only its own already settled history. Explicit caller
@@ -7691,7 +7718,7 @@ export function* walkForwardGen(
       : o.mode === "fixed"
         ? yield* selectFixedRuntimeGen(selTapes, t, o)
         : null;
-    const { picks, eligible } = withProbe(
+    let { picks, eligible } = withProbe(
       groups
         ? sel!
         : o.mode === "durable"
@@ -7718,6 +7745,7 @@ export function* walkForwardGen(
         if (++checked % 32 === 0) yield -6;
       }
     }
+    const stepPicks = picks; // the step's record keeps the picks the step started with
     held = new Set(picks.map((p) => p.id));
     let taken = 0;
     let skipped = 0;
@@ -7737,26 +7765,48 @@ export function* walkForwardGen(
       if (exits) rangeRow("exit").validated += exits;
     }
     const stepEnd = Math.min(stopT, t + stepH * H);
-    const engineRank = new Map([...picks].sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1)).map((p, i) => [p.id, i]));
+    const rankOf = (ps: readonly Selection[]) =>
+      new Map([...ps].sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1)).map((p, i) => [p.id, i] as [string, number]));
+    let engineRank = rankOf(picks);
     const selectedEntries = new Set<string>();
-    for (const p of picks) {
-      const tid = o.invertSeats ? mirrorId(p.id) : p.id;
-      if (tid && byId.has(tid)) selectedEntries.add(tid);
-      else invertMissing++;
-    }
+    const seat = (ps: readonly Selection[]) => {
+      selectedEntries.clear();
+      for (const p of ps) {
+        const tid = o.invertSeats ? mirrorId(p.id) : p.id;
+        if (tid && byId.has(tid)) selectedEntries.add(tid);
+        else invertMissing++;
+      }
+    };
+    seat(picks);
     // Reporting/selection cadence does not determine candle precision or candidate memory. Process one minute
     // at a time, with the same stable entry ordering, and release the completed batch before assembling the next.
-    const batchMs = sigTapes.length ? 60_000 : stepH * H;
+    // Continuous evaluation: the picks are re-derived every decisionMin minutes from the closes settled so far (the memo makes
+    // a re-derivation cost only the tapes whose closes changed). Entries were always judged at their own time.
+    const decisionMs = Math.max(60_000, Math.round((o.decisionMin ?? 1) * 60_000));
+    const batchMs = sigTapes.length ? 60_000 : continuousPicks ? Math.min(decisionMs, stepH * H) : stepH * H;
+    let nextPickAt = t + decisionMs;
     for (let batchT = t; batchT < stepEnd; batchT += batchMs) {
+      yield simulationClock((batchT - startT) / 60_000); // the simulated clock, for a progress bar that moves by minute
       if (batchT !== t && signalActivation) {
         const act = yield* signalActivation.at(batchT);
         const all = hedgeKeys.size ? new Set([...act, ...hedgeKeys]) : act;
         stepOpts = { ...o, signalActive: all };
         recordSignalStep(batchT, all);
       }
+      if (continuousPicks && batchT > t && batchT >= nextPickAt) {
+        nextPickAt = batchT + decisionMs;
+        const fresh = yield* selectPositionsGen(allEngine, batchT,
+          { ...stepOpts, seatSet: "pool", validated: undefined, recordValidation: undefined });
+        picks = fresh.picks;
+        engineRank = rankOf(picks);
+        seat(picks);
+      }
       const prio = bestFirst(picks, stepOpts, engineRank);
       const batchEnd = Math.min(stepEnd, batchT + batchMs);
-      const cands = yield* scheduledEngineEntriesGen(engineEntries, batchEnd, selectedEntries, stopT, stepEnd);
+      // Hourly: an unselected history may advance to the end of the step (its selection is frozen for the hour). Continuous:
+      // the picks are re-derived inside the hour, so no entry past this batch may be skipped.
+      const cands = yield* scheduledEngineEntriesGen(engineEntries, batchEnd, selectedEntries, stopT,
+        continuousPicks ? batchEnd : stepEnd);
       let mergedSignals = 0;
       while (signalEntries.peekT() < batchEnd) {
         const cursor = signalEntries.pop()!;
@@ -8018,7 +8068,7 @@ export function* walkForwardGen(
     steps.push({
       t,
       main: eligible,
-      real: picks.map((p) => p.id),
+      real: stepPicks.map((p) => p.id),
       taken,
       skipped,
       net,

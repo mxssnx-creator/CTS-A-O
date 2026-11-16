@@ -45,6 +45,9 @@ it("fresh Expanded defaults match the verified source/grid catalog with own Last
   expected.trailing.slOfTp = 1;
   expected.guard.lastN = 12;
   expected.hist.lookbackH = 150;
+  // Operator, 16 Nov 2026: Signal source filters (minimum signals a day per symbol, drop losing sources); the receipt stays immutable.
+  expected.minPerDay = 2;
+  expected.dropLosing = true;
   expected.hist.slOfTp = [...SIGNAL_SL_RATIOS];
   expected.hist.slAuto = { ...DEFAULT_SIGNAL_AUTO_SL };
   expected.coordination.volumeFactor = 1; // Operator neutral-sizing default; archived receipt stays immutable.

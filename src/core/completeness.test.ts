@@ -387,6 +387,7 @@ const CASES: Record<string, Case> = {
   "signals.sourceGate.minTrades": num(1, 100),
   "signals.perSymbol": num(0, 1000, { int: true }),
   "signals.maxOpen": num(0, 100_000, { int: true }),
+  "signals.minPerDay": num(0, 1000),
   "signals.maxPositions": num(0, 10_000, { int: true }),
   "signals.filter.trendH": num(0, 48),
   "signals.filter.volFloor": num(0, 0.02),

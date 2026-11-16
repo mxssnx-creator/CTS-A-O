@@ -150,24 +150,81 @@ export function signalEvaluationPairs<
   R extends {
     bot: string;
     ind: string;
-    bySym: Record<string, { n: number }> | string;
+    bySym: Record<string, { n: number; net?: number; pf?: number }> | string;
+    full?: { n: number; net: number; pf: number };
   },
 >(
   configured: ReadonlyArray<{ bot: string; ind: string }>,
   runs: readonly R[],
-  sig: Pick<SignalSettings, "enabled" | "baseGate" | "minTrades">,
+  sig: Pick<SignalSettings, "enabled" | "baseGate" | "minTrades"> & Partial<Pick<SignalSettings, "minPerDay" | "dropLosing">>,
   representativePass: (run: R) => boolean,
+  /**
+   * days of Base history behind a run (its lane's first bar to the cut). With it, the source filters apply:
+   * `minPerDay` and `dropLosing`. Without it (reports, legacy callers) nothing is filtered, as before.
+   */
+  historyDays?: (run: R) => number,
 ): Set<string> {
   if (!sig.enabled) return new Set();
   const initialized = new Set(
     configured.filter((c) => isSignalInd(c.ind)).map((c) => `${c.bot}|${c.ind}`),
   );
-  if (sig.baseGate === false) return initialized;
-  return new Set(
-    [...signalCandidates(runs.filter(representativePass), sig.minTrades)].filter((pair) =>
-      initialized.has(pair),
-    ),
-  );
+  const kept =
+    sig.baseGate === false
+      ? initialized
+      : new Set(
+          [...signalCandidates(runs.filter(representativePass), sig.minTrades)].filter((pair) =>
+            initialized.has(pair),
+          ),
+        );
+  if (!historyDays) return kept;
+  const drop = signalSourcesToDrop(runs, kept, sig, historyDays);
+  return drop.size ? new Set([...kept].filter((pair) => !drop.has(pair))) : kept;
+}
+
+/** Shortest history that says anything about a daily rate. */
+export const SIGNAL_RATE_MIN_DAYS = 0.25;
+
+/**
+ * Sources (signal pairs) the filters remove before any of their configs is computed:
+ *  - too few signals: no symbol reaches `minPerDay` entries a day (closes of the Base run are the count, an upper
+ *    bound of what a single position slot can take);
+ *  - losing: at least `minTrades` closes on some symbol, pooled net not positive and pooled PF below 1.
+ * A source without a Base run, or with a history too short to judge, is kept: no evidence is not a veto.
+ * Coordinators (composites of several sources) are not sources and are never filtered here.
+ */
+export function signalSourcesToDrop<
+  R extends {
+    bot: string;
+    ind: string;
+    bySym: Record<string, { n: number }> | string;
+    full?: { n: number; net: number; pf: number };
+  },
+>(
+  runs: readonly R[],
+  pairs: ReadonlySet<string>,
+  sig: Pick<SignalSettings, "minTrades"> & Partial<Pick<SignalSettings, "minPerDay" | "dropLosing">>,
+  historyDays: (run: R) => number,
+): Set<string> {
+  const drop = new Set<string>();
+  const minPerDay = sig.minPerDay ?? 0;
+  const dropLosing = sig.dropLosing === true;
+  if (!(minPerDay > 0) && !dropLosing) return drop;
+  for (const r of runs) {
+    const pair = `${r.bot}|${r.ind}`;
+    // a coordinator is a composite of other sources with its own rules, not a source with a signal rate of its own
+    if (!pairs.has(pair) || !r.ind.includes("sig-") || isSignalCoordinationInd(r.ind)) continue;
+    const days = historyDays(r);
+    const by = (typeof r.bySym === "string" ? JSON.parse(r.bySym) : r.bySym) as Record<string, { n: number }> | undefined;
+    const counts = Object.values(by ?? {}).map((x) => x.n);
+    if (minPerDay > 0 && days >= SIGNAL_RATE_MIN_DAYS && counts.length && !counts.some((n) => n / days >= minPerDay)) {
+      drop.add(pair);
+      continue;
+    }
+    if (dropLosing && r.full && counts.some((n) => n >= sig.minTrades) && r.full.n >= sig.minTrades &&
+        Number.isFinite(r.full.net) && r.full.net <= 0 && Number.isFinite(r.full.pf) && r.full.pf < 1)
+      drop.add(pair);
+  }
+  return drop;
 }
 
 /**

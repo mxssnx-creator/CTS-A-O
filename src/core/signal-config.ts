@@ -661,6 +661,17 @@ export interface SignalSettings {
    * false: every configured initialized signal pair computes all its configs, each qualified on its own history
    */
   baseGate?: boolean;
+  /**
+   * Source filter (operator, 16 Nov 2026): a signal source (pair) is evaluated only if, on at least one symbol, its own Base
+   * history shows at least this many signal entries a day. A source that fires less often cannot fill the Last-N windows and
+   * only costs tapes. 0 = off.
+   */
+  minPerDay?: number;
+  /**
+   * Source filter: a source whose own Base history is losing (at least `minTrades` closes on some symbol, pooled net <= 0 and
+   * pooled PF below 1) is not evaluated. A source without Base history is kept. false = off.
+   */
+  dropLosing?: boolean;
   maxOpen: number;
   /** Signal-simulation positions (symbol × direction, long and short apart); independent of the live exchange cap. */
   maxPositions: number;
@@ -824,6 +835,8 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // signals judged on their own exits: the Base gate at the engine's default exit (TP 2.6 %, SL 3.9 %, 8 h) passed only
   // 6–11 of ~380 signal pairs (3 Oct: 51 orders at PF 0.44; 2 Oct: none)
   baseGate: false,
+  minPerDay: 2,
+  dropLosing: true,
 };
 
 /** active signal units: 0 = no cap (every validated unit), then 10 … 200 in tens and up to 10,000 */
