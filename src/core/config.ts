@@ -1,5 +1,5 @@
 import { DEFAULT_POSITION_WINDOWS } from "./position-windows.ts";
-import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL } from "./sl-ratios.ts";
+import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL, DEFAULT_SIGNAL_AUTO_SL } from "./sl-ratios.ts";
 import { DEFAULT_MIN_SL_DISTANCE_PCT, SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
 import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "./indications/micro-family.ts";
 import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "./indications/low-range.ts";
@@ -912,8 +912,8 @@ export function newDefaultSettings(): CoreSettings {
   }
   if (s.grid.micro) s.grid.micro.slAuto = { ...DEFAULT_FINE_AUTO_SL };
   if (s.grid.lowRange) s.grid.lowRange.slAuto = { ...DEFAULT_FINE_AUTO_SL };
-  s.signals.normal.slAuto = { ...DEFAULT_AUTO_SL };
-  s.signals.hist.slAuto = { enabled: true, min: 1, max: 2, step: 1, fallback: 1 };
+  s.signals.normal.slAuto = { ...DEFAULT_SIGNAL_AUTO_SL };
+  s.signals.hist.slAuto = { ...DEFAULT_SIGNAL_AUTO_SL };
   return s;
 }
 

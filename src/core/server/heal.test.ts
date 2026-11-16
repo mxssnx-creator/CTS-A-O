@@ -113,9 +113,14 @@ describe("self-healing", { timeout: 600_000 }, () => {
     rt.kick();
     await until(() => rt.status.errorsInRow === 2);
     assert.ok(rt.status.nextCycleAt - Date.now() > 8_000, "second backoff doubles");
+    // the retry moved the first attempt's error aside: `error` is this attempt's failure, `lastError` the previous one
+    assert.match(rt.status.error ?? "", /injected compute failure/);
+    assert.match(rt.status.lastError ?? "", /injected compute failure/);
     rt.kick();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running");
     assert.equal(rt.status.errorsInRow, 0);
+    assert.equal(rt.status.error, null);
+    assert.equal(rt.status.lastError, null, "a successful cycle clears the retry's earlier error too");
     assert.match(rt.status.lastHeal, /recovered after 2 failed cycle/);
     rt.stop();
   });

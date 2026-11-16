@@ -1,6 +1,6 @@
 import { it } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL, checkAutoSlRatios, slRatioCandidates, slRatiosOf } from "./sl-ratios.ts";
+import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL, DEFAULT_SIGNAL_AUTO_SL, SIGNAL_SL_RATIOS, checkAutoSlRatios, slRatioCandidates, slRatiosOf } from "./sl-ratios.ts";
 import { MICRO_RANGE, MINIMAL_RANGE } from "./minimal-coord.ts";
 import { DEFAULT_SETTINGS, newDefaultSettings } from "./config.ts";
 import { protectGrid, checkGridVariantBudget } from "./sim/walkforward.ts";
@@ -97,4 +97,25 @@ it("Signals and Low-Range retain their independent auto settings and later hard 
   assert.ok(auto.length>0);
   assert.ok(auto.every(p=>p.sl/p.tp<=.75+1e-12));
   assert.deepEqual(auto,lowRangeGridProtects({...grid,slAuto:undefined,slRatios:[.5,.75,1]},DEFAULT_SETTINGS.cost));
+});
+
+it("Signal Normal and Signal Historic stops are 0.5 to 1.5 in steps of 0.25, with matching manual defaults and a bounded fallback", () => {
+  const five = [.5, .75, 1, 1.25, 1.5];
+  assert.deepEqual([...SIGNAL_SL_RATIOS], five);
+  assert.deepEqual(slRatiosOf({ slAuto: DEFAULT_SIGNAL_AUTO_SL }), five);
+  const fresh = newDefaultSettings().signals;
+  assert.deepEqual(fresh.normal.slAuto, DEFAULT_SIGNAL_AUTO_SL);
+  assert.deepEqual(fresh.hist.slAuto, DEFAULT_SIGNAL_AUTO_SL);
+  assert.deepEqual(signalSettings(fresh).normal.slOfTp, five);
+  assert.deepEqual(signalSettings(fresh).hist.slOfTp, five);
+  // desks that never opted into automatic mode keep a manual list that is the same five candidates
+  assert.deepEqual(DEFAULT_SIGNALS.normal.slOfTp, five);
+  assert.deepEqual(DEFAULT_SIGNALS.hist.slOfTp, five);
+  // an unusable saved policy falls back to one candidate inside the Signal bounds, never beyond them
+  assert.deepEqual(slRatioCandidates({ slAuto: { ...DEFAULT_SIGNAL_AUTO_SL, step: 0 } }), { ratios: [1], source: "fallback" });
+  assert.deepEqual(slRatioCandidates({ slAuto: { ...DEFAULT_SIGNAL_AUTO_SL, step: NaN, fallback: 3 } }), { ratios: [1], source: "fallback" });
+  // a manual list the operator supplies is not shadowed by the automatic policy
+  assert.deepEqual(signalSettings({ ...fresh, normal: { ...fresh.normal, slOfTp: [.6, 1.1], slAuto: undefined } }).normal.slOfTp, [.6, 1.1]);
+  // the general ranges keep 0.25 to 2.5
+  assert.deepEqual(slRatiosOf({ slAuto: DEFAULT_AUTO_SL }).length, 10);
 });

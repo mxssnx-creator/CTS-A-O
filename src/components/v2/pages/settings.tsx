@@ -1,4 +1,4 @@
-import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL, slRatioCandidates, type AutoSlRatios } from "@/core/sl-ratios";
+import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL, DEFAULT_SIGNAL_AUTO_SL, slRatioCandidates, type AutoSlRatios } from "@/core/sl-ratios";
 import {BlockPolicyFields} from "../../../../shared/cts-lastn/fields";
 import { DEFAULT_POSITION_WINDOWS, checkPositionWindows, type PositionWindows } from "@/core/position-windows";
 import {dcaTacticConfigs,dcaTacticId,DCA_TACTIC_GRID} from "@/core/indications/dca-tactic";
@@ -908,7 +908,7 @@ export function SignalsSettings(props: {
         >
           <div className="v2-grid v2-cols-2" style={{ gap: 6 }}>
             <List pct value={normal.tp} onChange={(v) => set(["normal", "tp"], v)} />
-            <SlRatioEditor title="Signal Normal" spec={normal} set={(field,value)=>set(["normal",field],value)}/>
+            <SlRatioEditor title="Signal Normal" spec={normal} defaults={DEFAULT_SIGNAL_AUTO_SL} set={(field,value)=>set(["normal",field],value)}/>
           </div>
         </Field>
         <Field
@@ -1041,7 +1041,7 @@ export function SignalsSettings(props: {
         >
           <div className="v2-grid v2-cols-2" style={{ gap: 6 }}>
             <List value={hist.trailOfTp} onChange={(v) => set(["hist", "trailOfTp"], v)} />
-            <SlRatioEditor title="Signal Historic" spec={hist} set={(field,value)=>set(["hist",field],value)}/>
+            <SlRatioEditor title="Signal Historic" spec={hist} defaults={DEFAULT_SIGNAL_AUTO_SL} set={(field,value)=>set(["hist",field],value)}/>
           </div>
         </Field>
         <Field
@@ -1795,9 +1795,11 @@ export function StepList(props: {
 /** Auto generates bounded candidates; the existing own-cell gates choose which may trade. */
 export function SlRatioEditor(props: {
   spec: {slOfTp:readonly number[];slAuto?:AutoSlRatios}; title:string; fine?:boolean;
+  /** The bounds shown when the spec has no saved policy yet (Signals use 0.5 to 1.5). */
+  defaults?: AutoSlRatios;
   set:(field:string,value:unknown)=>void;
 }) {
-  const policy=props.spec.slAuto ?? (props.fine ? DEFAULT_FINE_AUTO_SL : DEFAULT_AUTO_SL);
+  const policy=props.spec.slAuto ?? props.defaults ?? (props.fine ? DEFAULT_FINE_AUTO_SL : DEFAULT_AUTO_SL);
   const result=slRatioCandidates(props.spec,props.fine?24:64);
   const put=(patch:Partial<AutoSlRatios>)=>props.set("slAuto",{...policy,...patch});
   return <div className="v2-lines">

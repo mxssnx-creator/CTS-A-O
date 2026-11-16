@@ -1,6 +1,6 @@
-import { mergeSlRatioSettings, slRatiosOf } from "./sl-ratios.ts";
+import { SIGNAL_SL_RATIOS, mergeSlRatioSettings, slRatiosOf } from "./sl-ratios.ts";
 import { RT_COST } from "./model-cost.ts";
-import { SL_TP_RATIOS, SL_TP_MIN, SL_TP_MAX, minimumStopFraction } from "./protection-policy.ts";
+import { SL_TP_MIN, SL_TP_MAX, minimumStopFraction } from "./protection-policy.ts";
 // Signals processing settings and sources (pure, no engine imports: shared by the engine, config and the UI).
 // The engine side (combos, configs, active ranking, guard) is in signals.ts.
 import { INDICATION_KINDS, type IndicationKind } from "./domain/types.ts";
@@ -737,7 +737,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // All four independent Expanded lanes retain minute-based pricing and causal entry/exit calculations.
   lanes: [1, 5, 15, 30],
   // 7 targets × 6 stop ratios = 42 Normal configs; include 1 % / 1.5 % targets and tighter risk ratios.
-  normal: { tp: [0.01, 0.015, 0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [...SL_TP_RATIOS] },
+  normal: { tp: [0.01, 0.015, 0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [...SIGNAL_SL_RATIOS] },
   // 7 targets × 5 trail widths = 35 capped Trailing configs, stops at 3 × target.
   trailing: {
     tp: [0.01, 0.015, 0.03, 0.04, 0.05, 0.06, 0.08],
@@ -770,7 +770,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     enabled: true,
     quantiles: [0.5, 0.75],
     trailOfTp: [0.25, 0.5, 0.75],
-    slOfTp: [1, 2],
+    slOfTp: [...SIGNAL_SL_RATIOS],
     minN: 30,
     lookbackH: SIGNAL_HISTORY_H,
   },

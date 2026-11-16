@@ -10,6 +10,10 @@ export interface AutoSlRatios {
 
 export const DEFAULT_AUTO_SL: Readonly<AutoSlRatios> = { enabled: true, min: .25, max: 2.5, step: .25, fallback: 1 };
 export const DEFAULT_FINE_AUTO_SL: Readonly<AutoSlRatios> = { enabled: true, min: .2, max: 1.6, step: .1, fallback: 1 };
+/** Signal Normal and Signal Historic stops (operator, 16 Nov 2026): 0.5 to 1.5 in steps of 0.25. */
+export const DEFAULT_SIGNAL_AUTO_SL: Readonly<AutoSlRatios> = { enabled: true, min: .5, max: 1.5, step: .25, fallback: 1 };
+/** The same candidates as the manual list a Signal falls back to when its automatic policy is off or unusable. */
+export const SIGNAL_SL_RATIOS: readonly number[] = [.5, .75, 1, 1.25, 1.5];
 const validRatio = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x) && x >= .2 && x <= 2.5;
 
 /** Validate writes strictly. Recovery below is only for absent or malformed persisted construction settings. */

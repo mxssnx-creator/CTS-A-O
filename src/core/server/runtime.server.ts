@@ -772,6 +772,8 @@ export interface RuntimeStatus {
   heals: number;
   lastHeal: string;
   errorsInRow: number;
+  /** The previous attempt's error while the retry runs; `error` is only ever the current attempt's failure. */
+  lastError?: string | null;
   /** the fast tick (paper mark-to-market + live step) */
   tick?: TickStatus;
   /** Dedicated execution checks. Lag is measured, never a guaranteed exchange latency. */
@@ -3223,6 +3225,12 @@ export class CoreRuntime {
     this.inCycle = true;
     // a job left open by an abandoned cycle (watchdog, stop, error) never carries its bar into this one
     this.jobOpen = false;
+    // A retry is not a new failure: the previous attempt's error moves to lastError while this cycle runs, so the
+    // progress line never shows a minutes-old error beside a healthy stage. A failing cycle sets `error` again.
+    if (this.status.error) {
+      this.status.lastError = this.status.error;
+      this.status.error = null;
+    }
     try {
       // An explicitly requested discovery run waits before pulling another universe; ordinary foreground
       // cycles remain free to pull new candles and continue validated sets during the background comparison.
@@ -3378,6 +3386,7 @@ export class CoreRuntime {
       if (!this.stopped) this.status.state = "running";
       this.emit("state");
       this.status.error = null;
+      this.status.lastError = null;
       // the preset comparison of this compute runs once the cycle has ended (its book is out, the next cycle is
       // scheduled): the next cycle waits for it before it starts, so the two never overlap
       if (
