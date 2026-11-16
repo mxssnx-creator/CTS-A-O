@@ -716,7 +716,8 @@ describe("bug-hunt regressions", () => {
       block: { mode: "additive", ratio: 0.3, maxLevel: 5, minActiveLevel: 1, maxMult: 2 },
     });
     const r2 = new CoreRuntime(mine, undefined, { market: "synthetic" });
-    assert.deepEqual(r2.settings.grid.tp, [0.04]);
+    // the one-time 16 Nov migration disables the Wide grid on saved desks (backup kept); ranges the user changed stay
+    assert.deepEqual(r2.settings.grid.tp, []);
     assert.deepEqual(r2.settings.grid.short && r2.settings.grid.short.tp, [0.007]);
     assert.equal(r2.settings.block.mode, "additive");
     assert.equal(r2.settings.block.maxLevel, 5);

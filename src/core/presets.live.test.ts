@@ -32,8 +32,10 @@ describe("saved live coordinations", () => {
     assert.equal(rt.settings.gates.minPf, 1.05);
     assert.deepEqual(rt.settings.disabledKinds, []);
     // every strategy type on except Block Active (positive coordination: docs/positive-coordinations.md)
-    const { blockActive, ...rest } = rt.settings.toggles;
+    // Historic Exit stays off by the 16 Nov operator policy
+    const { blockActive, exit, ...rest } = rt.settings.toggles;
     assert.equal(blockActive, false);
+    assert.equal(exit, false);
     assert.equal(Object.values(rest).every(Boolean), true);
     assert.deepEqual(rt.settings.forceSymbols, ["XRP-USDT", "SOL-USDT", "BCH-USDT"]);
     for (const k of ["micro", "minimal", "short", "general", "long"] as const)

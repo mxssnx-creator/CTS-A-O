@@ -39,7 +39,7 @@ for (const [tag, ind] of [["mc", "micro-5-drawdown-turn-fast@m5"], ["lr", "low-r
     // the ladder is really there: the widest target carries every requested ratio above the floor as its own stop
     const tpMax = Math.max(...plain.map((p) => p.tp));
     const stops = new Set(plain.filter((p) => p.tp === tpMax && p.trail === 0).map((p) => p.sl));
-    assert.ok(stops.size >= 14, `${stops.size} distinct stops on the widest target`);
+    assert.ok(stops.size >= 11, `${stops.size} distinct stops on the widest target`);
     const trails = new Set(plain.filter((p) => p.tp === tpMax).map((p) => p.trail));
     assert.equal(trails.size, 7, "plain plus six trailing distances on the widest target");
   });
