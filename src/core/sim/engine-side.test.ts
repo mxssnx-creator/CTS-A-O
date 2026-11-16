@@ -30,7 +30,7 @@ describe("engine direction acceptance (engineSideAccept)", () => {
   guard.engineSide = idx;
   const acc = { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 };
   const o = {
-    ...defaultWalkForward(DEFAULT_SETTINGS),
+    ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
     lastN: 0,
     validLastN: 0,
     symGate: undefined,
@@ -125,7 +125,7 @@ describe("engine direction acceptance (engineSideAccept)", () => {
       outcomes(1, "trailing-independent", "trailing"), [], [],
     );
     const settings = {
-      ...defaultWalkForward(DEFAULT_SETTINGS),
+      ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
       longH: 24,
       preH: 24,
       durableSplits: 2,

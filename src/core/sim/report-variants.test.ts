@@ -38,7 +38,7 @@ const tr = (cfg: string, sym: string, side: 1 | -1, eH: number, xH: number, r: n
 });
 
 describe("walk-forward variants", () => {
-  const base = { ...defaultWalkForward(DEFAULT_SETTINGS), protects: [], dcaProtects: [] };
+  const base = { ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true }, protects: [], dcaProtects: [] };
   const kinds = { normal: 10, trailing: 10, exit: 0, dca: 0, "dca-active": 0, axis: 4 };
 
   it("flips every toggle once and marks the ones without tapes as recompute", () => {

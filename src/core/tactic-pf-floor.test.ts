@@ -75,7 +75,7 @@ function tape(ind: string, pf: number, protect: Protect = P, otherSymbolPf?: num
 }
 
 const OPTIONS = {
-  ...defaultWalkForward(DEFAULT_SETTINGS),
+  ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
   gates: G,
   longH: 48,
   preH: 48,

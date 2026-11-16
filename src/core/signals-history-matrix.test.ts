@@ -21,7 +21,7 @@ const T = Date.UTC(2026, 9, 20, 12);
 
 describe("Signal history, bounded trailing and exact-context progression", () => {
   it("keeps 150h independent of engine 48h and persists the override through WF sanitization", () => {
-    const wf = defaultWalkForward(DEFAULT_SETTINGS);
+    const wf = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
     assert.equal(wf.longH, 48);
     assert.equal(wf.preH, 72);
     assert.equal(signalHistoryHours(wf), 150);
@@ -127,7 +127,7 @@ describe("Signal history, bounded trailing and exact-context progression", () =>
               rows.push({ cfg: id, sym, side, entryT: T - (300 - i * 4) * H - 60_000, exitT: T - (300 - i * 4) * H,
                 entry: 100, exit: 100 * (1 + side * r), r, reason: "time", bars: 1, mfe: 0, mae: 0, kind });
           const tape = makeTape(id, "follow", ind, p, kind, ["A", "A", "B", "B", "C", "C"], rows, [], []);
-          const d = defaultWalkForward(DEFAULT_SETTINGS);
+          const d = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
           const options = { ...d, signalOwnBase: true, signalLongH: 336, signalValidLastN: 25,
             signalActive: new Set(["A", "B", "C"].flatMap((sym) => [1, -1].map((side) => sigActiveKey("follow", ind, sym, side, kind, id)))),
             signalAccept: undefined, signalSideAccept: undefined, signalCluster: undefined, signalGuardN: 0,

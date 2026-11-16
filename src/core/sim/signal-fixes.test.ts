@@ -238,7 +238,7 @@ describe("signal confirmation judges engine candidates", () => {
     return makeTape(id, "follow", ind, P, "normal", [SYM], [...history, mk(id, SYM, 0.01, entry)], [], []);
   };
   const base: WalkForwardOptions = {
-    ...defaultWalkForward(DEFAULT_SETTINGS),
+    ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
     toggles: {
       normal: true,
       trailing: true,
@@ -365,7 +365,7 @@ describe("the signal funnel", () => {
       [],
     );
     const o: WalkForwardOptions = {
-      ...defaultWalkForward(DEFAULT_SETTINGS),
+      ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
       toggles: {
         normal: true,
         trailing: true,
@@ -432,7 +432,7 @@ describe("the signal funnel", () => {
       [],
     );
     const r = walkForward(u, [tp], {
-      ...defaultWalkForward(DEFAULT_SETTINGS),
+      ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
       toggles: {
         normal: true,
         trailing: true,

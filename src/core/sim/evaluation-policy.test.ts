@@ -12,7 +12,7 @@ import {
 import { liveMinPfOf } from "../server/runtime.server.ts";
 
 const H = 3_600_000, NOW = Date.UTC(2026, 9, 17, 9);
-const defaults = defaultWalkForward(DEFAULT_SETTINGS);
+const defaults = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
 const options = {
   ...defaults, longH: 24, preH: 6, signalLongH: 336, preGate: false,
   signalOwnBase: true, validLastN: 0, signalValidLastN: 0, lastN: 0,

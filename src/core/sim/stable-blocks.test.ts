@@ -29,7 +29,7 @@ function burstTape(fromT: number | undefined) {
 }
 
 const o = (blocks: number): WalkForwardOptions => {
-  const d = defaultWalkForward(DEFAULT_SETTINGS);
+  const d = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
   return {
     ...d,
     longH: 336,

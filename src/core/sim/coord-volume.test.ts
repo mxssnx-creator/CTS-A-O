@@ -36,7 +36,7 @@ function result(cfg: string, entryT: number, r: number): Trade {
 }
 
 const base = {
-  ...defaultWalkForward(DEFAULT_SETTINGS),
+  ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
   protects: [],
   dcaProtects: [],
   simH: 6,

@@ -625,7 +625,7 @@ const cfgTape = (trades: Trade[]) =>
   makeTape("x", "magnet", IND.id, { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], trades, [], []);
 /** the Block base for a block config: BB (block.sideKeys unset) unless another is given */
 const blockBase = (block: BlockConfig = BB) => ({
-  ...defaultWalkForward(DEFAULT_SETTINGS),
+  ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
   gates: { ...DEFAULT_SETTINGS.gates, minTrades: 3 },
   validLastN: 0,
   lastN: 0,
@@ -693,7 +693,7 @@ describe("order sides: Block config source (the config's own closes, per directi
 // ── Seat cool-off (walkforward.ts execDecision: an engine config that closed within H hours waits) ──────────────
 /** the seat base: wf.seatQuietH 2 h, wf.seatSideCooloff unset (both directions count) unless `extra` says otherwise */
 const seatBase = (extra: { seatSideCooloff?: boolean } = {}) => ({
-  ...defaultWalkForward(DEFAULT_SETTINGS),
+  ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
   gates: { ...DEFAULT_SETTINGS.gates, minTrades: 3 },
   validLastN: 0,
   lastN: 0,

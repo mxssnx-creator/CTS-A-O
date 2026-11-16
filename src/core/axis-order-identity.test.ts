@@ -33,7 +33,7 @@ const tape=(id:string,returns?:number[])=>{
   return makeTape(id,"follow",id.split("|")[1],p,"axis",["A"],[...hist,tr(T-90*M,0.0185)],[],[]);
 };
 const options=()=>{
-  const d=defaultWalkForward(DEFAULT_SETTINGS);
+  const d={ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
   return {...d,simH:2,preH:12,longH:24,lastN:15,validLastN:15,rangeGate:undefined,seatPer:"config" as const,portfolio:0,robustFrac:0,
     coord:{enabled:false,hourLock:0,cooldown:"off" as const,conflict:false,confirm:false},
     toggles:{...d.toggles,normal:false,trailing:true,block:false,blockActive:false,dca:false,dcaActive:false,axis:true},

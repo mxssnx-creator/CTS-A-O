@@ -141,7 +141,7 @@ describe("stage consistency: one config, the same at every stage", () => {
   it("validation reads each direction by hand and aggregates only qualified direction samples", () => {
     const u = universe();
     const tapes = buildTapes(u, protectGrid(15, grid, RT_COST).filter((_, i) => i % 40 === 0), RT_COST, undefined, new Set(["follow|rsi-mom-14-20@m15", "follow|mc-rsi2-5@m5"]), null, undefined, { minSl: 0, minTrail: 0, rangeMinN: 0 });
-    const o = defaultWalkForward(DEFAULT_SETTINGS);
+    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
     const t = Math.floor((u.nowT - 24 * H) / H) * H;
     const look = Math.max(o.longH, o.preH) * H;
     let checked = 0;

@@ -287,7 +287,7 @@ describe("Real seats per lane", () => {
     const strong = [mk("a@m30", 0.02, 0, 4), mk("b@m30", 0.02, 0, 5), mk("c@m30", 0.02, 0, 6)];
     const fast = mk("d@m1", 0.004, 264, 1);
     const o = {
-      ...defaultWalkForward(DEFAULT_SETTINGS),
+      ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
       preGate: false,
       portfolio: 2,
       laneSeats: 0,

@@ -68,7 +68,7 @@ function tapesOf(seed: number): ConfigTape[] {
   return out;
 }
 
-const base = defaultWalkForward(DEFAULT_SETTINGS);
+const base = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
 /** x01: Block overall over the pooled sources, ratio 0.5, 7 steps, max 4×, Block Active from level 5, auto window. */
 const x01Block: BlockConfig = {
   ...base.block,

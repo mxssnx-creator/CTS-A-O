@@ -87,7 +87,7 @@ describe("no silent caps", () => {
     assert.equal(sanitizeWf({ portfolio: 5000 }).portfolio, 5000);
     assert.equal(sanitizeWf({ microSeats: 50_000 }).microSeats, 50_000);
     // no processing cap by default: everything validated trades
-    const o = defaultWalkForward(DEFAULT_SETTINGS);
+    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
     assert.equal(o.maxPositions, 0, "positions");
     assert.equal(o.maxOpen, 0, "open orders");
     assert.equal(o.maxPerSymbol, 0, "per symbol");
@@ -1133,7 +1133,7 @@ it("candidate direction tails preserve supported last-N, unknown counts and expl
   const { INDICATIONS } = await import("./indications/registry.ts");
   const { CandidateDirectionBook, candidateDirectionFor, defaultWalkForward, execDecision, makeTape } = await import("./sim/walkforward.ts");
   const tp = makeTape("x", "magnet", INDICATIONS[0].id, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], directionGateQualificationRows("x"), [], []);
-  const o = { ...defaultWalkForward(DEFAULT_SETTINGS), lastN: 0, normalBaseMinPf: 0, sideGateN: 64,
+  const o = { ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true }, lastN: 0, normalBaseMinPf: 0, sideGateN: 64,
     toggles: { ...DEFAULT_TOGGLES, normal: true, block: false, blockActive: false } };
   const direction = candidateDirectionFor(o)!;
   for (const side of [0, 2, -2, NaN, Infinity, -Infinity]) direction.add({ side, r: .5 });
@@ -1163,7 +1163,7 @@ it("closed signal candidates still teach the raw engine direction gate while ope
   const { INDICATIONS } = await import("./indications/registry.ts");
   const { acceptKey, SignalGuard, sideAcceptKey } = await import("./signals.ts");
   const { bookFor, candidateDirectionFor, defaultWalkForward, execDecision, feedBooks, makeTape } = await import("./sim/walkforward.ts");
-  const o = { ...defaultWalkForward(DEFAULT_SETTINGS), lastN: 0, normalBaseMinPf: 0, sideGateN: 1,
+  const o = { ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true }, lastN: 0, normalBaseMinPf: 0, sideGateN: 1,
     toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: false }, block: { ...DEFAULT_BLOCK } };
   const book = bookFor(o)!, direction = candidateDirectionFor(o)!, guard = new SignalGuard();
   const row = { sym: "B", side: 1, r: -.02, ind: "sig-ema-trend-s@m15", kind: "signal", type: "normal", cfg: "follow|sig-ema-trend-s@m15|candidate", entryT: DIRECTION_GATE_AT + 1, exitT: DIRECTION_GATE_AT + 2 };

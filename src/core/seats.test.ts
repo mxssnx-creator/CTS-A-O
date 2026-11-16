@@ -65,7 +65,7 @@ function tape(
 }
 // These seat tests deliberately use the complete 14-day fixture; production's
 // shorter engine window is verified independently in the history matrix.
-const o0 = { ...defaultWalkForward(DEFAULT_SETTINGS), longH: 336, preGate: false };
+const o0 = { ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true }, longH: 336, preGate: false };
 /** family seats switched on (off by default) */
 const of = { ...o0, familySeats: true };
 

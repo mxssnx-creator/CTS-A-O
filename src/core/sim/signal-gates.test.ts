@@ -47,7 +47,7 @@ const tape = (ind: string, trades: (cfg: string) => Trade[]) => {
 };
 /** the run: the last 6 hours before NOW; every gate but the one under test off */
 const base: WalkForwardOptions = {
-  ...defaultWalkForward(DEFAULT_SETTINGS),
+  ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
   toggles: {
     normal: true,
     trailing: true,

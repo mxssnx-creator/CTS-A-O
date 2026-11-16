@@ -43,7 +43,7 @@ function fixture() {
     }),
   );
   const wf = {
-    ...defaultWalkForward(DEFAULT_SETTINGS),
+    ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
     longH: 100,
     simH: 12,
     mode: "fixed" as const,

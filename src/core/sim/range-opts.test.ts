@@ -44,7 +44,7 @@ function tape(k: number, tag: RangeTag | undefined, late: number) {
   return makeTape(cfg, "follow", IND, tag ? { ...P, tag } : P, "normal", ["AAA-USDT"], xs, [], []);
 }
 
-const d = defaultWalkForward(DEFAULT_SETTINGS);
+const d = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
 const base: WalkForwardOptions = {
   ...d,
   toggles: { ...d.toggles, normal: true, trailing: true, block: false, blockActive: false },

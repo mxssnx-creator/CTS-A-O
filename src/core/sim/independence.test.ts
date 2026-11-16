@@ -61,7 +61,7 @@ const tape = (cfg: string, lose: number, win = 0.01, kind: StratKind = "normal")
   makeTape(cfg, "follow", IND, P, kind, ["AAA-USDT"], trades(cfg, lose, win, kind), [], []);
 
 const base: WalkForwardOptions = {
-  ...defaultWalkForward(DEFAULT_SETTINGS),
+  ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
   toggles: {
     normal: true,
     trailing: true,
