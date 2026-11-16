@@ -93,3 +93,9 @@ post-Base PF, validated percentage and execution PF remain unavailable until the
 stopped this attempt at 70% of strategy tape construction when RSS reached its 3,200 MiB limit; the sampled disk
 spill had reached 1,943,790,477 bytes. The fallback was rejected and no hourly result was produced. The next attempt
 must use a smaller worker footprint and the early-interning change while retaining the same full input and policy.
+
+The one-worker retry began from remote commit `cc11f6e54be3b6ecff06d0c406a147fd87a566df`, tree
+`bd5cb4c47e6d142a9e6385e25200e6b16561cc36`, on the same frozen feed and windows. It uses a private disk-backed spill
+root, a 64 MiB resident-history budget, 32 MiB decoded-history budget, 64 MiB derived-index budget and RSS soft/hard
+guards of 3,000/3,400 MiB. The optional tape-memory trace records aggregate tape, open, pending, close, heap and RSS
+counts while worker replies are retained. This records the launch only; a completed result is still required.
