@@ -2480,6 +2480,7 @@ export function* buildTapesGen(
               cost,
               cooldown: exitConfig ? 0 : executionCooldown,
               atr: p.atr ? series(cache.atrEma(ATR_PERIOD)) : undefined,
+              fixedPathScope: cursor ? undefined : u,
               cursor,
             }),
           !!p.exitType && !!exitSigs,
