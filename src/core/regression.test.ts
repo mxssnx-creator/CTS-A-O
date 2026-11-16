@@ -379,16 +379,17 @@ describe("protect grid", () => {
     const trailingOnly = allCells.filter((p) => p.trailOnly);
     assert.ok(trailingOnly.length > 0);
     assert.ok(trailingOnly.every((p) => p.tp === 0 && p.sl <= 0.03 && p.trail > 0));
-    assert.equal(gridVariants(g), 2640 + 1230 + trailingOnly.length);
+    // Stable-04 thin 0.2-1.2 ladders (Micro, Minimal, Short): 2744 + 854 distinct cells beside the trailing-only configs
+    assert.equal(gridVariants(g), 2744 + 854 + trailingOnly.length);
     assert.ok(gridVariants(g) <= GRID_VARIANTS_MAX);
     const cells = allCells.filter((p) => !p.trailOnly);
     // the floors fold no two cells of the four ranges into one: every combination is its own config; Micro's stop floor
     // (0.2 % net + cost) folds its tightest stops of the smallest targets (952 distinct at 2–5× cost, micro-range.test.ts)
-    assert.equal(cells.filter((p) => p.tag !== "mc").length, 2640);
-    assert.equal(cells.filter((p) => p.tag === "mc").length, 1230);
+    assert.equal(cells.filter((p) => p.tag !== "mc").length, 2744);
+    assert.equal(cells.filter((p) => p.tag === "mc").length, 854);
     // trailing cells: three widths, the stop at least the range's trailing floor (1× Minimal / Short, 0.25× General /
     // Long: every stop of their ladder)
-    for (const [tag, floor] of [["mn", 0.25], ["sh", 0.25], ["gn", 0.25], ["lg", 0.25]] as const) {
+    for (const [tag, floor] of [["mn", 0.2], ["sh", 0.2], ["gn", 0.25], ["lg", 0.25]] as const) {
       const tr = cells.filter((p) => p.tag === tag && p.trail > 0);
       assert.ok(tr.length > 0, tag);
       assert.ok(new Set(tr.map((p) => +(p.trail / p.tp).toFixed(3))).size >= 3, `${tag} trail widths`);
@@ -400,9 +401,9 @@ describe("protect grid", () => {
       if (floor >= 1) for (const p of tr) assert.ok(p.sl + 1e-9 >= p.trail);
     }
     assert.ok(cells.filter((p) => p.trail === 0).every((p) => p.trailStep === undefined));
-    // the tightest ratio is not swallowed by a stop floor: Minimal's 1.5× (6 Oct; 0.8 % target → 1.2 % stop) and
+    // the tightest ratio is not swallowed by a stop floor: Minimal's widest thin 1.2× (0.8 % target → 0.96 % stop) and
     // Short's 1×
-    assert.ok(cells.some((p) => p.tp === 0.008 && p.trail === 0 && Math.abs(p.sl - 0.012) < 1e-9));
+    assert.ok(cells.some((p) => p.tp === 0.008 && p.trail === 0 && Math.abs(p.sl - 0.0096) < 1e-9));
     assert.ok(cells.some((p) => p.tp === 0.018 && p.trail === 0 && Math.abs(p.sl - 0.018) < 1e-9));
     for (const p of RESEARCH_PRESETS) {
       assert.ok(p.settings.grid?.short, p.id);
@@ -661,7 +662,7 @@ it("RSI of a flat series is neutral (50), not an extreme", async () => {
 it("the live control keeps running through a failed or memory-delayed compute; only unapplied settings hold it", async () => {
   const { CoreRuntime } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");
-  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1, grid: { tp: [0.018, 0.026, 0.035, 0.05] } } as never, { market: "synthetic" });
   const R = rt as unknown as Record<string, unknown>;
   let calls = 0;
   rt.onLive = async () => {
@@ -708,7 +709,7 @@ it("overall mode does not compute the pending entries before every live step (on
   // 0.5–1.6 s at a time and fed multi-second collector pauses — and overall mode never reads them
   const { CoreRuntime } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");
-  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1, grid: { tp: [0.018, 0.026, 0.035, 0.05] } } as never, { market: "synthetic" });
   const R = rt as unknown as Record<string, unknown>;
   let steps = 0;
   let pending = 0;
@@ -750,7 +751,7 @@ it("raw candidate direction history is fed in slices without seeding accepted Bl
   const { CoreRuntime } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");
   const { CandidateDirectionBook } = await import("./sim/walkforward.ts");
-  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1, grid: { tp: [0.018, 0.026, 0.035, 0.05] } } as never, { market: "synthetic" });
   const R = rt as unknown as Record<string, unknown>;
   rt.wf.sideGateN = 8; // the direction gate reads the book (Block on or off)
   R.sim = { feed: Array.from({ length: 10 }, (_, i) => ({ exitT: i + 1, sym: "AAA-USDT", side: 1, kind: "normal", r: 0.01 })) };
@@ -793,7 +794,7 @@ it("a target reached at tick time takes the lane out of the live control at once
   assert.equal(crossedExit({ side: 1, stop: 95, target: 102, trailOn: true }, 103, true), 0, "trailing free: no target");
   assert.equal(crossedExit({ side: 1, stop: 95, target: 102, trailOn: true }, 103, false), 102);
   // the tick marks it: before, only the stop was checked and the lane kept its volume until the bar-closed compute
-  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1, grid: { tp: [0.018, 0.026, 0.035, 0.05] } } as never, { market: "synthetic" });
   const R = rt as unknown as Record<string, unknown>;
   const sym = "AAA-USDT";
   (R.candles as Map<string, CandleSeries>).set(sym, CandleSeries.fromCandles([{ t: Date.now() - 60_000, o: 100, h: 103, l: 100, c: 103, v: 1 }]));
@@ -813,7 +814,7 @@ it("the live control step runs when what it acts on changed, otherwise once per 
   // of garbage and multi-second collector pauses, while the exchange book it acts on is re-read every live.syncMs
   const { CoreRuntime } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");
-  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1, grid: { tp: [0.018, 0.026, 0.035, 0.05] } } as never, { market: "synthetic" });
   const R = rt as unknown as Record<string, unknown> & { paper: { positions: unknown[] } };
   let steps = 0;
   rt.onLive = async () => {
@@ -869,7 +870,7 @@ it("the live control step runs when what it acts on changed, otherwise once per 
 it("a cycle / tick timing change keeps the compute and the live control running (no stale pause)", async () => {
   const { CoreRuntime } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");
-  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1, grid: { tp: [0.018, 0.026, 0.035, 0.05] } } as never, { market: "synthetic" });
   const R = rt as unknown as Record<string, unknown>;
   let calls = 0;
   rt.onLive = async () => {
@@ -898,7 +899,7 @@ it("a cycle / tick timing change keeps the compute and the live control running 
 it("a restart waits for the live step in flight (its open gets its stop) before the state is saved", async () => {
   const { CoreRuntime } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");
-  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1, grid: { tp: [0.018, 0.026, 0.035, 0.05] } } as never, { market: "synthetic" });
   const R = rt as unknown as Record<string, unknown>;
   let release!: () => void, entered!: () => void;
   const active = new Promise<void>((resolve) => { entered = resolve; });
@@ -1095,7 +1096,7 @@ it("candidate direction gating preserves rejected losses, recovery and downturn 
   ];
   for (const side of [1, -1] as const) for (const block of [false, true]) for (const windowAuto of [false, true]) for (const test of cases) {
     const feed = test.feed.map((row) => ({ ...row, side }));
-    const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+    const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1, grid: { tp: [0.018, 0.026, 0.035, 0.05] } } as never, { market: "synthetic" });
     try {
       rt.wf = { ...rt.wf, lastN: 0, symGate: undefined, seatQuietH: 0, normalBaseMinPf: 0, sideGateN: 8,
         engineSideAccept: undefined, signalGuardN: 0, signalCluster: undefined, signalAccept: undefined, signalSideAccept: undefined,
@@ -1195,7 +1196,7 @@ it("pending-entry cached books use rejected candidate losses and recovery withou
   const { DEFAULT_TOGGLES } = await import("./config.ts");
   const { INDICATIONS } = await import("./indications/registry.ts");
   const { makeTape } = await import("./sim/walkforward.ts");
-  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1, grid: { tp: [0.018, 0.026, 0.035, 0.05] } } as never, { market: "synthetic" });
   try {
     rt.wf = { ...rt.wf, lastN: 0, symGate: undefined, normalBaseMinPf: 0, sideGateN: 8,
       toggles: { ...DEFAULT_TOGGLES, normal: true, block: false, blockActive: false } };

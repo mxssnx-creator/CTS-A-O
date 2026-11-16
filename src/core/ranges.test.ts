@@ -73,7 +73,9 @@ test("every TP × SL × Trail × hold of every range is its own config, at the r
     assert.ok(trailingOnly.length > 0, `${tag}: separate trailing-only configs`);
     assert.ok(trailingOnly.every((p) => p.tp === 0 && p.sl <= 0.03 && p.trail > 0 && p.trail <= 0.03));
     // the full product, no cell folded into another
-    assert.equal(mine.length, r.tp.length * r.slOfTp.length * r.trailOfTp.length * g.holdH.length, tag);
+    // (the thin 0.2-1.2 ladder clamps its tightest stops onto the cost/range floor, so cells that land on the same
+    // distances are one config: the grid holds exactly the distinct hand-computed cells)
+    const expectedKeys = new Set<string>();
     const keys = new Set(mine.map((p) => `${p.tp}|${p.sl}|${p.trail}|${p.hold}`));
     for (const tp of r.tp)
       for (const k of r.slOfTp)
@@ -85,7 +87,10 @@ test("every TP × SL × Trail × hold of every range is its own config, at the r
             const trail = tr > 0 ? r4(Math.max((r.minTrail ?? 0) / (g.trailStep ?? 1), tp * tr)) : 0;
             const hold = Math.max(2, Math.round((h * 60) / 15));
             assert.ok(keys.has(`${tp}|${sl}|${trail}|${hold}`), `${tag} ${tp} × ${k} × ${tr} × ${h}h`);
+            expectedKeys.add(`${tp}|${sl}|${trail}|${hold}`);
           }
+    assert.equal(mine.length, expectedKeys.size, tag);
+    assert.ok(mine.length <= r.tp.length * r.slOfTp.length * r.trailOfTp.length * g.holdH.length, tag);
   }
   // General's tightest cell: 3.0 % target, 0.25× = 0.75 % held at its 1.0 % floor, trailing a quarter (0.75 %)
   assert.ok(cells.some((p) => p.tag === "gn" && p.tp === 0.03 && p.sl === 0.0075 && p.trail === 0.0075));
@@ -378,8 +383,8 @@ test("Base, one middle cell per range (baseBest off): each enabled range against
   const mn = ps[0];
   // the middle TP and the middle stop ratio, no trail, 16 h in 15m bars
   assert.equal(mn.tp, 0.012);
-  // middle of MINIMAL_SL 1.5 … 3 step 0.25 (index 3): 2.25× the 1.2 % target
-  assert.equal(mn.sl, 0.015);
+  // middle of MINIMAL_SL 0.2 … 1.2 step 0.1 (index 5): 0.7× the 1.2 % target
+  assert.equal(mn.sl, 0.0084);
   assert.equal(mn.trail, 0);
   assert.equal(mn.hold, 64);
   const st = (pf: number) => ({ n: 40, pf, net: 5, mdd: 1 }) as never;
