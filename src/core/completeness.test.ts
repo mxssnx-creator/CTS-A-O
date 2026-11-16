@@ -205,6 +205,7 @@ const CASES: Record<string, Case> = {
   "sizing.mode": oneOf(["equityPct"]),
   "sizing.pct": num(0.001, 0.25),
   "tactics.cooldownBars": num(0, 96),
+  "tactics.signalMinDaily": num(0, 1000),
   focus: oneOf(
     [[], ["follow|rsi-mom-14-20@x4"]],
     [["Follow|X"], ["follow"], Array.from({ length: MAX_FOCUS_PAIRS + 1 }, () => "a|b")],

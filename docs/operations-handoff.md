@@ -1,3 +1,30 @@
+## 2026-11-16 — seven-day Signal cadence and Wide admission follow-up
+
+This follow-up supersedes the frequency-gate and untagged-ladder limitations in the immediately following
+checkpoint. Signal source entries now require an average of two raw onsets per day over seven complete trailing
+days, configurable in Settings. A source/range/timeframe/symbol has its own onset stream, both directions count,
+and the current onset and duplicate protection-config trades do not contribute. Insufficient or gapped history
+does not grant eligibility; setting zero disables the gate. The extra seven-day physical warmup is distinct from
+the requested evaluation prehistory, whose entry boundary remains unchanged. Focused tests cover completeness,
+gaps, prefix causality, cache release, ordinary-indication isolation and worker/local tape parity. This still needs a full production-path
+replay with sufficient older candles and evaluation-to-venue parity; no source is deleted based on an unmeasured
+claim of underperformance.
+
+Ordinary Wide tapes cannot gain new admission when the Wide grid is disabled, including untagged Axis/DCA.
+Exact held ladders remain available only to manage their exits. Axis per-range is on by default and migrated
+once with a backup, so qualified tagged ranges can build independent ladders. Tests cover a held Wide ladder and
+the continuing Minimal Axis lane. Historic Signal fitting computes on the full warmed source but simulates only
+the eligible evaluation tail; this is a bounded-work optimization, not a measured end-to-end speedup.
+
+The frozen feed contains more than seven prior days for the 12-symbol cohort. The earlier 24h-prehistory + 24h
+offline replay used the previous checkpoint before the cadence and Wide follow-up; it was interrupted after
+1,149 seconds in strategy-tape construction (61% of that stage, approximately 2,677 MB sampled RSS). It
+produced no final report. No hourly returns, post-Base PF, percentage validated, modeled settlement PF or venue
+execution PF can be inferred. An end-to-end replay of this exact follow-up, comprehensive UI/stats verification,
+independent Block source-memory profiling and performance optimization remain open. This is not a deployment or
+live-trading acceptance. The synthetic UI test could not launch Chromium because local browser socket creation
+was denied; browser and visual verification therefore remain open.
+
 ## 2026-11-16 — Stable-04 partial Signal, Block and thin-range checkpoint
 
 This checkpoint is based on Stable-04 `4bb45cc0a3c8cad2230a5d156afe89a7053bb16c`. It is incomplete:

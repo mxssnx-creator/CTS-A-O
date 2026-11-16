@@ -89,3 +89,18 @@ export function migrateSignalEvaluation15(db: CoreDb): void {
     db.kvSet(version, true);
   });
 }
+
+/** Enable the range-tagged Axis lanes when Wide is disabled; never rewrite an owned position. */
+export function migrateAxisPerRange(db: CoreDb): void {
+  const version = "axisPerRangeWideOff20261116V1";
+  if (db.kvGet(version)) return;
+  db.tx(() => {
+    const settings = db.kvGet<SettingsPatch>("settings");
+    if (settings?.axis && settings.axis.perRange !== true) {
+      db.kvSet("axisPerRangeWideOff20261116BackupV1", structuredClone(settings.axis));
+      settings.axis.perRange = true;
+      db.kvSet("settings", settings);
+    }
+    db.kvSet(version, true);
+  });
+}

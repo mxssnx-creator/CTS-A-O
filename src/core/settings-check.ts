@@ -387,6 +387,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       if (s.tactics[k] !== undefined && typeof s.tactics[k] !== "boolean")
         throw new Error(`tactic ${k} must be boolean`);
     num(s.tactics.cooldownBars, 0, 96, "cooldown bars");
+    num(s.tactics.signalMinDaily, 0, 1000, "Signal minimum daily onsets");
   }
   if (s.disabledKinds !== undefined) {
     if (

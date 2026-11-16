@@ -121,6 +121,7 @@ export const DEFAULT_TOGGLES: StrategyToggles = {
 
 /** Tactics: trend strength + volatility regime on by default (docs/block-sweep.md, tactics); the others in docs/tactics.md. */
 export const DEFAULT_TACTICS: Tactics = {
+  signalMinDaily: 2,
   session: false,
   // trend strength + volatility regime (docs/block-sweep.md, tactics: 6 windows × 12 symbols): PF 1.313 → 1.859,
   // net +52 %, drawdown −47 %, positive in 6 of 6 windows (vs 3 of 6); orders −34 %
@@ -212,6 +213,7 @@ export const DEFAULT_RELATE_ADJUSTMENT: RelateAdjustmentConfig = {
 };
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
 export const DEFAULT_AXIS: AxisConfig = {
+  perRange: true,
   volumeFactor: 1,
   levels: 3,
   spacing: 0.7,

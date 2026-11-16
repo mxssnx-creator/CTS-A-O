@@ -411,6 +411,7 @@ export function SignalsSettings(props: {
   grid?: Any;
   positionMode?: boolean;
   positionMainN?: number;
+  signalMinDaily?: number;
 }) {
   const g = { ...DEFAULT_SIGNALS, ...(props.signals ?? {}) } as Any;
   const guard = { ...DEFAULT_SIGNALS.guard, ...(g.guard ?? {}) };
@@ -451,6 +452,11 @@ export function SignalsSettings(props: {
         type, symbol and direction. Ordinary Short / General / Long and Micro grids are not expanded
         into Signals. Short / Medium below are Signal source parameter ranges.
       </div>
+      <Field label="Minimum Signals per day · 7-day average"
+        hint="Each source, symbol, range and lane counts its own raw onsets over the preceding seven complete days; missing history pauses new entries. 0 disables this filter.">
+        <Num min={0} max={1000} value={props.signalMinDaily ?? 2}
+          onChange={(v) => props.set(["tactics", "signalMinDaily"], v)} />
+      </Field>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <Switch
           label="Signals processing"
@@ -3067,7 +3073,7 @@ export function SettingsPage() {
         title="Signals"
         sub="Signals range + independent Exit · own candidate grid, historical ranking and entry gates"
       >
-        <SignalsSettings signals={s.signals} set={set} status={status?.signals} grid={s.grid} positionMode={!!s.gates.positionWindows} positionMainN={s.gates.positionWindows?.main} />
+        <SignalsSettings signals={s.signals} set={set} status={status?.signals} grid={s.grid} positionMode={!!s.gates.positionWindows} positionMainN={s.gates.positionWindows?.main} signalMinDaily={s.tactics?.signalMinDaily} />
       </Panel>
 
       <div className="v2-grid v2-cols-2">

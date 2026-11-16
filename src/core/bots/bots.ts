@@ -4,7 +4,8 @@ import type { BotType, Side, Tactics } from "../domain/types.ts";
 import type { SeriesCache } from "../indications/cache.ts";
 import { tacticKeyFor, withTactics } from "../indications/filters.ts";
 import { isInverseInd } from "../indications/inverse-config.ts";
-import { indicationState, laneOf } from "../indications/registry.ts";
+import { indicationState, isSignalInd, laneOf } from "../indications/registry.ts";
+import { signalCadence } from "../signal-cadence.ts";
 
 export interface BotSpec {
   type: BotType;
@@ -226,10 +227,17 @@ export function entrySignal(
   const e = entryKeys(bot, ind);
   const key = tacticKeyFor(tactics, e.base);
   if (bot === "exit") return comboSignal(bot, ind, k);
-  if (key && tactics?.onRun && (bot === "follow" || bot === "revert")) return runEntries(bot, ind, k, key);
   const sig = comboSignal(bot, ind, k);
   if (!sig) return null;
-  return key ? withTactics(sig, k, key, e.bi, tacKeys(e, key).tac) : sig;
+  const entries = key && tactics?.onRun && (bot === "follow" || bot === "revert")
+    ? runEntries(bot, ind, k, key)
+    : key ? withTactics(sig, k, key, e.bi, tacKeys(e, key).tac) : sig;
+  if (!entries) return null;
+  const minDaily = tactics?.signalMinDaily ?? 0;
+  return isSignalInd(ind) && (minDaily > 0 || !Number.isFinite(minDaily))
+    ? k.memo(`signalCadence:${key}:${Number(!!tactics?.onRun)}:${minDaily}:${bot}:${ind}`,
+        () => signalCadence(entries, sig, k.b, minDaily))
+    : entries;
 }
 
 /**

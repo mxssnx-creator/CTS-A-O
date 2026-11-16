@@ -381,6 +381,8 @@ export type AxisRange = "atr" | "linear" | "geo" | "fib" | "volume";
 /** Tactics: causal entry filters and pacing applied to every combo's signal (Base, Main, Real, Live alike).
  *  Each one only removes entries; with all off the engine computes the plain signals. */
 export interface Tactics {
+  /** Minimum raw Signal onsets per day, averaged over seven complete preceding days (0 disables). */
+  signalMinDaily?: number;
   /** EU/US session only: signal bar opens 07:00–20:59 UTC */
   session: boolean;
   /** volatility regime: ATR% in the upper half of its last ~2 weeks of bars */

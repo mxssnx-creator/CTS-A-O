@@ -526,6 +526,8 @@ export interface WalkForwardOptions {
   basePassedTargets?: Readonly<Record<string, Readonly<Record<string, readonly number[]>>>>;
   /** Qualified pairs whose builder policy admits independent untagged DCA/Axis, before allSets expansion. */
   baseWideLadderPairs?: ReadonlySet<string>;
+  /** Whether untagged ordinary Wide candidates may be newly admitted. Signals own their independent range. */
+  wideEnabled?: boolean;
   /**
    * Which configs a step may seat. "validated" (default): only the validated set V — the configs that pass the
    * evaluation (configEval) at the run's start
@@ -929,6 +931,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     validLastN: 12,
     // Signal and Exit contexts default to their own last 12 completed results.
     signalValidLastN: SIGNAL_EVALUATION_LAST_N,
+    wideEnabled: s.grid.tp.length > 0,
     exitMinTrades: s.exitStrategy.minValidationTrades,
     exitMinPf: s.exitStrategy.minPf,
     exitMinGreenHourShare: s.exitStrategy.minGreenHourShare,
@@ -1701,6 +1704,8 @@ export interface EntryFilter {
 export type EntryFloors = {
   minSl: number;
   minTrail: number;
+  /** False disables new ordinary Wide ladders, but retains exact held positions for exit management. */
+  wideEnabled?: boolean;
   /** In-process only: retain each finished immutable tape through the caller's bounded history owner. */
   tapeSink?: (tape: ConfigTape) => ConfigTape;
   /** Standard Signal protections use 15m reference distances; apply the trail floor after lane scaling. */
@@ -2236,7 +2241,7 @@ export function* buildTapesGen(
           if ((p.lowRangeOnly === true) === isLowRangeInd(c.ind)) record(p, protectKind(p));
         if (dcaOpt) {
           const tags = floors.pairTags?.[`${c.bot}|${c.ind}`];
-          const wide = !isLowRangeInd(c.ind) && !(dcaOpt.axis?.perRange && tags && !tags.includes(""));
+          const wide = floors?.wideEnabled !== false && !isLowRangeInd(c.ind) && !(dcaOpt.axis?.perRange && tags && !tags.includes(""));
           if (!dcaOpt.noDca && wide)
             for (const p of dcaOpt.protects) {
               record(p, "dca");
@@ -2508,7 +2513,7 @@ export function* buildTapesGen(
       // Axis per range: the Wide ladders (DCA and Axis) only for a pair that passed Base for Wide — a pair that
       // passed only in a range gets that range's ladders instead of being judged as Wide
       const failedBase = tagsOk !== undefined && tagsOk.length === 0;
-      const wideOk = !isLowRangeInd(c.ind) && !failedBase && !(dcaOpt.axis?.perRange && tagsOk && !tagsOk.includes(""));
+      const wideOk = floors?.wideEnabled !== false && !isLowRangeInd(c.ind) && !failedBase && !(dcaOpt.axis?.perRange && tagsOk && !tagsOk.includes(""));
       for (const p0 of dcaOpt.noDca ? [] : dcaOpt.protects) {
         for (const active of [false, true]) {
           const kind: StratKind = active ? "dca-active" : "dca";
@@ -2924,6 +2929,7 @@ export function baseAllowsTape(
     | "basePassedRanges"
     | "basePassedTargets"
     | "baseWideLadderPairs"
+    | "wideEnabled"
     | "exitBasePassed"
     | "basePassedCells"
     | "basePassedTrailingOnlyCells"
@@ -2932,6 +2938,7 @@ export function baseAllowsTape(
   pair = `${tp.bot}|${tp.ind}`,
 ): boolean {
   if (tp.kind === "exit") return !o.exitBasePassed || o.exitBasePassed.has(pair);
+  if (o.wideEnabled === false && !isSignalInd(tp.ind) && !tp.protect.tag) return false;
   if (o.basePassed && !o.basePassed.has(pair)) return false;
   if (tp.protect.trailOnly && !isSignalInd(tp.ind) && o.basePassedTrailingOnlyCells)
     return o.basePassedTrailingOnlyCells[pair]?.keys.has(protectCellKey(tp.protect)) ?? false;

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_SETTINGS, DEFAULT_TACTICS } from "./config.ts";
+import { DEFAULT_SETTINGS, DEFAULT_TACTICS as DESK_TACTICS } from "./config.ts";
 import { entrySignal } from "./bots/bots.ts";
 import type { Bars, Protect } from "./domain/types.ts";
 import { barsFromCandles, headBars, syntheticCandles } from "./market/bars.ts";
@@ -12,6 +12,8 @@ import { closePool, runOnWorkers } from "./server/pool.server.ts";
 import { CoreDb } from "./server/db.server.ts";
 import { CoreRuntime, crossedExit } from "./server/runtime.server.ts";
 
+// This fixture contains less than seven days: isolate the evaluation-boundary test from the cadence gate.
+const DEFAULT_TACTICS = { ...DESK_TACTICS, signalMinDaily: 0 };
 const H = 3_600_000;
 const END = Date.UTC(2026, 9, 15, 4);
 const FROM = END - 12 * H;

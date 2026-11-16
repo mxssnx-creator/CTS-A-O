@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CoreDb } from "./db.server.ts";
-import { migratePositionWindows, migrateSignalEvaluation15 } from "./position-windows-migration.server.ts";
+import { migrateAxisPerRange, migratePositionWindows, migrateSignalEvaluation15 } from "./position-windows-migration.server.ts";
 import { DEFAULT_POSITION_WINDOWS, mainnetPositionWindows } from "../position-windows.ts";
 test("count-policy migration backs up old PF evidence and preserves held ownership and explicit counts", () => {
   const db = new CoreDb(":memory:");
@@ -73,5 +73,21 @@ test("Signal-15 migration backs up settings, disables new Exit work and preserve
     db.kvSet("settings", changed); migrateSignalEvaluation15(db);
     assert.equal(db.kvGet<any>("settings").gates.positionWindows.byRange.sig.main, 20);
     assert.equal(db.kvGet<any>("settings").toggles.exit, true);
+  } finally { db.db.close(); }
+});
+
+test("Axis per-range migration enables tagged lanes once and preserves owned positions", () => {
+  const db = new CoreDb(":memory:");
+  try {
+    const old = { axis: { perRange: false, levels: 3 }, grid: { tp: [] } };
+    const paper = { positions: [{ cfg: "held-wide-axis", stop: 99 }] };
+    db.kvSet("settings", old); db.kvSet("paper", paper);
+    migrateAxisPerRange(db);
+    assert.deepEqual(db.kvGet("axisPerRangeWideOff20261116BackupV1"), old.axis);
+    assert.equal(db.kvGet<any>("settings").axis.perRange, true);
+    assert.deepEqual(db.kvGet("paper"), paper);
+    const next = db.kvGet<any>("settings"); next.axis.perRange = false;
+    db.kvSet("settings", next); migrateAxisPerRange(db);
+    assert.equal(db.kvGet<any>("settings").axis.perRange, false, "later explicit choices remain intact");
   } finally { db.db.close(); }
 });
