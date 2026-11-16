@@ -51,6 +51,10 @@ describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
           minTrades: 1,
           rank: "net",
           minBlockShare: 0,
+          // this fixture exercises every allowed source on short synthetic history: the source filters (a rate floor and the
+          // losing-source drop) would remove most of them before anything is built
+          minPerDay: 0,
+          dropLosing: false,
           validate: false,
           filter: { trendH: 0, volFloor: 0 },
           accept: { ...DEFAULT_SIGNALS.accept, enabled: false },

@@ -154,7 +154,7 @@ it(`${worker ? "worker" : "local"} runtime Signal tapes retain their independent
     grid: { allSets: true, tp: [0.02], slOfTp: [1], trailOfTp: [0], holdH: [1],
       micro: false, minimal: false, minimalPlus: false, short: false, general: false, long: false },
     // Raw tape-history contract: representative discovery is disabled, while entry qualification remains separate.
-    signals: signalSettings({ enabled: true, baseGate: false, sourcesMode: "allow", sources: { "ema-cross": true }, lanes: [15],
+    signals: signalSettings({ enabled: true, baseGate: false, minPerDay: 0, dropLosing: false, sourcesMode: "allow", sources: { "ema-cross": true }, lanes: [15],
       exits: "pct", hist: { ...signalSettings().hist, enabled: false }, count: 0, validate: false,
       normal: { tp: [0.02], slOfTp: [1] }, trailing: { tp: [0.03], slOfTp: 1, trailOfTp: [0.5] },
       trailingOnly: { ...signalSettings().trailingOnly, enabled: false } }),

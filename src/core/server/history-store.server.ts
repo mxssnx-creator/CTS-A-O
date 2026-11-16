@@ -2,6 +2,7 @@
 // working set in RAM. No close, prefix, price, identity or precision is dropped to meet a memory budget.
 import {
   closeSync,
+  readdirSync,
   readSync,
   writeSync,
   openSync,
@@ -27,6 +28,54 @@ export function historyMemoryBytes(): number {
   return Math.floor(value * MiB);
 }
 export class HistoryStorageError extends Error {}
+
+const STALE_DIRECTORY = /^cts-history(?:-transfer)?-(\d+)-/;
+const processExists = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM"; // another user's live process
+  }
+};
+/**
+ * Remove spill directories left behind by processes that no longer exist. A run that is killed or crashes never reaches its
+ * own cleanup, and each orphan holds the compressed tapes of a whole session (gigabytes): they accumulated until the next run
+ * failed with ENOSPC. Only names of the form cts-history[-transfer]-<pid>-… of a dead pid are touched.
+ */
+export function sweepStaleHistoryDirectories(root: string = tmpdir(), alive: (pid: number) => boolean = processExists): number {
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  let removed = 0;
+  for (const entry of entries) {
+    const name = entry.name;
+    const m = entry.isDirectory() ? STALE_DIRECTORY.exec(name) : null;
+    if (!m) continue;
+    const pid = Number(m[1]);
+    if (pid === process.pid || alive(pid)) continue;
+    try {
+      rmSync(join(root, name), { recursive: true, force: true });
+      removed++;
+    } catch {
+      /* leave what cannot be removed */
+    }
+  }
+  return removed;
+}
+let swept = false;
+const sweepOnce = () => {
+  if (swept) return;
+  swept = true;
+  try {
+    sweepStaleHistoryDirectories();
+  } catch {
+    /* a sweep never blocks a run */
+  }
+};
 type Columns = ReturnType<typeof tapeViews>;
 type Metadata = Pick<
   ConfigTape,
@@ -178,6 +227,7 @@ export class TapeHistoryStore {
     this.cacheLimit = options.cacheBytes ?? HISTORY_CACHE_BYTES;
     if (!Number.isSafeInteger(this.cacheLimit) || this.cacheLimit < 1)
       throw new Error("Invalid history cache budget");
+    if (!options.path && !options.directory) sweepOnce();
     const directory = options.path
       ? undefined
       : mkdtempSync(join(options.directory ?? tmpdir(), `cts-history-${process.pid}-`));
@@ -382,6 +432,7 @@ export class HistoryTransfer {
   private owners = new Set<TapeHistoryStore>();
   private copy: TapeHistoryStore | null = null;
   constructor() {
+    sweepOnce();
     const directory = mkdtempSync(join(tmpdir(), `cts-history-transfer-${process.pid}-`));
     this.path = join(directory, "manifest.jsonl");
     try {
