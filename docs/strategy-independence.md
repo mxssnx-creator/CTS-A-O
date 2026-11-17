@@ -44,3 +44,12 @@ Code: `src/core/sim/walkforward.ts` (`execDecisionFor`, `CandidateDirectionBook`
 (`RelateBook.decide`), `src/core/positive.ts` (warning only with Normal off).
 Tests: `sim/active-independence.test.ts`, `sim/block.test.ts`, `sim/walkforward.test.ts`, `sim/range-min-pf.test.ts`,
 `sim/relate-volume.test.ts`, `sim/relate-max-sl.test.ts`, `server/relate-realtime.test.ts`.
+
+## Free margin in the session book (17 November 2026)
+
+The session's sizing replay (`sizeCapped`, `scripts/core-session.mjs`) funds an order only with the margin the realized
+equity can carry at the session leverage (`--margin on`, default; `--min-free-margin` keeps a floor free). The instant's
+entries share the room by one factor; the report's Caps line counts the orders scaled or refused for margin. `--margin
+off` reproduces the unlimited book. The engine's own uncapped reference (`sizeBook`) is unchanged; live is bounded by
+the exchange. The desk's paper statistics (`sizeBookGen`) are not margin-bounded yet.
+Test: `scripts/session-margin.test.mjs`.
