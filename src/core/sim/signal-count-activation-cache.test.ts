@@ -137,6 +137,8 @@ test('count summary caches cannot pin an evicted decompressed history arena',asy
 
 test('insufficient own samples wake at the exact required close without consulting future returns',()=>{
  const {tapes,sig,options}=fixture(),source=tapes[0],store=new TapeHistoryStore({cacheBytes:1});
+ options.gates.positionWindows!.scope='context';
+ options.gates.positionWindows!.strictCounts=true;
  const rows:Trade[]=[];
  for(const sym of symbols)for(const side of [1,-1]as const)for(let i=0;i<6;i++){
   const exitT=i<2?start-(2-i)*M:start+(i-1)*M;
@@ -157,5 +159,32 @@ test('insufficient own samples wake at the exact required close without consulti
   assert.equal(check(start+2*M),0,'the fourth close at t remains excluded');
   assert.ok(check(start+2*M+1)>0,'qualify immediately after the fourth own close');
   check(start+4*M+1);check(start);
+ }finally{store.close()}
+});
+
+for (const scope of ['config','auto','context'] as const) test(`stored Signal ranking refreshes at the first eligible ${scope} close`,()=>{
+ const {tapes,sig,options}=fixture(),source=tapes[0],store=new TapeHistoryStore({cacheBytes:1});
+ const policy=options.gates.positionWindows!;
+ Object.assign(policy,{scope,strictCounts:scope!=='context'});
+ if(scope==='context')options.gates.lastNFloor=2;
+ const rows:Trade[]=Array.from({length:6},(_,i)=>{
+  const side=1,exitT=start+i*M;
+  return {cfg:source.id,sym:symbols[i%2],side,entryT:exitT-1,exitT,r:.02,mult:1,
+   entry:100,exit:102,reason:'tp',bars:1,mfe:0,mae:0,kind:'normal'};
+ });
+ const plain=makeTape(source.id,source.bot,source.ind,source.protect,source.kind,symbols,rows,[],[]);
+ try{
+  const saved=store.append(plain),book=new SignalActivationBook(signalIndex([saved]),sig,150,options);
+  const compares=(t:number)=>{
+   store.clearCache();
+   const expected=activeSignalsAt([plain],t,sig,150,options);
+   assert.deepEqual(drain(book.at(t)),expected);
+   return expected.size;
+  };
+  const first=start+(scope==='context'?2:3)*M;
+  assert.equal(compares(start),0);
+  assert.equal(compares(first),0,'same-time close has not entered the sampled window');
+  assert.ok(compares(first+1)>0,'the new own close activates observed contexts');
+  assert.equal(compares(start+5*M+1),2,'other symbols and opposite side still have no ranking evidence');
  }finally{store.close()}
 });

@@ -1,3 +1,22 @@
+## 2026-11-17 — Signals Last-N scope and causal refresh
+
+The compact Signals ranking cache previously waited for a full symbol-side
+sample to retry an empty result even when the selected window pooled the
+configuration's own closes. It now wakes at the first possible eligible close
+for the selected scope, including a configured partial floor. The scalar
+ranking clips each symbol-side slice to its observed prefix. Its rank still
+requires a measured symbol-side return. Exchange entry gates retain their
+existing exact-context rules.
+
+Regression tests exercise compact storage, opposed or empty sides, strict
+same-time cutoff, exact windows and config/auto scope. The verification starts
+from main `d9bac347dd0116f4316b78465830a2ebfc78af80`; the pull request records
+its tested source and CI results. This change made no account or deployment
+changes. The latest eight-symbol reference remains the 2026-10-13 00:00 UTC
+post-Base decision after 12 hours of evaluated prehistory. It passed 19,227 of
+99,702 configurations (19.28%) at return PF 6.0702. The next 12 hours produced
+2,894 modeled settlements at return PF 0.5160. These are different cohorts.
+
 ## 2026-11-17 — missing return evidence in position windows
 
 On merged baseline `1fe070102abdb96d986757ebde14ed2f9de6ea32`, two
