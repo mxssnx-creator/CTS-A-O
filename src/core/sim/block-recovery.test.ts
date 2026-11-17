@@ -4,7 +4,9 @@ import { DEFAULT_BLOCK } from "../config.ts";
 import { BLOCK_SOURCES, blockBookOf, blockDecide, sourceKey } from "./block.ts";
 
 const levels = { config: 1, overall: 1, symbol: 1, direction: 1, indication: 1, type: 1 };
-const policy = { ...DEFAULT_BLOCK, ratio: .2, steps: 0,
+// every relation on (the pooled sources are opt-in since 17 Nov) under the exact symbol × side config key
+const policy = { ...DEFAULT_BLOCK, configScope: "context" as const, ratio: .2, steps: 0,
+  sources: { config: true, overall: true, symbol: true, direction: true, indication: true, type: true },
   sourceRatios: { config: 1, overall: 1, symbol: 4, direction: 2, indication: 2, type: 3 } };
 const identity = { cfg: "set-a", sym: "A", side: 1, kind: "trend", ind: "ema@m1", type: "normal" };
 

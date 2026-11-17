@@ -76,6 +76,8 @@ export interface BlockBookOpts {
   poolDedupe?: boolean;
   /** BlockConfig.sideKeys: the config source per direction (the exact config key already is; kept for its callers) */
   sideKeys?: boolean;
+  /** BlockConfig.configScope: "config" (default) = the config source keys the config alone, every symbol and side */
+  configScope?: "config" | "context";
   /** BlockConfig.historySource "accepted-orders": only settled accepted Real orders enter the book */
   acceptedOnly?: boolean;
   /** Explicit independently processed, gate-qualified modeled predecessor book. */
@@ -132,11 +134,15 @@ export function sourceKey(
   t: { sym: string; side: number; kind: string; ind?: string; type?: string; cfg?: string },
   // block.sideKeys: accepted for its callers; the exact config key is per direction (and symbol) in every case
   _sideKeys = false,
+  // BlockConfig.configScope: "config" keys the config source by the config alone (all its symbols and sides)
+  configScope: "config" | "context" = "context",
 ): string {
   const scope = exitScopeSuffix(t.cfg, t.type);
   switch (s) {
     case "config":
-      return `c:${t.cfg ?? ""}|${t.sym}|${t.side > 0 ? 1 : -1}${scope}`;
+      return configScope === "config"
+        ? `c:${t.cfg ?? ""}${scope}`
+        : `c:${t.cfg ?? ""}|${t.sym}|${t.side > 0 ? 1 : -1}${scope}`;
     case "overall":
       return `all${scope}`;
     // Long and short run independently. A different indication or lane never raises or pauses its sibling.
@@ -175,6 +181,12 @@ export class BlockBook {
   readonly poolDedupe: boolean;
   /** BlockConfig.sideKeys (the exact config key is per direction whatever its value) */
   readonly sideKeys: boolean;
+  /** BlockConfig.configScope of the config source's key */
+  readonly configScope: "config" | "context";
+  /** The book key of a source for a position, under this book's config scope. */
+  keyOf(s: BlockSource, t: { sym: string; side: number; kind: string; ind?: string; type?: string; cfg?: string }): string {
+    return sourceKey(s, t, this.sideKeys, this.configScope);
+  }
   private seenCloses = new Set<string>();
   private keep: number;
   /** `opts`: the book options, or (a boolean) acceptedOnly alone */
@@ -186,6 +198,7 @@ export class BlockBook {
     this.poolSignals = opts.poolSignals !== false;
     this.poolDedupe = !!opts.poolDedupe;
     this.sideKeys = !!opts.sideKeys;
+    this.configScope = opts.configScope === "config" ? "config" : "context";
     this.pause = Math.max(0, Math.floor(pause || 0));
     this.window = Math.max(1, Math.floor(window || 1));
     this.windowHours = opts.windowHours && opts.windowHours > 0 ? opts.windowHours : 0;
@@ -222,7 +235,7 @@ export class BlockBook {
       for (const s of BLOCK_SOURCES) {
         const leg = t.blockAttribution[s];
         if (!leg || (s !== "config" && !pooled)) continue;
-        const key = sourceKey(s, t);
+        const key = this.keyOf(s, t);
         const prev = this.recovery.get(key);
         if (!(Number.isFinite(leg.extra) && leg.extra > 0 && Number.isFinite(leg.level) && leg.level > 0)) continue;
         const delta = typeof t.r === "number" && Number.isFinite(t.r) ? t.r * leg.extra : NaN;
@@ -233,7 +246,7 @@ export class BlockBook {
         else this.recovery.set(key, { net, level: Math.max(prev?.level ?? 0, leg.level), closes: (prev?.closes ?? 0) + 1 });
       }
     }
-    const keys = BLOCK_SOURCES.map((s) => sourceKey(s, t, this.sideKeys));
+    const keys = BLOCK_SOURCES.map((s) => this.keyOf(s, t));
     const timed = this.windowHours > 0;
     for (const k of keys) {
       if (!pooled && !k.startsWith("c:")) continue;
@@ -267,7 +280,7 @@ export class BlockBook {
     }
     // a raised position that closed positive pauses the sources that raised it
     if (this.pause > 0 && t.r > 0 && t.bsrc?.length)
-      for (const s of t.bsrc) this.pauseLeft.set(sourceKey(s, t, this.sideKeys), this.pause);
+      for (const s of t.bsrc) this.pauseLeft.set(this.keyOf(s, t), this.pause);
   }
   /** The judging window of a source: `window`, or (windowHours) its closes in its last windowHours ÷ maxLevel. */
   windowOf(key: string, maxLevel: number): number {
@@ -521,6 +534,8 @@ const bookOpts = (b: BlockConfig): BlockBookOpts => ({
   poolSignals: b.poolSignals,
   poolDedupe: b.poolDedupe,
   sideKeys: b.sideKeys,
+  // BlockConfig.configScope: DEFAULT_BLOCK sets "config" (config-wide); an object without it keeps the exact key
+  configScope: b.configScope === "config" ? "config" : "context",
   acceptedOnly: b.historySource === "accepted-orders" || b.historySource === "processed-orders",
   processedOnly: b.historySource === "processed-orders",
 });
@@ -568,10 +583,10 @@ export class AutoBlockBook extends BlockBook {
   private decide(i: number, t: BlockBookEntry): BlockDecision {
     const book = this.books[i];
     return blockDecide(
-      { config: book.level(sourceKey("config", t), this.config.maxLevel), ...bookLevels(book, t, this.config.maxLevel) },
+      { config: book.level(book.keyOf("config", t), this.config.maxLevel), ...bookLevels(book, t, this.config.maxLevel) },
       this.config,
       this.active,
-      (s) => book.paused(sourceKey(s, t)),
+      (s) => book.paused(book.keyOf(s, t)),
     );
   }
   /**

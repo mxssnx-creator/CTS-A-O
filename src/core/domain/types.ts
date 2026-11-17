@@ -522,6 +522,12 @@ export interface BlockConfig {
    * on for signal tapes).
    */
   sideKeys?: boolean;
+  /**
+   * The config source's record: "config" (DEFAULT_BLOCK) = the config's own closes across every symbol and side (the
+   * same config-wide record the position windows read, docs/config-wide-windows.md); "context" (or unset) = the exact
+   * config × symbol × side only. Either way it is that config's own record: no other config, symbol pool or type moves it.
+   */
+  configScope?: "config" | "context";
   /** volume added per passing relation. Default 0.4. */
   increase?: number;
   /** allowed min/max for the Block knobs. The active value stays inside. */

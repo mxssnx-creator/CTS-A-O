@@ -142,14 +142,19 @@ export const DEFAULT_TACTICS: Tactics = {
  * (docs/positive-coordinations.md, "Block Overall: corrected rules").
  */
 export const DEFAULT_BLOCK: BlockConfig = {
+  // Each config / Set on its own record (operator, 17 Nov: "Axis, Block to work for each config / Set independent and
+  // correct"): the config source alone, config-wide (its own closes on every symbol and side). The pooled sources
+  // (overall, symbol, direction, indication, type) mix every config's closes and stay opt-in settings. Causal
+  // comparison: docs/positive-coordinations.md ("Block on each config's own record").
   sources: {
     config: true,
-    overall: true,
-    symbol: true,
-    direction: true,
-    indication: true,
-    type: true,
+    overall: false,
+    symbol: false,
+    direction: false,
+    indication: false,
+    type: false,
   },
+  configScope: "config",
   mode: "overall",
   historySource: "accepted-orders",
   // Each raised Block group keeps its last applied extra volume until that group's realized extra net is recovered.

@@ -90,6 +90,11 @@ export function setKeyOf(cfg: string): string {
     const side = /\|hx([LS])/.exec(cfg)?.[1];
     return `${bot}|${ind}|exit|${set}${side ? `|${side === "L" ? "long" : "short"}` : ""}`;
   }
+  // every Axis config (mode × range × ladder depth: its "|ax-…" / "|axd-…" tag) keeps its own feedback record
+  if (kind === "axis") {
+    const tag = /\|(axd?-[^|]+)\|axis$/.exec(cfg)?.[1];
+    if (tag) return `${bot}|${ind}|axis|${tag}`;
+  }
   return `${bot}|${ind}|${kind}`;
 }
 

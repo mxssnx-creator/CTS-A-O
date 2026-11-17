@@ -320,8 +320,8 @@ function SwitchRow(props: {
 }
 
 const BLOCK_SOURCE_HELP: Array<[string, string]> = [
-  ["config", "exact configuration × symbol × direction; each history and level is independent"],
-  ["overall", "all orders in the selected Real history; only completed executions with an exit contribute"],
+  ["config", "the configuration's own closes (default: config-wide, every symbol and side; or per symbol × side, see Config scope); no other configuration moves it"],
+  ["overall", "pooled: all orders in the selected Real history; only completed executions with an exit contribute"],
   ["symbol", "same symbol × direction; long and short have separate histories and stacks"],
   ["direction", "same direction across symbols; long and short are judged separately"],
   [
@@ -344,7 +344,7 @@ const RELATE_SOURCE_HELP: Array<[RelateSource, string]> = [
 
 /** Block sources and how their levels combine (shared = strongest, additive = sum, overall = each its own Block). */
 export function BlockSources(props: {
-  block: { sources?: Record<string, boolean | undefined>; mode?: string; historySource?: string };
+  block: { sources?: Record<string, boolean | undefined>; mode?: string; historySource?: string; configScope?: string };
   set: (path: string[], v: unknown) => void;
 }) {
   const src = props.block.sources ?? {};
@@ -381,6 +381,20 @@ export function BlockSources(props: {
           <option value="real-candidates">
             Legacy Real candidates · includes skips (diagnostic)
           </option>
+        </select>
+      </Field>
+      <Field
+        label="Config scope"
+        hint="The config source's record. Config-wide (default): each config / Set is judged on its own closes across every symbol and side, as the position windows are. Per symbol × side: only the exact symbol and direction. Either way no other config's closes move it; the pooled sources below mix configs and are off by default."
+      >
+        <select
+          className="v2-select"
+          aria-label="Block config scope"
+          value={props.block.configScope ?? "context"}
+          onChange={(e) => props.set(["block", "configScope"], e.target.value)}
+        >
+          <option value="config">Config-wide (own closes, every symbol and side)</option>
+          <option value="context">Per symbol × side</option>
         </select>
       </Field>
       {BLOCK_SOURCE_HELP.map(([k, help]) => (

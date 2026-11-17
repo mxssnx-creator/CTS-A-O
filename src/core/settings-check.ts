@@ -471,6 +471,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     if (s.block.levelMinWin !== undefined) num(s.block.levelMinWin, 0, 1, "block level win share (0 = off)");
     for (const k of ["poolSignals", "poolDedupe", "sideKeys"] as const)
       if (s.block[k] !== undefined && typeof s.block[k] !== "boolean") throw new Error(`block ${k}: on / off`);
+    if (s.block.configScope !== undefined && s.block.configScope !== "config" && s.block.configScope !== "context")
+      throw new Error("block config scope: config (own closes on every symbol and side) or context (symbol × side)");
     num(s.block.increase, 0.05, 1, "block increase");
     const span = (pair: unknown, lo: number, hi: number, name: string) => {
       if (pair === undefined) return;

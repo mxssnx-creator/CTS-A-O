@@ -16,13 +16,15 @@ const P = { tp: 0.02, sl: 0.05, trail: 0, hold: 20 };
 const D = { levels: 2, step: 0.01 };
 
 describe("dca", () => {
-  it("defaults to two non-compounding additions within 2%, with every Block relation active", () => {
+  it("defaults to two non-compounding additions within 2%, Block on each config's own record", () => {
     assert.equal(DEFAULT_DCA.levels, 2);
     assert.equal(DEFAULT_DCA.step, .01);
     assert.equal(DEFAULT_DCA.maxDistance, .02);
     assert.equal(DEFAULT_DCA.addRatio, 2.5);
     assert.equal(DEFAULT_BLOCK.mode, "overall");
-    assert.ok(Object.values(DEFAULT_BLOCK.sources!).every(Boolean));
+    // each config / Set on its own record (operator, 17 Nov): the config source alone, config-wide
+    assert.deepEqual(DEFAULT_BLOCK.sources, { config: true, overall: false, symbol: false, direction: false, indication: false, type: false });
+    assert.equal(DEFAULT_BLOCK.configScope, "config");
   });
 
   it("weights the one addition, target, cost, open mark and settled return consistently in both directions", () => {

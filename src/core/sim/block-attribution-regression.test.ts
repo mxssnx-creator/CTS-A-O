@@ -5,7 +5,8 @@ import { AutoBlockBook, blockBookOf, blockDecide, sourceKey, type BlockBookEntry
 
 const levels = { config: 1, overall: 1, symbol: 1, direction: 1, indication: 1, type: 1 };
 const identity = { cfg: "set-a", sym: "A", side: 1, kind: "trend", ind: "ema@m1", type: "normal" };
-const base = { ...DEFAULT_BLOCK, ratio: .2, sharedRatio: .2, steps: 0, holdUntilNet: true,
+// pooled-source attribution under the exact symbol × side config key (configScope "context", an opt-in setting)
+const base = { ...DEFAULT_BLOCK, configScope: "context" as const, ratio: .2, sharedRatio: .2, steps: 0, holdUntilNet: true,
   sources: { config: true, symbol: true }, sourceRatios: { config: 1, symbol: 2 },
   mode: "shared" as const, minActiveLevel: 2, pause: 1, windowAuto: false };
 
