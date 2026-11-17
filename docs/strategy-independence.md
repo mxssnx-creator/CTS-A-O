@@ -38,11 +38,13 @@ opt-in.
 | config windows (Base / Main / Real / Entry) | an entry whose config fails its own windows | the config's own closes across symbols and sides (`scope: "config"`, default since 17 Nov); Micro: its own symbol × side lane and its config both (`"both"`); `"context"` and `"auto"` remain options |
 | Signals guard / cluster / acceptance | signal entries | signals only |
 
-Block reads each config's own record by default (17 Nov, operator: "Axis, Block to work for each config / Set
-independent and correct"): `DEFAULT_BLOCK.sources` is the config source alone with `configScope: "config"`, i.e. the
-config's own closes on every symbol and side (as the position windows). No other config, symbol, direction, indication
-or type moves a config's raise (`sim/axis-block-independence.test.ts`). The pooled sources and Relate's relation
-sources remain opt-in settings: they decide a **raise**, never whether another lane trades.
+Block (17 Nov, operator): every relation runs, and each block count decides on its own record. The config's own
+relations are `config` (its closes on every symbol and side) and `lane` (its own symbol × side); no other config moves
+them (`sim/axis-block-independence.test.ts`). The pooled relations (overall, symbol, direction, indication, type, range)
+combine every config's closes. The automatic evaluation (`block.auto`) judges every relation at every level on the
+positions that entered while it stood there, from the closes before each entry: a count raises while the PF of its newest
+30 results is at least 1.1, a losing count stops raising, and with fewer than 15 results its manual switch holds
+(`sim/block-auto.test.ts`). Block and Relate decide a **raise**, never whether another lane trades.
 
 Code: `src/core/sim/walkforward.ts` (`execDecisionFor`, `CandidateDirectionBook`), `src/core/sim/relate-volume.ts`
 (`RelateBook.decide`), `src/core/positive.ts` (warning only with Normal off).
