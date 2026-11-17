@@ -142,19 +142,24 @@ export const DEFAULT_TACTICS: Tactics = {
  * (docs/positive-coordinations.md, "Block Overall: corrected rules").
  */
 export const DEFAULT_BLOCK: BlockConfig = {
-  // Each config / Set on its own record (operator, 17 Nov: "Axis, Block to work for each config / Set independent and
-  // correct"): the config source alone, config-wide (its own closes on every symbol and side). The pooled sources
-  // (overall, symbol, direction, indication, type) mix every config's closes and stay opt-in settings. Causal
-  // comparison: docs/positive-coordinations.md ("Block on each config's own record").
+  // Every relation on, each judged per block count by the automatic evaluation (operator, 17 Nov: "Both, multiple, add
+  // also other working relations. Do build auto eval system detailed and also for block counts"; "I want still to use
+  // also those performing options"). The config's own records: config-wide (`config`, configScope "config") and its
+  // symbol × side lane (`lane`); the pooled relations (overall, symbol, direction, indication, type, range) combine
+  // every config's closes. A count raises while its own newest results pass (`auto`); below `auto.min` results its
+  // switch here holds. Causal comparison: docs/positive-coordinations.md ("Block relations under Auto").
   sources: {
     config: true,
-    overall: false,
-    symbol: false,
-    direction: false,
-    indication: false,
-    type: false,
+    lane: true,
+    overall: true,
+    symbol: true,
+    direction: true,
+    indication: true,
+    type: true,
+    range: true,
   },
   configScope: "config",
+  auto: { enabled: true, n: 30, min: 15, pf: 1.1, scope: "rule" },
   mode: "overall",
   historySource: "accepted-orders",
   // Each raised Block group keeps its last applied extra volume until that group's realized extra net is recovered.

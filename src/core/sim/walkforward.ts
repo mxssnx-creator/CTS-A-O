@@ -5992,6 +5992,8 @@ export type ExecDecision =
       src?: BlockSource[];
       /** Explicit diagnostic capture from this entry's causal Block history. */
       blockLevels?: Partial<Record<BlockSource, number>>;
+      /** block.auto: per relation at its level, whether Auto or the manual switch decided it */
+      blockDecidedBy?: Partial<Record<BlockSource, "auto" | "manual">>;
       blockAttribution?: BlockAttribution;
       blockEffectiveLevels?: Partial<Record<BlockSource, number>>;
       blockSampleCounts?: Partial<Record<BlockSource, number>>;
@@ -6067,13 +6069,15 @@ export const blockEntryOf = (
   entryT: x.entryT,
 });
 
-const OWN_SOURCES = {
+const OWN_SOURCES: Record<BlockSource, boolean> = {
   config: true,
+  lane: true,
   overall: false,
   symbol: false,
   direction: false,
   indication: false,
   type: false,
+  range: false,
 };
 
 /** Real-stage execution rules for one candidate entry (toggles, last-N, Block / Block Active). */
@@ -6395,16 +6399,38 @@ export function execDecision(
       // legacy raw-tape diagnostic: config-wide reads the tape's own closes on every symbol and side
       : blockLevel(tp, entryT, blk, blk.configScope === "config" ? undefined : ctx, observed);
   const levels = { config: configLevel, ...bookLevels(book, t, blk.maxLevel) };
+  // Automatic evaluation (block.auto): every relation's count at its current level decides by its own newest results
+  // whether it raises (an observed relation that Auto switches on raises with its own ratio); without enough results
+  // the manual switch holds. The evidence lives in the book (accepted closes, at the level each relation stood at entry).
+  const auto = ctx?.book?.auto ?? null;
+  let decidedBy: Partial<Record<BlockSource, "auto" | "manual">> | undefined;
+  let blkEff = blk;
+  if (auto) {
+    const manual = sourcesOf(blk);
+    const eff: Record<BlockSource, boolean> = { ...manual };
+    decidedBy = {};
+    for (const src of BLOCK_SOURCES) {
+      // a signal on its own record keeps only its own relations
+      if (own && !OWN_SOURCES[src]) { eff[src] = false; continue; }
+      const level = levels[src] ?? 0;
+      if (level < 1) continue;
+      const v = auto.verdict(src, keyOf(src), Math.min(level, auto.maxLevel));
+      eff[src] = v.raise ?? manual[src];
+      decidedBy[src] = v.raise === null ? "manual" : "auto";
+    }
+    blkEff = { ...blk, sources: eff };
+  }
   const d = blockDecide(
     levels,
-    blk,
+    blkEff,
     !!tg.blockActive,
     (src) => !!ctx?.book?.paused(keyOf(src)),
   );
-  const traceSources = o.blockTrace ? sourcesOf(blk) : null;
+  const traceSources = o.blockTrace ? sourcesOf(blkEff) : null;
   const trace = o.blockTrace
     ? {
         blockLevels: levels,
+        ...(decidedBy ? { blockDecidedBy: decidedBy } : {}),
         blockEffectiveLevels: Object.fromEntries(
           BLOCK_SOURCES.map((src) => [
             src,

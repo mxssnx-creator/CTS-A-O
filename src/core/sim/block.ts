@@ -30,30 +30,36 @@
 import type { BlockAttribution, BlockConfig } from "../domain/types.ts";
 import { MAX_EXTERNAL_STACK } from "../config.ts";
 import { exitScopeSuffix } from "../exit-scope.ts";
+import { rangeOfId } from "../minimal-coord.ts";
 
-export type BlockSource = "config" | "overall" | "symbol" | "direction" | "indication" | "type";
+export type BlockSource = "config" | "lane" | "overall" | "symbol" | "direction" | "indication" | "type" | "range";
 export const BLOCK_SOURCES: readonly BlockSource[] = [
   "config",
+  "lane",
   "overall",
   "symbol",
   "direction",
   "indication",
   "type",
+  "range",
 ];
+/** The config's own relations (config-wide and its symbol × side lane): window 1, never pooled with another config. */
+export const OWN_BLOCK_SOURCES: readonly BlockSource[] = ["config", "lane"];
+const isOwnKey = (k: string) => k.startsWith("c:") || k.startsWith("l:");
 
 /**
  * Levels 1..maxLevel: level n counts when the sum of the last n × window closes is positive (all of them present)
  * and, with `minWin` > 0, at least that share of them won (one big win after seven losses is not level 8).
  */
-export function levelOfTail(rs: readonly number[], maxLevel: number, window = 1, minWin = 0): number {
+export function levelOfTail(rs: readonly number[], maxLevel: number, window = 1, minWin = 0, end = rs.length): number {
   const w = Math.max(1, Math.floor(window || 1));
   let level = 0;
   let sum = 0;
   let wins = 0;
   let i = 0;
-  for (let n = 1; n <= maxLevel && n * w <= rs.length; n++) {
+  for (let n = 1; n <= maxLevel && n * w <= end; n++) {
     for (; i < n * w; i++) {
-      const r = rs[rs.length - 1 - i];
+      const r = rs[end - 1 - i];
       // This close remains in every larger window. Unknown units or overflow cannot become a positive level;
       // a smaller, already complete finite window keeps its own independent verdict.
       if (!Number.isFinite(r) || !Number.isFinite(sum + r)) return level;
@@ -63,6 +69,88 @@ export function levelOfTail(rs: readonly number[], maxLevel: number, window = 1,
     if (sum > 0 && !(minWin > 0 && wins < minWin * n * w)) level++;
   }
   return level;
+}
+
+/** BlockConfig.auto: every relation × block count (level) decides by its own newest results whether it raises. */
+export interface BlockAutoConfig {
+  enabled?: boolean;
+  /** newest results a count is judged on (default 30) */
+  n?: number;
+  /** results a count needs before Auto decides; below it the relation's manual switch holds (default 15) */
+  min?: number;
+  /** a count raises while the PF of its newest n results is at least this (default 1.1) */
+  pf?: number;
+  /** "rule" (default): one record per relation × count; "key": per relation key × count (per config for own relations) */
+  scope?: "rule" | "key";
+}
+export const DEFAULT_BLOCK_AUTO: Required<BlockAutoConfig> = { enabled: true, n: 30, min: 15, pf: 1.1, scope: "rule" };
+
+/** One count's verdict: raises (auto), does not raise (auto), or not yet decided (the manual switch holds). */
+export interface BlockAutoVerdict {
+  source: BlockSource;
+  level: number;
+  n: number;
+  pf: number;
+  /** true / false = Auto decided; null = fewer than min results */
+  raise: boolean | null;
+}
+
+/**
+ * The per relation × count record. A position's unit result is recorded, once it closes, under every relation at the
+ * level that relation stood at when the position entered (from the closes before the entry), whether that relation
+ * raised it or only observed. So a switched-off count is judged on paper exactly like a raising one, and each count is
+ * judged on its own results only: another count's or relation's results never move it.
+ */
+export class BlockAutoEval {
+  readonly n: number;
+  readonly min: number;
+  readonly pf: number;
+  readonly scope: "rule" | "key";
+  readonly maxLevel: number;
+  private results = new Map<string, number[]>();
+  constructor(a: BlockAutoConfig, maxLevel: number) {
+    this.n = Math.max(1, Math.floor(a.n ?? DEFAULT_BLOCK_AUTO.n));
+    this.min = Math.max(1, Math.min(this.n, Math.floor(a.min ?? DEFAULT_BLOCK_AUTO.min)));
+    this.pf = Number.isFinite(a.pf) ? a.pf! : DEFAULT_BLOCK_AUTO.pf;
+    this.scope = a.scope === "key" ? "key" : "rule";
+    this.maxLevel = maxLevel;
+  }
+  private keyFor(source: BlockSource, key: string, level: number): string {
+    return this.scope === "key" ? `${key}#${level}` : `${source}#${level}`;
+  }
+  record(source: BlockSource, key: string, level: number, r: number): void {
+    const k = this.keyFor(source, key, level);
+    let l = this.results.get(k);
+    if (!l) this.results.set(k, (l = []));
+    l.push(r);
+    // only the newest n are judged (trimmed in batches)
+    if (l.length > 4 * this.n) l.splice(0, l.length - this.n);
+  }
+  verdict(source: BlockSource, key: string, level: number): BlockAutoVerdict {
+    const l = this.results.get(this.keyFor(source, key, level)) ?? [];
+    const from = Math.max(0, l.length - this.n);
+    let gp = 0, gl = 0;
+    for (let i = from; i < l.length; i++) {
+      if (l[i] > 0) gp += l[i];
+      else gl -= l[i];
+    }
+    const n = l.length - from;
+    const pf = gl > 0 ? gp / gl : gp > 0 ? Infinity : 0;
+    return { source, level, n, pf, raise: n < this.min ? null : pf >= this.pf };
+  }
+  /** Every recorded count (rule scope: relation × level; key scope: relation key × level), for the statistics. */
+  table(): Array<{ key: string; n: number; pf: number; raise: boolean | null }> {
+    const out: Array<{ key: string; n: number; pf: number; raise: boolean | null }> = [];
+    for (const [k, l] of this.results) {
+      const from = Math.max(0, l.length - this.n);
+      let gp = 0, gl = 0;
+      for (let i = from; i < l.length; i++) if (l[i] > 0) gp += l[i]; else gl -= l[i];
+      const n = l.length - from;
+      const pf = gl > 0 ? gp / gl : gp > 0 ? Infinity : 0;
+      out.push({ key: k, n, pf, raise: n < this.min ? null : pf >= this.pf });
+    }
+    return out.sort((a, b) => a.key.localeCompare(b.key, "en", { numeric: true }));
+  }
 }
 
 /** Book options beyond pause and window (BlockConfig.windowHours, levelMinWin). */
@@ -78,6 +166,9 @@ export interface BlockBookOpts {
   sideKeys?: boolean;
   /** BlockConfig.configScope: "config" (default) = the config source keys the config alone, every symbol and side */
   configScope?: "config" | "context";
+  /** BlockConfig.auto: the per relation × count evaluation (recorded when set; maxLevel bounds the counts) */
+  auto?: BlockAutoConfig;
+  maxLevel?: number;
   /** BlockConfig.historySource "accepted-orders": only settled accepted Real orders enter the book */
   acceptedOnly?: boolean;
   /** Explicit independently processed, gate-qualified modeled predecessor book. */
@@ -143,6 +234,12 @@ export function sourceKey(
       return configScope === "config"
         ? `c:${t.cfg ?? ""}${scope}`
         : `c:${t.cfg ?? ""}|${t.sym}|${t.side > 0 ? 1 : -1}${scope}`;
+    // the same config's own symbol × side lane (window 1, like the config source)
+    case "lane":
+      return `l:${t.cfg ?? ""}|${t.sym}|${t.side > 0 ? 1 : -1}${scope}`;
+    // the range (Micro, Minimal, Short, General, Long, Wide; untagged = wide) × side
+    case "range":
+      return `r:${rangeOfId(t.cfg) || "wide"}|${t.side > 0 ? 1 : -1}${scope}`;
     case "overall":
       return `all${scope}`;
     // Long and short run independently. A different indication or lane never raises or pauses its sibling.
@@ -205,7 +302,24 @@ export class BlockBook {
     this.levelMinWin = opts.levelMinWin && opts.levelMinWin > 0 ? Math.min(1, opts.levelMinWin) : 0;
     // the tail a level can read (up to 12 levels × window), kept with room to spare
     this.keep = Math.max(64, 12 * this.window);
+    this.auto = opts.auto?.enabled ? new BlockAutoEval(opts.auto, Math.max(1, Math.floor(opts.maxLevel ?? 8))) : null;
   }
+  /** The per relation × count evaluation (BlockConfig.auto), or null when it is off. */
+  readonly auto: BlockAutoEval | null;
+  /**
+   * The level a key stood at when a position entered: the closes of that key with an exit at or before the entry (the
+   * book holds them in exit order). Unknown (-1) when the kept tail no longer reaches back to the entry.
+   */
+  levelAt(key: string, entryT: number, maxLevel: number): number {
+    const l = this.lists.get(key), ts = this.times.get(key);
+    if (!l || !ts) return 0;
+    const end = firstAfter(ts, entryT);
+    const w = isOwnKey(key) ? 1 : this.window;
+    // a trimmed list starts later than the entry's judging tail: that entry's level is not known
+    if (this.trimmed.has(key) && end < maxLevel * w) return -1;
+    return levelOfTail(l, maxLevel, w, this.levelMinWin, end);
+  }
+  private trimmed = new Set<string>();
   /**
    * Whether a close enters the pooled sources: a signal's only with poolSignals, a close identical to one already in
    * (same symbol, side, entry, exit and result: one entry under two indication names) only once with poolDedupe.
@@ -234,7 +348,7 @@ export class BlockBook {
     if (this.holdUntilNet && t.accepted === true && t.blockAttribution) {
       for (const s of BLOCK_SOURCES) {
         const leg = t.blockAttribution[s];
-        if (!leg || (s !== "config" && !pooled)) continue;
+        if (!leg || (!OWN_BLOCK_SOURCES.includes(s) && !pooled)) continue;
         const key = this.keyOf(s, t);
         const prev = this.recovery.get(key);
         if (!(Number.isFinite(leg.extra) && leg.extra > 0 && Number.isFinite(leg.level) && leg.level > 0)) continue;
@@ -247,22 +361,32 @@ export class BlockBook {
       }
     }
     const keys = BLOCK_SOURCES.map((s) => this.keyOf(s, t));
+    // the per relation × count evaluation: this accepted close is one result of every relation at the level it stood
+    // at when the position entered (judged on the closes before that entry, whether the relation raised or observed)
+    if (this.auto && t.accepted === true && Number.isFinite(t.entryT) && Number.isFinite(t.r))
+      for (let i = 0; i < BLOCK_SOURCES.length; i++) {
+        const k = keys[i];
+        if (!pooled && !isOwnKey(k)) continue;
+        const level = this.levelAt(k, t.entryT!, this.auto.maxLevel);
+        if (level >= 1) this.auto.record(BLOCK_SOURCES[i], k, level, t.r);
+      }
     const timed = this.windowHours > 0;
     for (const k of keys) {
-      if (!pooled && !k.startsWith("c:")) continue;
+      if (!pooled && !isOwnKey(k)) continue;
       // a paused source counts its closes down; at 0 its level is recalculated
       const left = this.pauseLeft.get(k);
       if (left !== undefined) {
         if (left <= 1) this.pauseLeft.delete(k);
         else this.pauseLeft.set(k, left - 1);
       }
-      if (k.startsWith("c:") && !this.acceptedOnly) continue; // legacy config source judges its raw tape
+      if (isOwnKey(k) && !this.acceptedOnly) continue; // legacy config source judges its raw tape
       const l = this.lists.get(k);
       if (l) {
         l.push(t.r);
+        // every list keeps its exit times (levelAt reads the level at an entry; windowHours the activity span)
+        const ts = this.times.get(k)!;
+        ts.push(t.exitT ?? ts[ts.length - 1] ?? 0);
         if (timed) {
-          const ts = this.times.get(k)!;
-          ts.push(t.exitT ?? ts[ts.length - 1] ?? 0);
           // only the closes inside the activity span (and the fixed window's tail) are ever read
           if (l.length > 4 * this.keep) {
             const cut = Math.min(l.length - this.keep, firstAfter(ts, ts[ts.length - 1] - 2 * this.windowHours * HOUR_MS));
@@ -270,12 +394,19 @@ export class BlockBook {
             if (cut >= this.keep) {
               l.splice(0, cut);
               ts.splice(0, cut);
+              this.trimmed.add(k);
             }
           }
-        } else if (l.length > 4 * this.keep) l.splice(0, l.length - this.keep); // only the tail is ever read
+        } else if (l.length > 4 * this.keep) {
+          // only the tail is ever read
+          const cut = l.length - this.keep;
+          l.splice(0, cut);
+          ts.splice(0, cut);
+          this.trimmed.add(k);
+        }
       } else {
         this.lists.set(k, [t.r]);
-        if (timed) this.times.set(k, [t.exitT ?? 0]);
+        this.times.set(k, [t.exitT ?? 0]);
       }
     }
     // a raised position that closed positive pauses the sources that raised it
@@ -296,7 +427,7 @@ export class BlockBook {
     return Math.max(this.recoveryLevel(key, maxLevel), levelOfTail(
       this.lists.get(key) ?? [],
       maxLevel,
-      key.startsWith("c:") ? 1 : this.windowOf(key, maxLevel),
+      isOwnKey(key) ? 1 : this.windowOf(key, maxLevel),
       this.levelMinWin,
     ));
   }
@@ -314,7 +445,7 @@ export class BlockBook {
   }
   /** Available rows in the exact judging tail, including unknown outcomes; config always uses window 1. */
   sampleCount(key: string, maxLevel: number): number {
-    const n = Math.max(0, Math.floor(maxLevel)) * (key.startsWith("c:") ? 1 : this.windowOf(key, maxLevel));
+    const n = Math.max(0, Math.floor(maxLevel)) * (isOwnKey(key) ? 1 : this.windowOf(key, maxLevel));
     return Math.min((this.lists.get(key) ?? []).length, n);
   }
   paused(key: string): boolean {
@@ -334,22 +465,27 @@ export class BlockBook {
 
 export interface BlockLevels {
   config: number;
+  /** the new relations (17 Nov) are optional for older callers: a missing level is 0 */
+  lane?: number;
   overall: number;
   symbol: number;
   direction: number;
   indication: number;
   type: number;
+  range?: number;
 }
 
 export function sourcesOf(b: BlockConfig): Record<BlockSource, boolean> {
   const s = b.sources ?? {};
   return {
     config: s.config !== false,
+    lane: !!s.lane,
     overall: !!s.overall,
     symbol: !!s.symbol,
     direction: !!s.direction,
     indication: !!s.indication,
     type: !!s.type,
+    range: !!s.range,
   };
 }
 
@@ -358,20 +494,22 @@ export function bookLevels(
   t: { sym: string; side: number; kind: string; ind?: string; type?: string; cfg?: string },
   maxLevel: number,
 ): Omit<BlockLevels, "config"> {
-  if (!book) return { overall: 0, symbol: 0, direction: 0, indication: 0, type: 0 };
+  if (!book) return { lane: 0, overall: 0, symbol: 0, direction: 0, indication: 0, type: 0, range: 0 };
   return {
+    lane: book.level(sourceKey("lane", t), maxLevel),
     overall: book.level(sourceKey("overall", t), maxLevel),
     symbol: book.level(sourceKey("symbol", t), maxLevel),
     direction: book.level(sourceKey("direction", t), maxLevel),
     indication: book.level(sourceKey("indication", t), maxLevel),
     type: book.level(sourceKey("type", t), maxLevel),
+    range: book.level(sourceKey("range", t), maxLevel),
   };
 }
 
 /** Combined level of the enabled sources: shared = max, additive = sum, overall = the strongest source. */
 export function combineLevels(levels: BlockLevels, b: BlockConfig): number {
   const on = sourcesOf(b);
-  const xs = BLOCK_SOURCES.filter((k) => on[k]).map((k) => levels[k]);
+  const xs = BLOCK_SOURCES.filter((k) => on[k]).map((k) => levels[k] ?? 0);
   if (!xs.length) return 0;
   return (b.mode ?? "shared") === "additive" ? xs.reduce((a, x) => a + x, 0) : Math.max(...xs);
 }
@@ -434,7 +572,7 @@ function calculateBlock(
   paused: (s: BlockSource) => boolean = () => false,
 ): BlockDecision {
   const on = sourcesOf(b);
-  const lv = (s: BlockSource) => (on[s] && !paused(s) ? levels[s] : 0);
+  const lv = (s: BlockSource) => (on[s] && !paused(s) ? levels[s] ?? 0 : 0);
   const srcs = BLOCK_SOURCES.filter((s) => on[s]);
   const min = active ? Math.max(1, b.minActiveLevel) : 1;
   const cap = blockStackCap(b);
@@ -516,13 +654,13 @@ export function blockDecide(
 ): BlockDecision {
   const decision = calculateBlock(levels, b, active, paused);
   if (!b.holdUntilNet || decision.vol <= 1 || !decision.src.length) return decision;
-  const weights = decision.src.map((s) => decision.legs?.[s] ?? blockRatioOf(b, s) * levels[s]);
+  const weights = decision.src.map((s) => decision.legs?.[s] ?? blockRatioOf(b, s) * (levels[s] ?? 0));
   const sum = weights.reduce((total, weight) => total + weight, 0);
   if (!(sum > 0)) return decision;
   const attribution: BlockAttribution = {};
   for (let i = 0; i < decision.src.length; i++) {
     const source = decision.src[i];
-    attribution[source] = { level: levels[source], extra: decision.legs?.[source] ?? (decision.vol - 1) * weights[i] / sum };
+    attribution[source] = { level: levels[source] ?? 0, extra: decision.legs?.[source] ?? (decision.vol - 1) * weights[i] / sum };
   }
   return { ...decision, blockAttribution: attribution };
 }
@@ -536,6 +674,8 @@ const bookOpts = (b: BlockConfig): BlockBookOpts => ({
   sideKeys: b.sideKeys,
   // BlockConfig.configScope: DEFAULT_BLOCK sets "config" (config-wide); an object without it keeps the exact key
   configScope: b.configScope === "config" ? "config" : "context",
+  auto: b.auto,
+  maxLevel: b.maxLevel,
   acceptedOnly: b.historySource === "accepted-orders" || b.historySource === "processed-orders",
   processedOnly: b.historySource === "processed-orders",
 });

@@ -411,7 +411,7 @@ export interface Tactics {
   cooldownBars: number;
 }
 
-export type BlockAttribution = Partial<Record<"config" | "overall" | "symbol" | "direction" | "indication" | "type", { level: number; extra: number }>>;
+export type BlockAttribution = Partial<Record<"config" | "lane" | "overall" | "symbol" | "direction" | "indication" | "type" | "range", { level: number; extra: number }>>;
 
 export interface BlockConfig {
   /** extra volume per passing level (additive) */
@@ -419,7 +419,7 @@ export interface BlockConfig {
   /** Shared-only ratio override. Unset preserves ratio; a higher value still shares the total maxMult cap. */
   sharedRatio?: number;
   /** Per-relation multiple of ratio (or sharedRatio in Shared mode). Missing relations use 1. */
-  sourceRatios?: Partial<Record<"config" | "overall" | "symbol" | "direction" | "indication" | "type", number>>;
+  sourceRatios?: Partial<Record<"config" | "lane" | "overall" | "symbol" | "direction" | "indication" | "type" | "range", number>>;
   /** Retain each raised relation's qualified level until its realized extra-leg net recovers to zero. */
   holdUntilNet?: boolean;
   /** Closed accepted Real orders, or the explicitly labeled legacy candidate-learning diagnostic. */
@@ -432,12 +432,28 @@ export interface BlockConfig {
   /** which positions the levels are judged on (config set only by default) */
   sources?: {
     config?: boolean;
+    /** the config's own symbol × side lane (window 1; the config source is config-wide by default) */
+    lane?: boolean;
     overall?: boolean;
     symbol?: boolean;
     direction?: boolean;
     indication?: boolean;
     /** the strategy type (Normal, Trailing, DCA, DCA Active, Axis) */
     type?: boolean;
+    /** the range (Micro, Minimal, Short, General, Long, Wide) × side */
+    range?: boolean;
+  };
+  /**
+   * Automatic evaluation per relation × block count (level): each count raises while the PF of its own newest `n`
+   * results reaches `pf` (judged once it has `min`; below that its manual switch holds). Observed counts are recorded
+   * like raising ones. See BlockAutoEval (sim/block.ts).
+   */
+  auto?: {
+    enabled?: boolean;
+    n?: number;
+    min?: number;
+    pf?: number;
+    scope?: "rule" | "key";
   };
   /**
    * shared: the strongest source's level; additive: the sources' levels add up; overall: every source is its own

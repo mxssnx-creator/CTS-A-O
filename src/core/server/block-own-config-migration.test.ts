@@ -6,7 +6,7 @@ import { DEFAULT_BLOCK } from "../config.ts";
 
 const ALL = { config: true, overall: true, symbol: true, direction: true, indication: true, type: true };
 
-test("Block migration moves only the stored old all-sources default to each config's own record", () => {
+test("Block migration moves only the stored old six-source default to the relations under Auto", () => {
   const db = new CoreDb(":memory:");
   try {
     db.kvSet("settings", { symbols: 8, block: { sources: { ...ALL }, ratio: 0.3 } });
@@ -19,6 +19,7 @@ test("Block migration moves only the stored old all-sources default to each conf
     const s = db.kvGet<any>("settings");
     assert.deepEqual(s.block.sources, DEFAULT_BLOCK.sources);
     assert.equal(s.block.configScope, "config");
+    assert.deepEqual(s.block.auto, DEFAULT_BLOCK.auto);
     assert.equal(s.block.ratio, 0.3, "the other Block settings stay");
     const p = db.kvGet<any[]>("presets")!;
     assert.deepEqual(p[0].settings.block.sources, DEFAULT_BLOCK.sources);
