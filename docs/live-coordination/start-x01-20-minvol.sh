@@ -24,7 +24,7 @@ cat > "$OUT/settings.json" <<JSON
   "signals": { "enabled": ${CTS_X01_SIGNALS:-false} },
   "live": { "positionSize": "min", "ratio": 1, "maxPositions": 100, "leverage": "max" } }
 JSON
-export CTS_CORE_LIVE_TAG=CTSAO_ CTS_CORE_MAINNET_WAIVE_READY=1
+export CTS_CORE_LIVE_TAG="${CTS_CORE_LIVE_TAG:-CTSBX1_}" CTS_CORE_MAINNET_WAIVE_READY=1
 export CTS_BINGX_BAN_FILE="$OUT/bingx-ban" CTS_BINGX_BOOK_FILE="$OUT/bingx-book"
 export MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576 CTS_CORE_STALL_PROBE=1 CTS_CORE_WORKERS="${CTS_CORE_WORKERS:-2}"
 echo "$(date -u +%FT%TZ) starting x01-20: MAINNET, tag CTSAO_, $SYMBOLS symbols, loss limit ${LOSS_PCT}% of the session wallet" | tee -a "$OUT/launches.txt"
