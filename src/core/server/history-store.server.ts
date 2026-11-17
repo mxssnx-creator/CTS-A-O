@@ -10,7 +10,8 @@ import {
   rmSync,
   ftruncateSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, totalmem } from "node:os";
+import { isMainThread } from "node:worker_threads";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import * as zlib from "node:zlib";
@@ -19,7 +20,23 @@ import { inTapeLayout, tapeBytes, tapeViews, type ConfigTape } from "../sim/walk
 import { registerImmutableHistoryGeneration } from "../sim/immutable-history-generation.ts";
 
 const MiB = 1048576;
-export const HISTORY_CACHE_BYTES = 64 * MiB;
+/**
+ * Decompressed column cache. 64 MiB thrashed on a 6-symbol replay (669 MiB of raw columns): every re-evaluated tape was
+ * read, decompressed and checksummed again (~250 s of a 1,230 s profile). The budget follows the machine: 6 % of its
+ * memory, between 64 MiB and 1 GiB; CTS_HISTORY_CACHE_MB (1–8192) sets it explicitly.
+ */
+export const HISTORY_CACHE_BYTES = historyCacheBytes();
+function historyCacheBytes(): number {
+  const env = process.env.CTS_HISTORY_CACHE_MB;
+  if (env !== undefined && env !== "") {
+    const mb = Number(env);
+    if (Number.isFinite(mb) && mb >= 1 && mb <= 8192) return Math.floor(mb * MiB);
+  }
+  const main = Math.max(64 * MiB, Math.min(1024 * MiB, Math.floor((totalmem() * 0.06) / MiB) * MiB));
+  // every worker thread opens its own stores with this budget: a quarter of the main thread's (at least 64 MiB), so
+  // a pool of workers cannot multiply the cache into gigabytes
+  return isMainThread ? main : Math.max(64 * MiB, Math.floor(main / 4 / MiB) * MiB);
+}
 /** Bound automatic in-memory accumulation; this does not limit any historical sample. */
 export function historyMemoryBytes(): number {
   const value = Number(process.env.CTS_CORE_HISTORY_MEMORY_MB ?? 256);

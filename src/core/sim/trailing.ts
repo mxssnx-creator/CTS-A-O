@@ -14,8 +14,12 @@ const cfgFlagCache = new Map<string, number>();
 const tmTokenCache = new Map<string, number>();
 const TRAILING_ONLY_TOKEN = /\|to(?=\||$)/;
 const TM_TOKEN = /\|tm([\d.]+)(?=\||$)/;
+// One-entry memos in front of the maps: an open position asks for its own id on every bar, so consecutive calls repeat
+// the same string and skip the hash and the map probe (same answer: the map is only a cache of a pure function).
+let lastFlagCfg: string | undefined, lastFlags = 0, lastTmCfg: string | undefined, lastTm = NaN;
 function cfgFlags(cfg?: string): number {
   if (!cfg) return 0;
+  if (cfg === lastFlagCfg) return lastFlags;
   let f = cfgFlagCache.get(cfg);
   if (f === undefined) {
     const first = cfg.indexOf("|");
@@ -23,10 +27,13 @@ function cfgFlags(cfg?: string): number {
     if (cfgFlagCache.size >= 200_000) cfgFlagCache.clear();
     cfgFlagCache.set(cfg, f);
   }
+  lastFlagCfg = cfg;
+  lastFlags = f;
   return f;
 }
 /** the "|tm<percent>" ceiling token of a config id as a fraction; NaN when the id has none */
 function tmToken(cfg: string): number {
+  if (cfg === lastTmCfg) return lastTm;
   let v = tmTokenCache.get(cfg);
   if (v === undefined) {
     const m = TM_TOKEN.exec(cfg);
@@ -34,6 +41,8 @@ function tmToken(cfg: string): number {
     if (tmTokenCache.size >= 200_000) tmTokenCache.clear();
     tmTokenCache.set(cfg, v);
   }
+  lastTmCfg = cfg;
+  lastTm = v;
   return v;
 }
 

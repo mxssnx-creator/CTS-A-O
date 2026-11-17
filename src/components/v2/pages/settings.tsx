@@ -1489,6 +1489,27 @@ export function PositionWindowSettings(props: {
             onChange={(v) => put("maxDrawdownPositions", v)}
           />
         </Field>
+        <Field
+          label="Window scope"
+          hint="Config-wide (default): each config on its own last N closes across symbols and sides. Per symbol × side: each lane on its own closes. Auto: the lane once it holds its floor, else its config. Both: the lane and its config must pass."
+        >
+          <select className="v2-select" aria-label="Window scope" value={p.scope ?? "config"}
+            onChange={(e) => put("scope", e.target.value)}>
+            <option value="config">Config-wide</option>
+            <option value="context">Per symbol × side</option>
+            <option value="auto">Auto (lane once filled, else config)</option>
+            <option value="both">Both (lane and config)</option>
+          </select>
+        </Field>
+        <Field label="Micro window scope" hint="Micro's own scope (default Both: its lane and its config must pass).">
+          <select className="v2-select" aria-label="Micro window scope" value={p.byRange?.mc?.scope ?? p.scope ?? "config"}
+            onChange={(e) => put("byRange", { ...p.byRange, mc: { ...p.byRange?.mc, scope: e.target.value } })}>
+            <option value="both">Both (lane and config)</option>
+            <option value="config">Config-wide</option>
+            <option value="context">Per symbol × side</option>
+            <option value="auto">Auto</option>
+          </select>
+        </Field>
       </div>
       {(["base","main","real","entry"] as const).map(stage=><BlockPolicyFields key={stage} label={stage+" Last-N blocks"} value={p.blocks?.[stage]} onChange={block=>{const blocks={...p.blocks};if(block)blocks[stage]=block;else delete blocks[stage];put("blocks",blocks)}}/>)}
       <details style={{ marginTop: 12 }}>

@@ -3,7 +3,7 @@ import { slWithinBounds, type SlBounds } from "../sl-calibration.ts";
 import {partialFloorOf, positionStageStats} from "../position-windows.ts";
 import { simulationClock } from "../progress.ts";
 import {blockRequired} from "../../../shared/cts-lastn/blocks.ts";
-import { positionCounts, positionStats, positionTapeValid } from "../position-windows.ts";
+import { positionCounts, positionStats, positionTapeValid, type PositionWindows } from "../position-windows.ts";
 import {relationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
 import { RT_COST } from "../model-cost.ts";
 import { EVALUATION_HISTORY_H, PRECALC_HISTORY_H } from "../market/history-requirements.ts";
@@ -4075,7 +4075,14 @@ const EMPTY_POSITION_CONTEXTS: ReadonlyMap<number, Uint32Array> = new Map();
 function positionEvaluationInput(tp: ConfigTape, t: number) {
   if (!positionTapeValid(tp)) return null;
   const before = lowerBound(tp.exitT, t);
-  return { contexts: before ? prepareSignalContexts(tp) : EMPTY_POSITION_CONTEXTS, before, returns: tp.r };
+  // The per-context index is built on the first lane-scoped judgment only: a config-wide window reads the tape's own
+  // exit-ordered rows and never needs it (most tapes under the default scope), so a selection does not rebuild it.
+  let contexts: ReadonlyMap<number, Uint32Array> | undefined = before ? undefined : EMPTY_POSITION_CONTEXTS;
+  return {
+    get contexts(): ReadonlyMap<number, Uint32Array> { return (contexts ??= prepareSignalContexts(tp)); },
+    before,
+    returns: tp.r,
+  };
 }
 function positionContextEval(
   tp: ConfigTape,
@@ -4084,8 +4091,9 @@ function positionContextEval(
   side: number,
   input: ReturnType<typeof positionEvaluationInput>,
 ): ConfigEval {
-  const policy = o.gates.positionWindows;
-  if (!policy) throw new Error("Position-count policy unavailable");
+  const policyOrNull = o.gates.positionWindows;
+  if (!policyOrNull) throw new Error("Position-count policy unavailable");
+  const policy: PositionWindows = policyOrNull;
   const counts = positionCounts(
     policy,
     isSignalInd(tp.ind) ? "sig" : tp.kind === "exit" ? "exit" : (tp.protect.tag ?? "wide"),
@@ -4094,15 +4102,29 @@ function positionContextEval(
   if(!input) return {ok:false,fail:"closes",n:0,pf:NaN,net:NaN,gp:NaN,gl:NaN,
     windowBasis:"positions",requestedN:counts.main};
   const slot = tp.syms.indexOf(sym);
-  const indices = slot >= 0 && (side === 1 || side === -1)
-    ? input.contexts.get(slot * 2 + (side > 0 ? 1 : 0)) : undefined,
-    end = indices ? lowerBound(indices, input.before) : 0;
   // gates.lastNFloor: a window with fewer closes than requested but at least this many is judged on the closes it has
   const partial = partialFloorOf(policy, o.gates.lastNFloor);
+  // scope "config": the config's own last N closes on every symbol and side (rows are in exit order). Scope "auto": the
+  // context's own closes once it holds its floor (an independent lane), else the config's own record across symbols
+  const scope = positionScopeOf(tp, policy);
+  const own = scope !== "config" && slot >= 0 && (side === 1 || side === -1)
+    ? input.contexts.get(slot * 2 + (side > 0 ? 1 : 0)) : undefined;
+  const ownEnd = own ? lowerBound(own, input.before) : 0;
+  // scope "both" (Micro's default): the lane's own window AND the config's record must pass; its own sample is reported
+  if (scope === "both") {
+    const lane = judge(false);
+    if (!lane.ok) return lane;
+    const wide = judge(true);
+    return wide.ok ? lane : wide;
+  }
+  return judge(scope === "config" || (scope === "auto" && ownEnd < Math.max(1, partial || counts.main)));
+  function judge(pooled: boolean): ConfigEval {
+  const indices = pooled ? undefined : own,
+    end = pooled ? input!.before : ownEnd;
   const take = (n: number, stage?: "base"|"main"|"real"|"entry") => {
     const blocks=stage?policy.blocks?.[stage]:undefined; if(blocks)n=blockRequired(blocks);
     const values: number[] = [];
-    for (let j = Math.max(0, end - n); j < end; j++) values.push(input.returns[indices![j]]);
+    for (let j = Math.max(0, end - n); j < end; j++) values.push(input!.returns[pooled ? j : indices![j]]);
     return positionStageStats(values,n,blocks,minPfForTape(tp,o),partial);
   };
   const main = take(counts.main,"main"),
@@ -4151,7 +4173,7 @@ function positionContextEval(
     const parts = Math.max(2, o.durableSplits),
       values: number[] = [];
     if (mainLongN < parts) return no("stable");
-    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input.returns[indices![j]]);
+    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input!.returns[pooled ? j : indices![j]]);
     let passing = 0;
     for (let k = 0; k < parts; k++) {
       const a = Math.floor((values.length * k) / parts),
@@ -4166,7 +4188,7 @@ function positionContextEval(
   if (blocks >= 2) {
     if (mainLongN < 2 * blocks) return no("stable");
     const values: number[] = [];
-    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input.returns[indices![j]]);
+    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input!.returns[pooled ? j : indices![j]]);
     for (let k = 0; k < blocks; k++) {
       const a = Math.floor((values.length * k) / blocks),
         b = Math.floor((values.length * (k + 1)) / blocks),
@@ -4175,7 +4197,14 @@ function positionContextEval(
     }
   }
   return { ok: true, lcb: main.lcb, gh: main.positiveShare, ddt: 0, ...base };
+  }
 }
+/** The window scope a tape is judged with: its range's own scope, else the policy's, else per context. */
+export function positionScopeOf(tp: Pick<ConfigTape, "ind" | "kind" | "protect">, policy: PositionWindows) {
+  const tag = isSignalInd(tp.ind) ? "sig" : tp.kind === "exit" ? "exit" : (tp.protect.tag ?? "wide");
+  return policy.byRange?.[tag]?.scope ?? policy.scope ?? "context";
+}
+
 function positionAggregate(
   tp: ConfigTape,
   t: number,
@@ -4187,6 +4216,18 @@ function positionAggregate(
   if (!detailed && input?.before === 0)
     return { ok: false, fail: "closes", n: 0, gp: 0, gl: 0, net: 0, pf: profitFactor(0, 0), windowBasis: "positions" };
   const contexts: NonNullable<ConfigEval["contexts"]> | undefined = detailed ? [] : undefined;
+  // scope "config": every context reads the same pooled window, so it is judged once (counting it once per context
+  // multiplied the reported closes and sums by the number of contexts)
+  if (o.gates.positionWindows && positionScopeOf(tp, o.gates.positionWindows) === "config") {
+    const syms = [...new Set(tp.syms)];
+    const e = positionContextEval(tp, o, syms[0] ?? "", side ?? 1, input);
+    if (contexts) for (const sym of syms) for (const direction of side === undefined ? SIGNAL_SIDES : [side])
+      contexts.push({ sym, side: direction, evaluation: e });
+    // the same shape as the aggregate below (the detailed and the summary readings must agree)
+    const base = { n: e.n, gp: e.gp ?? 0, gl: e.gl ?? 0, net: (e.gp ?? 0) - (e.gl ?? 0), pf: profitFactor(e.gp ?? 0, e.gl ?? 0),
+      ...(contexts ? { contexts } : {}), windowBasis: "positions" as const };
+    return e.ok ? { ok: true, lcb: e.lcb, gh: e.gh, ddt: 0, ...base } : { ok: false, fail: e.fail, ...base };
+  }
   let passed = 0, nAll = 0, gpAll = 0, glAll = 0, nYes = 0, gpYes = 0, glYes = 0;
   let lcb = Infinity, gh = Infinity, firstFail: EvalGate | undefined;
   for (const sym of new Set(tp.syms)) for (const direction of side === undefined ? SIGNAL_SIDES : [side]) {
@@ -4231,6 +4272,13 @@ function positionAggregate(
  */
 export class EvalMemo {
   readonly byTape = new Map<ConfigTape, { before: number; ev: ConfigEval }>();
+  /**
+   * Per tape, what the selection's static filters said (bots, Base admission, cell, seat key): they read only option
+   * objects that stay fixed through a run, so they are computed once; `staticRefs` are the inputs they were computed
+   * with, and any change rebuilds them.
+   */
+  readonly staticSeat = new Map<ConfigTape, { keep: boolean; pair: string }>();
+  staticRefs: readonly unknown[] | null = null;
   /** tapes with a close settled since their verdict was computed (only while events are attached) */
   readonly dirty = new Set<ConfigTape>();
   private times = new Float64Array(0);
@@ -4331,15 +4379,27 @@ function* selectPositionsGen(
       failures: {},
       setPf: emptyValidatedSetPf(),
     };
+  // the static filters per tape, cached on the run's memo while their inputs stay the same
+  const memo = o.evalMemo;
+  const refs = [o.bots, o.basePassed, o.basePassedRanges, o.basePassedTrailingOnlyCells, o.baseWideLadderPairs,
+    o.exitBasePassed, o.basePassedCells, o.invertSeats, o.probe, o.seatSet, o.validated, o.microSeats, o.seatPer];
+  if (memo && (!memo.staticRefs || memo.staticRefs.length !== refs.length || memo.staticRefs.some((x, k) => x !== refs[k]))) {
+    memo.staticSeat.clear();
+    memo.staticRefs = refs;
+  }
   for (let i = 0; i < tapes.length; i++) {
     const tp = tapes[i];
-    if (
-      (tp.kind !== "exit" && o.bots.length && !o.bots.includes(tp.bot)) ||
-      !baseAllowsTape(tp, o) ||
-      !cellAllowed(tp, o)
-    )
+    let st = memo?.staticSeat.get(tp);
+    if (!st) {
+      const keep = !((tp.kind !== "exit" && o.bots.length && !o.bots.includes(tp.bot)) || !baseAllowsTape(tp, o) || !cellAllowed(tp, o));
+      st = { keep, pair: keep ? seatKey(tp, o) : "" };
+      memo?.staticSeat.set(tp, st);
+    }
+    if (!st.keep) {
+      if (i % 64 === 0) yield -14;
       continue;
-    const pair = seatKey(tp, o);
+    }
+    const pair = st.pair;
     pairTotal.set(pair, (pairTotal.get(pair) ?? 0) + 1);
     const ev = configEvalSummary(tp, t, o),
       w = {
@@ -4361,7 +4421,7 @@ function* selectPositionsGen(
     if (ev.ok && !tp.heldOnly && tapeExecutable(tp, o) && inValidated(tp.id, o))
       cand.push({
         id: tp.id,
-        pair: seatKey(tp, o),
+        pair,
         score:
           o.rankBy === "green"
             ? ev.gh + Math.min(1, Math.max(0, ev.lcb)) * 1e-6
@@ -5761,10 +5821,13 @@ function qualifiedDirectionTape(
         : null;
 }
 
-/** Only queried config contexts allocate an index; original tape returns/times are never copied. */
+/** Only queried config contexts allocate an index; original tape returns/times are never copied.
+ * The bound covers a whole book of lane-scoped tapes (Micro's "both" scope reads every Micro tape at each selection):
+ * at 512 a book of a few thousand Micro tapes rebuilt every index on every call. An index is 4 bytes per close, half
+ * of the tape's own return column, so the bound adds at most about half of the indexed tapes' resident returns. */
 const signalContextIndices = new DerivedCache<ConfigTape, {
   source: CountSignalSource; n: number; contexts: Map<number, Uint32Array>;
-}>(512);
+}>(16_384);
 const completeSignalContexts = new WeakSet<Map<number, Uint32Array>>();
 function currentSignalContexts(tp: ConfigTape): Map<number, Uint32Array> {
   const cached = signalContextIndices.get(tp);

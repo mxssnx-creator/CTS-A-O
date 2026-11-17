@@ -94,3 +94,68 @@ it("progress: no work slice of the simulation counts as a completed hour; the ba
   assert.ok(before[Math.floor(before.length / 2)] < 6 * 0.9, `mid-run fraction ${before[Math.floor(before.length / 2)]}`);
   assert.ok(Math.max(...fractions) <= 6);
 });
+
+it("scope config: the config's own last N closes on every symbol decide, so a sparse context can enter", () => {
+  // the config wins on A (14 closes) and has only 2 closes on B: per context B never fills the floor of 9
+  const rows = [...history(5).map((x) => ({ ...x, sym: "A" })), ...run(18).map((x) => ({ ...x, sym: "A" })),
+    { entryOffset: -3 * H, r: 0.01, sym: "B" }, { entryOffset: -2 * H, r: 0.01, sym: "B" },
+    ...Array.from({ length: 4 }, (_, i) => ({ entryOffset: 25 * M + i * 60 * M, r: 0.01, sym: "B" }))];
+  const withScope = (scope?: "config") => {
+    const o = options();
+    return { ...o, gates: { ...o.gates, positionWindows: { ...o.gates.positionWindows!, ...(scope ? { scope } : {}) } } };
+  };
+  const context = walkForward(u, [tape(rows)], withScope());
+  const config = walkForward(u, [tape(rows)], withScope("config"));
+  assert.equal(context.trades.filter((t) => t.sym === "B").length, 0, "per context, B has too few own closes");
+  assert.ok(config.trades.filter((t) => t.sym === "B").length > 0, "config-wide, B trades on the config's record");
+  assert.ok(config.trades.filter((t) => t.sym === "A").length >= context.trades.filter((t) => t.sym === "A").length);
+});
+
+it("scope auto: a context with its own floor of closes is its own lane; a sparse one falls back to its config's record", () => {
+  // A wins (14 closes), B has 2 closes; C has 12 losing closes of its own
+  const rows = [...history(5).map((x) => ({ ...x, sym: "A" })), ...run(18).map((x) => ({ ...x, sym: "A" })),
+    { entryOffset: -3 * H, r: 0.01, sym: "B" }, { entryOffset: -2 * H, r: 0.01, sym: "B" },
+    ...Array.from({ length: 4 }, (_, i) => ({ entryOffset: 25 * M + i * 60 * M, r: 0.01, sym: "B" })),
+    ...Array.from({ length: 12 }, (_, i) => ({ entryOffset: -(12 - i) * 15 * M - H, r: -0.01, sym: "C" })),
+    ...Array.from({ length: 4 }, (_, i) => ({ entryOffset: 35 * M + i * 60 * M, r: -0.01, sym: "C" }))];
+  const withScope = (scope: "auto" | "config") => {
+    const o = options();
+    return { ...o, gates: { ...o.gates, positionWindows: { ...o.gates.positionWindows!, scope } } };
+  };
+  const auto = walkForward(u, [tape(rows)], withScope("auto"));
+  const config = walkForward(u, [tape(rows)], withScope("config"));
+  assert.ok(auto.trades.some((t) => t.sym === "B"), "sparse B enters on the config's record");
+  assert.ok(auto.trades.some((t) => t.sym === "A"), "A trades on its own winning lane");
+  assert.equal(auto.trades.filter((t) => t.sym === "C").length, 0, "C has its own losing lane: never admitted by A's wins");
+  assert.ok(auto.trades.length <= config.trades.length + 0);
+});
+
+it("defaults: config-wide windows systemwide, both windows for Micro; scope both needs the lane and the config to pass", async () => {
+  const { DEFAULT_POSITION_WINDOWS, checkPositionWindows } = await import("../position-windows.ts");
+  assert.equal(DEFAULT_POSITION_WINDOWS.scope, "config");
+  assert.equal(DEFAULT_POSITION_WINDOWS.byRange?.mc?.scope, "both");
+  assert.equal(DEFAULT_SETTINGS.gates.positionWindows?.scope, "config");
+  assert.throws(() => checkPositionWindows({ ...DEFAULT_POSITION_WINDOWS, scope: "x" as never }), /scope/);
+  assert.throws(() => checkPositionWindows({ ...DEFAULT_POSITION_WINDOWS, byRange: { mc: { scope: "x" as never } } }));
+  // A wins on its own lane, C loses on its own: with "both" C is refused although the pooled record passes; B (sparse)
+  // fails its own window and is refused too
+  const rows = [...history(5).map((x) => ({ ...x, sym: "A" })), ...run(18).map((x) => ({ ...x, sym: "A" })),
+    ...Array.from({ length: 4 }, (_, i) => ({ entryOffset: 25 * M + i * 60 * M, r: 0.01, sym: "B" })),
+    ...Array.from({ length: 10 }, (_, i) => ({ entryOffset: -(10 - i) * 15 * M - H, r: -0.005, sym: "C" })),
+    ...Array.from({ length: 4 }, (_, i) => ({ entryOffset: 35 * M + i * 60 * M, r: -0.005, sym: "C" }))];
+  const o = options();
+  const both = walkForward(u, [tape(rows)], { ...o, gates: { ...o.gates, positionWindows: { ...o.gates.positionWindows!, scope: "both" } } });
+  assert.ok(both.trades.some((t) => t.sym === "A"));
+  assert.equal(both.trades.filter((t) => t.sym === "B" || t.sym === "C").length, 0);
+});
+
+it("scope config: a config's pooled window is counted once, not once per symbol and side", async () => {
+  const { configEval } = await import("./walkforward.ts");
+  const rows = [...history(5).map((x) => ({ ...x, sym: "A" })), ...history(5).map((x) => ({ ...x, sym: "B", entryOffset: x.entryOffset - 7 * M }))];
+  const o = options();
+  const cfg = { ...o, gates: { ...o.gates, positionWindows: { ...o.gates.positionWindows!, scope: "config" as const } } };
+  const ev = configEval(tape(rows), START, cfg);
+  assert.equal(ev.n, 10, "ten own closes, whatever the number of contexts");
+  assert.equal(ev.contexts?.length, 4, "two symbols × two sides are still listed");
+  assert.ok(ev.contexts!.every((c) => c.evaluation.n === 10));
+});

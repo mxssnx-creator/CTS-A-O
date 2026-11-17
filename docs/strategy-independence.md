@@ -34,7 +34,8 @@ opt-in.
 | direction gate (`sideGateN`, off by default) | an entry on a side whose last N candidates **of the same type** sum ≤ 0 | strategy type × side (Historic Exit: its own config) |
 | engine direction acceptance | type family × range × side | already per type |
 | one order per pair event (`wf.onePerPairEvent`, default on) | a second config of the same indicator pair × symbol × side × type entering in the same minute (best ranked executes; the rest stay evaluated and recorded) | pair × symbol × side × type × minute |
-| config windows (Base / Main / Real / Entry) | the entry's own config × symbol × side | own closes only |
+| live promotion (real money) | a lane whose own symbol × side closes do not qualify | always per context (`liveContextWf`): a winning long never promotes an unproven short, nor one symbol another |
+| config windows (Base / Main / Real / Entry) | an entry whose config fails its own windows | the config's own closes across symbols and sides (`scope: "config"`, default since 17 Nov); Micro: its own symbol × side lane and its config both (`"both"`); `"context"` and `"auto"` remain options |
 | Signals guard / cluster / acceptance | signal entries | signals only |
 
 Block levels and Relate stacking still read the shared books they are configured to read (Block sources, relation

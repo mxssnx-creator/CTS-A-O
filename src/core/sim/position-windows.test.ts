@@ -46,6 +46,9 @@ const policy = {
   entry: 2,
   maxDrawdownPositions: 4,
   byRange: {},
+  // these cases pin the per-context lane semantics (scope "context"); the config-wide default is in
+  // sim/continuous-evaluation.test.ts
+  scope: "context" as const,
 };
 function fixture(values: number[], symbol = "A", side: 1 | -1 = 1, cfg = id) {
   return values.map(

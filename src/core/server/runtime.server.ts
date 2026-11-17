@@ -7646,6 +7646,22 @@ export class CoreRuntime {
     return model.byConfigSide;
   }
   /** Settled post-Base model outcomes and funded OWNED PAPER executions are distinct evidence, never venue fills. */
+  /**
+   * Real-money promotion judges each exact symbol × side lane on its own closes, whatever the research scope: a winning
+   * long record never promotes an unproven short, nor one symbol another (docs/strategy-independence.md).
+   */
+  // only the derived window policy is cached (keyed on the policy object); the options are built fresh on every call,
+  // because the runtime updates this.wf in place after each compute (a cached copy of it would read stale fields)
+  private liveContextMemo: { pw: object; ctx: object } | null = null;
+  private liveContextWf(): WalkForwardOptions {
+    const pw = this.wf.gates.positionWindows;
+    if (!pw) return this.wf;
+    if (this.liveContextMemo?.pw !== pw)
+      this.liveContextMemo = { pw, ctx: { ...pw, scope: "context" as const,
+        byRange: Object.fromEntries(Object.entries(pw.byRange ?? {}).map(([k, v]) => [k, { ...v, scope: "context" as const }])) } };
+    return { ...this.wf, gates: { ...this.wf.gates, positionWindows: this.liveContextMemo.ctx as typeof pw } };
+  }
+
   livePromotionGate(lane: { cfg: string; sym: string; side: number; entryT?: number; id?: string }, now = Date.now()): LiveGate {
     const n = Math.max(
       1,
@@ -7725,9 +7741,9 @@ export class CoreRuntime {
       !tp.heldOnly &&
       (isSignalInd(ind) ||
         (baseAllowsTape(tp, this.wf) &&
-          (!this.wf.basePassed || configEval(tp, now, this.wf).ok) &&
-          configDirectionEval(tp, now, this.wf, lane.side).ok &&
-          engineContextValid(tp, now, this.wf, lane.sym, lane.side))) &&
+          (!this.wf.basePassed || configEval(tp, now, this.liveContextWf()).ok) &&
+          configDirectionEval(tp, now, this.liveContextWf(), lane.side).ok &&
+          engineContextValid(tp, now, this.liveContextWf(), lane.sym, lane.side))) &&
       (!isSignalInd(ind) ||
         (signalValidationOk(tp, now, this.wf, lane.sym, lane.side) &&
           (!this.wf.signalBasePassed || this.wf.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) &&

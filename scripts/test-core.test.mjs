@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
-import { coreTestInvocation } from "./test-core.mjs";
+import { coreTestInvocation, defaultCoreConcurrency } from "./test-core.mjs";
 
 const runner = resolve("scripts/test-core.mjs");
 
@@ -31,7 +31,7 @@ test("core compute workers default to one and an explicit two leaves serial file
   assert.equal(defaults.workers, 1);
   assert.equal(parallel.env.CTS_CORE_WORKERS, "2");
   assert.equal(parallel.workers, 2);
-  assert.equal(parallel.concurrency, 1);
+  assert.equal(parallel.concurrency, defaults.concurrency, "compute workers never change file concurrency");
   assert.deepEqual(parallel.files, defaults.files);
   assert.deepEqual(parallel.args, defaults.args, "worker throughput cannot alter test inventory or filters");
   assert.equal(parallel.env.CTS_CORE_LIVE, "0");
@@ -123,4 +123,16 @@ test("invalid or repeated shard specifications cannot silently omit verification
   const unknown = spawnSync(process.execPath, [resolve("scripts/test.mjs"), "--skip-everything"], { encoding:"utf8", timeout:30_000 });
   assert.equal(unknown.status, 1);
   assert.match(unknown.stderr, /Supported test option/);
+});
+
+test("core test files run two at a time only on a host with room for two computes; an explicit value wins", () => {
+  const files = ["src/core/sim/symbol-directions.test.ts"];
+  const GiB = 1024 ** 3;
+  assert.equal(defaultCoreConcurrency({ memBytes: 16 * GiB, cpus: 4 }), 2);
+  assert.equal(defaultCoreConcurrency({ memBytes: 8 * GiB, cpus: 4 }), 1);
+  assert.equal(defaultCoreConcurrency({ memBytes: 16 * GiB, cpus: 1 }), 1);
+  assert.equal(coreTestInvocation(files, {}, undefined, { memBytes: 16 * GiB, cpus: 4 }).concurrency, 2);
+  assert.equal(coreTestInvocation(files, {}, undefined, { memBytes: 8 * GiB, cpus: 4 }).concurrency, 1);
+  assert.equal(coreTestInvocation(files, { CTS_CORE_TEST_CONCURRENCY: "1" }, undefined, { memBytes: 64 * GiB, cpus: 16 }).concurrency, 1);
+  assert.ok(coreTestInvocation(files, {}, undefined, { memBytes: 16 * GiB, cpus: 4 }).args.includes("--test-concurrency=2"));
 });

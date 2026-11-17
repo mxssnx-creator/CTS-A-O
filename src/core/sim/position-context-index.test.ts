@@ -17,7 +17,7 @@ test('all-context count evaluation matches scalar contexts with bounded column t
   [...symbols,...symbols],rows,[],[]);
  const base=defaultWalkForward(DEFAULT_SETTINGS);
  const o={...base,mode:'fixed' as const,rangeGate:undefined,gates:{...base.gates,
-  positionWindows:{...DEFAULT_POSITION_WINDOWS,base:4,main:4,real:3,entry:2,byRange:{},byConfig:{},blocks:undefined},
+  positionWindows:{...DEFAULT_POSITION_WINDOWS,base:4,main:4,real:3,entry:2,byRange:{},byConfig:{},blocks:undefined,scope:"context" as const},
   minPf:1.05,minGreen:0,maxDdr:0,lossPrior:false}};
  const reads={symI:0,side:0};
  const observed=new Proxy(tape,{get(target,key,receiver){if(key==='symI'||key==='side')reads[key]++;return Reflect.get(target,key,receiver);}});
@@ -52,7 +52,7 @@ test('count context ownership follows replaced symbol and side columns',()=>{
   entry:100,exit:102,r:.02,mult:1,reason:'tp',kind:'normal',bars:1,mfe:0,mae:0}));
  const tape=makeTape('own','follow','ema-9-21@m1',{tp:.01,sl:.01,trail:0,hold:1},'normal',['A','B'],rows,[],[]);
  const d=defaultWalkForward(DEFAULT_SETTINGS),o={...d,rangeGate:undefined,
-  gates:{...d.gates,minPf:1.05,maxDdr:0,lossPrior:false,positionWindows:{...DEFAULT_POSITION_WINDOWS,main:4,real:3,entry:2}}};
+  gates:{...d.gates,minPf:1.05,maxDdr:0,lossPrior:false,positionWindows:{...DEFAULT_POSITION_WINDOWS,main:4,real:3,entry:2,scope:"context" as const}}};
  assert.equal(positionConfigEval(tape,end,o,'A',1).ok,true);
  assert.equal(symStats(tape,'A',1,0,end).n,6);
  configEval(tape,end,o);

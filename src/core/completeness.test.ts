@@ -124,6 +124,8 @@ const rangeKeys = (r: string): Record<string, Case> => ({
 const CASES: Record<string, Case> = {
   ...Object.fromEntries(["base","main","real","entry","maxDrawdownPositions"].map(k=>[`gates.positionWindows.${k}`,num(1,500,{int:true})])),
   "gates.positionWindows.byRange.mc.base":num(1,500,{int:true}),
+  "gates.positionWindows.scope": oneOf(["config", "context", "auto", "both"], ["invalid", 1]),
+  "gates.positionWindows.byRange.mc.scope": oneOf(["config", "context", "auto", "both"], ["invalid", 1]),
   "gates.positionWindows.byRange.mn.base":num(1,500,{int:true}),
   tfMin: oneOf([1, 5, 15, 30, 60], [0, 2, 240]),
   tfs: oneOf([[1], [1, 5, 15, 30]], [[5], [1, 2], [1, 60]]),
