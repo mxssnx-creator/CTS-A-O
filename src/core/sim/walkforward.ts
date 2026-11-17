@@ -1399,7 +1399,9 @@ export function makeTape(
       throw new Error("compact tape cannot retain per-entry stop-limit provenance");
     tp.exitT[i] = t.exitT;
     tp.entryT[i] = t.entryT;
-    tp.r[i] = t.r;
+    // Float64Array assignment otherwise converts a restored null return into zero.
+    const r = typeof t.r === "number" && Number.isFinite(t.r) ? t.r : NaN;
+    tp.r[i] = r;
     tp.entry[i] = t.entry;
     tp.exit[i] = t.exit;
     tp.symI[i] = symIdx.get(t.sym) ?? 0;
@@ -1408,7 +1410,6 @@ export function makeTape(
     tp.bars[i] = Math.min(65535, t.bars);
     tp.vol[i] = t.vol ?? 1;
     tp.level[i] = Math.min(255, t.level ?? 0);
-    const r = t.r;
     tp.gp[i + 1] = tp.gp[i] + (r > 0 ? r : 0);
     tp.gl[i + 1] = tp.gl[i] + (r < 0 ? -r : 0);
     tp.rs[i + 1] = tp.rs[i] + r;
