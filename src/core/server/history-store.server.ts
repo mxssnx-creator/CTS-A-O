@@ -11,6 +11,7 @@ import {
   ftruncateSync,
 } from "node:fs";
 import { tmpdir, totalmem } from "node:os";
+import { isMainThread } from "node:worker_threads";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import * as zlib from "node:zlib";
@@ -31,7 +32,10 @@ function historyCacheBytes(): number {
     const mb = Number(env);
     if (Number.isFinite(mb) && mb >= 1 && mb <= 8192) return Math.floor(mb * MiB);
   }
-  return Math.max(64 * MiB, Math.min(1024 * MiB, Math.floor((totalmem() * 0.06) / MiB) * MiB));
+  const main = Math.max(64 * MiB, Math.min(1024 * MiB, Math.floor((totalmem() * 0.06) / MiB) * MiB));
+  // every worker thread opens its own stores with this budget: a quarter of the main thread's (at least 64 MiB), so
+  // a pool of workers cannot multiply the cache into gigabytes
+  return isMainThread ? main : Math.max(64 * MiB, Math.floor(main / 4 / MiB) * MiB);
 }
 /** Bound automatic in-memory accumulation; this does not limit any historical sample. */
 export function historyMemoryBytes(): number {
