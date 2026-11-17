@@ -15,7 +15,8 @@ describe("Block settings preserve independent Shared ratio and accepted-order hi
     assert.throws(()=>checkSettings({block:{holdUntilNet:1}} as never));
   });
   it("round trips the operator's continuous 0.2 ratio with a higher Shared override", () => {
-    const block = JSON.parse(JSON.stringify({ ...DEFAULT_BLOCK, ratio: 0.2, sharedRatio: 0.4,
+    // the ratio arithmetic on the overall source's level (a pooled source, opt-in since 17 Nov)
+    const block = JSON.parse(JSON.stringify({ ...DEFAULT_BLOCK, sources: { ...DEFAULT_BLOCK.sources, overall: true }, ratio: 0.2, sharedRatio: 0.4,
       steps: 0, maxMult: 2, mode: "shared", historySource: "accepted-orders" }));
     assert.doesNotThrow(() => checkMerged(DEFAULT_SETTINGS, { block }));
     const levels = { config: 0, overall: 2, symbol: 0, direction: 0, indication: 0, type: 0 };
@@ -26,7 +27,7 @@ describe("Block settings preserve independent Shared ratio and accepted-order hi
   });
 
   it("keeps legacy unset Shared ratio distinct from an explicit zero override", () => {
-    const legacy = { ...DEFAULT_BLOCK, ratio: 0.2, steps: 0, mode: "shared" as const };
+    const legacy = { ...DEFAULT_BLOCK, sources: { ...DEFAULT_BLOCK.sources, overall: true }, ratio: 0.2, steps: 0, mode: "shared" as const };
     const levels = { config: 0, overall: 1, symbol: 0, direction: 0, indication: 0, type: 0 };
     assert.equal(blockDecide(levels, legacy, false).vol, 1.2);
     assert.equal(blockDecide(levels, { ...legacy, sharedRatio: 0 }, false).vol, 1);

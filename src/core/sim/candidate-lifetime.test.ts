@@ -24,7 +24,9 @@ it("releasing processed Real candidates preserves every settled order, deduplica
   // result - trades, feed, steps, diagnostics - hashes exactly as before (checked field by field against the previous code).
   // 17 Nov 2026: the bench pins independent variants with onePerPairEvent off; the echoed option is the only change
   // (candidates, settled, feed and the step hash are unchanged).
-  assert.equal(r.fullResultSha256, "be80f58ac94204dd11574cae3eeb6f395056e2997c8cda972bb815ad60cc46a3");
+  // 17 Nov 2026 (later): DEFAULT_BLOCK reads each config's own record (config source alone, configScope "config"); the
+  // echoed opts.block is the only changed field (every trade, feed, step and diagnostic field hashes as before).
+  assert.equal(r.fullResultSha256, "13d7f676492e8acbab1592428ff52cb2b439cdd5bb193062b548ad9a408d4cd5");
   assert.equal(r.stepProgressSha256, "9b11bef4ae499a18825a4df9d13223436fe392839fbdbd07240611de0404a59a");
   assert.deepEqual(r.heap.map((x: { step: number }) => x.step), [1, 2, 3, 4]);
 });
