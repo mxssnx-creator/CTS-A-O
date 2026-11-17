@@ -18,7 +18,7 @@ const tape = (ind: string, k: number, kind: StratKind = "normal", minuteShift = 
   return makeTape(id, "follow", ind, { tp: 0.01, sl: 0.01, trail: 0, hold: 32 }, kind, ["A"], rows, [], []);
 };
 const options = (over: Partial<WalkForwardOptions> = {}): WalkForwardOptions => {
-  const d = defaultWalkForward(DEFAULT_SETTINGS);
+  const d = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
   return { ...d, mode: "fixed", seatSet: "validated", preH: 12, longH: 12, simH: 6, stepH: 1, robustFrac: 0, preGate: false,
     normalBaseMinPf: 0, symGate: "off", sideGateN: 0, lastN: 0, validLastN: 12,
     gates: { ...d.gates, minTrades: 9, minPf: 1.05, lastNFloor: 9,
