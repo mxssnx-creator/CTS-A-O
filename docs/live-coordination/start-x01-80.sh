@@ -13,4 +13,10 @@ set -Eeuo pipefail
 export CTS_X01_SIGNALS=true
 export CTS_CORE_WORKERS="${CTS_CORE_WORKERS:-2}"
 export CTS_CORE_HISTORY_CACHE_MB="${CTS_CORE_HISTORY_CACHE_MB:-256}"
-exec "$(dirname "${BASH_SOURCE[0]}")/start-x01-20-minvol.sh" "${1:-80}" 80
+# Each compute worker may hold up to CTS_CORE_WORKER_HEAP_MB of V8 heap (default 2048) plus its transferred tapes. With
+# 3-4 workers that, not the history cache, drove native memory to 10 GB on 80 symbols and made the guard abort and
+# restart the compute at 80 %. A 1.25 GB heap per worker keeps the pool inside the host, and returning freed arenas to the
+# OS early (trim threshold 128 KiB) stops freed tape buffers from staying resident between phases.
+export CTS_CORE_WORKER_HEAP_MB="${CTS_CORE_WORKER_HEAP_MB:-1280}"
+export MALLOC_TRIM_THRESHOLD_="${MALLOC_TRIM_THRESHOLD_:-131072}"
+exec "$(dirname "${BASH_SOURCE[0]}")/start-x01-20-minvol.sh" "${1:-80}" "${CTS_X01_SYMBOLS:-80}"
