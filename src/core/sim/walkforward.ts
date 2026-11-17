@@ -3198,6 +3198,8 @@ export interface WalkForwardResult {
   signalActiveEnd?: string[];
   /** why each signal unit is or is not in signalActiveEnd (counts per direction and reason, the top long units) */
   signalActivationEnd?: SignalActivationEnd;
+  /** block.auto: each relation × block count's record at the end of the run (key "source#level", or "key#level") */
+  blockAuto?: Array<{ key: string; n: number; pf: number; raise: boolean | null }>;
   /**
    * the signal candidates of the run before any gate: every config's entry in the run, and how many of them belonged to
    * a unit not active at their step (dropped before the gates — counted here, not as skips: they are every config of
@@ -8404,6 +8406,8 @@ export function* walkForwardGen(
     ...(s2 ? { s2: s2.snapshot(stopT) } : {}),
     ...(exitS2.size ? { exitS2: Object.fromEntries([...exitS2].map(([cfg, own]) => [cfg, own.snapshot(stopT)])) } : {}),
     ...(relateBook ? { relate: relateBook.summary() } : {}),
+    // block.auto: every relation × count's record at the end of the run (results, PF, verdict)
+    ...(book?.auto ? { blockAuto: book.auto.table() } : {}),
     ...(hasHedgeEnd ? { hedgeEnd: hedgeEndKeys ?? [] } : {}),
     ...(o.signalRank
       ? { signalSteps, signalActiveEnd: signalActiveEnd ?? [], signalActivationEnd: activationEnd(activationRep) }

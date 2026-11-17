@@ -33,14 +33,15 @@ import { exitScopeSuffix } from "../exit-scope.ts";
 import { rangeOfId } from "../minimal-coord.ts";
 
 export type BlockSource = "config" | "lane" | "overall" | "symbol" | "direction" | "indication" | "type" | "range";
+// Order fixes the bit of each source in stored window stamps (autoSources): new relations are appended, never inserted.
 export const BLOCK_SOURCES: readonly BlockSource[] = [
   "config",
-  "lane",
   "overall",
   "symbol",
   "direction",
   "indication",
   "type",
+  "lane",
   "range",
 ];
 /** The config's own relations (config-wide and its symbol × side lane): window 1, never pooled with another config. */

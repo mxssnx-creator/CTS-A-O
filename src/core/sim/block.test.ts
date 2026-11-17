@@ -181,6 +181,9 @@ describe("Block sources", () => {
       direction: 2,
       indication: 2,
       type: 2,
+      // the own lane is judged on its tape in this legacy book (not listed); the range relation: untagged = wide, long
+      lane: 0,
+      range: 2,
     });
     assert.deepEqual(bookLevels(b, { sym: "B", side: -1, kind: "macd" }, 3), {
       overall: 0,
@@ -188,6 +191,8 @@ describe("Block sources", () => {
       direction: 0,
       indication: 0,
       type: 0,
+      lane: 0,
+      range: 0,
     });
     assert.deepEqual(bookLevels(b, { sym: "C", side: 1, kind: "ema" }, 3), {
       overall: 0,
@@ -196,6 +201,9 @@ describe("Block sources", () => {
       indication: 0,
       // type "normal" (the default): only the losing macd entry
       type: 0,
+      lane: 0,
+      // the same (wide) range on the long side: the two winners
+      range: 2,
     });
     assert.deepEqual(bookLevels(null, { sym: "A", side: 1, kind: "rsi" }, 3), {
       overall: 0,
@@ -203,6 +211,8 @@ describe("Block sources", () => {
       direction: 0,
       indication: 0,
       type: 0,
+      lane: 0,
+      range: 0,
     });
   });
 
@@ -241,11 +251,13 @@ describe("Block sources", () => {
   it("defaults to the config set only; shared = max, additive = sum", () => {
     assert.deepEqual(sourcesOf(B), {
       config: true,
+      lane: false,
       overall: false,
       symbol: false,
       direction: false,
       indication: false,
       type: false,
+      range: false,
     });
     const lv = { config: 1, overall: 2, symbol: 3, direction: 0, indication: 1, type: 0 };
     assert.equal(combineLevels(lv, B), 1);

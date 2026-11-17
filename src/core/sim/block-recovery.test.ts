@@ -27,7 +27,8 @@ for (const windowAuto of [false, true]) test(`recovery persists independently un
   const d = blockDecide(levels, policy, false);
   const row = { ...identity, accepted: true, blockAttribution: d.blockAttribution, bsrc: d.src, r: -.02 };
   book.add(row);
-  for (const source of BLOCK_SOURCES) {
+  // the relations this decision raised (the six of `levels`; lane and range stand at 0 there)
+  for (const source of Object.keys(levels) as Array<keyof typeof levels>) {
     const key = sourceKey(source, row);
     assert.equal(book.level(key, 1), 1, "losing last-N must not erase outstanding recovery");
     assert.ok(book.recoveryState(key)!.net < 0);
@@ -37,7 +38,7 @@ for (const windowAuto of [false, true]) test(`recovery persists independently un
   assert.ok(book.recoveryState("all")!.net < 0);
   book.add({ ...row, cfg: "set-b", sym: "B", ind: "ema@m5", side: -1, type: "trailing", r: .02 });
   assert.equal(book.recoveryState("all"), null, "Overall can recover across its own whole pool");
-  for (const source of BLOCK_SOURCES.filter(s => s !== "overall"))
+  for (const source of (Object.keys(levels) as Array<keyof typeof levels>).filter(s => s !== "overall"))
     assert.ok(book.recoveryState(sourceKey(source, row))!.net < 0, "sibling relations cannot clear this recovery");
   book.add({ ...row, r: .01, accepted: false });
   assert.ok(book.recoveryState(sourceKey("config", row))!.net < 0);

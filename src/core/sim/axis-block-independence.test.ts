@@ -50,17 +50,23 @@ const ctx = { sym: "AAA-USDT", side: 1 };
 const close = (cfg: string, r: number, sym = "AAA-USDT", side = 1, type = "normal", ind = IND): BlockBookEntry =>
   ({ cfg, sym, side, kind: "osc", ind, r, type, accepted: true });
 
-describe("Block on each config's own record (shipped default)", () => {
-  it("the shipped Block reads the config source alone, config-wide", () => {
-    assert.deepEqual(o.block.sources, { config: true, overall: false, symbol: false, direction: false, indication: false, type: false });
+// the config's own relations only (config-wide + its lane), as a desk sets them: the independence these cases check
+const own = { ...o, block: { ...o.block, auto: { enabled: false }, sources: {
+  config: true, lane: true, overall: false, symbol: false, direction: false, indication: false, type: false, range: false } } };
+
+describe("Block: the config's own relations and the pooled ones under Auto", () => {
+  it("ships every relation on: the config's own config-wide and lane records, the pooled relations, each count under Auto", () => {
+    for (const k of ["config", "lane", "overall", "symbol", "direction", "indication", "type", "range"])
+      assert.equal((o.block.sources as Record<string, boolean>)[k], true, k);
     assert.equal(o.block.configScope, "config");
     assert.equal(DEFAULT_BLOCK.configScope, "config");
+    assert.equal(o.block.auto?.enabled, true);
   });
 
-  it("no other config's closes move a config's raise: other configs, symbols, sides, types and Axis siblings", () => {
+  it("the own relations: no other config's closes move a config's raise (other configs, symbols, sides, types, Axis siblings)", () => {
     const a = tape(id(1), 5);
-    const empty = execDecision(a, at, o, { ...ctx, book: blockBookOf(o.block) });
-    const crowd = blockBookOf(o.block);
+    const empty = execDecision(a, at, own, { ...ctx, book: blockBookOf(own.block) });
+    const crowd = blockBookOf(own.block);
     // the same pair's other variants, other symbols and sides, other types (an Axis depth of the same pair), the same
     // indication: winners and losers, enough to put every pooled source at its top level
     for (let i = 0; i < 30; i++) {
@@ -69,32 +75,53 @@ describe("Block on each config's own record (shipped default)", () => {
       crowd.add(close(ax("ax-linear2"), 0.03, "AAA-USDT", 1, "axis"));
       crowd.add(close(id(4, "trailing"), 0.01, "CCC-USDT", 1, "trailing"));
     }
-    assert.deepEqual(execDecision(a, at, o, { ...ctx, book: crowd }), empty);
-    // the opt-in pooled sources do read them: that is the difference the default removes
-    const pooled = { ...o, block: { ...o.block, sources: { ...o.block.sources, overall: true, symbol: true } } };
+    assert.deepEqual(execDecision(a, at, own, { ...ctx, book: crowd }), empty);
+    // the pooled relations do read them: switched on they raise from other configs' closes
+    const pooled = { ...own, block: { ...own.block, sources: { ...own.block.sources, overall: true, symbol: true } } };
     assert.notDeepEqual(
       execDecision(a, at, pooled, { ...ctx, book: crowd }),
       execDecision(a, at, pooled, { ...ctx, book: blockBookOf(pooled.block) }),
     );
   });
 
-  it("its own closes raise it config-wide: closes on another symbol and side count, under 'context' they do not", () => {
+  it("under the shipped Auto a pooled count raises only while its own record passes", () => {
     const a = tape(id(1), 5);
-    const own = blockBookOf(o.block);
-    for (let i = 0; i < 4; i++) own.add(close(a.id, 0.01, "BBB-USDT", -1));
-    const d = execDecision(a, at, o, { ...ctx, book: own });
+    const shipped = { ...o, block: { ...o.block, auto: { enabled: true, n: 10, min: 4, pf: 1.1 } } };
+    const book = blockBookOf(shipped.block);
+    // other configs' closes: three winners, then four that entered at that level and lost, then the level back up
+    for (let i = 0; i < 3; i++) book.add({ ...close(id(2), 0.01, "BBB-USDT"), entryT: T0 + i * H - 1, exitT: T0 + i * H });
+    for (let i = 0; i < 4; i++) book.add({ ...close(id(2), -0.01, "BBB-USDT"), entryT: T0 + 3 * H, exitT: T0 + (4 + i) * H });
+    for (let i = 0; i < 3; i++) book.add({ ...close(id(2), 0.002, "BBB-USDT"), entryT: T0 + 8 * H, exitT: T0 + (9 + i) * H });
+    const d = execDecision(a, at, { ...shipped, blockTrace: true }, { ...ctx, book });
+    const by = (d as { blockDecidedBy?: Record<string, string> }).blockDecidedBy ?? {};
+    assert.equal(by.overall, "auto", JSON.stringify(by));
+    assert.equal(book.auto!.verdict("overall", "all", 3).raise, false);
+    const legs = (d as { legs?: Record<string, number> }).legs ?? {};
+    assert.equal(legs.overall, undefined, `the losing overall count does not raise: ${JSON.stringify(d)}`);
+  });
+
+  it("its own closes raise it config-wide (config) and on its lane only for that symbol × side (lane)", () => {
+    const a = tape(id(1), 5);
+    const cfgOnly = { ...own, block: { ...own.block, sources: { ...own.block.sources, lane: false } } };
+    const wide = blockBookOf(cfgOnly.block);
+    for (let i = 0; i < 4; i++) wide.add(close(a.id, 0.01, "BBB-USDT", -1));
+    const d = execDecision(a, at, cfgOnly, { ...ctx, book: wide });
     assert.ok(d.ok && (d.level ?? 0) >= 1 && (d.vol ?? 1) > 1, JSON.stringify(d));
-    const ctxScope = { ...o, block: { ...o.block, configScope: "context" as const } };
-    const exact = blockBookOf(ctxScope.block);
-    for (let i = 0; i < 4; i++) exact.add(close(a.id, 0.01, "BBB-USDT", -1));
-    const e = execDecision(a, at, ctxScope, { ...ctx, book: exact });
-    assert.ok(e.ok && (e.level ?? 0) === 0, `the exact symbol × side record holds none of those closes: ${JSON.stringify(e)}`);
+    const laneOnly = { ...own, block: { ...own.block, sources: { ...own.block.sources, config: false } } };
+    const elsewhere = blockBookOf(laneOnly.block);
+    for (let i = 0; i < 4; i++) elsewhere.add(close(a.id, 0.01, "BBB-USDT", -1));
+    const e = execDecision(a, at, laneOnly, { ...ctx, book: elsewhere });
+    assert.ok(e.ok && (e.vol ?? 1) === 1, `its lane on AAA long holds none of those closes: ${JSON.stringify(e)}`);
+    const here = blockBookOf(laneOnly.block);
+    for (let i = 0; i < 4; i++) here.add(close(a.id, 0.01));
+    const f = execDecision(a, at, laneOnly, { ...ctx, book: here });
+    assert.ok(f.ok && (f.vol ?? 1) > 1, `its own lane's closes raise it: ${JSON.stringify(f)}`);
   });
 
   it("the config-wide level equals a plain reading of the config's own closes in exit order", () => {
     let seed = 11;
     const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
-    const book = blockBookOf(o.block);
+    const book = blockBookOf(own.block);
     const mine: number[] = [];
     const t = { sym: "AAA-USDT", side: 1, kind: "osc", ind: IND, type: "normal", cfg: id(1) };
     for (let i = 0; i < 400; i++) {
@@ -105,11 +132,11 @@ describe("Block on each config's own record (shipped default)", () => {
       if (ownClose) mine.push(r);
       // plain reading: level n counts when the sum of the config's last n closes is positive
       let level = 0, sum = 0;
-      for (let n = 1; n <= o.block.maxLevel && n <= mine.length; n++) {
+      for (let n = 1; n <= own.block.maxLevel && n <= mine.length; n++) {
         sum += mine[mine.length - n];
         if (sum > 0) level++;
       }
-      assert.equal(book.level(book.keyOf("config", t), o.block.maxLevel), level, `close ${i}`);
+      assert.equal(book.level(book.keyOf("config", t), own.block.maxLevel), level, `close ${i}`);
     }
     assert.equal(book.keyOf("config", t), `c:${id(1)}`);
     assert.equal(sourceKey("config", t), `c:${id(1)}|AAA-USDT|1`, "an object without configScope keeps the exact key");
