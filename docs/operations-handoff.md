@@ -1,3 +1,21 @@
+## 2026-11-17 — disjoint Last-N precision
+
+On the `8c530a06550abea68b7ee5582787675528b8362a` baseline, the shared
+disjoint-window prefix arithmetic could erase a very small gain or loss after
+a larger earlier return. The bounded recovery sums the affected window from
+its own retained observations and preserves signed near-flat results; unknown
+observations still fail closed. The pre-fix regression produced an infinite PF
+for a window whose actual return PF was 0.5. Four shared-window tests and 163
+position/stage/strategy tests passed together; typecheck passed. The tested
+code is the shared Last-N source and test in this change; the exact published
+commit and CI results belong to its pull request.
+
+No CTS-A-O market replay or venue action was performed for this precision fix.
+The latest unchanged reference remains 0/246,345 validated per hourly decision
+in the 12-symbol, 12h-prehistory plus 12h-trading retrospective replay; passing
+PF and funded execution PF are unavailable, with zero funded orders/positions.
+This arithmetic correction does not establish profitable defaults or fills.
+
 ## 2026-11-16 — evaluation provenance, simulation progress and scheduling
 
 PR #286 repairs stale ownership/evaluator provenance, disjoint-window statistics,
