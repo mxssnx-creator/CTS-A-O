@@ -210,6 +210,17 @@ test("unknown returns stay in N; old unknowns outside N do not poison recovery",
     "stale evidence does not become fresh",
   );
 });
+test("position windows do not turn missing returns into flat closes",()=>{
+  const missing=[0.02,null,0.02,0.02] as unknown as number[];
+  assert.equal(positionStats(missing,4).known,false);
+  assert.equal(positionStats([null,0.02,0.02,0.02] as unknown as number[],3).known,true);
+});
+test("compact tapes retain missing return evidence for the exact configuration",()=>{
+  const missing=[0.02,null,0.02,0.02] as unknown as number[];
+  assert.equal(positionConfigEval(tape(missing),T,options(),"A",1).ok,false);
+  const older=[null,0.02,0.02,0.02,0.02] as unknown as number[];
+  assert.equal(positionConfigEval(tape(older),T,options(),"A",1).ok,true);
+});
 
 test("corrupt ownership or chronology cannot qualify older wins at selection or admission",()=>{
  const good=tape(Array(8).fill(.02)),o=options();

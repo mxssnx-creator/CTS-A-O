@@ -169,7 +169,9 @@ export function positionStats(values: readonly number[], requested: number, part
     drawdown = 0,
     maxDrawdownPositions = 0,
     wins = 0;
-  for (const r of selected) {
+  for (const value of selected) {
+    // Restored JSON may contain null for an unavailable return; never coerce it to a flat close.
+    const r = typeof value === "number" && Number.isFinite(value) ? value : NaN;
     gp += Math.max(r, 0);
     gl += Math.max(-r, 0);
     sum += r;

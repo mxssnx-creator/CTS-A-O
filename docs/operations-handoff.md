@@ -1,3 +1,18 @@
+## 2026-11-17 — missing return evidence in position windows
+
+On merged baseline `1fe070102abdb96d986757ebde14ed2f9de6ea32`, two
+regressions reproduced a missing JSON return being coerced to a flat close:
+once in the scalar position-window calculator and once while writing a
+Float64 compact tape. Both paths now retain the outcome as unknown, so the
+affected exact window cannot qualify; an older unknown outside the current
+window still permits recovery. The focused position/processed-stage tests and
+typecheck pass. The exact published commit and CI status belong to the PR.
+
+No new CTS-A-O market replay or account action was performed for this fix.
+The prior 12-symbol, 12h-prehistory + 12h-trading replay remains 0/246,345
+validated per hourly decision; passing and funded execution PF are unavailable,
+and funded orders/positions remain zero. The correction is not an economic result.
+
 ## 2026-11-17 — disjoint Last-N precision
 
 On the `8c530a06550abea68b7ee5582787675528b8362a` baseline, the shared
