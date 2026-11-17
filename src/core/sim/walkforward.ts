@@ -4075,7 +4075,14 @@ const EMPTY_POSITION_CONTEXTS: ReadonlyMap<number, Uint32Array> = new Map();
 function positionEvaluationInput(tp: ConfigTape, t: number) {
   if (!positionTapeValid(tp)) return null;
   const before = lowerBound(tp.exitT, t);
-  return { contexts: before ? prepareSignalContexts(tp) : EMPTY_POSITION_CONTEXTS, before, returns: tp.r };
+  // The per-context index is built on the first lane-scoped judgment only: a config-wide window reads the tape's own
+  // exit-ordered rows and never needs it (most tapes under the default scope), so a selection does not rebuild it.
+  let contexts: ReadonlyMap<number, Uint32Array> | undefined = before ? undefined : EMPTY_POSITION_CONTEXTS;
+  return {
+    get contexts(): ReadonlyMap<number, Uint32Array> { return (contexts ??= prepareSignalContexts(tp)); },
+    before,
+    returns: tp.r,
+  };
 }
 function positionContextEval(
   tp: ConfigTape,
@@ -4099,10 +4106,10 @@ function positionContextEval(
   const partial = partialFloorOf(policy, o.gates.lastNFloor);
   // scope "config": the config's own last N closes on every symbol and side (rows are in exit order). Scope "auto": the
   // context's own closes once it holds its floor (an independent lane), else the config's own record across symbols
-  const own = slot >= 0 && (side === 1 || side === -1)
+  const scope = positionScopeOf(tp, policy);
+  const own = scope !== "config" && slot >= 0 && (side === 1 || side === -1)
     ? input.contexts.get(slot * 2 + (side > 0 ? 1 : 0)) : undefined;
   const ownEnd = own ? lowerBound(own, input.before) : 0;
-  const scope = positionScopeOf(tp, policy);
   // scope "both" (Micro's default): the lane's own window AND the config's record must pass; its own sample is reported
   if (scope === "both") {
     const lane = judge(false);
@@ -5814,10 +5821,13 @@ function qualifiedDirectionTape(
         : null;
 }
 
-/** Only queried config contexts allocate an index; original tape returns/times are never copied. */
+/** Only queried config contexts allocate an index; original tape returns/times are never copied.
+ * The bound covers a whole book of lane-scoped tapes (Micro's "both" scope reads every Micro tape at each selection):
+ * at 512 a book of a few thousand Micro tapes rebuilt every index on every call. An index is 4 bytes per close, half
+ * of the tape's own return column, so the bound adds at most about half of the indexed tapes' resident returns. */
 const signalContextIndices = new DerivedCache<ConfigTape, {
   source: CountSignalSource; n: number; contexts: Map<number, Uint32Array>;
-}>(512);
+}>(16_384);
 const completeSignalContexts = new WeakSet<Map<number, Uint32Array>>();
 function currentSignalContexts(tp: ConfigTape): Map<number, Uint32Array> {
   const cached = signalContextIndices.get(tp);
