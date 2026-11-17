@@ -34,6 +34,22 @@ test("processed negative windows retain losses, reject only later admission and 
  assert.throws(()=>book.acceptPostBase(identity,"bad",42,{...guarded,negativeFilter:{windows:[21],mode:"any",maxPf:1}}));
 });
 
+test("signed processed windows still honor their separate recent-loss filter",()=>{
+ const book=new ProcessedSetBook("model",40);
+ for(let n=0;n<33;n++)enterAndClose(book,identity,2*n,n<20?.1:-.01);
+ const blocks={long:20,short:10,minimal:3,shortPolarity:"negative" as const,minimalPolarity:"negative" as const};
+ const veto=negativeLastN({windows:[1]});
+ const blocked=book.verdict(identity,"postBase",9,1.1,66,veto,blocks);
+ assert.equal(blocked.state,"failed");assert.equal(blocked.blockedBy,"negative-filter");
+ assert.ok(blocked.pf!>1);assert.equal(blocked.n,33);
+ assert.equal(book.verdict(identity,"postBase",9,1.1,66,negativeLastN({windows:[33]}),blocks).state,"qualified");
+ assert.equal(book.verdict(identity,"postBase",9,1.1,66,negativeLastN({windows:[34]}),blocks).state,"unknown");
+ const guarded={...policy,negativeFilter:veto,blocks:{validation:blocks}};
+ const entry=book.acceptPostBase(identity,"signed-veto",66,guarded);
+ assert.equal(entry.stage,"postBase");assert.equal(entry.validation.blockedBy,"negative-filter");
+ assert.doesNotThrow(()=>ProcessedSetBook.restore(JSON.parse(JSON.stringify(book.snapshot()))));
+});
+
 test("Validation and Real use consecutive processed sets and require complete own windows", () => {
   const book = new ProcessedSetBook("paper", 12);
   for (let n = 0; n < 9; n++) {
