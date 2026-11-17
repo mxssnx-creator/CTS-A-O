@@ -4094,15 +4094,17 @@ function positionContextEval(
   if(!input) return {ok:false,fail:"closes",n:0,pf:NaN,net:NaN,gp:NaN,gl:NaN,
     windowBasis:"positions",requestedN:counts.main};
   const slot = tp.syms.indexOf(sym);
-  const indices = slot >= 0 && (side === 1 || side === -1)
+  // scope "config": the config's own last N closes on every symbol and side (rows are in exit order)
+  const pooled = policy.scope === "config";
+  const indices = pooled ? undefined : slot >= 0 && (side === 1 || side === -1)
     ? input.contexts.get(slot * 2 + (side > 0 ? 1 : 0)) : undefined,
-    end = indices ? lowerBound(indices, input.before) : 0;
+    end = pooled ? input.before : indices ? lowerBound(indices, input.before) : 0;
   // gates.lastNFloor: a window with fewer closes than requested but at least this many is judged on the closes it has
   const partial = partialFloorOf(policy, o.gates.lastNFloor);
   const take = (n: number, stage?: "base"|"main"|"real"|"entry") => {
     const blocks=stage?policy.blocks?.[stage]:undefined; if(blocks)n=blockRequired(blocks);
     const values: number[] = [];
-    for (let j = Math.max(0, end - n); j < end; j++) values.push(input.returns[indices![j]]);
+    for (let j = Math.max(0, end - n); j < end; j++) values.push(input.returns[pooled ? j : indices![j]]);
     return positionStageStats(values,n,blocks,minPfForTape(tp,o),partial);
   };
   const main = take(counts.main,"main"),
@@ -4151,7 +4153,7 @@ function positionContextEval(
     const parts = Math.max(2, o.durableSplits),
       values: number[] = [];
     if (mainLongN < parts) return no("stable");
-    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input.returns[indices![j]]);
+    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input.returns[pooled ? j : indices![j]]);
     let passing = 0;
     for (let k = 0; k < parts; k++) {
       const a = Math.floor((values.length * k) / parts),
@@ -4166,7 +4168,7 @@ function positionContextEval(
   if (blocks >= 2) {
     if (mainLongN < 2 * blocks) return no("stable");
     const values: number[] = [];
-    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input.returns[indices![j]]);
+    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input.returns[pooled ? j : indices![j]]);
     for (let k = 0; k < blocks; k++) {
       const a = Math.floor((values.length * k) / blocks),
         b = Math.floor((values.length * (k + 1)) / blocks),

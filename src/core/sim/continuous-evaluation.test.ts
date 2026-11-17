@@ -94,3 +94,19 @@ it("progress: no work slice of the simulation counts as a completed hour; the ba
   assert.ok(before[Math.floor(before.length / 2)] < 6 * 0.9, `mid-run fraction ${before[Math.floor(before.length / 2)]}`);
   assert.ok(Math.max(...fractions) <= 6);
 });
+
+it("scope config: the config's own last N closes on every symbol decide, so a sparse context can enter", () => {
+  // the config wins on A (14 closes) and has only 2 closes on B: per context B never fills the floor of 9
+  const rows = [...history(5).map((x) => ({ ...x, sym: "A" })), ...run(18).map((x) => ({ ...x, sym: "A" })),
+    { entryOffset: -3 * H, r: 0.01, sym: "B" }, { entryOffset: -2 * H, r: 0.01, sym: "B" },
+    ...Array.from({ length: 4 }, (_, i) => ({ entryOffset: 25 * M + i * 60 * M, r: 0.01, sym: "B" }))];
+  const withScope = (scope?: "config") => {
+    const o = options();
+    return { ...o, gates: { ...o.gates, positionWindows: { ...o.gates.positionWindows!, ...(scope ? { scope } : {}) } } };
+  };
+  const context = walkForward(u, [tape(rows)], withScope());
+  const config = walkForward(u, [tape(rows)], withScope("config"));
+  assert.equal(context.trades.filter((t) => t.sym === "B").length, 0, "per context, B has too few own closes");
+  assert.ok(config.trades.filter((t) => t.sym === "B").length > 0, "config-wide, B trades on the config's record");
+  assert.ok(config.trades.filter((t) => t.sym === "A").length >= context.trades.filter((t) => t.sym === "A").length);
+});
