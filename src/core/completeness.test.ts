@@ -218,6 +218,7 @@ const CASES: Record<string, Case> = {
   "block.mode": oneOf(["shared", "additive", "overall"]),
   "block.ratio": num(0, 2),
   "block.historySource": oneOf(["accepted-orders", "real-candidates"]),
+  "block.configScope": oneOf(["config", "context"]),
   "block.maxLevel": { ...num(1, 12), with: [["block.minActiveLevel", 1]] },
   "block.minActiveLevel": { ...num(1, 12), with: [["block.maxLevel", 12]] },
   "block.maxMult": num(1, 8),
