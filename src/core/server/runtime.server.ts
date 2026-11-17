@@ -244,6 +244,7 @@ import { volumeFactorForIndication } from "../volume-factor.ts";
 import { isDeepStrictEqual } from "node:util";
 import { type BlockBook, blockBookOf, blockStackCap } from "../sim/block.ts";
 import { trailBar } from "../sim/backtest.ts";
+import { checkSideValidation } from "../settings-check.ts";
 import { advanceExitProtection, createExitProtection } from "../sim/exit-protection.ts";
 import {
   activeSignals,
@@ -8637,6 +8638,7 @@ export const WF_KEYS = [
   "seatQuietH",
   "invertSeats",
   "sideValidation",
+  "sideValidationAuto",
 ] as const;
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
 export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
@@ -8717,7 +8719,13 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   }
   num("seatQuietH", 0, 48); // seat cool-off hours (0 = off)
   if (p.invertSeats !== undefined) p.invertSeats = Boolean(p.invertSeats); // contrarian execution (evaluation only)
-  if (p.sideValidation !== undefined) p.sideValidation = Boolean(p.sideValidation); // D1: each side judged on its own record
+  // D1: each side judged on its own record. on / off / auto; booleans map to on / off (sideValidationOn reads both)
+  if (p.sideValidation !== undefined) {
+    checkSideValidation(p as never);
+    if (p.sideValidation === true) p.sideValidation = "on";
+    else if (p.sideValidation === false) p.sideValidation = "off";
+  }
+  if (p.sideValidationAuto !== undefined) checkSideValidation(p as never);
   if (p.causalBase !== undefined) p.causalBase = Boolean(p.causalBase); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);

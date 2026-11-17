@@ -8,6 +8,7 @@ import {
   makeTape,
   selectFixed,
   sideMaskOf,
+  sideValidationOn,
   walkForward,
   type WalkForwardOptions,
 } from "./walkforward.ts";
@@ -177,5 +178,50 @@ describe("wf.sideValidation: trade credit", () => {
   it("with the switch off the same seat also credits its short trades", () => {
     const res = walkForward(universe(), [tp()], runOpts({ sideValidation: false }));
     assert.ok(res.trades.some((x) => x.side === -1), "the short side trades when not validated per side");
+  });
+});
+
+describe("wf.sideValidation: mode resolution (on / off / auto, boolean compatibility)", () => {
+  it("booleans map to on / off, and an unset value is on", () => {
+    assert.equal(sideValidationOn({}), true, "unset = on");
+    assert.equal(sideValidationOn({ sideValidation: true }), true);
+    assert.equal(sideValidationOn({ sideValidation: false }), false);
+    assert.equal(sideValidationOn({ sideValidation: "on" }), true);
+    assert.equal(sideValidationOn({ sideValidation: "off" }), false);
+  });
+
+  it("auto resolves to wf.sideValidationAuto, which defaults to on", () => {
+    assert.equal(sideValidationOn({ sideValidation: "auto" }), true, "no stored auto value = on");
+    assert.equal(sideValidationOn({ sideValidation: "auto", sideValidationAuto: "on" }), true);
+    assert.equal(sideValidationOn({ sideValidation: "auto", sideValidationAuto: "off" }), false);
+  });
+
+  it("the stored auto value is ignored unless the mode is auto", () => {
+    assert.equal(sideValidationOn({ sideValidation: "on", sideValidationAuto: "off" }), true);
+    assert.equal(sideValidationOn({ sideValidation: "off", sideValidationAuto: "on" }), false);
+  });
+
+  it("the defaults resolve to on", () => {
+    assert.equal(sideValidationOn(defaultWalkForward(DEFAULT_SETTINGS)), true);
+    assert.equal(defaultWalkForward(DEFAULT_SETTINGS).sideValidation, "on");
+  });
+
+  it("selection follows the resolved mode: auto with auto off seats the pooled rule (sides 3)", () => {
+    const pooled = selectFixed([tp()], t, opts({ sideValidation: "auto", sideValidationAuto: "off" })).picks;
+    assert.equal(pooled[0]?.sides, 3);
+    const perSide = selectFixed([tp()], t, opts({ sideValidation: "auto", sideValidationAuto: "on" })).picks;
+    assert.equal(perSide[0]?.sides, 1);
+    assert.equal(selectFixed([tp()], t, opts({ sideValidation: "off" })).picks[0]?.sides, 3);
+    assert.equal(selectFixed([tp()], t, opts({ sideValidation: "on" })).picks[0]?.sides, 1);
+    assert.equal(selectFixed([tp()], t, opts({ sideValidation: false })).picks[0]?.sides, 3, "false = off");
+  });
+
+  it("trade credit follows the resolved mode: auto with auto off credits the short trades too", () => {
+    const universe = () =>
+      makeUniverse([barsFromCandles(SYM, 15, syntheticCandles(SYM, 15, 1800, NOW, 3))]);
+    const runOpts = (extra: Partial<WalkForwardOptions>): WalkForwardOptions =>
+      ({ ...opts(extra), startT: NOW - 2 * H, simH: 2, stepH: 1, preH: 6, longH: 24 });
+    const res = walkForward(universe(), [tp()], runOpts({ sideValidation: "auto", sideValidationAuto: "off" }));
+    assert.ok(res.trades.some((x) => x.side === -1), "the pooled rule credits the short side");
   });
 });

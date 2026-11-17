@@ -9,6 +9,7 @@
 // Neither builds tapes: tactics that shape tapes at build time are listed as "needs a recompute".
 import type { Trade, StrategyToggles } from "../domain/types.ts";
 import type { WalkForwardOptions, CoordSettings } from "./walkforward.ts";
+import { sideValidationOn } from "./walkforward.ts";
 import { profitFactor, modeledUnitStatsOf as unitStatsOf } from "../metrics/stats.ts";
 import { typeOf } from "../statistics.ts";
 import {
@@ -412,6 +413,23 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
       ? {}
       : { status: "na" as const, why: "no ranked signals to hedge with" }),
   });
+
+  // D1 (wf.sideValidation): each side of a seat judged on its own record, against the pooled rule. The row flips the
+  // resolved state (auto included); contrarian execution keeps the pooled rule, so there is nothing to flip.
+  {
+    const sv = sideValidationOn(base);
+    push({
+      id: "coord:sideValidation",
+      group: "coordination",
+      label: `Per-side seat validation ${sv ? "off" : "on"}`,
+      change: `seat sides judged ${sv ? "per side → pooled" : "pooled → per side"}`,
+      asRun: base.sideValidation === "auto" ? `auto → ${onOff(sv)}` : onOff(sv),
+      opts: { ...base, sideValidation: sv ? "off" : "on" },
+      ...(base.invertSeats
+        ? { status: "na" as const, why: "contrarian execution (invertSeats) keeps the pooled rule" }
+        : {}),
+    });
+  }
 
   // Block
   const mode = base.block.mode ?? "shared";

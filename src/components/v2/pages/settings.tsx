@@ -4574,6 +4574,52 @@ export function SettingsPage() {
             );
           })()}
         </Panel>
+        <Panel
+          title="Special Coordinations"
+          sub="wf.sideValidation · auto resolves to the stored value below"
+        >
+          {(() => {
+            // same rule as sideValidationOn (src/core/sim/walkforward.ts): booleans map to on / off, unset = on
+            const raw = wf.sideValidation ?? "on";
+            const mode = raw === true ? "on" : raw === false ? "off" : raw;
+            const autoVal = wf.sideValidationAuto ?? "on";
+            const on = mode === "off" ? false : mode === "auto" ? autoVal !== "off" : true;
+            const state = mode === "auto" ? `auto → ${on ? "on" : "off"}` : on ? "on" : "off";
+            return (
+              <div className="v2-grid v2-cols-2">
+                <Field
+                  label={`Per-side seat validation · state ${state}`}
+                  hint="on: each seat's long and short side must each pass the seat gates on its own closes of the validation window (a side that fails is not traded by that seat) · off: the pooled rule, both sides judged as one record · auto: the value of the auto field. Default on. Both directions stay open."
+                >
+                  <select
+                    className="v2-select"
+                    aria-label="Per-side seat validation"
+                    value={mode}
+                    onChange={(e) => setW("sideValidation", e.target.value)}
+                  >
+                    <option value="on">on</option>
+                    <option value="off">off</option>
+                    <option value="auto">auto</option>
+                  </select>
+                </Field>
+                <Field
+                  label="Auto resolves to"
+                  hint="UNCALIBRATED: on until a longer measurement sets it (the current data loads only the 18 and 19 Oct windows completely). Not a measured result."
+                >
+                  <select
+                    className="v2-select"
+                    aria-label="Auto resolves to"
+                    value={autoVal}
+                    onChange={(e) => setW("sideValidationAuto", e.target.value)}
+                  >
+                    <option value="on">on</option>
+                    <option value="off">off</option>
+                  </select>
+                </Field>
+              </div>
+            );
+          })()}
+        </Panel>
         <Panel title="Live stage" sub="off by default · also requires CTS_CORE_LIVE=1 on the host">
           <div className="v2-grid v2-cols-2">
             <Field label="Enabled">

@@ -358,7 +358,13 @@ export interface WalkForwardOptions {
    * traded by that seat; a seat with neither side passing is not seated. Both directions stay open. Off = the pooled
    * rule (both sides judged as one record, both traded). Default on; ignored under invertSeats.
    */
-  sideValidation?: boolean;
+  sideValidation?: SideValidationMode | boolean;
+  /**
+   * wf.sideValidation = "auto": the mode it resolves to ("on" or "off"). UNCALIBRATED: "on" until a longer measurement
+   * (not available with the current data: only the 18 and 19 Oct windows load completely) sets it. Recorded in
+   * docs/positive-coordinations.md once measured; never read as a measured result.
+   */
+  sideValidationAuto?: "on" | "off";
   /**
    * Range cells (micro, minimal, short, minimal plus): before a seat, the last `lastN` closes must also clear this
    * higher PF. Causal (only closes before the step). Unset = the ranges pass the same gates as the wide grid.
@@ -702,7 +708,9 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     lastN: 0,
     lastNMinPf: PF_NEUTRAL,
     // D1: each side of a seat is judged on its own closes of the validation window (sideValidation, default on)
-    sideValidation: true,
+    sideValidation: "on",
+    // wf.sideValidation "auto" resolves to this. UNCALIBRATED: "on" until a longer measurement sets it (see the field)
+    sideValidationAuto: "on",
     // best-set validation: the last 15 closes must clear min PF and the DDT gate before a seat — 6 of 6 hours positive,
     // net +36 % and 42 % more orders than 25, PF 3.43 against 3.62 (50: PF 3.40 at 48 % fewer orders) (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12))
     validLastN: 15,
@@ -3655,6 +3663,20 @@ function maxHoldOf(tp: ConfigTape): number {
 /** The scores a passing config carries out of configPassAt (one object, reused: the selection copies what it keeps). */
 const passOut = { lcb: 0, gh: 0, ddt: 0 };
 
+/** wf.sideValidation modes: each side on its own record ("on"), the pooled rule ("off"), or wf.sideValidationAuto ("auto"). */
+export type SideValidationMode = "on" | "off" | "auto";
+
+/**
+ * The one resolution of wf.sideValidation: true when each side is judged on its own record. Booleans are accepted
+ * (true = "on", false = "off"); unset = "on"; "auto" = wf.sideValidationAuto (UNCALIBRATED, default "on").
+ */
+export function sideValidationOn(o: { sideValidation?: unknown; sideValidationAuto?: unknown }): boolean {
+  const m = o.sideValidation;
+  if (m === false || m === "off") return false;
+  if (m === "auto") return o.sideValidationAuto !== "off";
+  return true;
+}
+
 /**
  * D1 (wf.sideValidation): the sides of a validation window [a, b) whose OWN closes pass the seat gates, as a bitmask
  * (1 = long, 2 = short). A side is enabled when it has at least `minN` closes, a positive net and PF ≥ `minPf`.
@@ -3837,7 +3859,7 @@ export function* selectFixedGen(
     }
     // D1: each side judged on its own closes of the same window; neither side passing = no seat
     const sides =
-      o.sideValidation !== false && !o.invertSeats
+      sideValidationOn(o) && !o.invertSeats
         ? sideMaskOf(tp, a, b, o.gates.minTrades ?? 0, info.minPf)
         : 3;
     if (!sides) continue;
@@ -5521,7 +5543,7 @@ export function* walkForwardGen(
       const stepEnd = t + stepH * H;
       const exitCap = stepEnd + maxHoldOf(tp);
       // D1: a seat trades only the sides its own validation admitted (p.sides, 3 = both)
-      const sideBits = p.sides ?? 3;
+      const sideBits = sideValidationOn(o) ? (p.sides ?? 3) : 3;
       for (let i = lowerBound(tp.exitT, t); i < tp.n; i++) {
         if (tp.exitT[i] >= exitCap) break;
         const e = tp.entryT[i];

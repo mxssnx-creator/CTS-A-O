@@ -3,8 +3,23 @@ import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, type CoreSettings } from "./
 import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
 
+/**
+ * wf.sideValidation: "on" | "off" | "auto" (booleans accepted: true = on, false = off); wf.sideValidationAuto: "on" | "off".
+ * Only the listed strings pass; anything else is refused.
+ */
+export function checkSideValidation(wf: { sideValidation?: unknown; sideValidationAuto?: unknown }) {
+  const m = wf.sideValidation;
+  if (m !== undefined && typeof m !== "boolean" && m !== "on" && m !== "off" && m !== "auto")
+    throw new Error("wf side validation: on, off or auto");
+  const a = wf.sideValidationAuto;
+  if (a !== undefined && a !== "on" && a !== "off")
+    throw new Error("wf side validation (auto value): on or off");
+}
+
 /** Range checks for a settings patch (Settings page and preset dialog alike). */
 export function checkSettings(s: Partial<CoreSettings>) {
+  const wf = (s as { wf?: { sideValidation?: unknown; sideValidationAuto?: unknown } }).wf;
+  if (wf) checkSideValidation(wf);
   const num = (v: unknown, lo: number, hi: number, name: string) => {
     if (v === undefined) return;
     if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi)

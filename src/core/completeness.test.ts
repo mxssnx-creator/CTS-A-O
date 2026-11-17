@@ -16,7 +16,7 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "./config.ts";
-import { checkMerged, checkSettings } from "./settings-check.ts";
+import { checkMerged, checkSettings, checkSideValidation } from "./settings-check.ts";
 import { DESK_PRESETS } from "./presets.desk.ts";
 import { LIVE_COORD_PRESETS } from "./presets.live.ts";
 import { RESEARCH_PRESETS as RESEARCH_RAW } from "./presets.research.ts";
@@ -848,5 +848,39 @@ describe("presets: valid and keeping the positive coordinations", () => {
     ] as Array<(typeof PRESETS)[number]>;
     for (const p of bad) assert.ok(offBy(p).length > 0, p.id);
     assert.deepEqual(offBy({ id: "ok", settings: {}, offered: true }), []);
+  });
+});
+
+// ── wf.sideValidation / wf.sideValidationAuto: a walk-forward option, not a CoreSettings leaf, so it is listed here ──
+describe("wf.sideValidation and wf.sideValidationAuto: the listed values only", () => {
+  const refuses = (wf: Record<string, unknown>) => {
+    try {
+      checkSideValidation(wf);
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  it("sideValidation: on, off, auto, booleans and unset are accepted", () => {
+    for (const v of ["on", "off", "auto", true, false, undefined])
+      assert.equal(refuses({ sideValidation: v }), false, String(v));
+  });
+  it("sideValidationAuto: on, off and unset are accepted", () => {
+    for (const v of ["on", "off", undefined])
+      assert.equal(refuses({ sideValidationAuto: v }), false, String(v));
+  });
+  it("sideValidation: any other value is refused", () => {
+    for (const v of ["bogus", "ON", "Auto", "", 1, 0, null])
+      assert.equal(refuses({ sideValidation: v }), true, JSON.stringify(v));
+  });
+  it("sideValidationAuto: anything but on or off is refused (auto itself included)", () => {
+    for (const v of ["auto", "bogus", "ON", "", true, null])
+      assert.equal(refuses({ sideValidationAuto: v }), true, JSON.stringify(v));
+  });
+  it("the defaults are on, and the defaults pass the check", () => {
+    const wf = defaultWalkForward(DEFAULT_SETTINGS) as unknown as Record<string, unknown>;
+    assert.equal(wf.sideValidation, "on");
+    assert.equal(wf.sideValidationAuto, "on");
+    assert.equal(refuses(wf), false);
   });
 });

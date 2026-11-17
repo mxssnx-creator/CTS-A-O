@@ -83,6 +83,21 @@ describe("walk-forward variants", () => {
     assert.equal(vs.find((v) => v.id === "sig:confirm")!.status, "run");
   });
 
+  it("per-side seat validation (wf.sideValidation): the row flips the resolved state, auto included; n/a under invertSeats", () => {
+    const on = walkForwardVariants(base, { kinds, signalTapes: 0 }).find((v) => v.id === "coord:sideValidation")!;
+    assert.equal(on.label, "Per-side seat validation off");
+    assert.equal(on.asRun, "on");
+    assert.equal(on.opts!.sideValidation, "off");
+    assert.equal(on.status, "run");
+    const auto = walkForwardVariants({ ...base, sideValidation: "auto", sideValidationAuto: "off" }, { kinds, signalTapes: 0 })
+      .find((v) => v.id === "coord:sideValidation")!;
+    assert.equal(auto.asRun, "auto → off");
+    assert.equal(auto.opts!.sideValidation, "on", "auto resolved off: the flipped row is on");
+    const inv = walkForwardVariants({ ...base, invertSeats: true }, { kinds, signalTapes: 0 })
+      .find((v) => v.id === "coord:sideValidation")!;
+    assert.equal(inv.status, "na");
+  });
+
   it("engine direction acceptance off by default (operator, 11 Oct): the on row, no parameter rows", () => {
     assert.equal(base.engineSideAccept!.enabled, false);
     const vs = walkForwardVariants(base, { kinds, signalTapes: 0 });

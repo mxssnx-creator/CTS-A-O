@@ -149,6 +149,7 @@ const {
   EVAL_GATES,
   walkForward,
   selectionScoreAt,
+  sideValidationOn,
 } = await import("../src/core/sim/walkforward.ts");
 const { signalActiveHas } = await import("../src/core/signals.ts");
 const { walkForwardVariants, summarizeRun, effectOf, sizingReplay, sizingVariants } =
@@ -382,6 +383,36 @@ function memAvailMb() {
  * fingerprint before the next run (its trades are dropped). A variant whose trade set equals the baseline's is "no
  * effect". Below CTS_CORE_VARIANTS_MIN_MB (default 1500) of available memory the remaining variants are skipped.
  */
+/**
+ * D1 (wf.sideValidation) in the report: the state the run used ("on" / "off", "auto → on|off") and, when the variants
+ * carry the flipped run (coord:sideValidation) beside the baseline, the two-row without / with table. Every number is
+ * from the run's own variant rows; nothing is estimated. `variants` = the dump's variants (null when not computed).
+ */
+function sideValidationReport(wf, variants) {
+  const on = sideValidationOn(wf ?? {});
+  const state = wf?.sideValidation === "auto" ? `auto → ${on ? "on" : "off"}` : on ? "on" : "off";
+  const line = `Per-side seat validation: state ${state} (with = per-side, without = pooled).`;
+  const rows = variants?.rows ?? [];
+  const flipped = rows.find((r) => r.id === "coord:sideValidation" && r.summary);
+  const base = rows.find((r) => r.id === "baseline" && r.summary);
+  if (!flipped || !base) return { state, line, table: null };
+  const fmt = (x, d) => (Number.isFinite(x) ? x.toFixed(d) : "–");
+  const cell = (label, sum) => ({
+    label,
+    orders: sum.orders,
+    pf: fmt(sum.pf, 2),
+    net: `${fmt(sum.net, 2)} %`,
+  });
+  // the baseline is the run as configured; the flipped row is its other side
+  const withSide = on ? base.summary : flipped.summary;
+  const withoutSide = on ? flipped.summary : base.summary;
+  return {
+    state,
+    line,
+    table: [cell("with (per-side)", withSide), cell("without (pooled)", withoutSide)],
+  };
+}
+
 function runVariants(rt, sim) {
   const t0 = Date.now();
   const u0 = rt.lastUniverse;
@@ -4353,6 +4384,18 @@ function renderWriteup(d, dir) {
     ``,
     capLine,
     ``,
+    sideValidationReport(s.wf, d.variants).line,
+    ...(sideValidationReport(s.wf, d.variants).table
+      ? [
+          ``,
+          `| seat validation | state | orders | Return PF | net |`,
+          `|---|---|---:|---:|---:|`,
+          ...sideValidationReport(s.wf, d.variants).table.map(
+            (r) => `| ${r.label} | ${sideValidationReport(s.wf, d.variants).state} | ${r.orders} | ${r.pf} | ${r.net} |`,
+          ),
+        ]
+      : []),
+    ``,
     `Separate virtual diagnostic: ${t.virtual.n} closes · Return PF ${pfStr(t.virtual.gpR, t.virtual.glR, t.virtual.n)} before funding allocation; ${t.zeroAllocatedOrders} zero allocations, ${t.unknownAllocations} unknown allocations. Position episodes, entry requests and open-order counts describe the native virtual book; settled order counts and PF use the owned cohort.`,
     ``,
     `Combined-book PF includes engine and independently qualified Signal orders. The Base-to-execution benchmark uses funded settled engine orders from Base-qualified pairs whose configs passed later validation/seating; Signals are reported as their own cohort. Pre-validation candidate PF is diagnostic only. Return PF is primary: positive net returns ÷ absolute negative net returns after modeled costs. Cash PF (base $1) applies each canonical unit return to equal $1 notionals and should match Return PF. Sized $ PF is a separate diagnostic using actual funded sizes (${sizingTxt(s)}); it can differ as order sizes vary.` +
@@ -4441,6 +4484,8 @@ function renderHtml(d) {
   const { sizedOrders, sizedOpenOrders, ...summary } = d;
   const normalized = {
     ...summary,
+    // D1 (wf.sideValidation): computed here on the script side; the page only reads it (clientMain never calls a helper)
+    sideValidation: sideValidationReport(summary.settings?.wf, summary.variants),
     evidence: {
       ...d.evidence,
       qualification: sessionQualificationEvidence(d.evidence?.qualification),
@@ -4920,7 +4965,7 @@ function clientMain(D) {
 </div>`;
   function variantSections() {
     if (!V) {
-      const none = `<p class="note">Not computed for this report: the run had <code>CTS_CORE_VARIANTS=0</code>, or the dump predates the variants.</p>`;
+      const none = `<p class="note"><b>${esc(D.sideValidation.line)}</b></p><p class="note">Not computed for this report: the run had <code>CTS_CORE_VARIANTS=0</code>, or the dump predates the variants.</p>`;
       return (
         sec("variants", "Strategy types on / off", none) +
         sec("adjustments", "Adjustments on / off", none)
@@ -4937,7 +4982,15 @@ function clientMain(D) {
   <span class="chip">${cnt((r) => r.status === "recompute")} need a recompute</span>
   ${cnt((r) => r.status === "skipped") ? `<span class="chip">${cnt((r) => r.status === "skipped")} skipped (memory)</span>` : ""}
 </div>`;
-    const intro = `<p class="note">Every row re-runs the session's walk-forward on its own final tapes (${V.tapes.toLocaleString("en-US")} config tapes, ${V.signalTapes.toLocaleString("en-US")} of them signal tapes — no new tapes) with <b>one switch flipped</b> against the baseline, the options the session ran with. <b>Changes results</b>: a different set of orders; <b>changes results (volume)</b>: the same orders at other volumes; <b>no effect</b>: the identical trade set — the switch is not working on this window; <b>n/a</b>: it has nothing to act on (e.g. a Block mode with Block off); <b>needs a recompute</b>: it shapes the tapes when they are built. Return PF excludes recorded Block/coordination execution multiples and retains ladder/tape leg semantics. Net, side/type net, marks and drawdown retain volume-weighted trade % (Σ stored r × 100); these are not account cash results. Archived variants without recorded unit gross sums show <b>unit basis not recorded</b> for primary PF. ${V.reproduces ? "The baseline re-run reproduces the session's run exactly." : `<b class="bad">The baseline re-run differs from the session's run</b> (${V.session.orders} orders, net ${n2(V.session.net)} % in the session) — compare the variants with the baseline row, not with the totals above.`} ${run.length} walk-forward runs in ${n2(runMs / 1000, 0)} s (${n2(runMs / Math.max(1, run.length) / 1000, 1)} s each${V.mainSimMs ? `; the session's own walk-forward took ${n2(V.mainSimMs / 1000, 0)} s` : ""}).</p>`;
+    const svR = D.sideValidation;
+    const svHtml = `<p class="note"><b>${esc(svR.line)}</b></p>${
+      svR.table
+        ? `<table class="tw"><thead><tr><th>seat validation</th><th>orders</th><th>Return PF</th><th>net</th></tr></thead><tbody>${svR.table
+            .map((r) => `<tr><td>${esc(r.label)}</td><td>${r.orders}</td><td>${r.pf}</td><td>${r.net}</td></tr>`)
+            .join("")}</tbody></table>`
+        : ""
+    }`;
+    const intro = `${svHtml}<p class="note">Every row re-runs the session's walk-forward on its own final tapes (${V.tapes.toLocaleString("en-US")} config tapes, ${V.signalTapes.toLocaleString("en-US")} of them signal tapes — no new tapes) with <b>one switch flipped</b> against the baseline, the options the session ran with. <b>Changes results</b>: a different set of orders; <b>changes results (volume)</b>: the same orders at other volumes; <b>no effect</b>: the identical trade set — the switch is not working on this window; <b>n/a</b>: it has nothing to act on (e.g. a Block mode with Block off); <b>needs a recompute</b>: it shapes the tapes when they are built. Return PF excludes recorded Block/coordination execution multiples and retains ladder/tape leg semantics. Net, side/type net, marks and drawdown retain volume-weighted trade % (Σ stored r × 100); these are not account cash results. Archived variants without recorded unit gross sums show <b>unit basis not recorded</b> for primary PF. ${V.reproduces ? "The baseline re-run reproduces the session's run exactly." : `<b class="bad">The baseline re-run differs from the session's run</b> (${V.session.orders} orders, net ${n2(V.session.net)} % in the session) — compare the variants with the baseline row, not with the totals above.`} ${run.length} walk-forward runs in ${n2(runMs / 1000, 0)} s (${n2(runMs / Math.max(1, run.length) / 1000, 1)} s each${V.mainSimMs ? `; the session's own walk-forward took ${n2(V.mainSimMs / 1000, 0)} s` : ""}).</p>`;
     const grp = (g) =>
       varRows(g).length
         ? `<h3>${esc(VAR_GROUPS[g].title)}</h3>${g === "tactics" ? "" : varCards(g, VAR_GROUPS[g].title)}<div class="tw" id="tVar_${g}"></div>`
