@@ -190,6 +190,12 @@ export class ProcessedSetBook {
     if(blocks){
       const v=evaluateBlocks(blockPrefix(history.slice(Math.max(0,end-n),end).reverse().map(x=>x.unitReturn),n),blocks,minPf);
       const pf=v.long.pf===Infinity?profitFactor(v.long.gp,0):v.long.pf;
+      if(v.state!=="unknown" && v.state!=="insufficient"){
+        const loss=negativeLastNDecision(history.slice(Math.max(0,end-Math.max(0,...filter?.windows ?? [])),end)
+          .reverse().map(x=>x.unitReturn),filter);
+        if(loss.state==="unknown" || loss.state==="insufficient")return {state:"unknown",n:v.count,pf:null,blockPolicyKey:v.key};
+        if(!loss.pass)return {state:"failed",n:v.count,pf,blockPolicyKey:v.key,blockedBy:"negative-filter"};
+      }
       return {state:v.state,n:v.count,pf:v.state==="unknown"||v.state==="insufficient"?null:pf,blockPolicyKey:v.key,...(v.state==="failed"?{blockedBy:"signed-block" as const}:{})};
     }
     const values = history.slice(Math.max(0, end - n), end);
