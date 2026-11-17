@@ -843,14 +843,14 @@ describe("AutoBlockBook (windowAuto)", () => {
     }
   });
 
-  it("the production and audit book factory passes the actual Block Active toggle", () => {
+  it("the production and audit book factory calculates identically with and without Block Active (Active only coordinates execution)", () => {
     const b = { ...cfg, window: 1, windowCandidates: [1], maxLevel: 3, minActiveLevel: 3 };
     for (const blockActive of [false, true]) {
       const book = bookFor({ block: b, toggles: { block: true, blockActive } })!;
       book.add(entry(.01));
       const e = { ...entry(.01), autoRaise: undefined as number | undefined };
       book.stampEntry(e);
-      assert.equal(e.autoRaise, blockActive ? 0 : 1);
+      assert.equal(e.autoRaise, 1, `blockActive ${blockActive}`);
     }
   });
 

@@ -10808,7 +10808,7 @@ export class CoreRuntime {
     const feed =
       this.realtimeLearning?.sim === this.sim ? this.realtimeLearning.feed : (this.sim?.feed ?? []);
     // (fed only when read: an unread book cost the tick seconds after each new run)
-    const book = wantBook ? blockBookOf(this.wf.block, !!this.wf.toggles.blockActive) : null;
+    const book = wantBook ? blockBookOf(this.wf.block, false) : null;
     const relate = wantRelate ? relateBookFor(this.wf) : null;
     // acceptance on the same tape record the simulation judged on
     const guard = signalGuardFor(this.tapes, this.wf);

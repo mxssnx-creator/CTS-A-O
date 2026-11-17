@@ -3363,7 +3363,10 @@ export function bookFor(o: {
   sideGateN?: number;
   block: Parameters<typeof blockBookOf>[0];
 }): BlockBook | null {
-  return o.toggles.block ? blockBookOf(o.block, !!o.toggles.blockActive) : null;
+  // Block Active only coordinates which entries execute (execDecision). The book's own calculation - levels, the
+  // automatic window's stamps and scores - is the same with or without it, so the procedures always run on the full
+  // candidate record and the Active switch can be flipped without recomputing or starving the evidence.
+  return o.toggles.block ? blockBookOf(o.block, false) : null;
 }
 
 /** Relate keeps its own bounded accepted-order history and never borrows Block/candidate-only evidence. */
