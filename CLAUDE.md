@@ -14,3 +14,4 @@
   (`gates.positionWindows.scope: "config"`); Micro uses its own symbol × side lane and its config both (`"both"`). Every
   strategy type and Active mode runs on its own lanes and never vetoes another (`docs/strategy-independence.md`).
   Changing a scope default needs a causal comparison on the same window (custom variants: `CTS_CORE_VARIANTS_EXTRA`).
+  Explanation and numbers: `docs/config-wide-windows.md`.
