@@ -15,6 +15,7 @@ import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf, type Valid
 import { returnWindow } from "../metrics/return-window.ts";
 import { DerivedCache, derivedCacheBytes } from "./derived-cache.ts";
 import { immutableHistoryGeneration } from "./immutable-history-generation.ts";
+import { tapeOpenTimes } from "./tape-open-times.ts";
 import { exitScopeSuffix, isHistoricExitConfig } from "../exit-scope.ts";
 import { isLowRangeInd, lowRangeGridProtects, lowRangeEnabled } from "../indications/low-range.ts";
 import {
@@ -7338,12 +7339,13 @@ export type SignalEntryCursor = {
   next: number;
   nextT: number;
   openOrder: Uint32Array;
+  openTimes: Float64Array;
   nextOpen: number;
 };
 /** Only metadata and the next closed-entry timestamp are needed while a history has no due entry. */
 export function nextSignalEntryT(cursor: SignalEntryCursor): number {
   return Math.min(cursor.nextT, cursor.nextOpen < cursor.openOrder.length
-    ? cursor.tp.open[cursor.openOrder[cursor.nextOpen]].entryT : Infinity);
+    ? cursor.openTimes[cursor.openOrder[cursor.nextOpen]] : Infinity);
 }
 /** Schedule complete immutable histories without reopening every stored tape at each minute. */
 export function* signalEntryQueueGen(
@@ -7362,11 +7364,14 @@ export function* signalEntryQueueGen(
     for (let i = 0; i < tp.n; i++)
       if (entryT[i] >= startT && entryT[i] < stopT) order[j++] = i;
     order.sort((a, b) => entryT[a] - entryT[b] || a - b);
-    const openOrder = markOpen ? Uint32Array.from(tp.open.map((_, i) => i).filter(i =>
-      tp.open[i].entryT >= startT && tp.open[i].entryT < stopT)) : new Uint32Array(0);
-    openOrder.sort((a, b) => tp.open[a].entryT - tp.open[b].entryT || a - b);
+    const openTimes = markOpen ? tapeOpenTimes(tp) : new Float64Array(0);
+    const eligibleOpen: number[] = [];
+    for (let i = 0; i < openTimes.length; i++)
+      if (openTimes[i] >= startT && openTimes[i] < stopT) eligibleOpen.push(i);
+    const openOrder = Uint32Array.from(eligibleOpen);
+    openOrder.sort((a, b) => openTimes[a] - openTimes[b] || a - b);
     if (order.length || openOrder.length) {
-      const cursor = { tp, order, next: 0, nextT: order.length ? entryT[order[0]] : Infinity, openOrder, nextOpen: 0 };
+      const cursor = { tp, order, next: 0, nextT: order.length ? entryT[order[0]] : Infinity, openOrder, openTimes, nextOpen: 0 };
       queue.push(nextSignalEntryT(cursor), cursor);
     }
     yield -3;
@@ -7395,9 +7400,9 @@ export function* scheduledEngineEntriesGen(
       if (accept) out.push({ tr: tradeAt(tp, i), tp });
       if (++visited % 2048 === 0) yield -6;
     }
-    while (c.nextOpen < c.openOrder.length && tp.open[c.openOrder[c.nextOpen]].entryT < until) {
-      const op = tp.open[c.openOrder[c.nextOpen++]];
-      if (accept) out.push({ tr: markedOpenTrade(tp, op, markT), tp });
+    while (c.nextOpen < c.openOrder.length && c.openTimes[c.openOrder[c.nextOpen]] < until) {
+      const i = c.openOrder[c.nextOpen++];
+      if (accept) out.push({ tr: markedOpenTrade(tp, tp.open[i], markT), tp });
     }
     const nextT = nextSignalEntryT(c);
     if (Number.isFinite(nextT)) queue.push(nextT, c);
@@ -7943,9 +7948,10 @@ export function* walkForwardGen(
             cands.push({ tr: tradeAt(tp, i), tp });
         }
         while (cursor.nextOpen < cursor.openOrder.length) {
-          const op = tp.open[cursor.openOrder[cursor.nextOpen]];
-          if (op.entryT >= batchEnd) break;
+          const i = cursor.openOrder[cursor.nextOpen];
+          if (cursor.openTimes[i] >= batchEnd) break;
           cursor.nextOpen++;
+          const op = tp.open[i];
           if (take(op.sym, op.side, tp.syms.indexOf(op.sym) * 2 + (op.side > 0 ? 1 : 0)))
             cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
         }

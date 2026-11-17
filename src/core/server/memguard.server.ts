@@ -83,7 +83,10 @@ export function memLevel(availMb: number, soft = memSoftMb(), hard = memHardMb()
 export function heapMemLevel(usedMb: number, limitMb: number): MemLevel {
   if (!(limitMb > 0) || !Number.isFinite(limitMb) || !Number.isFinite(usedMb)) return "ok";
   const free = limitMb - usedMb;
-  return free < Math.min(128, limitMb * .04) ? "hard"
+  // Large histories can allocate a whole worker reply between samples. Preserve enough space to abort cleanly
+  // before V8 enters a fatal collection loop; keep the existing smaller-heap proportion for constrained tests.
+  const hardReserve = limitMb >= 1024 ? Math.min(256, limitMb * .08) : Math.min(128, limitMb * .04);
+  return free < hardReserve ? "hard"
     : free < Math.min(512, limitMb * .15) ? "soft" : "ok";
 }
 

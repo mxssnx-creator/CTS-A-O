@@ -18,8 +18,10 @@ import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import * as zlib from "node:zlib";
 import { StringDecoder } from "node:string_decoder";
+import { serialize, deserialize } from "node:v8";
 import { inTapeLayout, tapeBytes, tapeViews, type ConfigTape } from "../sim/walkforward.ts";
 import { registerImmutableHistoryGeneration } from "../sim/immutable-history-generation.ts";
+import { TAPE_OPEN_TIMES } from "../sim/tape-open-times.ts";
 
 const MiB = 1048576;
 /** Bound decoded history independently from retained input history. */
@@ -146,12 +148,11 @@ type Metadata = Pick<
   | "kind"
   | "n"
   | "syms"
-  | "open"
-  | "pending"
   | "fromT"
   | "heldOnly"
   | "carried"
->;
+> & Partial<Pick<ConfigTape, "open" | "pending">>;
+type PositionRecord = { offset: number; packed: number; bytes: number; digest: string };
 export type HistoryRecord = {
   codec: "deflate" | "zstd";
   offset: number;
@@ -159,6 +160,7 @@ export type HistoryRecord = {
   bytes: number;
   digest: string;
   n: number;
+  positions?: PositionRecord;
 };
 type Resource = { fd: number; directory?: string; closed: boolean };
 const resources = new Set<Resource>();
@@ -191,7 +193,8 @@ process.once("exit", () => {
   }
 });
 const slot = Symbol("immutable tape history");
-type Stored = ConfigTape & { [slot]: { store: TapeHistoryStore; record: HistoryRecord } };
+type Stored = ConfigTape & { [slot]: { store: TapeHistoryStore; record: HistoryRecord;
+  positions?: Partial<Pick<ConfigTape, "open" | "pending">> } };
 const columns = [
   "exitT",
   "entryT",
@@ -222,9 +225,29 @@ const descriptors = Object.fromEntries(
     },
   ]),
 );
+const positionDescriptors = Object.fromEntries((["open", "pending"] as const).map((key) => [key, {
+  enumerable: true, configurable: false,
+  get(this: Stored) {
+    const value = this[slot];
+    if (!value.positions || value.positions[key] === undefined) {
+      const loaded = value.store.positions(value.record);
+      value.positions = { ...loaded, ...value.positions };
+    }
+    return value.positions[key];
+  },
+  set(this: Stored, next: ConfigTape[typeof key]) {
+    const value = this[slot];
+    (value.positions ??= {})[key] = next as never;
+  },
+}]));
+function storedOpenTimes(this: Stored): Float64Array {
+  const value = this[slot];
+  const open = value.positions?.open ?? value.store.positions(value.record).open;
+  return Float64Array.from(open, (p) => p.entryT);
+}
 export const historyOf = (tape: ConfigTape): Stored[typeof slot] | undefined =>
   (tape as Stored)[slot];
-function metadata(t: ConfigTape): Metadata {
+function metadata(t: ConfigTape, includePositions = true): Metadata {
   return {
     id: t.id,
     bot: t.bot,
@@ -233,8 +256,7 @@ function metadata(t: ConfigTape): Metadata {
     kind: t.kind,
     n: t.n,
     syms: t.syms,
-    open: t.open,
-    pending: t.pending,
+    ...(includePositions ? { open: t.open, pending: t.pending } : {}),
     ...(t.fromT === undefined ? {} : { fromT: t.fromT }),
     ...(t.heldOnly === undefined ? {} : { heldOnly: t.heldOnly }),
     ...(t.carried === undefined ? {} : { carried: t.carried }),
@@ -253,6 +275,7 @@ export class TapeHistoryStore {
   readonly path: string;
   private cacheLimit: number;
   private codec: HistoryRecord["codec"];
+  private spillPositions: boolean;
   private resource: Resource;
   private end = 0;
   private cached = new Map<HistoryRecord, Columns>();
@@ -268,6 +291,8 @@ export class TapeHistoryStore {
     writeMs: 0,
     maxWriteMs: 0,
     peakCacheBytes: 0,
+    positionBytes: 0,
+    positionReads: 0,
   };
 
   constructor(
@@ -276,10 +301,12 @@ export class TapeHistoryStore {
       path?: string;
       cacheBytes?: number;
       codec?: HistoryRecord["codec"];
+      spillPositions?: boolean;
     } = {},
   ) {
     this.codec =
       options.codec ?? (typeof zlib.zstdCompressSync === "function" ? "zstd" : "deflate");
+    this.spillPositions = options.spillPositions !== false;
     if (this.codec === "zstd" && typeof zlib.zstdCompressSync !== "function")
       throw new HistoryStorageError(
         "Zstandard history storage is unavailable on this Node runtime",
@@ -327,12 +354,18 @@ export class TapeHistoryStore {
     const begin = performance.now(),
       bytes = tapeBytes(tape.n);
     const raw = Buffer.from(tape.exitT.buffer, tape.exitT.byteOffset, bytes);
-    let packed: Buffer;
+    let packed: Buffer, packedPositions: Buffer | undefined, rawPositions: Buffer | undefined;
     try {
       packed =
         this.codec === "zstd"
           ? zlib.zstdCompressSync(raw, { params: { [zlib.constants.ZSTD_c_compressionLevel]: 1 } })
           : zlib.deflateRawSync(raw, { level: 1 });
+      if (this.spillPositions && (tape.open.length || tape.pending.length)) {
+        rawPositions = serialize({ open: tape.open, pending: tape.pending });
+        packedPositions = this.codec === "zstd"
+          ? zlib.zstdCompressSync(rawPositions, { params: { [zlib.constants.ZSTD_c_compressionLevel]: 1 } })
+          : zlib.deflateRawSync(rawPositions, { level: 1 });
+      }
     } catch (error) {
       throw new HistoryStorageError(`Cannot encode calculation history: ${String(error)}`);
     }
@@ -343,15 +376,23 @@ export class TapeHistoryStore {
       bytes,
       digest: createHash("sha256").update(raw).digest("hex"),
       n: tape.n,
+      ...(rawPositions && packedPositions ? { positions: {
+        offset: this.end + packed.length, packed: packedPositions.length, bytes: rawPositions.length,
+        digest: createHash("sha256").update(rawPositions).digest("hex"),
+      } } : {}),
     };
     try {
-      let at = 0;
-      while (at < packed.length) {
-        const n = writeSync(this.resource.fd, packed, at, packed.length - at, this.end + at);
-        if (n <= 0) throw new Error("Short history write");
-        at += n;
+      let offset = this.end;
+      for (const part of packedPositions ? [packed, packedPositions] : [packed]) {
+        let at = 0;
+        while (at < part.length) {
+          const n = writeSync(this.resource.fd, part, at, part.length - at, offset + at);
+          if (n <= 0) throw new Error("Short history write");
+          at += n;
+        }
+        offset += part.length;
       }
-      this.end += packed.length;
+      this.end = offset;
     } catch (error) {
       try {
         ftruncateSync(this.resource.fd, this.end);
@@ -362,11 +403,12 @@ export class TapeHistoryStore {
     }
     this.stats.tapes++;
     this.stats.rawBytes += bytes;
-    this.stats.storedBytes += packed.length;
+    this.stats.storedBytes += packed.length + (packedPositions?.length ?? 0);
+    this.stats.positionBytes += packedPositions?.length ?? 0;
     const elapsed = performance.now() - begin;
     this.stats.writeMs += elapsed;
     this.stats.maxWriteMs = Math.max(this.stats.maxWriteMs, elapsed);
-    return this.restore(metadata(tape), record);
+    return this.restore(metadata(tape, !record.positions), record);
   }
 
   restore(meta: Metadata, record: HistoryRecord): ConfigTape {
@@ -383,11 +425,54 @@ export class TapeHistoryStore {
       !/^[0-9a-f]{64}$/.test(record.digest)
     )
       throw new HistoryStorageError("Invalid calculation history record");
+    if (record.positions && (!Number.isSafeInteger(record.positions.offset) || record.positions.offset < 0 ||
+      !Number.isSafeInteger(record.positions.packed) || record.positions.packed < 1 ||
+      !Number.isSafeInteger(record.positions.bytes) || record.positions.bytes < 1 ||
+      !/^[0-9a-f]{64}$/.test(record.positions.digest)))
+      throw new HistoryStorageError("Invalid calculation position history record");
+    if ((!record.positions && (!Array.isArray(meta.open) || !Array.isArray(meta.pending))) ||
+      (meta.open !== undefined && !Array.isArray(meta.open)) ||
+      (meta.pending !== undefined && !Array.isArray(meta.pending)))
+      throw new HistoryStorageError("Invalid calculation position metadata");
     const tape = { ...meta } as Stored;
-    Object.defineProperty(tape, slot, { value: { store: this, record }, enumerable: false });
+    const supplied = meta.open !== undefined || meta.pending !== undefined
+      ? { ...(meta.open === undefined ? {} : { open: meta.open }), ...(meta.pending === undefined ? {} : { pending: meta.pending }) }
+      : undefined;
+    if (record.positions) { delete (tape as Partial<ConfigTape>).open; delete (tape as Partial<ConfigTape>).pending; }
+    Object.defineProperty(tape, slot, { value: { store: this, record, positions: supplied }, enumerable: false });
     Object.defineProperties(tape, descriptors);
+    if (record.positions) {
+      Object.defineProperties(tape, positionDescriptors);
+      Object.defineProperty(tape, TAPE_OPEN_TIMES, { value: storedOpenTimes, enumerable: false });
+    }
     registerImmutableHistoryGeneration(tape, () => this.resource.closed ? undefined : this.derivedGeneration);
     return tape;
+  }
+
+  positions(record: HistoryRecord): Pick<ConfigTape, "open" | "pending"> {
+    this.check();
+    const state = record.positions;
+    if (!state) throw new HistoryStorageError("Missing calculation position history");
+    try {
+      const packed = Buffer.allocUnsafe(state.packed);
+      let at = 0;
+      while (at < packed.length) {
+        const n = readSync(this.resource.fd, packed, at, packed.length - at, state.offset + at);
+        if (n <= 0) throw new Error("Incomplete position history bytes");
+        at += n;
+      }
+      const raw = record.codec === "zstd"
+        ? zlib.zstdDecompressSync(packed, { maxOutputLength: state.bytes })
+        : zlib.inflateRawSync(packed, { maxOutputLength: state.bytes });
+      if (raw.length !== state.bytes || createHash("sha256").update(raw).digest("hex") !== state.digest)
+        throw new Error("Position history checksum mismatch");
+      const value = deserialize(raw) as Pick<ConfigTape, "open" | "pending">;
+      if (!Array.isArray(value?.open) || !Array.isArray(value?.pending)) throw new Error("Invalid position history");
+      this.stats.positionReads++;
+      return value;
+    } catch (error) {
+      throw new HistoryStorageError(`Cannot read complete position history: ${String(error)}`);
+    }
   }
 
   columns(record: HistoryRecord): Columns {
@@ -473,10 +558,14 @@ export class BoundedHistory {
   retain = (tape: ConfigTape): ConfigTape => {
     if (historyOf(tape)) return tape;
     const buffer = tape.exitT.buffer;
-    if (this.buffers.has(buffer)) return tape;
-    if (this.residentBytes + buffer.byteLength <= this.memoryBytes) {
-      this.buffers.add(buffer);
-      this.residentBytes += buffer.byteLength;
+    // Buffers can be shared by an entire worker reply, but each tape still owns metadata and potentially many
+    // endpoint positions. Count that per tape even when its binary arena has already been admitted.
+    const newBuffer = !this.buffers.has(buffer);
+    const metadataBytes = 1024 + (tape.open.length + tape.pending.length) * 512;
+    const bytes = (newBuffer ? buffer.byteLength : 0) + metadataBytes;
+    if (this.residentBytes + bytes <= this.memoryBytes) {
+      if (newBuffer) this.buffers.add(buffer);
+      this.residentBytes += bytes;
       return tape;
     }
     return (this.store ??= new TapeHistoryStore()).append(tape);
@@ -633,7 +722,8 @@ export function readHistoryManifest(path: string) {
 export type StoredTapeDescriptor = { path: string; record: HistoryRecord; meta: Metadata };
 export function describeStoredTape(tape: ConfigTape): StoredTapeDescriptor | null {
   const value = historyOf(tape);
-  return value ? { path: value.store.path, record: value.record, meta: metadata(tape) } : null;
+  return value ? { path: value.store.path, record: value.record,
+    meta: metadata(tape, !value.record.positions || value.positions !== undefined) } : null;
 }
 export function restoreStoredTapes(rows: readonly StoredTapeDescriptor[]) {
   const stores = new Map<string, TapeHistoryStore>();

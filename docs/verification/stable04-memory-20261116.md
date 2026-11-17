@@ -99,3 +99,24 @@ The one-worker retry began from remote commit `cc11f6e54be3b6ecff06d0c406a147fd8
 root, a 64 MiB resident-history budget, 32 MiB decoded-history budget, 64 MiB derived-index budget and RSS soft/hard
 guards of 3,000/3,400 MiB. The optional tape-memory trace records aggregate tape, open, pending, close, heap and RSS
 counts while worker replies are retained. This records the launch only; a completed result is still required.
+
+That retry completed 100% of strategy tape construction but terminated on a V8 heap exhaustion during assembly,
+after 2,291 seconds, with peak RSS 3,028,696 KiB. Its final trace recorded 822,425 tapes, 4,363,380 open-position
+records and 86,159,235 closes at 98% of construction. No hourly results, post-Base PF, validation percentage or
+execution PF were produced. The position and pending metadata was still retained as individual JavaScript objects
+after binary history had spilled; it was therefore an additional, independently measured memory hotspot.
+
+Spilled tapes now preserve their position metadata in a separately checksummed disk record, materializing mutable
+position arrays when a caller actually reads them. Scheduling can read position entry timestamps without retaining
+every unselected position. A clean worker manifest refers to the same record; if a caller has materialized or changed
+the arrays, their current values are transferred. Corrupt or truncated position records fail explicitly. A synthetic
+30,000-tape, 180,000-position comparison measured 54,048,424 bytes retained heap using the previous store versus
+16,664,712 bytes with lazy positions, with identical sampled position hashes. This is a synthetic allocation
+measurement, not a claim that the full simulation now completes or that its PF is positive.
+
+The resident-history admission budget also charges a conservative per-tape and per-position metadata estimate,
+even when tapes share a binary worker arena. This prevents a large collection of small histories from bypassing the
+budget solely because their columns share a buffer. Heap protection reserves more space on large V8 heaps and is
+rechecked at worker-reply retention yields, giving the runtime more opportunity to cancel safely before a fatal GC.
+The replay started from `0f405149aa58fc0d77bee5042f3be95af3d89eff` predates this subsequent guard/accounting change;
+its outcome must be attributed to that exact source tree rather than to the later safety patch.

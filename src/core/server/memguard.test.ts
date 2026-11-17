@@ -19,6 +19,8 @@ describe("memory guard", () => {
     assert.equal(heapMemLevel(3000, 4096), "ok");
     assert.equal(heapMemLevel(3700, 4096), "soft");
     assert.equal(heapMemLevel(4000, 4096), "hard");
+    assert.equal(heapMemLevel(1900, 2048), "hard", "leave room to stop a large reply before V8 runs out");
+    assert.equal(heapMemLevel(1800, 2048), "soft");
     assert.equal(heapMemLevel(4100, 4096), "hard");
     assert.equal(heapMemLevel(240, 256), "soft");
     assert.equal(heapMemLevel(250, 256), "hard");
