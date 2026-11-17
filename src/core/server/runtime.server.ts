@@ -12763,6 +12763,13 @@ export function restrictHeldBasePairs(
   for (const pair of heldPairs) if (!Object.hasOwn(pairTags, pair)) pairTags[pair] = [];
 }
 
+/** The reach gate of each enabled range (RangeGrid.reachFrac), by range tag. */
+function rangeReachOf(g: CoreSettings["grid"]): Partial<Record<string, number>> | undefined {
+  const out: Partial<Record<string, number>> = {};
+  for (const [tag, r] of [["mc", g.micro], ["mn", g.minimal], ["sh", g.short], ["gn", g.general], ["lg", g.long]] as const)
+    if (r && typeof r.reachFrac === "number" && r.reachFrac > 0) out[tag] = r.reachFrac;
+  return Object.keys(out).length ? out : undefined;
+}
 function protectFloors(s: CoreSettings, rangeFitCutT?: number): EntryFloors {
   const fit = s.grid?.rangeFit;
   return {
@@ -12771,6 +12778,7 @@ function protectFloors(s: CoreSettings, rangeFitCutT?: number): EntryFloors {
     wideEnabled: s.grid.tp.length > 0,
     // range cells fitted to the indication's horizon only when the fit is on; every computed tape is kept (the
     // gates decide the seats; a tape that cannot seat yet still shows in the evaluation and statistics)
+    rangeReach: rangeReachOf(s.grid),
     rangeFit: fit && fit.enabled !== false ? { ...DEFAULT_RANGE_FIT, ...fit } : null,
     ...(rangeFitCutT === undefined ? {} : { rangeFitCutT }),
     rangeMinN: 0,

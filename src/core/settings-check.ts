@@ -731,6 +731,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       // 0.2 like the stop ratios: General / Long trail at every stop of their 0.25–1.5 ladder (13 Oct)
       num(g.trailSlOfTp, 0.2, 5, `${name} trailing stop ×TP`);
       num(g.minSl, 0, 0.2, `${name} min SL`);
+      if ((g as { reachFrac?: unknown }).reachFrac !== undefined)
+        num((g as { reachFrac?: unknown }).reachFrac, 0, 5, `${name} reach gate (share of the target the volatility must cover)`);
       num(g.minTrail, 0, 0.1, `${name} min trail`);
       num(g.minTf, 0, 240, `${name} shortest lane (minutes)`);
       if ((g as { maxHoldMin?: unknown }).maxHoldMin !== undefined)

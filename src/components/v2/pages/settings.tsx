@@ -1952,6 +1952,18 @@ export function RangeEditor(props: {
           <SlRatioEditor title={props.title} spec={s} fine={props.k === "micro"}
             set={(field,value)=>props.set(p(field),value)}/>
           <Field
+            label={`${props.title} reach gate (share of the target)`}
+            hint="Enter only while ATR(14) × √hold covers this share of the target; a target the volatility cannot plausibly reach mostly closes on time or stop and pays the round trip. 0 = off. Short ships 0.5."
+          >
+            <Num
+              step={0.05}
+              min={0}
+              max={5}
+              value={(s as { reachFrac?: number }).reachFrac ?? 0}
+              onChange={(v) => props.set(p("reachFrac"), v)}
+            />
+          </Field>
+          <Field
             label={`${props.title} own minimum stop distance (% net of cost)`}
             hint="The initial stop is never inside the round-trip cost plus this distance. Unset = the global minimum (0.1–1 %). Operator, 12 Nov: each range uses its own minimum."
           >

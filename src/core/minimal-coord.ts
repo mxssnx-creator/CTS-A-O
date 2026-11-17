@@ -172,6 +172,9 @@ export const SHORT_SL: readonly number[] = THIN_SL_TP_RATIOS;
 export const SHORT_RANGE: CoordRange = {
   volumeFactor: 1,
   tp: costTps(9, 14, 1),
+  // Reach gate (17 Nov 2026): enter only while ATR x sqrt(hold) covers half the 1.8-2.8 % target. Short horizons are
+  // cost-bound; a target the volatility cannot plausibly reach mostly closes on time or stop and pays the round trip.
+  reachFrac: 0.5,
   slOfTp: SHORT_SL,
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: THIN_SL_TP_RATIOS[0],

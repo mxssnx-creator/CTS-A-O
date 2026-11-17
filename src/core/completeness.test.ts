@@ -267,6 +267,7 @@ const CASES: Record<string, Case> = {
   "grid.holdH": list(0.25, 72, { max: 64 }),
   "grid.minTrail": num(0, 0.1),
   "grid.minSl": num(0, 0.2),
+  "grid.short.reachFrac": num(0, 5),
   "grid.trailStep": num(0.1, 1),
   "grid.trailingOnly": oneOf([true, false], [0, 1, "true", null]),
   ...rangeKeys("minimal"),

@@ -169,6 +169,12 @@ export interface RangeGrid {
   trailOfTp: readonly number[];
   /** trailing variants use at least this stop ÷ target (a higher stop than the trail) */
   trailSlOfTp?: number;
+  /**
+   * Reach gate (0 / unset = off): a cell of this range enters only while the causal volatility can plausibly cover its
+   * target within its hold - ATR(14)/close x sqrt(hold bars) >= reachFrac x target. A target far beyond that range
+   * mostly closes on time or stop and pays the round-trip cost for nothing (research: short horizons are cost-bound).
+   */
+  reachFrac?: number;
   /** minimum absolute stop distance (fraction of price) */
   minSl?: number;
   /** minimum absolute trailing distance (fraction of price) */

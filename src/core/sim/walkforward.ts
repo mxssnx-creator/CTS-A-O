@@ -1722,6 +1722,8 @@ export interface EntryFilter {
 export type EntryFloors = {
   minSl: number;
   minTrail: number;
+  /** Per range tag: the reach gate (RangeGrid.reachFrac); entries a cell's target cannot plausibly be reached from are dropped. */
+  rangeReach?: Readonly<Partial<Record<string, number>>>;
   /** False disables new ordinary Wide ladders, but retains exact held positions for exit management. */
   wideEnabled?: boolean;
   /** In-process only: retain each finished immutable tape through the caller's bounded history owner. */
@@ -2007,6 +2009,21 @@ export function fittedRangeTps(
     for (const tp of picked) keep.add(`${tag}|${tp}`);
   }
   return keep;
+}
+
+/**
+ * Reach gate of one cell: keep an entry only while ATR(14)/close x sqrt(hold) covers `frac` of the target. Causal: the
+ * entry bar's own completed ATR. NaN volatility (warm-up) keeps nothing.
+ */
+export function reachEntries(sig: Int8Array, b: Bars, k: SeriesCache, tp: number, hold: number, frac: number): Int8Array {
+  if (!(frac > 0) || !(tp > 0)) return sig;
+  const a = k.atr(14);
+  const root = Math.sqrt(Math.max(1, hold));
+  const need = frac * tp;
+  const out = Int8Array.from(sig);
+  for (let i = 0; i < out.length; i++)
+    if (out[i] !== 0 && !(a[i] / b.c[i] * root >= need)) out[i] = 0;
+  return out;
 }
 
 export function filterEntries(sig: Int8Array, b: Bars, k: SeriesCache, f: EntryFilter): Int8Array {
@@ -2350,6 +2367,7 @@ export function* buildTapesGen(
     const recovered = recoveredPlain.get(pairKey) ?? [];
     const recoveredSet = new Set(recovered);
     const pairProtects = own?.length || recovered.length ? [...protects, ...(own ?? []), ...recovered] : protects;
+    const reachMasked = new Map<string, typeof orderedSides>();
     for (const p0 of pairProtects) {
       const exitConfig = p0.exitType === "historic";
       const kind: StratKind = protectKind(p0);
@@ -2465,11 +2483,26 @@ export function* buildTapesGen(
       const trades: Trade[] = [];
       const open: OpenPosition[] = [];
       const pending: ConfigTape["pending"] = [];
+      const reach = !p.exitType && p.tag && !p.trailOnly ? floors?.rangeReach?.[p.tag] : undefined;
       const runSides = p.exitType
         ? p.exitSide
           ? (exitSides.get(p.exitSide) ?? [])
           : []
-        : orderedSides;
+        : reach && reach > 0
+          ? (() => {
+              // one masked copy per (range, target, hold): the stop and trail variants of a cell share it
+              const key = `${p.tag}|${p.tp}|${p.hold}|${reach}`;
+              let masked = reachMasked.get(key);
+              if (!masked) {
+                masked = orderedSides.map(({ symbol: s, direction: sg }) => ({
+                  symbol: s,
+                  direction: reachEntries(sg, u.bars[s], u.caches[s], p.tp, p.hold, reach),
+                }));
+                reachMasked.set(key, masked);
+              }
+              return masked;
+            })()
+          : orderedSides;
       for (const { symbol: s, direction: sg } of runSides) {
         const res = resume(
           id,
