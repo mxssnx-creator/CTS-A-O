@@ -1,0 +1,93 @@
+[
+ {
+  "file": "2026092706-legacy-session-12h-cbdd3bd8.json",
+  "label": "legacy-session-12h",
+  "savedAt": "2026-11-16T14:33:13.489Z",
+  "commit": null,
+  "symbols": 5,
+  "runH": 12,
+  "tactics": "off",
+  "orders": 664,
+  "pf": 2.388818024161469,
+  "net": 273.261175485132,
+  "balanceEnd": 1273.261175485132
+ },
+ {
+  "file": "2026092818-legacy-session-12h-v2-7b1b5dae.json",
+  "label": "legacy-session-12h-v2",
+  "savedAt": "2026-11-16T14:33:13.544Z",
+  "commit": null,
+  "symbols": 5,
+  "runH": 12,
+  "tactics": "off",
+  "orders": 141,
+  "pf": 1.6411494163513642,
+  "net": 0.5023757924716082,
+  "balanceEnd": 10.502375792471609
+ },
+ {
+  "file": "2026092901-legacy-session-12h-v3-1f3b44d5.json",
+  "label": "legacy-session-12h-v3",
+  "savedAt": "2026-11-16T14:33:13.597Z",
+  "commit": null,
+  "symbols": 5,
+  "runH": 12,
+  "tactics": "off",
+  "orders": 136,
+  "pf": 3.006880908557778,
+  "net": 0.8391976099256332,
+  "balanceEnd": 10.839197609925634
+ },
+ {
+  "file": "2026092823-legacy-session-12h-v4-aea606df.json",
+  "label": "legacy-session-12h-v4",
+  "savedAt": "2026-11-16T14:33:13.639Z",
+  "commit": null,
+  "symbols": 5,
+  "runH": 12,
+  "tactics": "off",
+  "orders": 196,
+  "pf": 2.3345643677579275,
+  "net": 1.2230470981532333,
+  "balanceEnd": 11.223047098153234
+ },
+ {
+  "file": "2026092900-legacy-session-12h-v5-36420cc6.json",
+  "label": "legacy-session-12h-v5",
+  "savedAt": "2026-11-16T14:33:13.681Z",
+  "commit": null,
+  "symbols": 5,
+  "runH": 12,
+  "tactics": "off",
+  "orders": 110,
+  "pf": 1.9690373686349583,
+  "net": 0.5143885965694434,
+  "balanceEnd": 10.514388596569443
+ },
+ {
+  "file": "2026092901-legacy-session-12h-v6-9346d535.json",
+  "label": "legacy-session-12h-v6",
+  "savedAt": "2026-11-16T14:33:13.725Z",
+  "commit": null,
+  "symbols": 5,
+  "runH": 12,
+  "tactics": "off",
+  "orders": 119,
+  "pf": 3.8199928554498555,
+  "net": 0.9668167310008753,
+  "balanceEnd": 10.966816731000876
+ },
+ {
+  "file": "2026092706-legacy-session-24h-909119ec.json",
+  "label": "legacy-session-24h",
+  "savedAt": "2026-11-16T14:33:13.766Z",
+  "commit": null,
+  "symbols": 5,
+  "runH": 24,
+  "tactics": "off",
+  "orders": 1190,
+  "pf": 1.6791416842729983,
+  "net": 303.38840497400156,
+  "balanceEnd": 1303.3884049740016
+ }
+]

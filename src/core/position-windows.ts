@@ -12,6 +12,12 @@ export interface PositionWindows extends PositionCounts {
   maxDrawdownPositions: number;
   byRange?: Record<string, Partial<PositionCounts>>;
   byConfig?: Record<string, Partial<PositionCounts>>;
+  /**
+   * true: a window must hold exactly the requested number of own closes, whatever gates.lastNFloor says (the native
+   * mainnet minimums use it). Absent or false: gates.lastNFloor applies as it does everywhere else — a window with fewer
+   * closes than requested but at least lastNFloor is judged on the closes it has (PF, net and every other gate unchanged).
+   */
+  strictCounts?: boolean;
 }
 export const DEFAULT_POSITION_WINDOWS: PositionWindows = {
   base: 40,
@@ -79,6 +85,8 @@ export function checkPositionWindows(p: Partial<PositionWindows>): void {
     throw new Error("Position windows require an object");
   const count = (n: unknown) =>
     Number.isSafeInteger(n) && (n as number) >= 1 && (n as number) <= 500;
+  if (p.strictCounts !== undefined && typeof p.strictCounts !== "boolean")
+    throw new Error("strictCounts: true or false required");
   for (const k of [...stages, "maxDrawdownPositions"] as const)
     if (p[k] !== undefined && !count(p[k]))
       throw new Error(`${k}: 1–500 complete positions required`);
@@ -119,7 +127,15 @@ export function positionCounts(
   };
 }
 /** A scalar oracle also used by Base. Unknown values stay in the last-N sample and cannot pass. */
-export function positionStats(values: readonly number[], requested: number) {
+/**
+ * The shortest window that is judged on the closes it has: gates.lastNFloor, unless the policy is strict (0 = a window
+ * must be complete). Only a window shorter than requested ever uses it.
+ */
+export function partialFloorOf(policy: Pick<PositionWindows, "strictCounts"> | null | undefined, lastNFloor: number | undefined): number {
+  return policy?.strictCounts ? 0 : Math.max(0, Math.floor(lastNFloor ?? 0));
+}
+
+export function positionStats(values: readonly number[], requested: number, partialFloor = 0) {
   const selected = values.slice(-requested);
   let gp = 0,
     gl = 0,
@@ -150,7 +166,8 @@ export function positionStats(values: readonly number[], requested: number) {
   return {
     n,
     requested,
-    complete: n === requested,
+    // complete = the requested closes, or (partialFloor) at least that many when fewer exist yet
+    complete: n === requested || (partialFloor > 0 && n >= partialFloor && n < requested),
     known,
     gp,
     gl,
@@ -176,6 +193,8 @@ export function mainnetPositionWindows(
   });
   return {
     ...p,
+    // the native mainnet minimums are exact sample sizes: no partial window may stand in for them
+    strictCounts: true,
     ...clamp(p),
     byRange: {
       ...Object.fromEntries(
@@ -193,8 +212,8 @@ export function mainnetPositionWindows(
 }
 
 /** Statistics describe the independent long block; coverage describes all requested positions. */
-export function positionStageStats(values:readonly number[],requested:number,blocks?:BlockPolicy,minPf=1.05){
- if(!blocks)return {...positionStats(values,requested),blocksPassed:true};
+export function positionStageStats(values:readonly number[],requested:number,blocks?:BlockPolicy,minPf=1.05,partialFloor=0){
+ if(!blocks)return {...positionStats(values,requested,partialFloor),blocksPassed:true};
  const total=blockRequired(blocks),v=evaluateBlocks(blockPrefix(values.slice(-total).reverse(),total),blocks,Math.max(1.000001,minPf));
  const end=Math.max(0,values.length-blocks.short-blocks.minimal),stats=positionStats(values.slice(Math.max(0,end-blocks.long),end),blocks.long);
  return {...stats,n:v.count,requested:total,complete:v.count===total,known:v.state!=="unknown",blocksPassed:v.state==="qualified"};

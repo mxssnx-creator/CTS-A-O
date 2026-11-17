@@ -18,6 +18,57 @@ export const DONE_STAGE = "Realtime";
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : 0);
 
+const SIMULATION_WORK: Readonly<Record<number, string>> = {
+  [-2]: "settling order books", [-3]: "preparing Signal candidates", [-4]: "indexing Signal histories",
+  [-5]: "ranking Signals", [-6]: "evaluating configuration histories", [-7]: "processing Signal candidates",
+  [-8]: "ordering candidates", [-9]: "checking entry qualification", [-10]: "summarizing trades",
+  [-11]: "settling final orders", [-12]: "finishing candidate histories", [-13]: "ordering Signal candidates",
+  [-14]: "selecting qualified sets", [-15]: "evaluating Signals", [-16]: "evaluating hedge qualification",
+  [-17]: "advancing candidate entries",
+};
+
+/**
+ * The simulation reports its clock, not only completed hours: a yield of SIM_CLOCK_BASE − m says "m simulated minutes done".
+ * The bar and the label follow it, so a long simulation moves every few seconds instead of once per simulated hour.
+ */
+export const SIM_CLOCK_BASE = -1000;
+export const simulationClock = (simulatedMinutes: number): number => SIM_CLOCK_BASE - Math.max(0, Math.floor(simulatedMinutes));
+export const simulatedMinutesOf = (value: number): number | null =>
+  Number.isFinite(value) && value <= SIM_CLOCK_BASE ? SIM_CLOCK_BASE - value : null;
+const clockText = (minutes: number) => `${Math.floor(minutes / 60)} h ${String(Math.floor(minutes % 60)).padStart(2, "0")} min`;
+
+export function simulationWorkLabel(value: number): string {
+  if (simulatedMinutesOf(value) !== null) return "advancing the simulated clock";
+  return value >= 0 ? "completed simulation step" : SIMULATION_WORK[value] ?? "evaluating strategy histories";
+}
+
+/** Long intra-hour work updates its label, never masquerading as another completed trading hour. */
+export function simulationProgress(
+  steps: number,
+  hours: number,
+  validation: string,
+  publish: (completed: number, label: string) => void,
+  clock: () => number = () => performance.now(),
+): (value: number) => void {
+  let completed = 0, nextLabelAt = -Infinity, minutes: number | null = null;
+  return (value) => {
+    if (!Number.isFinite(value)) return;
+    const now = clock();
+    const m = simulatedMinutesOf(value);
+    if (m !== null) {
+      // the clock only moves forward, and is published a few times a second at most
+      minutes = Math.max(minutes ?? 0, m);
+      if (now < nextLabelAt) return;
+    } else if (value < 0 && now < nextLabelAt) return;
+    if (value >= 0) completed = Math.min(steps, completed + 1);
+    nextLabelAt = now + 500;
+    // the bar follows the simulated clock between completed hours, never ahead of the next hour and never behind the done ones
+    const fraction = minutes === null ? completed : Math.min(steps, Math.max(completed, (minutes / Math.max(1, hours * 60)) * steps));
+    publish(fraction, `${hours}h sim · ${minutes === null ? `step ${completed}/${steps}` : `${clockText(minutes)} simulated`} · ${validation}` +
+      (value < 0 && m === null ? ` · ${simulationWorkLabel(value)}` : ""));
+  };
+}
+
 /**
  * Overall fraction of the job: the stage's span scaled by its own fraction, never below `prev` (a job's bar only
  * moves forward). A job without a backfill batch (a compute on new bars) spreads over the whole bar instead of

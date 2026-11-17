@@ -1,3 +1,21 @@
+## 2026-11-16 — evaluation provenance, simulation progress and scheduling
+
+PR #286 repairs stale ownership/evaluator provenance, disjoint-window statistics,
+progress-phase reporting and repeated unselected-history reloads. Exact application
+source863dda46/treee5569a46 passes all three required CI workflows (679engine +118report
+cases in policy; dev/production desktop/mobile inspected). See
+[verification](verification/evaluation-progress-performance-20261116.md) for source seals,
+November14 comparisons, all replay timings and remaining limits.
+
+The requested12symbols/12h prehistory+12h trade replay completes. Final hourly
+post-Base0/246,345 (0%) at every decision; passing/funded PF unavailable, funded
+orders and positions0/0/0. The unchanged Last-75 gate exceeds the maximum62 own
+closes in the full24h fixture. November14 gate comparisons agree; later-qualification
+and replaced-ownership synthetic defects are repaired without gate reductions.
+Independent Ordinary-off Block/Axis controls pass, but the market cohort is empty.
+No optimal economic defaults, complete500ms live cycle or venue profitability is
+established. No live engines, monitoring or accounts started. Draft#219 remains separate.
+
 ## 2026-11-15 — historical request-parent retention
 
 The bounded follow-up to #281 checkpoints the original exact request parents and

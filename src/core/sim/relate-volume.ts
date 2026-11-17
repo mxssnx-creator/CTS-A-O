@@ -394,7 +394,10 @@ export class RelateBook {
     // Before a relation has qualified evidence and a known previous entry, base orders can build that evidence.
     const ready = extras.filter((x) => x.qualified && x.previousKnown);
     const admitted = ready.filter((x) => x.activeStep === 0 || x.level >= x.activeStep);
-    const allowed = !this.config.enabled || ready.length === 0 || admitted.length > 0;
+    // Relate Active is the relation's own lane: a ready relation below its active step adds nothing (its part is
+    // recorded as shadow below, so its evidence keeps building), but it never vetoes the entry's own base volume —
+    // Normal / Trailing / DCA / Axis keep trading their unit. Only an unknown base volume rejects (above).
+    const allowed = true;
     // Shared divides the combined requested additions by the number of independently ready relations. Keep
     // every source's allocated portion, so the next step compounds from its own recorded effective volume.
     const divisor = this.config.mode === "shared" ? Math.max(1, admitted.length) : 1;

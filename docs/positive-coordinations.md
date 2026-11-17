@@ -62,7 +62,8 @@ mandatory coordination is off or an enabled optional gate is weakened (`positive
 | Signals trade their own base | `signals.ownBase: true` | the engine's Normal off / Block Active skip left signals ~16 closes a day |
 | Signal volatility floor | `signals.filter.volFloor: 0.003` | the move must be worth the 0.2 % round trip (worst drawdown 523 vs 660) |
 | Engine direction acceptance (type family × range × side) — **operator: OFF by default, 11 Oct** (see below) | `wf.engineSideAccept = { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 }` | The 6 Oct ON evidence and the later five-window OFF comparison are both retained below; the later operator decision controls the default |
-| Normal and Trailing enabled and running, Block Active off | `toggles.normal: true`, `trailing: true`, `blockActive: false` (code default) | operator, 5 Oct: with Block Active (minimum level 5) only Block-raised entries opened — a 2 h Micro run traded Axis alone |
+| Normal and Trailing enabled and running, Block Active off | `toggles.normal: true`, `trailing: true`, `blockActive: false` (code default) | operator, 5 Oct: with Block Active (minimum level 5) only Block-raised entries opened — a 2 h Micro run traded Axis alone. Since 16 Nov Block Active confines only Block's own raises (`docs/strategy-independence.md`), so it no longer starves Normal / Trailing; the default stays off |
+| One order per pair event | `wf.onePerPairEvent: true` | operator, 17 Nov: a 6-symbol real-feed replay entered up to 2,140 variants of one pair in one minute (10,200 closes from 99 market events), all funded: margin $230 on $10, balance −$16.43; one order per pair × symbol × side × type × minute, the best ranked |
 | Axis on x01 | `toggles.axis: true` | profitable on both sides on x01 (24 h: long PF 1.37, short PF 1.19) |
 | DCA off on x01 | `toggles.dca: false` | lost in every last-N variant of the x01 simulation (PF 0.60–0.81) |
 | Base builds a pair's sets from PF 1 up | `gates.baseSetsMinPf: 1` (code default) | operator, 5 Oct: "it is about the stage Base eval for sets with PF 1+ — that unfiltered sets come out under PF 1 is normal; keep all processing and validate the better ones by PF and DDT". Every set still clears its own stage / range minimum before it trades, so this widens what is computed, never what trades |
@@ -707,3 +708,37 @@ variant beats the as-is setting and Block off in D1a and D1b — recorded here.
   identity carries a side of 0 today.
 - **Stays off** until a causal comparison on the paper or the live book, recorded in this section, says otherwise. Until
   then the default is the pooled record, which is the code as it was before the option.
+
+## Own-close windows judge a short sample again — `lastNFloor` honored (16 Nov 2026) — measured
+
+**Fault.** The position-count policy of 11 Nov (`140c1d89`) made every own-close window all-or-nothing: Base, Main, Real, Entry
+and the range gate required exactly N own closes, and `gates.lastNFloor` / `warmup` (the positive coordination "`lastNFloor`
+still admits a shorter sample", above) had no effect on that path. A context with 36 of 40 closes and PF 6 was refused for
+"closes". In a 12–24 h window almost no config × symbol × direction context reaches 40 (Base/Main) or 75 (range gate), so the
+reports of 12–15 Nov show 0 passing configs and 0 orders at every decision hour.
+
+**Change.** `positionStats` / `positionStageStats` take a partial floor: a window with fewer closes than requested but at
+least `gates.lastNFloor` (default 9) is judged on the closes it has. Everything else is unchanged: PF, net, drawdown,
+`lcb`, green share, the `closes` rule for a window below the floor, and independent block policies (always exact). Wired in
+Base (`basePositionMiss`), Main/Real/Entry and the range gate (`positionContextEval`), the evaluator and the Last-N
+optimizer. **Off switch:** `gates.lastNFloor = 0` restores the 11 Nov behaviour (exact counts) everywhere.
+**Mainnet is strict:** `mainnetPositionWindows` sets `strictCounts`, so the native mainnet sample sizes (Real 12, Entry 25,
+Signals) are never replaced by a partial window.
+
+**Causal comparison (in process, `scripts/core-session.mjs --feed`, 3 symbols, planted trending edge — an evaluation test,
+not profitability evidence).** Same feed, same settings; only the code differs. Short evidence (2 days of data, 24 h
+pre-history, 12 h run), Wide cells only:
+
+| code | funded closes | balance (start 10) |
+|---|---:|---:|
+| before the count policy (`819b6621`) | 3,340 | 52.3 |
+| exact counts (`11a52314`, 15 Nov) | 1,044 | 15.2 |
+| partial windows honored (this change) | 3,425 | 53.7 |
+
+Single pair, 4 days, PF 6.4 on 36 closes: `passes` true / **false** / true for the same three. With the default grid (every range,
+Axis, Block, DCA) and 6 days of data, the 15 Nov code (`11a52314`, `e17d77c7`) admits 0 orders; `819b6621` admits 14,879 and this
+change 156,894 (a planted trend of PF > 20, so the balances are meaningless — the admission counts are the point).
+
+**Still true.** Fewer closes are weaker evidence: the floor is 9, the result half is never waived, and a desk that wants the
+11 Nov policy sets `lastNFloor` 0. The old behaviour is pinned in `sim/position-windows.test.ts` and
+`sim/validation-progression.test.ts` (both with `lastNFloor: 0`); the new one in `position-partial-windows.test.ts`.

@@ -44,7 +44,7 @@ function tape(k: number, tag: RangeTag | undefined, late: number) {
   return makeTape(cfg, "follow", IND, tag ? { ...P, tag } : P, "normal", ["AAA-USDT"], xs, [], []);
 }
 
-const d = defaultWalkForward(DEFAULT_SETTINGS);
+const d = ({ ...defaultWalkForward(DEFAULT_SETTINGS), onePerPairEvent: false /* these cases pin independent variants; the pair-event rule is in sim/pair-event.test.ts */ });
 const base: WalkForwardOptions = {
   ...d,
   toggles: { ...d.toggles, normal: true, trailing: true, block: false, blockActive: false },

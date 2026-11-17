@@ -18,7 +18,7 @@ import { closePool, runOnWorkers } from "./server/pool.server.ts";
 import { positionOrderCounts, openTimeline } from "./positions.ts";
 
 const H = 3_600_000, NOW = Date.UTC(2026, 9, 20, 12);
-const defaults = defaultWalkForward(DEFAULT_SETTINGS);
+const defaults = ({ ...defaultWalkForward(DEFAULT_SETTINGS), onePerPairEvent: false /* these cases pin independent variants; the pair-event rule is in sim/pair-event.test.ts */ });
 const options = { ...defaults, signalOwnBase: true, signalValidLastN: 25, validLastN: 0, lastN: 0,
   preGate: false, rangeGate: undefined, signalGuardN: 0, signalAccept: undefined, signalSideAccept: undefined, signalCluster: undefined,
   gates: { ...defaults.gates, minPf: 1.05, rangeMinPf: undefined, minTrades: 3, maxDdr: 0, maxDdtH: 1000, minGreen: 0, stableBlocks: 0, lossPrior: false, lastNFloor: 0 },

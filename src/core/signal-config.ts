@@ -1,6 +1,6 @@
-import { mergeSlRatioSettings, slRatiosOf } from "./sl-ratios.ts";
+import { SIGNAL_SL_RATIOS, mergeSlRatioSettings, slRatiosOf } from "./sl-ratios.ts";
 import { RT_COST } from "./model-cost.ts";
-import { SL_TP_RATIOS, SL_TP_MIN, SL_TP_MAX, minimumStopFraction } from "./protection-policy.ts";
+import { SL_TP_MIN, SL_TP_MAX, minimumStopFraction } from "./protection-policy.ts";
 // Signals processing settings and sources (pure, no engine imports: shared by the engine, config and the UI).
 // The engine side (combos, configs, active ranking, guard) is in signals.ts.
 import { INDICATION_KINDS, type IndicationKind } from "./domain/types.ts";
@@ -661,6 +661,19 @@ export interface SignalSettings {
    * false: every configured initialized signal pair computes all its configs, each qualified on its own history
    */
   baseGate?: boolean;
+  /**
+   * Source filter (operator, 16 Nov 2026): a signal source (pair) is evaluated only if, on at least one symbol, its own Base
+   * history shows at least this many signal entries a day. A source that fires less often cannot fill the Last-N windows and
+   * only costs tapes. 0 = off.
+   */
+  minPerDay?: number;
+  /** days the signal rate is averaged over (default 7, 1–14): minPerDay is compared with the mean of the last `rateDays` days of Base closes */
+  rateDays?: number;
+  /**
+   * Source filter: a source whose own Base history is losing (at least `minTrades` closes on some symbol, pooled net <= 0 and
+   * pooled PF below 1) is not evaluated. A source without Base history is kept. false = off.
+   */
+  dropLosing?: boolean;
   maxOpen: number;
   /** Signal-simulation positions (symbol × direction, long and short apart); independent of the live exchange cap. */
   maxPositions: number;
@@ -737,7 +750,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // All four independent Expanded lanes retain minute-based pricing and causal entry/exit calculations.
   lanes: [1, 5, 15, 30],
   // 7 targets × 6 stop ratios = 42 Normal configs; include 1 % / 1.5 % targets and tighter risk ratios.
-  normal: { tp: [0.01, 0.015, 0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [...SL_TP_RATIOS] },
+  normal: { tp: [0.01, 0.015, 0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [...SIGNAL_SL_RATIOS] },
   // 7 targets × 5 trail widths = 35 capped Trailing configs, stops at 3 × target.
   trailing: {
     tp: [0.01, 0.015, 0.03, 0.04, 0.05, 0.06, 0.08],
@@ -770,7 +783,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     enabled: true,
     quantiles: [0.5, 0.75],
     trailOfTp: [0.25, 0.5, 0.75],
-    slOfTp: [1, 2],
+    slOfTp: [...SIGNAL_SL_RATIOS],
     minN: 30,
     lookbackH: SIGNAL_HISTORY_H,
   },
@@ -824,6 +837,9 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // signals judged on their own exits: the Base gate at the engine's default exit (TP 2.6 %, SL 3.9 %, 8 h) passed only
   // 6–11 of ~380 signal pairs (3 Oct: 51 orders at PF 0.44; 2 Oct: none)
   baseGate: false,
+  minPerDay: 2,
+  rateDays: 7,
+  dropLosing: true,
 };
 
 /** active signal units: 0 = no cap (every validated unit), then 10 … 200 in tens and up to 10,000 */

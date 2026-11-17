@@ -25,7 +25,7 @@ untouched). UI at `/v2`. Everything here is honest by construction:
 | Normal | plain positions. Off ⇒ plain entries execute only when Block-adjusted (level ≥ 1). |
 | Trailing | trailing-stop protect variants. |
 | Block | last-n windows n = 1..6 of the config's own closes are checked independently; level = passing windows; volume = 1 + 0.2 · level (cap 2.5×). |
-| Block Active | executes only level ≥ 1 (skips the normal / lower level). |
+| Block Active | Block raises only from its minimum level. Since 16 Nov it never vetoes another lane: with Normal on an un-raised entry trades at its unit; with Normal off only raised Normal / Trailing entries open (`docs/strategy-independence.md`). |
 | DCA | extra legs at 0.8 % steps (2 levels); target re-anchored to the average; stop anchored beyond the deepest level. |
 | DCA Active | skips the base leg; a limit at the first level waits up to the hold time; only that higher-level fill is traded. |
 

@@ -14,7 +14,8 @@ function options():WalkForwardOptions {
   const d=defaultWalkForward(DEFAULT_SETTINGS);
   return {...d,mode:"fixed",seatSet:"validated",preH:12,longH:12,simH:6,stepH:1,
     robustFrac:0,preGate:false,normalBaseMinPf:0,symGate:"off",sideGateN:0,lastN:0,validLastN:12,
-    gates:{...d.gates,minTrades:12,minPf:1.05,positionWindows:{base:12,main:12,real:12,entry:12,maxDrawdownPositions:12}},
+    // strict counts: eleven own closes must not satisfy Last-12 (lastNFloor 0; the partial-window rule has its own tests)
+    gates:{...d.gates,minTrades:12,minPf:1.05,lastNFloor:0,positionWindows:{base:12,main:12,real:12,entry:12,maxDrawdownPositions:12}},
     toggles:{normal:true,trailing:false,block:false,blockActive:false,dca:false,dcaActive:false,axis:false},
     coord:{enabled:false,hourLock:0,cooldown:"off",conflict:false,confirm:false}};
 }
@@ -28,7 +29,11 @@ it("a Base-qualified config with initially insufficient own closes is re-evaluat
   assert.equal(sim.steps[1].validationSummary?.evaluated,1);
   assert.equal(sim.steps[1].validationSummary?.passed,1);
   assert.ok(sim.trades.length>0);
-  assert.ok(sim.trades.every(t=>t.entryT>=start+H),"future closes cannot qualify an earlier entry");
+  // Continuous evaluation: the 12th own close settles at +30 min (eleven earlier closes + the first run trade, exit +30), so the
+  // first admissible entry is the next one at +40 min - not the next hourly mark. Nothing earlier: a close that has not settled
+  // before an entry can never qualify it.
+  assert.equal(Math.min(...sim.trades.map(t=>t.entryT)),start+40*M,"the first entry follows the close that completes the window");
+  assert.ok(sim.trades.every(t=>t.entryT>=start+40*M),"future closes cannot qualify an earlier entry");
   assert.ok(sim.validated?.includes(cfg),"the reported union includes every config validated at an actual causal clock");
 });
 it("losing configs and an explicitly frozen empty validation snapshot remain ineligible",()=>{

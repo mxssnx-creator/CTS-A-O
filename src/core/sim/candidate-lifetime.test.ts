@@ -20,7 +20,11 @@ it("releasing processed Real candidates preserves every settled order, deduplica
   assert.equal(r.settled, 42);
   assert.equal(r.feed, 48);
   assert.equal(r.inactive, 0);
-  assert.equal(r.fullResultSha256, "eb50071be95d3431526193b84191054985d39bf3890de9796982042657db11c4");
+  // 16 Nov 2026: the echoed options gained `continuous: true, decisionMin: 1` (continuous evaluation). Every other field of the
+  // result - trades, feed, steps, diagnostics - hashes exactly as before (checked field by field against the previous code).
+  // 17 Nov 2026: the bench pins independent variants with onePerPairEvent off; the echoed option is the only change
+  // (candidates, settled, feed and the step hash are unchanged).
+  assert.equal(r.fullResultSha256, "be80f58ac94204dd11574cae3eeb6f395056e2997c8cda972bb815ad60cc46a3");
   assert.equal(r.stepProgressSha256, "9b11bef4ae499a18825a4df9d13223436fe392839fbdbd07240611de0404a59a");
   assert.deepEqual(r.heap.map((x: { step: number }) => x.step), [1, 2, 3, 4]);
 });

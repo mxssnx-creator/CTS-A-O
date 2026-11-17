@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { afterEach, it } from "node:test";
 import { DEFAULT_SIGNALS, PRE_EXPANDED_SIGNAL_SOURCES, SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
 import { signalCombos, signalProtects } from "../signals.ts";
-import { SL_TP_RATIOS, minimumStopFraction } from "../protection-policy.ts";
+import { minimumStopFraction } from "../protection-policy.ts";
+import { DEFAULT_SIGNAL_AUTO_SL, SIGNAL_SL_RATIOS } from "../sl-ratios.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { checkSettings } from "../settings-check.ts";
 import { CoreDb } from "./db.server.ts";
@@ -38,12 +39,18 @@ it("fresh Expanded defaults match the verified source/grid catalog with own Last
   const recorded = JSON.parse(readFileSync(new URL("../../../docs/signals-coverage-20261023/receipts/final/all-sources/protocol.json", import.meta.url), "utf8"));
   const expected = recorded.actualSettings.signals;
   expected.minSl = minimumStopFraction(DEFAULT_SETTINGS.cost, .1);
-  expected.normal.slOfTp = [...SL_TP_RATIOS];
-  expected.normal.slAuto = {enabled:true,min:.25,max:2.5,step:.25,fallback:1};
+  // Operator, 16 Nov 2026: Signal Normal and Signal Historic stops are 0.5 to 1.5 in steps of 0.25; the archived receipt stays immutable.
+  expected.normal.slOfTp = [...SIGNAL_SL_RATIOS];
+  expected.normal.slAuto = { ...DEFAULT_SIGNAL_AUTO_SL };
   expected.trailing.slOfTp = 1;
   expected.guard.lastN = 12;
   expected.hist.lookbackH = 150;
-  expected.hist.slAuto = {enabled:true,min:1,max:2,step:1,fallback:1};
+  // Operator, 16 Nov 2026: Signal source filters (minimum signals a day per symbol, drop losing sources); the receipt stays immutable.
+  expected.minPerDay = 2;
+  expected.rateDays = 7;
+  expected.dropLosing = true;
+  expected.hist.slOfTp = [...SIGNAL_SL_RATIOS];
+  expected.hist.slAuto = { ...DEFAULT_SIGNAL_AUTO_SL };
   expected.coordination.volumeFactor = 1; // Operator neutral-sizing default; archived receipt stays immutable.
   assert.equal(expected.sideAccept.enabled, true, "archived receipt predates the 19 Oct optional-side-gate override");
   assert.equal(DEFAULT_SIGNALS.sideAccept.enabled, false);

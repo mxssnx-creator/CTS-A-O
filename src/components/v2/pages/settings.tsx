@@ -1,4 +1,4 @@
-import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL, slRatioCandidates, type AutoSlRatios } from "@/core/sl-ratios";
+import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL, DEFAULT_SIGNAL_AUTO_SL, slRatioCandidates, type AutoSlRatios } from "@/core/sl-ratios";
 import {BlockPolicyFields} from "../../../../shared/cts-lastn/fields";
 import { DEFAULT_POSITION_WINDOWS, checkPositionWindows, type PositionWindows } from "@/core/position-windows";
 import {dcaTacticConfigs,dcaTacticId,DCA_TACTIC_GRID} from "@/core/indications/dca-tactic";
@@ -537,6 +537,24 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field
+          label="Minimum signals a day per symbol"
+          hint="A signal source is evaluated only if its own Base history shows at least this many signal entries a day on some symbol (default 2). Sources that fire less often cannot fill the Last-N windows and only cost tapes, so dropping them speeds up every stage. 0 = off."
+        >
+          <Num value={g.minPerDay ?? 2} min={0} max={1000} step={0.5} onChange={(v) => set(["minPerDay"], v)} />
+        </Field>
+        <Field
+          label="Days averaged for the signal rate"
+          hint="The minimum above is compared with the mean number of signal entries a day over the last N days of the source's Base history (default 7). A burst on one day does not carry a source that is otherwise silent."
+        >
+          <Num value={g.rateDays ?? 7} min={1} max={14} step={1} onChange={(v) => set(["rateDays"], v)} />
+        </Field>
+        <Field
+          label="Drop losing sources"
+          hint="A source whose own Base history is losing (pooled net not positive and PF below 1, over at least the minimum closes on some symbol) is not evaluated. A source without Base history is kept."
+        >
+          <Switch label="Drop losing signal sources" checked={g.dropLosing !== false} onChange={(v) => set(["dropLosing"], v)} />
+        </Field>
+        <Field
           label="Stable sources only"
           hint={props.positionMode ? "An additional source-level veto from its last N accepted positions; each config still qualifies independently." : "A source pauses on its recent accepted orders."}
         >
@@ -908,7 +926,7 @@ export function SignalsSettings(props: {
         >
           <div className="v2-grid v2-cols-2" style={{ gap: 6 }}>
             <List pct value={normal.tp} onChange={(v) => set(["normal", "tp"], v)} />
-            <SlRatioEditor title="Signal Normal" spec={normal} set={(field,value)=>set(["normal",field],value)}/>
+            <SlRatioEditor title="Signal Normal" spec={normal} defaults={DEFAULT_SIGNAL_AUTO_SL} set={(field,value)=>set(["normal",field],value)}/>
           </div>
         </Field>
         <Field
@@ -1041,7 +1059,7 @@ export function SignalsSettings(props: {
         >
           <div className="v2-grid v2-cols-2" style={{ gap: 6 }}>
             <List value={hist.trailOfTp} onChange={(v) => set(["hist", "trailOfTp"], v)} />
-            <SlRatioEditor title="Signal Historic" spec={hist} set={(field,value)=>set(["hist",field],value)}/>
+            <SlRatioEditor title="Signal Historic" spec={hist} defaults={DEFAULT_SIGNAL_AUTO_SL} set={(field,value)=>set(["hist",field],value)}/>
           </div>
         </Field>
         <Field
@@ -1795,9 +1813,11 @@ export function StepList(props: {
 /** Auto generates bounded candidates; the existing own-cell gates choose which may trade. */
 export function SlRatioEditor(props: {
   spec: {slOfTp:readonly number[];slAuto?:AutoSlRatios}; title:string; fine?:boolean;
+  /** The bounds shown when the spec has no saved policy yet (Signals use 0.5 to 1.5). */
+  defaults?: AutoSlRatios;
   set:(field:string,value:unknown)=>void;
 }) {
-  const policy=props.spec.slAuto ?? (props.fine ? DEFAULT_FINE_AUTO_SL : DEFAULT_AUTO_SL);
+  const policy=props.spec.slAuto ?? props.defaults ?? (props.fine ? DEFAULT_FINE_AUTO_SL : DEFAULT_AUTO_SL);
   const result=slRatioCandidates(props.spec,props.fine?24:64);
   const put=(patch:Partial<AutoSlRatios>)=>props.set("slAuto",{...policy,...patch});
   return <div className="v2-lines">
@@ -1820,7 +1840,23 @@ export function SlRatioEditor(props: {
       <Field label={`${props.title} fallback SL / TP`} hint="Used only to reconstruct an unusable saved policy. The initial stop floor still applies; missing validation keeps entry closed.">
         <Num value={policy.fallback} min={policy.min} max={policy.max} step={.05} onChange={v=>put({fallback:v})}/>
       </Field>
-      <p className="v2-hint">{result.ratios.length} {result.source} candidates: {result.ratios.join(", ")}. Defaults define a search range, not a measured optimum.</p>
+      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+        <Switch label={`${props.title} calculate the best minimal and maximal ratio`} checked={policy.adaptive!==false} onChange={v=>put({adaptive:v})}/>
+        <div className="v2-muted" style={{fontSize:"var(--v-fs-xs)"}}>
+          For each TP step the system calculates the best minimal and maximal stop ratio from its last N samples and simulates only the ratios between them.
+          The minimum and maximum above are the limits; with fewer samples than the minimum below, the limits themselves are used.
+        </div>
+      </div>
+      {policy.adaptive!==false ? <div className="v2-grid v2-cols-3">
+        <Field label={`${props.title} near-optimal tolerance`} hint="A ratio belongs to the calculated interval while its score is at least (1 − tolerance) × the best score. 0 = only the best ratio; larger = a wider interval.">
+          <Num value={policy.tolerance ?? .1} min={0} max={.9} step={.05} onChange={v=>put({tolerance:v})}/>
+        </Field>
+        <Field label={`${props.title} minimum samples`} hint="Fewer settled samples than this keep the minimum and maximum above unchanged (the defaults).">
+          <Num value={policy.minSamples ?? 20} min={5} max={500} step={1} onChange={v=>put({minSamples:Math.round(v)})}/>
+        </Field>
+      </div> : null}
+      <p className="v2-hint">{result.ratios.length} {result.source} candidate limits: {result.ratios.join(", ")}.
+        {policy.adaptive!==false ? " Base narrows them per TP step from the last N samples; the settled interval is shown with each range's Base result." : " Every ratio is built."} A calculated interval is a search range, not a measured optimum: each cell is still judged by its own causal gates.</p>
     </> : <StepList label={`${props.title} SL / target min · max · step`} value={props.spec.slOfTp} max={props.fine?24:64} lo={props.fine?.2:.25} hi={2.5}
       onChange={v=>props.set("slOfTp",v)}/>}
   </div>;

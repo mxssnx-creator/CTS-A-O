@@ -1,5 +1,6 @@
-import { slRatiosOf } from "../sl-ratios.ts";
-import { positionCounts } from "../position-windows.ts";
+import { slCalibrationOf, slRatiosOf, type AutoSlRatios } from "../sl-ratios.ts";
+import { calibrateSlBounds, slWithinBounds, type SlBounds, type SlSample } from "../sl-calibration.ts";
+import { partialFloorOf, positionCounts } from "../position-windows.ts";
 import { SL_TP_RATIOS, minimumStopFraction } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { profitFactorRatio } from "../metrics/profit-factor.mjs";
@@ -327,7 +328,9 @@ function basePositionMiss(
   )
     return ["lastN"];
   const miss: BaseGate[] = [];
-  if (recent.n !== requested) miss.push("closes");
+  // a window shorter than requested is judged on its closes when gates.lastNFloor admits it (strict policies never)
+  const partial = partialFloorOf(g.positionWindows, g.lastNFloor);
+  if (recent.n !== requested && !(partial > 0 && recent.n >= partial && recent.n < requested)) miss.push("closes");
   const net = recent.gp - recent.gl;
   const loss = recent.gl + (g.lossPrior ? recent.stop : 0);
   if (!(net > 0)) miss.push("net");
@@ -620,6 +623,8 @@ export interface SymStat {
   /** trades and net over the most recent 24 h of the history (automatic validation) */
   recentN?: number;
   recentNet?: number;
+  /** closes per day over the last 14 days, index 0 = the most recent 24 h (signal source rate over a window of days) */
+  dayN?: number[];
   /**
    * signals: the same stats per direction ("1" long, "−1" short) — long and short of a signal on a symbol are ranked
    * and activated as separate units (activeSignals)
@@ -645,12 +650,16 @@ export function symStat(trades: readonly Trade[], nowT?: number): SymStat {
   for (const v of blocks.values()) if (v > 0) ok++;
   let recentN = 0;
   let recentNet = 0;
+  const dayN = nowT !== undefined ? new Array<number>(14).fill(0) : undefined;
   if (nowT !== undefined)
-    for (const x of trades)
+    for (const x of trades) {
       if (x.exitT > nowT - 24 * 3_600_000) {
         recentN++;
         recentNet += x.r * 100;
       }
+      const d = Math.floor((nowT - x.exitT) / (24 * 3_600_000));
+      if (dayN && d >= 0 && d < 14) dayN[d]++;
+    }
   return {
     n: st.n,
     net: st.net,
@@ -659,6 +668,7 @@ export function symStat(trades: readonly Trade[], nowT?: number): SymStat {
     okShare: blocks.size ? ok / blocks.size : 0,
     recentN,
     recentNet,
+    ...(dayN ? { dayN } : {}),
   };
 }
 
@@ -691,6 +701,11 @@ export interface ComboRun {
    * what rangeTps' targets would build. The tape stage then builds only these cells.
    */
   rangeCells?: string[];
+  /**
+   * Base: per range tag and target (String(tp)), the best minimal and maximal stop ratio calculated from the last N
+   * samples (or the configured limits as the defaults). The tape stage builds only the ratios inside it.
+   */
+  rangeSl?: Record<string, Record<string, SlBounds>>;
   /** Independently passed no-TP cells, even when the general Base-cell option is off. */
   trailingOnlyCells?: string[];
   /** Candidate-cell counts and passed-return sums for the separate no-TP Base cohort, by range. */
@@ -767,6 +782,32 @@ export function* trailingOnlyBaseCountsGen(
  * the first hold (15m-reference bars; every lane holds the same time). Wide grid: the default protect alone.
  */
 /** Complete grid at the reference timeframe, matching protectGrid's cells, rounding and floors exactly. */
+/** The adaptive stop policy of a range's settings, if it has one (an automatic policy with adaptive not switched off). */
+const slAutoOf = (r: unknown): AutoSlRatios | undefined =>
+  r && typeof r === "object" ? (r as { slAuto?: AutoSlRatios }).slAuto : undefined;
+
+/**
+ * Attach each range's adaptive stop policy to its Base cells: rangeBaseStats then calculates the best minimal and maximal
+ * stop ratio of every TP step from its last N samples and simulates only the ratios inside it. The field is not part of
+ * the cell key and never reaches the tape stage (which reads ComboRun.rangeSl). Manual lists and policies with adaptive
+ * off are left as they are.
+ */
+function withSlCal(
+  out: Protect[],
+  byTag: Record<string, unknown>,
+  lowRange?: unknown,
+): Protect[] {
+  const cal = (r: unknown) => slCalibrationOf(slAutoOf(r));
+  const per = new Map<string, ReturnType<typeof cal>>(Object.entries(byTag).map(([t, r]) => [t, cal(r)]));
+  const lr = cal(lowRange);
+  for (const p of out) {
+    if (!(p.tp > 0) || p.trailOnly || p.atr) continue;
+    const c = p.lowRangeOnly ? lr : per.get(p.tag ?? "");
+    if (c) p.slCal = c;
+  }
+  return out;
+}
+
 export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number): Protect[] {
   const slFloor = g.minSlEval ?? minimumStopFraction(cost);
   const floorFor = (tag?: string) =>
@@ -847,7 +888,7 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
   const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, REF_TF, g.lowRange?.minSlDistancePct ?? .1, ownSlFloor(g.lowRange, cost) ?? slFloor) : []);
   if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
   out.push(...lowRange);
-  return out;
+  return withSlCal(out, { "": g, mc: g.micro, mn: g.minimal, sh: g.short, gn: g.general, lg: g.long }, g.lowRange);
 }
 
 export function baseRangeProtects(
@@ -1033,7 +1074,7 @@ export function baseRangeProtects(
     }, cost ?? RT_COST);
     out.push(...complete.filter((p) => p.trailOnly && p.tag && tags.has(p.tag)));
   }
-  return out;
+  return withSlCal(out, { mc: g.micro, mn: g.minimal, sh: g.short, gn: g.general, lg: g.long });
 }
 type CoordRangeLike = {
   slAuto?: import("../sl-ratios.ts").AutoSlRatios;
@@ -1673,6 +1714,43 @@ export function pairBuildTags(
   return ["", ...tags].filter((t) => rangeAppliesTo(ind, t, applies));
 }
 
+/**
+ * The last `n` settled closes of one reference cell (the widest stop of a TP step, no trailing): each close's net return and
+ * its maximum adverse excursion. Mirrors cellStats' entry, lane and execution rules, but keeps the trades (the Base sink
+ * keeps only returns); one run per TP step and hold.
+ */
+function referenceSamples(
+  u: Universe,
+  bot: BotType,
+  ind: string,
+  ref: Protect,
+  cost: number,
+  tactics: Tactics | null | undefined,
+  n: number,
+): { samples: SlSample[]; tp: number } | null {
+  const cooldown = bot === "exit" ? 0 : tacticCooldown(tactics);
+  const p = laneProtect({ ...ref, trail: 0, slCal: undefined }, ind);
+  if (p.hold < 1 && !(p.maxHoldMin !== undefined && hasMinutePrices(u))) return null;
+  const id = configId(bot, ind, p);
+  const series = seriesOf(u, ind);
+  if (!series.length) return null;
+  const closes: Array<{ exitT: number; entryT: number; r: number; mae: number }> = [];
+  for (const s of series) {
+    const rawSignal = entrySignal(bot, ind, u.caches[s], tactics);
+    if (!rawSignal) return null;
+    const sig = evaluationSignal(u, u.bars[s], rawSignal);
+    for (const sg of splitSides(sig)) {
+      const view = cappedExecution(u, s, sg, p, cooldown);
+      if (view.protect.hold < 1 || nextEntryIndex(view.signal)[0] + 1 >= view.bars.n) continue;
+      const res = simulate(id, view.bars, view.signal, view.protect, { cost, cooldown: view.cooldown });
+      for (const t of res.trades)
+        if (t.exitT < u.nowT) closes.push({ exitT: t.exitT, entryT: t.entryT, r: t.r, mae: t.mae });
+    }
+  }
+  closes.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);
+  return { samples: (n > 0 ? closes.slice(-n) : closes).map((c) => ({ r: c.r, mae: c.mae })), tp: p.tp };
+}
+
 /** Range stats of a pair at each representative cell (a lane faster than a range's shortest lane skips it). */
 export function rangeBaseStats(
   u: Universe,
@@ -1710,6 +1788,8 @@ export function rangeBaseStats(
   trailingOnlyCellsOut?: string[],
   trailingOnlyStatsOut?: Record<string, TrailingOnlyBaseCount>,
   positionWindows?: Gates["positionWindows"],
+  /** filled with the calculated best minimal / maximal stop ratio of each (range tag, TP step): ComboRun.rangeSl */
+  slBoundsOut?: Record<string, Record<string, SlBounds>>,
 ): Record<string, RangeBaseStat> | undefined {
   if (!protects.length) return undefined;
   // a lane-less indication (a research tool, a legacy preset) trades the base timeframe: the same expression
@@ -1720,10 +1800,67 @@ export function rangeBaseStats(
   const bw = windows ? { plan: windows.plan, fromT: laneFromT(u, ind) } : undefined;
   const out: Record<string, RangeBaseStat> = {};
   const seenNoTp = new Set<string>();
+  // Adaptive stop ratios (Protect.slCal): per TP step (and hold), the best minimal and maximal ratio from the last N samples
+  // of one reference run at the widest stop; only the ratios inside it are simulated. Too few samples keep every ratio.
+  const calKey = (p: Protect) => `${p.lowRangeOnly ? "L" : ""}${p.tag ?? ""}|${p.tp}|${p.hold}|${p.maxHoldMin ?? ""}`;
+  const calWidest = new Map<string, Protect>();
+  const calRatios = new Map<string, number[]>();
+  for (const p of protects) {
+    if (!p.slCal || !(p.tp > 0) || p.trailOnly || p.atr) continue;
+    const ratio = protectSlRatio(p);
+    if (ratio === undefined) continue;
+    const gk = calKey(p);
+    const xs = calRatios.get(gk);
+    if (xs) xs.push(ratio); else calRatios.set(gk, [ratio]);
+    const w = calWidest.get(gk);
+    if (!w || p.sl > w.sl || (p.sl === w.sl && p.trail < w.trail)) calWidest.set(gk, p);
+  }
+  const calBounds = new Map<string, SlBounds | null>();
+  const boundsFor = (p: Protect): SlBounds | null => {
+    if (!p.slCal) return null;
+    const gk = calKey(p);
+    const hit = calBounds.get(gk);
+    if (hit !== undefined) return hit;
+    const widest = calWidest.get(gk), ratios = calRatios.get(gk);
+    let b: SlBounds | null = null;
+    // one candidate ratio leaves nothing to choose between
+    if (widest && ratios && new Set(ratios).size > 1) {
+      const cal = p.slCal;
+      const n = baseLastNForRange({ baseLastN, baseRangeLastN, positionWindows }, p.tag ?? "") || 40;
+      const ref = referenceSamples(u, bot, ind, widest, cost, tactics, n);
+      b = ref
+        ? calibrateSlBounds(ref.samples, {
+            tp: ref.tp, cost, hardMin: cal.min, hardMax: Math.min(cal.max, protectSlRatio(widest) ?? cal.max),
+            step: cal.step, tolerance: cal.tolerance, minSamples: cal.minSamples,
+          })
+        : { min: cal.min, max: cal.max, source: "default", n: 0 };
+      // the interval always holds a built candidate: a ratio the floors moved off the grid never empties the group
+      if (b.source === "samples" && !ratios.some((r) => slWithinBounds(r, b!))) {
+        const want = b.best ?? (b.min + b.max) / 2;
+        const near = ratios.reduce((a, r) => (Math.abs(r - want) < Math.abs(a - want) ? r : a), ratios[0]);
+        b = { ...b, min: near, max: near };
+      }
+      if (slBoundsOut && p.tag) {
+        const per = (slBoundsOut[p.tag] ??= {});
+        const prev = per[String(p.tp)];
+        // holds of one TP step share its record: the union of their intervals
+        per[String(p.tp)] = prev && prev.source === "samples" && b.source === "samples"
+          ? { ...b, min: Math.min(prev.min, b.min), max: Math.max(prev.max, b.max), n: Math.max(prev.n, b.n) }
+          : prev && prev.source === "default" ? prev : b;
+      }
+    }
+    calBounds.set(gk, b);
+    return b;
+  };
   for (const p of protects) {
     if ((p.lowRangeOnly === true) !== lowRangeInd) continue;
     if (p.tag && laneTf < (minTf?.[p.tag] ?? 0)) continue;
     if (!microIndFits(microOwnInds, p.tag, microInd, isMicroFamilyInd(ind))) continue;
+    if (p.slCal) {
+      const sb = boundsFor(p);
+      const ratio = protectSlRatio(p);
+      if (sb && sb.source === "samples" && ratio !== undefined && !slWithinBounds(ratio, sb)) continue;
+    }
     const k = p.tag ?? "";
     const noTpKey = p.trailOnly && trailingOnlyCellsOut
       ? protectCellKey(capTrailingOnlyProtect(laneProtect(p, ind))) : undefined;
@@ -2162,6 +2299,7 @@ export function baseRuns(
         const cellKeys: string[] | undefined = cells || isLowRangeInd(c.ind) ? [] : undefined;
         const noTpCells: string[] | undefined = noTp.length ? [] : undefined;
         const noTpStats: Record<string, TrailingOnlyBaseCount> | undefined = noTp.length ? {} : undefined;
+        const slOut: Record<string, Record<string, SlBounds>> = {};
         const engine = !isSignalInd(c.ind) && c.bot !== "exit";
         const ruleTps = plan && engine ? baseRunWindows(u, r, plan) : undefined;
         const ranges = !engine
@@ -2187,8 +2325,10 @@ export function baseRuns(
               noTpCells,
               noTpStats,
               gates?.positionWindows,
+              slOut,
             );
         if (ranges) r.ranges = ranges;
+        if (Object.keys(slOut).length) r.rangeSl = slOut;
         if (Object.keys(tps).length) r.rangeTps = tps;
         if (cellKeys?.length) r.rangeCells = cellKeys;
         if (engine && noTpCells) { r.trailingOnlyCells = noTpCells; r.trailingOnlyStats = noTpStats; }
@@ -2259,6 +2399,7 @@ export function* runPipeline(
       const cellKeys: string[] | undefined = g.baseCells === true || isLowRangeInd(c.ind) ? [] : undefined;
       const noTpCells: string[] | undefined = noTp.length ? [] : undefined;
       const noTpStats: Record<string, TrailingOnlyBaseCount> | undefined = noTp.length ? {} : undefined;
+      const slOut: Record<string, Record<string, SlBounds>> = {};
       const ranges = rangeBaseStats(
         u,
         c.bot,
@@ -2280,8 +2421,10 @@ export function* runPipeline(
         noTpCells,
         noTpStats,
         s.gates.positionWindows,
+        slOut,
       );
       if (ranges) r.ranges = ranges;
+      if (Object.keys(slOut).length) r.rangeSl = slOut;
       if (Object.keys(tps).length) r.rangeTps = tps;
       if (cellKeys?.length) r.rangeCells = cellKeys;
       if (noTpCells) { r.trailingOnlyCells = noTpCells; r.trailingOnlyStats = noTpStats; }

@@ -1,4 +1,5 @@
 import { slRatiosOf } from "../sl-ratios.ts";
+import type { SlBounds } from "../sl-calibration.ts";
 import { migratePositionWindows } from "./position-windows-migration.server.ts";
 import { mainnetPositionWindows } from "../position-windows.ts";
 import {relationalVolumeFactor,relationalVolumeSettings} from "../../../shared/cts-volume/ratios.ts";
@@ -190,6 +191,7 @@ import {
   baseRangeProtects,
   completeBaseRangeProtects,
   laneInds,
+  laneFromT,
   makeUniverse,
   seriesOf,
   forgetCombo,
@@ -277,6 +279,7 @@ import {
   pendingAsOpen,
   carryGuardIndices,
   crowdCapOf,
+  pairEventKey,
   crowdKey,
   type ConfirmPool,
   mirrorId,
@@ -392,6 +395,9 @@ import {
   estimatedFraction,
   overallOf,
   pipelineStage,
+  simulationClock,
+  simulationProgress,
+  simulationWorkLabel,
 } from "../progress.ts";
 import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
 
@@ -770,6 +776,8 @@ export interface RuntimeStatus {
   heals: number;
   lastHeal: string;
   errorsInRow: number;
+  /** The previous attempt's error while the retry runs; `error` is only ever the current attempt's failure. */
+  lastError?: string | null;
   /** the fast tick (paper mark-to-market + live step) */
   tick?: TickStatus;
   /** Dedicated execution checks. Lag is measured, never a guaranteed exchange latency. */
@@ -3221,6 +3229,12 @@ export class CoreRuntime {
     this.inCycle = true;
     // a job left open by an abandoned cycle (watchdog, stop, error) never carries its bar into this one
     this.jobOpen = false;
+    // A retry is not a new failure: the previous attempt's error moves to lastError while this cycle runs, so the
+    // progress line never shows a minutes-old error beside a healthy stage. A failing cycle sets `error` again.
+    if (this.status.error) {
+      this.status.lastError = this.status.error;
+      this.status.error = null;
+    }
     try {
       // An explicitly requested discovery run waits before pulling another universe; ordinary foreground
       // cycles remain free to pull new candles and continue validated sets during the background comparison.
@@ -3376,6 +3390,7 @@ export class CoreRuntime {
       if (!this.stopped) this.status.state = "running";
       this.emit("state");
       this.status.error = null;
+      this.status.lastError = null;
       // the preset comparison of this compute runs once the cycle has ended (its book is out, the next cycle is
       // scheduled): the next cycle waits for it before it starts, so the two never overlap
       if (
@@ -4178,26 +4193,7 @@ export class CoreRuntime {
     let maxStep = 0;
     const label = (v: unknown) => {
       if (name === "Simulation" && typeof v === "number") {
-        if (v >= 0) return "complete simulation step";
-        const simulationSlices: Record<number, string> = {
-          [-2]: "settle simulated order books",
-          [-3]: "expand signal tape candidates",
-          [-4]: "build signal rank index",
-          [-5]: "rank signal units",
-          [-6]: "assemble engine tape candidates",
-          [-7]: "merge signal candidates",
-          [-8]: "sort step candidates",
-          [-9]: "run candidate entry gates",
-          [-10]: "finalize trade summaries",
-          [-11]: "settle final orders",
-          [-12]: "drain final candidate feed",
-          [-13]: "sort signal candidates",
-          [-14]: "fixed seat selection",
-          [-15]: "causal signal ranking",
-          [-16]: "negative-hour hedge qualification",
-          [-17]: "completed one-minute candidate batch",
-        };
-        return simulationSlices[v] ?? (v < 0 ? "simulation helper" : "");
+        return simulationWorkLabel(v);
       }
       const x = v as { stage?: string; label?: string } | null;
       return x && typeof x === "object" ? `${x.stage ?? ""} ${x.label ?? ""}`.trim() : "";
@@ -4298,11 +4294,13 @@ export class CoreRuntime {
     const report = (fraction: number) => {
       if (gen !== this.gen || controller.signal.aborted) return;
       this.status.heartbeat = Date.now();
-      const completed = Math.min(steps, Math.round(fraction * steps));
+      const completed = Math.min(steps, Math.floor(fraction * steps + 1e-9));
       while (publishedSteps < completed) {
         publishedSteps++;
         progress(0);
       }
+      // between completed hours the bar follows the worker's simulated clock
+      progress(simulationClock(fraction * wf.simH * 60));
     };
     let transfer: HistoryTransfer | undefined;
     try {
@@ -4758,6 +4756,7 @@ export class CoreRuntime {
       wideLadderPairs,
       pairTags,
       pairTps,
+      pairSl,
       pairCells,
       pairTrailingOnlyCells,
       added: baseBuilt,
@@ -4818,6 +4817,19 @@ export class CoreRuntime {
           for (const [tag, tps] of Object.entries(pairTps[k]))
             t[tag] = [...new Set([...(t[tag] ?? []), ...tps])];
         }
+        if (pairSl[k]) {
+          // a mirrored pair takes the union of both intervals per target, never narrower than either
+          const t = (pairSl[m] ??= {});
+          for (const [tag, per] of Object.entries(pairSl[k])) {
+            const u = (t[tag] ??= {});
+            for (const [tp, b] of Object.entries(per)) {
+              const o = u[tp];
+              u[tp] = o && o.source === "samples" && b.source === "samples"
+                ? { ...b, min: Math.min(o.min, b.min), max: Math.max(o.max, b.max), n: Math.max(o.n, b.n) }
+                : o && o.source === "default" ? o : b;
+            }
+          }
+        }
         if (pairCells[k]) pairCells[m] = [...new Set([...(pairCells[m] ?? []), ...pairCells[k]])];
       }
     // only pairs that passed Base take a seat; held pairs stay in Main to manage their open positions
@@ -4863,7 +4875,9 @@ export class CoreRuntime {
         (!evalFams || evalFams.some((f) => evalFamilyMatch(f, c.bot, c.ind, []))),
     );
     const representativePass = (r: ComboRun) => passesBase(r.full, { ...setsGates, minPf: minPfOf(setsGates, undefined, r.ind) });
-    const sigPairs = signalEvaluationPairs(configuredSignals, pipeline.s1, sig, representativePass);
+    // source filters (signals.minPerDay / dropLosing): days of Base history behind a run = its lane's first bar to the cut
+    const sigHistoryDays = (r: { ind: string }) => (uStage.nowT - laneFromT(uStage, r.ind)) / 86_400_000;
+    const sigPairs = signalEvaluationPairs(configuredSignals, pipeline.s1, sig, representativePass, sigHistoryDays);
     const representativePassed = signalEvaluationPairs(
       configuredSignals,
       pipeline.s1,
@@ -5603,6 +5617,7 @@ export class CoreRuntime {
       ...protectFloors(s, rangeFitCutT),
       pairTags,
       pairTps,
+      pairSl,
       pairCells,
       ...(s.grid?.trailingOnly === true ? { pairTrailingOnlyCells } : {}),
       ...(wf.seatSet === "validated"
@@ -5677,6 +5692,7 @@ export class CoreRuntime {
             ...protectFloors(s, rangeFitCutT),
             pairTags,
             pairTps,
+            pairSl,
             pairCells,
             ...(s.grid?.trailingOnly === true ? { pairTrailingOnlyCells } : {}),
             heldIds,
@@ -5789,6 +5805,7 @@ export class CoreRuntime {
           ...protectFloors(s, rangeFitCutT),
           pairTags,
           pairTps,
+          pairSl,
           pairCells,
           ...(s.grid?.trailingOnly === true ? { pairTrailingOnlyCells } : {}),
           heldIds,
@@ -5873,7 +5890,6 @@ export class CoreRuntime {
     // wf and fastArgs remain private to this computation until its matching tapes and simulation are ready.
     // Publishing Base/Signal qualifiers here mixed old active tapes with new gates during every yielded slice,
     // and an interrupted computation left that mixed state in service indefinitely.
-    let step = 0;
     // the steps the simulation really takes (its start is floored to the hour: up to one step more than
     // simH / stepH, which ran the bar past 100 %)
     const steps = Math.max(1, walkForwardSteps(wu, wf));
@@ -5882,17 +5898,9 @@ export class CoreRuntime {
       ? `positions Main / Real / Entry ${positionPolicy.main} / ${positionPolicy.real} / ${positionPolicy.entry} · own range/config overrides apply`
       : `engine ${wf.preH}h pre / Last-${wf.validLastN ?? 0}${sig.enabled ? ` · Signals ${signalHistoryHours(wf)}h / Last-${wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN ?? 0}` : ""} · entry Last-${wf.lastN}`;
     this.setStage("Real", 0, steps, `${wf.simH}h sim · step 0/${steps}`);
-    const sim = await this.researchSimulation(wu, tapes, wf, gen, (v) => {
-      if (v >= 0) {
-        step++;
-        this.setStage(
-          "Real",
-          step,
-          steps,
-          `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · ${validationProgress}`,
-        );
-      }
-    }, signal);
+    const reportSimulation = simulationProgress(steps, wf.simH, validationProgress,
+      (completed, label) => this.setStage("Real", completed, steps, label));
+    const sim = await this.researchSimulation(wu, tapes, wf, gen, reportSimulation, signal);
     signal.throwIfAborted();
     if (
       gen !== this.gen ||
@@ -5901,6 +5909,7 @@ export class CoreRuntime {
     )
       return;
     // Count the exact finished cohort, not the temporary worker inputs or a partially built next cohort.
+    this.setStage("Real", steps, steps, `${wf.simH}h sim complete · auditing configuration and position histories`);
     const strategyCoverage = await drive("Strategy coverage", strategyCoverageGen(tapes), () => undefined, gen);
     const lastNSamples = await drive("Last-N sample coverage", lastNSamplesGen(tapes, sim.endT, wf), () => undefined, gen);
     // the realtime entry step stands aside while the new tapes and run replace the old ones, until the full paper
@@ -8093,6 +8102,7 @@ export class CoreRuntime {
     wideLadderPairs: Set<string>;
     pairTags: Record<string, string[]>;
     pairTps: Record<string, Record<string, readonly number[]>>;
+    pairSl: Record<string, Record<string, Record<string, SlBounds>>>;
     exitBasePassed: Set<string>;
     exitBaseEvaluated: number;
     pairCells: Record<string, readonly string[]>;
@@ -8180,7 +8190,7 @@ export class CoreRuntime {
     // in combo order (as the engine's S1), whichever path computed them
     const runs = [...combos, ...exitCombos, ...signalExitCombos].flatMap((c) => byPair.get(`${c.bot}|${c.ind}`) ?? []);
     const engineRuns = runs.filter((r) => r.bot !== EXIT_BOT);
-    const { passed, qualified, qualifiedTags, qualifiedTps, qualifiedCells, wideLadderPairs, pairTags, pairTps, pairCells, pairTrailingOnlyCells } = basePass(
+    const { passed, qualified, qualifiedTags, qualifiedTps, qualifiedCells, wideLadderPairs, pairTags, pairTps, pairSl, pairCells, pairTrailingOnlyCells } = basePass(
       engineRuns,
       s,
     );
@@ -8198,6 +8208,7 @@ export class CoreRuntime {
       wideLadderPairs,
       pairTags,
       pairTps,
+      pairSl,
       pairCells,
       pairTrailingOnlyCells,
       exitBasePassed: exitBase.passed,
@@ -8460,7 +8471,7 @@ export class CoreRuntime {
     const exitLookBars = exitU?.series.map(beforeT) ?? [];
     const signalExitLookBars = signalU.series.map(beforeT);
     const base = await this.presetBase(job, s, combos, lookBars, exitCombos, exitLookBars, signalExitCombos, signalExitLookBars);
-    const { main, pairTags, pairTps, pairCells, pairTrailingOnlyCells } = base;
+    const { main, pairTags, pairTps, pairSl, pairCells, pairTrailingOnlyCells } = base;
     wf.basePassed = new Set([...base.qualified, ...base.exitBasePassed]);
     wf.exitBasePassed = base.exitBasePassed;
     wf.basePassedRanges = base.qualifiedTags;
@@ -8479,6 +8490,7 @@ export class CoreRuntime {
       ...protectFloors(s, startT),
       pairTags,
       pairTps,
+      pairSl,
       ...(pairCells ? { pairCells } : {}),
       ...(s.grid.trailingOnly === true ? { pairTrailingOnlyCells } : {}),
       microOwnInds: microOwnInds(s.grid),
@@ -8837,6 +8849,7 @@ export class CoreRuntime {
       );
       const sigPairs = signalEvaluationPairs(initialized, runs, sig, (r) =>
         passesBase(r.full, { ...baseSetsGates(s.gates), minPf: minPfOf(baseSetsGates(s.gates), undefined, r.ind) }),
+        (r) => (look.nowT - laneFromT(look, r.ind)) / 86_400_000,
       );
       if (sigPairs.size) {
         const coordinationPairs = new Set(
@@ -9580,7 +9593,7 @@ export class CoreRuntime {
    * candidates confirmation judges (confirmPoolOf); without it, the book's engine positions.
    */
   private entryHeldBack(
-    op: { cfg: string; sym: string; side: number; entryT: number },
+    op: { cfg: string; sym: string; side: number; entryT: number; kind?: string },
     hourNet: ReadonlyMap<number, number>,
     open: ReadonlyArray<{
       cfg: string;
@@ -9588,11 +9601,12 @@ export class CoreRuntime {
       side: number;
       entryT: number;
       stopHit?: number;
+      kind?: string;
     }>,
     srcClosed: ReadonlyMap<string, Array<{ exitT: number; r: number }>>,
     confirmPool?: ConfirmPool | null,
     /** entries that hold a crowd seat without a position (refused by the live validation after the simulation's rules) */
-    crowdSeats?: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number }>,
+    crowdSeats?: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; kind?: string }>,
   ): string | null {
     const hk = Math.floor(op.entryT / H);
     if (this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
@@ -9612,6 +9626,14 @@ export class CoreRuntime {
             if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
         if (n >= cap) return "crowd";
       }
+    }
+    // one order per pair event (as simulated): another config of this pair, type, symbol and side already entered this minute
+    if (this.wf.onePerPairEvent) {
+      const k = pairEventKey(op.cfg, op.sym, op.side, op.kind, op.entryT);
+      const same = (x: { cfg: string; sym: string; side: number; entryT: number; kind?: string }) =>
+        Math.floor(x.entryT / 60_000) === Math.floor(op.entryT / 60_000) && x.cfg !== op.cfg &&
+        pairEventKey(x.cfg, x.sym, x.side, x.kind ?? op.kind, x.entryT) === k;
+      if (open.some(same) || crowdSeats?.some(same)) return "pairEvent";
     }
     // confirmation as in the simulation: an engine candidate (taken or not) open at the entry, not only a position
     const coordWhy = coordBlock(this.wf.coord, op, hourNet, at, confirmPool);
@@ -11114,6 +11136,9 @@ export const WF_KEYS = [
   "preH",
   "simH",
   "stepH",
+  "continuous",
+  "decisionMin",
+  "onePerPairEvent",
   "recordValidation",
   "blockTrace",
   "portfolio",
@@ -11247,6 +11272,9 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   // every short session report covered a window nobody asked for)
   num("simH", 1, 240);
   num("stepH", 1 / 60, 48); // re-evaluation down to 1 minute (BingX has no sub-minute history)
+  num("decisionMin", 1, 60); // continuous evaluation: minutes between re-derivations of the seat picks inside a step
+  if (p.continuous !== undefined) p.continuous = Boolean(p.continuous);
+  if (p.onePerPairEvent !== undefined) p.onePerPairEvent = Boolean(p.onePerPairEvent);
   num("portfolio", 0, 10_000, true); // 0 = no limit
   num("lastN", 0, 200, true);
   num("lastNMinPf", 0, 5);
@@ -12572,6 +12600,8 @@ export function basePass(
   wideLadderPairs: Set<string>;
   pairTags: Record<string, string[]>;
   pairTps: Record<string, Record<string, readonly number[]>>;
+  /** per pair, range and target: the calculated best minimal / maximal stop ratio (ComboRun.rangeSl); absent = every ratio */
+  pairSl: Record<string, Record<string, Record<string, SlBounds>>>;
   /** grid.baseCells: per pair, the passed cells of the ranges it passed (protectCellKey); absent while the option is off */
   pairCells: Record<string, readonly string[]>;
   /** No-TP candidates require an exact passed Base cell even while ordinary cells use target-level proof. */
@@ -12591,6 +12621,7 @@ export function basePass(
   // per pair, the range targets whose Base cells passed: the tape stage builds only those (baseTargets, on by
   // default — a range tag used to unlock every target of the range, most of them never Base-evaluated)
   const pairTps: Record<string, Record<string, readonly number[]>> = {};
+  const pairSl: Record<string, Record<string, Record<string, SlBounds>>> = {};
   const targetsOn = s.grid?.baseTargets !== false;
   // grid.baseRanges off: a passed pair builds every range its indication applies to, not only the ones it passed
   const rangesOn = s.grid?.baseRanges !== false;
@@ -12619,6 +12650,12 @@ export function basePass(
       const per: Record<string, readonly number[]> = {};
       for (const t of tags) if (t && r.rangeTps[t]?.length) per[t] = r.rangeTps[t];
       if (Object.keys(per).length) pairTps[`${r.bot}|${r.ind}`] = per;
+    }
+    // the calculated stop-ratio interval of each passed range's targets: the tape stage builds only the ratios inside it
+    if (r.rangeSl) {
+      const sl: Record<string, Record<string, SlBounds>> = {};
+      for (const t of tags) if (t && r.rangeSl[t]) sl[t] = r.rangeSl[t];
+      if (Object.keys(sl).length) pairSl[`${r.bot}|${r.ind}`] = sl;
     }
     // cell level: the passed cells of the passed ranges (a range without cells keeps the target / range level)
     if ((cellsOn || isLowRangeInd(r.ind)) && r.rangeCells?.length) {
@@ -12663,6 +12700,7 @@ export function basePass(
       const k = `${r.bot}|${r.ind}`;
       pairTags[k] = ["", ...ALL_RANGE_TAGS].filter((t) => rangeAppliesTo(r.ind, t, applies));
       delete pairTps[k];
+      delete pairSl[k];
       delete pairCells[k];
       if (!inPassed.has(k)) {
         passed.push(r);
@@ -12672,7 +12710,7 @@ export function basePass(
       }
     }
   }
-  return { passed, qualified, qualifiedTags, qualifiedTps, qualifiedCells, wideLadderPairs, pairTags, pairTps, pairCells, pairTrailingOnlyCells, added, addedKeys };
+  return { passed, qualified, qualifiedTags, qualifiedTps, qualifiedCells, wideLadderPairs, pairTags, pairTps, pairSl, pairCells, pairTrailingOnlyCells, added, addedKeys };
 }
 
 /** Paper deactivation and native admission preserve the same indication/range floor. */

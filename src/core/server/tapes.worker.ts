@@ -1,6 +1,7 @@
 // Worker thread for backtests: Base scoring and strategy tapes for a slice of the combos, on its own CPU core.
 // Pure engine code only (explicit .ts imports), so it runs under node --experimental-strip-types.
 import { readHistoryManifest } from "./history-store.server.ts";
+import { simulatedMinutesOf } from "../progress.ts";
 import { parentPort } from "node:worker_threads";
 import {
   isPlainKind,
@@ -213,7 +214,8 @@ parentPort!.on("message", (m: Msg) => {
       const g = walkForwardGen(u as never, history?.tapes ?? unpackTapes(m.packed!), m.wf as never);
       const total = Math.max(1, walkForwardSteps(u as never, m.wf as never));
       let done = 0,
-        last = 0;
+        last = 0,
+        clock = 0;
       for (;;) {
         const result = g.next();
         if (result.done) {
@@ -221,9 +223,13 @@ parentPort!.on("message", (m: Msg) => {
           return;
         }
         if (result.value >= 0) done++;
+        const clockMin = simulatedMinutesOf(result.value);
+        if (clockMin !== null) clock = Math.max(clock, clockMin);
         if (Date.now() - last >= 400) {
           last = Date.now();
-          parentPort!.postMessage({ id: m.id, progress: done, total });
+          // the bar follows the simulated clock between completed hours
+          const fromClock = clock / Math.max(1, Number((m.wf as { simH?: number }).simH ?? 1) * 60) * total;
+          parentPort!.postMessage({ id: m.id, progress: Math.min(total, Math.max(done, fromClock)), total });
         }
       }
       } finally { history?.close(); }

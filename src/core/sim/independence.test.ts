@@ -61,7 +61,7 @@ const tape = (cfg: string, lose: number, win = 0.01, kind: StratKind = "normal")
   makeTape(cfg, "follow", IND, P, kind, ["AAA-USDT"], trades(cfg, lose, win, kind), [], []);
 
 const base: WalkForwardOptions = {
-  ...defaultWalkForward(DEFAULT_SETTINGS),
+  ...({ ...defaultWalkForward(DEFAULT_SETTINGS), onePerPairEvent: false /* these cases pin independent variants; the pair-event rule is in sim/pair-event.test.ts */ }),
   toggles: {
     normal: true,
     trailing: true,
@@ -225,7 +225,7 @@ describe("independent configs (seatPer config)", () => {
     assert.deepEqual(own, execDecision(sig, at, cfgOnly, { ...ctx, book }));
   });
 
-  it("a type Block excludes (Axis) trades at its own volume, never raised or skipped by Block Active", () => {
+  it("a type Block excludes (Axis) trades at its own volume; Block Active never skips Axis", () => {
     const ax = tape(id(1, "axis"), 5, 0.01, "axis");
     const o: WalkForwardOptions = {
       ...indep,
@@ -234,9 +234,9 @@ describe("independent configs (seatPer config)", () => {
     };
     const at = NOW - 2 * H + 10 * 60_000;
     assert.deepEqual(execDecision(ax, at, o, { sym: "AAA-USDT", side: 1, book: null }), { ok: true, level: 0, vol: 1 });
-    // without the exclusion Block Active decides (raise or skip), never a plain unit entry
+    // without the exclusion Block may raise Axis, but Block Active never skips it: Axis is its own lane
     const d = execDecision(ax, at, { ...o, block: { ...o.block, excludeKinds: [] } }, { sym: "AAA-USDT", side: 1, book: null });
-    assert.ok(!d.ok || d.vol !== 1 || d.level > 0);
+    assert.equal(d.ok, true, JSON.stringify(d));
   });
 });
 

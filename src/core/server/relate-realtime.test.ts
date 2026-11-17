@@ -82,7 +82,7 @@ describe("Relate realtime learning", () => {
       } finally { rt.dispose(); db.db.close(); }
     }
   });
-  it("creates Active shadow entries through the real paper step and recovers after their closes", () => {
+  it("Relate Active never vetoes the paper base entry: below the step it opens at unit, nothing is shadow-skipped", () => {
     const { rt, db, hooks } = fixture(feed(60, true));
     try {
       hooks.wf = { ...hooks.wf, lastN: 0, validLastN: 0, basePassed: undefined, rangeOpts: undefined,
@@ -96,29 +96,20 @@ describe("Relate realtime learning", () => {
       hooks.tapes = [tape(trade(61 * H))];
       hooks.paper.selected = [id.cfg];
       hooks.lastSelection = { picks: [{ id: id.cfg, score: 1, window: { n: 60, net: 1, pf: 2, ddt: 0 } }], eligible: 1 };
-      for (let i = 0; i < 2; i++) {
-        const row = trade((61 + i) * H);
-        const open: OpenPosition = { ...row, entryI: 0, stop: 99, target: 101, peak: 100, trailOn: false, mtm: 0 };
-        drain(hooks.stepPaperGen({ opens: new Map([[id.cfg, [open]]]), t: row.entryT }));
-        assert.equal(hooks.paper.positions.length, 0, "Active-only entry is skipped");
-        assert.ok(hooks.relateShadowPending.has(orderKey(row)), JSON.stringify(rt.status.paperSkips));
-        drain(hooks.appendRealtimeLearningGen([tape(row)]));
-      }
-      const row = trade(63 * H);
+      assert.equal(hooks.booksAt()(61 * H).relate!.decide(id).volume, 1, "the relation is below its active step");
+      const row = trade(61 * H);
       const open: OpenPosition = { ...row, entryI: 0, stop: 99, target: 101, peak: 100, trailOn: false, mtm: 0 };
       drain(hooks.stepPaperGen({ opens: new Map([[id.cfg, [open]]]), t: row.entryT }));
-      assert.equal(hooks.paper.positions.length, 1, JSON.stringify(rt.status.paperSkips));
-      assert.equal(hooks.paper.positions[0].relateVol, 1.44);
-      const book = hooks.booksAt()(64 * H).relate!;
-      assert.equal(book.summary().closes, 60);
-      assert.equal(book.summary().shadowCloses, 2);
+      assert.equal(hooks.paper.positions.length, 1, `the base entry opens: ${JSON.stringify(rt.status.paperSkips)}`);
+      assert.equal(hooks.paper.positions[0].relateVol ?? 1, 1, "at unit volume");
+      assert.equal(hooks.relateShadowPending.has(orderKey(row)), false, "nothing is shadow-skipped");
     } finally {
       rt.dispose();
       db.db.close();
     }
   });
 
-  it("preserves Active admission for an unraised wide-stop entry and counts only accepted closes", () => {
+  it("an unraised wide-stop entry trades its unit under Relate Active and never carries hypothetical parts as funded", () => {
     const { rt, db, hooks } = fixture(feed(60, true));
     try {
       hooks.wf = { ...hooks.wf, lastN: 0, validLastN: 0, basePassed: undefined, rangeOpts: undefined,
@@ -131,26 +122,14 @@ describe("Relate realtime learning", () => {
       hooks.realtimeLearning = { sim: hooks.sim, feed: [...hooks.sim.feed], accepted: [] };
       hooks.paper.selected = [id.cfg];
       hooks.lastSelection = { picks: [{ id: id.cfg, score: 1, window: { n: 60, net: 1, pf: 2, ddt: 0 } }], eligible: 1 };
-      for (let i = 0; i < 2; i++) {
-        const row = trade((61 + i) * H);
-        const tp = tape(row); // This existing 1% fixed stop is wider than the 0.75% raise limit.
-        hooks.tapes = [tp];
-        const open: OpenPosition = { ...row, entryI: 0, stop: 99, target: 101, peak: 100, trailOn: false, mtm: 0 };
-        drain(hooks.stepPaperGen({ opens: new Map([[id.cfg, [open]]]), t: row.entryT }));
-        assert.equal(hooks.paper.positions.length, 0, "Active is an independent admission gate");
-        assert.ok(hooks.relateShadowPending.has(orderKey(row)), JSON.stringify(rt.status.paperSkips));
-        drain(hooks.appendRealtimeLearningGen([tp]));
-      }
-      const row = trade(63 * H);
-      hooks.tapes = [tape(row)];
+      const row = trade(61 * H);
+      hooks.tapes = [tape(row)]; // This existing 1% fixed stop is wider than the 0.75% raise limit.
       const open: OpenPosition = { ...row, entryI: 0, stop: 99, target: 101, peak: 100, trailOn: false, mtm: 0 };
       drain(hooks.stepPaperGen({ opens: new Map([[id.cfg, [open]]]), t: row.entryT }));
       assert.equal(hooks.paper.positions.length, 1, JSON.stringify(rt.status.paperSkips));
       assert.equal(hooks.paper.positions[0].relateVol ?? 1, 1, "ineligible stops never receive a Relate raise");
       assert.equal(hooks.paper.positions[0].relateParts, undefined, "hypothetical parts are never funded evidence");
-      const book = hooks.booksAt()(64 * H).relate!;
-      assert.equal(book.summary().closes, 60, "skips never enter funded PF history");
-      assert.equal(book.summary().shadowCloses, 2, "Active shadows advance their own progression");
+      assert.equal(hooks.relateShadowPending.size, 0);
     } finally {
       rt.dispose();
       db.db.close();
@@ -175,13 +154,14 @@ describe("Relate realtime learning", () => {
     }
   });
 
-  it("replays Active-only shadow closes without adding them to accepted PF", () => {
+  it("replays pending shadow closes (recorded before Active stopped skipping) without adding them to accepted PF", () => {
     const { rt, db, hooks } = fixture(feed(60, true));
     try {
       for (let i = 0; i < 2; i++) {
         const row = trade((61 + i) * H);
         const before = hooks.booksAt()(row.entryT).relate!.decide(id);
-        assert.equal(before.allowed, false);
+        // a pending shadow from before the change (or a restarted desk) still replays into its own progression
+        assert.equal(before.volume, 1, "below the active step");
         hooks.relateShadowPending.set(orderKey(row), { entryT: row.entryT, base: 1, parts: before.parts });
         drain(hooks.appendRealtimeLearningGen([tape(row)]));
         const added = hooks.realtimeLearning!.feed.at(-1)!;
