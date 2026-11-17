@@ -6665,16 +6665,20 @@ function countEmptyRows(capacity: number): CountEmptyRows {
     n: new Float64Array(capacity), fromT: new Float64Array(capacity), floor: new Float64Array(capacity),
     flags: new Uint8Array(capacity), generation: new Array(capacity), id: new Array(capacity), symbols: new Array(capacity) };
 }
-/** Earliest own close that could make a currently rejected count context judgeable; never a future-return read. */
+/** Earliest close that could change a rejected window under its configured evidence scope. */
 function countRejectedUntil(tp: ConfigTape, t: number, o: WalkForwardOptions, fallback: number): number {
   const policy = o.gates.positionWindows!;
-  const counts = positionCounts(policy, "sig", tp.id);
+  const counts = positionCounts(policy, isSignalInd(tp.ind) ? "sig" : (tp.protect.tag ?? "wide"), tp.id);
   const range = o.rangeGate && tapeRangeGateOn(o.rangeGate, tp) ? o.rangeGate : undefined;
+  const partial = partialFloorOf(policy, o.gates.lastNFloor);
+  const required = (n: number) => partial > 0 ? Math.min(n, partial) : n;
   const need = Math.max(...(["main", "real", "entry"] as const).map(stage =>
-    policy.blocks?.[stage] ? blockRequired(policy.blocks[stage]!) : counts[stage]), range?.lastN ?? 0);
+    policy.blocks?.[stage] ? blockRequired(policy.blocks[stage]!) : required(counts[stage])), range ? required(range.lastN) : 0);
   if (!Number.isSafeInteger(need) || need < 1) return fallback;
-  let until = Infinity;
   const exitT = tp.exitT, before = lowerBound(exitT, t);
+  // Any close in this config can complete a pooled sample or change its verdict.
+  if (positionScopeOf(tp, policy) !== "context") return exitT[Math.max(need - 1, before)] ?? Infinity;
+  let until = Infinity;
   for (const sym of new Set(tp.syms)) for (const side of [1, -1]) {
     const indices = signalContextOf(tp, sym, side);
     if (!indices || indices.length < need) continue;
@@ -6710,9 +6714,10 @@ function* signalWindowRows(
         for (const side of [1, -1]) {
           const ev = positionContextEval(tp, options, sym, side, input);
           if (!ev.ok) continue;
-          const indices = signalContextOf(tp, sym, side)!;
+          const indices = signalContextOf(tp, sym, side);
+          if (!indices?.length) continue;
           const end = lowerBound(indices, lowerBound(tp.exitT, t));
-          const own = Array.from(indices.subarray(end - counts.main, end));
+          const own = Array.from(indices.subarray(Math.max(0, end - counts.main), end));
           const rows = negHours
             ? own.filter((i) => negHours.has(Math.floor(tp.exitT[i] / H)))
             : own;
