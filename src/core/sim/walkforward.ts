@@ -475,6 +475,12 @@ export interface WalkForwardOptions {
    */
   entryCrowd?: Partial<Record<string, number>>;
   /**
+   * One order per pair event (operator, 17 Nov; default on): per indicator pair × symbol × side × strategy type × entry
+   * minute only the best-ranked config executes. The others are still evaluated and recorded on their own lanes, never
+   * funded: a 6-symbol replay entered up to 2,140 variants of one pair in one minute (10,200 closes from 99 events).
+   */
+  onePerPairEvent?: boolean;
+  /**
    * Seat cool-off in hours (0 / unset = off): an engine config whose own last close (its tape, any symbol) is less
    * than this many hours before an entry does not take it (skip "seatQuiet"). The PF gap analysis (13 Oct): orders
    * of a config that closed within the last 4 h realized PF 0.39, those with no close for 4 h 0.63 (D1) and 1.09
@@ -932,6 +938,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     stepH: 1,
     continuous: true,
     decisionMin: 1,
+    onePerPairEvent: true,
     // Real seats per strategy family: 0 = no limit — every config that passes the evaluation (PF, DDT, DDR,
     // validation) trades (12 windows × 12 symbols: PF 1.223 → 1.226, orders +5 % vs 16 seats; docs/block-sweep.md)
     portfolio: 0,
@@ -5949,6 +5956,14 @@ export const crowdRangeOf = (cfg: string): string =>
     ? "sig"
     : rangeOfId(cfg) || "wide";
 /** The crowding key of an entry: strategy group × symbol × side × entry time. */
+/**
+ * A pair event: indicator pair (bot|ind, the config id's first two fields) × symbol × side × strategy type × entry minute.
+ * Historic Exit configs keep their own identity (an exit config is its own event).
+ */
+export const pairEventKey = (cfg: string, sym: string, side: number, kind: string | undefined, entryT: number) => {
+  const pair = isHistoricExitConfig(cfg, kind) ? cfg : cfg.split("|", 2).join("|");
+  return `${pair}|${sym}|${side > 0 ? 1 : -1}|${kind ?? ""}|${Math.floor(entryT / 60_000)}`;
+};
 export const crowdKey = (cfg: string, sym: string, side: number, entryT: number) =>
   `${crowdRangeOf(cfg)}|${sym}|${side}|${entryT}${exitScopeSuffix(cfg)}`;
 /** The cap of a config's range under `entryCrowd` (Infinity = none). */
@@ -7572,6 +7587,8 @@ export function* walkForwardGen(
   const executedKeys = new Set<string>();
   // entries per range × symbol × side × entry time (entryCrowd)
   const crowd = new Map<string, number>();
+  // executed pair events (onePerPairEvent)
+  const pairEvents = new Set<string>();
   const open = new ExitHeap<Trade>(); // taken, by exit
   const counts = new OpenCounts(); // the caps' counts of the taken orders still open
   const blockPredecessors = new OpenCounts(); // independent virtual admissions never reserve funded slots
@@ -8013,6 +8030,8 @@ export function* walkForwardGen(
           (crowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) >= crowdCapOf(o, tr.cfg)
         )
           why = "crowd";
+        else if (o.onePerPairEvent && pairEvents.has(pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT)))
+          why = "pairEvent";
         const vf = (indicationVolumeFactors.get(tp.id) ?? 1)*relationalVolumeFactor(o.relationalVolumeRatios,{indicationType:kindOfInd(tp.ind),indication:laneOf(tp.ind).base,strategy:tp.kind,range:tp.kind==="exit"?"exit":isSignalInd(tp.ind)?"sig":tp.protect.tag??"wide",symbol:tr.sym});
         const hedgeVol = hedging ? (o.coord?.hedgeVolumeFactor ?? 1) : 1;
         const rangeVol = rangeVolumeFactorFor(tp, o);
@@ -8115,6 +8134,7 @@ export function* walkForwardGen(
             : {}),
         };
         executedKeys.add(dk);
+        if (o.onePerPairEvent) pairEvents.add(pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT));
         if (o.entryCrowd) {
           const ck = crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT);
           crowd.set(ck, (crowd.get(ck) ?? 0) + 1);
