@@ -129,3 +129,22 @@ it("scope auto: a context with its own floor of closes is its own lane; a sparse
   assert.equal(auto.trades.filter((t) => t.sym === "C").length, 0, "C has its own losing lane: never admitted by A's wins");
   assert.ok(auto.trades.length <= config.trades.length + 0);
 });
+
+it("defaults: config-wide windows systemwide, both windows for Micro; scope both needs the lane and the config to pass", async () => {
+  const { DEFAULT_POSITION_WINDOWS, checkPositionWindows } = await import("../position-windows.ts");
+  assert.equal(DEFAULT_POSITION_WINDOWS.scope, "config");
+  assert.equal(DEFAULT_POSITION_WINDOWS.byRange?.mc?.scope, "both");
+  assert.equal(DEFAULT_SETTINGS.gates.positionWindows?.scope, "config");
+  assert.throws(() => checkPositionWindows({ ...DEFAULT_POSITION_WINDOWS, scope: "x" as never }), /scope/);
+  assert.throws(() => checkPositionWindows({ ...DEFAULT_POSITION_WINDOWS, byRange: { mc: { scope: "x" as never } } }));
+  // A wins on its own lane, C loses on its own: with "both" C is refused although the pooled record passes; B (sparse)
+  // fails its own window and is refused too
+  const rows = [...history(5).map((x) => ({ ...x, sym: "A" })), ...run(18).map((x) => ({ ...x, sym: "A" })),
+    ...Array.from({ length: 4 }, (_, i) => ({ entryOffset: 25 * M + i * 60 * M, r: 0.01, sym: "B" })),
+    ...Array.from({ length: 10 }, (_, i) => ({ entryOffset: -(10 - i) * 15 * M - H, r: -0.005, sym: "C" })),
+    ...Array.from({ length: 4 }, (_, i) => ({ entryOffset: 35 * M + i * 60 * M, r: -0.005, sym: "C" }))];
+  const o = options();
+  const both = walkForward(u, [tape(rows)], { ...o, gates: { ...o.gates, positionWindows: { ...o.gates.positionWindows!, scope: "both" } } });
+  assert.ok(both.trades.some((t) => t.sym === "A"));
+  assert.equal(both.trades.filter((t) => t.sym === "B" || t.sym === "C").length, 0);
+});

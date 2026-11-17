@@ -6,11 +6,13 @@ export interface PositionCounts {
   real: number;
   entry: number;
 }
+/** Which closes a position window holds (see PositionWindows.scope). */
+export type PositionScope = "context" | "config" | "auto" | "both";
 export interface PositionWindows extends PositionCounts {
   blocks?: Partial<Record<keyof PositionCounts,BlockPolicy>>;
   /** Longest unresolved drawdown in completed positions, independent of wall-clock gaps. */
   maxDrawdownPositions: number;
-  byRange?: Record<string, Partial<PositionCounts>>;
+  byRange?: Record<string, Partial<PositionCounts> & { scope?: PositionScope }>;
   byConfig?: Record<string, Partial<PositionCounts>>;
   /**
    * true: a window must hold exactly the requested number of own closes, whatever gates.lastNFloor says (the native
@@ -19,13 +21,14 @@ export interface PositionWindows extends PositionCounts {
    */
   strictCounts?: boolean;
   /**
-   * Which closes a window holds. "context" (default): the exact config × symbol × direction's own closes. "config": the
+   * Which closes a window holds. "config" (default since 17 Nov): the config's own closes on every symbol and side.
+   * "context": the exact config × symbol × direction's own closes. "config": the
    * config's own closes on every symbol and side (its last N settled positions), as before the 11 Nov count policy —
    * long-hold ranges (General, Long) rarely fill a per-context window and stopped executing. "auto": each context is
    * its own lane once it holds its own floor of closes (gates.lastNFloor), and until then is judged on its own config's
    * record across symbols and sides (never another config's).
    */
-  scope?: "context" | "config" | "auto";
+  scope?: PositionScope;
 }
 export const DEFAULT_POSITION_WINDOWS: PositionWindows = {
   base: 40,
@@ -33,7 +36,12 @@ export const DEFAULT_POSITION_WINDOWS: PositionWindows = {
   real: 12,
   entry: 12,
   maxDrawdownPositions: 40,
-  byRange: { mc: { base: 30 }, mn: { base: 30 } },
+  // Micro judges each lane on both its own symbol × side window and its config's record (operator, 17 Nov: Micro
+  // performed per context, PF 1.43, and not config-wide, 0.21, on the same replay)
+  byRange: { mc: { base: 30, scope: "both" }, mn: { base: 30 } },
+  // operator, 17 Nov 2026: config-wide windows are the systemwide default (docs/positive-coordinations.md, "Config-wide
+  // own-close windows"): per context, long-hold ranges starved (PF 0.56 → 1.33 on the same replay)
+  scope: "config",
 };
 const stages = ["base", "main", "real", "entry"] as const;
 
@@ -95,8 +103,11 @@ export function checkPositionWindows(p: Partial<PositionWindows>): void {
     Number.isSafeInteger(n) && (n as number) >= 1 && (n as number) <= 500;
   if (p.strictCounts !== undefined && typeof p.strictCounts !== "boolean")
     throw new Error("strictCounts: true or false required");
-  if (p.scope !== undefined && p.scope !== "context" && p.scope !== "config" && p.scope !== "auto")
-    throw new Error('scope: "context", "config" or "auto" required');
+  const scopes = ["context", "config", "auto", "both"];
+  if (p.scope !== undefined && !scopes.includes(p.scope))
+    throw new Error('scope: "context", "config", "auto" or "both" required');
+  for (const [tag, r] of Object.entries(p.byRange ?? {}))
+    if (r?.scope !== undefined && !scopes.includes(r.scope)) throw new Error(`byRange.${tag}.scope: invalid`);
   for (const k of [...stages, "maxDrawdownPositions"] as const)
     if (p[k] !== undefined && !count(p[k]))
       throw new Error(`${k}: 1–500 complete positions required`);
@@ -115,7 +126,8 @@ export function checkPositionWindows(p: Partial<PositionWindows>): void {
         typeof value !== "object" ||
         Array.isArray(value) ||
         Object.entries(value).some(
-          ([k, n]) => !stages.includes(k as (typeof stages)[number]) || !count(n),
+          ([k, n]) => name === "byRange" && k === "scope" ? !scopes.includes(n as unknown as string)
+            : !stages.includes(k as (typeof stages)[number]) || !count(n),
         )
       )
         throw new Error(`Invalid ${name} position window`);

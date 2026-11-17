@@ -3,7 +3,7 @@ import { slWithinBounds, type SlBounds } from "../sl-calibration.ts";
 import {partialFloorOf, positionStageStats} from "../position-windows.ts";
 import { simulationClock } from "../progress.ts";
 import {blockRequired} from "../../../shared/cts-lastn/blocks.ts";
-import { positionCounts, positionStats, positionTapeValid } from "../position-windows.ts";
+import { positionCounts, positionStats, positionTapeValid, type PositionWindows } from "../position-windows.ts";
 import {relationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
 import { RT_COST } from "../model-cost.ts";
 import { EVALUATION_HISTORY_H, PRECALC_HISTORY_H } from "../market/history-requirements.ts";
@@ -4084,8 +4084,9 @@ function positionContextEval(
   side: number,
   input: ReturnType<typeof positionEvaluationInput>,
 ): ConfigEval {
-  const policy = o.gates.positionWindows;
-  if (!policy) throw new Error("Position-count policy unavailable");
+  const policyOrNull = o.gates.positionWindows;
+  if (!policyOrNull) throw new Error("Position-count policy unavailable");
+  const policy: PositionWindows = policyOrNull;
   const counts = positionCounts(
     policy,
     isSignalInd(tp.ind) ? "sig" : tp.kind === "exit" ? "exit" : (tp.protect.tag ?? "wide"),
@@ -4101,14 +4102,23 @@ function positionContextEval(
   const own = slot >= 0 && (side === 1 || side === -1)
     ? input.contexts.get(slot * 2 + (side > 0 ? 1 : 0)) : undefined;
   const ownEnd = own ? lowerBound(own, input.before) : 0;
-  const pooled = policy.scope === "config" ||
-    (policy.scope === "auto" && ownEnd < Math.max(1, partial || counts.main));
+  const tag = isSignalInd(tp.ind) ? "sig" : tp.kind === "exit" ? "exit" : (tp.protect.tag ?? "wide");
+  const scope = policy.byRange?.[tag]?.scope ?? policy.scope ?? "context";
+  // scope "both" (Micro's default): the lane's own window AND the config's record must pass; its own sample is reported
+  if (scope === "both") {
+    const own = judge(false);
+    if (!own.ok) return own;
+    const wide = judge(true);
+    return wide.ok ? own : wide;
+  }
+  return judge(scope === "config" || (scope === "auto" && ownEnd < Math.max(1, partial || counts.main)));
+  function judge(pooled: boolean): ConfigEval {
   const indices = pooled ? undefined : own,
-    end = pooled ? input.before : ownEnd;
+    end = pooled ? input!.before : ownEnd;
   const take = (n: number, stage?: "base"|"main"|"real"|"entry") => {
     const blocks=stage?policy.blocks?.[stage]:undefined; if(blocks)n=blockRequired(blocks);
     const values: number[] = [];
-    for (let j = Math.max(0, end - n); j < end; j++) values.push(input.returns[pooled ? j : indices![j]]);
+    for (let j = Math.max(0, end - n); j < end; j++) values.push(input!.returns[pooled ? j : indices![j]]);
     return positionStageStats(values,n,blocks,minPfForTape(tp,o),partial);
   };
   const main = take(counts.main,"main"),
@@ -4157,7 +4167,7 @@ function positionContextEval(
     const parts = Math.max(2, o.durableSplits),
       values: number[] = [];
     if (mainLongN < parts) return no("stable");
-    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input.returns[pooled ? j : indices![j]]);
+    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input!.returns[pooled ? j : indices![j]]);
     let passing = 0;
     for (let k = 0; k < parts; k++) {
       const a = Math.floor((values.length * k) / parts),
@@ -4172,7 +4182,7 @@ function positionContextEval(
   if (blocks >= 2) {
     if (mainLongN < 2 * blocks) return no("stable");
     const values: number[] = [];
-    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input.returns[pooled ? j : indices![j]]);
+    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input!.returns[pooled ? j : indices![j]]);
     for (let k = 0; k < blocks; k++) {
       const a = Math.floor((values.length * k) / blocks),
         b = Math.floor((values.length * (k + 1)) / blocks),
@@ -4181,6 +4191,7 @@ function positionContextEval(
     }
   }
   return { ok: true, lcb: main.lcb, gh: main.positiveShare, ddt: 0, ...base };
+  }
 }
 function positionAggregate(
   tp: ConfigTape,
