@@ -4216,7 +4216,10 @@ function positionAggregate(
     const e = positionContextEval(tp, o, syms[0] ?? "", side ?? 1, input);
     if (contexts) for (const sym of syms) for (const direction of side === undefined ? SIGNAL_SIDES : [side])
       contexts.push({ sym, side: direction, evaluation: e });
-    return { ...e, ...(contexts ? { contexts } : {}) };
+    // the same shape as the aggregate below (the detailed and the summary readings must agree)
+    const base = { n: e.n, gp: e.gp ?? 0, gl: e.gl ?? 0, net: (e.gp ?? 0) - (e.gl ?? 0), pf: profitFactor(e.gp ?? 0, e.gl ?? 0),
+      ...(contexts ? { contexts } : {}), windowBasis: "positions" as const };
+    return e.ok ? { ok: true, lcb: e.lcb, gh: e.gh, ddt: 0, ...base } : { ok: false, fail: e.fail, ...base };
   }
   let passed = 0, nAll = 0, gpAll = 0, glAll = 0, nYes = 0, gpYes = 0, glYes = 0;
   let lcb = Infinity, gh = Infinity, firstFail: EvalGate | undefined;
