@@ -7650,14 +7650,16 @@ export class CoreRuntime {
    * Real-money promotion judges each exact symbol × side lane on its own closes, whatever the research scope: a winning
    * long record never promotes an unproven short, nor one symbol another (docs/strategy-independence.md).
    */
-  private liveContextMemo: { wf: WalkForwardOptions; ctx: WalkForwardOptions } | null = null;
+  // only the derived window policy is cached (keyed on the policy object); the options are built fresh on every call,
+  // because the runtime updates this.wf in place after each compute (a cached copy of it would read stale fields)
+  private liveContextMemo: { pw: object; ctx: object } | null = null;
   private liveContextWf(): WalkForwardOptions {
-    if (this.liveContextMemo?.wf === this.wf) return this.liveContextMemo.ctx;
     const pw = this.wf.gates.positionWindows;
-    const ctx = !pw ? this.wf : { ...this.wf, gates: { ...this.wf.gates, positionWindows: { ...pw, scope: "context" as const,
-      byRange: Object.fromEntries(Object.entries(pw.byRange ?? {}).map(([k, v]) => [k, { ...v, scope: "context" as const }])) } } };
-    this.liveContextMemo = { wf: this.wf, ctx };
-    return ctx;
+    if (!pw) return this.wf;
+    if (this.liveContextMemo?.pw !== pw)
+      this.liveContextMemo = { pw, ctx: { ...pw, scope: "context" as const,
+        byRange: Object.fromEntries(Object.entries(pw.byRange ?? {}).map(([k, v]) => [k, { ...v, scope: "context" as const }])) } };
+    return { ...this.wf, gates: { ...this.wf.gates, positionWindows: this.liveContextMemo.ctx as typeof pw } };
   }
 
   livePromotionGate(lane: { cfg: string; sym: string; side: number; entryT?: number; id?: string }, now = Date.now()): LiveGate {

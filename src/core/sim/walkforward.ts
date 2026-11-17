@@ -4105,10 +4105,10 @@ function positionContextEval(
   const scope = positionScopeOf(tp, policy);
   // scope "both" (Micro's default): the lane's own window AND the config's record must pass; its own sample is reported
   if (scope === "both") {
-    const own = judge(false);
-    if (!own.ok) return own;
+    const lane = judge(false);
+    if (!lane.ok) return lane;
     const wide = judge(true);
-    return wide.ok ? own : wide;
+    return wide.ok ? lane : wide;
   }
   return judge(scope === "config" || (scope === "auto" && ownEnd < Math.max(1, partial || counts.main)));
   function judge(pooled: boolean): ConfigEval {
