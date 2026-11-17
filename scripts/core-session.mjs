@@ -443,7 +443,19 @@ function runVariants(rt, sim) {
     if (isSignalInd(tp.ind)) signalTapes++;
     else kinds[tp.kind] = (kinds[tp.kind] ?? 0) + 1;
   }
-  const specs = walkForwardVariants(base, { kinds, signalTapes, tactics: rt.settings.tactics });
+  // CTS_CORE_VARIANTS_EXTRA='[{"id":"x","patch":{…}}]': run only these option patches (deep-merged onto the session's
+  // options) instead of the built-in list — a causal comparison of settings on the same tapes, without recomputing them
+  const extra = process.env.CTS_CORE_VARIANTS_EXTRA ? JSON.parse(process.env.CTS_CORE_VARIANTS_EXTRA) : null;
+  const deepMerge = (a, b) => {
+    if (!b || typeof b !== "object" || Array.isArray(b) || !a || typeof a !== "object" || Array.isArray(a)) return b;
+    const out = { ...a };
+    for (const [k, v] of Object.entries(b)) out[k] = deepMerge(a[k], v);
+    return out;
+  };
+  const specs = extra
+    ? extra.map((x) => ({ id: x.id, group: "custom", label: x.label ?? x.id, change: JSON.stringify(x.patch), asRun: "–",
+        status: "run", opts: deepMerge(base, x.patch) }))
+    : walkForwardVariants(base, { kinds, signalTapes, tactics: rt.settings.tactics });
   const minMb = Number(process.env.CTS_CORE_VARIANTS_MIN_MB || 1500);
   const nRun = specs.filter((v) => v.status === "run").length + 1;
   const mainMs = rt.status.phases?.Simulation?.ms ?? null;
@@ -452,9 +464,22 @@ function runVariants(rt, sim) {
       `${mainMs ? ` · the session's own run took ${Math.round(mainMs / 1000)} s` : ""} · CTS_CORE_VARIANTS=0 skips them\n`,
   );
   const session = summarizeRun(sim, sim.startT, sim.endT);
+  // unit PF per range and type of a run's executed orders (one line on stderr per custom variant)
+  const ranges = (res) => {
+    const by = new Map();
+    for (const x of res.trades) {
+      const tag = x.cfg.match(/\|(mc|mn|mp|sh|gn|lg|lr)(?:\||$)/)?.[1] ?? (isSignalInd(x.cfg.split("|")[1] ?? "") ? "sig" : "wide");
+      const k = `${tag}/${x.kind ?? "?"}`;
+      const a = by.get(k) ?? { n: 0, gp: 0, gl: 0 };
+      a.n++; if (x.r > 0) a.gp += x.r; else a.gl -= x.r;
+      by.set(k, a);
+    }
+    return [...by].sort((a, b) => b[1].n - a[1].n).map(([k, a]) => `${k} ${a.n}@${a.gl ? (a.gp / a.gl).toFixed(2) : "inf"}`).join(" · ");
+  };
   const one = (opts) => {
     const ts = Date.now();
     let res = walkForward(u, rt.tapes, opts);
+    if (extra) process.stderr.write(`    by range/type: ${ranges(res)}\n`);
     const summary = summarizeRun(res, sim.startT, sim.endT);
     res = null;
     return { summary, ms: Date.now() - ts };
