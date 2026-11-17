@@ -114,6 +114,7 @@ import {
   fetchKlines,
   fetchTickers,
   forceSymbols,
+  dropExcluded,
   normSymbol,
   rankUniverse,
   type Ticker,
@@ -2095,7 +2096,7 @@ export class CoreRuntime {
   }
 
   updateSettings(patch: SettingsPatch, wfPatch?: Partial<WalkForwardOptions>) {
-    const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`;
+    const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}|${(this.settings.excludeSymbols ?? []).join(",")}`;
     const prevCompute = computeKey(this.settings, this.wf);
     const next = mergeSettings(this.settings, patch);
     // a connection's runtime always trades its own connection (switching is done by selecting another runtime)
@@ -2199,7 +2200,7 @@ export class CoreRuntime {
     // a running cycle keeps its snapshot; the universe reset is applied at the start of the next cycle
     if (
       prevUniverse !==
-      `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`
+      `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}|${(this.settings.excludeSymbols ?? []).join(",")}`
     )
       this.resetUniverse = true;
     // live execution settings (limits, pause, margin floor) are read by the live step, not by the compute: a change
@@ -2617,7 +2618,7 @@ export class CoreRuntime {
     const want = Math.round((s.historyDays * 24 * 60) / s.tfMin);
     // a symbol is usable with most of the requested history (small history settings must not stall the loop)
     const minBars = Math.max(50, Math.min(200, Math.floor(want * 0.8)));
-    const uniKey = `${s.symbols}|${s.tfMin}|${s.historyDays}|${s.symbolRank}|${s.symbolOffset ?? 0}|${(s.forceSymbols ?? []).join(",")}`;
+    const uniKey = `${s.symbols}|${s.tfMin}|${s.historyDays}|${s.symbolRank}|${s.symbolOffset ?? 0}|${(s.forceSymbols ?? []).join(",")}|${(s.excludeSymbols ?? []).join(",")}`;
     if (this.candles.size === 0) {
       this.status.state = "backfill";
       this.loadCandlesFromDb();
@@ -2685,15 +2686,21 @@ export class CoreRuntime {
         // symbolOffset skips the first symbols of the ranking (several desks on one account take disjoint slices)
         const offset = Math.max(0, Math.floor(s.symbolOffset ?? 0));
         // forced symbols first (always traded), then the ranking (after its offset) up to the symbol count
+        // excluded symbols are dropped from the ranking before the forced ones and the count are applied, so the next
+        // ranked symbols take their place
+        const excludedCount = new Set((s.excludeSymbols ?? []).map(normSymbol).filter(Boolean)).size;
         const ranked = forceSymbols(
-          (
-            await rankUniverse(
-              this.tickers,
-              s.symbols + offset,
-              s.symbolRank ?? "volatility1h",
-              this.feed.klines,
-            )
-          ).slice(offset),
+          dropExcluded(
+            (
+              await rankUniverse(
+                this.tickers,
+                s.symbols + offset + excludedCount,
+                s.symbolRank ?? "volatility1h",
+                this.feed.klines,
+              )
+            ).slice(offset),
+            s.excludeSymbols,
+          ),
           s.forceSymbols,
           s.symbols,
         );

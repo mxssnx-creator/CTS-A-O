@@ -111,6 +111,12 @@ export const normSymbol = (s: string) => {
  * The universe with forced symbols: the forced ones first (always traded, whatever their rank), then the ranking
  * without them, n in all (never fewer than the forced ones).
  */
+/** The ranking without the excluded symbols (a replacement moves up into the freed place). */
+export function dropExcluded(ranked: readonly string[], excluded: readonly string[] | undefined): string[] {
+  const ex = new Set((excluded ?? []).map(normSymbol).filter(Boolean));
+  return ranked.filter((x) => !ex.has(x));
+}
+
 export function forceSymbols(ranked: readonly string[], forced: readonly string[] | undefined, n: number): string[] {
   const f = [...new Set((forced ?? []).map(normSymbol).filter(Boolean))];
   if (!f.length) return ranked.slice(0, n);

@@ -659,10 +659,13 @@ async function runEngine() {
         ),
     };
   }
+  // --exclude-symbols A,B: left out of the ranking; the next ranked symbols take their place (a symbol without history)
+  const excludeSymbols = String(arg("exclude-symbols", "")).split(",").map((x) => x.trim()).filter(Boolean);
   const rt = new CoreRuntime(
     new CoreDb(":memory:"),
     {
       symbols,
+      ...(excludeSymbols.length ? { excludeSymbols } : {}),
       ...(tacticsMode === "all"
         ? { tactics: allTactics }
         : tacticsMode === "off"

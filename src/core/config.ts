@@ -296,6 +296,8 @@ export interface CoreSettings {
   symbolOffset?: number;
   /** symbols always in the universe whatever their rank ("XRP-USDT"); the ranking fills the rest up to `symbols` */
   forceSymbols?: string[];
+  /** symbols left out of the ranking; the next ranked symbols take their place (trade-sim runs; e.g. a symbol without full history) */
+  excludeSymbols?: string[];
   /** restrict Base to these "bot|indication" pairs (empty = every combo) */
   focus: string[];
   /**
