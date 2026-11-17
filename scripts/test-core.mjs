@@ -2,6 +2,7 @@
 // Core fixtures never need exchange connectivity. Install the portable guard before every test import.
 import { spawn } from "node:child_process";
 import { readdirSync, statSync, writeFileSync } from "node:fs";
+import { availableParallelism, totalmem } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,7 +21,13 @@ export function coreTestFiles(root = ROOT) {
   return files.sort();
 }
 
-export function coreTestInvocation(argv = [], sourceEnv = process.env, root = ROOT) {
+/** Test files run two at a time on a host with room for two heavy computes (measured: the full core inventory at
+ * concurrency 2 passed in 730 s against about 1,875 s one at a time); a smaller host keeps one. */
+export function defaultCoreConcurrency(host = { memBytes: totalmem(), cpus: availableParallelism() }) {
+  return host.memBytes >= 12 * 1024 ** 3 && host.cpus >= 2 ? 2 : 1;
+}
+
+export function coreTestInvocation(argv = [], sourceEnv = process.env, root = ROOT, host = undefined) {
   const files = [];
   const filters = [];
   let slow = false;
@@ -38,7 +45,7 @@ export function coreTestInvocation(argv = [], sourceEnv = process.env, root = RO
     else files.push(arg);
   }
   if (slow && files.length) throw new Error("Use --slow without explicit test files");
-  const concurrency = Number(sourceEnv.CTS_CORE_TEST_CONCURRENCY ?? 1);
+  const concurrency = Number(sourceEnv.CTS_CORE_TEST_CONCURRENCY ?? defaultCoreConcurrency(host));
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8)
     throw new Error("CTS_CORE_TEST_CONCURRENCY must be an integer from 1 to 8");
   const testWorkers = String(sourceEnv.CTS_CORE_TEST_WORKERS ?? "1");
