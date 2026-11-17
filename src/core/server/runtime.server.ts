@@ -7599,6 +7599,12 @@ export class CoreRuntime {
     const pSkip = (why: string) => {
       pSkips[why] = (pSkips[why] ?? 0) + 1;
     };
+    // D1 (wf.sideValidation): a seat opens only the sides its own validation admitted (Selection.sides, 3 = both)
+    const sideBitsOf = new Map(picks.map((p) => [p.id, p.sides ?? 3] as const));
+    const sideAdmitted = (id: string, side: number) => {
+      const bits = sideBitsOf.get(id);
+      return bits === undefined || (bits & (side > 0 ? 1 : 2)) !== 0;
+    };
     // an entry made before this step's time is judged on the seats of its own step (the simulation's, as it took it):
     // the seats at t were picked on closes that came after that entry (bug hunt, 13 Oct: paper and live opened
     // positions the simulation never executed and skipped ones it did)
@@ -7621,6 +7627,10 @@ export class CoreRuntime {
           if (prevByKey.has(posId(op))) continue;
           if (!isSig && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
             pSkip("notSelected");
+            continue;
+          }
+          if (!isSig && !sideAdmitted(tp.id, op.side)) {
+            pSkip("side");
             continue;
           }
           if (!freshEntry(op.entryT, t, this.wf.stepH)) {
@@ -7648,6 +7658,10 @@ export class CoreRuntime {
         const held = prevByKey.has(posId(op));
         if (!held && !isSig && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
           pSkip("notSelected");
+          continue;
+        }
+        if (!held && !isSig && !sideAdmitted(tp.id, op.side)) {
+          pSkip("side");
           continue;
         }
         // a new entry only from the current step, as the simulation takes them (an older tape position is left
@@ -8622,6 +8636,7 @@ export const WF_KEYS = [
   "entryCrowd",
   "seatQuietH",
   "invertSeats",
+  "sideValidation",
 ] as const;
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
 export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
@@ -8702,6 +8717,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   }
   num("seatQuietH", 0, 48); // seat cool-off hours (0 = off)
   if (p.invertSeats !== undefined) p.invertSeats = Boolean(p.invertSeats); // contrarian execution (evaluation only)
+  if (p.sideValidation !== undefined) p.sideValidation = Boolean(p.sideValidation); // D1: each side judged on its own record
   if (p.causalBase !== undefined) p.causalBase = Boolean(p.causalBase); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);

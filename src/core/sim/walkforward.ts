@@ -353,6 +353,13 @@ export interface WalkForwardOptions {
    */
   invertSeats?: boolean;
   /**
+   * D1 (owner decision, Stable-03): each seat's LONG and SHORT side must each pass the seat gates on their own
+   * validation window (its own closes: n ≥ gates.minTrades, net > 0, PF ≥ the stage minimum). A side that fails is not
+   * traded by that seat; a seat with neither side passing is not seated. Both directions stay open. Off = the pooled
+   * rule (both sides judged as one record, both traded). Default on; ignored under invertSeats.
+   */
+  sideValidation?: boolean;
+  /**
    * Range cells (micro, minimal, short, minimal plus): before a seat, the last `lastN` closes must also clear this
    * higher PF. Causal (only closes before the step). Unset = the ranges pass the same gates as the wide grid.
    */
@@ -694,6 +701,8 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // (MAINNET_LAST_N) unless the host waives it.
     lastN: 0,
     lastNMinPf: PF_NEUTRAL,
+    // D1: each side of a seat is judged on its own closes of the validation window (sideValidation, default on)
+    sideValidation: true,
     // best-set validation: the last 15 closes must clear min PF and the DDT gate before a seat — 6 of 6 hours positive,
     // net +36 % and 42 % more orders than 25, PF 3.43 against 3.62 (50: PF 3.40 at 48 % fewer orders) (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12))
     validLastN: 15,
@@ -2804,6 +2813,11 @@ export interface Selection {
   id: string;
   score: number;
   window: { n: number; net: number; pf: number; ddt: number };
+  /**
+   * D1 (wf.sideValidation): the sides this seat may trade, a bitmask (1 = long, 2 = short) of the sides whose own
+   * closes in the validation window pass the seat gates. Unset or 3 = both sides (the pooled rule).
+   */
+  sides?: number;
 }
 
 /** Share of exit-hours in [a, b) with a positive summed return. */
@@ -3640,6 +3654,32 @@ function maxHoldOf(tp: ConfigTape): number {
 
 /** The scores a passing config carries out of configPassAt (one object, reused: the selection copies what it keeps). */
 const passOut = { lcb: 0, gh: 0, ddt: 0 };
+
+/**
+ * D1 (wf.sideValidation): the sides of a validation window [a, b) whose OWN closes pass the seat gates, as a bitmask
+ * (1 = long, 2 = short). A side is enabled when it has at least `minN` closes, a positive net and PF ≥ `minPf`.
+ * Pure and causal: it reads only the closes exited inside the window the seat was judged on.
+ */
+export function sideMaskOf(tp: ConfigTape, a: number, b: number, minN: number, minPf: number): number {
+  let mask = 0;
+  for (const want of [1, -1] as const) {
+    let n = 0;
+    let gp = 0;
+    let gl = 0;
+    let net = 0;
+    for (let i = a; i < b; i++) {
+      if (tp.side[i] !== want) continue;
+      const r = tp.r[i];
+      n++;
+      net += r;
+      if (r > 0) gp += r;
+      else gl -= r;
+    }
+    if (n > 0 && n >= minN && net > 0 && profitFactor(gp, gl) >= minPf) mask |= want > 0 ? 1 : 2;
+  }
+  return mask;
+}
+
 /**
  * configEvalAt's verdict without its report: the same gates, all of which must pass, with the O(1) ones (prefix sums:
  * closes, net, PF, pre-window, last N, range gate, lower bound) before the O(window) scans (drawdown, green hours,
@@ -3795,6 +3835,12 @@ export function* selectFixedGen(
       if (!configPassAt(tp, t, o, a, b, n, net, pf, gp, gl, ddtMax, info)) continue;
       ({ lcb, gh, ddt } = passOut);
     }
+    // D1: each side judged on its own closes of the same window; neither side passing = no seat
+    const sides =
+      o.sideValidation !== false && !o.invertSeats
+        ? sideMaskOf(tp, a, b, o.gates.minTrades ?? 0, info.minPf)
+        : 3;
+    if (!sides) continue;
     const pair = info.seat;
     const score =
       o.rankBy === "green" ? gh + Math.min(1, Math.max(0, lcb)) * 1e-6 : lcb * (0.5 + gh);
@@ -3805,6 +3851,7 @@ export function* selectFixedGen(
         id: tp.id,
         score,
         window: { n, net, pf, gp, gl, ddt } as Selection["window"],
+        sides,
       });
       seatFam.set(pair, { fam: info.fam, pairKey: info.pairKey });
       famOfSeat.set(pair, info.seatFam);
@@ -5473,14 +5520,22 @@ export function* walkForwardGen(
       // stops where even the tape's longest hold cannot reach back into the step (every later exit is later still)
       const stepEnd = t + stepH * H;
       const exitCap = stepEnd + maxHoldOf(tp);
+      // D1: a seat trades only the sides its own validation admitted (p.sides, 3 = both)
+      const sideBits = p.sides ?? 3;
       for (let i = lowerBound(tp.exitT, t); i < tp.n; i++) {
         if (tp.exitT[i] >= exitCap) break;
         const e = tp.entryT[i];
-        if (e >= t && e < stepEnd && e < stopT) cands.push({ tr: tradeAt(tp, i), tp });
+        if (e >= t && e < stepEnd && e < stopT && sideBits & (tp.side[i] > 0 ? 1 : 2))
+          cands.push({ tr: tradeAt(tp, i), tp });
       }
       if (markOpen)
         for (const op of tp.open)
-          if (op.entryT >= t && op.entryT < t + stepH * H && op.entryT < stopT)
+          if (
+            op.entryT >= t &&
+            op.entryT < t + stepH * H &&
+            op.entryT < stopT &&
+            sideBits & (op.side > 0 ? 1 : 2)
+          )
             cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
     }
     let mergedSignals = 0;

@@ -78,6 +78,10 @@ const code: WalkForwardOptions = {
   protects: [],
   dcaProtects: [],
   simH: 6,
+  // the record spans ~70 h, longer than the 24 h default validation window: at 24 h each side holds about 12 closes and
+  // one side falls below the per-side minimum (wf.sideValidation, D1), so nothing is seated. A 336 h window holds both
+  // sides' full records, so the code default trades this input again.
+  longH: 336,
 };
 const ALL_ON = {
   normal: true,

@@ -633,3 +633,17 @@ DOT, VVV, WLD, ZRO):
 Headline orders and PF are identical; the configuration coverage counts move (36 fewer tapes; Minimal and trailing counts
 change). 68/68 checks on both. 48 h window (6 symbols, one compute): 53 s, 1,990 orders, PF 0.3056, 68/68 checks; the earlier
 171 s reference also ran the Exit family, which is now off by default, so the 48 h gain is not all from the compute change.
+
+## Seat validation per side (D1, operator, 20 Oct) — `wf.sideValidation` default on
+
+Operator decision (D1): each seat's long and short must each pass the seat gates on their own validation window; both
+directions stay open. The earlier rule pooled both sides, so a config's short side could trade on its long side's record.
+Measured on the 6-symbol run, 24 h pre-history, run 24 h, end 2026-10-19T19:00Z, one compute, same settings and universe:
+
+| run | orders | Return PF | net | balance end | checks |
+|---|---:|---:|---:|---:|---:|
+| sideValidation on (default) | 91 | 5.07 | +0.04 % | $1,042.76 | 66/66 |
+| sideValidation off (pooled) | 894 | 0.09 | −1.78 % | −$777.19 | 66/66 |
+
+One window only, and the on run has 91 orders: the result is not yet accepted. Two more windows (end-at 2026-10-18T19:00Z
+and 2026-10-17T19:00Z) are needed before the claim holds. Shown in the report as a pooled-versus-per-side comparison.
