@@ -320,15 +320,17 @@ function SwitchRow(props: {
 }
 
 const BLOCK_SOURCE_HELP: Array<[string, string]> = [
-  ["config", "exact configuration × symbol × direction; each history and level is independent"],
-  ["overall", "all orders in the selected Real history; only completed executions with an exit contribute"],
+  ["config", "the configuration's own closes (default: config-wide, every symbol and side; or per symbol × side, see Config scope); no other configuration moves it"],
+  ["lane", "the same configuration's own symbol × direction closes (its lane); no other configuration moves it"],
+  ["overall", "pooled: all orders in the selected Real history; only completed executions with an exit contribute"],
   ["symbol", "same symbol × direction; long and short have separate histories and stacks"],
   ["direction", "same direction across symbols; long and short are judged separately"],
   [
     "indication",
     "exact indication ID × timeframe lane × direction; sibling indications and lanes stay independent",
   ],
-  ["type", "same strategy type (Normal, Trailing, DCA, Axis)"],
+  ["type", "pooled: same strategy type (Normal, Trailing, DCA, Axis)"],
+  ["range", "pooled: same range (Micro, Minimal, Short, General, Long, Wide) × direction"],
 ];
 
 const RELATE_SOURCE_HELP: Array<[RelateSource, string]> = [
@@ -344,13 +346,57 @@ const RELATE_SOURCE_HELP: Array<[RelateSource, string]> = [
 
 /** Block sources and how their levels combine (shared = strongest, additive = sum, overall = each its own Block). */
 export function BlockSources(props: {
-  block: { sources?: Record<string, boolean | undefined>; mode?: string; historySource?: string };
+  block: {
+    sources?: Record<string, boolean | undefined>;
+    mode?: string;
+    historySource?: string;
+    configScope?: string;
+    auto?: { enabled?: boolean; n?: number; min?: number; pf?: number; scope?: string };
+  };
   set: (path: string[], v: unknown) => void;
 }) {
   const src = props.block.sources ?? {};
   const on = (k: string) => (k === "config" ? src.config !== false : !!src[k]);
+  const auto = props.block.auto ?? {};
   return (
     <div className="v2-lines" style={{ gap: 6, marginTop: 8 }}>
+      <div style={{ fontWeight: 600, marginTop: 4 }}>Auto evaluation per relation and block count</div>
+      <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+        Every relation at every level (block count) is judged on its own newest results: the positions that entered while
+        that relation stood at that level, whether it raised them or only observed. A count raises while the PF of its newest
+        results reaches the minimum; with fewer results than required, the relation's switch below decides.
+      </div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <Switch
+          label="Block auto evaluation"
+          checked={auto.enabled !== false && props.block.auto !== undefined}
+          onChange={(v) => props.set(["block", "auto", "enabled"], v)}
+        />
+        <div>Auto evaluation on</div>
+      </div>
+      <Field label="Newest results" hint="results each count is judged on · 5 – 200">
+        <Num value={auto.n ?? 30} min={5} max={200} step={1} onChange={(v) => props.set(["block", "auto", "n"], v)} />
+      </Field>
+      <Field label="Results before Auto decides" hint="below this the relation's switch holds · 1 – newest results">
+        <Num value={auto.min ?? 15} min={1} max={auto.n ?? 200} step={1} onChange={(v) => props.set(["block", "auto", "min"], v)} />
+      </Field>
+      <Field label="Minimum PF per count" hint="a count raises while the PF of its newest results is at least this · 0.5 – 5">
+        <Num value={auto.pf ?? 1.1} min={0.5} max={5} step={0.05} onChange={(v) => props.set(["block", "auto", "pf"], v)} />
+      </Field>
+      <Field
+        label="Auto record"
+        hint="Per relation × count: one record per relation and level. Per key × count: per relation key and level, i.e. per config for the config and lane relations."
+      >
+        <select
+          className="v2-select"
+          aria-label="Block auto scope"
+          value={auto.scope ?? "rule"}
+          onChange={(e) => props.set(["block", "auto", "scope"], e.target.value)}
+        >
+          <option value="rule">Per relation × count</option>
+          <option value="key">Per relation key × count</option>
+        </select>
+      </Field>
       <Field
         label="Type"
         hint="Shared: any qualifying relation can raise the entry; the strongest level uses the Shared ratio. Additive: enabled levels add up using the common ratio. Overall: each source adds its own independent leg; base plus all legs share Max stack."
@@ -381,6 +427,20 @@ export function BlockSources(props: {
           <option value="real-candidates">
             Legacy Real candidates · includes skips (diagnostic)
           </option>
+        </select>
+      </Field>
+      <Field
+        label="Config scope"
+        hint="The config source's record. Config-wide (default): each config / Set is judged on its own closes across every symbol and side, as the position windows are. Per symbol × side: only the exact symbol and direction. Either way no other config's closes move it; the pooled sources below mix configs and are off by default."
+      >
+        <select
+          className="v2-select"
+          aria-label="Block config scope"
+          value={props.block.configScope ?? "context"}
+          onChange={(e) => props.set(["block", "configScope"], e.target.value)}
+        >
+          <option value="config">Config-wide (own closes, every symbol and side)</option>
+          <option value="context">Per symbol × side</option>
         </select>
       </Field>
       {BLOCK_SOURCE_HELP.map(([k, help]) => (

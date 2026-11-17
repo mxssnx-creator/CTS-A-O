@@ -1,6 +1,7 @@
 import { slRatiosOf } from "../sl-ratios.ts";
 import type { SlBounds } from "../sl-calibration.ts";
 import { migratePositionWindows } from "./position-windows-migration.server.ts";
+import { migrateBlockOwnConfig } from "./block-own-config-migration.server.ts";
 import { mainnetPositionWindows } from "../position-windows.ts";
 import {relationalVolumeFactor,relationalVolumeSettings} from "../../../shared/cts-volume/ratios.ts";
 import { minimumStopFraction, normalizeMinSlDistancePct } from "../protection-policy.ts";
@@ -1280,6 +1281,7 @@ export class CoreRuntime {
     migrateMinimumProtectionPolicy(db);
     migratePositionWindows(db);
     migrateFineLadders(db);
+    migrateBlockOwnConfig(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
     if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {
@@ -9645,10 +9647,11 @@ export class CoreRuntime {
     }
     // one order per pair event (as simulated): another config of this pair, type, symbol and side already entered this minute
     if (this.wf.onePerPairEvent) {
-      const k = pairEventKey(op.cfg, op.sym, op.side, op.kind, op.entryT);
+      const axisOwn = this.wf.pairEventAxisOwn !== false;
+      const k = pairEventKey(op.cfg, op.sym, op.side, op.kind, op.entryT, axisOwn);
       const same = (x: { cfg: string; sym: string; side: number; entryT: number; kind?: string }) =>
         Math.floor(x.entryT / 60_000) === Math.floor(op.entryT / 60_000) && x.cfg !== op.cfg &&
-        pairEventKey(x.cfg, x.sym, x.side, x.kind ?? op.kind, x.entryT) === k;
+        pairEventKey(x.cfg, x.sym, x.side, x.kind ?? op.kind, x.entryT, axisOwn) === k;
       if (open.some(same) || crowdSeats?.some(same)) return "pairEvent";
     }
     // confirmation as in the simulation: an engine candidate (taken or not) open at the entry, not only a position
@@ -11155,6 +11158,7 @@ export const WF_KEYS = [
   "continuous",
   "decisionMin",
   "onePerPairEvent",
+  "pairEventAxisOwn",
   "recordValidation",
   "blockTrace",
   "portfolio",
@@ -11291,6 +11295,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("decisionMin", 1, 60); // continuous evaluation: minutes between re-derivations of the seat picks inside a step
   if (p.continuous !== undefined) p.continuous = Boolean(p.continuous);
   if (p.onePerPairEvent !== undefined) p.onePerPairEvent = Boolean(p.onePerPairEvent);
+  if (p.pairEventAxisOwn !== undefined) p.pairEventAxisOwn = Boolean(p.pairEventAxisOwn);
   num("portfolio", 0, 10_000, true); // 0 = no limit
   num("lastN", 0, 200, true);
   num("lastNMinPf", 0, 5);

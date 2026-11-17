@@ -417,7 +417,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       if (!s.block.sourceRatios || typeof s.block.sourceRatios !== "object" || Array.isArray(s.block.sourceRatios))
         throw new Error("block relation ratios must be an object");
       for (const [key, value] of Object.entries(s.block.sourceRatios)) {
-        if (!["config", "overall", "symbol", "direction", "indication", "type"].includes(key))
+        if (!["config", "lane", "overall", "symbol", "direction", "indication", "type", "range"].includes(key))
           throw new Error("unknown Block relation ratio");
         num(value, 0, 10, `block ${key} ratio multiplier`);
       }
@@ -471,6 +471,27 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     if (s.block.levelMinWin !== undefined) num(s.block.levelMinWin, 0, 1, "block level win share (0 = off)");
     for (const k of ["poolSignals", "poolDedupe", "sideKeys"] as const)
       if (s.block[k] !== undefined && typeof s.block[k] !== "boolean") throw new Error(`block ${k}: on / off`);
+    if (s.block.auto !== undefined) {
+      const a = s.block.auto;
+      if (typeof a !== "object" || a === null) throw new Error("block auto: an object");
+      if (a.enabled !== undefined && typeof a.enabled !== "boolean") throw new Error("block auto: on / off");
+      const whole = (v: unknown, name: string) => {
+        if (!Number.isInteger(v)) throw new Error(`${name}: a whole number`);
+      };
+      if (a.n !== undefined) {
+        num(a.n, 5, 200, "block auto newest results");
+        whole(a.n, "block auto newest results");
+      }
+      if (a.min !== undefined) {
+        num(a.min, 1, a.n ?? 200, "block auto results before it decides (at most the newest results)");
+        whole(a.min, "block auto results before it decides");
+      }
+      if (a.pf !== undefined) num(a.pf, 0.5, 5, "block auto minimum PF");
+      if (a.scope !== undefined && a.scope !== "rule" && a.scope !== "key")
+        throw new Error("block auto scope: rule (per relation × count) or key (per relation key × count)");
+    }
+    if (s.block.configScope !== undefined && s.block.configScope !== "config" && s.block.configScope !== "context")
+      throw new Error("block config scope: config (own closes on every symbol and side) or context (symbol × side)");
     num(s.block.increase, 0.05, 1, "block increase");
     const span = (pair: unknown, lo: number, hi: number, name: string) => {
       if (pair === undefined) return;
@@ -491,7 +512,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
         throw new Error("block sources: object of switches");
       for (const [k, v] of Object.entries(s.block.sources))
         if (
-          !["config", "overall", "symbol", "direction", "indication", "type"].includes(k) ||
+          !["config", "lane", "overall", "symbol", "direction", "indication", "type", "range"].includes(k) ||
           typeof v !== "boolean"
         )
           throw new Error(`block source ${k} must be a known source with an on/off value`);
