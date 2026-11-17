@@ -7646,6 +7646,20 @@ export class CoreRuntime {
     return model.byConfigSide;
   }
   /** Settled post-Base model outcomes and funded OWNED PAPER executions are distinct evidence, never venue fills. */
+  /**
+   * Real-money promotion judges each exact symbol × side lane on its own closes, whatever the research scope: a winning
+   * long record never promotes an unproven short, nor one symbol another (docs/strategy-independence.md).
+   */
+  private liveContextMemo: { wf: WalkForwardOptions; ctx: WalkForwardOptions } | null = null;
+  private liveContextWf(): WalkForwardOptions {
+    if (this.liveContextMemo?.wf === this.wf) return this.liveContextMemo.ctx;
+    const pw = this.wf.gates.positionWindows;
+    const ctx = !pw ? this.wf : { ...this.wf, gates: { ...this.wf.gates, positionWindows: { ...pw, scope: "context" as const,
+      byRange: Object.fromEntries(Object.entries(pw.byRange ?? {}).map(([k, v]) => [k, { ...v, scope: "context" as const }])) } } };
+    this.liveContextMemo = { wf: this.wf, ctx };
+    return ctx;
+  }
+
   livePromotionGate(lane: { cfg: string; sym: string; side: number; entryT?: number; id?: string }, now = Date.now()): LiveGate {
     const n = Math.max(
       1,
@@ -7725,9 +7739,9 @@ export class CoreRuntime {
       !tp.heldOnly &&
       (isSignalInd(ind) ||
         (baseAllowsTape(tp, this.wf) &&
-          (!this.wf.basePassed || configEval(tp, now, this.wf).ok) &&
-          configDirectionEval(tp, now, this.wf, lane.side).ok &&
-          engineContextValid(tp, now, this.wf, lane.sym, lane.side))) &&
+          (!this.wf.basePassed || configEval(tp, now, this.liveContextWf()).ok) &&
+          configDirectionEval(tp, now, this.liveContextWf(), lane.side).ok &&
+          engineContextValid(tp, now, this.liveContextWf(), lane.sym, lane.side))) &&
       (!isSignalInd(ind) ||
         (signalValidationOk(tp, now, this.wf, lane.sym, lane.side) &&
           (!this.wf.signalBasePassed || this.wf.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) &&
