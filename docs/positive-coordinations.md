@@ -632,7 +632,7 @@ switchable, each option off by default:
 | `block.levelMinWin` | 0: a positive sum is a level — 7 losses and one big win are level 8 | e.g. 0.5: a level also needs half its closes won | one outlier is not a streak |
 | `block.poolSignals` | true: signal candidates feed the pooled sources engine entries are judged on | `false`: the engine's candidates only | signals have their own record (`signalsOwn`) |
 | `block.poolDedupe` | false: every config's candidate counts | `true`: an identical close (one entry under two indication names) counts once | double counting |
-| `block.sideKeys` | false: the config source's level and pause pool both directions | `true`: the config source's level and pause per direction | 6 Oct: long and short run independently. For an engine entry it acts only while `sources.config` is on (DEFAULT_BLOCK has it off, so the default changes no engine entry). A signal entry has its config source on whatever `sources.config` says (`signalsOwn` gives its tape `OWN_SOURCES`), so `sideKeys` changes signal entries too when it is on. Comparison: recipe `blk-cfg-*`, not yet run; no default changes until its result is recorded here |
+| `block.sideKeys` | false: the config source's level and pause pool both directions | `true`: the config source's level and pause per direction | 6 Oct: long and short run independently. For an engine entry it acts only while `sources.config` is on (before 17 Nov DEFAULT_BLOCK had it off; since 17 Nov the default is the config source alone with `configScope: "config"`, which keys it by the config over every symbol and side, so `sideKeys` changes nothing under the default). A signal entry has its config source on whatever `sources.config` says (`signalsOwn` gives its tape `OWN_SOURCES`), so `sideKeys` changes signal entries too when it is on. Comparison: recipe `blk-cfg-*`, not yet run; no default changes until its result is recorded here |
 
 Fixed outright (not a policy; identical at the default `maxMult` 8, so no golden moves): `maxMult` caps the **total**
 stack in every type — Overall capped only each leg and hard-coded the stack at 8× (block.ts, the walk-forward and paper
@@ -667,7 +667,8 @@ $E --label blk-dedupe    --settings '{"block":{"poolDedupe":true}}' --toggles "$
 $E --label blk-all       --settings '{"block":{"stepFloor":false,"windowHours":6,"levelMinWin":0.5,"poolSignals":false,"poolDedupe":true}}' --toggles "$ON"
 # block.sideKeys acts only while the config source is on: for an engine entry that is sources.config, and a signal entry
 # has it on while signalsOwn is on (the default). A settings block.sources replaces the whole object, so both arms give
-# five sources with config true (type off, as DEFAULT_BLOCK.sources). Compare blk-cfg-sidekeys with blk-cfg-pooled;
+# five sources with config true (type off, as DEFAULT_BLOCK.sources was then; since 17 Nov the default is the config
+# source alone, config-wide). Compare blk-cfg-sidekeys with blk-cfg-pooled;
 # blk-off is the reference.
 $E --label blk-cfg-pooled   --settings '{"block":{"sources":{"config":true,"overall":true,"symbol":true,"direction":true,"indication":true,"type":false}}}' --toggles "$ON"
 $E --label blk-cfg-sidekeys --settings '{"block":{"sideKeys":true,"sources":{"config":true,"overall":true,"symbol":true,"direction":true,"indication":true,"type":false}}}' --toggles "$ON"
