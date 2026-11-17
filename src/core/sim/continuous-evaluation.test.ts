@@ -110,3 +110,22 @@ it("scope config: the config's own last N closes on every symbol decide, so a sp
   assert.ok(config.trades.filter((t) => t.sym === "B").length > 0, "config-wide, B trades on the config's record");
   assert.ok(config.trades.filter((t) => t.sym === "A").length >= context.trades.filter((t) => t.sym === "A").length);
 });
+
+it("scope auto: a context with its own floor of closes is its own lane; a sparse one falls back to its config's record", () => {
+  // A wins (14 closes), B has 2 closes; C has 12 losing closes of its own
+  const rows = [...history(5).map((x) => ({ ...x, sym: "A" })), ...run(18).map((x) => ({ ...x, sym: "A" })),
+    { entryOffset: -3 * H, r: 0.01, sym: "B" }, { entryOffset: -2 * H, r: 0.01, sym: "B" },
+    ...Array.from({ length: 4 }, (_, i) => ({ entryOffset: 25 * M + i * 60 * M, r: 0.01, sym: "B" })),
+    ...Array.from({ length: 12 }, (_, i) => ({ entryOffset: -(12 - i) * 15 * M - H, r: -0.01, sym: "C" })),
+    ...Array.from({ length: 4 }, (_, i) => ({ entryOffset: 35 * M + i * 60 * M, r: -0.01, sym: "C" }))];
+  const withScope = (scope: "auto" | "config") => {
+    const o = options();
+    return { ...o, gates: { ...o.gates, positionWindows: { ...o.gates.positionWindows!, scope } } };
+  };
+  const auto = walkForward(u, [tape(rows)], withScope("auto"));
+  const config = walkForward(u, [tape(rows)], withScope("config"));
+  assert.ok(auto.trades.some((t) => t.sym === "B"), "sparse B enters on the config's record");
+  assert.ok(auto.trades.some((t) => t.sym === "A"), "A trades on its own winning lane");
+  assert.equal(auto.trades.filter((t) => t.sym === "C").length, 0, "C has its own losing lane: never admitted by A's wins");
+  assert.ok(auto.trades.length <= config.trades.length + 0);
+});

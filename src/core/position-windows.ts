@@ -21,9 +21,11 @@ export interface PositionWindows extends PositionCounts {
   /**
    * Which closes a window holds. "context" (default): the exact config × symbol × direction's own closes. "config": the
    * config's own closes on every symbol and side (its last N settled positions), as before the 11 Nov count policy —
-   * long-hold ranges (General, Long) rarely fill a per-context window and stopped executing.
+   * long-hold ranges (General, Long) rarely fill a per-context window and stopped executing. "auto": each context is
+   * its own lane once it holds its own floor of closes (gates.lastNFloor), and until then is judged on its own config's
+   * record across symbols and sides (never another config's).
    */
-  scope?: "context" | "config";
+  scope?: "context" | "config" | "auto";
 }
 export const DEFAULT_POSITION_WINDOWS: PositionWindows = {
   base: 40,
@@ -93,8 +95,8 @@ export function checkPositionWindows(p: Partial<PositionWindows>): void {
     Number.isSafeInteger(n) && (n as number) >= 1 && (n as number) <= 500;
   if (p.strictCounts !== undefined && typeof p.strictCounts !== "boolean")
     throw new Error("strictCounts: true or false required");
-  if (p.scope !== undefined && p.scope !== "context" && p.scope !== "config")
-    throw new Error('scope: "context" or "config" required');
+  if (p.scope !== undefined && p.scope !== "context" && p.scope !== "config" && p.scope !== "auto")
+    throw new Error('scope: "context", "config" or "auto" required');
   for (const k of [...stages, "maxDrawdownPositions"] as const)
     if (p[k] !== undefined && !count(p[k]))
       throw new Error(`${k}: 1–500 complete positions required`);

@@ -4094,13 +4094,17 @@ function positionContextEval(
   if(!input) return {ok:false,fail:"closes",n:0,pf:NaN,net:NaN,gp:NaN,gl:NaN,
     windowBasis:"positions",requestedN:counts.main};
   const slot = tp.syms.indexOf(sym);
-  // scope "config": the config's own last N closes on every symbol and side (rows are in exit order)
-  const pooled = policy.scope === "config";
-  const indices = pooled ? undefined : slot >= 0 && (side === 1 || side === -1)
-    ? input.contexts.get(slot * 2 + (side > 0 ? 1 : 0)) : undefined,
-    end = pooled ? input.before : indices ? lowerBound(indices, input.before) : 0;
   // gates.lastNFloor: a window with fewer closes than requested but at least this many is judged on the closes it has
   const partial = partialFloorOf(policy, o.gates.lastNFloor);
+  // scope "config": the config's own last N closes on every symbol and side (rows are in exit order). Scope "auto": the
+  // context's own closes once it holds its floor (an independent lane), else the config's own record across symbols
+  const own = slot >= 0 && (side === 1 || side === -1)
+    ? input.contexts.get(slot * 2 + (side > 0 ? 1 : 0)) : undefined;
+  const ownEnd = own ? lowerBound(own, input.before) : 0;
+  const pooled = policy.scope === "config" ||
+    (policy.scope === "auto" && ownEnd < Math.max(1, partial || counts.main));
+  const indices = pooled ? undefined : own,
+    end = pooled ? input.before : ownEnd;
   const take = (n: number, stage?: "base"|"main"|"real"|"entry") => {
     const blocks=stage?policy.blocks?.[stage]:undefined; if(blocks)n=blockRequired(blocks);
     const values: number[] = [];
