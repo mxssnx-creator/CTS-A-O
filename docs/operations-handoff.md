@@ -1,3 +1,18 @@
+## 2026-11-17 — signed stage blocks retain the recent-loss veto
+
+A passing disjoint Validation or Real block now still reads the configured
+recent-loss veto from its own completed, strictly prior predecessor closes.
+The signed block key, state and PF survive restoration. The test exercises
+a negative minimal block that passes its signed policy and is still rejected
+by the independently selected newest-close veto. Fifty-two focused tests and
+TypeScript pass against main `2dfd6e60916b564032c1a8d0a244d50327b232c5`.
+
+The latest eight-symbol market reference remains unchanged at the 2026-10-13
+00:00 UTC decision after 12 hours of evaluated prehistory. Post-Base return PF
+was 6.0702, with 19,227 of 99,702 configs passing (19.28%). The next twelve
+hours produced 2,894 modeled settlements at PF 0.5160. This repair adds no new
+market performance or venue evidence.
+
 ## 2026-11-17 — Signals Last-N scope and causal refresh
 
 The compact Signals ranking cache previously waited for a full symbol-side
