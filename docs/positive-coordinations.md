@@ -617,3 +617,19 @@ Exit config seats, no exit-strategy position closes). Evidence already measured 
 forward PF of the Exit family was 0.48 after 106 qualified configs (winner's curse on a noise null test: holdout 2.00 falls
 to 0.90), and Wide's executed orders PF was 0.19 (99 orders). Not yet measured: a causal comparison of these defaults on
 the 6-symbol 24 h / 48 h runs; to be recorded with its numbers when run.
+
+## Replay runs compute once on the full universe (operator, 20 Oct: "Ja optimal durchsetzen")
+
+`scripts/core-session.mjs` loads the whole replay universe before its first compute (`replayPreloadAll` is on for every
+`--end-at` window). The batched live start, whose first compute ran on the symbols loaded so far, is still available with
+`--progressive-preload`. Measured on 6 symbols, run 24 h, end 2026-10-19T19:00Z, same settings, same universe (ARIA, BTW,
+DOT, VVV, WLD, ZRO):
+
+| run | total s | orders | PF | virtual closes | tapes |
+|---|---:|---:|---:|---:|---:|
+| progressive start (control) | 65 s to compute #2 | 1,416 | 0.2551 | 4,502 | 79,286 |
+| full universe, one compute | 50 s | 1,416 | 0.2551 | 4,502 | 79,250 |
+
+Headline orders and PF are identical; the configuration coverage counts move (36 fewer tapes; Minimal and trailing counts
+change). 68/68 checks on both. 48 h window (6 symbols, one compute): 53 s, 1,990 orders, PF 0.3056, 68/68 checks; the earlier
+171 s reference also ran the Exit family, which is now off by default, so the 48 h gain is not all from the compute change.

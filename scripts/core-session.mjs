@@ -608,14 +608,9 @@ async function runEngine() {
     throw new Error(
       "--evaluation-from needs an offline --feed, an explicit end and a valid earlier ISO timestamp",
     );
-  const replayPreloadAll = flag("replay-preload-all");
-  if (
-    replayPreloadAll &&
-    (!feedFile || !arg("end-at") || !cutT || !Number.isFinite(evaluationFromT))
-  )
-    throw new Error(
-      "--replay-preload-all needs an offline --feed, explicit --end-at and --evaluation-from",
-    );
+  // a replayed window loads the whole universe before its first compute (one compute, the same universe for every
+  // symbol); --progressive-preload keeps the batched live start (its first compute runs on the symbols loaded so far)
+  const replayPreloadAll = !!cutT && !flag("progressive-preload");
   function replayFeed(cut) {
     // only bars that closed by the cut
     const keep = (cs, tf) => cs.filter((c) => c.t + tf * 60_000 <= cut);
