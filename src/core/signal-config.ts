@@ -667,6 +667,8 @@ export interface SignalSettings {
    * only costs tapes. 0 = off.
    */
   minPerDay?: number;
+  /** days the signal rate is averaged over (default 7, 1–14): minPerDay is compared with the mean of the last `rateDays` days of Base closes */
+  rateDays?: number;
   /**
    * Source filter: a source whose own Base history is losing (at least `minTrades` closes on some symbol, pooled net <= 0 and
    * pooled PF below 1) is not evaluated. A source without Base history is kept. false = off.
@@ -836,6 +838,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // 6–11 of ~380 signal pairs (3 Oct: 51 orders at PF 0.44; 2 Oct: none)
   baseGate: false,
   minPerDay: 2,
+  rateDays: 7,
   dropLosing: true,
 };
 

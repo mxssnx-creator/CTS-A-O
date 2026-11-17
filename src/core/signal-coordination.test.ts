@@ -122,7 +122,7 @@ describe("Signal config identity through execution and persistence", () => {
     const qualified = ids.map((id) => tape(id, Array.from({ length: 30 }, (_, i) => i % 2 ? -0.01 : 0.02)));
     const unqualified = tape(losing, Array.from({ length: 30 }, (_, i) => i % 2 ? -0.02 : 0.01));
     const o = {
-      ...defaultWalkForward(DEFAULT_SETTINGS),
+      ...({ ...defaultWalkForward(DEFAULT_SETTINGS), onePerPairEvent: false /* these cases pin independent variants; the pair-event rule is in sim/pair-event.test.ts */ }),
       simH: 6,
       preH: 48,
       longH: 48,

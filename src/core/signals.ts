@@ -156,7 +156,7 @@ export function signalEvaluationPairs<
 >(
   configured: ReadonlyArray<{ bot: string; ind: string }>,
   runs: readonly R[],
-  sig: Pick<SignalSettings, "enabled" | "baseGate" | "minTrades"> & Partial<Pick<SignalSettings, "minPerDay" | "dropLosing">>,
+  sig: Pick<SignalSettings, "enabled" | "baseGate" | "minTrades"> & Partial<Pick<SignalSettings, "minPerDay" | "rateDays" | "dropLosing">>,
   representativePass: (run: R) => boolean,
   /**
    * days of Base history behind a run (its lane's first bar to the cut). With it, the source filters apply:
@@ -196,13 +196,13 @@ export function signalSourcesToDrop<
   R extends {
     bot: string;
     ind: string;
-    bySym: Record<string, { n: number }> | string;
+    bySym: Record<string, { n: number; dayN?: number[] }> | string;
     full?: { n: number; net: number; pf: number };
   },
 >(
   runs: readonly R[],
   pairs: ReadonlySet<string>,
-  sig: Pick<SignalSettings, "minTrades"> & Partial<Pick<SignalSettings, "minPerDay" | "dropLosing">>,
+  sig: Pick<SignalSettings, "minTrades"> & Partial<Pick<SignalSettings, "minPerDay" | "rateDays" | "dropLosing">>,
   historyDays: (run: R) => number,
 ): Set<string> {
   const drop = new Set<string>();
@@ -214,9 +214,14 @@ export function signalSourcesToDrop<
     // a coordinator is a composite of other sources with its own rules, not a source with a signal rate of its own
     if (!pairs.has(pair) || !r.ind.includes("sig-") || isSignalCoordinationInd(r.ind)) continue;
     const days = historyDays(r);
-    const by = (typeof r.bySym === "string" ? JSON.parse(r.bySym) : r.bySym) as Record<string, { n: number }> | undefined;
-    const counts = Object.values(by ?? {}).map((x) => x.n);
-    if (minPerDay > 0 && days >= SIGNAL_RATE_MIN_DAYS && counts.length && !counts.some((n) => n / days >= minPerDay)) {
+    const by = (typeof r.bySym === "string" ? JSON.parse(r.bySym) : r.bySym) as Record<string, { n: number; dayN?: number[] }> | undefined;
+    const stats = Object.values(by ?? {});
+    const counts = stats.map((x) => x.n);
+    // the rate is the mean over the last `rateDays` days (daily counts when the run carries them, else the whole history)
+    const window = Math.max(1, Math.min(Math.round(sig.rateDays ?? 7), 14, Math.ceil(days)));
+    const rateOf = (x: { n: number; dayN?: number[] }) =>
+      x.dayN ? x.dayN.slice(0, window).reduce((a, b) => a + b, 0) / Math.min(window, Math.max(days, SIGNAL_RATE_MIN_DAYS)) : x.n / days;
+    if (minPerDay > 0 && days >= SIGNAL_RATE_MIN_DAYS && stats.length && !stats.some((x) => rateOf(x) >= minPerDay)) {
       drop.add(pair);
       continue;
     }

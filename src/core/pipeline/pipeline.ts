@@ -623,6 +623,8 @@ export interface SymStat {
   /** trades and net over the most recent 24 h of the history (automatic validation) */
   recentN?: number;
   recentNet?: number;
+  /** closes per day over the last 14 days, index 0 = the most recent 24 h (signal source rate over a window of days) */
+  dayN?: number[];
   /**
    * signals: the same stats per direction ("1" long, "−1" short) — long and short of a signal on a symbol are ranked
    * and activated as separate units (activeSignals)
@@ -648,12 +650,16 @@ export function symStat(trades: readonly Trade[], nowT?: number): SymStat {
   for (const v of blocks.values()) if (v > 0) ok++;
   let recentN = 0;
   let recentNet = 0;
+  const dayN = nowT !== undefined ? new Array<number>(14).fill(0) : undefined;
   if (nowT !== undefined)
-    for (const x of trades)
+    for (const x of trades) {
       if (x.exitT > nowT - 24 * 3_600_000) {
         recentN++;
         recentNet += x.r * 100;
       }
+      const d = Math.floor((nowT - x.exitT) / (24 * 3_600_000));
+      if (dayN && d >= 0 && d < 14) dayN[d]++;
+    }
   return {
     n: st.n,
     net: st.net,
@@ -662,6 +668,7 @@ export function symStat(trades: readonly Trade[], nowT?: number): SymStat {
     okShare: blocks.size ? ok / blocks.size : 0,
     recentN,
     recentNet,
+    ...(dayN ? { dayN } : {}),
   };
 }
 

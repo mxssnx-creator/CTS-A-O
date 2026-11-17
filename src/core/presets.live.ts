@@ -29,10 +29,11 @@ export const LIVE_COORD_PRESETS: Preset[] = [
         normal: true,
         trailing: true,
         block: true,
-        // positive coordination: with Block Active on only Block-raised entries open (Normal / Trailing barely run)
+        // Active sub-types are off by default (operator, 16 Nov): an Active mode skips its own lane's first steps and
+        // executes only the ongoing ones, on its own lane's progress (docs/strategy-independence.md)
         blockActive: false,
         dca: true,
-        dcaActive: true,
+        dcaActive: false,
         axis: true,
       },
       grid: {

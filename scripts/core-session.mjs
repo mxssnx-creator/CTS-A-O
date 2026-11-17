@@ -7,7 +7,8 @@
 //
 //   node --experimental-strip-types scripts/core-session.mjs [--symbols 12] [--pre 6] [--run 6] [--balance 10]
 //        [--pct 0.002 | --sizing fixed --notional 5] [--leverage 10] [--tactics default|off|all] [--signals on|off]
-//        [--out docs/session]
+//        [--out docs/session] [--margin on|off] [--min-free-margin 0]
+//   --margin on (default): an order opens only with the margin the realized equity can carry (exchange-like)
 //
 // Settings (applied in this order, each on top of the previous):
 //   --desk file.json   a desk snapshot { settings, wf } (e.g. docs/session-24h/desk-settings.json)
@@ -688,9 +689,10 @@ async function runEngine() {
             priceStream: null,
             evaluationFromT,
             replayPreloadAll,
-            // A frozen window read from the exchange is one job: load the whole universe, then compute once. The progressive
-            // start batches (5, 10, 20 …) are for a live desk; here each batch would recompute a partial universe from scratch.
-            ...(!feedFile ? { completeReplayUniverse: true } : {}),
+            // A frozen window (read from the exchange or from a recorded --feed) is one job: load the whole universe, then
+            // compute once. The progressive start batches (5, 10, 20 …) are for a live desk; here each batch would recompute a
+            // partial universe from scratch (a 6-symbol feed replay computed 5/6, then 6/6 again: half the wall time).
+            completeReplayUniverse: true,
             feed: {
               ...replayFeed(cutT),
               ...(feedFile || recordFile ? { tickers: fetchTickers } : {}),
@@ -1812,6 +1814,7 @@ function sizeCapped(closed, open, o) {
     scaledOpen: 0,
     byPosition: 0,
     byExposure: 0,
+    byMargin: 0,
     wantMax: 0,
     gotMax: 0,
     roundoffZeroed: 0,
@@ -1836,7 +1839,7 @@ function sizeCapped(closed, open, o) {
     const u = o.sizing.mode === "fixed" ? o.fixedNotional : Math.max(0, o.sizing.pct * eq);
     const items = batch.map(([, , isOpen, i]) => {
       const x = isOpen ? open[i] : closed[i];
-      return { x, isOpen, i, pk: pkOf(x), want: u * (x.vol ?? 1), got: 0, pos: false, exp: false };
+      return { x, isOpen, i, pk: pkOf(x), want: u * (x.vol ?? 1), got: 0, pos: false, exp: false, margin: false };
     });
     // per position: the instant's entries share the room the position cap leaves
     const wantPos = new Map();
@@ -1857,10 +1860,20 @@ function sizeCapped(closed, open, o) {
     // the gross cap: every entry of the instant by one factor
     const roomG = o.expX > 0 ? Math.max(0, o.expX * Math.max(0, eq) - gross) : Infinity;
     const fG = sum > roomG ? roomG / sum : 1;
+    // free margin (as the exchange): the open notional / leverage may not exceed the realized equity minus the floor;
+    // the instant's entries share what is left by one factor, an entry with no room gets 0
+    const roomM = o.margin
+      ? Math.max(0, (Math.max(0, eq) - (o.marginFloor ?? 0)) * o.leverage - gross)
+      : Infinity;
+    const fM = sum * fG > roomM ? roomM / (sum * fG) : 1;
     for (const it of items) {
       if (fG < 1) {
         it.got *= fG;
         it.exp = true;
+      }
+      if (fM < 1) {
+        it.got *= fM;
+        it.margin = true;
       }
       const normalized = normalizedBookNotional(it.got);
       if (normalized.notional === null)
@@ -1885,6 +1898,7 @@ function sizeCapped(closed, open, o) {
         st[k]++;
         if (it.pos) st.byPosition++;
         if (it.exp) st.byExposure++;
+        if (it.margin) st.byMargin++;
       }
       st.wantMax = Math.max(st.wantMax, it.want);
       st.gotMax = Math.max(st.gotMax, it.got);
@@ -1900,10 +1914,17 @@ function sizeCapped(closed, open, o) {
   return { units, rawUnits, rawNotionals, realized: o.balance + pnl, pnl, ...st };
 }
 const sizeOpt = { balance: balance0, sizing, fixedNotional: notional };
+// free margin is on by default (operator, 17 Nov): an order opens only with the margin the equity can carry.
+// --margin off reproduces the book without it; --min-free-margin keeps a floor of the equity free.
+const marginRule = arg("margin", "on") !== "off";
+const marginFloor = Number(arg("min-free-margin", 0));
 const sized = sizeCapped(trades, openEnd, {
   ...sizeOpt,
   posX: caps.maxPositionX,
   expX: caps.maxExposureX,
+  margin: marginRule,
+  marginFloor,
+  leverage,
 });
 const sizedU = sizeCapped(trades, openEnd, { ...sizeOpt, posX: 0, expX: 0 });
 // the engine's own sizer (no caps) — the uncapped book must match it
@@ -3591,6 +3612,10 @@ const T = {
     scaledOpen: sized.scaledOpen,
     byPosition: sized.byPosition,
     byExposure: sized.byExposure,
+    // free margin (exchange-like): orders scaled or refused because the equity could not carry their margin
+    margin: marginRule,
+    marginFloor,
+    byMargin: sized.byMargin,
   },
   uncapped: bookUncapped,
   // margin above the equity: the leverage could not carry the book
@@ -3814,6 +3839,9 @@ const capLine = !caps.on
       : "") +
     ` · binding: position cap ${T.caps.byPosition}, gross cap ${T.caps.byExposure}. ` +
     `**Without the caps:** balance ${usd(balance0)} → ${usd(bookUncapped.balanceEnd)} (${f2((bookUncapped.net / balance0) * 100)} %) · Return PF ${pfStr(bookUncapped.gpR, bookUncapped.glR, bookUncapped.n)} · cash PF (base $1) ${pfStr(bookUncapped.gpR, bookUncapped.glR, bookUncapped.n)} · sized $ PF diagnostic ${pfStr(bookUncapped.gp, bookUncapped.gl, bookUncapped.n)} · equity at end ${usd(bookUncapped.equityEnd)} · equity max drawdown ${usd(bookUncapped.equityMaxDd)} (${f2(bookUncapped.equityMaxDdPct * 100)} %) · margin used max ${usd(bookUncapped.marginMax)}${bookUncapped.marginOverMinutes ? ` · infeasible: margin exceeded equity for ${bookUncapped.marginOverMinutes} min` : ""}.`;
+const marginLine = T.caps.margin
+  ? ` **Free margin:** on (an order opens only with margin the realized equity${T.caps.marginFloor ? ` minus ${usd(T.caps.marginFloor)}` : ""} can carry at ${leverage}×) — ${T.caps.byMargin} orders scaled or refused for margin.`
+  : " **Free margin:** off (--margin off): orders are funded whatever their margin.";
 const openText = !T.openEnd.recorded
   ? "open at end: not recorded in this dump (dumped by an older core-session; the equity holds the closed orders only)"
   : `open at end: ${T.openEnd.positions} virtual positions / ${T.openEnd.orders} virtual orders (${T.openEnd.fundedOrders} funded), MTM ${usd(T.openEnd.mtm)} (${String(T.openEnd.rule ?? "upper bound").split(":")[0]}: ${String(T.openEnd.rule ?? "").startsWith("exact") ? "executed by the engine through every gate, cap and Block volume, marked to market" : "tape-level open positions of the executed configs, one unit of volume, the sim's gates not re-applied"})`;
@@ -3835,7 +3863,7 @@ const lines = [
   report.evidence.returns.note,
   ``,
   ...signalHistMd(E, raw.settings),
-  capLine,
+  capLine + marginLine,
   `**Virtual diagnostic:** ${T.virtual.n} closes · Return PF ${pfStr(T.virtual.gpR, T.virtual.glR, T.virtual.n)} before funding allocation; ${T.zeroAllocatedOrders} zero allocations and ${T.unknownAllocations} unknown allocations. Position episodes and explicitly virtual counts describe the native virtual book. Funded opening/settlement totals and headline occupancy use verified allocations; PF uses funded settled orders.`,
   baseGateMd(E),
   baseWhyMd(E),
@@ -4621,7 +4649,7 @@ function renderWriteup(d, dir) {
     ``,
     `Simulated live sizing replay (${capsText}); ${t.openedOrders} funded orders opened: ${t.orders} settled and ${t.openEnd.fundedOrders} still open. ${openText}${feasText}.`,
     ``,
-    capLine,
+    capLine + marginLine,
     ``,
     `Separate virtual diagnostic: ${t.virtual.n} closes · Return PF ${pfStr(t.virtual.gpR, t.virtual.glR, t.virtual.n)} before funding allocation; ${t.zeroAllocatedOrders} zero allocations, ${t.unknownAllocations} unknown allocations. Position episodes and explicitly virtual counts describe the native virtual book. Funded opening/settlement totals and headline occupancy use verified allocations; PF uses funded settled orders.`,
     ``,

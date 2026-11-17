@@ -8,6 +8,7 @@ symbol**, make it a setting, and so cut the Signal work (fewer pairs to build ta
 | setting | default | meaning |
 |---|---:|---|
 | `minPerDay` | 2 | a source (signal pair) is evaluated only if, on at least one symbol, its own Base history shows at least this many signal entries a day. 0 = off |
+| `rateDays` | 7 | days the rate is averaged over (1–14): the mean closes a day over the last `rateDays` days of the source's Base history (per-day counts `SymStat.dayN`); a burst on one day does not carry a silent source; a history shorter than the window is averaged over the history |
 | `dropLosing` | on | a source whose own Base history is losing is not evaluated: at least `minTrades` closes on some symbol, pooled net not positive and pooled PF below 1 |
 
 Both are validated by `checkSettings` and carried by `signalSettings` / the desk snapshots.

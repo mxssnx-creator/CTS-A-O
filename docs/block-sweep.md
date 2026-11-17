@@ -14,7 +14,7 @@ PF is pooled as Σ gross profit ÷ Σ gross loss over all windows.
 | setting | value | meaning |
 |---|---|---|
 | Block | on | Block runs at the Real stage |
-| Block Active | on, from level 2 | entries below level 2 are skipped (also with Normal on) |
+| Block Active | on, from level 2 | Block raises only from level 2; since 16 Nov an un-raised entry trades at its unit when Normal is on (Block Active confines Block's own lane only, `docs/strategy-independence.md`) |
 | Type | Overall | each source is its own Block and adds its own position (ratio · its level) |
 | Sources | overall, symbol, direction, indication | config and type sources off |
 | Block count (max level) | 8 | levels n = 1..8: a positive sum of the last n closes is one level |

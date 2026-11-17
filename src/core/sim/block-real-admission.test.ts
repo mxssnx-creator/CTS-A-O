@@ -63,7 +63,7 @@ describe("Every Block relation learns final modeled Real admissions; direction g
       for (const e of closed) feedBooks(e, book, null, direction);
       assert.equal(book.tailSum("all", 100).n, 6);
       assert.equal(book.tailSum("d:1", 100).n, 6, "Block Direction uses only settled accepted Real orders");
-      assert.equal(direction?.tailSum(1, 12).n, 12, "the independent direction gate retains rejected candidate calculations");
+      assert.equal(direction?.tailSum(1, 12, { type: "normal" }).n, 12, "the independent direction gate retains rejected candidate calculations (per strategy type)");
       const replay = blockBookOf(o.block, false);
       for (const e of JSON.parse(JSON.stringify(sim.feed))) feedBooks(e, replay);
       assert.deepEqual(replay.tailSum("all", 100), book.tailSum("all", 100), "the admission marker survives feed persistence/replay");
@@ -85,7 +85,7 @@ describe("Every Block relation learns final modeled Real admissions; direction g
     assert.equal(book.level("all", 8), 0);
     assert.equal(book.sampleCount("all", 8), 0);
     assert.equal(book.level("d:1", 8), 0, "rejected wins cannot warm any accepted-order Block relation");
-    assert.ok((direction?.tailSum(1, 12).n ?? 0) > 0, "raw direction evidence remains independent without inventing an admission");
+    assert.ok((direction?.tailSum(1, 12, { type: "normal" }).n ?? 0) > 0, "raw direction evidence remains independent without inventing an admission");
   });
 
   it("accepted-only Active remains cold for Overall and auxiliary sources; the explicit candidate diagnostic can bootstrap", () => {

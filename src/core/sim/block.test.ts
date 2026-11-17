@@ -320,9 +320,14 @@ describe("Block sources", () => {
       ),
       { ok: false, why: "normalOff" },
     );
-    // Block Active: level 0 is below every min level — skipped even with Normal on
+    // Block Active is Block's own lane: level 0 is below every min level, so Block does not raise; the enabled
+    // Normal lane still trades its unit, and with Normal off the entry is skipped
     assert.deepEqual(
       execDecision(t, 2 * H, { ...base, toggles: { ...base.toggles, blockActive: true }, block: B }, ctx),
+      { ok: true, level: 0, vol: 1 },
+    );
+    assert.deepEqual(
+      execDecision(t, 2 * H, { ...base, toggles: { ...base.toggles, normal: false, blockActive: true }, block: B }, ctx),
       { ok: false, why: "blockActive" },
     );
     // symbol source: level 3 → 1 + 0.2·3
@@ -810,11 +815,14 @@ describe("Block accepted Real order evidence", () => {
     const book = blockBookOf(b);
     const base = { ...o, normalBaseMinPf: 1.01 };
     assert.deepEqual(execDecision(tp, 40 * H, base, { book, sym: "A", side: 1 }), { ok: true, level: 0, vol: 1 });
+    // with Normal on, an empty Block Active book leaves the Normal lane at its unit (Block invents no level)
     assert.deepEqual(execDecision(tp, 40 * H, { ...base, toggles: { ...base.toggles, blockActive: true } },
-      { book, sym: "A", side: 1 }), { ok: false, why: "blockActive" });
+      { book, sym: "A", side: 1 }), { ok: true, level: 0, vol: 1 });
+    // Normal off: Block-raised only, and the base PF does not bypass that
+    const offActive = { ...base, toggles: { ...base.toggles, normal: false, blockActive: true } };
+    assert.deepEqual(execDecision(tp, 40 * H, offActive, { book, sym: "A", side: 1 }), { ok: false, why: "blockActive" });
     feedBooks(e(.01, { accepted: true }), book);
-    assert.ok(execDecision(tp, 40 * H, { ...base, toggles: { ...base.toggles, blockActive: true } },
-      { book, sym: "A", side: 1 }).ok);
+    assert.ok(execDecision(tp, 40 * H, offActive, { book, sym: "A", side: 1 }).ok);
   });
 });
 
@@ -1059,7 +1067,7 @@ describe("Direction gate (sideGateN)", () => {
     toggles: { ...DEFAULT_TOGGLES, normal: true, block: false },
   };
   const fill = (book: CandidateDirectionBook, side: number, rs: number[]) => {
-    for (const r of rs) book.add({ side, r });
+    for (const r of rs) book.add({ side, r, type: "normal" }); // the gate judges each strategy type on its own closes
   };
 
   it("a side whose last N candidates sum negative opens nothing; the other side still opens", () => {

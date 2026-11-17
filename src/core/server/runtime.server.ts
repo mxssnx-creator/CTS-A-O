@@ -281,6 +281,7 @@ import {
   pendingAsOpen,
   carryGuardIndices,
   crowdCapOf,
+  pairEventKey,
   crowdKey,
   type ConfirmPool,
   mirrorId,
@@ -9633,7 +9634,7 @@ export class CoreRuntime {
    * candidates confirmation judges (confirmPoolOf); without it, the book's engine positions.
    */
   private entryHeldBack(
-    op: { cfg: string; sym: string; side: number; entryT: number },
+    op: { cfg: string; sym: string; side: number; entryT: number; kind?: string },
     hourNet: ReadonlyMap<number, number>,
     open: ReadonlyArray<{
       cfg: string;
@@ -9641,11 +9642,12 @@ export class CoreRuntime {
       side: number;
       entryT: number;
       stopHit?: number;
+      kind?: string;
     }>,
     srcClosed: ReadonlyMap<string, Array<{ exitT: number; r: number }>>,
     confirmPool?: ConfirmPool | null,
     /** entries that hold a crowd seat without a position (refused by the live validation after the simulation's rules) */
-    crowdSeats?: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number }>,
+    crowdSeats?: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; kind?: string }>,
   ): string | null {
     const hk = Math.floor(op.entryT / H);
     if (this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
@@ -9665,6 +9667,14 @@ export class CoreRuntime {
             if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
         if (n >= cap) return "crowd";
       }
+    }
+    // one order per pair event (as simulated): another config of this pair, type, symbol and side already entered this minute
+    if (this.wf.onePerPairEvent) {
+      const k = pairEventKey(op.cfg, op.sym, op.side, op.kind, op.entryT);
+      const same = (x: { cfg: string; sym: string; side: number; entryT: number; kind?: string }) =>
+        Math.floor(x.entryT / 60_000) === Math.floor(op.entryT / 60_000) && x.cfg !== op.cfg &&
+        pairEventKey(x.cfg, x.sym, x.side, x.kind ?? op.kind, x.entryT) === k;
+      if (open.some(same) || crowdSeats?.some(same)) return "pairEvent";
     }
     // confirmation as in the simulation: an engine candidate (taken or not) open at the entry, not only a position
     const coordWhy = coordBlock(this.wf.coord, op, hourNet, at, confirmPool);
@@ -11169,6 +11179,7 @@ export const WF_KEYS = [
   "stepH",
   "continuous",
   "decisionMin",
+  "onePerPairEvent",
   "recordValidation",
   "blockTrace",
   "portfolio",
@@ -11304,6 +11315,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("stepH", 1 / 60, 48); // re-evaluation down to 1 minute (BingX has no sub-minute history)
   num("decisionMin", 1, 60); // continuous evaluation: minutes between re-derivations of the seat picks inside a step
   if (p.continuous !== undefined) p.continuous = Boolean(p.continuous);
+  if (p.onePerPairEvent !== undefined) p.onePerPairEvent = Boolean(p.onePerPairEvent);
   num("portfolio", 0, 10_000, true); // 0 = no limit
   num("lastN", 0, 200, true);
   num("lastNMinPf", 0, 5);

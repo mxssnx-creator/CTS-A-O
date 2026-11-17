@@ -126,7 +126,7 @@ describe("toggles and Block", () => {
     ...[-8, -6, -4, -2].map((h) => [h, -0.03] as [number, number]),
     [0, 0.01], [2, 0.01], [4, -0.03],
   ]);
-  it("legacy candidate history: Normal off still executes Block-adjusted entries; Active skips every entry below its min level", () => {
+  it("legacy candidate history: Normal off still executes Block-adjusted entries; Active confines Block to its own lane", () => {
     const tg = { ...DEFAULT_TOGGLES, normal: false, block: true, blockActive: false };
     assert.ok(kindExecutable("normal", tg));
     const t = qualifiedBlockTape();
@@ -136,10 +136,10 @@ describe("toggles and Block", () => {
     assert.deepEqual(execDecision(t, 3 * H + 1, oo), { ok: true, level: 2, vol: 1.4, src: ["config"],
       blockAttribution: { config: { level: 2, extra: 0.3999999999999999 } } });
     assert.deepEqual(execDecision(t, 5 * H + 1, oo), { ok: false, why: "normalOff" });
-    // Block Active: below the min level the entry is skipped — also with Normal on
+    // Block Active never vetoes another lane: with Normal on an un-raised entry trades at its unit
     const active = { ...oo, toggles: { ...tg, normal: true, blockActive: true } };
-    assert.deepEqual(execDecision(t, 5 * H + 1, active), { ok: false, why: "blockActive" });
-    // … and only levels ≥ min execute (Normal on or off)
+    assert.deepEqual(execDecision(t, 5 * H + 1, active), { ok: true, level: 0, vol: 1 });
+    // … with Normal off only Block's own raises (levels ≥ min) execute
     const activeOff = {
       ...oo,
       toggles: { ...tg, normal: false, blockActive: true },
@@ -148,7 +148,8 @@ describe("toggles and Block", () => {
     assert.deepEqual(execDecision(t, 3 * H + 1, activeOff), { ok: false, why: "blockActive" });
     assert.deepEqual(
       execDecision(t, 3 * H + 1, { ...activeOff, toggles: { ...activeOff.toggles, normal: true } }),
-      { ok: false, why: "blockActive" },
+      { ok: true, level: 0, vol: 1 },
+      "below the Active minimum, Normal on: the Normal lane trades at its unit",
     );
     assert.deepEqual(
       execDecision(t, 3 * H + 1, {
@@ -212,7 +213,10 @@ describe("toggles and Block", () => {
       assert.deepEqual(execDecision(tp, 3 * H + 1, normal), { ok: true, level: 0, vol: 1 });
       assert.deepEqual(execDecision(tp, 3 * H + 1, {
         ...normal, toggles: { ...normal.toggles, blockActive: true },
-      }), { ok: false, why: "blockActive" });
+      }), { ok: true, level: 0, vol: 1 }, "Block Active does not veto the enabled Normal lane");
+      assert.deepEqual(execDecision(tp, 3 * H + 1, {
+        ...oo, toggles: { ...oo.toggles, blockActive: true },
+      }), { ok: false, why: "blockActive" }, "Normal off: only Block-raised entries");
     }
   });
 

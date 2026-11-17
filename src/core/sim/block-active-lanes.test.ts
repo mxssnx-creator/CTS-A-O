@@ -25,8 +25,11 @@ const decide = (kind: "normal" | "dca-active" | "axis" | "dca", dcaActive = true
 };
 
 describe("Block Active is scoped to its own lanes", () => {
-  it("still skips a plain Normal entry below the active minimum level", () => {
-    assert.deepEqual(decide("normal"), { ok: false, why: "blockActive" });
+  it("skips a plain Normal entry below the active minimum only when Normal itself is off", () => {
+    assert.equal(decide("normal").ok, true, "Normal on: the un-raised base trades at its unit");
+    const off = { ...base, toggles: { ...base.toggles, normal: false } };
+    const tp = makeTape("x", "magnet", ind, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], rows("x"), [], []);
+    assert.deepEqual(execDecision(tp, 2 * H, off, { book: new BlockBook(), sym: "A", side: 1 }), { ok: false, why: "blockActive" });
   });
   it("does not skip DCA Active, DCA or Axis entries", () => {
     for (const kind of ["dca-active", "axis"] as const) assert.equal(decide(kind).ok, true, kind);

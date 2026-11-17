@@ -476,6 +476,12 @@ export interface WalkForwardOptions {
    */
   entryCrowd?: Partial<Record<string, number>>;
   /**
+   * One order per pair event (operator, 17 Nov; default on): per indicator pair × symbol × side × strategy type × entry
+   * minute only the best-ranked config executes. The others are still evaluated and recorded on their own lanes, never
+   * funded: a 6-symbol replay entered up to 2,140 variants of one pair in one minute (10,200 closes from 99 events).
+   */
+  onePerPairEvent?: boolean;
+  /**
    * Seat cool-off in hours (0 / unset = off): an engine config whose own last close (its tape, any symbol) is less
    * than this many hours before an entry does not take it (skip "seatQuiet"). The PF gap analysis (13 Oct): orders
    * of a config that closed within the last 4 h realized PF 0.39, those with no close for 4 h 0.63 (D1) and 1.09
@@ -935,6 +941,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     stepH: 1,
     continuous: true,
     decisionMin: 1,
+    onePerPairEvent: true,
     // Real seats per strategy family: 0 = no limit — every config that passes the evaluation (PF, DDT, DDR,
     // validation) trades (12 windows × 12 symbols: PF 1.223 → 1.226, orders +5 % vs 16 seats; docs/block-sweep.md)
     portfolio: 0,
@@ -3365,12 +3372,17 @@ export function signalGuardFor(
   return g;
 }
 
+/** Each strategy type keeps its own direction record: a losing DCA side never closes the Normal or Axis side. */
+// (a close or a lookup without a type is the plain base type, as legacy feeds record it)
+const directionKey = (side: number, cfg?: string, type?: string) =>
+  `${side}${exitScopeSuffix(cfg, type) || (!type || type === "normal" ? "" : `|t:${type}`)}`;
+
 /** The raw Real-candidate direction record: separate from accepted-order Block sizing evidence. */
 export class CandidateDirectionBook {
   private tails = new Map<string, number[]>();
   add(e: Pick<BlockFeedEntry, "side" | "r" | "open" | "cfg" | "type">) {
     if (e.open || (e.side !== 1 && e.side !== -1)) return;
-    const key = `${e.side}${exitScopeSuffix(e.cfg, e.type)}`;
+    const key = directionKey(e.side, e.cfg, e.type);
     let tail = this.tails.get(key);
     if (!tail) this.tails.set(key, (tail = []));
     // The configured direction gate is limited to 64 closes. Keep each side's full supported last-N history.
@@ -3378,7 +3390,7 @@ export class CandidateDirectionBook {
     if (tail.length > 64) tail.splice(0, tail.length - 64);
   }
   tailSum(side: number, n: number, identity?: { cfg?: string; type?: string }): { n: number; sum: number } {
-    const tail = this.tails.get(`${side}${exitScopeSuffix(identity?.cfg, identity?.type)}`) ?? [];
+    const tail = this.tails.get(directionKey(side, identity?.cfg, identity?.type)) ?? [];
     const k = Math.min(Math.max(0, Math.floor(n)), tail.length);
     let sum = 0;
     for (let i = tail.length - k; i < tail.length; i++) sum += tail[i];
@@ -4401,7 +4413,7 @@ function* selectPositionsGen(
             : ev.lcb * (0.5 + ev.gh),
         window: w,
       });
-    if (i % 64 === 0) yield i;
+    if (i % 64 === 0) yield -14; // a work slice, not a completed simulated step (a non-negative yield counts as one)
   }
   const byId = new Map(tapes.map((tp) => [tp.id, tp]));
   const eligible = beatsBase(
@@ -6021,6 +6033,14 @@ export const crowdRangeOf = (cfg: string): string =>
     ? "sig"
     : rangeOfId(cfg) || "wide";
 /** The crowding key of an entry: strategy group × symbol × side × entry time. */
+/**
+ * A pair event: indicator pair (bot|ind, the config id's first two fields) × symbol × side × strategy type × entry minute.
+ * Historic Exit configs keep their own identity (an exit config is its own event).
+ */
+export const pairEventKey = (cfg: string, sym: string, side: number, kind: string | undefined, entryT: number) => {
+  const pair = isHistoricExitConfig(cfg, kind) ? cfg : cfg.split("|", 2).join("|");
+  return `${pair}|${sym}|${side > 0 ? 1 : -1}|${kind ?? ""}|${Math.floor(entryT / 60_000)}`;
+};
 export const crowdKey = (cfg: string, sym: string, side: number, entryT: number) =>
   `${crowdRangeOf(cfg)}|${sym}|${side}|${entryT}${exitScopeSuffix(cfg)}`;
 /** The cap of a config's range under `entryCrowd` (Infinity = none). */
@@ -6370,14 +6390,10 @@ export function execDecision(
       ? (ctx?.book?.level(sourceKey("config", t), blk.maxLevel) ?? 0)
       : blockLevel(tp, entryT, blk, ctx, observed);
   const levels = { config: configLevel, ...bookLevels(book, t, blk.maxLevel) };
-  // Block Active belongs to Block's own lanes: the plain Normal / Trailing entries Block raises. DCA, DCA Active, Axis,
-  // Historic Exit and Signals keep their own sets and qualification; Block Active neither skips them nor raises their
-  // minimum level (operator, 16 Nov: an Active switch must not act on the whole system).
-  const blockActiveLane = !!tg.blockActive && plain && tp.kind !== "exit" && !isSignalInd(tp.ind);
   const d = blockDecide(
     levels,
     blk,
-    blockActiveLane,
+    !!tg.blockActive,
     (src) => !!ctx?.book?.paused(sourceKey(src, t)),
   );
   const traceSources = o.blockTrace ? sourcesOf(blk) : null;
@@ -6402,9 +6418,10 @@ export function execDecision(
         ),
       }
     : {};
-  // Block Active: only entries at the minimum level or above are opened — every lower entry is skipped; a signal's
-  // own base trades at its unit then
-  if (blockActiveLane && !d.adjusted && !sigBase) return { ok: false, why: "blockActive" };
+  // Block Active is the Block lane's own rule: Block raises only from its minimum level. It never vetoes another lane:
+  // an un-raised entry falls through to its own type's rules (an enabled Normal / Trailing base trades at its unit,
+  // DCA / Axis / Exit / Signals run on their own). Only a plain entry whose base is off needs the Block raise.
+  if (tg.blockActive && !d.adjusted && plain && !kindBaseOn && !sigBase) return { ok: false, why: "blockActive" };
   if (!d.adjusted && gatedBase)
     return baseOk() ? applyRelate({ ok: true, level: 0, vol: 1, ...trace }) : { ok: false, why: "normalPf" };
   // Normal off: a plain Normal / Trailing entry needs Block (DCA / Axis are not plain and run on their own)
@@ -6561,7 +6578,7 @@ export function* signalIndexGen(
     const tp = sigTapes[i];
     // Historic Exit signal configs are independently qualified and do not consume the Normal/Trailing active cap.
     if (!tp.heldOnly && tp.kind !== "exit") out.push({ tp, pair: `${tp.bot}|${tp.ind}` });
-    if (i > 0 && i % 1000 === 0) yield i;
+    if (i > 0 && i % 1000 === 0) yield -4; // a work slice, not a completed simulated step
   }
   if (cacheKey) signalIndexCache.set(cacheKey, out);
   return out;
@@ -7651,6 +7668,8 @@ export function* walkForwardGen(
   const executedKeys = new Set<string>();
   // entries per range × symbol × side × entry time (entryCrowd)
   const crowd = new Map<string, number>();
+  // executed pair events (onePerPairEvent)
+  const pairEvents = new Set<string>();
   const open = new ExitHeap<Trade>(); // taken, by exit
   const counts = new OpenCounts(); // the caps' counts of the taken orders still open
   const blockPredecessors = new OpenCounts(); // independent virtual admissions never reserve funded slots
@@ -8093,6 +8112,8 @@ export function* walkForwardGen(
           (crowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) >= crowdCapOf(o, tr.cfg)
         )
           why = "crowd";
+        else if (o.onePerPairEvent && pairEvents.has(pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT)))
+          why = "pairEvent";
         const vf = (indicationVolumeFactors.get(tp.id) ?? 1)*relationalVolumeFactor(o.relationalVolumeRatios,{indicationType:kindOfInd(tp.ind),indication:laneOf(tp.ind).base,strategy:tp.kind,range:tp.kind==="exit"?"exit":isSignalInd(tp.ind)?"sig":tp.protect.tag??"wide",symbol:tr.sym});
         const hedgeVol = hedging ? (o.coord?.hedgeVolumeFactor ?? 1) : 1;
         const rangeVol = rangeVolumeFactorFor(tp, o);
@@ -8195,6 +8216,7 @@ export function* walkForwardGen(
             : {}),
         };
         executedKeys.add(dk);
+        if (o.onePerPairEvent) pairEvents.add(pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT));
         if (o.entryCrowd) {
           const ck = crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT);
           crowd.set(ck, (crowd.get(ck) ?? 0) + 1);

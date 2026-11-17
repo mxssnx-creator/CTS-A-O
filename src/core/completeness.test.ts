@@ -394,6 +394,7 @@ const CASES: Record<string, Case> = {
   "signals.perSymbol": num(0, 1000, { int: true }),
   "signals.maxOpen": num(0, 100_000, { int: true }),
   "signals.minPerDay": num(0, 1000),
+  "signals.rateDays": num(1, 14),
   "signals.maxPositions": num(0, 10_000, { int: true }),
   "signals.filter.trendH": num(0, 48),
   "signals.filter.volFloor": num(0, 0.02),
@@ -866,7 +867,7 @@ describe("presets: valid and keeping the positive coordinations", () => {
     const bad = [
       {
         id: "t1",
-        settings: { toggles: { ...DEFAULT_SETTINGS.toggles, blockActive: true } },
+        settings: { toggles: { ...DEFAULT_SETTINGS.toggles, normal: false, blockActive: true } },
         offered: true,
       },
       {
