@@ -187,10 +187,20 @@ export class ProcessedSetBook {
       }
       end = lo;
     }
-    if(blocks){
-      const v=evaluateBlocks(blockPrefix(history.slice(Math.max(0,end-n),end).reverse().map(x=>x.unitReturn),n),blocks,minPf);
-      const pf=v.long.pf===Infinity?profitFactor(v.long.gp,0):v.long.pf;
-      return {state:v.state,n:v.count,pf:v.state==="unknown"||v.state==="insufficient"?null:pf,blockPolicyKey:v.key,...(v.state==="failed"?{blockedBy:"signed-block" as const}:{})};
+    const recentLoss = () => negativeLastNDecision(history.slice(Math.max(0,end-Math.max(0,...filter?.windows ?? [])),end)
+      .reverse().map(x=>x.unitReturn), filter);
+    if (blocks) {
+      const sample = history.slice(Math.max(0,end-n),end).reverse().map(close=>close.unitReturn);
+      const result = evaluateBlocks(blockPrefix(sample,n),blocks,minPf);
+      const decision = { n:result.count, blockPolicyKey:result.key };
+      if (result.state === "unknown" || result.state === "insufficient") return {...decision,state:result.state,pf:null};
+      const pf = profitFactor(result.long.gp,result.long.gl);
+      if (!Number.isFinite(pf)) return {...decision,state:"unknown",pf:null};
+      if (result.state === "failed" || pf < minPf) return {...decision,state:"failed",pf,blockedBy:"signed-block"};
+      const loss = recentLoss();
+      if (loss.state === "unknown" || loss.state === "insufficient") return {...decision,state:"unknown",pf:null};
+      if (!loss.pass) return {...decision,state:"failed",pf,blockedBy:"negative-filter"};
+      return {...decision,state:"qualified",pf};
     }
     const values = history.slice(Math.max(0, end - n), end);
     if (values.some((x) => x.unitReturn === null || !Number.isFinite(x.unitReturn)))
@@ -204,8 +214,7 @@ export class ProcessedSetBook {
     if (!Number.isFinite(gp) || !Number.isFinite(gl)) return { state: "unknown", n: values.length, pf: null };
     const pf = profitFactor(gp, gl);
     if (!Number.isFinite(pf)) return { state: "unknown", n: values.length, pf: null };
-    const loss = negativeLastNDecision(history.slice(Math.max(0,end-Math.max(0,...filter?.windows ?? [])),end)
-      .reverse().map(x=>x.unitReturn), filter);
+    const loss = recentLoss();
     if (loss.state === "unknown" || loss.state === "insufficient") return {state:"unknown", n:values.length,pf:null};
     if (!loss.pass) return {state:"failed",n:values.length,pf,blockedBy:"negative-filter"};
     return { state: gp > gl && pf >= minPf ? "qualified" : "failed", n: values.length, pf };
