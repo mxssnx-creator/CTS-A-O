@@ -4237,6 +4237,13 @@ function positionAggregate(
  */
 export class EvalMemo {
   readonly byTape = new Map<ConfigTape, { before: number; ev: ConfigEval }>();
+  /**
+   * Per tape, what the selection's static filters said (bots, Base admission, cell, seat key): they read only option
+   * objects that stay fixed through a run, so they are computed once; `staticRefs` are the inputs they were computed
+   * with, and any change rebuilds them.
+   */
+  readonly staticSeat = new Map<ConfigTape, { keep: boolean; pair: string }>();
+  staticRefs: readonly unknown[] | null = null;
   /** tapes with a close settled since their verdict was computed (only while events are attached) */
   readonly dirty = new Set<ConfigTape>();
   private times = new Float64Array(0);
@@ -4337,15 +4344,27 @@ function* selectPositionsGen(
       failures: {},
       setPf: emptyValidatedSetPf(),
     };
+  // the static filters per tape, cached on the run's memo while their inputs stay the same
+  const memo = o.evalMemo;
+  const refs = [o.bots, o.basePassed, o.basePassedRanges, o.basePassedTrailingOnlyCells, o.baseWideLadderPairs,
+    o.exitBasePassed, o.basePassedCells, o.invertSeats, o.probe, o.seatSet, o.validated, o.microSeats, o.seatPer];
+  if (memo && (!memo.staticRefs || memo.staticRefs.length !== refs.length || memo.staticRefs.some((x, k) => x !== refs[k]))) {
+    memo.staticSeat.clear();
+    memo.staticRefs = refs;
+  }
   for (let i = 0; i < tapes.length; i++) {
     const tp = tapes[i];
-    if (
-      (tp.kind !== "exit" && o.bots.length && !o.bots.includes(tp.bot)) ||
-      !baseAllowsTape(tp, o) ||
-      !cellAllowed(tp, o)
-    )
+    let st = memo?.staticSeat.get(tp);
+    if (!st) {
+      const keep = !((tp.kind !== "exit" && o.bots.length && !o.bots.includes(tp.bot)) || !baseAllowsTape(tp, o) || !cellAllowed(tp, o));
+      st = { keep, pair: keep ? seatKey(tp, o) : "" };
+      memo?.staticSeat.set(tp, st);
+    }
+    if (!st.keep) {
+      if (i % 64 === 0) yield -14;
       continue;
-    const pair = seatKey(tp, o);
+    }
+    const pair = st.pair;
     pairTotal.set(pair, (pairTotal.get(pair) ?? 0) + 1);
     const ev = configEvalSummary(tp, t, o),
       w = {
@@ -4367,7 +4386,7 @@ function* selectPositionsGen(
     if (ev.ok && !tp.heldOnly && tapeExecutable(tp, o) && inValidated(tp.id, o))
       cand.push({
         id: tp.id,
-        pair: seatKey(tp, o),
+        pair,
         score:
           o.rankBy === "green"
             ? ev.gh + Math.min(1, Math.max(0, ev.lcb)) * 1e-6
