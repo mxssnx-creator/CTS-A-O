@@ -148,3 +148,14 @@ it("defaults: config-wide windows systemwide, both windows for Micro; scope both
   assert.ok(both.trades.some((t) => t.sym === "A"));
   assert.equal(both.trades.filter((t) => t.sym === "B" || t.sym === "C").length, 0);
 });
+
+it("scope config: a config's pooled window is counted once, not once per symbol and side", async () => {
+  const { configEval } = await import("./walkforward.ts");
+  const rows = [...history(5).map((x) => ({ ...x, sym: "A" })), ...history(5).map((x) => ({ ...x, sym: "B", entryOffset: x.entryOffset - 7 * M }))];
+  const o = options();
+  const cfg = { ...o, gates: { ...o.gates, positionWindows: { ...o.gates.positionWindows!, scope: "config" as const } } };
+  const ev = configEval(tape(rows), START, cfg);
+  assert.equal(ev.n, 10, "ten own closes, whatever the number of contexts");
+  assert.equal(ev.contexts?.length, 4, "two symbols × two sides are still listed");
+  assert.ok(ev.contexts!.every((c) => c.evaluation.n === 10));
+});

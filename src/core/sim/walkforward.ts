@@ -4102,8 +4102,7 @@ function positionContextEval(
   const own = slot >= 0 && (side === 1 || side === -1)
     ? input.contexts.get(slot * 2 + (side > 0 ? 1 : 0)) : undefined;
   const ownEnd = own ? lowerBound(own, input.before) : 0;
-  const tag = isSignalInd(tp.ind) ? "sig" : tp.kind === "exit" ? "exit" : (tp.protect.tag ?? "wide");
-  const scope = policy.byRange?.[tag]?.scope ?? policy.scope ?? "context";
+  const scope = positionScopeOf(tp, policy);
   // scope "both" (Micro's default): the lane's own window AND the config's record must pass; its own sample is reported
   if (scope === "both") {
     const own = judge(false);
@@ -4193,6 +4192,12 @@ function positionContextEval(
   return { ok: true, lcb: main.lcb, gh: main.positiveShare, ddt: 0, ...base };
   }
 }
+/** The window scope a tape is judged with: its range's own scope, else the policy's, else per context. */
+export function positionScopeOf(tp: Pick<ConfigTape, "ind" | "kind" | "protect">, policy: PositionWindows) {
+  const tag = isSignalInd(tp.ind) ? "sig" : tp.kind === "exit" ? "exit" : (tp.protect.tag ?? "wide");
+  return policy.byRange?.[tag]?.scope ?? policy.scope ?? "context";
+}
+
 function positionAggregate(
   tp: ConfigTape,
   t: number,
@@ -4204,6 +4209,15 @@ function positionAggregate(
   if (!detailed && input?.before === 0)
     return { ok: false, fail: "closes", n: 0, gp: 0, gl: 0, net: 0, pf: profitFactor(0, 0), windowBasis: "positions" };
   const contexts: NonNullable<ConfigEval["contexts"]> | undefined = detailed ? [] : undefined;
+  // scope "config": every context reads the same pooled window, so it is judged once (counting it once per context
+  // multiplied the reported closes and sums by the number of contexts)
+  if (o.gates.positionWindows && positionScopeOf(tp, o.gates.positionWindows) === "config") {
+    const syms = [...new Set(tp.syms)];
+    const e = positionContextEval(tp, o, syms[0] ?? "", side ?? 1, input);
+    if (contexts) for (const sym of syms) for (const direction of side === undefined ? SIGNAL_SIDES : [side])
+      contexts.push({ sym, side: direction, evaluation: e });
+    return { ...e, ...(contexts ? { contexts } : {}) };
+  }
   let passed = 0, nAll = 0, gpAll = 0, glAll = 0, nYes = 0, gpYes = 0, glYes = 0;
   let lcb = Infinity, gh = Infinity, firstFail: EvalGate | undefined;
   for (const sym of new Set(tp.syms)) for (const direction of side === undefined ? SIGNAL_SIDES : [side]) {
