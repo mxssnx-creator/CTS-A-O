@@ -19,7 +19,8 @@ const TF: Record<number, string> = { 1: "1m", 3: "3m", 5: "5m", 15: "15m", 30: "
  * BingX answers 100410 ("retry later") when public market calls come faster than about 100 per 10 s per IP, and the
  * engine then pauses EVERY call (the live step included) for 60 s at a time. A 100-symbol desk asks for every symbol's
  * new bar at each minute rollover, on top of its boot traffic: all public calls share this spacing gate, so the burst
- * is spread (10 calls a second by default) instead of refused. CTS_BINGX_PUBLIC_GAP_MS sets the gap (0 = off); node's
+ * is spread (5 calls a second by default; at 7 a second from this sandbox's shared IP BingX still answered 100410 — 68 klines
+ * calls in 10 s) instead of refused. CTS_BINGX_PUBLIC_GAP_MS sets the gap (0 = off); node's
  * own test runs have none.
  */
 export function reserveSlot(next: number, now: number, gapMs: number): { at: number; next: number } {
@@ -31,7 +32,7 @@ let publicNext = 0;
 const publicGapMs = () => {
   const e = process.env.CTS_BINGX_PUBLIC_GAP_MS;
   if (e !== undefined && e !== "") return Math.max(0, Number(e) || 0);
-  return process.env.NODE_TEST_CONTEXT ? 0 : 100;
+  return process.env.NODE_TEST_CONTEXT ? 0 : 200;
 };
 const recentPublicCalls: Array<{ t: number; path: string }> = [];
 /** The public calls sent in the last windowMs, counted per path (a ban line names who was sending). */
