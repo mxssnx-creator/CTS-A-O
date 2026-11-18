@@ -196,6 +196,21 @@ export function liveLaneFilter(
   return { sendable, validLane, closedConfig };
 }
 
+/**
+ * A tally of the lane promotion verdicts the live step reached, printed at most once a minute: the Stages table is a
+ * separate view with its own minimums, so the host log carries the verdicts that actually admit or refuse a lane.
+ */
+const promoTally = { at: 0, counts: new Map<string, number>() };
+export function notePromotionVerdict(g: Pick<LiveGate, "ok" | "state" | "waived">, now = Date.now()): string | null {
+  const k = `${g.state ?? (g.ok ? "qualified" : "unknown")}${g.waived ? `(${g.waived})` : ""}`;
+  promoTally.counts.set(k, (promoTally.counts.get(k) ?? 0) + 1);
+  if (now - promoTally.at < 60_000) return null;
+  const line = [...promoTally.counts].sort((a, b) => b[1] - a[1]).map(([x, n]) => `${x} ${n}`).join(", ");
+  promoTally.at = now;
+  promoTally.counts.clear();
+  return line;
+}
+
 const readyMemo = new WeakMap<object, { trades: WalkForwardResult["trades"]; open: WalkForwardResult["openAtEnd"]; n: number; openN: number;
   values: Map<string, { pf: number; n: number; stable: boolean; unknownReturns?: number }> }>();
 
@@ -2888,6 +2903,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         if (!evidence) {
           evidence = { ...lane, ...(rt.livePromotionGate?.(lane) ?? { required: true, ok: false, n: 0, pf: null, state: "execution-insufficient" }) };
           promotionEvidence.set(key, evidence);
+          const line = notePromotionVerdict(evidence);
+          if (line) console.info(`[live] lane promotion verdicts: ${line}`);
         }
         return evidence.ok;
       });

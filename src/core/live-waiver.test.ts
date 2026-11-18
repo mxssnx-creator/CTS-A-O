@@ -65,3 +65,15 @@ test("prehistoric execution fails closed: weak recent closes, or too few closes,
   assert.equal(prehistoricExecutionGate(rec([0.02, 0.02, 0.02]), 5000, 8, 1.05).ok, false);
   assert.equal(prehistoricExecutionGate(undefined, 5000, 8, 1.05).ok, false);
 });
+
+import { notePromotionVerdict } from "./server/live.server.ts";
+test("the promotion verdict tally prints once per interval, counted by state and waiver", () => {
+  const t0 = 10_000_000;
+  const first = notePromotionVerdict({ ok: false, state: "ineligible" }, t0); // first call opens the interval
+  assert.ok(first === null || typeof first === "string");
+  assert.equal(notePromotionVerdict({ ok: true, state: "qualified", waived: "range" }, t0 + 1000), null);
+  assert.equal(notePromotionVerdict({ ok: true, state: "qualified", waived: "prehistoric" }, t0 + 2000), null);
+  const line = notePromotionVerdict({ ok: false, state: "ineligible" }, t0 + 61_000);
+  assert.ok(line?.includes("qualified(range) 1"));
+  assert.ok(line?.includes("qualified(prehistoric) 1"));
+});
