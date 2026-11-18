@@ -27,12 +27,20 @@ const A = {
 };
 const base = { minSl: 0.01, minTrail: 0.006 };
 const cfg = "follow|rsi-mom-14-25|tp5|sl5|tr2.5|h24"; // trailing
+// the config's own feedback record
+const K = setKeyOf(cfg);
 const mk = (rs: number[], t0 = 0) =>
   rs.map((r, i) => ({ cfg, r, exitT: t0 + (i + 1) * 3_600_000 }));
 
 describe("auto-adjust", () => {
-  it("keys sets by bot | indication | sub-strategy", () => {
-    assert.equal(setKeyOf(cfg), "follow|rsi-mom-14-25|trailing");
+  it("keys every config on its own record: its id without the stop / trailing distances the adjuster changes", () => {
+    assert.equal(setKeyOf(cfg), "trailing#follow|rsi-mom-14-25|tp5|h24");
+    // the record and its lookup agree before and after an adjustment (the adjusted id carries the widened stop)
+    assert.equal(setKeyOf("follow|rsi-mom-14-25|tp5|sl7.5|tr3|h24"), setKeyOf(cfg));
+    // two configs of one pair never share a record: another TP step, hold, range or mode is another record
+    for (const other of ["follow|rsi-mom-14-25|tp6|sl5|tr2.5|h24", "follow|rsi-mom-14-25|tp5|sl5|tr2.5|h48",
+      "follow|rsi-mom-14-25|tp5|sl5|tr2.5|h24|mn", "follow|rsi-mom-14-25|tp0|sl5|tr2.5|h24|to"])
+      assert.notEqual(setKeyOf(other), setKeyOf(cfg), other);
     assert.equal(
       setKeyOf("follow|rsi-mom-14-25|tp3|sl4|tr0|h32|hxL0"),
       "follow|rsi-mom-14-25|exit|static-sl|long",
@@ -45,8 +53,8 @@ describe("auto-adjust", () => {
       setKeyOf("follow|rsi-mom-14-25|tp3|sl4|tr1|h32|hxL2"),
       "follow|rsi-mom-14-25|exit|trailing|long",
     );
-    assert.equal(setKeyOf("pivot|cci-40-200@x4|tp5|sl5|tr0|h24|axis"), "pivot|cci-40-200@x4|axis");
-    assert.equal(setKeyOf("pivot|x|tp5|sl5|tr0|h24"), "pivot|x|normal");
+    assert.equal(setKeyOf("pivot|cci-40-200@x4|tp5|sl5|tr0|h24|axis"), "axis#pivot|cci-40-200@x4|tp5|h24|axis");
+    assert.equal(setKeyOf("pivot|x|tp5|sl5|tr0|h24"), "normal#pivot|x|tp5|h24");
   });
 
   it("applies Exit feedback only to its own tactic and direction", () => {
@@ -112,17 +120,17 @@ describe("auto-adjust", () => {
     }
     const s1 = (
       st as Record<string, { level: number; minSl: number; minTrail: number; pausedUntil: number }>
-    )["follow|rsi-mom-14-25|trailing"];
+    )[K];
     assert.equal(s1.level, 3);
     assert.ok(Math.abs(s1.minSl - 0.016) < 1e-12);
     assert.ok(Math.abs(s1.minTrail - 0.008) < 1e-12);
     assert.equal(s1.pausedUntil, 0);
     const r = evaluateAdjust(st, mk(lose, (t += 10) * 3_600_000), A, base, 0, 1_000);
-    assert.ok(r.state["follow|rsi-mom-14-25|trailing"].pausedUntil > 1_000, "paused at the caps");
-    assert.ok(pausedSets(r.state, 2_000).has("follow|rsi-mom-14-25|trailing"));
+    assert.ok(r.state[K].pausedUntil > 1_000, "paused at the caps");
+    assert.ok(pausedSets(r.state, 2_000).has(K));
     const win = [0.02, 0.02, -0.005, 0.02, 0.02];
     const back = evaluateAdjust(r.state, mk(win, (t += 10) * 3_600_000), A, base, 0).state[
-      "follow|rsi-mom-14-25|trailing"
+      K
     ];
     assert.equal(back.level, 2);
   });
@@ -141,7 +149,7 @@ describe("auto-adjust", () => {
     let st: AdjustState = {};
     for (let i = 0; i < 2; i++)
       st = evaluateAdjust(st, mk(lose, (i + 1) * 10 * 3_600_000), R, base, 0).state;
-    const s = st["follow|rsi-mom-14-25|trailing"];
+    const s = st[K];
     assert.equal(s.level, 2);
     assert.equal(s.slMult, 1.5);
     assert.equal(s.trailMult, 2, "capped at scaleMax");
@@ -170,7 +178,7 @@ describe("auto-adjust", () => {
     assert.deepEqual(atr.atr, { sl: 1.25, tpRatio: 1.6, minSl: 0.01 });
     // without the scales nothing changes (the default)
     const plain = evaluateAdjust({}, mk(lose, 10 * 3_600_000), A, base, 0).state[
-      "follow|rsi-mom-14-25|trailing"
+      K
     ];
     assert.equal(plain.slMult, undefined);
     assert.equal(plain.trailMult, undefined);
@@ -180,23 +188,23 @@ describe("auto-adjust", () => {
     const R = { ...A, stepEvery: 3 };
     const lose = [-0.01, -0.01, -0.01, -0.01, -0.01];
     const one = evaluateAdjust({}, mk(lose), R, base, 0).state;
-    assert.equal(one["follow|rsi-mom-14-25|trailing"].level, 1);
+    assert.equal(one[K].level, 1);
     // one and two new losing closes: the window still holds the closes that moved it — no second step yet
     const two = evaluateAdjust(one, mk([...lose, -0.01]), R, base, 0);
     assert.deepEqual(two.changed, []);
-    assert.match(two.state["follow|rsi-mom-14-25|trailing"].note, /1 of 3 new closes/);
+    assert.match(two.state[K].note, /1 of 3 new closes/);
     const three = evaluateAdjust(two.state, mk([...lose, -0.01, -0.01]), R, base, 0);
     assert.deepEqual(three.changed, []);
     // the third new close: the next step
     const four = evaluateAdjust(three.state, mk([...lose, -0.01, -0.01, -0.01]), R, base, 0);
-    assert.equal(four.state["follow|rsi-mom-14-25|trailing"].level, 2);
+    assert.equal(four.state[K].level, 2);
   });
 
   it("the measured live cost excess turns a marginal set into an adjusted one", () => {
     const marginal = mk([0.004, -0.003, 0.004, -0.003, 0.004]);
     assert.deepEqual(evaluateAdjust({}, marginal, A, base, 0).changed, []);
     assert.deepEqual(evaluateAdjust({}, marginal, A, base, 0.003).changed, [
-      "follow|rsi-mom-14-25|trailing",
+      K,
     ]);
   });
 
@@ -237,7 +245,7 @@ describe("auto-adjust", () => {
       lastN: 0,
       lastNMinPf: 1,
       block: { ratio: 0.2, maxLevel: 6, minActiveLevel: 1, maxMult: 2.5 },
-      paused: new Set(["follow|rsi-mom-14-25|trailing"]),
+      paused: new Set([K]),
     } as never;
     assert.deepEqual(execDecision(tape, 0, o), { ok: false, why: "adjustPause" });
   });
@@ -311,9 +319,11 @@ describe("auto-adjust on range cells", () => {
   const wide = { tp: 0.004, sl: 0.003, trail: 0, hold: 16 };
   const micro = { ...wide, tag: "mc" };
   const only = new Set(["follow|ema-21-55"]);
-  const entry = (o: Partial<AdjustState[string]> = {}): AdjustState => ({
-    "follow|ema-21-55|normal": {
-      set: "follow|ema-21-55|normal",
+  // each cell has its own record (setKeyOf of its own id): the same values on both cells' records
+  const cellKeys = ["follow|ema-21-55|tp0.4|sl0.3|tr0|h16", "follow|ema-21-55|tp0.4|sl0.3|tr0|h16|mc"].map(setKeyOf);
+  const entry = (o: Partial<AdjustState[string]> = {}): AdjustState =>
+    Object.fromEntries(cellKeys.map((key) => [key, {
+      set: key,
       level: 0,
       minSl: 0.01,
       minTrail: 0.006,
@@ -324,8 +334,7 @@ describe("auto-adjust on range cells", () => {
       at: 0,
       note: "",
       ...o,
-    },
-  });
+    }]));
   const protOf = (adj: AdjustState | null, tag: string | undefined) =>
     buildTapes(u, [wide, micro], 0.002, undefined, only, null, adj).find(
       (t) => t.bot === "follow" && t.protect.tag === tag,

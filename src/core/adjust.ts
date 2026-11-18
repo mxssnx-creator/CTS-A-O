@@ -90,12 +90,14 @@ export function setKeyOf(cfg: string): string {
     const side = /\|hx([LS])/.exec(cfg)?.[1];
     return `${bot}|${ind}|exit|${set}${side ? `|${side === "L" ? "long" : "short"}` : ""}`;
   }
-  // every Axis config (mode × range × ladder depth: its "|ax-…" / "|axd-…" tag) keeps its own feedback record
-  if (kind === "axis") {
-    const tag = /\|(axd?-[^|]+)\|axis$/.exec(cfg)?.[1];
-    if (tag) return `${bot}|${ind}|axis|${tag}`;
-  }
-  return `${bot}|${ind}|${kind}`;
+  // Every config keeps its own feedback record (operator, 18 Nov: "each config set processes and evals for its own"):
+  // its id without the fields the adjuster itself changes (the stop, the trailing distance, the ATR distances), so the
+  // record and its lookup agree before and after an adjustment, and two configs of one pair never share a record.
+  const own = cfg
+    .split("|")
+    .filter((seg, i) => i < 2 || !/^(?:sl[\d.]+|tr[\d.]+|atr[\d.x t]+)$/.test(seg))
+    .join("|");
+  return `${kind}#${own}`;
 }
 
 export function evaluateAdjust(

@@ -2060,8 +2060,9 @@ export function* buildTapesGen(
   // (a set's level-0 entry carries the 0.5 % floors and lifted every Micro / Minimal cell of the set to them — bug hunt,
   // 13 Oct); it takes only the relative widening (slMult / trailMult), and is untouched without one
   const adj = (bot: string, ind: string, kind: StratKind, p: Protect, ownKey?: string) => {
-    const key = ownKey ??
-      (kind === "exit" ? setKeyOf(configId(bot as BotType, ind, p)) : `${bot}|${ind}|${kind}`);
+    // the config's own feedback record (setKeyOf): its id without the stop / trailing distances the adjuster changes
+    const key = ownKey ?? setKeyOf(configId(bot as BotType, ind, p,
+      kind === "dca" || kind === "dca-active" || kind === "axis" || kind === "block" ? kind : undefined));
     const e = adjust?.[key];
     const adjusted = !p.tag ? adjustProtect(adjustProtect(p, floors), e)
       : !e || ((e.slMult ?? 1) === 1 && (e.trailMult ?? 1) === 1) ? p
