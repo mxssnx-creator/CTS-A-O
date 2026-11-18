@@ -201,8 +201,8 @@ export function liveLaneFilter(
  * separate view with its own minimums, so the host log carries the verdicts that actually admit or refuse a lane.
  */
 const promoTally = { at: 0, counts: new Map<string, number>() };
-export function notePromotionVerdict(g: Pick<LiveGate, "ok" | "state" | "waived">, now = Date.now()): string | null {
-  const k = `${g.state ?? (g.ok ? "qualified" : "unknown")}${g.waived ? `(${g.waived})` : ""}`;
+export function notePromotionVerdict(g: Pick<LiveGate, "ok" | "state" | "waived" | "why">, now = Date.now()): string | null {
+  const k = `${g.state ?? (g.ok ? "qualified" : "unknown")}${g.waived ? `(${g.waived})` : ""}${g.why ? `[${g.why}]` : ""}`;
   promoTally.counts.set(k, (promoTally.counts.get(k) ?? 0) + 1);
   if (now - promoTally.at < 60_000) return null;
   const line = [...promoTally.counts].sort((a, b) => b[1] - a[1]).map(([x, n]) => `${x} ${n}`).join(", ");

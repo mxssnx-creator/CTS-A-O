@@ -26,6 +26,8 @@ export interface LiveGate {
   state?: PromotionState;
   /** admitted by live.proofWaivedRanges on its seat evidence, without the owned-close proof */
   waived?: "range" | "prehistoric";
+  /** for an "ineligible" verdict: the first seating condition the lane failed */
+  why?: string;
   minN?: number;
   minPf?: number;
   evidenceBasis?: "settled-post-base-and-owned-execution";

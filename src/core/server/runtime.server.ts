@@ -6095,7 +6095,18 @@ export class CoreRuntime {
               tp.kind,
               tp.id,
             ))));
-    let verdict = eligible ? gate : { ...gate, ok: false, state: "ineligible" as const };
+    const whyNot = eligible
+      ? undefined
+      : !selected
+        ? "no selection"
+        : !this.promotionSelectedMemo?.ids.has(lane.cfg)
+          ? "not selected"
+          : !tp
+            ? "no tape"
+            : tp.heldOnly
+              ? "held-only"
+              : "base disallows";
+    let verdict = eligible ? gate : { ...gate, ok: false, state: "ineligible" as const, why: whyNot };
     // the prehistoric run fills the execution axis of a seated engine lane (live.executionFromPrehistoric): only where
     // the owned paper evidence is merely short, never over evidence that fails
     if (
