@@ -1,7 +1,7 @@
 import { slRatiosOf } from "../sl-ratios.ts";
 import type { SlBounds } from "../sl-calibration.ts";
 import { migratePositionWindows } from "./position-windows-migration.server.ts";
-import { migrateBlockOwnConfig } from "./block-own-config-migration.server.ts";
+import { migrateBlockOwnConfig, migrateX01BlockAutoPf } from "./block-own-config-migration.server.ts";
 import { mainnetPositionWindows } from "../position-windows.ts";
 import {relationalVolumeFactor,relationalVolumeSettings} from "../../../shared/cts-volume/ratios.ts";
 import { minimumStopFraction, normalizeMinSlDistancePct } from "../protection-policy.ts";
@@ -1282,6 +1282,7 @@ export class CoreRuntime {
     migratePositionWindows(db);
     migrateFineLadders(db);
     migrateBlockOwnConfig(db);
+    migrateX01BlockAutoPf(db, this.conn);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
     if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {

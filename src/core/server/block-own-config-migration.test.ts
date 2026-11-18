@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CoreDb } from "./db.server.ts";
-import { migrateBlockOwnConfig } from "./block-own-config-migration.server.ts";
+import { migrateBlockOwnConfig, migrateX01BlockAutoPf } from "./block-own-config-migration.server.ts";
 import { DEFAULT_BLOCK } from "../config.ts";
 
 const ALL = { config: true, overall: true, symbol: true, direction: true, indication: true, type: true };
@@ -31,6 +31,37 @@ test("Block migration moves only the stored old six-source default to the relati
     db.kvSet("settings", { block: { sources: { ...ALL } } });
     migrateBlockOwnConfig(db);
     assert.deepEqual(db.kvGet<any>("settings").block.sources, ALL);
+  } finally {
+    db.db.close();
+  }
+});
+
+test("x01 asks Block auto PF 1.3 once; other connections keep the default; a later desk change stays", () => {
+  for (const conn of ["bingx-vst-01", "bingx-vst-02", undefined]) {
+    const db = new CoreDb(":memory:");
+    try {
+      db.kvSet("settings", { symbols: 4 });
+      migrateX01BlockAutoPf(db, conn);
+      assert.deepEqual(db.kvGet("settings"), { symbols: 4 }, String(conn));
+    } finally {
+      db.db.close();
+    }
+  }
+  const db = new CoreDb(":memory:");
+  try {
+    db.kvSet("settings", { symbols: 8, block: { ratio: 0.3, auto: { n: 40 } } });
+    migrateX01BlockAutoPf(db, "bingx-x01");
+    const s = db.kvGet<any>("settings");
+    assert.equal(s.block.auto.pf, 1.3);
+    assert.equal(s.block.auto.n, 40, "the operator's other auto values stay");
+    assert.equal(s.block.auto.enabled, true);
+    assert.equal(s.block.ratio, 0.3);
+    assert.equal(s.symbols, 8);
+    // once only: the operator's later value is kept
+    s.block.auto.pf = 1.2;
+    db.kvSet("settings", s);
+    migrateX01BlockAutoPf(db, "bingx-x01");
+    assert.equal(db.kvGet<any>("settings").block.auto.pf, 1.2);
   } finally {
     db.db.close();
   }
