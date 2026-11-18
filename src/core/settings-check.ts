@@ -713,6 +713,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     if (s.grid.maxSl !== undefined) num(s.grid.maxSl, 0.005, 0.2, "max SL");
     if (s.grid.maxTrail !== undefined) num(s.grid.maxTrail, 0.003, 0.2, "max trail");
     num(s.grid.trailStep, 0.1, 1, "trail step");
+    if (s.grid.trailGapBasis !== undefined && s.grid.trailGapBasis !== "entry" && s.grid.trailGapBasis !== "peak")
+      throw new Error("trailing distance basis must be entry or peak");
     if (s.grid.trailingOnly !== undefined && typeof s.grid.trailingOnly !== "boolean")
       throw new Error("independent trailing-only grid: on / off");
     if (s.grid.trailFree !== undefined && typeof s.grid.trailFree !== "boolean")

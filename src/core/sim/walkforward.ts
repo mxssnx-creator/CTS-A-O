@@ -39,7 +39,7 @@ import {
 } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
 import { createExitProtection } from "./exit-protection.ts";
-import { capSignalProtect, capTrailingOnlyProtect, trailingOnlyProtects, isSignalConfig } from "./trailing.ts";
+import { applyTrailingGapBasis, capSignalProtect, capTrailingOnlyProtect, trailingOnlyProtects, isSignalConfig } from "./trailing.ts";
 import { SIGNAL_HISTORY_H, SIGNAL_VALID_LAST_N } from "../signal-policy.ts";
 // Walk-forward trade simulation ("simulated trade runs") — the Base → Main → Real → Live coordination.
 //
@@ -895,7 +895,7 @@ export function protectGrid(
   const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, tfMin, g.lowRange?.minSlDistancePct ?? .1, ownSlFloor(g.lowRange, cost ?? RT_COST) ?? slFloor) : []);
   if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
   out.push(...lowRange);
-  return out;
+  return applyTrailingGapBasis(out, g.trailGapBasis);
 }
 
 export function dcaProtectGrid(
