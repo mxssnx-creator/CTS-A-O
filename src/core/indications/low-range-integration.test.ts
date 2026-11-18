@@ -17,7 +17,7 @@ import { SeriesCache } from "./cache.ts";
 import { LOW_RANGE_METHODS, LOW_RANGE_RELATIONS, LOW_RANGE_TRAIL_FLOOR_STEPS, LOW_RANGE_WINDOWS, lowRangeState } from "./low-range-research.ts";
 import { controlledLowRange } from "./test-support.ts";
 import { closePool, runOnWorkers } from "../server/pool.server.ts";
-import { adjustProtect, type AdjustState } from "../adjust.ts";
+import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { trailingOnlyProtects } from "../sim/trailing.ts";
 
 after(() => closePool());
@@ -120,7 +120,8 @@ describe("Low-Range Short integration", () => {
         const legacyTrail = cell.trail > 0 ? +(cell.trail * trailMult).toFixed(4) : 0;
         if (legacySl >= cell.sl) assert.equal(q.sl, legacySl);
         if (legacyTrail >= cell.trail) assert.equal(q.trail, legacyTrail);
-        const set = `${pair}|${kind}`;
+        // the cell's own feedback record (every config on its own record)
+        const set = setKeyOf(configId("follow", ind, laneProtect(cell, ind)));
         const feedback: AdjustState = { [set]: { set, level: 1, minSl: 0, minTrail: 0, pausedUntil: 0,
           pf: 1, n: 10, lastExitT: 0, at: 0, note: "", slMult, trailMult } };
         const tapes = buildTapes(u, [cell], cost, undefined, new Set([pair]), null, feedback);
