@@ -8304,8 +8304,15 @@ export class CoreRuntime {
         .slice(0, 6)
         .map(([k, n]) => `${k} ${n}`)
         .join(", ");
+      const fresh = cands.filter((c) => !c.held);
+      const byRange: Record<string, number> = {};
+      for (const c of fresh) {
+        const tag = rangeOfId(c.op.cfg) || "wide";
+        byRange[tag] = (byRange[tag] ?? 0) + 1;
+      }
+      const newBy = Object.entries(byRange).map(([k, n]) => `${k} ${n}`).join(", ");
       console.info(
-        `[paper] step: ${cands.length} entry candidates, skipped: ${top || "none"} · open ${positions.length} positions · balance ${Math.round(this.paper.balance ?? 0)} equity ${Math.round(this.paper.equity ?? 0)}`,
+        `[paper] step: ${cands.length} candidates (${fresh.length} new: ${newBy || "none"}), skipped: ${top || "none"} · open ${positions.length} positions · balance ${Math.round(this.paper.balance ?? 0)} equity ${Math.round(this.paper.equity ?? 0)}`,
       );
     }
     // the live tick ran between this step's slices on the old book: a stop it crossed after the positions were
