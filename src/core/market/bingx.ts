@@ -28,11 +28,35 @@ export function reserveSlot(next: number, now: number, gapMs: number): { at: num
   const at = Math.max(now, next);
   return { at, next: at + gapMs };
 }
+/**
+ * The gap adapts: every ban (BingX 100410) doubles it, up to 8× the base, and 5 minutes without a ban halve it again —
+ * the right pace depends on who else sends from this IP, which no setting knows in advance.
+ */
+export const BOOST_MAX = 8;
+export const BOOST_DECAY_MS = 300_000;
+export function nextBoost(boost: number, event: "ban" | "quiet"): number {
+  return event === "ban" ? Math.min(BOOST_MAX, boost * 2) : Math.max(1, boost / 2);
+}
+let gapBoost = 1;
+let boostAt = 0;
+/** A rate-limit ban was seen: slow the public calls (one step per 5 s, however many ban lines arrive at once). */
+export function noteRateBan(now = Date.now()): void {
+  if (now - boostAt < 5_000) return;
+  gapBoost = nextBoost(gapBoost, "ban");
+  boostAt = now;
+}
+export const publicGapBoost = () => gapBoost;
 let publicNext = 0;
 const publicGapMs = () => {
   const e = process.env.CTS_BINGX_PUBLIC_GAP_MS;
-  if (e !== undefined && e !== "") return Math.max(0, Number(e) || 0);
-  return process.env.NODE_TEST_CONTEXT ? 0 : 200;
+  if (e !== undefined && e !== "") return Math.max(0, Number(e) || 0) * gapBoost;
+  if (process.env.NODE_TEST_CONTEXT) return 0;
+  const now = Date.now();
+  if (gapBoost > 1 && now - boostAt >= BOOST_DECAY_MS) {
+    gapBoost = nextBoost(gapBoost, "quiet");
+    boostAt = now;
+  }
+  return 200 * gapBoost;
 };
 const recentPublicCalls: Array<{ t: number; path: string }> = [];
 /** The public calls sent in the last windowMs, counted per path (a ban line names who was sending). */

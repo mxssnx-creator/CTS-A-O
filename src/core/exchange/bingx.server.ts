@@ -7,7 +7,7 @@
 // key belongs to the account and signs on the VST host too.
 import { createHmac } from "node:crypto";
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
-import { recentPublic } from "../market/bingx.ts";
+import { noteRateBan, publicGapBoost, recentPublic } from "../market/bingx.ts";
 
 export type Network = "mainnet" | "testnet";
 export type ConnId = "bingx-x01" | "bingx-vst-01" | "bingx-vst-02";
@@ -237,7 +237,8 @@ export function noteRateLimit(msg: string, now = Date.now()): number {
     // one console line per new ban end per endpoint: which endpoint, until when and what BingX said (credentials and
     // signatures redacted), so a ban loop can be read from the host log instead of guessed
     if (end > (banned.get(ep) ?? 0) - BAN_JITTER_MS)
-      console.warn(`[bingx] rate limit ${ep} until ${new Date(end).toISOString()}: ${redactBan(msg)} · public calls in the last 10 s: ${recentPublic()} · signed totals: ${[...signedCalls].map(([k, n]) => `${k}×${n}`).join(", ") || "none"}`);
+      console.warn(`[bingx] rate limit ${ep} until ${new Date(end).toISOString()}: ${redactBan(msg)} · public calls in the last 10 s: ${recentPublic()} (gap ×${publicGapBoost()}) · signed totals: ${[...signedCalls].map(([k, n]) => `${k}×${n}`).join(", ") || "none"}`);
+    noteRateBan(now);
     shareBan(ep, end, now);
     if (end + BAN_JITTER_MS > (banned.get(ep) ?? 0)) banned.set(ep, end + BAN_JITTER_MS);
   }

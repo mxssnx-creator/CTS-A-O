@@ -17,3 +17,14 @@ test("reserveSlot spreads a burst at the gap and never delays an idle caller", (
 test("a gap of 0 turns the gate off", () => {
   assert.deepEqual(reserveSlot(9999, 1000, 0), { at: 1000, next: 9999 });
 });
+
+import { nextBoost, BOOST_MAX } from "./bingx.ts";
+test("the gap doubles on a ban up to the cap and halves back to the base when quiet", () => {
+  let b = 1;
+  const seen: number[] = [];
+  for (let i = 0; i < 5; i++) seen.push((b = nextBoost(b, "ban")));
+  assert.deepEqual(seen, [2, 4, 8, 8, 8]);
+  assert.equal(BOOST_MAX, 8);
+  for (let i = 0; i < 4; i++) b = nextBoost(b, "quiet");
+  assert.equal(b, 1);
+});
