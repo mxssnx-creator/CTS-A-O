@@ -168,12 +168,12 @@ describe("Axis: every config its own pair event and its own feedback record", ()
   it("one Axis variant's losses never move another variant's feedback record", () => {
     const k2 = setKeyOf(ax("ax-linear2")), k3 = setKeyOf(ax("axd-fib3h"));
     assert.notEqual(k2, k3);
-    assert.equal(k2, `follow|${IND}|axis|ax-linear2`);
+    assert.equal(k2, `axis#follow|${IND}|tp1|h32|ax-linear2|axis`);
     const a = { ...DEFAULT_ADJUST, enabled: true, window: 5 };
     const losses = Array.from({ length: 20 }, (_, i) => ({ cfg: ax("ax-linear2"), r: -0.01, exitT: T0 + i * H }));
     const { state } = evaluateAdjust({}, losses, a, { minSl: 0.005, minTrail: 0.005 }, 0, NOW);
     assert.ok(state[k2], "the losing variant has its own record");
     assert.equal(state[k3], undefined, "its sibling depth is untouched");
-    assert.equal(state[`follow|${IND}|axis`], undefined, "no pair-level Axis record");
+    assert.deepEqual(Object.keys(state), [k2], "only the losing variant's own record exists");
   });
 });

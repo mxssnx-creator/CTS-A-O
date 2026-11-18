@@ -1,5 +1,8 @@
 // Shared nonblocking Bybit HTTP budget. One host's workers share this SQLite file, including different keys:
 // they may belong to the same UID. The global cap also leaves substantial headroom below the documented IP limit.
+// The rolling request counter runs in WAL mode without fsync: every signed request takes a slot first, and a
+// rollback-journal commit with a full fsync cost ~0.9 ms each. BEGIN IMMEDIATE keeps the cross-process exclusion in
+// WAL mode; a crash can at most forget the last moments of a 1 s window (the venue limit itself stays the backstop).
 import { DatabaseSync } from "node:sqlite";
 import { closeSync, mkdirSync, openSync, readdirSync, unlinkSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -54,7 +57,7 @@ export class BybitBudget implements BybitRequestBudget {
     if (this.file !== ":memory:") mkdirSync(dirname(this.file), { recursive: true, mode: 0o700 });
     const db = new DatabaseSync(this.file);
     try {
-      db.exec("PRAGMA busy_timeout=0; CREATE TABLE IF NOT EXISTS requests(endpoint TEXT NOT NULL, at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS requests_ep_at ON requests(endpoint,at); CREATE TABLE IF NOT EXISTS pauses(endpoint TEXT PRIMARY KEY, until_ms INTEGER NOT NULL)");
+      db.exec("PRAGMA busy_timeout=0; PRAGMA journal_mode=WAL; PRAGMA synchronous=OFF; CREATE TABLE IF NOT EXISTS requests(endpoint TEXT NOT NULL, at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS requests_ep_at ON requests(endpoint,at); CREATE TABLE IF NOT EXISTS pauses(endpoint TEXT PRIMARY KEY, until_ms INTEGER NOT NULL)");
     } catch (e) { db.close(); throw e; }
     return this.db = db;
   }

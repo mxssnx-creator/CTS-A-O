@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { DEFAULT_SETTINGS } from "../config.ts";
-import type { AdjustState } from "../adjust.ts";
+import { setKeyOf, type AdjustState } from "../adjust.ts";
 import type { Protect, StratKind } from "../domain/types.ts";
 import { lowRangeGridProtects, DEFAULT_LOW_RANGE_GRID } from "../indications/low-range.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
@@ -30,8 +30,15 @@ function variant(kind: StratKind): [Protect, Protect] {
   return [a, b];
 }
 
+// the source cell's own feedback record (setKeyOf of its id: every config on its own record)
+const recordOf = (kind: StratKind, a: Protect) => {
+  const id = configId("follow", ind, laneProtect(a, ind));
+  const k = setKeyOf(id);
+  // a kind the cell is not (the sibling-type case) gets that kind's record for the same cell identity
+  return k.replace(/^[^#]+#/, `${kind}#`);
+};
 function adjustFor(kind: StratKind, a: Protect, b: Protect): AdjustState {
-  const set = `${pair}|${kind}`;
+  const set = recordOf(kind, a);
   return { [set]: { set, level: 1, minSl: 0, minTrail: 0, pausedUntil: 0,
     pf: 0, n: 1, lastExitT: 0, at: 0, note: "fixture", slMult: b.sl / a.sl } };
 }
@@ -115,8 +122,8 @@ for (const kind of ["trailing", "trailing-only"] as const)
     assert.ok(a && b && a.trail < b.trail);
     const ak = protectCellKey(laneProtect(a, ind)), bk = protectCellKey(laneProtect(b, ind));
     const state = adjustFor(kind, a, b);
-    state[`${pair}|${kind}`].slMult = 1;
-    state[`${pair}|${kind}`].trailMult = b.trail / a.trail;
+    state[recordOf(kind, a)].slMult = 1;
+    state[recordOf(kind, a)].trailMult = b.trail / a.trail;
     const measured: string[] = [];
     rangeBaseStats(u, "follow", ind, candidates, cost, null, undefined, false,
       (_tag, stat) => stat.n > 0, tf, undefined, undefined, measured);

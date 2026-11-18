@@ -6837,7 +6837,15 @@ export class CoreRuntime {
 
   // ── live-feedback auto-adjuster ────────────────────────────
   adjustState(): AdjustState {
-    return this.db.kvGet<AdjustState>("adjust") ?? {};
+    const state = this.db.kvGet<AdjustState>("adjust") ?? {};
+    // Records are per config since 18 Nov ("<kind>#<id without the adjusted distances>"); a shared pair record
+    // ("bot|ind|kind", before) is never read again, so it is dropped instead of lingering on the desk. Exit records
+    // keep their own per-tactic key.
+    const stale = Object.keys(state).filter((k) => !k.includes("#") && !/\|exit\|/.test(k));
+    if (!stale.length) return state;
+    for (const k of stale) delete state[k];
+    this.db.kvSet("adjust", state);
+    return state;
   }
 
   /** measured live round-trip cost from recorded fills (fees + adverse slippage), null below 20 round trips */
