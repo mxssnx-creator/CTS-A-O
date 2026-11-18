@@ -189,6 +189,11 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (!Array.isArray(s.live.excludeRanges) || s.live.excludeRanges.some((r) => !ok.includes(r)))
         throw new Error(`live excluded ranges: a list of ${ok.join(", ")}`);
     }
+    if (s.live.proofWaivedRanges !== undefined) {
+      const ok = ["mc", "mn", "mp", "sh", "gn", "lg"];
+      if (!Array.isArray(s.live.proofWaivedRanges) || s.live.proofWaivedRanges.some((r) => !ok.includes(r)))
+        throw new Error(`live proof-waived ranges: a list of ${ok.join(", ")}`);
+    }
     if (s.live.excludeLanes !== undefined) {
       const re = /^(mc|mn|mp|sh|gn|lg)@m(1|5|15|30)c?$/;
       if (!Array.isArray(s.live.excludeLanes) || s.live.excludeLanes.some((t) => typeof t !== "string" || !re.test(t)))

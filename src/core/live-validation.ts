@@ -24,6 +24,8 @@ export interface LiveGate {
   model?: PromotionWindow;
   execution?: PromotionWindow;
   state?: PromotionState;
+  /** admitted by live.proofWaivedRanges on its seat evidence, without the owned-close proof */
+  waived?: "range";
   minN?: number;
   minPf?: number;
   evidenceBasis?: "settled-post-base-and-owned-execution";
@@ -313,4 +315,21 @@ export interface LiveValidationStatus {
   /** group last N (0 = off) and each group's verdict */
   groupLastN?: number;
   groups?: LiveGroupStatus[];
+}
+
+/**
+ * live.proofWaivedRanges: a SEATED engine lane (selected by Real, allowed by Base) of a waived range may go live
+ * while its promotion evidence is merely missing (model / execution "insufficient"). Evidence that exists and
+ * fails, or that is unknown (unit returns missing), is never waived; signals and other ranges keep the full proof.
+ */
+export function applyProofWaiver(
+  gate: LiveGate,
+  seated: boolean,
+  rangeTag: string,
+  isSignal: boolean,
+  waivedRanges: readonly string[] | undefined,
+): LiveGate {
+  if (gate.ok || !seated || isSignal || !rangeTag || !waivedRanges?.includes(rangeTag)) return gate;
+  if (gate.state !== "model-insufficient" && gate.state !== "execution-insufficient") return gate;
+  return { ...gate, ok: true, state: "qualified", waived: "range" };
 }

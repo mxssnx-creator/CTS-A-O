@@ -222,6 +222,7 @@ import {
   liveGroupGates,
   liveGroupOf,
   promotionGate,
+  applyProofWaiver,
   type LiveGate,
   type LiveValidationStatus,
   type LivePromotionStatus,
@@ -6093,7 +6094,14 @@ export class CoreRuntime {
               tp.kind,
               tp.id,
             ))));
-    return eligible ? gate : { ...gate, ok: false, state: "ineligible" };
+    const verdict = eligible ? gate : { ...gate, ok: false, state: "ineligible" as const };
+    return applyProofWaiver(
+      verdict,
+      !!eligible,
+      rangeOfId(lane.cfg),
+      isSignalInd(ind),
+      this.settings.live.proofWaivedRanges,
+    );
   }
   /**
    * Pooled per-config OWNED PAPER diagnostic (null when off). Strict native admission uses livePromotionGate's

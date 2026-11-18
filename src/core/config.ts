@@ -496,6 +496,12 @@ export interface LiveSettings {
    */
   excludeLanes?: readonly string[];
   /**
+   * overall: ranges ("mc", "mn", "mp", "sh", "gn", "lg") whose SEATED engine lanes may go live without the owned-close
+   * promotion proof while that proof is only missing (insufficient closes) — a lane whose evidence exists and fails
+   * stays blocked, and signals keep the full proof. Operator waiver (18 Nov: Micro on x01); unset / empty = none.
+   */
+  proofWaivedRanges?: readonly string[];
+  /**
    * overall: engine configs of these families do NOT reach the exchange, and a held position of one is CLOSED — its
    * lanes never ask for volume again, held or not (the operator's stop, unlike excludeRanges, which keeps a held lane
    * until its paper position exits). A family is `bot|range`: the bot "follow" or "revert", the range "wide" (untagged)
