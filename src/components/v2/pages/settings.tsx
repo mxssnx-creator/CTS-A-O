@@ -4890,6 +4890,13 @@ export function SettingsPage() {
                   onChange={(v) => set(["grid", "trailStep"], v)}
                 />
               </Field>
+              <Field label="Trailing distance" hint="Choose whether the gap uses the position's entry or each new peak.">
+                <select aria-label="Trailing distance" value={s.grid.trailGapBasis ?? "peak"}
+                  onChange={event => set(["grid", "trailGapBasis"], event.target.value)}>
+                  <option value="peak">Dynamic · peak-relative</option>
+                  <option value="entry">Fixed · entry-relative</option>
+                </select>
+              </Field>
               <div>
                 <div style={{ fontWeight: 600 }}>Independent Trailing-only sets</div>
                 <Switch label="Independent Trailing-only sets" checked={!!s.grid.trailingOnly}

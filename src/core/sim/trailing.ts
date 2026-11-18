@@ -7,12 +7,13 @@ export const SIGNAL_STOP_LIMIT = 0.03;
 
 /**
  * What a config id says about its trailing policy, parsed once per id (the simulators ask for every bar of every open
- * position; the regular expressions below cost a third of a trailing-heavy Base): bit 1 = a Signal config, bit 2 = the
- * "|to" trailing-only token. The cache is bounded and rebuilt on demand, so a long session never grows it unboundedly.
+ * position): bit 1 = Signal, bit 2 = trailing-only, bit 4 = fixed-distance trailing.
+ * The cache is bounded and rebuilt on demand.
  */
 const cfgFlagCache = new Map<string, number>();
 const tmTokenCache = new Map<string, number>();
 const TRAILING_ONLY_TOKEN = /\|to(?=\||$)/;
+const FIXED_TRAIL_TOKEN = /\|tge(?=\||$)/;
 const TM_TOKEN = /\|tm([\d.]+)(?=\||$)/;
 // One-entry memos in front of the maps: an open position asks for its own id on every bar, so consecutive calls repeat
 // the same string and skip the hash and the map probe (same answer: the map is only a cache of a pure function).
@@ -23,7 +24,8 @@ function cfgFlags(cfg?: string): number {
   let f = cfgFlagCache.get(cfg);
   if (f === undefined) {
     const first = cfg.indexOf("|");
-    f = (first >= 0 && cfg.startsWith("sig-", first + 1) ? 1 : 0) | (TRAILING_ONLY_TOKEN.test(cfg) ? 2 : 0);
+    f = (first >= 0 && cfg.startsWith("sig-", first + 1) ? 1 : 0) | (TRAILING_ONLY_TOKEN.test(cfg) ? 2 : 0) |
+      (FIXED_TRAIL_TOKEN.test(cfg) ? 4 : 0);
     if (cfgFlagCache.size >= 200_000) cfgFlagCache.clear();
     cfgFlagCache.set(cfg, f);
   }
@@ -121,6 +123,7 @@ export interface TrailingPosition {
   peak: number;
   trailOn: boolean;
   trail?: number;
+  trailFixed?: boolean;
   trailDist?: number;
   trailMax?: number;
   trailOnly?: boolean;
@@ -147,6 +150,11 @@ export function enforceSignalPosition(p: TrailingPosition): boolean {
   return enforceWithFlags(p, cfgFlags(p.cfg));
 }
 
+/** Apply the desk setting before assigning each priced trailing cell its identity. */
+export function applyTrailingGapBasis(protects: Protect[], basis?: "entry" | "peak"): Protect[] {
+  return basis === "entry" ? protects.map(p => p.trail > 0 ? { ...p, trailFixed: true } : p) : protects;
+}
+
 /**
  * A completed bar ratchets only the next bar's stop, independently of TP mode.
  * Ratios multiply the activation distance to give the fractional peak gap. Signal gaps also stay within
@@ -167,9 +175,10 @@ export function ratchetTrail(p: TrailingPosition, activation: number, gap: numbe
   p.peak = p.side === 1 ? Math.max(p.entry, priorPeak, high) : Math.min(p.entry, priorPeak, low);
   if ((p.side * (p.peak - p.entry)) / p.entry >= arm) {
     p.trailOn = true;
-    const priceGap = signal ? Math.min(p.peak * distance, p.entry * max) : p.peak * distance;
-    // Preserve the established arithmetic for ordinary configurations, bit for bit.
-    const next = signal ? p.peak - p.side * priceGap : p.peak * (1 - p.side * distance);
+    const fixed = (flags & 4) !== 0 || p.trailFixed === true;
+    const next = fixed || signal
+      ? p.peak - p.side * Math.min((fixed ? p.entry : p.peak) * distance, p.entry * max)
+      : p.peak * (1 - p.side * distance);
     if (Number.isFinite(next) && next > 0)
       p.stop = p.side === 1 ? Math.max(p.stop, next) : Math.min(p.stop, next);
   }

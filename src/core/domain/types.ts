@@ -77,6 +77,8 @@ export type BotType = (typeof BOT_TYPES)[number] | "exit";
 
 /** Protective exit config. All distances are fractions of entry price. */
 export interface Protect {
+  /** Use the entry price as the basis of the trailing gap. */
+  trailFixed?: boolean;
   tp: number;
   sl: number;
   /**
@@ -631,6 +633,7 @@ export interface Trade {
 }
 
 export interface OpenPosition {
+  trailFixed?: boolean;
   trailingProcessingEnabled?: boolean;
   blockAttribution?: BlockAttribution;
   cfg: string;
@@ -924,6 +927,7 @@ export interface LowRangeGrid {
 }
 
 export interface ProtectGridSpec {
+  trailGapBasis?: "entry" | "peak";
   /** Additional independent no-TP sets derived from every nonzero trailing cell; hard start stop at most 3%. */
   trailingOnly?: boolean;
   /** execution volume relative to the normal factor for untagged Wide configs (0.2–5 in 0.2 steps; default 1) */

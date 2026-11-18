@@ -89,7 +89,7 @@ import { buildPortfolio, type Portfolio } from "./portfolio.ts";
 import { baseWindowsPlan, judgeBaseWindows, type BaseWindowsPlan } from "./base-windows.ts";
 import { baseCellAccumulator } from "./base-cell-stats.ts";
 import { baseLastNForRange, baseLastNOf, passesBaseLastN } from "./base-lastn.ts";
-import { SIGNAL_STOP_LIMIT, capTrailingOnlyProtect, trailingOnlyProtects } from "../sim/trailing.ts";
+import { SIGNAL_STOP_LIMIT, applyTrailingGapBasis, capTrailingOnlyProtect, trailingOnlyProtects } from "../sim/trailing.ts";
 
 export interface Universe {
   bars: Bars[];
@@ -454,7 +454,7 @@ const pct = (x: number) => Math.round(x * 1e6) / 10000;
 const atrTag = (p: Protect) =>
   p.atr ? `|atr${p.atr.sl}x${p.atr.tpRatio}${p.atr.trail ? `t${p.atr.trail}` : ""}` : "";
 export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind): string {
-  const mode = `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}${p.trail > 0 && p.trailFree ? "|tf1" : ""}${p.trailMax !== undefined ? `|tm${pct(p.trailMax)}` : ""}`;
+  const mode = `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailFixed ? "|tge" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}${p.trail > 0 && p.trailFree ? "|tf1" : ""}${p.trailMax !== undefined ? `|tm${pct(p.trailMax)}` : ""}`;
   const caps = p.riskCaps ? `|rc${pct(p.riskCaps.sl)}x${pct(p.riskCaps.trail)}` : "";
   const exitFloor = p.exitType === "historic" && p.trail > 0 && (p.exitTrailFloor ?? 0) > 0
     ? `|eg${pct(p.exitTrailFloor ?? 0)}` : "";
@@ -518,6 +518,7 @@ const fromPct = (s: string) => +(Number(s) / 100).toFixed(6);
 export function parseConfigId(id: string): { bot: BotType; ind: string; protect: Protect } | null {
   const minuteHold = /\|hm([\d.]+)(?=\||$)/.exec(id);
   const mode = /\|to(?=\||$)/.exec(id);
+  const fixedTrail = /\|tge(?=\||$)/.exec(id);
   const ratio = /\|ts([\d.]+)(?=\||$)/.exec(id);
   const free = /\|tf1(?=\||$)/.exec(id);
   const ceiling = /\|tm([\d.]+)(?=\||$)/.exec(id);
@@ -525,7 +526,7 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   const exitFloor = /\|eg([\d.]+)(?=\||$)/.exec(id);
   const ladder = /\|dc([1-4])s([\d.]+)q([\d.]+)g([\d.]+)r([\d.]+)(?:m([\d.]+))?(?=\||$)/.exec(id);
   // Remove each token once; duplicates or malformed tokens remain and fail the strict grammar below.
-  const plainId = id.replace(/\|rc[\d.]+x[\d.]+(?=\||$)/, "").replace(/\|hm[\d.]+(?=\||$)/, "").replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|eg[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?:m[\d.]+)?(?=\||$)/, "").replace(/\|blk(?=\||$)/, "");
+  const plainId = id.replace(/\|rc[\d.]+x[\d.]+(?=\||$)/, "").replace(/\|hm[\d.]+(?=\||$)/, "").replace(/\|to(?=\||$)/, "").replace(/\|tge(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|eg[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?:m[\d.]+)?(?=\||$)/, "").replace(/\|blk(?=\||$)/, "");
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
@@ -591,6 +592,10 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
     const step = Number(ratio[1]);
     if (!(Number.isFinite(step) && step > 0 && protect.trail > 0)) return null;
     protect.trailStep = step;
+  }
+  if (fixedTrail) {
+    if (!(protect.trail > 0) || protect.exitType === "historic") return null;
+    protect.trailFixed = true;
   }
   if (free) {
     if (!(protect.trail > 0) || mode) return null;
@@ -718,9 +723,9 @@ export interface ComboRun {
 }
 
 /** The effective protection policy proved by Base; preserve legacy keys for the default policy. */
-export const protectCellKey = (p: Pick<Protect, "tp" | "sl" | "trail" | "hold" | "tag" | "maxHoldMin" | "trailOnly" | "trailStep" | "trailFree" | "trailMax" | "riskCaps">) =>
+export const protectCellKey = (p: Pick<Protect, "tp" | "sl" | "trail" | "hold" | "tag" | "maxHoldMin" | "trailOnly" | "trailFixed" | "trailStep" | "trailFree" | "trailMax" | "riskCaps">) =>
   `${p.tag ?? ""}|${p.tp}|${p.sl}|${p.trail}|${p.hold}${p.maxHoldMin !== undefined ? `|hm${p.maxHoldMin}` : ""}` +
-  `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}` +
+  `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailFixed ? "|tge" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}` +
   `${p.riskCaps ? `|rc${p.riskCaps.sl}x${p.riskCaps.trail}` : ""}${p.trail > 0 && p.trailFree ? "|tf1" : ""}${p.trailMax !== undefined && !(p.trailOnly && p.trailMax === SIGNAL_STOP_LIMIT) ? `|tm${p.trailMax}` : ""}`;
 
 /** Base result of a pair at one range's representative cell (full history). */
@@ -888,7 +893,7 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
   const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, REF_TF, g.lowRange?.minSlDistancePct ?? .1, ownSlFloor(g.lowRange, cost) ?? slFloor) : []);
   if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
   out.push(...lowRange);
-  return withSlCal(out, { "": g, mc: g.micro, mn: g.minimal, sh: g.short, gn: g.general, lg: g.long }, g.lowRange);
+  return applyTrailingGapBasis(withSlCal(out, { "": g, mc: g.micro, mn: g.minimal, sh: g.short, gn: g.general, lg: g.long }, g.lowRange), g.trailGapBasis);
 }
 
 export function baseRangeProtects(
@@ -908,6 +913,7 @@ export function baseRangeProtects(
     /** the grid's trailing step and trail-free switch: a Base trailed cell is the cell the grid builds */
     trailStep?: number;
     trailFree?: boolean;
+    trailGapBasis?: "entry" | "peak";
     micro?: CoordRangeLike | false;
     minimal?: CoordRangeLike | false;
     short?: CoordRangeLike | false;
@@ -1074,7 +1080,7 @@ export function baseRangeProtects(
     }, cost ?? RT_COST);
     out.push(...complete.filter((p) => p.trailOnly && p.tag && tags.has(p.tag)));
   }
-  return withSlCal(out, { mc: g.micro, mn: g.minimal, sh: g.short, gn: g.general, lg: g.long });
+  return applyTrailingGapBasis(withSlCal(out, { mc: g.micro, mn: g.minimal, sh: g.short, gn: g.general, lg: g.long }), g.trailGapBasis);
 }
 type CoordRangeLike = {
   slAuto?: import("../sl-ratios.ts").AutoSlRatios;
