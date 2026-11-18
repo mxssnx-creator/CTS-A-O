@@ -39,19 +39,21 @@ export function migrateBlockOwnConfig(db: CoreDb): void {
 }
 
 /**
- * x01 (the mainnet account): Block's automatic evaluation asks PF 1.3 per block count (operator, 18 Nov: "Use at x01
- * auto PF 1.3"; multi-window comparison in docs/positive-coordinations.md). Applied once to the x01 connection's
- * stored settings; a later change on the desk is the operator's and stays. Other connections keep the default (1.1).
+ * x01 (the mainnet account): Block's automatic evaluation judges every count per relation key, i.e. per config for the
+ * config and lane relations (scope "key"), at PF 1.1 (operator, 18 Nov, after the four-window comparison in
+ * docs/positive-coordinations.md: per-config Auto +1,725 % summed against +668 % for the pooled record and +247 % at
+ * PF 1.3). Applied once to the x01 connection's stored settings; a later desk change is the operator's and stays.
+ * Other connections keep the shipped default.
  */
-export function migrateX01BlockAutoPf(db: CoreDb, conn: string | undefined): void {
+export function migrateX01BlockAuto(db: CoreDb, conn: string | undefined): void {
   if (conn !== "bingx-x01") return;
-  const version = "x01BlockAutoPf20261118V1";
+  const version = "x01BlockAuto20261118V2";
   if (db.kvGet(version)) return;
   db.tx(() => {
     const settings = db.kvGet<SettingsPatch>("settings") ?? ({} as SettingsPatch);
-    db.kvSet("x01BlockAutoPf20261118BackupV1", structuredClone(settings));
+    db.kvSet("x01BlockAuto20261118BackupV2", structuredClone(settings));
     const block = (settings.block ?? {}) as { auto?: Record<string, unknown> };
-    block.auto = { ...structuredClone(DEFAULT_BLOCK.auto), ...(block.auto ?? {}), pf: 1.3 };
+    block.auto = { ...structuredClone(DEFAULT_BLOCK.auto), ...(block.auto ?? {}), scope: "key", pf: 1.1 };
     settings.block = block as SettingsPatch["block"];
     db.kvSet("settings", settings);
     db.kvSet(version, true);
