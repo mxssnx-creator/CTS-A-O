@@ -80,6 +80,7 @@ import {
   memSoftMb,
   nextFallback,
   shouldCollect,
+  holdUniverse,
   type MemInfo,
   type MemLevel,
 } from "./memguard.server.ts";
@@ -2713,6 +2714,28 @@ export class CoreRuntime {
         // Connected desks progressively start realtime after each batch. A frozen offline replay loads all
         // symbols first, avoiding repeated full computations on intermediate partial universes.
         const batch = this.completeReplayUniverse ? target : Math.max(5, Math.ceil(target / 4));
+        // Memory guard for the universe itself: another batch of symbols means another compute on more tapes. Under
+        // memory pressure (host or V8 heap) the universe stops growing here and is complete at its current size —
+        // the alternative was loading all of it and being killed (V8 heap exit 134 at ~90 of 100 symbols). Logged
+        // once; a changed universe setting clears the hold.
+        {
+          const mi = memInfo();
+          if (holdUniverse(this.candles.size, missing.length, mi.level)) {
+            this.prehistPending = false;
+            this.prehistTotal = this.candles.size;
+            this.backfillKey = uniKey;
+            if (this.universeHeldKey !== uniKey) {
+              this.universeHeldKey = uniKey;
+              this.db.event(
+                "warn",
+                `universe held at ${this.candles.size} of ${target} symbols: memory ${mi.level} (${mi.availMb} MB available, this process ${mi.rssMb} MB${heapNote(mi)}) — no further batch is loaded`,
+              );
+            }
+            this.status.symbols = [...this.candles.keys()];
+            this.touchPrehist();
+            return false;
+          }
+        }
         const syms = missing.slice(0, batch);
         const more = missing.length > syms.length;
         this.prehistTotal = Math.min(target, this.candles.size + missing.length);
@@ -3068,7 +3091,7 @@ export class CoreRuntime {
         this.memSoftNoted = true;
         this.db.event(
           "warn",
-          `memory low: ${m.availMb} MB available (soft ${memSoftMb()} MB), this process ${m.rssMb} MB${gc ? " — garbage collected" : ""}`,
+          `memory low: ${m.availMb} MB available (soft ${memSoftMb()} MB), this process ${m.rssMb} MB${heapNote(m)}${gc ? " — garbage collected" : ""}`,
         );
       }
     }
@@ -3077,7 +3100,7 @@ export class CoreRuntime {
     if (m.level === "hard" && (!this.memPressured || workerActivity().inFlight > 0)) {
       const first = !this.memPressured;
       this.memPressured = true;
-      const reason = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB — compute aborted`;
+      const reason = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB${heapNote(m)} — compute aborted`;
       const busy = abortWorkers(reason);
       if (first) {
         this.memLastAbort = reason;
@@ -3119,7 +3142,7 @@ export class CoreRuntime {
     this.memMaxAborts++;
     const wait = memRetryDelayMs(MEM_FALLBACK_MAX, this.memMaxAborts);
     this.memRetryAt = Date.now() + wait;
-    this.memLastAbort = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB — compute not started`;
+    this.memLastAbort = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB${heapNote(m)} — compute not started`;
     this.db.event(
       "warn",
       `${this.memLastAbort}; ${this.memMaxAborts} time(s) in a row at the lightest level — next try in ${Math.round(wait / 1000)} s`,
@@ -4725,7 +4748,7 @@ export class CoreRuntime {
     if (Date.now() - this.lastConsoleAt > 5 * 60_000) {
       this.lastConsoleAt = Date.now();
       console.info(
-        `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF ${primaryPfLabel(sim.stats)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms`,
+        `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF ${primaryPfLabel(sim.stats)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms · mem ${memLine(this.status.mem)}`,
       );
     }
     this.emit("compute");
@@ -5521,6 +5544,8 @@ export class CoreRuntime {
   /** backfill batches loaded in this progressive start (the backfill line's batch #/#) */
   private prehistBatch = 0;
   private prehistPending = false;
+  /** the universe key at which the symbol batches were last held back by memory pressure (one event per key) */
+  private universeHeldKey = "";
   private prehistStartedAt = 0;
   private prehistReadyAt = 0;
   private prehistMore(_s: CoreSettings) {
@@ -9550,6 +9575,32 @@ function protectFloors(s: CoreSettings, rangeFitCutT?: number): EntryFloors {
 export const LIVE_STEP_LIMIT_MS = 180_000;
 
 /** Mainnet (x01) validation floors: last N closes at entry and for a seat. */
+/** " · heap 9800/12288 MB (80 %)" when the V8 heap is under pressure, else "" (the host figures say it all). */
+export function heapNote(m: { heapMb: number; heapLimitMb?: number; heapLevel?: string }): string {
+  return m.heapLevel && m.heapLevel !== "ok" && m.heapLimitMb
+    ? ` · V8 heap ${m.heapMb}/${m.heapLimitMb} MB (${Math.round((m.heapMb / m.heapLimitMb) * 100)} %, ${m.heapLevel})`
+    : "";
+}
+
+/** One line of where the memory is: process, heap, typed arrays, native, tapes, database, the heaviest stage. */
+export function memLine(
+  m:
+    | {
+        rssMb: number;
+        heapMb?: number;
+        arrayBuffersMb?: number;
+        nativeMb?: number;
+        tapeMb?: number;
+        dbMb?: number;
+        byPhase?: Record<string, { rssMb: number }>;
+      }
+    | undefined,
+): string {
+  if (!m) return "n/a";
+  const top = Object.entries(m.byPhase ?? {}).sort((a, b) => b[1].rssMb - a[1].rssMb)[0];
+  return `rss ${m.rssMb} MB, heap ${m.heapMb ?? "?"}, buffers ${m.arrayBuffersMb ?? "?"}, native ${m.nativeMb ?? "?"}, tapes ${m.tapeMb ?? "?"}, db ${m.dbMb ?? "?"}${top ? `, peak stage ${top[0]} ${top[1].rssMb}` : ""}`;
+}
+
 export const MAINNET_LAST_N = 25;
 export const MAINNET_VALID_LAST_N = 50;
 /** Real money: signals validate on at least their last 10 closes (their activity in a window; see walkforward) */

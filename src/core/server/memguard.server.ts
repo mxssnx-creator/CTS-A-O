@@ -9,6 +9,7 @@
 //                        compute is never continued in-process), and never start one: one level lighter, or at the
 //                        lightest level wait 15 s doubling up to 10 min (memRetryDelayMs)
 import { freemem } from "node:os";
+import { getHeapStatistics } from "node:v8";
 import { readFileSync } from "node:fs";
 
 export type MemLevel = "ok" | "soft" | "hard";
@@ -36,12 +37,46 @@ export interface MemInfo {
   arrayBuffersMb?: number;
   /** native memory outside the heap and the array buffers (allocator arenas, workers' heaps), MB */
   nativeMb?: number;
+  /** V8's old-space ceiling for this thread (--max-old-space-size), MB */
+  heapLimitMb?: number;
+  /** the pressure the V8 heap alone is under: used / limit against CTS_CORE_HEAP_SOFT_PCT / _HARD_PCT */
+  heapLevel?: MemLevel;
+  /** the worse of the host/cgroup level and the heap level */
   level: MemLevel;
   at: number;
 }
 
 export const memSoftMb = () => Number(process.env.CTS_CORE_MEM_SOFT_MB) || 2500;
 export const memHardMb = () => Number(process.env.CTS_CORE_MEM_HARD_MB) || 1200;
+// The kernel is not the only limit: V8 aborts the process (exit 134) when the heap reaches --max-old-space-size even
+// with gigabytes of host memory free, and the available-memory levels above never see it coming. The heap is judged
+// against its own ceiling: soft (collect, warn) from 80 % of it, hard (abort / lighten the compute) from 92 %.
+export const memHeapSoftPct = () => Number(process.env.CTS_CORE_HEAP_SOFT_PCT) || 80;
+export const memHeapHardPct = () => Number(process.env.CTS_CORE_HEAP_HARD_PCT) || 92;
+
+/** The level of a V8 heap that uses usedMb of a limitMb ceiling (no ceiling known = ok). */
+export function heapLevel(
+  usedMb: number,
+  limitMb: number,
+  soft = memHeapSoftPct(),
+  hard = memHeapHardPct(),
+): MemLevel {
+  if (!(limitMb > 0) || !(usedMb >= 0)) return "ok";
+  const pct = (usedMb / limitMb) * 100;
+  return pct >= hard ? "hard" : pct >= soft ? "soft" : "ok";
+}
+
+/**
+ * Whether the universe stops growing: another batch of symbols means another compute on more tapes, so under any
+ * memory pressure (host or V8 heap) with some symbols already loaded and others still missing, no further batch loads.
+ * The first batch always loads (a desk with no symbols has nothing to hold).
+ */
+export const holdUniverse = (loaded: number, missing: number, level: MemLevel): boolean =>
+  loaded > 0 && missing > 0 && level !== "ok";
+
+/** The worse of two levels. */
+export const worseLevel = (a: MemLevel, b: MemLevel): MemLevel =>
+  a === "hard" || b === "hard" ? "hard" : a === "soft" || b === "soft" ? "soft" : "ok";
 
 /** "MemAvailable:   1234567 kB" → MB; null when the line is missing */
 export function parseMemAvailable(meminfo: string): number | null {
@@ -155,6 +190,13 @@ export function memInfo(now = Date.now()): MemInfo {
   const cgroup = cgroupMemoryEstimate();
   const availMb = cgroup == null ? host : Math.min(host, cgroup.availMb);
   const mu = process.memoryUsage();
+  let heapLimitMb = 0;
+  try {
+    heapLimitMb = Math.round(getHeapStatistics().heap_size_limit / 1048576);
+  } catch {
+    heapLimitMb = 0;
+  }
+  const heapLvl = heapLevel(Math.round(mu.heapUsed / 1048576), heapLimitMb);
   cached = {
     availMb,
     hostAvailMb: host,
@@ -164,7 +206,9 @@ export function memInfo(now = Date.now()): MemInfo {
     heapTotalMb: Math.round(mu.heapTotal / 1048576),
     arrayBuffersMb: Math.round(mu.arrayBuffers / 1048576),
     nativeMb: Math.max(0, Math.round((mu.rss - mu.heapTotal - mu.arrayBuffers) / 1048576)),
-    level: memLevel(availMb),
+    heapLimitMb,
+    heapLevel: heapLvl,
+    level: worseLevel(memLevel(availMb), heapLvl),
     at: now,
   };
   return cached;

@@ -4,6 +4,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   fallbackProtects,
+  heapLevel,
+  holdUniverse,
+  worseLevel,
   memInfo,
   memLevel,
   memRetryDelayMs,
@@ -175,5 +178,54 @@ describe("memory fallback: partial processing carries a range, never switches it
     const both = withCarried(built, prev, fallbackCarriedTags(2)) as Array<{ id: string }>;
     assert.deepEqual(ids(both), ["a|ind|mc1", "a|ind|mc3", "a|ind|mn1", "a|ind|sh1"]);
     assert.equal(withCarried(built, prev, fallbackCarriedTags(0)), built);
+  });
+});
+
+describe("V8 heap pressure (the ceiling the kernel-level readings never see)", () => {
+  it("a heap is soft from 80 % of its limit and hard from 92 %", () => {
+    assert.equal(heapLevel(5000, 12288, 80, 92), "ok");
+    assert.equal(heapLevel(9830, 12288, 80, 92), "ok"); // 79.997 %
+    assert.equal(heapLevel(9831, 12288, 80, 92), "soft");
+    assert.equal(heapLevel(11300, 12288, 80, 92), "soft"); // 91.96 %
+    assert.equal(heapLevel(11500, 12288, 80, 92), "hard"); // 93.6 %
+  });
+
+  it("the boundaries are exact", () => {
+    assert.equal(heapLevel(799, 1000, 80, 92), "ok");
+    assert.equal(heapLevel(800, 1000, 80, 92), "soft");
+    assert.equal(heapLevel(919, 1000, 80, 92), "soft");
+    assert.equal(heapLevel(920, 1000, 80, 92), "hard");
+  });
+
+  it("an unknown or invalid ceiling is never pressure", () => {
+    assert.equal(heapLevel(5000, 0, 80, 92), "ok");
+    assert.equal(heapLevel(5000, Number.NaN, 80, 92), "ok");
+    assert.equal(heapLevel(-1, 1000, 80, 92), "ok");
+  });
+
+  it("the combined level is the worse of host memory and heap", () => {
+    assert.equal(worseLevel("ok", "ok"), "ok");
+    assert.equal(worseLevel("ok", "soft"), "soft");
+    assert.equal(worseLevel("soft", "hard"), "hard");
+    assert.equal(worseLevel("hard", "ok"), "hard");
+  });
+
+  it("memInfo reports the heap ceiling and a level at least as bad as the heap's", () => {
+    const m = memInfo(Date.now() + 10_000);
+    assert.ok((m.heapLimitMb ?? 0) > 0);
+    assert.ok(["ok", "soft", "hard"].includes(m.heapLevel ?? ""));
+    assert.equal(m.level, worseLevel(memLevel(m.availMb), m.heapLevel ?? "ok"));
+  });
+});
+
+describe("universe hold under memory pressure", () => {
+  it("holds once symbols are loaded and more are missing, under soft or hard pressure only", () => {
+    assert.equal(holdUniverse(25, 75, "ok"), false);
+    assert.equal(holdUniverse(25, 75, "soft"), true);
+    assert.equal(holdUniverse(25, 75, "hard"), true);
+  });
+  it("never holds the first batch, nor a universe with nothing left to load", () => {
+    assert.equal(holdUniverse(0, 100, "hard"), false);
+    assert.equal(holdUniverse(100, 0, "hard"), false);
   });
 });
