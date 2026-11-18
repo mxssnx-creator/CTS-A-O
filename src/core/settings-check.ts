@@ -710,6 +710,13 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (rg.lastN !== undefined && !Number.isInteger(rg.lastN))
         throw new Error("range gate last N must be a whole number");
       num(rg.minPf, 1.05, 5, "range gate min PF");
+      if (rg.lastNByTag !== undefined) {
+        if (!rg.lastNByTag || typeof rg.lastNByTag !== "object") throw new Error("range gate per-range last N: object");
+        for (const [tag, n] of Object.entries(rg.lastNByTag)) {
+          num(n, 20, 1000, `range gate last N (${tag})`);
+          if (!Number.isInteger(n)) throw new Error(`range gate last N (${tag}) must be a whole number`);
+        }
+      }
     }
     if (s.grid.baseTrailCells !== undefined && typeof s.grid.baseTrailCells !== "boolean")
       throw new Error("Base trailed cells: on / off");

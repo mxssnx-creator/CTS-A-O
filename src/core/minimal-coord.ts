@@ -466,7 +466,10 @@ function steps(from: number, to: number, step: number): number[] {
 /** Range gate defaults: 50 previous closes at PF 1.35 (the usual gate is 1.1–1.25). Never below 50 closes. */
 // range gate over the last 75 closes: PF 3.75 against 3.62 at 50 (and 3.63 at 100) on the same tapes, 5-6 Oct
 // (12 symbols, 6 h + 6 h); operator, 6 Oct: the best last-N windows as defaults
-export const RANGE_GATE = { enabled: true, lastN: 75, minPf: 1.35 } as const;
+// Minimal ("mn") takes its own window of 20 closes (operator, 18 Oct: "Change minimal to 20"); the other gated ranges
+// keep 75. A per-tag window never goes below RANGE_TAG_LAST_N_FLOOR; the shared 50 floor applies to the shared lastN only.
+export const RANGE_GATE = { enabled: true, lastN: 75, minPf: 1.35, lastNByTag: { mn: 20 } } as const;
+export const RANGE_TAG_LAST_N_FLOOR = 20;
 
 /**
  * The ranges the range gate (and its min-closes pruning) applies to: the small targets that close often and can
@@ -478,17 +481,27 @@ export const rangeGated = (tag: string | undefined | null) => !!tag && GATED_RAN
 
 /** Walk-forward form of the range gate (null = off). lastN never below 50, min PF never below the Base minimum 1.05. */
 export function rangeGateOf(
-  g: { rangeGate?: { enabled?: boolean; lastN?: number; minPf?: number } } | null | undefined,
-): { lastN: number; minPf: number } | null {
+  g: { rangeGate?: { enabled?: boolean; lastN?: number; minPf?: number; lastNByTag?: Record<string, number> } } | null | undefined,
+): { lastN: number; minPf: number; lastNByTag: Record<string, number> } | null {
   const r = g?.rangeGate;
   if (!r || r.enabled === false) return null;
   const lastN = Number(r.lastN);
   const minPf = Number(r.minPf);
+  const lastNByTag: Record<string, number> = {};
+  for (const [tag, v] of Object.entries(r.lastNByTag ?? {})) {
+    const n = Number(v);
+    if (Number.isFinite(n)) lastNByTag[tag] = Math.max(RANGE_TAG_LAST_N_FLOOR, Math.round(n));
+  }
   return {
     lastN: Number.isFinite(lastN) ? Math.max(50, Math.round(lastN)) : RANGE_GATE.lastN,
     minPf: Number.isFinite(minPf) ? Math.max(1.05, minPf) : RANGE_GATE.minPf,
+    lastNByTag,
   };
 }
+
+/** The last-N window one range tag is gated on: its own window when set, else the shared one. */
+export const rangeGateLastN = (g: { lastN: number; lastNByTag?: Record<string, number> }, tag: string | undefined | null) =>
+  (tag && g.lastNByTag?.[tag]) || g.lastN;
 
 const RANGE_MIN_PF_KEY: Readonly<Record<RangeTag, RangeMinPfKey>> = {
   mc: "micro",

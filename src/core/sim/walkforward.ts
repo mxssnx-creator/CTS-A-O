@@ -6,6 +6,7 @@ import {
   plusVariants,
   RANGE_TAGS,
   rangeGateOf,
+  rangeGateLastN,
   minPfOf,
   rangeGated,
   rangeVolumeFactorsOf,
@@ -371,6 +372,8 @@ export interface WalkForwardOptions {
    */
   rangeGate?: {
     lastN: number;
+    /** per range tag window (Minimal "mn" = 20); a tag not listed uses lastN */
+    lastNByTag?: Record<string, number>;
     minPf: number;
     /** the range gate's own last-N floor (unset = gates.lastNFloor; 0 = strict: fewer than lastN closes fails) */
     floor?: number;
@@ -3511,7 +3514,7 @@ function configEvalAt(
     !lastNOk(
       tp,
       t,
-      g.lastN,
+      rangeGateLastN(g, tp.protect.tag),
       g.minPf,
       0,
       0,
@@ -3759,7 +3762,7 @@ function configPassAt(
   if (
     g &&
     info.rangeGate &&
-    !lastNOk(tp, t, g.lastN, g.minPf, 0, 0, g.floor ?? o.gates.lastNFloor ?? 0, warm, prior)
+    !lastNOk(tp, t, rangeGateLastN(g, tp.protect.tag), g.minPf, 0, 0, g.floor ?? o.gates.lastNFloor ?? 0, warm, prior)
   )
     return false;
   const dd = winDd(tp, a, b, t);
@@ -4092,7 +4095,7 @@ function validOk(
     lastNOk(
       tp,
       t,
-      g.lastN,
+      rangeGateLastN(g, tp.protect.tag),
       g.minPf,
       0,
       0,

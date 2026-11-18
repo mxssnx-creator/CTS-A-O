@@ -264,6 +264,7 @@ const CASES: Record<string, Case> = {
     ],
   ),
   "grid.rangeGate.lastN": num(50, 1000, { int: true }),
+  "grid.rangeGate.lastNByTag.mn": num(20, 1000, { int: true }),
   "grid.rangeGate.minPf": num(1.05, 5),
   "live.connId": oneOf(["bingx-x01", "bingx-vst-01", "bingx-vst-02"], ["bingx-x02", "bogus"]),
   "live.excludeRanges": oneOf([[], ["wide"], ["mc", "gn"]], [["bogus"], "wide"]),

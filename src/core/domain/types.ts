@@ -695,7 +695,7 @@ export interface ProtectGridSpec {
    * Range gate: a range cell (micro, minimal, short, plus) takes a seat only when its last `lastN` previous closes
    * clear `minPf` (higher than the usual gate). Causal in the simulation, the same rule in live.
    */
-  rangeGate?: { enabled: boolean; lastN: number; minPf: number };
+  rangeGate?: { enabled: boolean; lastN: number; minPf: number; lastNByTag?: Record<string, number> };
   /**
    * Every range at every config in Base: a pair is judged at each target × stop of every range (Micro: every target ×
    * stops 1 / 1.75 / 2.5 / 3.5 / 5, MICRO_BASE_SL; no trail) and a range passes when its best cell (by net) clears the range's own minimum PF;
