@@ -16,6 +16,7 @@ import { returnWindow } from "../metrics/return-window.ts";
 import { DerivedCache } from "./derived-cache.ts";
 import { immutableHistoryGeneration } from "./immutable-history-generation.ts";
 import { exitScopeSuffix, isHistoricExitConfig } from "../exit-scope.ts";
+import { applyPriceDistanceGrid } from "../price-distance-grid.ts";
 import { isLowRangeInd, lowRangeGridProtects, lowRangeEnabled } from "../indications/low-range.ts";
 import {
   coordVariants,
@@ -753,7 +754,7 @@ export const DEFAULT_GRID: ProtectGridSpec = {
 
 /** Upper bound on protect variants at the effective modeled cost. Dedup can only make it smaller. */
 export function gridVariants(g: ProtectGridSpec, cost?: number): number {
-  if (g.trailingOnly) return protectGrid(REF_TF, g, cost).length;
+  if (g.trailingOnly || g.priceDistances?.enabled) return protectGrid(REF_TF, g, cost).length;
   const hold = g.holdH.length || 1;
   const main = g.tp.length * slRatiosOf(g).length * g.trailOfTp.length * hold;
   const plus = g.minimalPlus;
@@ -899,6 +900,10 @@ export function protectGrid(
         });
   }
   const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, tfMin, g.lowRange?.minSlDistancePct ?? .1, ownSlFloor(g.lowRange, cost ?? RT_COST) ?? slFloor) : []);
+  if (g.priceDistances?.enabled) {
+    const priced = applyPriceDistanceGrid(applyTrailingGapBasis([...out, ...lowRange], g.trailGapBasis), g, cost ?? RT_COST, GRID_VARIANTS_MAX);
+    return g.trailingOnly ? [...priced, ...trailingOnlyProtects(priced)] : priced;
+  }
   if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
   out.push(...lowRange);
   return applyTrailingGapBasis(out, g.trailGapBasis);
@@ -2416,7 +2421,7 @@ export function* buildTapesGen(
       // failing a filter it is built held-only and takes no new seat
       const held = floors?.heldIds?.has(id) ?? false;
       const tps = p0.tag ? floors?.pairTps?.[`${c.bot}|${c.ind}`]?.[p0.tag] : undefined;
-      const slb = p0.tag && !p0.trailOnly ? floors?.pairSl?.[`${c.bot}|${c.ind}`]?.[p0.tag]?.[String(p0.tp)] : undefined;
+      const slb = p0.tag && !p0.trailOnly && !p0.priceDistance ? floors?.pairSl?.[pairKey]?.[p0.tag]?.[String(p0.tp)] : undefined;
       // the structural exclusions first (a cell below its range's lane floor, a Micro cell off a Micro indication):
       // neither is a Base-gate hold, and a pair's tags already leave a floored range out (rangeAppliesTo), so
       // testing baseRange first labelled every lane-floor cell a gate hold (13 Oct: grid.allSets "cells held back")
@@ -2442,6 +2447,8 @@ export function* buildTapesGen(
                     ? "baseStop"
                   : !exitConfig && !isSignalInd(c.ind) && p0.trailOnly && !!noTpCells &&
                     !noTpCells.has(protectCellKey(p))
+                    ? "baseCell"
+                  : !exitConfig && p0.priceDistance && !p0.trailOnly && !!floors?.pairTags && !cellSet?.has(protectCellKey(p))
                     ? "baseCell"
                   : !exitConfig && !!p0.tag && !!cellSet && !(p0.trailOnly && !!noTpCells) &&
                     (isLowRangeInd(c.ind) || cellTags!.has(p0.tag)) &&
@@ -2986,6 +2993,7 @@ export function baseAllowsTape(
   if (o.basePassed && !o.basePassed.has(pair)) return false;
   if (tp.protect.trailOnly && !isSignalInd(tp.ind) && o.basePassedTrailingOnlyCells)
     return o.basePassedTrailingOnlyCells[pair]?.keys.has(protectCellKey(tp.protect)) ?? false;
+  if (tp.protect.priceDistance && !cellAllowed(tp, o, pair)) return false;
   const ranges = o.basePassedRanges?.[pair];
   if (o.basePassedRanges && !ranges?.length) return false;
   // With Axis perRange off, an admitted pair's independent untagged ladders are not the plain Wide config.
@@ -4912,6 +4920,7 @@ export function cellAllowed(
   if (tp.protect.trailOnly && !isSignalInd(tp.ind) && o.basePassedTrailingOnlyCells)
     return o.basePassedTrailingOnlyCells[pair]?.keys.has(protectCellKey(tp.protect)) ?? false;
   const c = o.basePassedCells?.[pair];
+  if (tp.protect.priceDistance) return c?.keys.has(protectCellKey(tp.protect)) ?? false;
   const tag = tp.protect.tag;
   if (!c) return !o.basePassedCells || !isLowRangeInd(tp.ind);
   if (!tag || !c.tags.has(tag)) return !isLowRangeInd(tp.ind);

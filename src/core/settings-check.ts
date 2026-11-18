@@ -7,6 +7,7 @@ import { FINE_SL_TP_MIN, MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, SL_TP_MIN, SL
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
 import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, MAX_EXTERNAL_STACK, MAX_FOCUS_PAIRS, mergeGridSettings, type CoreSettings, type SettingsPatch } from "./config.ts";
 import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "./model-cost.ts";
+import { checkPriceDistanceGrid } from "./price-distance-grid.ts";
 import { checkGridVariantBudget } from "./sim/walkforward.ts";
 import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
@@ -713,6 +714,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     if (s.grid.maxSl !== undefined) num(s.grid.maxSl, 0.005, 0.2, "max SL");
     if (s.grid.maxTrail !== undefined) num(s.grid.maxTrail, 0.003, 0.2, "max trail");
     num(s.grid.trailStep, 0.1, 1, "trail step");
+    if (s.grid.priceDistances !== undefined) checkPriceDistanceGrid(s.grid.priceDistances);
     if (s.grid.trailGapBasis !== undefined && s.grid.trailGapBasis !== "entry" && s.grid.trailGapBasis !== "peak")
       throw new Error("trailing distance basis must be entry or peak");
     if (s.grid.trailingOnly !== undefined && typeof s.grid.trailingOnly !== "boolean")

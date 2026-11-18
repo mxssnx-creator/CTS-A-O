@@ -1,3 +1,23 @@
+## 2026-11-18 — exact stop and trailing distances
+
+The opt-in price-distance grid uses SL 0.2%–2.2% and trailing 0.2%–2.6% at
+0.1-point intervals. A selected range can use the entry-price gap, peak-price
+gap or both. Target, hold, cost and range protection limits still apply. Base
+records independent proof for each exact cell, including untagged Wide and
+trailing-only. Main and later admission require that proof. Restored exits and
+feedback identities preserve the configured mode and exact protection.
+
+On top of `5ec761a495485cd9daf2fe032b991f09865f697d`, 253 focused tests,
+TypeScript and the development build passed. The three twelve-symbol replays
+used 24h evaluated prehistory and 48h trading, with a representative subset
+of the stop and trailing values. At the October 4, 11 and 15 UTC decisions,
+each exact-grid arm admitted 0 of 433 evaluated Base pairs. Post-Base inventories
+and funded settlements were empty. Both PF figures were unavailable. The older
+ratio-grid October 4 comparison on `99138e2` passed 4 of 22 post-Base configs
+at pooled PF 4.82, then settled 25 modeled orders at PF 0.731. October 11 had
+zero ratio-grid settlements. These runs used offline OHLCV and no exchange
+connection. Signals provider fills and actual venue PF remain unmeasured.
+
 ## 2026-11-17 — signed stage blocks retain the recent-loss veto
 
 A passing disjoint Validation or Real block now still reads the configured

@@ -77,6 +77,8 @@ export type BotType = (typeof BOT_TYPES)[number] | "exit";
 
 /** Protective exit config. All distances are fractions of entry price. */
 export interface Protect {
+  /** Exact price-distance settings preserve their stop and trailing gap across lane scaling and feedback. */
+  priceDistance?: true;
   /** Use the entry price as the basis of the trailing gap. */
   trailFixed?: boolean;
   tp: number;
@@ -927,6 +929,7 @@ export interface LowRangeGrid {
 }
 
 export interface ProtectGridSpec {
+  priceDistances?: import("../price-distance-grid.ts").PriceDistanceGrid;
   trailGapBasis?: "entry" | "peak";
   /** Additional independent no-TP sets derived from every nonzero trailing cell; hard start stop at most 3%. */
   trailingOnly?: boolean;
