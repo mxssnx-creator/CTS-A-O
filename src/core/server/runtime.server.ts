@@ -5549,6 +5549,7 @@ export class CoreRuntime {
   private prehistPending = false;
   /** the universe key at which the symbol batches were last held back by memory pressure (one event per key) */
   private universeHeldKey = "";
+  private paperSkipLogAt = 0;
   private prehistStartedAt = 0;
   private prehistReadyAt = 0;
   private prehistMore(_s: CoreSettings) {
@@ -8295,6 +8296,18 @@ export class CoreRuntime {
       Object.entries(this.status.paperSkips ?? {}).filter(([k]) => k.startsWith("pending:")),
     );
     this.status.paperSkips = { ...pSkips, ...pendingKept };
+    // host log, at most once a minute: why the paper book did not enter (the Paper page does not show the reasons)
+    if (Date.now() - this.paperSkipLogAt > 60_000) {
+      this.paperSkipLogAt = Date.now();
+      const top = Object.entries(pSkips)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(([k, n]) => `${k} ${n}`)
+        .join(", ");
+      console.info(
+        `[paper] step: ${cands.length} entry candidates, skipped: ${top || "none"} · open ${positions.length} positions · balance ${Math.round(this.paper.balance ?? 0)} equity ${Math.round(this.paper.equity ?? 0)}`,
+      );
+    }
     // the live tick ran between this step's slices on the old book: a stop it crossed after the positions were
     // built is carried over (else the lane asks for its volume again until the next step reads the stored hit)
     for (const p of positions) {
