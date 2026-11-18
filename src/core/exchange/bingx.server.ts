@@ -214,6 +214,13 @@ function shareBan(endpoint: string, until: number, now: number) {
     // best effort: this process still pauses on its own
   }
 }
+/** A rate-limit reply for the host log: 300 characters, with keys, signatures and secrets masked. */
+export function redactBan(msg: string): string {
+  return msg
+    .replace(/(signature|apikey|api[-_ ]?key|secret|x-bx-apikey)(["'=:\s]+)[A-Za-z0-9+/_-]{8,}/gi, "$1$2***")
+    .replace(/[A-Za-z0-9]{40,}/g, "***")
+    .slice(0, 300);
+}
 export function noteRateLimit(msg: string, now = Date.now()): number {
   if (msg.includes(NOT_SENT)) return rateLimitedUntil(now);
   // "… unblocked after <ms>"; BingX's error-rate ban (110206: "over 20 … requests within 480000 ms for this api … can
@@ -226,6 +233,10 @@ export function noteRateLimit(msg: string, now = Date.now()): number {
   } else if (/100410|disabled period|trigger frequency limit/i.test(msg)) end = now + 60_000;
   if (end) {
     const ep = endpointOf(msg);
+    // one console line per new ban end per endpoint: which endpoint, until when and what BingX said (credentials and
+    // signatures redacted), so a ban loop can be read from the host log instead of guessed
+    if (end > (banned.get(ep) ?? 0) - BAN_JITTER_MS)
+      console.warn(`[bingx] rate limit ${ep} until ${new Date(end).toISOString()}: ${redactBan(msg)}`);
     shareBan(ep, end, now);
     if (end + BAN_JITTER_MS > (banned.get(ep) ?? 0)) banned.set(ep, end + BAN_JITTER_MS);
   }
