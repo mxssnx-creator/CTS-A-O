@@ -54,7 +54,8 @@ import {
   RELATE_PROFILES,
   RELATE_SUBSETS,
 } from "@/core/indications/relate";
-import { RANGE_OWN_BASE } from "@/core/minimal-coord";
+import { RANGE_LABEL, RANGE_OWN_BASE } from "@/core/minimal-coord";
+import { DEFAULT_PRICE_DISTANCE_GRID, PRICE_DISTANCE_RANGES, type PriceDistanceGrid } from "@/core/price-distance-grid";
 import { blockRatioOf, blockStackCap, stepRaise } from "@/core/sim/block";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
 import { SIGNAL_COORDINATION_RATIOS } from "@/core/signal-coordination";
@@ -2547,8 +2548,39 @@ export function RangeFit(props: {
 /** Every protect range with its switch (Settings and the preset dialog). */
 export function ProtectRanges(props: { grid: object; set: (path: string[], v: unknown) => void;
   focus?: readonly string[]; pinned?: readonly string[]; disabledKinds?: readonly string[] }) {
+  const priceDistances = (props.grid as { priceDistances?: PriceDistanceGrid }).priceDistances ?? DEFAULT_PRICE_DISTANCE_GRID;
+  const updateDistances = (patch: Partial<PriceDistanceGrid>) => props.set(["grid", "priceDistances"], { ...priceDistances, ...patch });
   return (
     <>
+      <SwitchRow label="Price-distance grid" title="Price-distance grid"
+        help="Each selected range tests its own stop-loss and trailing distance as a percentage of price. Existing cost floors and range limits apply."
+        checked={priceDistances.enabled} onChange={(enabled) => updateDistances({ enabled })} />
+      {priceDistances.enabled && <div className="v2-grid v2-cols-3">
+        <Field label="Ranges">
+          <div className="v2-lines">{PRICE_DISTANCE_RANGES.map((range) => {
+            const on = priceDistances.ranges.includes(range);
+            return <label key={range}>
+              <input type="checkbox" checked={on} disabled={on && priceDistances.ranges.length === 1}
+                onChange={(event) => updateDistances({ ranges: event.target.checked ? [...priceDistances.ranges, range] : priceDistances.ranges.filter(value => value !== range) })} />
+              {RANGE_LABEL[range === "wide" ? "" : range]}
+            </label>;
+          })}</div>
+        </Field>
+        <Field label="SL distances (%)" hint="0.2–2.2 in 0.1 percentage-point steps">
+          <List value={priceDistances.stopPcts} onChange={(stopPcts) => updateDistances({ stopPcts })} />
+        </Field>
+        <Field label="Trailing distances (%)" hint="0.2–2.6 in 0.1 percentage-point steps">
+          <List value={priceDistances.trailPcts} onChange={(trailPcts) => updateDistances({ trailPcts })} />
+        </Field>
+        <Field label="Trailing gap basis">
+          <select className="v2-select" aria-label="Trailing gap basis" value={priceDistances.trailingBasis}
+            onChange={(event) => updateDistances({ trailingBasis: event.target.value as PriceDistanceGrid["trailingBasis"] })}>
+            <option value="both">Fixed and dynamic</option>
+            <option value="entry">Fixed entry distance</option>
+            <option value="peak">Dynamic peak distance</option>
+          </select>
+        </Field>
+      </div>}
       <LowRangeShortSettings {...props} />
       <MinimalRange grid={props.grid} set={props.set} />
       <ShortRange grid={props.grid} set={props.set} />

@@ -4533,7 +4533,7 @@ export class CoreRuntime {
         s.tactics,
         baseRangeProtects(s.grid, s.cost),
         completeBaseRangeProtects(s.grid, s.cost),
-        s.grid?.baseCells === true,
+        (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true),
         rangeMinTfOf(s.grid),
         // the gates decide which cell a range keeps (rangeCellPass in the worker): a gates patch must recompute
         // every combo, not reuse cells chosen under the old gates
@@ -4573,7 +4573,7 @@ export class CoreRuntime {
               rangeMinTf: rangeMinTfOf(s.grid),
               microOwnInds: microOwnInds(s.grid),
               gates: s.gates,
-              cells: s.grid?.baseCells === true,
+              cells: (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true),
             })),
           n,
           15 * 60_000,
@@ -4842,7 +4842,7 @@ export class CoreRuntime {
     wf.basePassedTargets = qualifiedTps;
     wf.baseWideLadderPairs = wideLadderPairs;
     // Cell qualification publishes with the rest of the economic cohort below.
-    wf.basePassedCells = s.grid?.baseCells === true || s.grid?.lowRange?.enabled === true
+    wf.basePassedCells = (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true) || s.grid?.lowRange?.enabled === true
       ? passedCellsOf(qualifiedCells) : undefined;
     wf.basePassedTrailingOnlyCells = s.grid?.trailingOnly === true
       ? passedCellsOf(pairTrailingOnlyCells) : {};
@@ -5348,10 +5348,11 @@ export class CoreRuntime {
       const otherWork = rangeWork * 2 + gateWork;
       const totalWork = Math.max(1, otherWork + (s.grid?.trailingOnly === true ? engineRuns.length : 0));
       const eligible = (ind: string, tag: string) => rangeAppliesTo(ind, tag, applies);
+      const exactPrice = priceDistanceBaseScope(s.grid);
       this.startStage("Tapes", label);
       const rangeCounts = await drive(
         "Base ranges",
-        baseRangeCountsGen(engineRuns, setsGates, ALL_RANGE_TAGS, eligible),
+        baseRangeCountsGen(engineRuns, setsGates, ALL_RANGE_TAGS, eligible, exactPrice),
         (n) => this.setStage("Tapes", n, totalWork, label),
         gen,
       );
@@ -5395,7 +5396,7 @@ export class CoreRuntime {
       // what each Base gate would admit, from the same results (no recompute)
       nextStatus.baseGates = await drive(
         "Base gate sensitivity",
-        baseGateSensitivityGen(engineRuns, setsGates, ALL_RANGE_TAGS, BASE_GATE_VARIANTS, eligible),
+        baseGateSensitivityGen(engineRuns, setsGates, ALL_RANGE_TAGS, BASE_GATE_VARIANTS, eligible, exactPrice),
         (n) => this.setStage("Tapes", rangeWork + n, totalWork, label),
         gen,
       );
@@ -5404,7 +5405,7 @@ export class CoreRuntime {
       // per range, the gate each failing pair misses (closes, net, PF, drawdown ratio)
       const why = await drive(
         "Base gate reasons",
-        baseRangeWhyGen(engineRuns, setsGates, ALL_RANGE_TAGS, eligible),
+        baseRangeWhyGen(engineRuns, setsGates, ALL_RANGE_TAGS, eligible, exactPrice),
         (n) => this.setStage("Tapes", rangeWork + gateWork + n, totalWork, label),
         gen,
       );
@@ -8170,7 +8171,7 @@ export class CoreRuntime {
               rangeMinTf,
               microOwnInds: micro,
               gates: s.gates,
-              cells: s.grid?.baseCells === true,
+              cells: (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true),
             })),
           n,
           15 * 60_000,
@@ -8199,7 +8200,7 @@ export class CoreRuntime {
             micro,
             s.gates,
             completeRangeProtects,
-            s.grid?.baseCells === true,
+            (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true),
           );
           for (const x of rs) add(x);
           yield i;
@@ -8503,7 +8504,7 @@ export class CoreRuntime {
     wf.exitBasePassed = base.exitBasePassed;
     wf.basePassedRanges = base.qualifiedTags;
     wf.basePassedTargets = base.qualifiedTps;
-    wf.basePassedCells = s.grid.baseCells === true || s.grid.lowRange?.enabled === true
+    wf.basePassedCells = s.grid.baseCells === true || s.grid.priceDistances?.enabled === true || s.grid.lowRange?.enabled === true
       ? passedCellsOf(base.qualifiedCells) : undefined;
     wf.basePassedTrailingOnlyCells = s.grid.trailingOnly === true ? passedCellsOf(pairTrailingOnlyCells) : {};
     wf.baseWideLadderPairs = base.wideLadderPairs;
@@ -12517,6 +12518,7 @@ export function signalCoordinationProtects(
   if (signals) return selected.short || selected.normal || selected.long ? signalProtects(signals) : [];
   const selectedGrid: CoreSettings["grid"] = {
     ...grid,
+    priceDistances: undefined,
     tp: [],
     slOfTp: [],
     trailOfTp: [],
@@ -12613,6 +12615,12 @@ export function baseRangeRules(
  * The separate construction maps can include diagnostic ranges and targets, but qualifiedTags always records only
  * actual Base passes and is used by the engine and preset admission gates.
  */
+function priceDistanceBaseScope(grid: CoreSettings["grid"] | undefined): (ind: string, tag: string) => boolean {
+  if (!grid?.priceDistances?.enabled) return () => false;
+  const selected = new Set<string>(grid.priceDistances.ranges);
+  return (ind, tag) => selected.has(isLowRangeInd(ind) ? "lr" : tag || "wide");
+}
+
 export function basePass(
   s1: readonly ComboRun[],
   s: CoreSettings,
@@ -12646,7 +12654,8 @@ export function basePass(
   const qualifiedTags: Record<string, string[]> = {};
   const pairCells: Record<string, readonly string[]> = {};
   const pairTrailingOnlyCells: Record<string, readonly string[]> = {};
-  const cellsOn = s.grid?.baseCells === true;
+  const cellsOn = s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true;
+  const exactPrice = priceDistanceBaseScope(s.grid);
   const setsGates = baseSetsGates(s.gates);
   // per pair, the range targets whose Base cells passed: the tape stage builds only those (baseTargets, on by
   // default — a range tag used to unlock every target of the range, most of them never Base-evaluated)
@@ -12657,7 +12666,11 @@ export function basePass(
   const rangesOn = s.grid?.baseRanges !== false;
   const passed = s1.filter((r) => {
     if (isSignalInd(r.ind)) return false;
-    let tags = setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS);
+    let tags = [...new Set(setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS))];
+    if (s.grid?.priceDistances?.enabled) {
+      const provedTags = new Set(r.rangeCells?.filter(k => k.endsWith("|pd") || k.includes("|pd|")).map(k => k.slice(0, k.indexOf("|"))));
+      tags = tags.filter(tag => !exactPrice(r.ind, tag) || provedTags.has(tag));
+    }
     // a family's pair builds only the sets of its own range (the other ranges of the pair are other families)
     if (evalFams) tags = familyTags(evalFams, r.bot, r.ind, tags);
     // No-TP cells are a separate strategy cohort. A passing cell may qualify without making ordinary or ladder
