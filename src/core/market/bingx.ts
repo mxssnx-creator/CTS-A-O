@@ -29,11 +29,12 @@ export function reserveSlot(next: number, now: number, gapMs: number): { at: num
   return { at, next: at + gapMs };
 }
 /**
- * The gap adapts: every ban (BingX 100410) doubles it, up to 8× the base, and 5 minutes without a ban halve it again —
- * the right pace depends on who else sends from this IP, which no setting knows in advance.
+ * The gap adapts, but only a little: a ban (BingX 100410) doubles it, capped at 2× the base (400 ms), and a minute without
+ * a ban halves it again. 100410 kept arriving at 6 calls in 10 s from this IP, so it is not about our rate — an 8× cap
+ * (1.6 s a call) made 100 symbols' candles minutes late and starved the entries, with no fewer bans.
  */
-export const BOOST_MAX = 8;
-export const BOOST_DECAY_MS = 300_000;
+export const BOOST_MAX = 2;
+export const BOOST_DECAY_MS = 60_000;
 export function nextBoost(boost: number, event: "ban" | "quiet"): number {
   return event === "ban" ? Math.min(BOOST_MAX, boost * 2) : Math.max(1, boost / 2);
 }
