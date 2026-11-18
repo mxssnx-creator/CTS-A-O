@@ -7772,17 +7772,14 @@ export class CoreRuntime {
     if (!eligible) return { ...gate, ok: false, state: "ineligible" };
     if (!this.wf.processedStages) return gate;
     const native = this.nativeProcessedStages();
-    const entryT = lane.entryT ?? (lane.id ? Number(lane.id.slice(lane.id.lastIndexOf("|") + 1)) : now);
-    if (!native || !tp || !Number.isFinite(entryT))
+    const entryT = lane.entryT ?? (lane.id ? Number(lane.id.slice(lane.id.lastIndexOf("|") + 1)) : NaN);
+    // Fund only an open paper admission. A favorable preview has no parent position to mirror.
+    const decision = native && Number.isFinite(entryT) ? native.decisionFor(orderKey({ ...lane, entryT })) : null;
+    if (!decision)
       return { ...gate, ok: false, state: "unknown", unknown: Math.max(1, gate.unknown ?? 0),
         processed: { stage: null, state: "unknown", n: 0, pf: null } };
-    const exact = native.decisionFor(orderKey({ ...lane, entryT }));
-    const minProcessedPf = Math.max(this.wf.lastNMinPf, minPfForTape(tp, this.wf));
-    const decision = exact
-      ? exact
-      : native.preview(tp, lane.sym, lane.side > 0 ? 1 : -1, entryT, minProcessedPf);
     if (decision.stage === "active") return { ...gate,
-      processed: { stage: "active", state: "qualified", n: this.wf.processedStages.realN, pf: decision.real?.pf ?? null } };
+      processed: { stage: "active", state: "qualified", n: decision.real?.n ?? 0, pf: decision.real?.pf ?? null } };
     const verdict = decision.stage === "postBase" ? decision.validation : decision.real;
     const state = verdict?.state ?? "unknown";
     return { ...gate, ok: false,
