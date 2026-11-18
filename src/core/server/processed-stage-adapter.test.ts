@@ -56,3 +56,18 @@ test("malformed durable ownership fails restore instead of starting a clean stag
     /native processed-stage book/,
   );
 });
+
+test("large disjoint policy retains every required parent close across a legacy checkpoint", () => {
+  const wide = {...policy, blocks:{validation:{long:500,short:200,minimal:5,shortPolarity:"negative" as const,minimalPolarity:"negative" as const}}};
+  const previous=new NativeProcessedStageAdapter(policy,0.001);
+  const active=previous.enter(tp,"OWN-USDT",1,0,1.05);
+  const adapter=new NativeProcessedStageAdapter(wide,0.001,JSON.parse(JSON.stringify(previous.snapshot())));
+  assert.equal(adapter.settle(active.entryId,1,.02),"settled");
+  for (let i=0;i<705;i++) {
+    const entry=adapter.enter(tp,"OWN-USDT",1,2+i*2,1.05);
+    adapter.settle(entry.entryId,3+i*2,i<500?.02:-.01);
+  }
+  const restored=new NativeProcessedStageAdapter(wide,.001,JSON.parse(JSON.stringify(adapter.snapshot())));
+  assert.equal(restored.preview(tp,"OWN-USDT",1,1414,1.05).validation.state,"qualified");
+  assert.equal(restored.preview(tp,"OWN-USDT",-1,1414,1.05).validation.state,"insufficient");
+});
