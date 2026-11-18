@@ -215,6 +215,23 @@ function shareBan(endpoint: string, until: number, now: number) {
     // best effort: this process still pauses on its own
   }
 }
+/**
+ * BingX 100410 ("retry later") names no unblock time, and from a shared egress IP it comes in bursts that clear fast —
+ * a flat 60 s pause of EVERY call (the live step included) turned each one into a minute without trading. The pause
+ * starts at 5 s and doubles with each 100410 in a row (10, 20, 40, up to 60 s); two quiet minutes start it over.
+ */
+export const RETRY_FIRST_MS = 5_000;
+export const RETRY_MAX_MS = 60_000;
+export const RETRY_RESET_MS = 120_000;
+export function retryPauseMs(consecutive: number): number {
+  return Math.min(RETRY_MAX_MS, RETRY_FIRST_MS * 2 ** Math.max(0, consecutive - 1));
+}
+let run100410 = { n: 0, at: 0 };
+function note100410(now: number): number {
+  run100410 = { n: now - run100410.at > RETRY_RESET_MS ? 1 : run100410.n + 1, at: now };
+  return run100410.n;
+}
+
 /** A rate-limit reply for the host log: 300 characters, with keys, signatures and secrets masked. */
 export function redactBan(msg: string): string {
   return msg
@@ -231,14 +248,15 @@ export function noteRateLimit(msg: string, now = Date.now()): number {
   if (m) {
     const t = Number(m[1]);
     if (t > now) end = t;
-  } else if (/100410|disabled period|trigger frequency limit/i.test(msg)) end = now + 60_000;
+  } else if (/100410/.test(msg)) end = now + retryPauseMs(note100410(now));
+  else if (/disabled period|trigger frequency limit/i.test(msg)) end = now + 60_000;
   if (end) {
     const ep = endpointOf(msg);
     // one console line per new ban end per endpoint: which endpoint, until when and what BingX said (credentials and
     // signatures redacted), so a ban loop can be read from the host log instead of guessed
     if (end > (banned.get(ep) ?? 0) - BAN_JITTER_MS)
       console.warn(`[bingx] rate limit ${ep} until ${new Date(end).toISOString()}: ${redactBan(msg)} · public calls in the last 10 s: ${recentPublic()} (gap ×${publicGapBoost()}) · signed totals: ${[...signedCalls].map(([k, n]) => `${k}×${n}`).join(", ") || "none"}`);
-    noteRateBan(now);
+    if (recentPublic() !== "none") noteRateBan(now); // slow the market calls only for a ban they could have caused
     shareBan(ep, end, now);
     if (end + BAN_JITTER_MS > (banned.get(ep) ?? 0)) banned.set(ep, end + BAN_JITTER_MS);
   }
