@@ -497,7 +497,8 @@ async function runVariants(rt, sim) {
   };
   const one = async (opts) => {
     const ts = Date.now();
-    let res = await walkForwardSliced(u, rt.tapes, opts);
+    // the summary reads trades, open-at-end and skips: no feed or signal-step copies are kept (resultLean)
+    let res = await walkForwardSliced(u, rt.tapes, { ...opts, resultLean: true });
     if (extra) process.stderr.write(`    by range/type: ${ranges(res)}\n`);
     // block.auto: each relation × count's record at the end (results@PF, + raises / - does not / ? undecided)
     if (extra && res.blockAuto?.length)

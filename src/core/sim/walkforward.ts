@@ -480,6 +480,12 @@ export interface WalkForwardOptions {
    * funded: a 6-symbol replay entered up to 2,140 variants of one pair in one minute (10,200 closes from 99 events).
    */
   onePerPairEvent?: boolean;
+  /**
+   * A comparison run that reads only trades, open-at-end and skips (session variants): the result carries no feed
+   * and no signal-step snapshots. The books, guards and every decision are unchanged (they consume each entry as it
+   * settles); only the returned copies, which grow with every candidate and every changed minute, are not kept.
+   */
+  resultLean?: boolean;
   /** under onePerPairEvent: every Axis config is its own event (default true); false = Axis variants of a pair share one */
   pairEventAxisOwn?: boolean;
   /**
@@ -7748,6 +7754,7 @@ export function* walkForwardGen(
   // every candidate in exit order, collected as they settle (the heap pops in the order of a stable sort by exit:
   // sorting the whole feed at the end was one long slice)
   const feed: BlockFeedEntry[] = [];
+  const lean = o.resultLean === true;
   const vopen = new ExitHeap<BlockFeedEntry>(); // candidates not closed yet, by exit
   const seen = new Map<string, BlockFeedEntry>();
   // signal confirmation's pool: the engine candidates in vopen (processed, taken or not, not closed yet) per symbol ×
@@ -7793,7 +7800,8 @@ export function* walkForwardGen(
       const fx = vopen.pop()!;
       if (fx.cfg && !sigCfg(fx.cfg) && !isHistoricExitConfig(fx.cfg, fx.type)) engineOpen.add(fx.sym, fx.side, -1);
       if (fx.blockProcessed && fx.cfg) blockPredecessors.add({cfg:fx.cfg,sym:fx.sym,side:fx.side}, -1);
-      feed.push(fx);
+      // resultLean: the books still read every settled entry; only the returned copy of the feed is not kept
+      if (!lean) feed.push(fx);
       feedBooks(fx, book, guard, direction, relateBook);
       if (!fx.open) s2For(fx.cfg ?? "", fx.type, true)?.close(fx);
       if (++settled % 32 === 0) yield -2;
@@ -7862,6 +7870,7 @@ export function* walkForwardGen(
   const signalActivation = o.signalRank && sigIdx.length
     ? new SignalActivationBook(sigIdx, o.signalRank, signalHistoryHours(o), o) : null;
   const recordSignalStep = (t: number, keys: Set<string>) => {
+    if (lean) return;
     const before = signalSteps.at(-1)?.keys;
     // Identical ordered sets share their preceding snapshot; replay/audit reads the last change at or before t.
     if (before?.length === keys.size) {
@@ -8357,7 +8366,8 @@ export function* walkForwardGen(
   // candidates still open at the end close the feed, in exit order (they never reached the books)
   let drained = 0;
   while (vopen.size) {
-    feed.push(vopen.pop()!);
+    const open = vopen.pop()!;
+    if (!lean) feed.push(open);
     if (++drained % 32 === 0) yield -12;
   }
   const hasHedgeEnd = !!(o.coord?.enabled && o.coord.hedge && sigIdx.length);
