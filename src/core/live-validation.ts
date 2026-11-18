@@ -25,7 +25,7 @@ export interface LiveGate {
   execution?: PromotionWindow;
   state?: PromotionState;
   /** admitted by live.proofWaivedRanges on its seat evidence, without the owned-close proof */
-  waived?: "range";
+  waived?: "range" | "prehistoric";
   minN?: number;
   minPf?: number;
   evidenceBasis?: "settled-post-base-and-owned-execution";
@@ -347,4 +347,25 @@ export function promotionSampleN(
   const last = liveLastN ?? 25;
   const base = last > 0 ? last : Math.max(0, minTrades ?? 0);
   return Math.max(1, base, engineProofN ?? 0);
+}
+
+/**
+ * live.executionFromPrehistoric: the lane's execution axis is filled from the prehistoric run's own settled, funded
+ * closes (the model record) when the paper book has not yet recorded enough of its own. The verdict is labelled
+ * "post-base-accepted" (never "owned-paper") and carries waived "prehistoric"; it still has to clear the same last-N
+ * PF window, so a lane whose recent simulated closes fail stays blocked.
+ */
+export function prehistoricExecutionGate(
+  model: ReturnRecord | undefined,
+  now: number,
+  n: number,
+  minPf: number,
+): LiveGate {
+  const g = promotionGate(model, model, 0, now, n, minPf);
+  return {
+    ...g,
+    source: "post-base-accepted",
+    ...(g.execution ? { execution: { ...g.execution, source: "post-base-accepted" as const } } : {}),
+    ...(g.ok ? { waived: "prehistoric" as const } : {}),
+  };
 }

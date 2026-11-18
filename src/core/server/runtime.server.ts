@@ -223,6 +223,7 @@ import {
   liveGroupOf,
   promotionGate,
   applyProofWaiver,
+  prehistoricExecutionGate,
   promotionSampleN,
   type LiveGate,
   type LiveValidationStatus,
@@ -6094,7 +6095,18 @@ export class CoreRuntime {
               tp.kind,
               tp.id,
             ))));
-    const verdict = eligible ? gate : { ...gate, ok: false, state: "ineligible" as const };
+    let verdict = eligible ? gate : { ...gate, ok: false, state: "ineligible" as const };
+    // the prehistoric run fills the execution axis of a seated engine lane (live.executionFromPrehistoric): only where
+    // the owned paper evidence is merely short, never over evidence that fails
+    if (
+      eligible &&
+      this.settings.live.executionFromPrehistoric === true &&
+      !isSignalInd(ind) &&
+      verdict.state === "execution-insufficient"
+    ) {
+      const filled = prehistoricExecutionGate(sim ? model?.records.get(key) : undefined, now, n, minPf);
+      if (filled.ok) verdict = filled;
+    }
     return applyProofWaiver(
       verdict,
       !!eligible,

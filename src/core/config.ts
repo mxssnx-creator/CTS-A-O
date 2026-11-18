@@ -502,6 +502,12 @@ export interface LiveSettings {
    */
   proofWaivedRanges?: readonly string[];
   /**
+   * overall: fill a seated engine lane's EXECUTION evidence from the prehistoric run's own settled, funded closes while the
+   * paper book has not recorded enough of its own (operator, 18 Nov). The same last-N PF window must still pass on
+   * them, labelled post-base-accepted, never owned-paper. Unset / false = the owned-paper proof only.
+   */
+  executionFromPrehistoric?: boolean;
+  /**
    * overall: engine configs of these families do NOT reach the exchange, and a held position of one is CLOSED — its
    * lanes never ask for volume again, held or not (the operator's stop, unlike excludeRanges, which keeps a held lane
    * until its paper position exits). A family is `bot|range`: the bot "follow" or "revert", the range "wide" (untagged)
