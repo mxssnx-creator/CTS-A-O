@@ -200,14 +200,26 @@ export function liveLaneFilter(
  * A tally of the lane promotion verdicts the live step reached, printed at most once a minute: the Stages table is a
  * separate view with its own minimums, so the host log carries the verdicts that actually admit or refuse a lane.
  */
-const promoTally = { at: 0, counts: new Map<string, number>() };
-export function notePromotionVerdict(g: Pick<LiveGate, "ok" | "state" | "waived" | "why">, now = Date.now()): string | null {
+const promoTally = { at: 0, counts: new Map<string, number>(), examples: new Map<string, string[]>() };
+export function notePromotionVerdict(
+  g: Pick<LiveGate, "ok" | "state" | "waived" | "why">,
+  now = Date.now(),
+  cfg?: string,
+): string | null {
   const k = `${g.state ?? (g.ok ? "qualified" : "unknown")}${g.waived ? `(${g.waived})` : ""}${g.why ? `[${g.why}]` : ""}`;
   promoTally.counts.set(k, (promoTally.counts.get(k) ?? 0) + 1);
+  if (cfg) {
+    const ex = promoTally.examples.get(k) ?? [];
+    if (ex.length < 2 && !ex.includes(cfg)) promoTally.examples.set(k, [...ex, cfg]);
+  }
   if (now - promoTally.at < 60_000) return null;
-  const line = [...promoTally.counts].sort((a, b) => b[1] - a[1]).map(([x, n]) => `${x} ${n}`).join(", ");
+  const line = [...promoTally.counts]
+    .sort((a, b) => b[1] - a[1])
+    .map(([x, n]) => `${x} ${n}${promoTally.examples.get(x)?.length ? ` e.g. ${promoTally.examples.get(x)!.join(" ; ")}` : ""}`)
+    .join(", ");
   promoTally.at = now;
   promoTally.counts.clear();
+  promoTally.examples.clear();
   return line;
 }
 
@@ -2903,8 +2915,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         if (!evidence) {
           evidence = { ...lane, ...(rt.livePromotionGate?.(lane) ?? { required: true, ok: false, n: 0, pf: null, state: "execution-insufficient" }) };
           promotionEvidence.set(key, evidence);
-          const line = notePromotionVerdict(evidence);
-          if (line) console.info(`[live] lane promotion verdicts: ${line}`);
+          const line = notePromotionVerdict(evidence, Date.now(), lane.cfg);
+          if (line)
+            console.info(
+              `[live] lane promotion verdicts: ${line} | selected set ${rt.paper.selected?.length ?? 0}, e.g. ${(rt.paper.selected ?? []).slice(0, 2).join(" ; ")}`,
+            );
         }
         return evidence.ok;
       });
