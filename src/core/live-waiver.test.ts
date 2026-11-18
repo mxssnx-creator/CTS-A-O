@@ -32,3 +32,13 @@ test("a lane that already passes is returned untouched", () => {
   const g = gate("qualified", true);
   assert.equal(applyProofWaiver(g, true, "mc", false, ["mc"]), g);
 });
+
+import { promotionSampleN } from "./live-validation.ts";
+test("promotion window: liveLastN sets it directly; minTrades floors it only when liveLastN is 0", () => {
+  assert.equal(promotionSampleN(12, 8, 0), 8); // "8 last N for execution"
+  assert.equal(promotionSampleN(12, 25, 0), 25); // the default is unchanged
+  assert.equal(promotionSampleN(12, undefined, 0), 25);
+  assert.equal(promotionSampleN(12, 0, 0), 12); // 0 = off: minTrades still apply
+  assert.equal(promotionSampleN(0, 0, 0), 1); // never below one close
+  assert.equal(promotionSampleN(12, 8, 20), 20); // engine proof N still wins when larger
+});

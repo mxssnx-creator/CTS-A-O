@@ -223,6 +223,7 @@ import {
   liveGroupOf,
   promotionGate,
   applyProofWaiver,
+  promotionSampleN,
   type LiveGate,
   type LiveValidationStatus,
   type LivePromotionStatus,
@@ -5980,11 +5981,10 @@ export class CoreRuntime {
   }
   /** Settled post-Base model outcomes and funded OWNED PAPER executions are distinct evidence, never venue fills. */
   livePromotionGate(lane: { cfg: string; sym: string; side: number }, now = Date.now()): LiveGate {
-    const n = Math.max(
-      1,
-      this.settings.gates.minTrades ?? 0,
-      this.settings.live.liveLastN ?? 25,
-      this.settings.live.engineProofN ?? 0,
+    const n = promotionSampleN(
+      this.settings.gates.minTrades,
+      this.settings.live.liveLastN,
+      this.settings.live.engineProofN,
     );
     const ind = lane.cfg.split("|")[1] ?? "";
     const minPf = Math.max(

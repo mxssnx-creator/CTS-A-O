@@ -333,3 +333,18 @@ export function applyProofWaiver(
   if (gate.state !== "model-insufficient" && gate.state !== "execution-insufficient") return gate;
   return { ...gate, ok: true, state: "qualified", waived: "range" };
 }
+
+/**
+ * The window (closes) a live promotion judges: live.liveLastN when set above 0 (the operator's "last N for
+ * execution" — 8 means 8), else the global minimum trades; never below engineProofN, never below 1. With liveLastN at 0
+ * the minimum trades keep a lone close from qualifying a lane.
+ */
+export function promotionSampleN(
+  minTrades: number | undefined,
+  liveLastN: number | undefined,
+  engineProofN: number | undefined,
+): number {
+  const last = liveLastN ?? 25;
+  const base = last > 0 ? last : Math.max(0, minTrades ?? 0);
+  return Math.max(1, base, engineProofN ?? 0);
+}
