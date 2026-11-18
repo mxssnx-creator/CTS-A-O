@@ -33,6 +33,14 @@ const publicGapMs = () => {
   if (e !== undefined && e !== "") return Math.max(0, Number(e) || 0);
   return process.env.NODE_TEST_CONTEXT ? 0 : 100;
 };
+const recentPublicCalls: Array<{ t: number; path: string }> = [];
+/** The public calls sent in the last windowMs, counted per path (a ban line names who was sending). */
+export function recentPublic(windowMs = 10_000, now = Date.now()): string {
+  while (recentPublicCalls.length && recentPublicCalls[0].t < now - 60_000) recentPublicCalls.shift();
+  const by = new Map<string, number>();
+  for (const c of recentPublicCalls) if (c.t >= now - windowMs) by.set(c.path, (by.get(c.path) ?? 0) + 1);
+  return [...by].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}×${n}`).join(", ") || "none";
+}
 async function pacePublic(): Promise<void> {
   const r = reserveSlot(publicNext, Date.now(), publicGapMs());
   publicNext = r.next;
@@ -42,6 +50,7 @@ async function pacePublic(): Promise<void> {
 
 async function getJson(url: string, timeoutMs = 12_000): Promise<unknown> {
   await pacePublic();
+  recentPublicCalls.push({ t: Date.now(), path: url.replace(/^https?:\/\/[^/]+/, "").replace(/\?.*$/, "") });
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
   let late: ReturnType<typeof setTimeout> | undefined;
