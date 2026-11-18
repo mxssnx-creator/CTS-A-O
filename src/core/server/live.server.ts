@@ -89,6 +89,17 @@ export function rangeExcluded(cfg: string, exRanges: ReadonlySet<string>): boole
 }
 
 /**
+ * Whether live.excludeLanes leaves this lane out: a token `range@lane` (e.g. "lg@m1", "lg@m15c") names one range's
+ * timeframe lane (independent `@m<tf>`, combined `@m<tf>c`). Lanes left out never add volume; a held one is managed.
+ */
+export function laneExcluded(cfg: string, exLanes: ReadonlySet<string>): boolean {
+  const tag = cfgInfo(cfg).tag;
+  if (!tag) return false;
+  const m = /@(m\d+c?)(?=\||$)/.exec(cfg);
+  return !!m && exLanes.has(`${tag}@${m[1]}`);
+}
+
+/**
  * Whether live.excludeConfigs names this config's family (`bot|range`, the range "wide" when untagged). Signal configs
  * have no family here: live.source narrows them.
  */
@@ -126,7 +137,7 @@ export function cfgInfo(cfg: string): CfgInfo {
  * an engine config of the current selection, or a signal active on its symbol (no selection yet = every lane).
  */
 export function liveLaneFilter(
-  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "plainOnly" | "promotedLanes">,
+  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "excludeLanes" | "plainOnly" | "promotedLanes">,
   selected: ReadonlySet<string> | null,
   sigActive: { has(k: string): boolean } | null | undefined,
   /** live.engineProofN: the engine configs proven by their own closes (null = the proof is off) */
@@ -147,6 +158,8 @@ export function liveLaneFilter(
   const exRanges = s.excludeRanges?.length ? new Set<string>(s.excludeRanges) : null;
   // engine families left out of live (bot|range, live.excludeConfigs)
   const exConfigs = s.excludeConfigs?.length ? new Set<string>(s.excludeConfigs) : null;
+  // range timeframe lanes left out of live (range@lane, live.excludeLanes)
+  const exLanes = s.excludeLanes?.length ? new Set<string>(s.excludeLanes) : null;
   const referenceProofs = s.promotedLanes
     ? new Map(s.promotedLanes.map((p) => [promoteLaneKey(p), p]))
     : null;
@@ -159,6 +172,7 @@ export function liveLaneFilter(
     const c = cfgInfo(l.cfg);
     if (liveKinds && !liveKinds.has(c.kind)) return false;
     if (exRanges && rangeExcluded(l.cfg, exRanges)) return false;
+    if (exLanes && laneExcluded(l.cfg, exLanes)) return false;
     if (closedConfig(l)) return false;
     if (s.plainOnly && (l.blockVol ?? l.vol ?? 1) > 1 + 1e-9) return false;
     if (src !== "all" && c.isSig !== (src === "signals")) return false;
@@ -193,7 +207,7 @@ const readyMemo = new WeakMap<object, { trades: WalkForwardResult["trades"]; ope
  */
 export function liveReadiness(
   sim: Pick<WalkForwardResult, "stats" | "stable" | "startT" | "endT" | "trades" | "openAtEnd">,
-  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "plainOnly" | "promotedLanes">,
+  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "excludeLanes" | "plainOnly" | "promotedLanes">,
   minPf: number,
 ): { ok: boolean; why: string } {
   const referenceSelection = s.promotedLanes?.filter((p) => validPromotedLaneProof(p)).map(promoteLaneKey).sort().join(";");

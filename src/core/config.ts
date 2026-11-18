@@ -490,6 +490,12 @@ export interface LiveSettings {
    */
   excludeRanges?: readonly string[];
   /**
+   * overall: range timeframe lanes that do NOT reach the exchange, as `range@lane` tokens: the range "mc", "mn", "mp",
+   * "sh", "gn", "lg" and the lane `m<tf>` (independent) or `m<tf>c` (combined, "5m+"). Example: "lg@m1", "lg@m1c" = Long
+   * without its 1m lanes. Like excludeRanges, the engine keeps computing and paper-trading them. Unset / empty = none.
+   */
+  excludeLanes?: readonly string[];
+  /**
    * overall: engine configs of these families do NOT reach the exchange, and a held position of one is CLOSED — its
    * lanes never ask for volume again, held or not (the operator's stop, unlike excludeRanges, which keeps a held lane
    * until its paper position exits). A family is `bot|range`: the bot "follow" or "revert", the range "wide" (untagged)
