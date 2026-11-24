@@ -4393,6 +4393,7 @@ function* selectPositionsGen(
     basePf = new Map<string, number>(),
     baseSeated = new Set<string>();
   const cand: Array<Selection & { pair: string }> = [],
+    candTape = new Map<string, ConfigTape>(),
     checks: ValidationCheck[] = [],
     summary: ValidationSummary = {
       evaluated: 0,
@@ -4425,24 +4426,21 @@ function* selectPositionsGen(
     }
     const pair = st.pair;
     pairTotal.set(pair, (pairTotal.get(pair) ?? 0) + 1);
+    // No per-tape window object: only a seated candidate needs one (this loop runs over every engine tape at every
+    // evaluation batch, so an object per tape was the main allocation of the replay).
     const ev = configEvalSummary(tp, t, o),
-      w = {
-        n: ev.n,
-        net: ev.net,
-        pf: ev.pf,
-        gp: (ev.gp ?? 0) / 100,
-        gl: (ev.gl ?? 0) / 100,
-        ddt: ev.ok ? ev.ddt : 0,
-      };
-    summarizeValidation(summary, ev, ev.n, w.gp, w.gl);
-    if (o.recordValidation === true) checks.push([tp.id, ev.ok ? 1 : 0, ev.n, ev.pf, w.gp, w.gl]);
-    noteBase(basePf, tp, w);
+      gp = (ev.gp ?? 0) / 100,
+      gl = (ev.gl ?? 0) / 100;
+    summarizeValidation(summary, ev, ev.n, gp, gl);
+    if (o.recordValidation === true) checks.push([tp.id, ev.ok ? 1 : 0, ev.n, ev.pf, gp, gl]);
+    noteBase(basePf, tp, ev);
     if (ev.ok) {
       pairOk.set(pair, (pairOk.get(pair) ?? 0) + 1);
       if (tp.kind === "normal" || tp.kind === "trailing" || tp.kind === "trailing-only")
         baseSeated.add(baseComparisonKey(tp));
     }
-    if (ev.ok && !tp.heldOnly && tapeExecutable(tp, o) && inValidated(tp.id, o))
+    if (ev.ok && !tp.heldOnly && tapeExecutable(tp, o) && inValidated(tp.id, o)) {
+      candTape.set(tp.id, tp);
       cand.push({
         id: tp.id,
         pair,
@@ -4450,11 +4448,12 @@ function* selectPositionsGen(
           o.rankBy === "green"
             ? ev.gh + Math.min(1, Math.max(0, ev.lcb)) * 1e-6
             : ev.lcb * (0.5 + ev.gh),
-        window: w,
+        window: { n: ev.n, net: ev.net, pf: ev.pf, gp, gl, ddt: ev.ddt },
       });
+    }
     if (i % 64 === 0) yield -14; // a work slice, not a completed simulated step (a non-negative yield counts as one)
   }
-  const byId = new Map(tapes.map((tp) => [tp.id, tp]));
+  const byId = candTape;
   const eligible = beatsBase(
     cand.filter(
       (c) =>
