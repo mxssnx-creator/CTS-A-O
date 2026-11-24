@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
+import { setKeyOf } from "../adjust.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { Candle, Protect } from "../domain/types.ts";
 import { DEFAULT_LOW_RANGE_GRID } from "../indications/low-range.ts";
@@ -82,7 +83,7 @@ test("each trailing-only stop is independently proved before construction and se
     trailOnly: false, tp: .008, trail: 0 } }, independentAdmission), false, "ordinary cannot borrow no-TP qualification");
   assert.equal(standalone.wideLadderPairs.has(PAIR), false, "no-TP cannot qualify a Wide ladder");
 
-  const set = `${PAIR}|trailing-only`;
+  const set = setKeyOf(configId("follow", IND, laneProtect(candidates[0], IND)));
   const adjust = { [set]: { set, level: 1, minSl: 0, minTrail: 0, pausedUntil: 0, pf: 1, n: 8,
     lastExitT: 0, at: 0, note: "fixture", slMult: 2 } };
   const changed = buildTapes(makeUniverse(bars(24 * 60)), all, cost, undefined, new Set([PAIR]), null, adjust, floors);

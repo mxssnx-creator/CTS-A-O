@@ -90,7 +90,16 @@ export function setKeyOf(cfg: string): string {
     const side = /\|hx([LS])/.exec(cfg)?.[1];
     return `${bot}|${ind}|exit|${set}${side ? `|${side === "L" ? "long" : "short"}` : ""}`;
   }
-  return `${bot}|${ind}|${kind}`;
+  // Exact price-distance sets keep their complete immutable protection identity.
+  if (/(?:^|\|)pd(?:\||$)/.test(cfg)) return `${kind}#${cfg}`;
+  // Every config keeps its own feedback record (operator, 18 Nov: "each config set processes and evals for its own"):
+  // its id without the fields the adjuster itself changes (the stop, the trailing distance, the ATR distances), so the
+  // record and its lookup agree before and after an adjustment, and two configs of one pair never share a record.
+  const own = cfg
+    .split("|")
+    .filter((seg, i) => i < 2 || !/^(?:sl[\d.]+|tr[\d.]+|atr[\d.x t]+)$/.test(seg))
+    .join("|");
+  return `${kind}#${own}`;
 }
 
 export function evaluateAdjust(
@@ -212,7 +221,7 @@ export function adjustProtect(
   p: Protect,
   adj?: { minSl: number; minTrail: number; slMult?: number; trailMult?: number } | null,
 ): Protect {
-  if (!adj) return p;
+  if (!adj || p.priceDistance) return p;
   const sm = adj.slMult ?? 1;
   const tm = adj.trailMult ?? 1;
   const sl = +Math.max(p.sl * sm, adj.minSl).toFixed(4);

@@ -24,18 +24,47 @@ export class SeriesCache {
   clear(keep: readonly string[] = []) {
     if (!keep.length) {
       this.m.clear();
+      this.bySuffix.clear();
       return;
     }
-    for (const k of this.m.keys()) if (!keep.some((p) => k.startsWith(p))) this.m.delete(k);
+    for (const k of this.m.keys()) if (!keep.some((p) => k.startsWith(p))) this.drop(k);
   }
-  /** Drop cached series whose key ends with `suffix` (one-shot combo signals: keeps memory bounded). */
+  /** Every key under each of its ":"-suffixes (":bot:ind", ":ind"): forgetSuffix reads only the keys it drops. */
+  private bySuffix = new Map<string, Set<string>>();
+  private index(key: string, add: boolean) {
+    for (let i = key.indexOf(":"); i >= 0; i = key.indexOf(":", i + 1)) {
+      const sfx = key.slice(i);
+      let keys = this.bySuffix.get(sfx);
+      if (add) {
+        if (!keys) this.bySuffix.set(sfx, (keys = new Set()));
+        keys.add(key);
+      } else if (keys) {
+        keys.delete(key);
+        if (!keys.size) this.bySuffix.delete(sfx);
+      }
+    }
+  }
+  private drop(key: string) {
+    if (this.m.delete(key)) this.index(key, false);
+  }
+  /** Drop cached series whose key ends with `suffix` (one-shot combo signals: keeps memory bounded). Exactly the
+   * keys `endsWith(suffix)` selects: a key ending with a suffix that holds a ":" ends with the suffix's tail from its
+   * first ":", which the index lists; a suffix without a ":" scans every key. */
   forgetSuffix(suffix: string) {
-    for (const k of this.m.keys()) if (k.endsWith(suffix)) this.m.delete(k);
+    const c = suffix.indexOf(":");
+    if (c < 0) {
+      for (const k of this.m.keys()) if (k.endsWith(suffix)) this.drop(k);
+      return;
+    }
+    const keys = this.bySuffix.get(c ? suffix.slice(c) : suffix);
+    if (!keys) return;
+    for (const k of [...keys]) if (k.endsWith(suffix)) this.drop(k);
   }
   memo<T>(key: string, fn: () => T): T {
     const hit = this.m.get(key);
     if (hit !== undefined) return hit as T;
     const v = fn();
+    if (!this.m.has(key)) this.index(key, true);
     this.m.set(key, v);
     return v;
   }
@@ -214,6 +243,7 @@ export class SeriesCache {
     this.mk = src ? { src, tf, factor } : null;
     // Cached relation states and higher views may already depend on the previous market source.
     this.m.clear();
+    this.bySuffix.clear();
   }
   /**
    * The equal-weight market of this series' timeframe, aligned to its bars by open time: per-bar log return,

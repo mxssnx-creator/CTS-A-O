@@ -1,67 +1,89 @@
-## 2026-11-16 — seven-day Signal cadence and Wide admission follow-up
+## 2026-11-18 — exact stop and trailing distances
 
-This follow-up supersedes the frequency-gate and untagged-ladder limitations in the immediately following
-checkpoint. Signal source entries now require an average of two raw onsets per day over seven complete trailing
-days, configurable in Settings. A source/range/timeframe/symbol has its own onset stream, both directions count,
-and the current onset and duplicate protection-config trades do not contribute. Insufficient or gapped history
-does not grant eligibility; setting zero disables the gate. The extra seven-day physical warmup is distinct from
-the requested evaluation prehistory, whose entry boundary remains unchanged. Focused tests cover completeness,
-gaps, prefix causality, cache release, ordinary-indication isolation and worker/local tape parity. This still needs a full production-path
-replay with sufficient older candles and evaluation-to-venue parity; no source is deleted based on an unmeasured
-claim of underperformance.
+The opt-in price-distance grid uses SL 0.2%–2.2% and trailing 0.2%–2.6% at
+0.1-point intervals. A selected range can use the entry-price gap, peak-price
+gap or both. Target, hold, cost and range protection limits still apply. Base
+records independent proof for each exact cell, including untagged Wide and
+trailing-only. Main and later admission require that proof. Restored exits and
+feedback identities preserve the configured mode and exact protection.
 
-Ordinary Wide tapes cannot gain new admission when the Wide grid is disabled, including untagged Axis/DCA.
-Exact held ladders remain available only to manage their exits. Axis per-range is on by default and migrated
-once with a backup, so qualified tagged ranges can build independent ladders. Tests cover a held Wide ladder and
-the continuing Minimal Axis lane. Historic Signal fitting computes on the full warmed source but simulates only
-the eligible evaluation tail; this is a bounded-work optimization, not a measured end-to-end speedup.
+On top of `5ec761a495485cd9daf2fe032b991f09865f697d`, 253 focused tests,
+TypeScript and the development build passed. The three twelve-symbol replays
+used 24h evaluated prehistory and 48h trading, with a representative subset
+of the stop and trailing values. At the October 4, 11 and 15 UTC decisions,
+each exact-grid arm admitted 0 of 433 evaluated Base pairs. Post-Base inventories
+and funded settlements were empty. Both PF figures were unavailable. The older
+ratio-grid October 4 comparison on `99138e2` passed 4 of 22 post-Base configs
+at pooled PF 4.82, then settled 25 modeled orders at PF 0.731. October 11 had
+zero ratio-grid settlements. These runs used offline OHLCV and no exchange
+connection. Signals provider fills and actual venue PF remain unmeasured.
 
-The frozen feed contains more than seven prior days for the 12-symbol cohort. The earlier 24h-prehistory + 24h
-offline replay used the previous checkpoint before the cadence and Wide follow-up; it was interrupted after
-1,149 seconds in strategy-tape construction (61% of that stage, approximately 2,677 MB sampled RSS). It
-produced no final report. No hourly returns, post-Base PF, percentage validated, modeled settlement PF or venue
-execution PF can be inferred. An end-to-end replay of this exact follow-up, comprehensive UI/stats verification,
-independent Block source-memory profiling and performance optimization remain open. This is not a deployment or
-live-trading acceptance. The synthetic UI test could not launch Chromium because local browser socket creation
-was denied; browser and visual verification therefore remain open.
+## 2026-11-17 — signed stage blocks retain the recent-loss veto
 
-## 2026-11-16 — Stable-04 partial Signal, Block and thin-range checkpoint
+A passing disjoint Validation or Real block now still reads the configured
+recent-loss veto from its own completed, strictly prior predecessor closes.
+The signed block key, state and PF survive restoration. The test exercises
+a negative minimal block that passes its signed policy and is still rejected
+by the independently selected newest-close veto. Fifty-two focused tests and
+TypeScript pass against main `2dfd6e60916b564032c1a8d0a244d50327b232c5`.
 
-This checkpoint is based on Stable-04 `4bb45cc0a3c8cad2230a5d156afe89a7053bb16c`. It is incomplete:
-do not treat it as evidence of profitability, deploy it, or start an exchange account on its strength.
-The requested seven-day Signal-onset frequency gate (minimum average two/day) is not implemented; raw
-Signal onsets must be counted causally with complete seven-day coverage, not inferred from duplicated
-protection-config trades. No source has been removed without current, independent performance evidence.
+The latest eight-symbol market reference remains unchanged at the 2026-10-13
+00:00 UTC decision after 12 hours of evaluated prehistory. Post-Base return PF
+was 6.0702, with 19,227 of 99,702 configs passing (19.28%). The next twelve
+hours produced 2,894 modeled settlements at PF 0.5160. This repair adds no new
+market performance or venue evidence.
 
-Fresh count-based Signal Base/Main/Real/entry defaults are 15; explicit saved range/config policies remain
-independent. The saved-settings migration backs up prior settings, disables new Historic Exit work, empties
-the default Wide TP grid, enables Axis/Block and enables independent Block auto-window evaluation. Untagged
-Axis/DCA ladders have separate ownership and still need a complete Wide-coordination audit. The migration
-does not rewrite held positions. Micro, Minimal and Short factory SL/TP grids are 0.2–1.2 by 0.1; actual
-stops still respect costs and minimum-distance rules. Former factory ladders migrate with a backup and
-custom ladders remain unchanged. The prior protection migration is prevented from rounding current fine
-ladders back onto 0.25 increments. Tactics' trend and volatility filters remain enabled with Settings controls.
+## 2026-11-17 — Signals Last-N scope and causal refresh
 
-Signal step-PF thresholds now apply to fitted historic protections and later admission, with existing independent
-Signal and stricter range/cell floors. Block auto candidates keep source-keyed, entry-stamped observations;
-each candidate needs at least 30 settled attributed results. Unknown/rejected observations do not create a
-winning score. This is implementation and fixture evidence, not proof of profitable volume, venue parity or
-complete coverage of every strategy lane. The decoded history cache remains 64 MiB by default; the bounded
-`CTS_CORE_HISTORY_CACHE_MB` override permits 1–1024 MiB and is included in existing memory accounting.
+The compact Signals ranking cache previously waited for a full symbol-side
+sample to retry an empty result even when the selected window pooled the
+configuration's own closes. It now wakes at the first possible eligible close
+for the selected scope, including a configured partial floor. The scalar
+ranking clips each symbol-side slice to its observed prefix. Its rank still
+requires a measured symbol-side return. Exchange entry gates retain their
+existing exact-context rules.
 
-Local checks: 299 Settings-completeness checks, 61 Block checks, 34 Block admission/recovery/isolation checks,
-20 tactics/range-protection checks, targeted migration/Signal/step-PF checks, typecheck and development plus
-worker build passed. An earlier broad check failed on old factory/legacy-window expectations; the relevant
-fixtures were pinned to their intended historical mode or updated for the new explicit operator defaults,
-then rerun. This is not the full Core inventory, a live test, or a browser verification.
+Regression tests exercise compact storage, opposed or empty sides, strict
+same-time cutoff, exact windows and config/auto scope. The verification starts
+from main `d9bac347dd0116f4316b78465830a2ebfc78af80`; the pull request records
+its tested source and CI results. This change made no account or deployment
+changes. The latest eight-symbol reference remains the 2026-10-13 00:00 UTC
+post-Base decision after 12 hours of evaluated prehistory. It passed 19,227 of
+99,702 configurations (19.28%) at return PF 6.0702. The next 12 hours produced
+2,894 modeled settlements at return PF 0.5160. These are different cohorts.
 
-Retrospective offline replay: 12 symbols, exactly 24h prehistory and 24h simulation, ending 2026-10-16 21:00 UTC;
-feed SHA256 `1730009721a75ce90b82b5023bf229f105a43f9dca0c1d3452a7f1be653a4164`. A predecessor snapshot was
-interrupted during Base after about 10 minutes, last recorded 42% Base and 804 MB sampled process RSS. A later
-snapshot was started with four workers and a 256 MiB decoded-history cache; it had not finished at this checkpoint.
-No hourly table, current post-Base return PF, passed/evaluated count, validated percentage, modeled settlement PF,
-venue PF, or execution acceptance has been established. Prior CTS-G studies do not prove a profitable imported
-range or Block configuration; the shared Micro/range-family source files are already identical to CTS-A-O's.
+## 2026-11-17 — missing return evidence in position windows
+
+On merged baseline `1fe070102abdb96d986757ebde14ed2f9de6ea32`, two
+regressions reproduced a missing JSON return being coerced to a flat close:
+once in the scalar position-window calculator and once while writing a
+Float64 compact tape. Both paths now retain the outcome as unknown, so the
+affected exact window cannot qualify; an older unknown outside the current
+window still permits recovery. The focused position/processed-stage tests and
+typecheck pass. The exact published commit and CI status belong to the PR.
+
+No new CTS-A-O market replay or account action was performed for this fix.
+The prior 12-symbol, 12h-prehistory + 12h-trading replay remains 0/246,345
+validated per hourly decision; passing and funded execution PF are unavailable,
+and funded orders/positions remain zero. The correction is not an economic result.
+
+## 2026-11-17 — disjoint Last-N precision
+
+On the `8c530a06550abea68b7ee5582787675528b8362a` baseline, the shared
+disjoint-window prefix arithmetic could erase a very small gain or loss after
+a larger earlier return. The bounded recovery sums the affected window from
+its own retained observations and preserves signed near-flat results; unknown
+observations still fail closed. The pre-fix regression produced an infinite PF
+for a window whose actual return PF was 0.5. Four shared-window tests and 163
+position/stage/strategy tests passed together; typecheck passed. The tested
+code is the shared Last-N source and test in this change; the exact published
+commit and CI results belong to its pull request.
+
+No CTS-A-O market replay or venue action was performed for this precision fix.
+The latest unchanged reference remains 0/246,345 validated per hourly decision
+in the 12-symbol, 12h-prehistory plus 12h-trading retrospective replay; passing
+PF and funded execution PF are unavailable, with zero funded orders/positions.
+This arithmetic correction does not establish profitable defaults or fills.
 
 ## 2026-11-16 — evaluation provenance, simulation progress and scheduling
 

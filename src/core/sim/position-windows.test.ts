@@ -46,6 +46,9 @@ const policy = {
   entry: 2,
   maxDrawdownPositions: 4,
   byRange: {},
+  // these cases pin the per-context lane semantics (scope "context"); the config-wide default is in
+  // sim/continuous-evaluation.test.ts
+  scope: "context" as const,
 };
 function fixture(values: number[], symbol = "A", side: 1 | -1 = 1, cfg = id) {
   return values.map(
@@ -206,6 +209,17 @@ test("unknown returns stay in N; old unknowns outside N do not poison recovery",
     false,
     "stale evidence does not become fresh",
   );
+});
+test("position windows do not turn missing returns into flat closes",()=>{
+  const missing=[0.02,null,0.02,0.02] as unknown as number[];
+  assert.equal(positionStats(missing,4).known,false);
+  assert.equal(positionStats([null,0.02,0.02,0.02] as unknown as number[],3).known,true);
+});
+test("compact tapes retain missing return evidence for the exact configuration",()=>{
+  const missing=[0.02,null,0.02,0.02] as unknown as number[];
+  assert.equal(positionConfigEval(tape(missing),T,options(),"A",1).ok,false);
+  const older=[null,0.02,0.02,0.02,0.02] as unknown as number[];
+  assert.equal(positionConfigEval(tape(older),T,options(),"A",1).ok,true);
 });
 
 test("corrupt ownership or chronology cannot qualify older wins at selection or admission",()=>{

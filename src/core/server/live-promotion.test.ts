@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoreDb } from "./db.server.ts";
 import { CoreRuntime } from "./runtime.server.ts";
+import type { WalkForwardOptions } from "../sim/walkforward.ts";
 import { sigActiveKey } from "../signals.ts";
 import { DEFAULT_PROTECT } from "../config.ts";
 import { makeTape, passedCellsOf, runSubset, walkForward } from "../sim/walkforward.ts";
@@ -452,4 +453,19 @@ describe("paper entry allocation provenance", () => {
       }
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
+});
+
+it("the per-context promotion view follows in-place updates of the run's options and never caches a stale copy", () => {
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  try {
+    rt.stop();
+    const view = () => (rt as unknown as { liveContextWf: () => WalkForwardOptions }).liveContextWf();
+    const first = view();
+    assert.equal(first.gates.positionWindows?.scope, "context");
+    assert.equal(first.gates.positionWindows?.byRange?.mc?.scope, "context", "Micro's own scope is per context too");
+    const marker = new Set(["follow|x@m5"]);
+    Object.assign(rt.wf, { basePassed: marker });
+    assert.equal(view().basePassed, marker, "an in-place update of the run's options is seen at once");
+    assert.equal(rt.wf.gates.positionWindows?.scope, "config", "the research scope itself is untouched");
+  } finally { rt.dispose(); }
 });

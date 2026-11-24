@@ -25,18 +25,27 @@ const tapes: ConfigTape[] = buildTapes(u, protectGrid(15, { ...DEFAULT_SETTINGS.
 const o = { ...defaultWalkForward(settings), longH: 96, preH: 20 };
 const steps = Array.from({ length: 40 }, (_, i) => u.nowT - (40 - i) * 6 * H);
 const key = (r: ReturnType<typeof selectFixed>) => JSON.stringify(r.picks);
+// The reference: picks on a fresh tape list (no cursor or cached info carried), computed once per step and option set
+// and shared by the cases below. Each value is still the fresh-list evaluation the comparisons need.
+const fresh = new Map<string, ReturnType<typeof selectFixed>>();
+const freshAt = (t: number, opts: typeof o, tag: string) => {
+  const k = `${tag}|${t}`;
+  let r = fresh.get(k);
+  if (!r) fresh.set(k, (r = selectFixed(tapes.slice(), t, opts)));
+  return r;
+};
 
 describe("selection indexes", () => {
   it("the synthetic book has validated and failing configs at every step (the comparison is not vacuous)", () => {
     assert.ok(tapes.length > 50, `${tapes.length} tapes`);
     let picks = 0;
-    for (const t of steps) picks += selectFixed(tapes.slice(), t, o).picks.length;
+    for (const t of steps) picks += freshAt(t, o, "o").picks.length;
     assert.ok(picks > steps.length, `${picks} picks over ${steps.length} steps`);
   });
 
   it("the cheap-gates-first verdict picks exactly what configEvalAt's report picks (same scores and windows)", () => {
     for (const t of steps) {
-      const fast = selectFixed(tapes.slice(), t, o);
+      const fast = freshAt(t, o, "o");
       const report = selectFixed(tapes.slice(), t, { ...o, recordValidation: true });
       assert.equal(key(fast), key(report), `step ${new Date(t).toISOString()}`);
       assert.equal(fast.eligible, report.eligible);
@@ -45,13 +54,13 @@ describe("selection indexes", () => {
 
   it("forward cursors on one tape list give the binary searches' picks, also after a jump back and with other options", () => {
     const same = tapes.slice();
-    for (const t of steps) assert.equal(key(selectFixed(same, t, o)), key(selectFixed(tapes.slice(), t, o)));
+    for (const t of steps) assert.equal(key(selectFixed(same, t, o)), key(freshAt(t, o, "o")));
     // back to an earlier time (a new run on the same list): binary searches, then forward again
     for (const t of [steps[5], steps[6], steps[30], steps[2], steps[39]])
-      assert.equal(key(selectFixed(same, t, o)), key(selectFixed(tapes.slice(), t, o)));
+      assert.equal(key(selectFixed(same, t, o)), key(freshAt(t, o, "o")));
     // other options on the same list rebuild the cached infos
     const o2 = { ...o, gates: { ...o.gates, minPf: 1.3 } };
-    for (const t of steps.slice(10, 20)) assert.equal(key(selectFixed(same, t, o2)), key(selectFixed(tapes.slice(), t, o2)));
+    for (const t of steps.slice(10, 20)) assert.equal(key(selectFixed(same, t, o2)), key(freshAt(t, o2, "o2")));
   });
 
   it("the symbol gate's per-symbol index counts exactly the full scan's closes, in the same order", () => {

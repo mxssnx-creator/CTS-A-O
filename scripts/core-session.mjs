@@ -172,6 +172,7 @@ const {
   ddtLimitH,
   EVAL_GATES,
   walkForward,
+  walkForwardGen,
   signalHistoryHours,
   selectionScoreAt,
 } = await import("../src/core/sim/walkforward.ts");
@@ -423,7 +424,25 @@ function memAvailMb() {
  * fingerprint before the next run (its trades are dropped). A variant whose trade set equals the baseline's is "no
  * effect". Below CTS_CORE_VARIANTS_MIN_MB (default 1500) of available memory the remaining variants are skipped.
  */
-function runVariants(rt, sim) {
+// Hand the event loop a turn: V8 keeps every WeakRef target created or dereferenced during one synchronous job alive
+// until that job ends, so a long synchronous replay pins every decompressed tape history the bounded column cache has
+// already evicted (14 GB on a 24 h / 222k-tape window). The runtime's own compute yields every slice; so do these.
+const breathe = () => new Promise((resolve) => setImmediate(resolve));
+/** walkForward, driven in slices with an event-loop turn every ~50 ms (same result as the synchronous wrapper). */
+async function walkForwardSliced(u, tapes, opts) {
+  const gen = walkForwardGen(u, tapes, opts);
+  let last = Date.now();
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+    if (Date.now() - last >= 50) {
+      await breathe();
+      last = Date.now();
+    }
+  }
+}
+
+async function runVariants(rt, sim) {
   const t0 = Date.now();
   const u0 = rt.lastUniverse;
   // the options the session's walk-forward ran with (sim.opts: without the protect grids, which it does not read)
@@ -444,7 +463,19 @@ function runVariants(rt, sim) {
     if (isSignalInd(tp.ind)) signalTapes++;
     else kinds[tp.kind] = (kinds[tp.kind] ?? 0) + 1;
   }
-  const specs = walkForwardVariants(base, { kinds, signalTapes, tactics: rt.settings.tactics });
+  // CTS_CORE_VARIANTS_EXTRA='[{"id":"x","patch":{…}}]': run only these option patches (deep-merged onto the session's
+  // options) instead of the built-in list — a causal comparison of settings on the same tapes, without recomputing them
+  const extra = process.env.CTS_CORE_VARIANTS_EXTRA ? JSON.parse(process.env.CTS_CORE_VARIANTS_EXTRA) : null;
+  const deepMerge = (a, b) => {
+    if (!b || typeof b !== "object" || Array.isArray(b) || !a || typeof a !== "object" || Array.isArray(a)) return b;
+    const out = { ...a };
+    for (const [k, v] of Object.entries(b)) out[k] = deepMerge(a[k], v);
+    return out;
+  };
+  const specs = extra
+    ? extra.map((x) => ({ id: x.id, group: "custom", label: x.label ?? x.id, change: JSON.stringify(x.patch), asRun: "–",
+        status: "run", opts: deepMerge(base, x.patch) }))
+    : walkForwardVariants(base, { kinds, signalTapes, tactics: rt.settings.tactics });
   const minMb = Number(process.env.CTS_CORE_VARIANTS_MIN_MB || 1500);
   const nRun = specs.filter((v) => v.status === "run").length + 1;
   const mainMs = rt.status.phases?.Simulation?.ms ?? null;
@@ -453,15 +484,33 @@ function runVariants(rt, sim) {
       `${mainMs ? ` · the session's own run took ${Math.round(mainMs / 1000)} s` : ""} · CTS_CORE_VARIANTS=0 skips them\n`,
   );
   const session = summarizeRun(sim, sim.startT, sim.endT);
-  const one = (opts) => {
+  // unit PF per range and type of a run's executed orders (one line on stderr per custom variant)
+  const ranges = (res) => {
+    const by = new Map();
+    for (const x of res.trades) {
+      const tag = x.cfg.match(/\|(mc|mn|mp|sh|gn|lg|lr)(?:\||$)/)?.[1] ?? (isSignalInd(x.cfg.split("|")[1] ?? "") ? "sig" : "wide");
+      const k = `${tag}/${x.kind ?? "?"}`;
+      const a = by.get(k) ?? { n: 0, gp: 0, gl: 0 };
+      a.n++; if (x.r > 0) a.gp += x.r; else a.gl -= x.r;
+      by.set(k, a);
+    }
+    return [...by].sort((a, b) => b[1].n - a[1].n).map(([k, a]) => `${k} ${a.n}@${a.gl ? (a.gp / a.gl).toFixed(2) : "inf"}`).join(" · ");
+  };
+  const one = async (opts) => {
     const ts = Date.now();
-    let res = walkForward(u, rt.tapes, opts);
+    // the summary reads trades, open-at-end and skips: no feed or signal-step copies are kept (resultLean)
+    let res = await walkForwardSliced(u, rt.tapes, { ...opts, resultLean: true });
+    if (extra) process.stderr.write(`    by range/type: ${ranges(res)}\n`);
+    // block.auto: each relation × count's record at the end (results@PF, + raises / - does not / ? undecided)
+    if (extra && res.blockAuto?.length)
+      process.stderr.write(`    block auto: ${res.blockAuto.filter((x) => x.n > 0).map((x) =>
+        `${x.key} ${x.n}@${Number.isFinite(x.pf) ? x.pf.toFixed(2) : "inf"}${x.raise === null ? "?" : x.raise ? "+" : "-"}`).join(" · ")}\n`);
     const summary = summarizeRun(res, sim.startT, sim.endT);
     res = null;
     return { summary, ms: Date.now() - ts };
   };
   const rss = () => Math.round(process.memoryUsage().rss / 1e6);
-  const b = one(base);
+  const b = await one(base);
   const baseline = {
     id: "baseline",
     group: "baseline",
@@ -494,7 +543,7 @@ function runVariants(rt, sim) {
       });
       continue;
     }
-    const r = one(opts);
+    const r = await one(opts);
     k++;
     const effect = effectOf(r.summary, b.summary);
     rows.push({ ...meta, ...r, effect });
@@ -1063,7 +1112,10 @@ async function runEngine() {
     const all = new Set(sigStepSets.length ? sigStepSets.flatMap((x) => [...x]) : sigFallback);
     evalStats.signalUnitsRun = all.size;
   }
+  let evalTapes = 0;
   for (const tp of rt.tapes) {
+    // the same event-loop turns as the variants: evicted tape histories can be released during this pass
+    if (++evalTapes % 1000 === 0) await breathe();
     const sig = isSignalInd(tp.ind);
     const r = rangeOfId(tp.id);
     const rl = tp.kind === "exit" ? "Exit" : sig ? "Signals" : RANGE_LABEL[r];
@@ -1300,7 +1352,7 @@ async function runEngine() {
     };
   }
   // enabled / disabled overviews: walk-forward variants on these final tapes (CTS_CORE_VARIANTS=0 skips them)
-  const variants = process.env.CTS_CORE_VARIANTS === "0" ? null : runVariants(rt, sim);
+  const variants = process.env.CTS_CORE_VARIANTS === "0" ? null : await runVariants(rt, sim);
   // the live sizing replay's lanes: every executed config's stop distance (its protect) and selection score at the
   // run start (the top-config ranking)
   const cfgInfo = {};

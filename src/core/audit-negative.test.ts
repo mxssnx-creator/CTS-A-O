@@ -504,7 +504,9 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
     {
       run: "relateOn",
       what: "a settled ladder's modeled volume above the captured stack ceiling",
-      corrupt: (i) => withTrade(i, 0, { vol: i.sim!.opts.relate!.maxStack + 1 }),
+      // the first settled ladder (DCA / Axis) of the run, whatever its position in the book
+      corrupt: (i) => withTrade(i, Math.max(0, i.sim!.trades.findIndex((t) => /^(dca|dca-active|axis)$/.test(t.kind ?? ""))),
+        { vol: i.sim!.opts.relate!.maxStack + 1 }),
     },
     {
       run: "relateOn",

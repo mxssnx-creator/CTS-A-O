@@ -29,16 +29,22 @@ opt-in.
 | Block Active | a Normal / Trailing entry Block did not raise, **only when Normal is off** | Block's own raises (`blockActive` in `execDecisionFor`) |
 | Normal off | an un-raised Normal / Trailing entry | plain kinds only (`normalOff`) |
 | DCA Active | which DCA tape executes (`dca` vs `dca-active`) | DCA tapes only (`kindExecutable`) |
-| Axis | its own tapes, own toggle | Axis tapes only |
+| Axis | its own tapes, own toggle; every Axis config (mode × range × ladder depth) is its own pair event (`wf.pairEventAxisOwn`, default on) and its own live-feedback record (`setKeyOf` keeps the variant tag) | Axis tapes only, each config on its own |
 | Relate Active | nothing: below the active step the relation adds no raise; its part is recorded as shadow on the accepted entry and its step keeps progressing | the relation's raise (`RelateBook.decide`, `allowed` is false only for an unknown base volume) |
 | direction gate (`sideGateN`, off by default) | an entry on a side whose last N candidates **of the same type** sum ≤ 0 | strategy type × side (Historic Exit: its own config) |
 | engine direction acceptance | type family × range × side | already per type |
-| one order per pair event (`wf.onePerPairEvent`, default on) | a second config of the same indicator pair × symbol × side × type entering in the same minute (best ranked executes; the rest stay evaluated and recorded) | pair × symbol × side × type × minute |
-| config windows (Base / Main / Real / Entry) | the entry's own config × symbol × side | own closes only |
+| one order per pair event (`wf.onePerPairEvent`, default on) | a second config of the same indicator pair × symbol × side × type entering in the same minute (best ranked executes; the rest stay evaluated and recorded) | pair × symbol × side × type × minute; Axis and Historic Exit configs are each their own event |
+| live promotion (real money) | a lane whose own symbol × side closes do not qualify | always per context (`liveContextWf`): a winning long never promotes an unproven short, nor one symbol another |
+| config windows (Base / Main / Real / Entry) | an entry whose config fails its own windows | the config's own closes across symbols and sides (`scope: "config"`, default since 17 Nov); Micro: its own symbol × side lane and its config both (`"both"`); `"context"` and `"auto"` remain options |
 | Signals guard / cluster / acceptance | signal entries | signals only |
 
-Block levels and Relate stacking still read the shared books they are configured to read (Block sources, relation
-sources): those decide a **raise**, never whether another lane trades.
+Block (17 Nov, operator): every relation runs, and each block count decides on its own record. The config's own
+relations are `config` (its closes on every symbol and side) and `lane` (its own symbol × side); no other config moves
+them (`sim/axis-block-independence.test.ts`). The pooled relations (overall, symbol, direction, indication, type, range)
+combine every config's closes. The automatic evaluation (`block.auto`) judges every relation at every level on the
+positions that entered while it stood there, from the closes before each entry: a count raises while the PF of its newest
+30 results is at least 1.1, a losing count stops raising, and with fewer than 15 results its manual switch holds
+(`sim/block-auto.test.ts`). Block and Relate decide a **raise**, never whether another lane trades.
 
 Code: `src/core/sim/walkforward.ts` (`execDecisionFor`, `CandidateDirectionBook`), `src/core/sim/relate-volume.ts`
 (`RelateBook.decide`), `src/core/positive.ts` (warning only with Normal off).

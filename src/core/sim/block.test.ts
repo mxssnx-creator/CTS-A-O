@@ -97,9 +97,9 @@ describe("Block sources", () => {
     }
     assert.deepEqual(on.tailSum("all", 10), { n: 3, sum: 0.01 + 0.01 - 0.01 });
     assert.deepEqual(off.tailSum("all", 10), { n: 1, sum: -0.01 }, "the engine's close only");
-    assert.equal(off.paused("c:s1|A|1"), true, "one of its two pause closes counted");
+    assert.equal(off.paused(off.keyOf("config", sig)), true, "one of its two pause closes counted");
     off.add(sig, true);
-    assert.equal(off.paused("c:s1|A|1"), false);
+    assert.equal(off.paused(off.keyOf("config", sig)), false);
     // feedBooks names a signal by its indication
     const fb = blockBookOf({ ...LEGACY_BLOCK, poolSignals: false });
     feedBooks({ exitT: 1, sym: "A", side: 1, kind: "sig", r: 0.02, ind: "sig-cci-m@m15", cfg: "s" }, fb);
@@ -181,6 +181,9 @@ describe("Block sources", () => {
       direction: 2,
       indication: 2,
       type: 2,
+      // the own lane is judged on its tape in this legacy book (not listed); the range relation: untagged = wide, long
+      lane: 0,
+      range: 2,
     });
     assert.deepEqual(bookLevels(b, { sym: "B", side: -1, kind: "macd" }, 3), {
       overall: 0,
@@ -188,6 +191,8 @@ describe("Block sources", () => {
       direction: 0,
       indication: 0,
       type: 0,
+      lane: 0,
+      range: 0,
     });
     assert.deepEqual(bookLevels(b, { sym: "C", side: 1, kind: "ema" }, 3), {
       overall: 0,
@@ -196,6 +201,9 @@ describe("Block sources", () => {
       indication: 0,
       // type "normal" (the default): only the losing macd entry
       type: 0,
+      lane: 0,
+      // the same (wide) range on the long side: the two winners
+      range: 2,
     });
     assert.deepEqual(bookLevels(null, { sym: "A", side: 1, kind: "rsi" }, 3), {
       overall: 0,
@@ -203,6 +211,8 @@ describe("Block sources", () => {
       direction: 0,
       indication: 0,
       type: 0,
+      lane: 0,
+      range: 0,
     });
   });
 
@@ -241,11 +251,13 @@ describe("Block sources", () => {
   it("defaults to the config set only; shared = max, additive = sum", () => {
     assert.deepEqual(sourcesOf(B), {
       config: true,
+      lane: false,
       overall: false,
       symbol: false,
       direction: false,
       indication: false,
       type: false,
+      range: false,
     });
     const lv = { config: 1, overall: 2, symbol: 3, direction: 0, indication: 1, type: 0 };
     assert.equal(combineLevels(lv, B), 1);
@@ -936,7 +948,7 @@ describe("AutoBlockBook (windowAuto)", () => {
     const e = { ...own, autoRaise: undefined as number | undefined };
     book.stampEntry(e);
     assert.equal(e.autoRaise, 1, "one actual accepted own close qualifies config level1 without ten pooled closes");
-    assert.equal(book.level(sourceKey("config", own), 3), 1);
+    assert.equal(book.level(book.keyOf("config", own), 3), 1);
   });
 
   it("keeps the configured window until every candidate has 30 raised closes", () => {

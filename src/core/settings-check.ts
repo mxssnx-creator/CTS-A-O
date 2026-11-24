@@ -7,6 +7,7 @@ import { FINE_SL_TP_MIN, MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, SL_TP_MIN, SL
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
 import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, MAX_EXTERNAL_STACK, MAX_FOCUS_PAIRS, mergeGridSettings, type CoreSettings, type SettingsPatch } from "./config.ts";
 import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "./model-cost.ts";
+import { checkPriceDistanceGrid } from "./price-distance-grid.ts";
 import { checkGridVariantBudget } from "./sim/walkforward.ts";
 import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
@@ -418,7 +419,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       if (!s.block.sourceRatios || typeof s.block.sourceRatios !== "object" || Array.isArray(s.block.sourceRatios))
         throw new Error("block relation ratios must be an object");
       for (const [key, value] of Object.entries(s.block.sourceRatios)) {
-        if (!["config", "overall", "symbol", "direction", "indication", "type"].includes(key))
+        if (!["config", "lane", "overall", "symbol", "direction", "indication", "type", "range"].includes(key))
           throw new Error("unknown Block relation ratio");
         num(value, 0, 10, `block ${key} ratio multiplier`);
       }
@@ -486,6 +487,27 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     if (s.block.levelMinWin !== undefined) num(s.block.levelMinWin, 0, 1, "block level win share (0 = off)");
     for (const k of ["poolSignals", "poolDedupe", "sideKeys"] as const)
       if (s.block[k] !== undefined && typeof s.block[k] !== "boolean") throw new Error(`block ${k}: on / off`);
+    if (s.block.auto !== undefined) {
+      const a = s.block.auto;
+      if (typeof a !== "object" || a === null) throw new Error("block auto: an object");
+      if (a.enabled !== undefined && typeof a.enabled !== "boolean") throw new Error("block auto: on / off");
+      const whole = (v: unknown, name: string) => {
+        if (!Number.isInteger(v)) throw new Error(`${name}: a whole number`);
+      };
+      if (a.n !== undefined) {
+        num(a.n, 5, 200, "block auto newest results");
+        whole(a.n, "block auto newest results");
+      }
+      if (a.min !== undefined) {
+        num(a.min, 1, a.n ?? 200, "block auto results before it decides (at most the newest results)");
+        whole(a.min, "block auto results before it decides");
+      }
+      if (a.pf !== undefined) num(a.pf, 0.5, 5, "block auto minimum PF");
+      if (a.scope !== undefined && a.scope !== "rule" && a.scope !== "key")
+        throw new Error("block auto scope: rule (per relation × count) or key (per relation key × count)");
+    }
+    if (s.block.configScope !== undefined && s.block.configScope !== "config" && s.block.configScope !== "context")
+      throw new Error("block config scope: config (own closes on every symbol and side) or context (symbol × side)");
     num(s.block.increase, 0.05, 1, "block increase");
     const span = (pair: unknown, lo: number, hi: number, name: string) => {
       if (pair === undefined) return;
@@ -506,7 +528,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
         throw new Error("block sources: object of switches");
       for (const [k, v] of Object.entries(s.block.sources))
         if (
-          !["config", "overall", "symbol", "direction", "indication", "type"].includes(k) ||
+          !["config", "lane", "overall", "symbol", "direction", "indication", "type", "range"].includes(k) ||
           typeof v !== "boolean"
         )
           throw new Error(`block source ${k} must be a known source with an on/off value`);
@@ -707,6 +729,9 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     if (s.grid.maxSl !== undefined) num(s.grid.maxSl, 0.005, 0.2, "max SL");
     if (s.grid.maxTrail !== undefined) num(s.grid.maxTrail, 0.003, 0.2, "max trail");
     num(s.grid.trailStep, 0.1, 1, "trail step");
+    if (s.grid.priceDistances !== undefined) checkPriceDistanceGrid(s.grid.priceDistances);
+    if (s.grid.trailGapBasis !== undefined && s.grid.trailGapBasis !== "entry" && s.grid.trailGapBasis !== "peak")
+      throw new Error("trailing distance basis must be entry or peak");
     if (s.grid.trailingOnly !== undefined && typeof s.grid.trailingOnly !== "boolean")
       throw new Error("independent trailing-only grid: on / off");
     if (s.grid.trailFree !== undefined && typeof s.grid.trailFree !== "boolean")

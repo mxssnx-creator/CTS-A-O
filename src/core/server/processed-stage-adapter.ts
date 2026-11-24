@@ -10,7 +10,11 @@ import {
   type ProcessedVerdict,
 } from "../sim/processed-set.ts";
 
-const CAPACITY = 500;
+const STANDARD_CAPACITY = 500;
+const MAX_BLOCK_CAPACITY = 500 + 200 + 5;
+function capacityFor(policy: ProcessedReplayPolicy): number {
+  return Math.max(STANDARD_CAPACITY, ...Object.values(policy.blocks ?? {}).map(blockRequired));
+}
 const SETTLED_LIMIT = 20_000;
 
 export interface NativeProcessedSnapshot {
@@ -43,7 +47,7 @@ function checkedPolicy(policy: ProcessedReplayPolicy): ProcessedReplayPolicy {
     ...Object.values(policy.blocks ?? {}).map(blockRequired),
     ...(negativeFilter?.windows ?? []),
   );
-  if (required > CAPACITY) throw new RangeError("native processed-stage window exceeds capacity");
+  if (required > MAX_BLOCK_CAPACITY) throw new RangeError("native processed-stage window exceeds capacity");
   return {
     validationN: policy.validationN,
     realN: policy.realN,
@@ -85,12 +89,14 @@ export class NativeProcessedStageAdapter {
         snapshot.settled.some((x) => typeof x !== "string")
       )
         throw new TypeError("invalid native processed-stage snapshot");
-      this.book = ProcessedSetBook.restore(snapshot.book);
-      if (this.book.basis !== "paper" || this.book.capacity !== CAPACITY)
+      const previous = ProcessedSetBook.restore(snapshot.book);
+      if (previous.basis !== "paper" || previous.capacity < STANDARD_CAPACITY || previous.capacity > MAX_BLOCK_CAPACITY)
         throw new TypeError("invalid native processed-stage book");
+      const capacity = Math.max(previous.capacity, capacityFor(this.policy));
+      this.book = previous.capacity === capacity ? previous : ProcessedSetBook.restore({ ...snapshot.book, capacity });
       this.settledQueue = snapshot.settled.slice(-SETTLED_LIMIT);
     } else {
-      this.book = new ProcessedSetBook("paper", CAPACITY);
+      this.book = new ProcessedSetBook("paper", capacityFor(this.policy));
       this.settledQueue = [];
     }
     this.settled = new Set(this.settledQueue);

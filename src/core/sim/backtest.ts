@@ -412,7 +412,8 @@ function simCore(
           trailPosition.peak !== peak || trailPosition.trailOn !== trailOn))
       throw new Error("simulateFrom: held trailing position and captured stop disagree");
     if (inPos && trail > 0 && !exitPosition && !trailPosition)
-      trailPosition = { cfg, sym, side, entryT: t[entryI], entryI, entry, stop, target, peak, trailOn, mtm: 0 };
+      trailPosition = { cfg, sym, side, entryT: t[entryI], entryI, entry, stop, target, peak, trailOn, mtm: 0,
+        ...(q.trailFixed ? { trailFixed: true } : {}) };
   } else if (cursor) checkCapturedStop();
   const atr = p.atr ? (opt.atr ?? atrEma(h, l, c, ATR_PERIOD)) : null;
   const resolve = (i: number) => {
@@ -592,7 +593,8 @@ function simCore(
           : undefined;
         // One object per position, never one allocation per bar; shared with realtime ratcheting.
         trailPosition = q.trail > 0 && !exitPosition
-          ? { cfg, sym, side, entryT: t[entryI], entryI, entry, stop, target, peak, trailOn, mtm: 0 }
+          ? { cfg, sym, side, entryT: t[entryI], entryI, entry, stop, target, peak, trailOn, mtm: 0,
+              ...(q.trailFixed ? { trailFixed: true } : {}) }
           : undefined;
         mfe = 0;
         mae = 0;
@@ -623,6 +625,7 @@ function simCore(
         ? {
             trail,
             trailDist: dist,
+            ...(q.trailFixed ? { trailFixed: true } : {}),
             trailFree: q.trailFree === true,
             ...(q.trailOnly ? { trailOnly: true } : {}),
           }

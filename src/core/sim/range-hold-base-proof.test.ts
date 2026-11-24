@@ -3,7 +3,8 @@ import { test } from "node:test";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { Protect, RangeTag } from "../domain/types.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
-import { laneProtect, makeUniverse, protectCellKey, rangeBaseStats } from "../pipeline/pipeline.ts";
+import { configId, laneProtect, makeUniverse, protectCellKey, rangeBaseStats } from "../pipeline/pipeline.ts";
+import { setKeyOf } from "../adjust.ts";
 import { baseAllowsTape, buildTapes, cellAllowed, passedCellsOf } from "./walkforward.ts";
 
 for (const tag of ["mc", "mn", "sh"] as RangeTag[]) for (const kind of ["normal", "trailing", "trailing-only"] as const)
@@ -59,7 +60,8 @@ for (const tag of ["mc", "mn", "sh"] as RangeTag[]) for (const kind of ["normal"
       rangeBaseStats(u, "follow", ind, [a, b], cost, null, undefined, false,
         (_tag, s) => s.n > 0, tf, undefined, undefined, measured);
       assert.ok(measured.includes(ak) && measured.includes(bk), "both cells were simulated independently");
-      const set = `${pair}|${kind}`;
+      // the source cell's own feedback record (every config on its own record)
+      const set = setKeyOf(configId("follow", ind, laneProtect(a, ind)));
       const adjust = { [set]: { set, level: 1, minSl: 0, minTrail: 0, pausedUntil: 0,
         pf: 0, n: 1, lastExitT: 0, at: 0, note: "fixture", slMult: 2 } };
       const make = (cells: string[], heldIds = new Set<string>()) => buildTapes(u, [a, b], cost,

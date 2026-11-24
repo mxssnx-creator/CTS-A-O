@@ -3,7 +3,7 @@ import { slWithinBounds, type SlBounds } from "../sl-calibration.ts";
 import {partialFloorOf, positionStageStats} from "../position-windows.ts";
 import { simulationClock } from "../progress.ts";
 import {blockRequired} from "../../../shared/cts-lastn/blocks.ts";
-import { positionCounts, positionStats, positionTapeValid } from "../position-windows.ts";
+import { positionCounts, positionStats, positionTapeValid, type PositionWindows } from "../position-windows.ts";
 import {relationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
 import { RT_COST } from "../model-cost.ts";
 import { EVALUATION_HISTORY_H, PRECALC_HISTORY_H } from "../market/history-requirements.ts";
@@ -17,6 +17,7 @@ import { DerivedCache, derivedCacheBytes } from "./derived-cache.ts";
 import { immutableHistoryGeneration } from "./immutable-history-generation.ts";
 import { tapeOpenTimes } from "./tape-open-times.ts";
 import { exitScopeSuffix, isHistoricExitConfig } from "../exit-scope.ts";
+import { applyPriceDistanceGrid } from "../price-distance-grid.ts";
 import { isLowRangeInd, lowRangeGridProtects, lowRangeEnabled } from "../indications/low-range.ts";
 import {
   coordVariants,
@@ -40,7 +41,7 @@ import {
 } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
 import { createExitProtection } from "./exit-protection.ts";
-import { capSignalProtect, capTrailingOnlyProtect, trailingOnlyProtects, isSignalConfig } from "./trailing.ts";
+import { applyTrailingGapBasis, capSignalProtect, capTrailingOnlyProtect, trailingOnlyProtects, isSignalConfig } from "./trailing.ts";
 import { SIGNAL_HISTORY_H, SIGNAL_VALID_LAST_N, SIGNAL_EVALUATION_LAST_N } from "../signal-policy.ts";
 // Walk-forward trade simulation ("simulated trade runs") — the Base → Main → Real → Live coordination.
 //
@@ -482,6 +483,14 @@ export interface WalkForwardOptions {
    */
   onePerPairEvent?: boolean;
   /**
+   * A comparison run that reads only trades, open-at-end and skips (session variants): the result carries no feed
+   * and no signal-step snapshots. The books, guards and every decision are unchanged (they consume each entry as it
+   * settles); only the returned copies, which grow with every candidate and every changed minute, are not kept.
+   */
+  resultLean?: boolean;
+  /** under onePerPairEvent: every Axis config is its own event (default true); false = Axis variants of a pair share one */
+  pairEventAxisOwn?: boolean;
+  /**
    * Seat cool-off in hours (0 / unset = off): an engine config whose own last close (its tape, any symbol) is less
    * than this many hours before an entry does not take it (skip "seatQuiet"). The PF gap analysis (13 Oct): orders
    * of a config that closed within the last 4 h realized PF 0.39, those with no close for 4 h 0.63 (D1) and 1.09
@@ -748,7 +757,7 @@ export const DEFAULT_GRID: ProtectGridSpec = {
 
 /** Upper bound on protect variants at the effective modeled cost. Dedup can only make it smaller. */
 export function gridVariants(g: ProtectGridSpec, cost?: number): number {
-  if (g.trailingOnly) return protectGrid(REF_TF, g, cost).length;
+  if (g.trailingOnly || g.priceDistances?.enabled) return protectGrid(REF_TF, g, cost).length;
   const hold = g.holdH.length || 1;
   const main = g.tp.length * slRatiosOf(g).length * g.trailOfTp.length * hold;
   const plus = g.minimalPlus;
@@ -894,9 +903,13 @@ export function protectGrid(
         });
   }
   const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, tfMin, g.lowRange?.minSlDistancePct ?? .1, ownSlFloor(g.lowRange, cost ?? RT_COST) ?? slFloor) : []);
+  if (g.priceDistances?.enabled) {
+    const priced = applyPriceDistanceGrid(applyTrailingGapBasis([...out, ...lowRange], g.trailGapBasis), g, cost ?? RT_COST, GRID_VARIANTS_MAX);
+    return g.trailingOnly ? [...priced, ...trailingOnlyProtects(priced)] : priced;
+  }
   if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
   out.push(...lowRange);
-  return out;
+  return applyTrailingGapBasis(out, g.trailGapBasis);
 }
 
 export function dcaProtectGrid(
@@ -1403,7 +1416,9 @@ export function makeTape(
       throw new Error("compact tape cannot retain per-entry stop-limit provenance");
     tp.exitT[i] = t.exitT;
     tp.entryT[i] = t.entryT;
-    tp.r[i] = t.r;
+    // Float64Array assignment otherwise converts a restored null return into zero.
+    const r = typeof t.r === "number" && Number.isFinite(t.r) ? t.r : NaN;
+    tp.r[i] = r;
     tp.entry[i] = t.entry;
     tp.exit[i] = t.exit;
     tp.symI[i] = symIdx.get(t.sym) ?? 0;
@@ -1412,7 +1427,6 @@ export function makeTape(
     tp.bars[i] = Math.min(65535, t.bars);
     tp.vol[i] = t.vol ?? 1;
     tp.level[i] = Math.min(255, t.level ?? 0);
-    const r = t.r;
     tp.gp[i + 1] = tp.gp[i] + (r > 0 ? r : 0);
     tp.gl[i + 1] = tp.gl[i] + (r < 0 ? -r : 0);
     tp.rs[i + 1] = tp.rs[i] + r;
@@ -2079,9 +2093,10 @@ export function* buildTapesGen(
   // a range cell keeps its own stop / trail floors: the live-feedback adjuster's absolute floors are the wide grid's
   // (a set's level-0 entry carries the 0.5 % floors and lifted every Micro / Minimal cell of the set to them — bug hunt,
   // 13 Oct); it takes only the relative widening (slMult / trailMult), and is untouched without one
-  const adj = (bot: string, ind: string, kind: StratKind, p: Protect) => {
-    const key =
-      kind === "exit" ? setKeyOf(configId(bot as BotType, ind, p)) : `${bot}|${ind}|${kind}`;
+  const adj = (bot: string, ind: string, kind: StratKind, p: Protect, ownKey?: string) => {
+    // the config's own feedback record (setKeyOf): its id without the stop / trailing distances the adjuster changes
+    const key = ownKey ?? setKeyOf(configId(bot as BotType, ind, p,
+      kind === "dca" || kind === "dca-active" || kind === "axis" || kind === "block" ? kind : undefined));
     const e = adjust?.[key];
     const adjusted = !p.tag ? adjustProtect(adjustProtect(p, floors), e)
       : !e || ((e.slMult ?? 1) === 1 && (e.trailMult ?? 1) === 1) ? p
@@ -2430,7 +2445,7 @@ export function* buildTapesGen(
       // failing a filter it is built held-only and takes no new seat
       const held = floors?.heldIds?.has(id) ?? false;
       const tps = p0.tag ? floors?.pairTps?.[`${c.bot}|${c.ind}`]?.[p0.tag] : undefined;
-      const slb = p0.tag && !p0.trailOnly ? floors?.pairSl?.[`${c.bot}|${c.ind}`]?.[p0.tag]?.[String(p0.tp)] : undefined;
+      const slb = p0.tag && !p0.trailOnly && !p0.priceDistance ? floors?.pairSl?.[pairKey]?.[p0.tag]?.[String(p0.tp)] : undefined;
       // the structural exclusions first (a cell below its range's lane floor, a Micro cell off a Micro indication):
       // neither is a Base-gate hold, and a pair's tags already leave a floored range out (rangeAppliesTo), so
       // testing baseRange first labelled every lane-floor cell a gate hold (13 Oct: grid.allSets "cells held back")
@@ -2456,6 +2471,8 @@ export function* buildTapesGen(
                     ? "baseStop"
                   : !exitConfig && !isSignalInd(c.ind) && p0.trailOnly && !!noTpCells &&
                     !noTpCells.has(protectCellKey(p))
+                    ? "baseCell"
+                  : !exitConfig && p0.priceDistance && !p0.trailOnly && !!floors?.pairTags && !cellSet?.has(protectCellKey(p))
                     ? "baseCell"
                   : !exitConfig && !!p0.tag && !!cellSet && !(p0.trailOnly && !!noTpCells) &&
                     (isLowRangeInd(c.ind) || cellTags!.has(p0.tag)) &&
@@ -2654,16 +2671,6 @@ export function* buildTapesGen(
           return !w || (index >= w.offset && index < w.offset + w.limit);
         };
         const variants = axisVariants(dcaOpt.axis, dcaOpt.protects);
-        // desk stops / trails: the configured floors and the set's live-feedback floors (as adjustProtect)
-        const af = adjust?.[`${c.bot}|${c.ind}|axis`];
-        const deskFloor = {
-          minSl: Math.max(minimumStopFraction(cost), floors?.minSl ?? 0, af?.minSl ?? 0),
-          minTrail: Math.max(floors?.minTrail ?? 0, af?.minTrail ?? 0),
-        };
-        // managed revert stops (derived from the step, ≈ 0.2-0.3 % at a low ATR) are held to the same floors and take
-        // the set's relative widening (they never read p.sl, so without this every adjust step was a no-op — bug
-        // hunt, 13 Oct). The revert variants are the Wide (untagged) ladders: the wide floors are theirs
-        const revFloor = { minSl: deskFloor.minSl, slMult: af?.slMult };
         for (const { p0, ax, tag } of variants) {
           if (!axisInWindow()) {
             done++;
@@ -2675,11 +2682,23 @@ export function* buildTapesGen(
             floors?.baseConfigCounter?.record(c.bot, c.ind, p0l, "axis", [], "holdTooShort");
             done++; continue;
           }
-          const p = adj(c.bot, c.ind, "axis", p0l);
           // the id is the lane cell + variant, never the feedback-adjusted placeholder: Axis takes its stops from
           // the axis / ATR floored at deskFloor / revFloor (which carry the feedback floors; fixed exits use p.sl),
           // so a raised placeholder stop must not change the id — a held position would lose its tape
           const id = configId(c.bot, c.ind, p0l, "axis").replace(/\|axis$/, `${tag}|axis`);
+          // each Axis config reads its own live-feedback record (setKeyOf: pair × axis × its variant tag), never a
+          // sibling depth's or range's: desk stops / trails = the configured floors and that record's floors
+          const ownKey = setKeyOf(id);
+          const af = adjust?.[ownKey];
+          const deskFloor = {
+            minSl: Math.max(minimumStopFraction(cost), floors?.minSl ?? 0, af?.minSl ?? 0),
+            minTrail: Math.max(floors?.minTrail ?? 0, af?.minTrail ?? 0),
+          };
+          // managed revert stops (derived from the step, ≈ 0.2-0.3 % at a low ATR) are held to the same floors and take
+          // the set's relative widening (they never read p.sl, so without this every adjust step was a no-op — bug
+          // hunt, 13 Oct). The revert variants are the Wide (untagged) ladders: the wide floors are theirs
+          const revFloor = { minSl: deskFloor.minSl, slMult: af?.slMult };
+          const p = adj(c.bot, c.ind, "axis", p0l, ownKey);
           if (notOnly(id) || b6Skip(id, `${c.bot}|${c.ind}`, "axis")) {
             floors?.baseConfigCounter?.record(c.bot, c.ind, p0l, "axis", [], "only-ids");
             done++;
@@ -2828,9 +2847,11 @@ export function* buildTapesGen(
               st.built++;
               statKept(st, p0l);
             }
+            // this per-range Axis config's own live-feedback floors (its own setKeyOf record), as the ladders above
+            const raf = adjust?.[setKeyOf(id)];
             const rf = {
-              minSl: Math.max(rv.minSl, deskFloor.minSl),
-              minTrail: deskFloor.minTrail,
+              minSl: Math.max(rv.minSl, minimumStopFraction(cost), floors?.minSl ?? 0, raf?.minSl ?? 0),
+              minTrail: Math.max(floors?.minTrail ?? 0, raf?.minTrail ?? 0),
               maxSl: rv.maxSl,
             };
             const trades: Trade[] = [];
@@ -3014,6 +3035,7 @@ export function baseAllowsTape(
   if (o.basePassed && !o.basePassed.has(pair)) return false;
   if (tp.protect.trailOnly && !isSignalInd(tp.ind) && o.basePassedTrailingOnlyCells)
     return o.basePassedTrailingOnlyCells[pair]?.keys.has(protectCellKey(tp.protect)) ?? false;
+  if (tp.protect.priceDistance && !cellAllowed(tp, o, pair)) return false;
   const ranges = o.basePassedRanges?.[pair];
   if (o.basePassedRanges && !ranges?.length) return false;
   // With Axis perRange off, an admitted pair's independent untagged ladders are not the plain Wide config.
@@ -3234,6 +3256,8 @@ export interface WalkForwardResult {
   signalActiveEnd?: string[];
   /** why each signal unit is or is not in signalActiveEnd (counts per direction and reason, the top long units) */
   signalActivationEnd?: SignalActivationEnd;
+  /** block.auto: each relation × block count's record at the end of the run (key "source#level", or "key#level") */
+  blockAuto?: Array<{ key: string; n: number; pf: number; raise: boolean | null }>;
   /**
    * the signal candidates of the run before any gate: every config's entry in the run, and how many of them belonged to
    * a unit not active at their step (dropped before the gates — counted here, not as skips: they are every config of
@@ -4120,7 +4144,14 @@ const EMPTY_POSITION_CONTEXTS: ReadonlyMap<number, Uint32Array> = new Map();
 function positionEvaluationInput(tp: ConfigTape, t: number) {
   if (!positionTapeValid(tp)) return null;
   const before = lowerBound(tp.exitT, t);
-  return { contexts: before ? prepareSignalContexts(tp) : EMPTY_POSITION_CONTEXTS, before, returns: tp.r };
+  // The per-context index is built on the first lane-scoped judgment only: a config-wide window reads the tape's own
+  // exit-ordered rows and never needs it (most tapes under the default scope), so a selection does not rebuild it.
+  let contexts: ReadonlyMap<number, Uint32Array> | undefined = before ? undefined : EMPTY_POSITION_CONTEXTS;
+  return {
+    get contexts(): ReadonlyMap<number, Uint32Array> { return (contexts ??= prepareSignalContexts(tp)); },
+    before,
+    returns: tp.r,
+  };
 }
 function positionContextEval(
   tp: ConfigTape,
@@ -4129,8 +4160,9 @@ function positionContextEval(
   side: number,
   input: ReturnType<typeof positionEvaluationInput>,
 ): ConfigEval {
-  const policy = o.gates.positionWindows;
-  if (!policy) throw new Error("Position-count policy unavailable");
+  const policyOrNull = o.gates.positionWindows;
+  if (!policyOrNull) throw new Error("Position-count policy unavailable");
+  const policy: PositionWindows = policyOrNull;
   const counts = positionCounts(
     policy,
     isSignalInd(tp.ind) ? "sig" : tp.kind === "exit" ? "exit" : (tp.protect.tag ?? "wide"),
@@ -4139,15 +4171,29 @@ function positionContextEval(
   if(!input) return {ok:false,fail:"closes",n:0,pf:NaN,net:NaN,gp:NaN,gl:NaN,
     windowBasis:"positions",requestedN:counts.main};
   const slot = tp.syms.indexOf(sym);
-  const indices = slot >= 0 && (side === 1 || side === -1)
-    ? input.contexts.get(slot * 2 + (side > 0 ? 1 : 0)) : undefined,
-    end = indices ? lowerBound(indices, input.before) : 0;
   // gates.lastNFloor: a window with fewer closes than requested but at least this many is judged on the closes it has
   const partial = partialFloorOf(policy, o.gates.lastNFloor);
+  // scope "config": the config's own last N closes on every symbol and side (rows are in exit order). Scope "auto": the
+  // context's own closes once it holds its floor (an independent lane), else the config's own record across symbols
+  const scope = positionScopeOf(tp, policy);
+  const own = scope !== "config" && slot >= 0 && (side === 1 || side === -1)
+    ? input.contexts.get(slot * 2 + (side > 0 ? 1 : 0)) : undefined;
+  const ownEnd = own ? lowerBound(own, input.before) : 0;
+  // scope "both" (Micro's default): the lane's own window AND the config's record must pass; its own sample is reported
+  if (scope === "both") {
+    const lane = judge(false);
+    if (!lane.ok) return lane;
+    const wide = judge(true);
+    return wide.ok ? lane : wide;
+  }
+  return judge(scope === "config" || (scope === "auto" && ownEnd < Math.max(1, partial || counts.main)));
+  function judge(pooled: boolean): ConfigEval {
+  const indices = pooled ? undefined : own,
+    end = pooled ? input!.before : ownEnd;
   const take = (n: number, stage?: "base"|"main"|"real"|"entry") => {
     const blocks=stage?policy.blocks?.[stage]:undefined; if(blocks)n=blockRequired(blocks);
     const values: number[] = [];
-    for (let j = Math.max(0, end - n); j < end; j++) values.push(input.returns[indices![j]]);
+    for (let j = Math.max(0, end - n); j < end; j++) values.push(input!.returns[pooled ? j : indices![j]]);
     return positionStageStats(values,n,blocks,minPfForTape(tp,o),partial);
   };
   const main = take(counts.main,"main"),
@@ -4196,7 +4242,7 @@ function positionContextEval(
     const parts = Math.max(2, o.durableSplits),
       values: number[] = [];
     if (mainLongN < parts) return no("stable");
-    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input.returns[indices![j]]);
+    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input!.returns[pooled ? j : indices![j]]);
     let passing = 0;
     for (let k = 0; k < parts; k++) {
       const a = Math.floor((values.length * k) / parts),
@@ -4211,7 +4257,7 @@ function positionContextEval(
   if (blocks >= 2) {
     if (mainLongN < 2 * blocks) return no("stable");
     const values: number[] = [];
-    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input.returns[indices![j]]);
+    for (let j = mainEnd - mainLongN; j < mainEnd; j++) values.push(input!.returns[pooled ? j : indices![j]]);
     for (let k = 0; k < blocks; k++) {
       const a = Math.floor((values.length * k) / blocks),
         b = Math.floor((values.length * (k + 1)) / blocks),
@@ -4220,7 +4266,14 @@ function positionContextEval(
     }
   }
   return { ok: true, lcb: main.lcb, gh: main.positiveShare, ddt: 0, ...base };
+  }
 }
+/** The window scope a tape is judged with: its range's own scope, else the policy's, else per context. */
+export function positionScopeOf(tp: Pick<ConfigTape, "ind" | "kind" | "protect">, policy: PositionWindows) {
+  const tag = isSignalInd(tp.ind) ? "sig" : tp.kind === "exit" ? "exit" : (tp.protect.tag ?? "wide");
+  return policy.byRange?.[tag]?.scope ?? policy.scope ?? "context";
+}
+
 function positionAggregate(
   tp: ConfigTape,
   t: number,
@@ -4232,6 +4285,18 @@ function positionAggregate(
   if (!detailed && input?.before === 0)
     return { ok: false, fail: "closes", n: 0, gp: 0, gl: 0, net: 0, pf: profitFactor(0, 0), windowBasis: "positions" };
   const contexts: NonNullable<ConfigEval["contexts"]> | undefined = detailed ? [] : undefined;
+  // scope "config": every context reads the same pooled window, so it is judged once (counting it once per context
+  // multiplied the reported closes and sums by the number of contexts)
+  if (o.gates.positionWindows && positionScopeOf(tp, o.gates.positionWindows) === "config") {
+    const syms = [...new Set(tp.syms)];
+    const e = positionContextEval(tp, o, syms[0] ?? "", side ?? 1, input);
+    if (contexts) for (const sym of syms) for (const direction of side === undefined ? SIGNAL_SIDES : [side])
+      contexts.push({ sym, side: direction, evaluation: e });
+    // the same shape as the aggregate below (the detailed and the summary readings must agree)
+    const base = { n: e.n, gp: e.gp ?? 0, gl: e.gl ?? 0, net: (e.gp ?? 0) - (e.gl ?? 0), pf: profitFactor(e.gp ?? 0, e.gl ?? 0),
+      ...(contexts ? { contexts } : {}), windowBasis: "positions" as const };
+    return e.ok ? { ok: true, lcb: e.lcb, gh: e.gh, ddt: 0, ...base } : { ok: false, fail: e.fail, ...base };
+  }
   let passed = 0, nAll = 0, gpAll = 0, glAll = 0, nYes = 0, gpYes = 0, glYes = 0;
   let lcb = Infinity, gh = Infinity, firstFail: EvalGate | undefined;
   for (const sym of new Set(tp.syms)) for (const direction of side === undefined ? SIGNAL_SIDES : [side]) {
@@ -4276,6 +4341,13 @@ function positionAggregate(
  */
 export class EvalMemo {
   readonly byTape = new Map<ConfigTape, { before: number; ev: ConfigEval }>();
+  /**
+   * Per tape, what the selection's static filters said (bots, Base admission, cell, seat key): they read only option
+   * objects that stay fixed through a run, so they are computed once; `staticRefs` are the inputs they were computed
+   * with, and any change rebuilds them.
+   */
+  readonly staticSeat = new Map<ConfigTape, { keep: boolean; pair: string }>();
+  staticRefs: readonly unknown[] | null = null;
   /** tapes with a close settled since their verdict was computed (only while events are attached) */
   readonly dirty = new Set<ConfigTape>();
   private times = new Float64Array(0);
@@ -4376,15 +4448,27 @@ function* selectPositionsGen(
       failures: {},
       setPf: emptyValidatedSetPf(),
     };
+  // the static filters per tape, cached on the run's memo while their inputs stay the same
+  const memo = o.evalMemo;
+  const refs = [o.bots, o.basePassed, o.basePassedRanges, o.basePassedTrailingOnlyCells, o.baseWideLadderPairs,
+    o.exitBasePassed, o.basePassedCells, o.invertSeats, o.probe, o.seatSet, o.validated, o.microSeats, o.seatPer];
+  if (memo && (!memo.staticRefs || memo.staticRefs.length !== refs.length || memo.staticRefs.some((x, k) => x !== refs[k]))) {
+    memo.staticSeat.clear();
+    memo.staticRefs = refs;
+  }
   for (let i = 0; i < tapes.length; i++) {
     const tp = tapes[i];
-    if (
-      (tp.kind !== "exit" && o.bots.length && !o.bots.includes(tp.bot)) ||
-      !baseAllowsTape(tp, o) ||
-      !cellAllowed(tp, o)
-    )
+    let st = memo?.staticSeat.get(tp);
+    if (!st) {
+      const keep = !((tp.kind !== "exit" && o.bots.length && !o.bots.includes(tp.bot)) || !baseAllowsTape(tp, o) || !cellAllowed(tp, o));
+      st = { keep, pair: keep ? seatKey(tp, o) : "" };
+      memo?.staticSeat.set(tp, st);
+    }
+    if (!st.keep) {
+      if (i % 64 === 0) yield -14;
       continue;
-    const pair = seatKey(tp, o);
+    }
+    const pair = st.pair;
     pairTotal.set(pair, (pairTotal.get(pair) ?? 0) + 1);
     const ev = configEvalSummary(tp, t, o),
       w = {
@@ -4406,7 +4490,7 @@ function* selectPositionsGen(
     if (ev.ok && !tp.heldOnly && tapeExecutable(tp, o) && inValidated(tp.id, o))
       cand.push({
         id: tp.id,
-        pair: seatKey(tp, o),
+        pair,
         score:
           o.rankBy === "green"
             ? ev.gh + Math.min(1, Math.max(0, ev.lcb)) * 1e-6
@@ -4884,6 +4968,7 @@ export function cellAllowed(
   if (tp.protect.trailOnly && !isSignalInd(tp.ind) && o.basePassedTrailingOnlyCells)
     return o.basePassedTrailingOnlyCells[pair]?.keys.has(protectCellKey(tp.protect)) ?? false;
   const c = o.basePassedCells?.[pair];
+  if (tp.protect.priceDistance) return c?.keys.has(protectCellKey(tp.protect)) ?? false;
   const tag = tp.protect.tag;
   if (!c) return !o.basePassedCells || !isLowRangeInd(tp.ind);
   if (!tag || !c.tags.has(tag)) return !isLowRangeInd(tp.ind);
@@ -5822,16 +5907,13 @@ function qualifiedDirectionTape(
         : null;
 }
 
-/** Only queried config contexts allocate an index; original tape returns/times are never copied. */
+/** Only queried config contexts allocate an index; original tape returns/times are never copied.
+ * The bound covers a whole book of lane-scoped tapes (Micro's "both" scope reads every Micro tape at each selection):
+ * at 512 a book of a few thousand Micro tapes rebuilt every index on every call. An index is 4 bytes per close, half
+ * of the tape's own return column, so the bound adds at most about half of the indexed tapes' resident returns. */
 const signalContextIndices = new DerivedCache<ConfigTape, {
   source: CountSignalSource; n: number; contexts: Map<number, Uint32Array>;
-}>(512, derivedIndexBytes);
-/** Conservative accounting for disposable indexes; actual active calculations can temporarily use more. */
-export function derivedIndexCacheStats() {
-  return { perCacheLimit: derivedIndexBytes, symbol: symIdxMemo.retainedBytes,
-    direction: directionIndices.retainedBytes, views: directionTapes.retainedBytes,
-    signal: signalContextIndices.retainedBytes };
-}
+}>(16_384);
 const completeSignalContexts = new WeakSet<Map<number, Uint32Array>>();
 function currentSignalContexts(tp: ConfigTape): Map<number, Uint32Array> {
   const cached = signalContextIndices.get(tp);
@@ -6000,6 +6082,8 @@ export type ExecDecision =
       src?: BlockSource[];
       /** Explicit diagnostic capture from this entry's causal Block history. */
       blockLevels?: Partial<Record<BlockSource, number>>;
+      /** block.auto: per relation at its level, whether Auto or the manual switch decided it */
+      blockDecidedBy?: Partial<Record<BlockSource, "auto" | "manual">>;
       blockAttribution?: BlockAttribution;
       blockEffectiveLevels?: Partial<Record<BlockSource, number>>;
       blockSampleCounts?: Partial<Record<BlockSource, number>>;
@@ -6037,8 +6121,16 @@ export const crowdRangeOf = (cfg: string): string =>
  * A pair event: indicator pair (bot|ind, the config id's first two fields) × symbol × side × strategy type × entry minute.
  * Historic Exit configs keep their own identity (an exit config is its own event).
  */
-export const pairEventKey = (cfg: string, sym: string, side: number, kind: string | undefined, entryT: number) => {
-  const pair = isHistoricExitConfig(cfg, kind) ? cfg : cfg.split("|", 2).join("|");
+export const pairEventKey = (
+  cfg: string,
+  sym: string,
+  side: number,
+  kind: string | undefined,
+  entryT: number,
+  axisOwn = true,
+) => {
+  // an Axis config (each depth / range / mode is its own Set) is its own event, as a Historic Exit config is
+  const pair = isHistoricExitConfig(cfg, kind) || (axisOwn && kind === "axis") ? cfg : cfg.split("|", 2).join("|");
   return `${pair}|${sym}|${side > 0 ? 1 : -1}|${kind ?? ""}|${Math.floor(entryT / 60_000)}`;
 };
 export const crowdKey = (cfg: string, sym: string, side: number, entryT: number) =>
@@ -6067,13 +6159,15 @@ export const blockEntryOf = (
   entryT: x.entryT,
 });
 
-const OWN_SOURCES = {
+const OWN_SOURCES: Record<BlockSource, boolean> = {
   config: true,
+  lane: true,
   overall: false,
   symbol: false,
   direction: false,
   indication: false,
   type: false,
+  range: false,
 };
 
 /** Real-stage execution rules for one candidate entry (toggles, last-N, Block / Block Active). */
@@ -6379,6 +6473,10 @@ export function execDecision(
     type: tp.kind,
     cfg: tp.id,
   };
+  // the config source's key under the configured scope (config-wide by default: the config's own record across symbols
+  // and sides); every other source keeps its own key
+  const keyOf = (src: BlockSource) =>
+    sourceKey(src, t, false, o.block.configScope === "config" ? "config" : "context");
   // a signal on its own record: only its config source counts (no pooled book)
   const own = !!o.block.signalsOwn && isSignalInd(tp.ind);
   const blk = own ? { ...o.block, sources: OWN_SOURCES } : o.block;
@@ -6387,23 +6485,46 @@ export function execDecision(
   // Accepted-order history must not borrow unexecuted raw config wins, including when the book is absent.
   const configLevel =
     (blk.historySource === "accepted-orders" || blk.historySource === "processed-orders")
-      ? (ctx?.book?.level(sourceKey("config", t), blk.maxLevel) ?? 0)
-      : blockLevel(tp, entryT, blk, ctx, observed);
+      ? (ctx?.book?.level(keyOf("config"), blk.maxLevel) ?? 0)
+      // legacy raw-tape diagnostic: config-wide reads the tape's own closes on every symbol and side
+      : blockLevel(tp, entryT, blk, blk.configScope === "config" ? undefined : ctx, observed);
   const levels = { config: configLevel, ...bookLevels(book, t, blk.maxLevel) };
+  // Automatic evaluation (block.auto): every relation's count at its current level decides by its own newest results
+  // whether it raises (an observed relation that Auto switches on raises with its own ratio); without enough results
+  // the manual switch holds. The evidence lives in the book (accepted closes, at the level each relation stood at entry).
+  const auto = ctx?.book?.auto ?? null;
+  let decidedBy: Partial<Record<BlockSource, "auto" | "manual">> | undefined;
+  let blkEff = blk;
+  if (auto) {
+    const manual = sourcesOf(blk);
+    const eff: Record<BlockSource, boolean> = { ...manual };
+    decidedBy = {};
+    for (const src of BLOCK_SOURCES) {
+      // a signal on its own record keeps only its own relations
+      if (own && !OWN_SOURCES[src]) { eff[src] = false; continue; }
+      const level = levels[src] ?? 0;
+      if (level < 1) continue;
+      const v = auto.verdict(src, keyOf(src), Math.min(level, auto.maxLevel));
+      eff[src] = v.raise ?? manual[src];
+      decidedBy[src] = v.raise === null ? "manual" : "auto";
+    }
+    blkEff = { ...blk, sources: eff };
+  }
   const d = blockDecide(
     levels,
-    blk,
+    blkEff,
     !!tg.blockActive,
-    (src) => !!ctx?.book?.paused(sourceKey(src, t)),
+    (src) => !!ctx?.book?.paused(keyOf(src)),
   );
-  const traceSources = o.blockTrace ? sourcesOf(blk) : null;
+  const traceSources = o.blockTrace ? sourcesOf(blkEff) : null;
   const trace = o.blockTrace
     ? {
         blockLevels: levels,
+        ...(decidedBy ? { blockDecidedBy: decidedBy } : {}),
         blockEffectiveLevels: Object.fromEntries(
           BLOCK_SOURCES.map((src) => [
             src,
-            traceSources?.[src] && !ctx?.book?.paused(sourceKey(src, t)) ? levels[src] : 0,
+            traceSources?.[src] && !ctx?.book?.paused(keyOf(src)) ? levels[src] : 0,
           ]),
         ),
         blockSampleCounts: Object.fromEntries(
@@ -6411,9 +6532,9 @@ export function execDecision(
             src,
             src === "config"
               ? (blk.historySource === "accepted-orders" || blk.historySource === "processed-orders")
-                ? (ctx?.book?.sampleCount(sourceKey(src, t), blk.maxLevel) ?? 0)
+                ? (ctx?.book?.sampleCount(keyOf(src), blk.maxLevel) ?? 0)
                 : (observed?.n ?? 0)
-              : (book?.sampleCount(sourceKey(src, t), blk.maxLevel) ?? 0),
+              : (book?.sampleCount(keyOf(src), blk.maxLevel) ?? 0),
           ]),
         ),
       }
@@ -6631,16 +6752,20 @@ function countEmptyRows(capacity: number): CountEmptyRows {
     n: new Float64Array(capacity), fromT: new Float64Array(capacity), floor: new Float64Array(capacity),
     flags: new Uint8Array(capacity), generation: new Array(capacity), id: new Array(capacity), symbols: new Array(capacity) };
 }
-/** Earliest own close that could make a currently rejected count context judgeable; never a future-return read. */
+/** Earliest close that could change a rejected window under its configured evidence scope. */
 function countRejectedUntil(tp: ConfigTape, t: number, o: WalkForwardOptions, fallback: number): number {
   const policy = o.gates.positionWindows!;
-  const counts = positionCounts(policy, "sig", tp.id);
+  const counts = positionCounts(policy, isSignalInd(tp.ind) ? "sig" : (tp.protect.tag ?? "wide"), tp.id);
   const range = o.rangeGate && tapeRangeGateOn(o.rangeGate, tp) ? o.rangeGate : undefined;
+  const partial = partialFloorOf(policy, o.gates.lastNFloor);
+  const required = (n: number) => partial > 0 ? Math.min(n, partial) : n;
   const need = Math.max(...(["main", "real", "entry"] as const).map(stage =>
-    policy.blocks?.[stage] ? blockRequired(policy.blocks[stage]!) : counts[stage]), range?.lastN ?? 0);
+    policy.blocks?.[stage] ? blockRequired(policy.blocks[stage]!) : required(counts[stage])), range ? required(range.lastN) : 0);
   if (!Number.isSafeInteger(need) || need < 1) return fallback;
-  let until = Infinity;
   const exitT = tp.exitT, before = lowerBound(exitT, t);
+  // Any close in this config can complete a pooled sample or change its verdict.
+  if (positionScopeOf(tp, policy) !== "context") return exitT[Math.max(need - 1, before)] ?? Infinity;
+  let until = Infinity;
   for (const sym of new Set(tp.syms)) for (const side of [1, -1]) {
     const indices = signalContextOf(tp, sym, side);
     if (!indices || indices.length < need) continue;
@@ -6676,9 +6801,10 @@ function* signalWindowRows(
         for (const side of [1, -1]) {
           const ev = positionContextEval(tp, options, sym, side, input);
           if (!ev.ok) continue;
-          const indices = signalContextOf(tp, sym, side)!;
+          const indices = signalContextOf(tp, sym, side);
+          if (!indices?.length) continue;
           const end = lowerBound(indices, lowerBound(tp.exitT, t));
-          const own = Array.from(indices.subarray(end - counts.main, end));
+          const own = Array.from(indices.subarray(Math.max(0, end - counts.main), end));
           const rows = negHours
             ? own.filter((i) => negHours.has(Math.floor(tp.exitT[i] / H)))
             : own;
@@ -7712,6 +7838,7 @@ export function* walkForwardGen(
   // every candidate in exit order, collected as they settle (the heap pops in the order of a stable sort by exit:
   // sorting the whole feed at the end was one long slice)
   const feed: BlockFeedEntry[] = [];
+  const lean = o.resultLean === true;
   const vopen = new ExitHeap<BlockFeedEntry>(); // candidates not closed yet, by exit
   const seen = new Map<string, BlockFeedEntry>();
   // signal confirmation's pool: the engine candidates in vopen (processed, taken or not, not closed yet) per symbol ×
@@ -7757,7 +7884,8 @@ export function* walkForwardGen(
       const fx = vopen.pop()!;
       if (fx.cfg && !sigCfg(fx.cfg) && !isHistoricExitConfig(fx.cfg, fx.type)) engineOpen.add(fx.sym, fx.side, -1);
       if (fx.blockProcessed && fx.cfg) blockPredecessors.add({cfg:fx.cfg,sym:fx.sym,side:fx.side}, -1);
-      feed.push(fx);
+      // resultLean: the books still read every settled entry; only the returned copy of the feed is not kept
+      if (!lean) feed.push(fx);
       feedBooks(fx, book, guard, direction, relateBook);
       if (!fx.open) s2For(fx.cfg ?? "", fx.type, true)?.close(fx);
       if (++settled % 32 === 0) yield -2;
@@ -7826,6 +7954,7 @@ export function* walkForwardGen(
   const signalActivation = o.signalRank && sigIdx.length
     ? new SignalActivationBook(sigIdx, o.signalRank, signalHistoryHours(o), o) : null;
   const recordSignalStep = (t: number, keys: Set<string>) => {
+    if (lean) return;
     const before = signalSteps.at(-1)?.keys;
     // Identical ordered sets share their preceding snapshot; replay/audit reads the last change at or before t.
     if (before?.length === keys.size) {
@@ -8112,7 +8241,7 @@ export function* walkForwardGen(
           (crowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) >= crowdCapOf(o, tr.cfg)
         )
           why = "crowd";
-        else if (o.onePerPairEvent && pairEvents.has(pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT)))
+        else if (o.onePerPairEvent && pairEvents.has(pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT, o.pairEventAxisOwn !== false)))
           why = "pairEvent";
         const vf = (indicationVolumeFactors.get(tp.id) ?? 1)*relationalVolumeFactor(o.relationalVolumeRatios,{indicationType:kindOfInd(tp.ind),indication:laneOf(tp.ind).base,strategy:tp.kind,range:tp.kind==="exit"?"exit":isSignalInd(tp.ind)?"sig":tp.protect.tag??"wide",symbol:tr.sym});
         const hedgeVol = hedging ? (o.coord?.hedgeVolumeFactor ?? 1) : 1;
@@ -8216,7 +8345,7 @@ export function* walkForwardGen(
             : {}),
         };
         executedKeys.add(dk);
-        if (o.onePerPairEvent) pairEvents.add(pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT));
+        if (o.onePerPairEvent) pairEvents.add(pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT, o.pairEventAxisOwn !== false));
         if (o.entryCrowd) {
           const ck = crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT);
           crowd.set(ck, (crowd.get(ck) ?? 0) + 1);
@@ -8322,7 +8451,8 @@ export function* walkForwardGen(
   // candidates still open at the end close the feed, in exit order (they never reached the books)
   let drained = 0;
   while (vopen.size) {
-    feed.push(vopen.pop()!);
+    const open = vopen.pop()!;
+    if (!lean) feed.push(open);
     if (++drained % 32 === 0) yield -12;
   }
   const hasHedgeEnd = !!(o.coord?.enabled && o.coord.hedge && sigIdx.length);
@@ -8378,6 +8508,8 @@ export function* walkForwardGen(
     ...(s2 ? { s2: s2.snapshot(stopT) } : {}),
     ...(exitS2.size ? { exitS2: Object.fromEntries([...exitS2].map(([cfg, own]) => [cfg, own.snapshot(stopT)])) } : {}),
     ...(relateBook ? { relate: relateBook.summary() } : {}),
+    // block.auto: every relation × count's record at the end of the run (results, PF, verdict)
+    ...(book?.auto ? { blockAuto: book.auto.table() } : {}),
     ...(hasHedgeEnd ? { hedgeEnd: hedgeEndKeys ?? [] } : {}),
     ...(o.signalRank
       ? { signalSteps, signalActiveEnd: signalActiveEnd ?? [], signalActivationEnd: activationEnd(activationRep) }

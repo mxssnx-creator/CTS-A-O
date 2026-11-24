@@ -1,6 +1,7 @@
 // Managed revert Axis (the default Axis mode, x01's) honours the stop floors and the live-feedback adjuster: its
 // derived stop (≈ 0.2-0.3 % of price at a low ATR) is floored at max(EVAL_MIN_SL, protectFloor.minSl, the set's
 // adjust minSl) and widened by the set's slMult, as desk mode floors its stops (bug hunt, 13 Oct).
+import { setKeyOf } from "../adjust.ts";
 import { minimumStopFraction } from "../protection-policy.ts";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -90,9 +91,10 @@ describe("axis revert (managed): stop floors and the live-feedback adjuster", ()
   it("buildTapes: a live-feedback step (minSl 2 %) reaches the managed revert tapes", () => {
     const base = revert(null);
     const adjust: AdjustState = {};
-    for (const c of combos)
-      adjust[`${c.bot}|${c.ind}|axis`] = {
-        set: `${c.bot}|${c.ind}|axis`,
+    // each Axis config has its own feedback record (setKeyOf keeps the variant tag): step every built config's own
+    for (const key of new Set(base.map((t) => setKeyOf(t.id))))
+      adjust[key] = {
+        set: key,
         level: 9,
         minSl: 0.02,
         minTrail: 0.01,

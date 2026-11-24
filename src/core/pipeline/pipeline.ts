@@ -1,3 +1,4 @@
+import { applyPriceDistanceGrid, type PriceDistanceGrid } from "../price-distance-grid.ts";
 import { slCalibrationOf, slRatiosOf, type AutoSlRatios } from "../sl-ratios.ts";
 import { calibrateSlBounds, slWithinBounds, type SlBounds, type SlSample } from "../sl-calibration.ts";
 import { partialFloorOf, positionCounts } from "../position-windows.ts";
@@ -15,7 +16,7 @@ import { profitFactorRatio } from "../metrics/profit-factor.mjs";
 import { BOTS, entrySignal } from "../bots/bots.ts";
 import { cappedExecution, clearCappedProjections, hasMinutePrices } from "../sim/capped-execution.ts";
 import { tacticCooldown } from "../indications/filters.ts";
-import { DEFAULT_PROTECT, PROTECT_GRID, type CoreSettings } from "../config.ts";
+import { DEFAULT_PROTECT, GRID_VARIANTS_MAX, PROTECT_GRID, type CoreSettings } from "../config.ts";
 import { RT_COST } from "../model-cost.ts";
 import type {
   Bars,
@@ -89,7 +90,7 @@ import { buildPortfolio, type Portfolio } from "./portfolio.ts";
 import { baseWindowsPlan, judgeBaseWindows, type BaseWindowsPlan } from "./base-windows.ts";
 import { baseCellAccumulator } from "./base-cell-stats.ts";
 import { baseLastNForRange, baseLastNOf, passesBaseLastN } from "./base-lastn.ts";
-import { SIGNAL_STOP_LIMIT, capTrailingOnlyProtect, trailingOnlyProtects } from "../sim/trailing.ts";
+import { SIGNAL_STOP_LIMIT, applyTrailingGapBasis, capTrailingOnlyProtect, trailingOnlyProtects } from "../sim/trailing.ts";
 
 export interface Universe {
   bars: Bars[];
@@ -222,9 +223,9 @@ export function laneProtect(p: Protect, ind: string): Protect {
   return {
     ...p,
     tp: p.trailOnly ? 0 : floor(r4(p.tp), LANE_MIN.tp),
-    sl: floor(r4(p.sl), LANE_MIN.sl),
+    sl: p.priceDistance ? p.sl : floor(r4(p.sl), LANE_MIN.sl),
     // the lane floor is on the trailing distance (trail × trailStep), not on the arming move
-    trail: p.trail > 0 ? floor(r4(p.trail), LANE_MIN.trail / (p.trailStep ?? 1)) : 0,
+    trail: p.priceDistance ? p.trail : p.trail > 0 ? floor(r4(p.trail), LANE_MIN.trail / (p.trailStep ?? 1)) : 0,
     hold: Math.max(p.tag && p.hold < 2 ? 1 : 2, Math.round((p.hold * REF_TF) / tf)),
   };
 }
@@ -454,7 +455,7 @@ const pct = (x: number) => Math.round(x * 1e6) / 10000;
 const atrTag = (p: Protect) =>
   p.atr ? `|atr${p.atr.sl}x${p.atr.tpRatio}${p.atr.trail ? `t${p.atr.trail}` : ""}` : "";
 export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind): string {
-  const mode = `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}${p.trail > 0 && p.trailFree ? "|tf1" : ""}${p.trailMax !== undefined ? `|tm${pct(p.trailMax)}` : ""}`;
+  const mode = `${p.priceDistance ? "|pd" : ""}${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailFixed ? "|tge" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}${p.trail > 0 && p.trailFree ? "|tf1" : ""}${p.trailMax !== undefined ? `|tm${pct(p.trailMax)}` : ""}`;
   const caps = p.riskCaps ? `|rc${pct(p.riskCaps.sl)}x${pct(p.riskCaps.trail)}` : "";
   const exitFloor = p.exitType === "historic" && p.trail > 0 && (p.exitTrailFloor ?? 0) > 0
     ? `|eg${pct(p.exitTrailFloor ?? 0)}` : "";
@@ -518,6 +519,8 @@ const fromPct = (s: string) => +(Number(s) / 100).toFixed(6);
 export function parseConfigId(id: string): { bot: BotType; ind: string; protect: Protect } | null {
   const minuteHold = /\|hm([\d.]+)(?=\||$)/.exec(id);
   const mode = /\|to(?=\||$)/.exec(id);
+  const fixedTrail = /\|tge(?=\||$)/.exec(id);
+  const priceDistance = /\|pd(?=\||$)/.test(id);
   const ratio = /\|ts([\d.]+)(?=\||$)/.exec(id);
   const free = /\|tf1(?=\||$)/.exec(id);
   const ceiling = /\|tm([\d.]+)(?=\||$)/.exec(id);
@@ -525,7 +528,7 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   const exitFloor = /\|eg([\d.]+)(?=\||$)/.exec(id);
   const ladder = /\|dc([1-4])s([\d.]+)q([\d.]+)g([\d.]+)r([\d.]+)(?:m([\d.]+))?(?=\||$)/.exec(id);
   // Remove each token once; duplicates or malformed tokens remain and fail the strict grammar below.
-  const plainId = id.replace(/\|rc[\d.]+x[\d.]+(?=\||$)/, "").replace(/\|hm[\d.]+(?=\||$)/, "").replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|eg[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?:m[\d.]+)?(?=\||$)/, "").replace(/\|blk(?=\||$)/, "");
+  const plainId = id.replace(/\|pd(?=\||$)/, "").replace(/\|rc[\d.]+x[\d.]+(?=\||$)/, "").replace(/\|hm[\d.]+(?=\||$)/, "").replace(/\|to(?=\||$)/, "").replace(/\|tge(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|eg[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?:m[\d.]+)?(?=\||$)/, "").replace(/\|blk(?=\||$)/, "");
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
@@ -571,6 +574,7 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
     protect.atr = { sl: +m[7], tpRatio: +m[8], ...(m[9] !== undefined ? { trail: +m[9] } : {}) };
   if (m[10] !== undefined) protect.tag = m[10].slice(1) as RangeTag;
   if (isLowRangeInd(m[2])) protect.lowRangeOnly = true;
+  if (priceDistance) protect.priceDistance = true;
   if (m[11] !== undefined) {
     protect.exitType = "historic";
     if (m[12] === "L") protect.exitSide = 1;
@@ -591,6 +595,10 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
     const step = Number(ratio[1]);
     if (!(Number.isFinite(step) && step > 0 && protect.trail > 0)) return null;
     protect.trailStep = step;
+  }
+  if (fixedTrail) {
+    if (!(protect.trail > 0) || protect.exitType === "historic") return null;
+    protect.trailFixed = true;
   }
   if (free) {
     if (!(protect.trail > 0) || mode) return null;
@@ -718,10 +726,10 @@ export interface ComboRun {
 }
 
 /** The effective protection policy proved by Base; preserve legacy keys for the default policy. */
-export const protectCellKey = (p: Pick<Protect, "tp" | "sl" | "trail" | "hold" | "tag" | "maxHoldMin" | "trailOnly" | "trailStep" | "trailFree" | "trailMax" | "riskCaps">) =>
+export const protectCellKey = (p: Pick<Protect, "tp" | "sl" | "trail" | "hold" | "tag" | "maxHoldMin" | "trailOnly" | "trailFixed" | "trailStep" | "trailFree" | "trailMax" | "riskCaps" | "priceDistance">) =>
   `${p.tag ?? ""}|${p.tp}|${p.sl}|${p.trail}|${p.hold}${p.maxHoldMin !== undefined ? `|hm${p.maxHoldMin}` : ""}` +
-  `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}` +
-  `${p.riskCaps ? `|rc${p.riskCaps.sl}x${p.riskCaps.trail}` : ""}${p.trail > 0 && p.trailFree ? "|tf1" : ""}${p.trailMax !== undefined && !(p.trailOnly && p.trailMax === SIGNAL_STOP_LIMIT) ? `|tm${p.trailMax}` : ""}`;
+  `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailFixed ? "|tge" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}` +
+  `${p.priceDistance ? "|pd" : ""}${p.riskCaps ? `|rc${p.riskCaps.sl}x${p.riskCaps.trail}` : ""}${p.trail > 0 && p.trailFree ? "|tf1" : ""}${p.trailMax !== undefined && !(p.trailOnly && p.trailMax === SIGNAL_STOP_LIMIT) ? `|tm${p.trailMax}` : ""}`;
 
 /** Base result of a pair at one range's representative cell (full history). */
 export interface RangeBaseStat {
@@ -801,7 +809,7 @@ function withSlCal(
   const per = new Map<string, ReturnType<typeof cal>>(Object.entries(byTag).map(([t, r]) => [t, cal(r)]));
   const lr = cal(lowRange);
   for (const p of out) {
-    if (!(p.tp > 0) || p.trailOnly || p.atr) continue;
+    if (!(p.tp > 0) || p.trailOnly || p.atr || p.priceDistance) continue;
     const c = p.lowRangeOnly ? lr : per.get(p.tag ?? "");
     if (c) p.slCal = c;
   }
@@ -886,9 +894,14 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
       if (!seen.has(key)) { seen.add(key); out.push(p); }
     }
   const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, REF_TF, g.lowRange?.minSlDistancePct ?? .1, ownSlFloor(g.lowRange, cost) ?? slFloor) : []);
+  if (g.priceDistances?.enabled) {
+    const priced = applyPriceDistanceGrid(applyTrailingGapBasis([...out, ...lowRange], g.trailGapBasis), g, cost, GRID_VARIANTS_MAX);
+    return withSlCal(g.trailingOnly ? [...priced, ...trailingOnlyProtects(priced)] : priced,
+      { "": g, mc: g.micro, mn: g.minimal, sh: g.short, gn: g.general, lg: g.long }, g.lowRange);
+  }
   if (g.trailingOnly) out.push(...trailingOnlyProtects(out), ...trailingOnlyProtects(lowRange));
   out.push(...lowRange);
-  return withSlCal(out, { "": g, mc: g.micro, mn: g.minimal, sh: g.short, gn: g.general, lg: g.long }, g.lowRange);
+  return applyTrailingGapBasis(withSlCal(out, { "": g, mc: g.micro, mn: g.minimal, sh: g.short, gn: g.general, lg: g.long }, g.lowRange), g.trailGapBasis);
 }
 
 export function baseRangeProtects(
@@ -901,6 +914,7 @@ export function baseRangeProtects(
     minTrail?: number;
     /** grid.baseTrailCells: also measure one trailed cell per range target (off = every Base cell at trail 0) */
     baseTrailCells?: boolean;
+    priceDistances?: PriceDistanceGrid;
     /** grid.baseCells: every hold of the range, and with baseTrailCells every trail ratio at every stop */
     baseCells?: boolean;
     /** Independent no-TP trailing-only cells, distinct from capped-trailing Base sampling. */
@@ -908,6 +922,7 @@ export function baseRangeProtects(
     /** the grid's trailing step and trail-free switch: a Base trailed cell is the cell the grid builds */
     trailStep?: number;
     trailFree?: boolean;
+    trailGapBasis?: "entry" | "peak";
     micro?: CoordRangeLike | false;
     minimal?: CoordRangeLike | false;
     short?: CoordRangeLike | false;
@@ -917,6 +932,7 @@ export function baseRangeProtects(
   /** round-trip cost (settings.cost): Micro's net targets become price targets (tpNetOfCost) */
   cost?: number,
 ): Protect[] {
+  if (g.priceDistances?.enabled) return completeBaseRangeProtects(g as CoreSettings["grid"], cost ?? RT_COST);
   const slFloor = g.minSlEval ?? minimumStopFraction(cost ?? RT_COST);
   const mid = <T,>(xs: readonly T[]) => xs[Math.floor((xs.length - 1) / 2)];
   const holdAll = Math.max(2, Math.round(((g.holdH?.[0] ?? 16) * 60) / REF_TF));
@@ -1074,7 +1090,7 @@ export function baseRangeProtects(
     }, cost ?? RT_COST);
     out.push(...complete.filter((p) => p.trailOnly && p.tag && tags.has(p.tag)));
   }
-  return withSlCal(out, { mc: g.micro, mn: g.minimal, sh: g.short, gn: g.general, lg: g.long });
+  return applyTrailingGapBasis(withSlCal(out, { mc: g.micro, mn: g.minimal, sh: g.short, gn: g.general, lg: g.long }), g.trailGapBasis);
 }
 type CoordRangeLike = {
   slAuto?: import("../sl-ratios.ts").AutoSlRatios;
@@ -1368,6 +1384,7 @@ export function* baseRangeCountsGen(
   g: BaseReportingGates,
   allTags: readonly string[],
   eligible: (ind: string, tag: string) => boolean = () => true,
+  exactPrice: (ind: string, tag: string) => boolean = () => false,
 ): Generator<number, BaseRangeCount[]> {
   const median = (xs: number[]) => {
     const v = xs.filter(Number.isFinite).sort((a, b) => a - b);
@@ -1388,10 +1405,12 @@ export function* baseRangeCountsGen(
       processed++;
       if (!eligible(r.ind, tag)) continue;
       evaluated++;
-      const own = tag ? r.ranges?.[tag] : undefined;
+      const exact = exactPrice(r.ind, tag);
+      const own = tag || exact ? r.ranges?.[tag] : undefined;
+      if (exact && !own) continue;
       // no own cell: the pair is judged at the default protect, so these are the DEFAULT protect's figures, not the
       // range's. ownCells records how many rows carry the range's own distances, so a report can say which it is.
-      if (own) ownCells++;
+      if (own || !tag) ownCells++;
       const st = own ?? r.full;
       const ownGates = own ? { ...g, baseLastN: baseLastNForRange(g, tag) } : g;
       // EMPTY_STATS carries pf: 0 for gate arithmetic, but an empty close sample has no measured PF.
@@ -1419,8 +1438,7 @@ export function* baseRangeCountsGen(
       pfPassedPooled: pooled.pf,
       passedGp: pooled.gp,
       passedGl: pooled.gl,
-      // the default / wide row is always its own cell
-      ownCells: tag ? ownCells : evaluated,
+      ownCells,
     });
   }
   return rows;
@@ -1473,6 +1491,7 @@ export function* baseGateSensitivityGen(
     maxDdr?: number;
   }> = [],
   eligible: (ind: string, tag: string) => boolean = () => true,
+  exactPrice: (ind: string, tag: string) => boolean = () => false,
 ): Generator<number, BaseGateRow[]> {
   const median = (xs: number[]) => {
     const v = xs.filter(Number.isFinite).sort((a, b) => a - b);
@@ -1505,8 +1524,8 @@ export function* baseGateSensitivityGen(
         (atDefault &&
           allTags.some(
             (t) =>
-              !t ||
-              (eligible(r.ind, t) && passesBase(r.full, { ...gg, minPf: minPfOf(gg, t, r.ind, r.full.stepPct, r.full.slRatio) })),
+              !exactPrice(r.ind, t) && (!t ||
+              (eligible(r.ind, t) && passesBase(r.full, { ...gg, minPf: minPfOf(gg, t, r.ind, r.full.stepPct, r.full.slRatio) }))),
           )) ||
         Object.entries(r.ranges ?? {}).some(
           ([t, st]) =>
@@ -1561,6 +1580,7 @@ export function* baseRangeWhyGen(
   g: BaseReportingGates,
   allTags: readonly string[],
   eligible: (ind: string, tag: string) => boolean = () => true,
+  exactPrice: (ind: string, tag: string) => boolean = () => false,
 ): Generator<number, BaseWhyRow[]> {
   // the two-window gate is a reason of its own only while it is set (the rows are unchanged otherwise)
   const win = !g.positionWindows && !!g.baseWindows?.gate;
@@ -1589,7 +1609,12 @@ export function* baseRangeWhyGen(
       processed++;
       if (!eligible(r.ind, tag)) continue;
       row.evaluated++;
-      const own = tag ? r.ranges?.[tag] : undefined;
+      const exact = exactPrice(r.ind, tag);
+      const own = tag || exact ? r.ranges?.[tag] : undefined;
+      if (exact && !own) {
+        row.first.closes++;
+        continue;
+      }
       const st = own ?? r.full;
       const ownGates = own ? { ...g, baseLastN: baseLastNForRange(g, tag) } : g;
       // no own cell: judged at the default protect against both minimums (as baseRangeCounts)
@@ -1894,7 +1919,7 @@ export function rangeBaseStats(
       continue;
     }
     // Every range proof must name the lane cell actually simulated, including its converted hold.
-    if (cellsOut && k && pass && pass(k, cand)) {
+    if (cellsOut && (k || p.priceDistance) && pass && pass(k, cand)) {
       const lane = laneProtect(p, ind);
       // The executable tape caps no-TP protection after lane scaling; publish that same effective cell.
       cellsOut.push(protectCellKey(capTrailingOnlyProtect(lane)));
@@ -2396,7 +2421,7 @@ export function* runPipeline(
       const microOwn = microIndRule(g);
       const tps: Record<string, number[]> = {};
       const ruleTps = plan ? baseRunWindows(u, r, plan) : undefined;
-      const cellKeys: string[] | undefined = g.baseCells === true || isLowRangeInd(c.ind) ? [] : undefined;
+      const cellKeys: string[] | undefined = g.baseCells === true || g.priceDistances?.enabled === true || isLowRangeInd(c.ind) ? [] : undefined;
       const noTpCells: string[] | undefined = noTp.length ? [] : undefined;
       const noTpStats: Record<string, TrailingOnlyBaseCount> | undefined = noTp.length ? {} : undefined;
       const slOut: Record<string, Record<string, SlBounds>> = {};

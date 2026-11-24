@@ -3,6 +3,9 @@
 // https://github.com/BingX-API/api-ai-skills/blob/main/skills/swap-trade/api-reference.md
 // Where those tables differ, use the lower value. All credentials on this host share the budget:
 // different API keys may belong to the same venue UID. No credentials are persisted here.
+// The rolling request counter runs in WAL mode without fsync: every signed request takes a slot first, and a
+// rollback-journal commit with a full fsync cost ~0.9 ms each. BEGIN IMMEDIATE keeps the cross-process exclusion in
+// WAL mode; a crash can at most forget the last moments of a 1 s window (the venue limit itself stays the backstop).
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -34,7 +37,7 @@ export class RequestBudget {
         if (this.file !== ":memory:") mkdirSync(dirname(this.file), { recursive: true, mode: 0o700 });
         const db = new DatabaseSync(this.file);
         try {
-          db.exec("PRAGMA busy_timeout=0; CREATE TABLE IF NOT EXISTS requests (endpoint TEXT NOT NULL, at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS requests_endpoint ON requests(endpoint,at)");
+          db.exec("PRAGMA busy_timeout=0; PRAGMA journal_mode=WAL; PRAGMA synchronous=OFF; CREATE TABLE IF NOT EXISTS requests (endpoint TEXT NOT NULL, at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS requests_endpoint ON requests(endpoint,at)");
         } catch (err) { db.close(); throw err; }
         this.db = db;
       }

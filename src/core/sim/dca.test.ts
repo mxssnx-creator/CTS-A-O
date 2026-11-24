@@ -16,13 +16,17 @@ const P = { tp: 0.02, sl: 0.05, trail: 0, hold: 20 };
 const D = { levels: 2, step: 0.01 };
 
 describe("dca", () => {
-  it("defaults to two non-compounding additions within 2%, with every Block relation active", () => {
+  it("defaults to two non-compounding additions within 2%, every Block relation on under Auto", () => {
     assert.equal(DEFAULT_DCA.levels, 2);
     assert.equal(DEFAULT_DCA.step, .01);
     assert.equal(DEFAULT_DCA.maxDistance, .02);
     assert.equal(DEFAULT_DCA.addRatio, 2.5);
     assert.equal(DEFAULT_BLOCK.mode, "overall");
+    // every relation on (the config's own config-wide and lane records, the pooled relations), each count under Auto
     assert.ok(Object.values(DEFAULT_BLOCK.sources!).every(Boolean));
+    assert.equal(Object.keys(DEFAULT_BLOCK.sources!).length, 8);
+    assert.equal(DEFAULT_BLOCK.configScope, "config");
+    assert.equal(DEFAULT_BLOCK.auto?.enabled, true);
   });
 
   it("weights the one addition, target, cost, open mark and settled return consistently in both directions", () => {

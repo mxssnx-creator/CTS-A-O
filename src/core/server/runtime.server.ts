@@ -3,6 +3,7 @@ import type { SlBounds } from "../sl-calibration.ts";
 import { migrateAxisPerRange, migratePositionWindows, migrateSignalEvaluation15 } from "./position-windows-migration.server.ts";
 import { SIGNAL_CADENCE_DAYS } from "../signal-cadence.ts";
 import { migrateThinRanges } from "./thin-ranges-migration.server.ts";
+import { migrateBlockOwnConfig, migrateX01BlockAuto } from "./block-own-config-migration.server.ts";
 import { mainnetPositionWindows } from "../position-windows.ts";
 import {relationalVolumeFactor,relationalVolumeSettings} from "../../../shared/cts-volume/ratios.ts";
 import { minimumStopFraction, normalizeMinSlDistancePct } from "../protection-policy.ts";
@@ -1287,6 +1288,8 @@ export class CoreRuntime {
     migrateAxisPerRange(db);
     migrateFineLadders(db);
     migrateThinRanges(db);
+    migrateBlockOwnConfig(db);
+    migrateX01BlockAuto(db, this.conn);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
     if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {
@@ -4540,7 +4543,7 @@ export class CoreRuntime {
         s.tactics,
         baseRangeProtects(s.grid, s.cost),
         completeBaseRangeProtects(s.grid, s.cost),
-        s.grid?.baseCells === true,
+        (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true),
         rangeMinTfOf(s.grid),
         // the gates decide which cell a range keeps (rangeCellPass in the worker): a gates patch must recompute
         // every combo, not reuse cells chosen under the old gates
@@ -4580,7 +4583,7 @@ export class CoreRuntime {
               rangeMinTf: rangeMinTfOf(s.grid),
               microOwnInds: microOwnInds(s.grid),
               gates: s.gates,
-              cells: s.grid?.baseCells === true,
+              cells: (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true),
             })),
           n,
           15 * 60_000,
@@ -4849,7 +4852,7 @@ export class CoreRuntime {
     wf.basePassedTargets = qualifiedTps;
     wf.baseWideLadderPairs = wideLadderPairs;
     // Cell qualification publishes with the rest of the economic cohort below.
-    wf.basePassedCells = s.grid?.baseCells === true || s.grid?.lowRange?.enabled === true
+    wf.basePassedCells = (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true) || s.grid?.lowRange?.enabled === true
       ? passedCellsOf(qualifiedCells) : undefined;
     wf.basePassedTrailingOnlyCells = s.grid?.trailingOnly === true
       ? passedCellsOf(pairTrailingOnlyCells) : {};
@@ -5355,10 +5358,11 @@ export class CoreRuntime {
       const otherWork = rangeWork * 2 + gateWork;
       const totalWork = Math.max(1, otherWork + (s.grid?.trailingOnly === true ? engineRuns.length : 0));
       const eligible = (ind: string, tag: string) => rangeAppliesTo(ind, tag, applies);
+      const exactPrice = priceDistanceBaseScope(s.grid);
       this.startStage("Tapes", label);
       const rangeCounts = await drive(
         "Base ranges",
-        baseRangeCountsGen(engineRuns, setsGates, ALL_RANGE_TAGS, eligible),
+        baseRangeCountsGen(engineRuns, setsGates, ALL_RANGE_TAGS, eligible, exactPrice),
         (n) => this.setStage("Tapes", n, totalWork, label),
         gen,
       );
@@ -5402,7 +5406,7 @@ export class CoreRuntime {
       // what each Base gate would admit, from the same results (no recompute)
       nextStatus.baseGates = await drive(
         "Base gate sensitivity",
-        baseGateSensitivityGen(engineRuns, setsGates, ALL_RANGE_TAGS, BASE_GATE_VARIANTS, eligible),
+        baseGateSensitivityGen(engineRuns, setsGates, ALL_RANGE_TAGS, BASE_GATE_VARIANTS, eligible, exactPrice),
         (n) => this.setStage("Tapes", rangeWork + n, totalWork, label),
         gen,
       );
@@ -5411,7 +5415,7 @@ export class CoreRuntime {
       // per range, the gate each failing pair misses (closes, net, PF, drawdown ratio)
       const why = await drive(
         "Base gate reasons",
-        baseRangeWhyGen(engineRuns, setsGates, ALL_RANGE_TAGS, eligible),
+        baseRangeWhyGen(engineRuns, setsGates, ALL_RANGE_TAGS, eligible, exactPrice),
         (n) => this.setStage("Tapes", rangeWork + gateWork + n, totalWork, label),
         gen,
       );
@@ -6875,7 +6879,15 @@ export class CoreRuntime {
 
   // ── live-feedback auto-adjuster ────────────────────────────
   adjustState(): AdjustState {
-    return this.db.kvGet<AdjustState>("adjust") ?? {};
+    const state = this.db.kvGet<AdjustState>("adjust") ?? {};
+    // Records are per config since 18 Nov ("<kind>#<id without the adjusted distances>"); a shared pair record
+    // ("bot|ind|kind", before) is never read again, so it is dropped instead of lingering on the desk. Exit records
+    // keep their own per-tactic key.
+    const stale = Object.keys(state).filter((k) => !k.includes("#") && !/\|exit\|/.test(k));
+    if (!stale.length) return state;
+    for (const k of stale) delete state[k];
+    this.db.kvSet("adjust", state);
+    return state;
   }
 
   /** measured live round-trip cost from recorded fills (fees + adverse slippage), null below 20 round trips */
@@ -7687,6 +7699,22 @@ export class CoreRuntime {
     return model.byConfigSide;
   }
   /** Settled post-Base model outcomes and funded OWNED PAPER executions are distinct evidence, never venue fills. */
+  /**
+   * Real-money promotion judges each exact symbol × side lane on its own closes, whatever the research scope: a winning
+   * long record never promotes an unproven short, nor one symbol another (docs/strategy-independence.md).
+   */
+  // only the derived window policy is cached (keyed on the policy object); the options are built fresh on every call,
+  // because the runtime updates this.wf in place after each compute (a cached copy of it would read stale fields)
+  private liveContextMemo: { pw: object; ctx: object } | null = null;
+  private liveContextWf(): WalkForwardOptions {
+    const pw = this.wf.gates.positionWindows;
+    if (!pw) return this.wf;
+    if (this.liveContextMemo?.pw !== pw)
+      this.liveContextMemo = { pw, ctx: { ...pw, scope: "context" as const,
+        byRange: Object.fromEntries(Object.entries(pw.byRange ?? {}).map(([k, v]) => [k, { ...v, scope: "context" as const }])) } };
+    return { ...this.wf, gates: { ...this.wf.gates, positionWindows: this.liveContextMemo.ctx as typeof pw } };
+  }
+
   livePromotionGate(lane: { cfg: string; sym: string; side: number; entryT?: number; id?: string }, now = Date.now()): LiveGate {
     const n = Math.max(
       1,
@@ -7766,9 +7794,9 @@ export class CoreRuntime {
       !tp.heldOnly &&
       (isSignalInd(ind) ||
         (baseAllowsTape(tp, this.wf) &&
-          (!this.wf.basePassed || configEval(tp, now, this.wf).ok) &&
-          configDirectionEval(tp, now, this.wf, lane.side).ok &&
-          engineContextValid(tp, now, this.wf, lane.sym, lane.side))) &&
+          (!this.wf.basePassed || configEval(tp, now, this.liveContextWf()).ok) &&
+          configDirectionEval(tp, now, this.liveContextWf(), lane.side).ok &&
+          engineContextValid(tp, now, this.liveContextWf(), lane.sym, lane.side))) &&
       (!isSignalInd(ind) ||
         (signalValidationOk(tp, now, this.wf, lane.sym, lane.side) &&
           (!this.wf.signalBasePassed || this.wf.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) &&
@@ -7785,17 +7813,14 @@ export class CoreRuntime {
     if (!eligible) return { ...gate, ok: false, state: "ineligible" };
     if (!this.wf.processedStages) return gate;
     const native = this.nativeProcessedStages();
-    const entryT = lane.entryT ?? (lane.id ? Number(lane.id.slice(lane.id.lastIndexOf("|") + 1)) : now);
-    if (!native || !tp || !Number.isFinite(entryT))
+    const entryT = lane.entryT ?? (lane.id ? Number(lane.id.slice(lane.id.lastIndexOf("|") + 1)) : NaN);
+    // Fund only an open paper admission. A favorable preview has no parent position to mirror.
+    const decision = native && Number.isFinite(entryT) ? native.decisionFor(orderKey({ ...lane, entryT })) : null;
+    if (!decision)
       return { ...gate, ok: false, state: "unknown", unknown: Math.max(1, gate.unknown ?? 0),
         processed: { stage: null, state: "unknown", n: 0, pf: null } };
-    const exact = native.decisionFor(orderKey({ ...lane, entryT }));
-    const minProcessedPf = Math.max(this.wf.lastNMinPf, minPfForTape(tp, this.wf));
-    const decision = exact
-      ? exact
-      : native.preview(tp, lane.sym, lane.side > 0 ? 1 : -1, entryT, minProcessedPf);
     if (decision.stage === "active") return { ...gate,
-      processed: { stage: "active", state: "qualified", n: this.wf.processedStages.realN, pf: decision.real?.pf ?? null } };
+      processed: { stage: "active", state: "qualified", n: decision.real?.n ?? 0, pf: decision.real?.pf ?? null } };
     const verdict = decision.stage === "postBase" ? decision.validation : decision.real;
     const state = verdict?.state ?? "unknown";
     return { ...gate, ok: false,
@@ -8184,7 +8209,7 @@ export class CoreRuntime {
               rangeMinTf,
               microOwnInds: micro,
               gates: s.gates,
-              cells: s.grid?.baseCells === true,
+              cells: (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true),
             })),
           n,
           15 * 60_000,
@@ -8213,7 +8238,7 @@ export class CoreRuntime {
             micro,
             s.gates,
             completeRangeProtects,
-            s.grid?.baseCells === true,
+            (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true),
           );
           for (const x of rs) add(x);
           yield i;
@@ -8517,7 +8542,7 @@ export class CoreRuntime {
     wf.exitBasePassed = base.exitBasePassed;
     wf.basePassedRanges = base.qualifiedTags;
     wf.basePassedTargets = base.qualifiedTps;
-    wf.basePassedCells = s.grid.baseCells === true || s.grid.lowRange?.enabled === true
+    wf.basePassedCells = s.grid.baseCells === true || s.grid.priceDistances?.enabled === true || s.grid.lowRange?.enabled === true
       ? passedCellsOf(base.qualifiedCells) : undefined;
     wf.basePassedTrailingOnlyCells = s.grid.trailingOnly === true ? passedCellsOf(pairTrailingOnlyCells) : {};
     wf.baseWideLadderPairs = base.wideLadderPairs;
@@ -9670,10 +9695,11 @@ export class CoreRuntime {
     }
     // one order per pair event (as simulated): another config of this pair, type, symbol and side already entered this minute
     if (this.wf.onePerPairEvent) {
-      const k = pairEventKey(op.cfg, op.sym, op.side, op.kind, op.entryT);
+      const axisOwn = this.wf.pairEventAxisOwn !== false;
+      const k = pairEventKey(op.cfg, op.sym, op.side, op.kind, op.entryT, axisOwn);
       const same = (x: { cfg: string; sym: string; side: number; entryT: number; kind?: string }) =>
         Math.floor(x.entryT / 60_000) === Math.floor(op.entryT / 60_000) && x.cfg !== op.cfg &&
-        pairEventKey(x.cfg, x.sym, x.side, x.kind ?? op.kind, x.entryT) === k;
+        pairEventKey(x.cfg, x.sym, x.side, x.kind ?? op.kind, x.entryT, axisOwn) === k;
       if (open.some(same) || crowdSeats?.some(same)) return "pairEvent";
     }
     // confirmation as in the simulation: an engine candidate (taken or not) open at the entry, not only a position
@@ -11180,6 +11206,7 @@ export const WF_KEYS = [
   "continuous",
   "decisionMin",
   "onePerPairEvent",
+  "pairEventAxisOwn",
   "recordValidation",
   "blockTrace",
   "portfolio",
@@ -11316,6 +11343,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("decisionMin", 1, 60); // continuous evaluation: minutes between re-derivations of the seat picks inside a step
   if (p.continuous !== undefined) p.continuous = Boolean(p.continuous);
   if (p.onePerPairEvent !== undefined) p.onePerPairEvent = Boolean(p.onePerPairEvent);
+  if (p.pairEventAxisOwn !== undefined) p.pairEventAxisOwn = Boolean(p.pairEventAxisOwn);
   num("portfolio", 0, 10_000, true); // 0 = no limit
   num("lastN", 0, 200, true);
   num("lastNMinPf", 0, 5);
@@ -12528,6 +12556,7 @@ export function signalCoordinationProtects(
   if (signals) return selected.short || selected.normal || selected.long ? signalProtects(signals) : [];
   const selectedGrid: CoreSettings["grid"] = {
     ...grid,
+    priceDistances: undefined,
     tp: [],
     slOfTp: [],
     trailOfTp: [],
@@ -12624,6 +12653,12 @@ export function baseRangeRules(
  * The separate construction maps can include diagnostic ranges and targets, but qualifiedTags always records only
  * actual Base passes and is used by the engine and preset admission gates.
  */
+function priceDistanceBaseScope(grid: CoreSettings["grid"] | undefined): (ind: string, tag: string) => boolean {
+  if (!grid?.priceDistances?.enabled) return () => false;
+  const selected = new Set<string>(grid.priceDistances.ranges);
+  return (ind, tag) => selected.has(isLowRangeInd(ind) ? "lr" : tag || "wide");
+}
+
 export function basePass(
   s1: readonly ComboRun[],
   s: CoreSettings,
@@ -12657,7 +12692,8 @@ export function basePass(
   const qualifiedTags: Record<string, string[]> = {};
   const pairCells: Record<string, readonly string[]> = {};
   const pairTrailingOnlyCells: Record<string, readonly string[]> = {};
-  const cellsOn = s.grid?.baseCells === true;
+  const cellsOn = s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true;
+  const exactPrice = priceDistanceBaseScope(s.grid);
   const setsGates = baseSetsGates(s.gates);
   // per pair, the range targets whose Base cells passed: the tape stage builds only those (baseTargets, on by
   // default — a range tag used to unlock every target of the range, most of them never Base-evaluated)
@@ -12668,7 +12704,11 @@ export function basePass(
   const rangesOn = s.grid?.baseRanges !== false;
   const passed = s1.filter((r) => {
     if (isSignalInd(r.ind)) return false;
-    let tags = setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS);
+    let tags = [...new Set(setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS))];
+    if (s.grid?.priceDistances?.enabled) {
+      const provedTags = new Set(r.rangeCells?.filter(k => k.endsWith("|pd") || k.includes("|pd|")).map(k => k.slice(0, k.indexOf("|"))));
+      tags = tags.filter(tag => !exactPrice(r.ind, tag) || provedTags.has(tag));
+    }
     // a family's pair builds only the sets of its own range (the other ranges of the pair are other families)
     if (evalFams) tags = familyTags(evalFams, r.bot, r.ind, tags);
     // No-TP cells are a separate strategy cohort. A passing cell may qualify without making ordinary or ladder

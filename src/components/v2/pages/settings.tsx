@@ -54,7 +54,8 @@ import {
   RELATE_PROFILES,
   RELATE_SUBSETS,
 } from "@/core/indications/relate";
-import { RANGE_OWN_BASE } from "@/core/minimal-coord";
+import { RANGE_LABEL, RANGE_OWN_BASE } from "@/core/minimal-coord";
+import { DEFAULT_PRICE_DISTANCE_GRID, PRICE_DISTANCE_RANGES, type PriceDistanceGrid } from "@/core/price-distance-grid";
 import { blockRatioOf, blockStackCap, stepRaise } from "@/core/sim/block";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
 import { SIGNAL_COORDINATION_RATIOS } from "@/core/signal-coordination";
@@ -320,15 +321,17 @@ function SwitchRow(props: {
 }
 
 const BLOCK_SOURCE_HELP: Array<[string, string]> = [
-  ["config", "exact configuration × symbol × direction; each history and level is independent"],
-  ["overall", "all orders in the selected Real history; only completed executions with an exit contribute"],
+  ["config", "the configuration's own closes (default: config-wide, every symbol and side; or per symbol × side, see Config scope); no other configuration moves it"],
+  ["lane", "the same configuration's own symbol × direction closes (its lane); no other configuration moves it"],
+  ["overall", "pooled: all orders in the selected Real history; only completed executions with an exit contribute"],
   ["symbol", "same symbol × direction; long and short have separate histories and stacks"],
   ["direction", "same direction across symbols; long and short are judged separately"],
   [
     "indication",
     "exact indication ID × timeframe lane × direction; sibling indications and lanes stay independent",
   ],
-  ["type", "same strategy type (Normal, Trailing, DCA, Axis)"],
+  ["type", "pooled: same strategy type (Normal, Trailing, DCA, Axis)"],
+  ["range", "pooled: same range (Micro, Minimal, Short, General, Long, Wide) × direction"],
 ];
 
 const RELATE_SOURCE_HELP: Array<[RelateSource, string]> = [
@@ -344,13 +347,57 @@ const RELATE_SOURCE_HELP: Array<[RelateSource, string]> = [
 
 /** Block sources and how their levels combine (shared = strongest, additive = sum, overall = each its own Block). */
 export function BlockSources(props: {
-  block: { sources?: Record<string, boolean | undefined>; mode?: string; historySource?: string };
+  block: {
+    sources?: Record<string, boolean | undefined>;
+    mode?: string;
+    historySource?: string;
+    configScope?: string;
+    auto?: { enabled?: boolean; n?: number; min?: number; pf?: number; scope?: string };
+  };
   set: (path: string[], v: unknown) => void;
 }) {
   const src = props.block.sources ?? {};
   const on = (k: string) => (k === "config" ? src.config !== false : !!src[k]);
+  const auto = props.block.auto ?? {};
   return (
     <div className="v2-lines" style={{ gap: 6, marginTop: 8 }}>
+      <div style={{ fontWeight: 600, marginTop: 4 }}>Auto evaluation per relation and block count</div>
+      <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+        Every relation at every level (block count) is judged on its own newest results: the positions that entered while
+        that relation stood at that level, whether it raised them or only observed. A count raises while the PF of its newest
+        results reaches the minimum; with fewer results than required, the relation's switch below decides.
+      </div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <Switch
+          label="Block auto evaluation"
+          checked={auto.enabled !== false && props.block.auto !== undefined}
+          onChange={(v) => props.set(["block", "auto", "enabled"], v)}
+        />
+        <div>Auto evaluation on</div>
+      </div>
+      <Field label="Newest results" hint="results each count is judged on · 5 – 200">
+        <Num value={auto.n ?? 30} min={5} max={200} step={1} onChange={(v) => props.set(["block", "auto", "n"], v)} />
+      </Field>
+      <Field label="Results before Auto decides" hint="below this the relation's switch holds · 1 – newest results">
+        <Num value={auto.min ?? 15} min={1} max={auto.n ?? 200} step={1} onChange={(v) => props.set(["block", "auto", "min"], v)} />
+      </Field>
+      <Field label="Minimum PF per count" hint="a count raises while the PF of its newest results is at least this · 0.5 – 5">
+        <Num value={auto.pf ?? 1.1} min={0.5} max={5} step={0.05} onChange={(v) => props.set(["block", "auto", "pf"], v)} />
+      </Field>
+      <Field
+        label="Auto record"
+        hint="Per relation × count: one record per relation and level. Per key × count: per relation key and level, i.e. per config for the config and lane relations."
+      >
+        <select
+          className="v2-select"
+          aria-label="Block auto scope"
+          value={auto.scope ?? "rule"}
+          onChange={(e) => props.set(["block", "auto", "scope"], e.target.value)}
+        >
+          <option value="rule">Per relation × count</option>
+          <option value="key">Per relation key × count</option>
+        </select>
+      </Field>
       <Field
         label="Type"
         hint="Shared: any qualifying relation can raise the entry; the strongest level uses the Shared ratio. Additive: enabled levels add up using the common ratio. Overall: each source adds its own independent leg; base plus all legs share Max stack."
@@ -381,6 +428,20 @@ export function BlockSources(props: {
           <option value="real-candidates">
             Legacy Real candidates · includes skips (diagnostic)
           </option>
+        </select>
+      </Field>
+      <Field
+        label="Config scope"
+        hint="The config source's record. Config-wide (default): each config / Set is judged on its own closes across every symbol and side, as the position windows are. Per symbol × side: only the exact symbol and direction. Either way no other config's closes move it; the pooled sources below mix configs and are off by default."
+      >
+        <select
+          className="v2-select"
+          aria-label="Block config scope"
+          value={props.block.configScope ?? "context"}
+          onChange={(e) => props.set(["block", "configScope"], e.target.value)}
+        >
+          <option value="config">Config-wide (own closes, every symbol and side)</option>
+          <option value="context">Per symbol × side</option>
         </select>
       </Field>
       {BLOCK_SOURCE_HELP.map(([k, help]) => (
@@ -1495,11 +1556,26 @@ export function PositionWindowSettings(props: {
             onChange={(v) => put("maxDrawdownPositions", v)}
           />
         </Field>
-        <Field label="Signals Main positions N · set all"
-          hint="Shows the Main count; editing sets Base, Main, Real and Entry for Signals. Per-config overrides and block policies remain independent. The table below shows each stage.">
-          <Num int min={1} max={500} value={p.byRange?.sig?.main ?? p.main}
-            onChange={(v) => put("byRange", { ...p.byRange, sig: { ...p.byRange?.sig,
-              base: v, main: v, real: v, entry: v } })} />
+        <Field
+          label="Window scope"
+          hint="Config-wide (default): each config on its own last N closes across symbols and sides. Per symbol × side: each lane on its own closes. Auto: the lane once it holds its floor, else its config. Both: the lane and its config must pass."
+        >
+          <select className="v2-select" aria-label="Window scope" value={p.scope ?? "config"}
+            onChange={(e) => put("scope", e.target.value)}>
+            <option value="config">Config-wide</option>
+            <option value="context">Per symbol × side</option>
+            <option value="auto">Auto (lane once filled, else config)</option>
+            <option value="both">Both (lane and config)</option>
+          </select>
+        </Field>
+        <Field label="Micro window scope" hint="Micro's own scope (default Both: its lane and its config must pass).">
+          <select className="v2-select" aria-label="Micro window scope" value={p.byRange?.mc?.scope ?? p.scope ?? "config"}
+            onChange={(e) => put("byRange", { ...p.byRange, mc: { ...p.byRange?.mc, scope: e.target.value } })}>
+            <option value="both">Both (lane and config)</option>
+            <option value="config">Config-wide</option>
+            <option value="context">Per symbol × side</option>
+            <option value="auto">Auto</option>
+          </select>
         </Field>
       </div>
       {(["base","main","real","entry"] as const).map(stage=><BlockPolicyFields key={stage} label={stage+" Last-N blocks"} value={p.blocks?.[stage]} onChange={block=>{const blocks={...p.blocks};if(block)blocks[stage]=block;else delete blocks[stage];put("blocks",blocks)}}/>)}
@@ -2490,8 +2566,39 @@ export function RangeFit(props: {
 /** Every protect range with its switch (Settings and the preset dialog). */
 export function ProtectRanges(props: { grid: object; set: (path: string[], v: unknown) => void;
   focus?: readonly string[]; pinned?: readonly string[]; disabledKinds?: readonly string[] }) {
+  const priceDistances = (props.grid as { priceDistances?: PriceDistanceGrid }).priceDistances ?? DEFAULT_PRICE_DISTANCE_GRID;
+  const updateDistances = (patch: Partial<PriceDistanceGrid>) => props.set(["grid", "priceDistances"], { ...priceDistances, ...patch });
   return (
     <>
+      <SwitchRow label="Price-distance grid" title="Price-distance grid"
+        help="Each selected range tests its own stop-loss and trailing distance as a percentage of price. Existing cost floors and range limits apply."
+        checked={priceDistances.enabled} onChange={(enabled) => updateDistances({ enabled })} />
+      {priceDistances.enabled && <div className="v2-grid v2-cols-3">
+        <Field label="Ranges">
+          <div className="v2-lines">{PRICE_DISTANCE_RANGES.map((range) => {
+            const on = priceDistances.ranges.includes(range);
+            return <label key={range}>
+              <input type="checkbox" checked={on} disabled={on && priceDistances.ranges.length === 1}
+                onChange={(event) => updateDistances({ ranges: event.target.checked ? [...priceDistances.ranges, range] : priceDistances.ranges.filter(value => value !== range) })} />
+              {RANGE_LABEL[range === "wide" ? "" : range]}
+            </label>;
+          })}</div>
+        </Field>
+        <Field label="SL distances (%)" hint="0.2–2.2 in 0.1 percentage-point steps">
+          <List value={priceDistances.stopPcts} onChange={(stopPcts) => updateDistances({ stopPcts })} />
+        </Field>
+        <Field label="Trailing distances (%)" hint="0.2–2.6 in 0.1 percentage-point steps">
+          <List value={priceDistances.trailPcts} onChange={(trailPcts) => updateDistances({ trailPcts })} />
+        </Field>
+        <Field label="Trailing gap basis">
+          <select className="v2-select" aria-label="Trailing gap basis" value={priceDistances.trailingBasis}
+            onChange={(event) => updateDistances({ trailingBasis: event.target.value as PriceDistanceGrid["trailingBasis"] })}>
+            <option value="both">Fixed and dynamic</option>
+            <option value="entry">Fixed entry distance</option>
+            <option value="peak">Dynamic peak distance</option>
+          </select>
+        </Field>
+      </div>}
       <LowRangeShortSettings {...props} />
       <MinimalRange grid={props.grid} set={props.set} />
       <ShortRange grid={props.grid} set={props.set} />
@@ -4858,6 +4965,13 @@ export function SettingsPage() {
                   value={s.grid.trailStep ?? 1}
                   onChange={(v) => set(["grid", "trailStep"], v)}
                 />
+              </Field>
+              <Field label="Trailing distance" hint="Choose whether the gap uses the position's entry or each new peak.">
+                <select aria-label="Trailing distance" value={s.grid.trailGapBasis ?? "peak"}
+                  onChange={event => set(["grid", "trailGapBasis"], event.target.value)}>
+                  <option value="peak">Dynamic · peak-relative</option>
+                  <option value="entry">Fixed · entry-relative</option>
+                </select>
               </Field>
               <div>
                 <div style={{ fontWeight: 600 }}>Independent Trailing-only sets</div>

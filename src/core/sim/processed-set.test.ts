@@ -13,6 +13,19 @@ const enterAndClose = (book: ProcessedSetBook, i: ProcessedSetIdentity, at: numb
   return admission;
 };
 
+test("signed Validation blocks retain the configured independent recent-loss veto", () => {
+  const book = new ProcessedSetBook("model", 12);
+  [0.02, 0.03, -0.001].forEach((r, i) => enterAndClose(book, identity, 2 * i, r));
+  const signed = {...policy,blocks:{validation:{long:2,short:0,minimal:1,
+    shortPolarity:"positive",minimalPolarity:"negative"} as const}};
+  assert.equal(book.acceptPostBase(identity,"signed-qualification",6,signed).stage,"validated");
+  const veto = book.acceptPostBase(identity,"recent-loss-veto",6,{...signed,
+    negativeFilter:negativeLastN({windows:[1],mode:"any"})});
+  assert.equal(veto.stage,"postBase");
+  assert.equal(veto.validation.blockedBy,"negative-filter");
+  assert.deepEqual(ProcessedSetBook.restore(JSON.parse(JSON.stringify(book.snapshot()))).snapshot(),book.snapshot());
+});
+
 test("processed negative windows retain losses, reject only later admission and survive restart",()=>{
  let book=new ProcessedSetBook("model",20);
  for(let n=0;n<18;n++)enterAndClose(book,identity,2*n,.02);

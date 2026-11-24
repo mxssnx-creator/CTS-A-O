@@ -10,3 +10,11 @@
 - The system↔exchange relation is the primary invariant: read `docs/execution-fidelity.md` before changing live
   control, the live record, the paper book or any reader of live_lane_trades / live_orders / live_fills; every reader
   uses `src/core/relation.ts`; manual quantity is never own; `src/core/relation.test.ts` must pass.
+- Own-close windows are config-wide by default: each config is judged on its own last N closes across symbols and sides
+  (`gates.positionWindows.scope: "config"`); Micro uses its own symbol × side lane and its config both (`"both"`). Every
+  strategy type and Active mode runs on its own lanes and never vetoes another (`docs/strategy-independence.md`).
+  Changing a scope default needs a causal comparison on the same window (custom variants: `CTS_CORE_VARIANTS_EXTRA`).
+  Explanation and numbers: `docs/config-wide-windows.md`.
+- Stable reference states (measured, fully tested merges to compare against and return to): `docs/stable-states.md`;
+  the newest is `stable-20261117-block-auto` (`d9bac347`): config-wide windows, Axis per config, Block relations under
+  the automatic evaluation per block count.

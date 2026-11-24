@@ -13,7 +13,8 @@ import {
   rmSync,
   ftruncateSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, totalmem } from "node:os";
+import { isMainThread } from "node:worker_threads";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import * as zlib from "node:zlib";
@@ -24,14 +25,23 @@ import { registerImmutableHistoryGeneration } from "../sim/immutable-history-gen
 import { TAPE_OPEN_TIMES } from "../sim/tape-open-times.ts";
 
 const MiB = 1048576;
-/** Bound decoded history independently from retained input history. */
-export function historyCacheBytes(value = process.env.CTS_CORE_HISTORY_CACHE_MB): number {
-  const mb = value === undefined ? 64 : Number(value);
-  if (!Number.isSafeInteger(mb) || mb < 1 || mb > 1024)
-    throw new Error("Invalid decoded history cache budget (1–1024 MiB)");
-  return mb * MiB;
-}
+/**
+ * Decompressed column cache. 64 MiB thrashed on a 6-symbol replay (669 MiB of raw columns): every re-evaluated tape was
+ * read, decompressed and checksummed again (~250 s of a 1,230 s profile). The budget follows the machine: 6 % of its
+ * memory, between 64 MiB and 1 GiB; CTS_HISTORY_CACHE_MB (1–8192) sets it explicitly.
+ */
 export const HISTORY_CACHE_BYTES = historyCacheBytes();
+function historyCacheBytes(): number {
+  const env = process.env.CTS_HISTORY_CACHE_MB;
+  if (env !== undefined && env !== "") {
+    const mb = Number(env);
+    if (Number.isFinite(mb) && mb >= 1 && mb <= 8192) return Math.floor(mb * MiB);
+  }
+  const main = Math.max(64 * MiB, Math.min(1024 * MiB, Math.floor((totalmem() * 0.06) / MiB) * MiB));
+  // every worker thread opens its own stores with this budget: a quarter of the main thread's (at least 64 MiB), so
+  // a pool of workers cannot multiply the cache into gigabytes
+  return isMainThread ? main : Math.max(64 * MiB, Math.floor(main / 4 / MiB) * MiB);
+}
 /** Bound automatic in-memory accumulation; this does not limit any historical sample. */
 export function historyMemoryBytes(): number {
   const value = Number(process.env.CTS_CORE_HISTORY_MEMORY_MB ?? 256);

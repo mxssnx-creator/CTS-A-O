@@ -70,7 +70,10 @@ function run(losing = false) {
       simH: 12,
       stepH: 1,
       recordValidation: true,
-      gates: { ...d.gates, maxDdr: 0, minGreen: 0, stableBlocks: 0, lossPrior: false },
+      // the planted edge differs per symbol and side: these cases pin per-context lanes (scope "context"); the
+      // config-wide default is covered in sim/continuous-evaluation.test.ts
+      gates: { ...d.gates, maxDdr: 0, minGreen: 0, stableBlocks: 0, lossPrior: false,
+        positionWindows: { ...d.gates.positionWindows!, scope: "context" as const } },
       rangeGate: undefined,
       symGate: "off",
       preGate: false,

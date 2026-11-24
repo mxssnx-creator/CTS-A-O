@@ -8,6 +8,7 @@ import type { OpenPosition, Trade } from "../domain/types.ts";
 import { defaultWalkForward, makeTape, walkForward } from "../sim/walkforward.ts";
 import { CoreDb } from "./db.server.ts";
 import { CoreRuntime } from "./runtime.server.ts";
+import type { NativeProcessedStageAdapter } from "./processed-stage-adapter.ts";
 
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
@@ -23,7 +24,9 @@ for (const mode of ["full", "fast"] as const) test(`${mode}: native stage policy
   rt.stop();
   try {
     rt.wf = { ...defaultWalkForward({...DEFAULT_SETTINGS,gates:{...DEFAULT_SETTINGS.gates,positionWindows:null}}), rangeGate: undefined,
-      processedStages: { validationN: 2, realN: 2 } };
+      processedStages: { validationN: 2, realN: 2,
+        ...(mode === "fast" ? { blocks: { real: { long: 2, short: 1, minimal: 1,
+          shortPolarity: "positive" as const, minimalPolarity: "positive" as const } } } : {}) } };
     const raw: Trade[] = Array.from({ length: 30 }, (_, i) => ({
       cfg: CFG, sym: SYM, side: 1, entryT: T - 3 * H + i * 60_000, exitT: T - 2 * H + i * 60_000,
       entry: 100, exit: 102, r: .02, unitR: .02, mult: 1, vol: 1, kind: "normal", reason: "tp",
@@ -63,5 +66,30 @@ for (const mode of ["full", "fast"] as const) test(`${mode}: native stage policy
     hooks.coordOf = () => null;
     assert.deepEqual(rt.pendingEntries(), []);
     assert.equal(rt.status.paperSkips?.["pending:liveValidation"], 1);
+
+    const native = (rt as unknown as { nativeProcessedStages(): NativeProcessedStageAdapter | null }).nativeProcessedStages();
+    assert.ok(native);
+    const minPf = native.snapshot().book.open[0].policy.minPf;
+    const tp = rt.tapes[0];
+    for (let i = 0; i < 10; i++) {
+      const at = T + 1 + 2 * i;
+      const admitted = native.enter(tp, SYM, 1, at, minPf);
+      native.settle(admitted.entryId, at + 1, .02);
+    }
+    const entryT = T + 40;
+    const future = { cfg: CFG, sym: SYM, side: 1, entryT };
+    assert.equal(native.preview(tp, SYM, 1, entryT, minPf).stage, "active");
+    const unadmitted = rt.livePromotionGate(future, entryT);
+    assert.equal(unadmitted.ok, false);
+    assert.deepEqual(unadmitted.processed, { stage: null, state: "unknown", n: 0, pf: null });
+    const admitted = native.enter(tp, SYM, 1, entryT, minPf);
+    assert.equal(admitted.stage, "active");
+    const frozen = rt.livePromotionGate(future, entryT);
+    assert.equal(frozen.processed?.stage, "active");
+    assert.equal(frozen.processed?.n, mode === "fast" ? 4 : 2);
+    assert.equal(rt.livePromotionGate({ cfg: CFG, sym: SYM, side: 1 }, entryT).ok, false,
+      "the current time cannot stand in for an unspecified parent entry");
+    native.settle(admitted.entryId, entryT + 1, .02);
+    assert.equal(rt.livePromotionGate(future, entryT + 2).ok, false, "a settled parent cannot send a fresh order");
   } finally { rt.dispose(); db.db.close(); rmSync(dir, { recursive: true, force: true }); }
 });

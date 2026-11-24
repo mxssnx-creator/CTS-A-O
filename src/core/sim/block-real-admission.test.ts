@@ -225,7 +225,7 @@ describe("opt-in Block trace follows the judging history without changing execut
     for (const book of [fixed, automatic]) {
       for (let i = 0; i < 7; i++) book.add({ ...own, r: i === 6 ? NaN : .01 });
       assert.equal(book.window, 2);
-      assert.equal(book.sampleCount(sourceKey("config", own), 3), 3, "config keeps its exact last-N record");
+      assert.equal(book.sampleCount(book.keyOf("config", own), 3), 3, "config keeps its exact last-N record");
       assert.equal(book.sampleCount("all", 3), 6, "pooled evidence uses the selected 2-close window");
       assert.equal(book.level("all", 3), 0, "the latest unknown remains in every judged window");
       assert.equal(book.sampleCount("missing", 3), 0);

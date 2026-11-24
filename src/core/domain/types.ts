@@ -77,6 +77,10 @@ export type BotType = (typeof BOT_TYPES)[number] | "exit";
 
 /** Protective exit config. All distances are fractions of entry price. */
 export interface Protect {
+  /** Exact price-distance settings preserve their stop and trailing gap across lane scaling and feedback. */
+  priceDistance?: true;
+  /** Use the entry price as the basis of the trailing gap. */
+  trailFixed?: boolean;
   tp: number;
   sl: number;
   /**
@@ -419,7 +423,7 @@ export interface Tactics {
   cooldownBars: number;
 }
 
-export type BlockAttribution = Partial<Record<"config" | "overall" | "symbol" | "direction" | "indication" | "type", { level: number; extra: number }>>;
+export type BlockAttribution = Partial<Record<"config" | "lane" | "overall" | "symbol" | "direction" | "indication" | "type" | "range", { level: number; extra: number }>>;
 
 export interface BlockConfig {
   /** extra volume per passing level (additive) */
@@ -427,7 +431,7 @@ export interface BlockConfig {
   /** Shared-only ratio override. Unset preserves ratio; a higher value still shares the total maxMult cap. */
   sharedRatio?: number;
   /** Per-relation multiple of ratio (or sharedRatio in Shared mode). Missing relations use 1. */
-  sourceRatios?: Partial<Record<"config" | "overall" | "symbol" | "direction" | "indication" | "type", number>>;
+  sourceRatios?: Partial<Record<"config" | "lane" | "overall" | "symbol" | "direction" | "indication" | "type" | "range", number>>;
   /** Retain each raised relation's qualified level until its realized extra-leg net recovers to zero. */
   holdUntilNet?: boolean;
   /** Closed accepted Real orders, or the explicitly labeled legacy candidate-learning diagnostic. */
@@ -440,12 +444,28 @@ export interface BlockConfig {
   /** which positions the levels are judged on (config set only by default) */
   sources?: {
     config?: boolean;
+    /** the config's own symbol × side lane (window 1; the config source is config-wide by default) */
+    lane?: boolean;
     overall?: boolean;
     symbol?: boolean;
     direction?: boolean;
     indication?: boolean;
     /** the strategy type (Normal, Trailing, DCA, DCA Active, Axis) */
     type?: boolean;
+    /** the range (Micro, Minimal, Short, General, Long, Wide) × side */
+    range?: boolean;
+  };
+  /**
+   * Automatic evaluation per relation × block count (level): each count raises while the PF of its own newest `n`
+   * results reaches `pf` (judged once it has `min`; below that its manual switch holds). Observed counts are recorded
+   * like raising ones. See BlockAutoEval (sim/block.ts).
+   */
+  auto?: {
+    enabled?: boolean;
+    n?: number;
+    min?: number;
+    pf?: number;
+    scope?: "rule" | "key";
   };
   /**
    * shared: the strongest source's level; additive: the sources' levels add up; overall: every source is its own
@@ -534,6 +554,12 @@ export interface BlockConfig {
    * on for signal tapes).
    */
   sideKeys?: boolean;
+  /**
+   * The config source's record: "config" (DEFAULT_BLOCK) = the config's own closes across every symbol and side (the
+   * same config-wide record the position windows read, docs/config-wide-windows.md); "context" (or unset) = the exact
+   * config × symbol × side only. Either way it is that config's own record: no other config, symbol pool or type moves it.
+   */
+  configScope?: "config" | "context";
   /** volume added per passing relation. Default 0.4. */
   increase?: number;
   /** allowed min/max for the Block knobs. The active value stays inside. */
@@ -621,6 +647,7 @@ export interface Trade {
 }
 
 export interface OpenPosition {
+  trailFixed?: boolean;
   trailingProcessingEnabled?: boolean;
   blockAttribution?: BlockAttribution;
   cfg: string;
@@ -914,6 +941,8 @@ export interface LowRangeGrid {
 }
 
 export interface ProtectGridSpec {
+  priceDistances?: import("../price-distance-grid.ts").PriceDistanceGrid;
+  trailGapBasis?: "entry" | "peak";
   /** Additional independent no-TP sets derived from every nonzero trailing cell; hard start stop at most 3%. */
   trailingOnly?: boolean;
   /** execution volume relative to the normal factor for untagged Wide configs (0.2–5 in 0.2 steps; default 1) */
