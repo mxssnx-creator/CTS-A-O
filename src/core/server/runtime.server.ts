@@ -8830,6 +8830,13 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
   const sig = st?.signals as Partial<SignalSettings> | undefined;
+  // saved settings without the version marker are a legacy blob: every migration below runs on them, among others
+  // "Signals on by default" (signals.enabled and lanes dropped) and the order caps. A hand-written or partial settings
+  // file therefore needs "wfCapsV": <current> beside "settings" to keep its values — say so instead of resetting silently.
+  if (v === 0 && st && Object.keys(st).length)
+    console.warn(
+      "[core-v2] saved settings carry no wfCapsV: legacy migrations apply (signals.enabled, signals.lanes, order caps reset to defaults) — add \"wfCapsV\": 35 beside \"settings\" to keep them",
+    );
   if (v < 3) {
     // order caps from before unlimited orders (engine and signal orders)
     delete out.maxPerSymbol;
