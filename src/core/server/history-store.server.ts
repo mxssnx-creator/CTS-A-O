@@ -212,10 +212,18 @@ export class TapeHistoryStore {
   private cachedBytes = 0;
   private last: { record: HistoryRecord; columns: Columns } | null = null;
   private derivedGeneration: object = {};
+  /**
+   * Identical tapes share one stored record. Many configs of a set produce the very same closes (an unreachable
+   * target, a stop that never differs, an empty tape); records are immutable and verified by their SHA-256 on every
+   * read, so a shared record is lossless. Keyed by digest, confirmed by byte and close counts.
+   */
+  private byDigest = new Map<string, HistoryRecord>();
   readonly stats = {
     tapes: 0,
     rawBytes: 0,
     storedBytes: 0,
+    dedupTapes: 0,
+    dedupBytes: 0,
     reads: 0,
     hits: 0,
     writeMs: 0,
@@ -279,6 +287,18 @@ export class TapeHistoryStore {
     const begin = performance.now(),
       bytes = tapeBytes(tape.n);
     const raw = Buffer.from(tape.exitT.buffer, tape.exitT.byteOffset, bytes);
+    const digest = createHash("sha256").update(raw).digest("hex");
+    const known = this.byDigest.get(digest);
+    if (known && known.bytes === bytes && known.n === tape.n) {
+      this.stats.tapes++;
+      this.stats.rawBytes += bytes;
+      this.stats.dedupTapes++;
+      this.stats.dedupBytes += known.packed;
+      const elapsed = performance.now() - begin;
+      this.stats.writeMs += elapsed;
+      this.stats.maxWriteMs = Math.max(this.stats.maxWriteMs, elapsed);
+      return this.restore(metadata(tape), known);
+    }
     let packed: Buffer;
     try {
       packed =
@@ -293,7 +313,7 @@ export class TapeHistoryStore {
       offset: this.end,
       packed: packed.length,
       bytes,
-      digest: createHash("sha256").update(raw).digest("hex"),
+      digest,
       n: tape.n,
     };
     try {
@@ -304,6 +324,7 @@ export class TapeHistoryStore {
         at += n;
       }
       this.end += packed.length;
+      this.byDigest.set(digest, record);
     } catch (error) {
       try {
         ftruncateSync(this.resource.fd, this.end);

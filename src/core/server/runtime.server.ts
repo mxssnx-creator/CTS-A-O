@@ -5973,7 +5973,7 @@ export class CoreRuntime {
       this.status.phases["History storage"] = {
         ms: h.writeMs,
         maxSliceMs: h.maxWriteMs,
-        slowest: `${h.tapes} complete tapes · ${(h.rawBytes / 1048576).toFixed(0)} MiB raw / ${(h.storedBytes / 1048576).toFixed(0)} MiB stored · ${(h.peakCacheBytes / 1048576).toFixed(0)} MiB peak column cache`,
+        slowest: `${h.tapes} complete tapes · ${(h.rawBytes / 1048576).toFixed(0)} MiB raw / ${(h.storedBytes / 1048576).toFixed(0)} MiB stored (${h.dedupTapes} identical tapes shared, ${(h.dedupBytes / 1048576).toFixed(0)} MiB not written) · ${(h.peakCacheBytes / 1048576).toFixed(0)} MiB peak column cache`,
       };
     }
     this.sim = sim;

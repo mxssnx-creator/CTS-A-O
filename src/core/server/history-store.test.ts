@@ -67,6 +67,35 @@ function fixture() {
   assert.ok(tapes.some((t) => t.open.length || t.pending.length));
   return { u, wf, tapes };
 }
+test("identical tapes share one stored record and read back unchanged", () => {
+  const directory = mkdtempSync(join(tmpdir(), "history-dedup-")),
+    { tapes } = fixture();
+  const store = new TapeHistoryStore({ directory, cacheBytes: 128 });
+  try {
+    const first = store.append({ ...tapes[0] });
+    const written = store.stats.storedBytes;
+    const again = store.append({ ...tapes[0] });
+    assert.equal(store.stats.storedBytes, written, "the second identical tape writes nothing");
+    assert.equal(store.stats.dedupTapes, 1);
+    assert.ok(store.stats.dedupBytes > 0);
+    assert.equal(store.stats.tapes, 2);
+    assert.equal(store.stats.rawBytes, 2 * tapeBytes(tapes[0].n));
+    for (let j = 0; j < tapes[0].n; j++) {
+      assert.deepEqual(tradeAt(first, j), tradeAt(tapes[0], j));
+      assert.deepEqual(tradeAt(again, j), tradeAt(tapes[0], j));
+    }
+    // a different tape is still stored, never aliased to the first
+    if (tapes.length > 1 && tapes[1].n !== tapes[0].n) {
+      const other = store.append({ ...tapes[1] });
+      assert.ok(store.stats.storedBytes > written);
+      for (let j = 0; j < tapes[1].n; j++) assert.deepEqual(tradeAt(other, j), tradeAt(tapes[1], j));
+    }
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("bounded histories preserve every binary column, metadata, prefix, open and pending position across eviction", () => {
   const directory = mkdtempSync(join(tmpdir(), "history-test-")),
     { tapes } = fixture();
