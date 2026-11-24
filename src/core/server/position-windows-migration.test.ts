@@ -62,9 +62,9 @@ test("Signal-15 migration backs up settings, disables new Exit work and preserve
     db.kvSet("settings", old); db.kvSet("paper", paper);
     migrateSignalEvaluation15(db);
     assert.deepEqual(db.kvGet("signalEvaluation15ExitOff20261116BackupV1"), old);
-    assert.deepEqual(db.kvGet<any>("settings").gates.positionWindows.byRange.sig, {base:15,main:15,real:15,entry:15});
     assert.equal(db.kvGet<any>("settings").toggles.exit, false);
     assert.equal(db.kvGet<any>("settings").exitStrategy.enabled, false);
+    assert.deepEqual(db.kvGet<any>("settings").gates.positionWindows.byRange.sig, {base:15,main:15,real:15,entry:15});
     assert.deepEqual(db.kvGet<any>("settings").grid.tp, []);
     assert.deepEqual(db.kvGet("paper"), paper);
     const changed = db.kvGet<any>("settings");

@@ -39,7 +39,11 @@ export const DEFAULT_POSITION_WINDOWS: PositionWindows = {
   maxDrawdownPositions: 40,
   // Micro judges each lane on both its own symbol × side window and its config's record (operator, 17 Nov: Micro
   // performed per context, PF 1.43, and not config-wide, 0.21, on the same replay)
-  byRange: { mc: { base: 30, scope: "both" }, mn: { base: 30 } },
+  // Signals keep their own independent count windows (operator: independent configs and counts, positive-coordinations.md)
+  byRange: { mc: { base: 30, scope: "both" }, mn: { base: 30 }, sig: {
+    base: SIGNAL_EVALUATION_LAST_N, main: SIGNAL_EVALUATION_LAST_N,
+    real: SIGNAL_EVALUATION_LAST_N, entry: SIGNAL_EVALUATION_LAST_N,
+  } },
   // operator, 17 Nov 2026: config-wide windows are the systemwide default (docs/positive-coordinations.md, "Config-wide
   // own-close windows"): per context, long-hold ranges starved (PF 0.56 → 1.33 on the same replay)
   scope: "config",

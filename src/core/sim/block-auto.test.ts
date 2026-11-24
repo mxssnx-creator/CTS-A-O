@@ -128,7 +128,7 @@ describe("Block auto evaluation per relation × count", () => {
     }) as never[];
     const tp = makeTape(cfgA, "follow", "rsi-mom-14-20@m15", P, "normal", ["A"], trades, [], []);
     const settings = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, positionWindows: null } };
-    const base = defaultWalkForward(settings);
+    const base = { ...defaultWalkForward(settings), wideEnabled: true };
     const o = {
       ...base,
       toggles: { normal: true, trailing: true, block: true, blockActive: false, dca: true, dcaActive: false, axis: true },

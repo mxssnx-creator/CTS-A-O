@@ -62,7 +62,7 @@ export function migrateSignalEvaluation15(db: CoreDb): void {
     let changed = false;
     const windows = settings?.gates?.positionWindows;
     if (windows && !windows.byRange?.sig) {
-      windows.byRange = { ...windows.byRange, sig: { ...DEFAULT_POSITION_WINDOWS.byRange!.sig } };
+      windows.byRange = { ...windows.byRange, sig: { ...DEFAULT_POSITION_WINDOWS.byRange!.sig! } };
       changed = true;
     }
     if (settings?.toggles?.exit === true) { settings.toggles.exit = false; changed = true; }

@@ -33,7 +33,7 @@ function trades(cfg: string, lose: number, win = 0.01, kind: StratKind = "normal
 const tape = (cfg: string, lose: number, win = 0.01, kind: StratKind = "normal") =>
   makeTape(cfg, "follow", IND, P, kind, ["AAA-USDT"], trades(cfg, lose, win, kind), [], []);
 
-const shipped = defaultWalkForward(DEFAULT_SETTINGS);
+const shipped = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
 const o: WalkForwardOptions = {
   ...shipped,
   toggles: { normal: true, trailing: true, block: true, blockActive: false, dca: true, dcaActive: false, axis: true },
