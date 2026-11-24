@@ -2,10 +2,9 @@
 // Core fixtures never need exchange connectivity. Install the portable guard before every test import.
 import { spawn } from "node:child_process";
 import { readdirSync, statSync, writeFileSync } from "node:fs";
-import { availableParallelism, totalmem } from "node:os";
+import { availableParallelism, freemem, totalmem } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { availableParallelism, freemem } from "node:os";
 
 /**
  * Files are independent (in-memory databases, offline guard, no ports), so they run side by side. Half the CPUs, at
