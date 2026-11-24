@@ -22,8 +22,11 @@ import { registerImmutableHistoryGeneration } from "../sim/immutable-history-gen
 const MiB = 1048576;
 /**
  * Decompressed column cache. 64 MiB thrashed on a 6-symbol replay (669 MiB of raw columns): every re-evaluated tape was
- * read, decompressed and checksummed again (~250 s of a 1,230 s profile). The budget follows the machine: 6 % of its
- * memory, between 64 MiB and 1 GiB; CTS_HISTORY_CACHE_MB (1–8192) sets it explicitly.
+ * read, decompressed and checksummed again (~250 s of a 1,230 s profile). The budget follows the machine: 18 % of its
+ * memory, between 64 MiB and 3 GiB; CTS_HISTORY_CACHE_MB (1–8192) sets it explicitly. Measured on a 6-symbol 12 h
+ * session with Signals on (same orders, PF 1.26, peak RSS 4.3 GB at 1 GiB): 1 GiB 463 s, 3 GiB 372 s (peak 4.3 GB),
+ * 6 GiB 377 s (peak 4.8 GB): a larger cache removes the repeated decompression (23 % of the profile) without raising
+ * the peak, and past 3 GiB it only holds memory.
  */
 export const HISTORY_CACHE_BYTES = historyCacheBytes();
 function historyCacheBytes(): number {
@@ -32,7 +35,7 @@ function historyCacheBytes(): number {
     const mb = Number(env);
     if (Number.isFinite(mb) && mb >= 1 && mb <= 8192) return Math.floor(mb * MiB);
   }
-  const main = Math.max(64 * MiB, Math.min(1024 * MiB, Math.floor((totalmem() * 0.06) / MiB) * MiB));
+  const main = Math.max(64 * MiB, Math.min(3072 * MiB, Math.floor((totalmem() * 0.18) / MiB) * MiB));
   // every worker thread opens its own stores with this budget: a quarter of the main thread's (at least 64 MiB), so
   // a pool of workers cannot multiply the cache into gigabytes
   return isMainThread ? main : Math.max(64 * MiB, Math.floor(main / 4 / MiB) * MiB);
