@@ -8312,7 +8312,7 @@ export class CoreRuntime {
       }
       const newBy = Object.entries(byRange).map(([k, n]) => `${k} ${n}`).join(", ");
       console.info(
-        `[paper] step: ${cands.length} candidates (${fresh.length} new: ${newBy || "none"}), skipped: ${top || "none"} · open ${positions.length} positions · balance ${Math.round(this.paper.balance ?? 0)} equity ${Math.round(this.paper.equity ?? 0)}`,
+        `[paper] step: ${cands.length} candidates (${fresh.length} fresh before caps: ${newBy || "none"}; ${positions.filter((p) => !prevByKey.has(posId(p))).length} opened), skipped: ${top || "none"} · open ${positions.length} positions · balance ${Math.round(this.paper.balance ?? 0)} equity ${Math.round(this.paper.equity ?? 0)}`,
       );
     }
     // the live tick ran between this step's slices on the old book: a stop it crossed after the positions were
