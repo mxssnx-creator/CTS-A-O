@@ -647,3 +647,32 @@ Measured on the 6-symbol run, 24 h pre-history, run 24 h, end 2026-10-19T19:00Z,
 
 One window only, and the on run has 91 orders: the result is not yet accepted. Two more windows (end-at 2026-10-18T19:00Z
 and 2026-10-17T19:00Z) are needed before the claim holds. Shown in the report as a pooled-versus-per-side comparison.
+
+## 5-day causal comparison: Block volume cap and lane history depth (24 Nov) — x01 desk settings, no code default changed
+
+Window 2026-11-19T18:00Z → 2026-11-24T18:00Z (120 h run, 72 h pre-history), 12 symbols, $10 start, 2 % volume unit at 10×,
+0.15 % round-trip cost, same universe in every run; the Exit family off, Signals on (they funded no order). Defaults other than
+the stated differences unchanged.
+
+| run | end balance | exec PF | WR | funded orders | max equity DD | hourly success (hours with closes) | checks |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| S0 current defaults (DCA on, Block cap 8) | −$0.02 | 0.57 | 51.8 % | 3,995 | 100.4 % | 35 / 73 = 47.9 % | 68/68 |
+| S1 DCA off, Block cap 8 | −$0.07 | 0.58 | 51.9 % | 3,939 | 101.5 % | 34 / 72 = 47.2 % | 66/66 |
+| S2 DCA off, Block cap 2 | $1.51 | 0.58 | 49.5 % | 5,124 | 92.1 % | 46 / 101 = 45.5 % | 66/66 |
+| S3 DCA off, Block cap 1 | $4.17 | 0.57 | 49.4 % | 5,115 | 68.8 % | 46 / 101 = 45.5 % | 66/66 |
+
+- The Block cap does not move the execution PF (0.57–0.58): it decides whether the account survives its worst hours. With
+  the cap at 8, Block-raised orders carried the whole 06:00–10:00 loss on 21 Nov and the account reached zero; at 1 it ended at
+  −58 % instead of −100 %. The x01 desk runs `block.maxMult 1` (the "minimal volume factor"); the code default (8) is unchanged.
+- Per range (S3): Micro PF 1.31 (535 orders, WR 80 %, the only positive range); Minimal 0.55, Short 0.62, General 0.74, Long
+  0.54 (−$3.65, the largest loss), Wide 0.30. Strategies: Trailing 0.67, Normal 0.54, Axis 0.30.
+- Max hold, audited on S0's 5,218 executed trades: none exceeded its configured hold (longest = hold × lane length); all 40 time
+  exits closed at exactly the hold bar count. Time exits are < 1 % of trades (PF 0.02); stops and targets decide the rest.
+- **Lane history depth.** Each lane's Base history is its last `tfDays` days, cut at the run start (causal Base). With the 1m lane
+  at 3 days a 120 h run left it no pre-run data, and 32 of 854 engine pairs (all `@m1` / `@m1c`) were never evaluated at Base:
+  the integrity check "every combo evaluated at Base" failed (67/68). The same runs with `tfDays` extended by the run length
+  (1m 8, 5m 13, 15m / 30m 23 days) passed 68/68. A desk's run window is `simH` (48 h): with 72 h pre-calc its 1m lane keeps only
+  `tfDays − simH/24` = 1 day unless `tfDays` is raised; the x01 desk uses 1m 5, 5m 10, 15m / 30m 20 days.
+- Saved settings without `wfCapsV` are treated as legacy: the migrations reset `signals.enabled`, the signal lanes and the order
+  caps. A hand-written settings file needs `"wfCapsV": 35` beside `"settings"` (a warning now says so; test:
+  `settings-version.test.ts`).
