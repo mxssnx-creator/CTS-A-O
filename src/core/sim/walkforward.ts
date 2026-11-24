@@ -482,6 +482,13 @@ export interface WalkForwardOptions {
    */
   onePerPairEvent?: boolean;
   /**
+   * Incremental seat picks (default on): while the run tracks its settled closes, a re-derivation of the picks re-evaluates
+   * only the tapes with a close settled since the last one and keeps every other tape's candidate entry, instead of
+   * walking every engine tape each minute. The same picks in the same order (tests/incremental-picks.test.ts); false =
+   * the full walk, kept as the reference.
+   */
+  incrementalPicks?: boolean;
+  /**
    * A comparison run that reads only trades, open-at-end and skips (session variants): the result carries no feed
    * and no signal-step snapshots. The books, guards and every decision are unchanged (they consume each entry as it
    * settles); only the returned copies, which grow with every candidate and every changed minute, are not kept.
@@ -4305,6 +4312,13 @@ export class EvalMemo {
   staticRefs: readonly unknown[] | null = null;
   /** tapes with a close settled since their verdict was computed (only while events are attached) */
   readonly dirty = new Set<ConfigTape>();
+  /** the incremental picks' candidate entries per tape (selectIncremental); rebuilt when its inputs change */
+  picks: PickCache | null = null;
+  /**
+   * tapes with a close settled since the picks cache last looked at them. Separate from `dirty`: any other evaluation
+   * of a tape (the hourly validation, a full walk) clears `dirty`, and the picks cache must still re-read that tape.
+   */
+  readonly pickDirty = new Set<ConfigTape>();
   private times = new Float64Array(0);
   private owner = new Int32Array(0);
   private tapes: readonly ConfigTape[] = [];
@@ -4350,7 +4364,11 @@ export class EvalMemo {
     if (!this.tracking) return false;
     if (t < this.clock) return false;
     if (t === this.clock) return true;
-    while (this.ptr < this.times.length && this.times[this.ptr] < t) this.dirty.add(this.tapes[this.owner[this.ptr++]]);
+    while (this.ptr < this.times.length && this.times[this.ptr] < t) {
+      const tp = this.tapes[this.owner[this.ptr++]];
+      this.dirty.add(tp);
+      if (this.picks) this.pickDirty.add(tp);
+    }
     this.clock = t;
     return true;
   }
@@ -4375,6 +4393,82 @@ export function configEvalSummary(tp: ConfigTape, t: number, o: WalkForwardOptio
   memo.dirty.delete(tp);
   return ev;
 }
+interface PickEntry extends Selection { pair: string; idx: number }
+interface PickCache {
+  tapes: readonly ConfigTape[];
+  refs: readonly unknown[];
+  index: Map<ConfigTape, number>;
+  entries: Map<ConfigTape, PickEntry>;
+}
+/**
+ * selectPositionsGen without the walk over every tape. For seatPer "config" without Base comparisons (the picks then
+ * depend only on each tape's own verdict) the candidate entries are kept per tape between calls: a tape whose closes did
+ * not change keeps its entry exactly (the memo's verdict is exact until a close settles), so only the dirty tapes are
+ * evaluated again. Entries are ordered by score and then by the tape's position, which is what the stable sort of the
+ * full walk gives.
+ */
+function* selectIncremental(
+  tapes: readonly ConfigTape[],
+  t: number,
+  o: WalkForwardOptions,
+  memo: EvalMemo,
+  refs: readonly unknown[],
+): Generator<number, { picks: Selection[]; eligible: number }> {
+  const key = [...refs, o.toggles, o.rangeOpts, o.signalOwnBase, o.rankBy];
+  let pc = memo.picks;
+  const forward = memo.advance(t);
+  const reuse = !!pc && forward && pc.tapes === tapes && pc.refs.length === key.length && pc.refs.every((x, k) => x === key[k]);
+  const evaluate = (tp: ConfigTape, i: number, entries: Map<ConfigTape, PickEntry>) => {
+    let st = memo.staticSeat.get(tp);
+    if (!st) {
+      const keep = !((tp.kind !== "exit" && o.bots.length && !o.bots.includes(tp.bot)) || !baseAllowsTape(tp, o) || !cellAllowed(tp, o));
+      st = { keep, pair: keep ? seatKey(tp, o) : "" };
+      memo.staticSeat.set(tp, st);
+    }
+    if (!st.keep) {
+      // never a candidate: its closes need no re-evaluation (an unread dirty mark would also keep the picks busy)
+      memo.dirty.delete(tp);
+      entries.delete(tp);
+      return;
+    }
+    const ev = configEvalSummary(tp, t, o);
+    if (ev.ok && !tp.heldOnly && tapeExecutable(tp, o) && inValidated(tp.id, o))
+      entries.set(tp, {
+        id: tp.id,
+        pair: st.pair,
+        idx: i,
+        score: o.rankBy === "green" ? ev.gh + Math.min(1, Math.max(0, ev.lcb)) * 1e-6 : ev.lcb * (0.5 + ev.gh),
+        window: { n: ev.n, net: ev.net, pf: ev.pf, gp: (ev.gp ?? 0) / 100, gl: (ev.gl ?? 0) / 100, ddt: ev.ddt },
+      });
+    else entries.delete(tp);
+  };
+  if (reuse) {
+    const changed = [...memo.pickDirty];
+    memo.pickDirty.clear();
+    for (const tp of changed) {
+      const i = pc!.index.get(tp);
+      if (i === undefined) memo.dirty.delete(tp);
+      else evaluate(tp, i, pc!.entries);
+    }
+  } else {
+    memo.pickDirty.clear();
+    memo.picks = null;
+    const entries = new Map<ConfigTape, PickEntry>(), index = new Map<ConfigTape, number>();
+    for (let i = 0; i < tapes.length; i++) {
+      index.set(tapes[i], i);
+      evaluate(tapes[i], i, entries);
+      if (i % 64 === 0) yield -14;
+    }
+    // closes that settle from here on are the picks cache's to re-read (the walk above saw every tape at t)
+    pc = memo.picks = { tapes, refs: key, index, entries };
+  }
+  const eligible = [...pc!.entries.values()].sort((a, b) => b.score - a.score || a.idx - b.idx);
+  return {
+    picks: pickSeats(eligible, seatsOf(o), [], new Set<string>(), o).map(({ id, score, window }) => ({ id, score, window })),
+    eligible: eligible.length,
+  };
+}
+
 function* selectPositionsGen(
   tapes: readonly ConfigTape[],
   t: number,
@@ -4412,6 +4506,10 @@ function* selectPositionsGen(
     memo.staticSeat.clear();
     memo.staticRefs = refs;
   }
+  // only a run that tracks its settled closes, without Base comparisons, validation records or a frozen set
+  if (memo?.tracking && o.incrementalPicks !== false && o.seatPer === "config" && !o.ladderNeedsBase &&
+      !(o.familySeats && o.familyNeedsBase === true) && !o.recordValidation && !o.validated)
+    return yield* selectIncremental(tapes, t, o, memo, refs);
   for (let i = 0; i < tapes.length; i++) {
     const tp = tapes[i];
     let st = memo?.staticSeat.get(tp);
