@@ -366,6 +366,11 @@ export interface CoreSettings {
   pinned?: readonly string[];
   /** indication main types switched off (their combos are not computed) */
   disabledKinds: string[];
+  /**
+   * single indications switched off, as `bot|indication` (the timeframe suffix "@…" is ignored): their combos are never
+   * computed, whether they come from the focus or from Micro's own indications. Unset / empty = none (earlier behaviour).
+   */
+  disabledInds?: readonly string[];
   block: BlockConfig;
   dca: DcaConfig;
   relate: RelateAdjustmentConfig;

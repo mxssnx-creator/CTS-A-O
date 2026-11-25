@@ -12816,7 +12816,15 @@ export function baseFocus(s: CoreSettings): string[] {
           : [`follow|${m.id}`],
       )
     : [];
-  return [...new Set([...f, ...(s.pinned ?? []), ...micro])];
+  const all = [...new Set([...f, ...(s.pinned ?? []), ...micro])];
+  return dropDisabledInds(all, s.disabledInds);
+}
+
+/** `bot|indication` entries without the ones in `disabledInds` (compared without the "@…" lane suffix); unset = unchanged. */
+export function dropDisabledInds(entries: readonly string[], disabled: readonly string[] | undefined): string[] {
+  if (!disabled?.length) return [...entries];
+  const off = new Set(disabled.map((x) => x.split("@")[0]));
+  return entries.filter((x) => !off.has(x.split("@")[0]));
 }
 
 /**
