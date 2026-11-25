@@ -165,11 +165,6 @@ export const DEFAULT_BLOCK: BlockConfig = {
   historySource: "accepted-orders",
   // Each raised Block group keeps its last applied extra volume until that group's realized extra net is recovered.
   holdUntilNet: true,
-  windowAuto: true,
-  windowIndependent: true,
-  windowMinSamples: 30,
-  windowLookback: 300,
-  windowCandidates: [5, 10, 15, 25, 35],
   ratio: 0.5,
   maxLevel: 8,
   minActiveLevel: 2,
