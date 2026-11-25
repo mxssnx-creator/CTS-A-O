@@ -62,6 +62,10 @@ test("48h evaluated history adds own samples while Last-N, empty contexts and Si
     { ...base, preH: 48, longH: 48 });
   assert.equal(row(signal,"history").historyH,150);
   assert.equal(row(signal,"history").source,"signals");
+  // Signals are processed through their own range "sig", whatever engine range tag their config carries
+  const tagged = run([tape({ind:"sig-ema-cross-s@m1", protect:{ tp:.01, sl:.01, trail:0, hold:8, tag:"mn" }})], at, { ...base, preH: 48, longH: 48 });
+  assert.ok(tagged.rows.filter((r)=>r.source==="signals").every((r)=>r.range==="sig"));
+  assert.ok(tagged.rows.every((r)=>r.source==="signals" ? r.range==="sig" : r.range!=="sig"));
 });
 
 test("corrupt timing or ownership cannot be skipped to qualify older closes", () => {

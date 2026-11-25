@@ -70,7 +70,18 @@ export function adjustTrades(
 }
 
 /** "bot|ind|kind" of a config id; Historic Exit adds its tactic so its feedback is independent. */
+// A pure function of the id, asked for every config at every tape build: the answer is kept (bounded, rebuilt on demand).
+const setKeyCache = new Map<string, string>();
 export function setKeyOf(cfg: string): string {
+  let key = setKeyCache.get(cfg);
+  if (key === undefined) {
+    key = computeSetKey(cfg);
+    if (setKeyCache.size >= 300_000) setKeyCache.clear();
+    setKeyCache.set(cfg, key);
+  }
+  return key;
+}
+function computeSetKey(cfg: string): string {
   const [bot, ind] = cfg.split("|");
   const kind = kindOf(cfg);
   if (kind === "exit") {

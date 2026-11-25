@@ -69,8 +69,10 @@ export function* lastNSamplesGen(tapes: readonly ConfigTape[], at: number, o: Wa
       }
     }
     for (const [window, n] of Object.entries(countMode?windows:{ ...windows, history: history.minTrades })) {
-      const range = tp.protect.tag ?? "none";
       const source = isSignalInd(tp.ind) ? "signals" : "engine";
+      // Signals are processed through their own coordination, the range "sig" (Signals), never through an engine range
+      // tag (positionScopeOf, stepRange and the step progress read them the same way)
+      const range = source === "signals" ? "sig" : tp.protect.tag ?? "none";
       const historyH = window === "history" ? history.hours : null;
       const key = JSON.stringify([tp.kind, range, source, window, n, historyH]);
       let row = groups.get(key);
