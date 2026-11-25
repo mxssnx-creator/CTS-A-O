@@ -469,6 +469,17 @@ export interface WalkForwardOptions {
    */
   excludeRanges?: string[];
   /**
+   * Indications that open nothing new, as `bot|indication` with the timeframe suffix ("@…") stripped ("follow|mc-rsit4-30"):
+   * a configuration of one never takes a seat, its tape is unchanged (same as excludeRanges, one indication at a time).
+   * Counterfactual measurement of dropping non-performing indications; unset / empty = none.
+   */
+  excludeInds?: string[];
+  /**
+   * Stop-loss ratios (stop distance ÷ target distance, rounded to 0.25) that open nothing new, per range tag ("mn", "gn", "lg",
+   * "sh", "mc", "mp", "lr", "wide"): the walk-forward mirror of dropping a ratio from that range's grid. Tapes are unchanged.
+   */
+  excludeSlRatios?: Record<string, number[]>;
+  /**
    * Entry crowding cap per range ("mc", "mn", "mp", "sh", "gn", "lg", "lr", "wide", "sig"): at most this many configs of
    * the range enter on one symbol × side × entry time — the best-ranked first (candidates are taken best first). One
    * signal bar fires every cell of a range at once: on 6 Oct (24 h) a single LYN-USDT bar entered 229 Micro configs,
@@ -6268,6 +6279,14 @@ export function execDecision(
   const excludedRange = isSignalInd(tp.ind) ? "sig" : tp.protect.tag;
   if (tp.kind !== "exit" && o.excludeRanges?.length && excludedRange && o.excludeRanges.includes(excludedRange))
     return { ok: false, why: "rangeOff" };
+  if (tp.kind !== "exit" && o.excludeInds?.length && !isSignalInd(tp.ind) &&
+      o.excludeInds.includes(`${tp.bot}|${tp.ind.replace(/@.*$/, "")}`))
+    return { ok: false, why: "indOff" };
+  if (o.excludeSlRatios && tp.kind !== "exit" && !isSignalInd(tp.ind) && tp.protect.tp > 0 && tp.protect.sl > 0) {
+    const drop = o.excludeSlRatios[tp.protect.tag ?? "wide"];
+    if (drop?.length && drop.includes(Math.round((tp.protect.sl / tp.protect.tp) * 4) / 4))
+      return { ok: false, why: "slOff" };
+  }
   // the range's own seatQuietH / lastN (wf.rangeOpts), else the global ones
   const ro = o.rangeOpts ? rangeOptsOf(o, tp) : undefined;
   const quietH = ro?.seatQuietH ?? o.seatQuietH;
