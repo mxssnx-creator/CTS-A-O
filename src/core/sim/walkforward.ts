@@ -7725,7 +7725,7 @@ export function* signalEntryQueueGen(
 /** Drain due entries only. Unselected histories may advance to the end of a caller-frozen
  * selection interval. The boundary entry is retained for the next selection; no return is changed. */
 export function* scheduledEngineEntriesGen(
-  queue: ExitHeap<SignalEntryCursor>, endT: number, selected: ReadonlySet<string>, markT: number,
+  queue: ExitHeap<SignalEntryCursor>, endT: number, selected: Pick<ReadonlySet<string>, "has">, markT: number,
   selectionEndT = endT,
 ): Generator<number, Array<{ tr: Trade; tp: ConfigTape }>> {
   const out: Array<{ tr: Trade; tp: ConfigTape }> = [];
@@ -8257,9 +8257,12 @@ export function* walkForwardGen(
       new Map([...ps].sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1)).map((p, i) => [p.id, i] as [string, number]));
     let engineRank = rankOf(picks);
     const selectedEntries = new Set<string>();
+    // The Base-qualified processed cohort is fixed for this replay. Check it alongside the current seats
+    // instead of copying its entire set into a new union on every intra-hour selection refresh.
+    const scheduledEntries: Pick<ReadonlySet<string>, "has"> = processedEntries.size
+      ? { has: (id) => processedEntries.has(id) || selectedEntries.has(id) } : selectedEntries;
     const seat = (ps: readonly Selection[]) => {
       selectedEntries.clear();
-      for (const id of processedEntries) selectedEntries.add(id);
       for (const p of ps) {
         const tid = o.invertSeats ? mirrorId(p.id) : p.id;
         if (tid && byId.has(tid)) selectedEntries.add(tid);
@@ -8300,7 +8303,7 @@ export function* walkForwardGen(
       const batchEnd = Math.min(stepEnd, batchT + batchMs);
       // Hourly: an unselected history may advance to the end of the step (its selection is frozen for the hour). Continuous:
       // the picks are re-derived inside the hour, so no entry past this batch may be skipped.
-      const cands = yield* scheduledEngineEntriesGen(engineEntries, batchEnd, selectedEntries, stopT,
+      const cands = yield* scheduledEngineEntriesGen(engineEntries, batchEnd, scheduledEntries, stopT,
         continuousPicks ? batchEnd : stepEnd);
       let mergedSignals = 0;
       while (signalEntries.peekT() < batchEnd) {

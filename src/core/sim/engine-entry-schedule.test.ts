@@ -56,3 +56,22 @@ test('stored-history scheduling preserves full selected rows with a tiny evictin
  };
  try{assert.deepEqual(run(source.map(t=>store.append(t))),run(source));}finally{store.close();}
 });
+
+test('scheduling accepts the union of fixed processed sets and changing seats',()=>{
+ const tapes=[fixture('first','normal'),fixture('second','axis')];
+ const run=(combine:(base:Set<string>,seats:Set<string>)=>Pick<ReadonlySet<string>,'has'>)=>{
+  const queue=drain(signalEntryQueueGen(tapes,start,stop,false)),out:Trade[]=[];
+  const base=new Set(['first']),seats=new Set<string>();
+  for(let m=0;m<180;m++){
+   seats.clear();if(m>=60&&m<120)seats.add('second');
+   const selected=combine(base,seats);
+   out.push(...drain(scheduledEngineEntriesGen(queue,start+(m+1)*M,selected,stop,start+(m+1)*M)).map(x=>x.tr));
+  }
+  return out;
+ };
+ const combined=run((base,seats)=>({has:id=>base.has(id)||seats.has(id)}));
+ const copied=run((base,seats)=>new Set([...base,...seats]));
+ assert.deepEqual(combined,copied);
+ assert.equal(combined.filter(x=>x.cfg==='first').length,360,'fixed cohort remains scheduled for all three hours');
+ assert.equal(combined.filter(x=>x.cfg==='second').length,120,'the changing seat is scheduled only in its hour');
+});
