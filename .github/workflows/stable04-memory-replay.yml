@@ -8,7 +8,8 @@ permissions:
   contents: read
 concurrency:
   group: stable04-frozen-memory-replay
-  cancel-in-progress: false
+  # A newer source supersedes an obsolete replay of the same frozen protocol.
+  cancel-in-progress: true
 jobs:
   replay:
     runs-on: ubuntu-24.04

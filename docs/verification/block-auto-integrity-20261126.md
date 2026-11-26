@@ -47,7 +47,7 @@ hourly, post-Base validation or funded-execution results were produced. This run
 The first isolated GitHub replay (`45816167296`, source `4d8380e9fc267f2245ed3c339bb12cbc4c81345a`)
 does not upload the raw dump's sibling `session-*` directories. Its raw dump therefore cannot be treated as
 complete independent trade evidence, even if the run itself succeeds. The workflow now includes those
-sidecars and queues subsequent fixed-workflow runs under a shared concurrency group. The report has its own
+sidecars and supersedes an older run of this frozen protocol when its source changes. The report has its own
 separate sidecars and is preserved independently.
 
 Further review found the automatic count selector ignored both its `windowIndependent` switch and the configured
