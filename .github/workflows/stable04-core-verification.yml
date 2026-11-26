@@ -17,8 +17,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Preserve the earlier slow-runtime baseline while verifying rolling Tactic validation.
-  group: stable04-core-verification-v6
+  # Preserve the earlier slow-runtime baseline while verifying corrected Signal evaluation.
+  group: stable04-core-verification-v7
   cancel-in-progress: true
 jobs:
   core:

@@ -6,7 +6,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-if (process.argv.length !== 3) throw new Error('usage: prepare-stable04-replay.mjs OUTPUT_DIR');
+if (process.argv.length < 3 || process.argv.length > 4 || (process.argv.length === 4 && process.argv[3] !== '--focused'))
+  throw new Error('usage: prepare-stable04-replay.mjs OUTPUT_DIR [--focused]');
+const focused = process.argv[3] === '--focused';
 const out = resolve(process.argv[2]);
 process.env.CTS_CORE_STATE = 'off';
 process.env.CTS_CORE_AUTOSTART = '0';
@@ -18,7 +20,12 @@ const { checkSettings } = await import('../src/core/settings-check.ts');
 const { SESSION_STUDY_SOURCE_SCOPE, studyCanonical, studyExactJson, studySha256, sessionStudySourceFiles, studyWithRequestedWindow } = await import('./lib/session-study.mjs');
 const symbols = ['AVAX', 'DOT', 'ATOM', 'APT', 'BTC', 'ETH', 'BNB', 'DOGE', 'ADA', 'BCH', 'ETC', 'ARB'].map(s => s + '-USDT');
 const t = s => Date.parse(s), evaluationFromT = t('2026-10-14T21:00:00Z'), tradeStartT = t('2026-10-15T21:00:00Z'), endT = t('2026-10-16T21:00:00Z');
-const settings = { forceSymbols: symbols, signals: { hist: { lookbackH: 24 } }, exitStrategy: { enabled: false } };
+// The focused diagnostic preserves the 12-symbol windows and factory risk policies but deliberately narrows
+// ordinary selections and Signal sources. The runtime still includes its automatic Micro indication focus.
+const focus = ['follow|rsi-mom-14-20', 'follow|tactic-dca-bounce-8-percent-0.5-2-0.5@m1', 'revert|cci-14-200@x4'];
+const settings = { forceSymbols: symbols, ...(focused ? { focus, pinned: [] } : {}),
+  signals: { hist: { lookbackH: 24 }, ...(focused ? { sourcesMode: 'allow', sources: { 'ema-cross': true } } : {}) },
+  exitStrategy: { enabled: false } };
 const toggles = { axis: true, block: true, exit: false };
 // These stage windows are not the independent Signals Last-15 setting.
 const wf = { signalLongH: 24, recordValidation: 'summary', processedStages: { validationN: 12, realN: 12 } };
@@ -35,6 +42,12 @@ try {
   rt.wf = { ...rt.wf, longH: 24 };
   assert.equal(rt.settings.symbols, 12);
   assert.deepEqual([...rt.settings.forceSymbols].sort(), [...symbols].sort());
+  if (focused) {
+    assert.deepEqual(rt.settings.focus, focus);
+    assert.deepEqual(rt.settings.pinned, []);
+    assert.equal(rt.settings.signals.sourcesMode, 'allow');
+    assert.deepEqual(rt.settings.signals.sources, { 'ema-cross': true });
+  }
   assert.equal(rt.settings.tactics.signalMinDaily, 2);
   assert.equal(rt.settings.tactics.volRegime, true);
   assert.equal(rt.settings.tactics.trendStrength, true);
@@ -64,14 +77,16 @@ try {
   const source = { files, sha256: studySha256(studyExactJson(files)), scope: SESSION_STUDY_SOURCE_SCOPE,
     checkpoint: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim() };
   const p = {
-    schema: 'cts-session-study-v1', id: 'stable04-12-symbol-memory-24h-20261126', symbols,
+    schema: 'cts-session-study-v1', id: focused ? 'stable04-focused-12-symbol-memory-24h-20261126' : 'stable04-12-symbol-memory-24h-20261126', symbols,
     window: { evaluationFromT, tradeStartT, endT, preH: 24, runH: 24 },
     symbolSelection: { cutT: tradeStartT, method: 'fixed cohort, pre-start hourly ranking' },
     feed: { sha256: studySha256(feed), source: 'verified BingX public historical OHLCV fixture' }, source,
     actualSettings: studyCanonical(rt.settings), actualWf: studyCanonical(rt.wf),
     account: { balance: 10, leverage: 10, sizing: { mode: 'equityPct', pct: .002 } },
     policy: { tactics: 'factory defaults', history: '24h evaluated, 24h trading, older physical candles for indicator and 7-day cadence warmup',
-      processedStages: 'explicit opt-in validationN=12, realN=12; separate from Signals Last-15', scope: 'offline modeled orders; no exchange' },
+      processedStages: 'explicit opt-in validationN=12, realN=12; separate from Signals Last-15',
+      scope: focused ? 'focused diagnostic: three ordinary pairs plus automatic Micro focus, one Signal source; offline modeled orders; no exchange'
+        : 'offline modeled orders; no exchange' },
   };
   writeFileSync(resolve(out, 'protocol.json'), JSON.stringify(p, null, 2) + '\n');
   writeFileSync(resolve(out, 'settings.json'), JSON.stringify(settings));

@@ -4346,7 +4346,7 @@ function positionAggregate(
  * (they live compressed on disk): an unchanged tape costs a set lookup, a changed one a fresh evaluation.
  */
 export class EvalMemo {
-  readonly byTape = new Map<ConfigTape, { before: number; ev: ConfigEval }>();
+  readonly byTape = new Map<ConfigTape, { before: number; ev: ConfigEval; token?: object }>();
   /**
    * Per tape, what the selection's static filters said (bots, Base admission, cell, seat key): they read only option
    * objects that stay fixed through a run, so they are computed once; `staticRefs` are the inputs they were computed
@@ -4361,14 +4361,25 @@ export class EvalMemo {
   private tapes: readonly ConfigTape[] = [];
   private ptr = 0;
   private clock = -Infinity;
+  private fromT = -Infinity;
+  private toT = -Infinity;
+  private indexed = new WeakSet<ConfigTape>();
+  private token = {};
   tracking = false;
+
+  /** A cached verdict may skip its settled-close lookup only for this exact attached index and forward clock. */
+  tokenFor(tp: ConfigTape, forward: boolean): object | undefined {
+    return forward && this.indexed.has(tp) ? this.token : undefined;
+  }
 
   /** Index the exit times of every tape inside [fromT, toT), sorted; slices (yields −1) so a long scan stays responsive. */
   *attach(tapes: readonly ConfigTape[], fromT: number, toT: number): Generator<number, void> {
     let count = 0;
     const lo: number[] = [];
+    const indexed = new WeakSet<ConfigTape>();
     let at = performance.now();
     for (let i = 0; i < tapes.length; i++) {
+      indexed.add(tapes[i]);
       const x = tapes[i].exitT;
       let j = lowerBound(x, fromT);
       const start = j;
@@ -4408,13 +4419,14 @@ export class EvalMemo {
       times[dst] = savedTime; owner[dst] = savedOwner; order[dst] = dst;
       if (++moves % 8192 === 0) yield -1;
     }
-    this.times = times; this.owner = owner; this.tapes = tapes; this.ptr = 0; this.clock = fromT; this.tracking = true;
+    this.times = times; this.owner = owner; this.tapes = tapes; this.ptr = 0; this.clock = fromT;
+    this.fromT = fromT; this.toT = toT; this.indexed = indexed; this.token = {}; this.tracking = true;
     this.dirty.clear();
   }
 
   /** Move the clock to t: every tape with a close settling in [clock, t) becomes dirty. False when t is not a forward move. */
   advance(t: number): boolean {
-    if (!this.tracking) return false;
+    if (!this.tracking || !Number.isFinite(t) || t < this.fromT || t > this.toT) return false;
     if (t < this.clock) return false;
     if (t === this.clock) return true;
     while (this.ptr < this.times.length && this.times[this.ptr] < t) this.dirty.add(this.tapes[this.owner[this.ptr++]]);
@@ -4429,16 +4441,18 @@ export function configEvalSummary(tp: ConfigTape, t: number, o: WalkForwardOptio
   const memo = o.evalMemo;
   if (!memo) return positionAggregate(tp, t, o, undefined, false);
   const forward = memo.advance(t);
+  const token = memo.tokenFor(tp, forward);
   const hit = memo.byTape.get(tp);
   // no close of this tape has settled since its verdict was computed: the cached verdict is exact, no column is opened
-  if (hit && forward && !memo.dirty.has(tp)) return hit.ev;
+  if (hit && token && hit.token === token && !memo.dirty.has(tp)) return hit.ev;
   const before = lowerBound(tp.exitT, t);
   if (hit && hit.before === before) {
+    hit.token = token;
     memo.dirty.delete(tp);
     return hit.ev;
   }
   const ev = positionAggregate(tp, t, o, undefined, false);
-  memo.byTape.set(tp, { before, ev });
+  memo.byTape.set(tp, { before, ev, token });
   memo.dirty.delete(tp);
   return ev;
 }
@@ -4521,15 +4535,17 @@ function* selectPositionsGen(
       });
     if (i % 64 === 0) yield -14; // a work slice, not a completed simulated step (a non-negative yield counts as one)
   }
-  const byId = new Map(tapes.map((tp) => [tp.id, tp]));
+  // Only the optional ladder-vs-base comparison reads this index. In the normal independent-config path,
+  // building a full tape-sized Map on every decision minute added allocation and sorting pressure for no result.
+  const byId = o.ladderNeedsBase ? new Map(tapes.map((tp) => [tp.id, tp])) : undefined;
   const eligible = beatsBase(
     cand.filter(
       (c) =>
         (o.seatPer === "config" ||
           (pairOk.get(c.pair) ?? 0) / Math.max(1, pairTotal.get(c.pair) ?? 0) >= o.robustFrac) &&
         (!o.ladderNeedsBase ||
-          !["dca", "dca-active", "axis"].includes(byId.get(c.id)!.kind) ||
-          baseSeated.has(baseComparisonKey(byId.get(c.id)!))),
+          !["dca", "dca-active", "axis"].includes(byId!.get(c.id)!.kind) ||
+          baseSeated.has(baseComparisonKey(byId!.get(c.id)!))),
     ),
     basePf,
     o,

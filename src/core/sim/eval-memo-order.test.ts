@@ -15,13 +15,14 @@ test("the bounded close index matches a scalar chronology across ties and strict
     const memo = new EvalMemo();
     finish(memo.attach(tapes, 4, 26));
     let before = 4;
-    for (const at of [4, 5, 6, 9, 9, 12, 18, 25, 26, 30]) {
+    for (const at of [4, 5, 6, 9, 9, 12, 18, 25, 26]) {
       assert.equal(memo.advance(at), true);
       const expected = tapes.filter((tp) => [...tp.exitT].some((t) => t >= before && t < at && t < 26));
       assert.deepEqual(new Set(memo.dirty), new Set(expected), `trial ${trial}, ${before} to ${at}`);
       memo.dirty.clear();
       before = at;
     }
-    assert.equal(memo.advance(29), false, "a backward clock cannot consume or invent events");
+    assert.equal(memo.advance(30), false, "a clock past the index cannot claim complete change coverage");
+    assert.equal(memo.advance(25), false, "a backward clock cannot consume or invent events");
   }
 });
