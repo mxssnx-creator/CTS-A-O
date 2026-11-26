@@ -24,6 +24,7 @@ def main(out):
     args = ['node', '--experimental-strip-types', '--no-warnings', '--expose-gc', 'scripts/core-session.mjs',
             '--feed', str(feed), '--symbols', '12', '--pre', '24', '--run', '24', '--end-at', '2026-10-16T21:00:00.000Z',
             '--evaluation-from', '2026-10-14T21:00:00.000Z', '--selection-hours', '24', '--replay-preload-all',
+            '--max-wait-min', '165',
             '--settings', settings, '--toggles', json.dumps({'axis': True, 'block': True, 'exit': False}), '--wf', wf,
             '--frozen-session', str(protocol), '--chunk-allocations', '--no-archive',
             '--dump', str(out / 'raw.json'), '--html', str(out / 'report'), '--quiet', 'true']

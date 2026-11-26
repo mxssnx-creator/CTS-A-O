@@ -74,7 +74,8 @@ launcher set `CTS_CORE_HISTORY_CACHE_MB`, but the history store only read `CTS_H
 intended 32 MiB cache was not applied. The store now accepts both names with the original name taking
 precedence, and the replay launcher uses the original name explicitly. The next replay logs heap, external
 buffers and RSS while keeping the existing reserve and process guard. A completed run is still needed to
-measure the effect on the complete engine.
+measure the effect on the complete engine. Its compute wait is 165 minutes within the driver's 190-minute
+guard, with the same requested market window and no lighter fallback accepted.
 
 Stored-history validation now retains two weak identities per immutable tape instead of six, while still
 reading the checksummed arena after eviction and invalidating when the symbol mapping changes. In a synthetic
