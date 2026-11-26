@@ -4761,26 +4761,33 @@ export function SettingsPage() {
               <Switch label="Enable Relate" checked={s.relate.enabled}
                 onChange={(v) => set(["relate", "enabled"], v)} />
             </Field>
-            <Field label="Auto Mode" hint="Scores Active thresholds using executed-close unit-return PF. Ratio and step depth do not change that score; ties favor the lowest ratio and the step count nearest your manual setting. Sized PF is hypothetical and does not select a winner.">
+            <Field label="Auto Mode" hint="Tests loss-step depth and Active thresholds independently for each relation at a 0.2 increment. Both the historical unit PF and modeled sized PF must clear the floor.">
               <Switch label="Relate Auto Mode" checked={s.relate.auto}
                 onChange={(v) => set(["relate", "auto"], v)} />
             </Field>
-            <Field label="Stack mode" hint="Additive sums qualified relation additions. Shared divides their combined additions by the number of qualified active relations and tracks each share independently.">
+            <Field label="Stack mode" hint="Shared distributes the increase across configured relation weights. Additive sums the weighted increases within the stack cap.">
               <select className="v2-select" aria-label="Relate stack mode" value={s.relate.mode}
                 onChange={(e) => set(["relate", "mode"], e.target.value)}>
                 <option value="additive">Additive</option>
                 <option value="shared">Shared</option>
               </select>
             </Field>
-            <Field label="Volume increment ratio" hint="Each positive step adds this fraction of the relation's previous recorded volume. Additive sums the portions; Shared averages them. Max stack caps the total.">
+            <Field label="Relation scope" hint="Overall evaluates all relation windows. Each entry still needs qualified evidence from its exact Set.">
+              <select className="v2-select" aria-label="Relate relation scope" value={s.relate.scope ?? "selected"}
+                onChange={(e) => set(["relate", "scope"], e.target.value)}>
+                <option value="selected">Selected relations</option>
+                <option value="overall">Overall · all relations</option>
+              </select>
+            </Field>
+            <Field label="Volume increment ratio" hint="Each settled loss adds one step. Each step increases the relation's allocation by this ratio. A win or flat close resets the step.">
               <Num step={0.2} min={0.2} max={6} value={s.relate.ratio}
                 onChange={(v) => set(["relate", "ratio"], Math.round(v * 5) / 5)} />
             </Field>
-            <Field label="Maximum positive steps" hint="Consecutive positive executed closes, capped at this many steps. Auto Mode searches 2–15; manual default is 5.">
+            <Field label="Maximum loss steps" hint="Default 12. Auto uses this value as its maximum depth.">
               <Num int min={2} max={15} value={s.relate.steps}
                 onChange={(v) => set(["relate"], { ...s.relate, steps: v, activeStep: Math.min(s.relate.activeStep, v) })} />
             </Field>
-            <Field label="Active minimum step" hint="0 disables skipping. The selected step cannot exceed the maximum steps. Once qualified, skipped simulated closes advance shadow steps without entering the accepted PF sample; base entries build the initial sample.">
+            <Field label="Relate Active positions to skip" hint="0 disables skipping. Relate allocates its portion after this many losses. Internal tracking and ordinary orders continue while the portion is inactive.">
               <Num int min={0} max={Math.min(6, s.relate.steps)} value={s.relate.activeStep}
                 onChange={(v) => set(["relate", "activeStep"], v)} />
             </Field>
@@ -4820,8 +4827,13 @@ export function SettingsPage() {
           <div className="v2-lines" style={{ gap: 6, marginTop: 10 }}>
             {RELATE_SOURCE_HELP.map(([source, help]) => (
               <div key={source} style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <Switch label={`Relate source ${source}`} checked={s.relate.sources?.[source] !== false}
-                  onChange={(v) => set(["relate", "sources", source], v)} />
+                {s.relate.scope !== "overall" && <Switch label={`Relate source ${source}`} checked={s.relate.sources?.[source] !== false}
+                  onChange={(v) => set(["relate", "sources", source], v)} />}
+                {(s.relate.scope === "overall" || s.relate.sources?.[source] !== false) && <Field
+                  label={`${source === "overall" ? "All symbols" : source === "symbol" ? "Single symbol" : source} volume factor`}>
+                  <Num min={0} max={8} step={0.1} value={s.relate.volumeFactors?.[source] ?? 1}
+                    onChange={(v) => set(["relate", "volumeFactors", source], v)} />
+                </Field>}
                 <div>
                   <div style={{ fontWeight: 600, textTransform: "capitalize" }}>{source}</div>
                   <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>{help}</div>

@@ -122,13 +122,13 @@ describe("Relate modeled maximum stop distance", () => {
         coord: { enabled: false, hourLock: 0, cooldown: "off" as const, conflict: false, confirm: false } };
       const tp = makeTape(cfg, "follow", ind, p, kind, [identity.sym], [], [], []);
       const at = () => execDecision(tp, 100 * H, options, { sym: identity.sym, side, relate: book });
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < 1; i++) {
         const below = at();
         assert.equal(below.ok, true, `${label}: below the active step the base trades`);
         if (!below.ok) throw new Error("unexpected rejection");
         assert.equal(below.relateVol ?? 1, 1, `${label}: at unit volume`);
         // the accepted base close carries the relation's step (shadow part when the stop is eligible)
-        book.add({ ...identity, r: .01, accepted: true, relateMeasured: true,
+        book.add({ ...identity, r: -.001, accepted: true, relateMeasured: true,
           relateBase: below.relateBase ?? 1, relateParts: below.relateParts });
         assert.equal(book.decide(identity).stats.config?.n, 61 + i, `${label}: the base close is accepted evidence`);
       }
@@ -139,7 +139,7 @@ describe("Relate modeled maximum stop distance", () => {
       if (!eligible) {
         assert.equal(allowed.relateParts, undefined, `${label}: no simulated raise recorded as funded`);
         book.add(accepted(.01));
-        assert.equal(book.decide(identity).stats.config?.n, 63, `${label}: actual neutral close counted once`);
+        assert.equal(book.decide(identity).stats.config?.n, 62, `${label}: actual neutral close counted once`);
         const next = at();
         assert.equal(next.ok, true, `${label}: a neutral prior close restarts the step; the base still trades`);
         assert.equal(next.ok && (next.relateVol ?? 1), 1);

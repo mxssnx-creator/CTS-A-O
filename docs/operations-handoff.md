@@ -1,3 +1,9 @@
+## 2026-11-26 — Relate loss progression, Overall and Active
+
+Relate now progresses on settled losses with a fresh default of 12 steps. A win or flat close resets its relation. Overall evaluates all relation windows and each entry needs its own qualified exact Set. Shared mode allocates the increase using configured relation weights. Relate Active suppresses its sizing portion until the required loss count while the base trade and internal close tracking continue. Auto requires the historical unit PF and hypothetical sized PF to clear the configured floor.
+
+The targeted modeled, realtime, stop and relation isolation suites passed 61 checks. The synthetic 50-symbol benchmark measured 0.394 ms p95 for a close and sizing decision, compared with 0.460 ms on the preceding source. Post-Base return PF, validated Sets and validation percentage are unavailable for CTS-A-O on a new market replay. No venue test was run for this revision.
+
 ## 2026-11-26 — Block Auto integrity and bounded windows
 
 The automatic Block count selector now actually evaluates each relation key independently, enforces the

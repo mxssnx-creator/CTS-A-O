@@ -653,6 +653,17 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       throw new Error("Relate Auto mode: on / off");
     if (s.relate.mode !== undefined && s.relate.mode !== "shared" && s.relate.mode !== "additive")
       throw new Error("Relate mode must be shared or additive");
+    if (s.relate.scope !== undefined && s.relate.scope !== "selected" && s.relate.scope !== "overall")
+      throw new Error("Invalid Relate scope");
+    if (s.relate.volumeFactors !== undefined) {
+      const factors = s.relate.volumeFactors;
+      if (!factors || typeof factors !== "object" || Array.isArray(factors)) throw new Error("Invalid Relate volume factors");
+      const sources = ["config", "overall", "symbol", "direction", "indication", "strategy", "coordination", "range"];
+      for (const [source, value] of Object.entries(factors)) {
+        if (!sources.includes(source)) throw new Error("Invalid Relate volume factor source");
+        num(value, 0, 8, "Relate volume factor");
+      }
+    }
     if (s.relate.ratio !== undefined) num(s.relate.ratio, 0.2, 6, "Relate ratio");
     if (s.relate.ratio !== undefined && Math.abs(s.relate.ratio * 5 - Math.round(s.relate.ratio * 5)) > 1e-8)
       throw new Error("Relate ratio must use 0.2 increments");
@@ -1259,6 +1270,7 @@ export function checkMerged(cur: CoreSettings, patch: Partial<CoreSettings> | Se
   if (patch.relate) merged.relate = {
     ...cur.relate,
     ...patch.relate,
+    volumeFactors: { ...cur.relate.volumeFactors, ...patch.relate.volumeFactors },
     sources: { ...cur.relate.sources, ...(patch.relate.sources ?? {}) },
   } as CoreSettings["relate"];
   if (patch.signals?.ranges)

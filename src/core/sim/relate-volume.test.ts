@@ -86,7 +86,7 @@ describe("Relate settled-order sizing", () => {
         maxStack: DEFAULT_RELATE_ADJUSTMENT.maxStack,
         maxSl: DEFAULT_RELATE_ADJUSTMENT.maxSl,
       },
-      { enabled: false, auto: true, mode: "additive", ratio: 2.6, steps: 5, activeStep: 0,
+      { enabled: false, auto: true, mode: "additive", ratio: 0.2, steps: 12, activeStep: 0,
         minPf: 1.5, lastN: 250, minTrades: 60, maxStack: 8, maxSl: 0.0075 },
     );
     assert.doesNotThrow(() => checkSettings({ relate: DEFAULT_RELATE_ADJUSTMENT }));
@@ -133,7 +133,8 @@ describe("Relate settled-order sizing", () => {
   it("does not replace an unknown recent accepted close with an older win", () => {
     for (const auto of [false, true]) {
       const b = new RelateBook(config({ auto, ratio: 0.2, steps: 5, lastN: 60, minTrades: 60 }));
-      for (let i = 0; i < 60; i++) b.add(bookEntry(0.01));
+      for (let i = 0; i < 59; i++) b.add(bookEntry(0.01));
+      b.add(bookEntry(-0.001));
       assert.ok(b.decide(identity).volume > 1);
       b.add(bookEntry(Number.NaN));
       assert.equal(b.decide(identity).stats.config?.n, 60);
@@ -141,7 +142,7 @@ describe("Relate settled-order sizing", () => {
       assert.equal(b.decide(identity).volume, 1);
       for (let i = 0; i < 59; i++) b.add(bookEntry(0.01));
       assert.equal(b.decide(identity).volume, 1, "the unknown close remains within the last 60");
-      b.add(bookEntry(0.01));
+      b.add(bookEntry(-0.001));
       assert.equal(b.decide(identity).stats.config?.unknown, 0);
       assert.ok(b.decide(identity).volume > 1, "qualification recovers only when the unknown expires");
     }
@@ -160,18 +161,18 @@ describe("Relate settled-order sizing", () => {
     const b = new RelateBook(config({ ratio: 0.2, steps: 5, minPf: 1.5, lastN: 250, minTrades: 60 }));
     for (let i = 0; i < 59; i++) b.add(bookEntry(0.01));
     assert.equal(b.decide(identity).volume, 1, "59 results cannot size the next order");
-    b.add(bookEntry(0.01));
+    b.add(bookEntry(-0.001));
     let d = b.decide(identity);
     assert.equal(d.volume, 1.2, "the first qualified step adds 20% of the last base volume");
     for (const expected of [1.44, 1.728, 2.0736, 2.48832]) {
-      b.add(bookEntry(0.01, { relateParts: d.parts }));
+      b.add(bookEntry(-0.001, { relateParts: d.parts }));
       d = b.decide(identity);
       assert.equal(d.volume, expected);
     }
-    b.add(bookEntry(0.01, { relateParts: d.parts }));
+    b.add(bookEntry(-0.001, { relateParts: d.parts }));
     assert.equal(b.decide(identity).volume, 2.48832, "the fifth step is the configured maximum");
-    b.add(bookEntry(-0.01, { relateParts: d.parts }));
-    assert.equal(b.decide(identity).level, 0, "a loss resets only this relation's positive run");
+    b.add(bookEntry(0, { relateParts: d.parts }));
+    assert.equal(b.decide(identity).level, 0, "a flat close resets this relation's loss run");
     assert.equal(b.decide(identity).volume, 1);
   });
 
@@ -183,65 +184,65 @@ describe("Relate settled-order sizing", () => {
     assert.equal(b.decide(identity).volume, 1);
   });
 
-  it("Active confines the relation to its own raise: below the step the entry trades its base, the raise starts at the step", () => {
-    const b = new RelateBook(config({ ratio: 0.2, steps: 5, activeStep: 2, minTrades: 60 }));
-    assert.equal(b.decide(identity).allowed, true, "base entries bootstrap an insufficient sample");
-    for (let i = 0; i < 59; i++) b.add(bookEntry(0.01));
-    b.add(bookEntry(-0.01)); // qualified PF, but the current win streak is below Active 2
-    const zero = b.decide(identity);
-    assert.equal(zero.allowed, true, "Relate Active never vetoes the entry's own base");
-    assert.equal(zero.volume, 1, "below the active step the relation adds nothing");
-    // the base entry is accepted and carries the relation's hypothetical part: its close advances the step
-    b.add(bookEntry(0.01, { relateParts: zero.parts, relateMeasured: true, relateBase: 1 }));
+  it("counts skipped Relate Active steps while the ordinary order keeps trading its base", () => {
+    const b = new RelateBook(config({ ratio: .2, steps: 5, activeStep: 2, minTrades: 60 }));
+    for (let i = 0; i < 59; i++) b.add(bookEntry(.01));
+    b.add(bookEntry(-.001));
     const one = b.decide(identity);
     assert.equal(one.allowed, true);
     assert.equal(one.volume, 1);
     assert.equal(one.parts.config?.shadow, true);
-    b.add(bookEntry(0.01, { relateParts: one.parts, relateMeasured: true, relateBase: 1 }));
-    const d = b.decide(identity);
-    assert.equal(d.allowed, true);
-    assert.equal(d.volume, 1.44, "at the active step the raise applies, compounded from the shadow progression");
-    assert.equal(b.summary().closes, 62, "the base entries below the step are real accepted closes");
-    assert.equal(b.summary().shadowCloses, 0, "nothing was skipped");
+    b.add(bookEntry(-.001, { relateParts: one.parts }));
+    const two = b.decide(identity);
+    assert.equal(two.allowed, true);
+    assert.equal(two.volume, 1.44);
+    assert.equal(two.levels.config, 2);
+    assert.equal(b.summary().closes, 61);
+    b.add(bookEntry(.01, { relateParts: two.parts }));
+    assert.equal(b.decide(identity).volume, 1);
   });
 
   it("combines independent relation levels in Shared or Additive mode and caps the total stack", () => {
     const decimal = new RelateBook(config({ ratio: 0.2, steps: 8, minTrades: 60 }));
-    for (let i = 0; i < 60; i++) decimal.add(bookEntry(0.01));
+    for (let i = 0; i < 59; i++) decimal.add(bookEntry(.01));
+    decimal.add(bookEntry(-.001));
     let decimalDecision = decimal.decide(identity);
     for (let i = 1; i < 8; i++) {
-      decimal.add(bookEntry(0.01, { relateParts: decimalDecision.parts }));
+      decimal.add(bookEntry(-.001, { relateParts: decimalDecision.parts }));
       decimalDecision = decimal.decide(identity);
     }
     assert.equal(decimalDecision.volume, 4.29981696, "eight 20% increments compound from the prior recorded portion");
 
-    const both = { ...config({ ratio: 0.2, steps: 5 }), sources: { ...config().sources, config: true, overall: true } };
+    const both = { ...config({ ratio: 0.2, steps: 5, mode: "additive" }), sources: { ...config().sources, config: true, overall: true } };
     const b = new RelateBook(both);
-    for (let i = 0; i < 60; i++) b.add(bookEntry(0.01));
+    for (let i = 0; i < 59; i++) b.add(bookEntry(.01));
+    b.add(bookEntry(-.001));
     let additive = b.decide(identity);
     for (let i = 1; i < 5; i++) {
-      b.add(bookEntry(0.01, { relateParts: additive.parts }));
+      b.add(bookEntry(-.001, { relateParts: additive.parts }));
       additive = b.decide(identity);
     }
     assert.equal(additive.volume, 3.97664, "each relation compounds independently before additions are summed");
     const shared = new RelateBook({ ...both, mode: "shared" });
-    for (let i = 0; i < 60; i++) shared.add(bookEntry(0.01));
+    for (let i = 0; i < 59; i++) shared.add(bookEntry(.01));
+    shared.add(bookEntry(-.001));
     let sharedDecision = shared.decide(identity);
     assert.equal(sharedDecision.volume, 1.2, "two 0.2 additions average to 0.2");
     assert.equal(sharedDecision.parts.config?.volume, 1.1);
     assert.equal(sharedDecision.parts.overall?.volume, 1.1);
     for (let i = 1; i < 5; i++) {
-      shared.add(bookEntry(0.01, { relateParts: sharedDecision.parts }));
+      shared.add(bookEntry(-.001, { relateParts: sharedDecision.parts }));
       sharedDecision = shared.decide(identity);
     }
     assert.equal(sharedDecision.volume, 1.46112, "Shared compounds each actual share and averages both additions");
     assert.equal(sharedDecision.parts.config?.volume, 1.23056);
     assert.equal(sharedDecision.parts.overall?.volume, 1.23056);
     const capped = new RelateBook({ ...both, maxStack: 3 });
-    for (let i = 0; i < 60; i++) capped.add(bookEntry(0.01));
+    for (let i = 0; i < 59; i++) capped.add(bookEntry(.01));
+    capped.add(bookEntry(-.001));
     let capDecision = capped.decide(identity);
     for (let i = 1; i < 5; i++) {
-      capped.add(bookEntry(0.01, { relateParts: capDecision.parts }));
+      capped.add(bookEntry(-.001, { relateParts: capDecision.parts }));
       capDecision = capped.decide(identity);
     }
     assert.equal(capDecision.volume, 3);
@@ -250,39 +251,42 @@ describe("Relate settled-order sizing", () => {
 
   it("uses the last settled entry's recorded volume and refuses missing sizing provenance", () => {
     const b = new RelateBook(config({ ratio: 0.2, steps: 5, minTrades: 60 }));
-    for (let i = 0; i < 60; i++) b.add(bookEntry(0.01));
+    for (let i = 0; i < 59; i++) b.add(bookEntry(.01));
+    b.add(bookEntry(-.001));
     const first = b.decide(identity);
     const overlapping = b.decide(identity);
-    b.add(bookEntry(0.01, { relateParts: first.parts }));
+    b.add(bookEntry(-.001, { relateParts: first.parts }));
     assert.equal(b.decide(identity).volume, 1.44);
-    b.add(bookEntry(0.01, { relateParts: overlapping.parts }));
+    b.add(bookEntry(-.001, { relateParts: overlapping.parts }));
     assert.equal(b.decide(identity).volume, 1.44, "an overlapping 1.2× entry cannot invent a 1.44× prior entry");
-    b.add(bookEntry(0.01, { relateMeasured: undefined }));
+    b.add(bookEntry(-.001, { relateMeasured: undefined }));
     assert.equal(b.decide(identity).volume, 1, "unknown previous sizing does not become a guessed multiplier");
-    b.add(bookEntry(0.01));
+    b.add(bookEntry(-.001));
     assert.equal(b.decide(identity).volume, 1.2, "a later explicitly neutral entry restores sizing provenance");
   });
 
   it("continues each relation from the portion actually left after an external stack cap", () => {
-    const b = new RelateBook({ ...config({ ratio: 0.2, steps: 5 }), sources: {
+    const b = new RelateBook({ ...config({ ratio: 0.2, steps: 5, mode: "additive" }), sources: {
       ...config().sources, config: true, overall: true,
     } });
-    for (let i = 0; i < 60; i++) b.add(bookEntry(0.01));
+    for (let i = 0; i < 59; i++) b.add(bookEntry(.01));
+    b.add(bookEntry(-.001));
     const requested = b.decide(identity);
     assert.equal(requested.volume, 1.4);
     const actualParts = capRelateParts(requested.parts, 1.1);
     assert.ok(Object.values(actualParts).reduce((sum, part) => sum + part!.volume - 1, 1) <= 1.1 + 1e-12);
-    b.add(bookEntry(0.01, { relateParts: actualParts }));
+    b.add(bookEntry(-.001, { relateParts: actualParts }));
     assert.equal(b.decide(identity).volume, 1.52, "each 1.05× portion advances to 1.26×");
   });
 
   it("keeps relation additions in original-base units when Block or range sizing changes", () => {
     const b = new RelateBook(config({ ratio: 0.2, steps: 5 }));
-    for (let i = 0; i < 60; i++) b.add(bookEntry(0.01, { relateBase: 1 }));
+    for (let i = 0; i < 59; i++) b.add(bookEntry(.01, { relateBase: 1 }));
+    b.add(bookEntry(-.001));
     const first = b.decide(identity, 1);
     assert.equal(first.volume, 1.2);
     assert.equal(first.parts.config?.volume, 1.2);
-    b.add(bookEntry(0.01, { relateBase: 1, relateParts: first.parts }));
+    b.add(bookEntry(-.001, { relateBase: 1, relateParts: first.parts }));
     const next = b.decide(identity, 1);
     assert.equal(next.volume, 1.44, "the relation source compounds only its own prior portion");
     assert.equal(combineRelateStack(1.2, next.volume, 8).volume, 1.64,
@@ -316,12 +320,25 @@ describe("Relate settled-order sizing", () => {
     assert.equal(otherSide.stats.overall?.n, 60, "Overall remains direction agnostic");
   });
 
+  it("Overall tracks separate sources, applies their configured shares, and holds a cold exact Set", () => {
+    const book = new RelateBook(config({ scope: "overall", mode: "shared", volumeFactors: {
+      config: 0, overall: 3, symbol: 1, direction: 0, indication: 0, strategy: 0, coordination: 0, range: 0,
+    } }));
+    for (let i = 0; i < 60; i++) book.add(bookEntry(.01));
+    book.add(bookEntry(-.001, { sym: "BBB-USDT" }));
+    assert.equal(book.decide(identity).volume, 1.15);
+    assert.equal(book.decide(identity).stats.symbol?.n, 60);
+    assert.equal(book.decide(identity).stats.overall?.n, 61);
+    assert.equal(book.decide({ ...identity, cfg: `${identity.cfg}|sibling` }).volume, 1);
+  });
+
   it("auto-evaluates the configured grid, holds the min-PF/sample gates, and reports its selected values", () => {
     const b = new RelateBook({ ...config({ auto: true, minTrades: 60 }), sources: {
       config: true, overall: false, symbol: false, direction: false, indication: false,
       strategy: false, coordination: false, range: false,
     } });
-    for (let i = 0; i < 60; i++) b.add(bookEntry(0.01));
+    for (let i = 0; i < 59; i++) b.add(bookEntry(.01));
+    b.add(bookEntry(-.001));
     const d = b.decide(identity);
     const choice = d.choices.config;
     assert.ok(choice);
@@ -337,15 +354,17 @@ describe("Relate settled-order sizing", () => {
     assert.equal(sparse.decide(identity).volume, 1);
   });
 
-  it("judges Auto on unit-return PF and labels hypothetical size-weighted PF separately", () => {
-    const b = new RelateBook(config({ auto: true, minPf: 5.5, minTrades: 60 }));
-    for (let i = 0; i < 80; i++) b.add(bookEntry(i % 4 === 3 ? -0.01 : 0.02));
-    const choice = b.decide(identity).choices.config;
-    assert.ok(choice, "the 6.0 unit-return PF passes a 5.5 threshold");
-    assert.equal(choice.n, 80);
-    assert.equal(choice.activeStep, 0);
-    assert.ok(Math.abs(choice.pf - 6) < 1e-12, "PF uses equal unit returns");
-    assert.ok(choice.sizedPf < 5.5, "size-weighted PF is a separate hypothetical diagnostic");
+  it("requires both unit and modeled sized returns to clear the Auto PF floor", () => {
+    const rows = Array.from({ length: 80 }, (_, i) => [-.01, -.04, .001, .1][i % 4]);
+    const settings = config({ auto: true, minPf: 1.7, minTrades: 60 });
+    const passing = new RelateBook(settings);
+    const held = new RelateBook({ ...settings, minPf: 1.9 });
+    for (const r of rows) { passing.add(bookEntry(r)); held.add(bookEntry(r)); }
+    const choice = passing.decide(identity).choices.config;
+    assert.ok(choice);
+    assert.ok(Math.abs(choice.pf - 2.02) < 1e-12);
+    assert.ok(choice.sizedPf >= 1.7 && choice.sizedPf < 1.9);
+    assert.equal(held.decide(identity).choices.config, undefined);
   });
 
   it("auto-scoring respects a low Max stack while evaluating compounded ladders", () => {
@@ -369,10 +388,10 @@ describe("Relate settled-order sizing", () => {
       assert.ok(actual);
       let best: { ratio: number; steps: number; activeStep: number; pf: number; sizedPf: number;
         positiveRate: number; n: number } | undefined;
-      for (let q = 1; q <= 30; q++) for (let steps = 2; steps <= 15; steps++)
-        for (let activeStep = 0; activeStep <= 6; activeStep++) {
+      for (let steps = 2; steps <= settings.steps; steps++)
+        for (let activeStep = settings.activeStep; activeStep <= Math.min(steps, 6); activeStep++) {
           let run = 0, gp = 0, gl = 0, sizedGp = 0, sizedGl = 0, wins = 0, n = 0;
-          const ratio = q / 5;
+          const ratio = .2;
           for (const r of rows) {
             const level = Math.min(run, steps);
             if (level >= activeStep) {
@@ -382,11 +401,11 @@ describe("Relate settled-order sizing", () => {
               if (r > 0) { wins++; gp += r; sizedGp += r * volume; }
               else if (r < 0) { gl -= r; sizedGl -= r * volume; }
             }
-            run = r > 0 ? Math.min(15, run + 1) : 0;
+            run = r < 0 ? Math.min(15, run + 1) : 0;
           }
           if (n < settings.minTrades || gp <= gl) continue;
           const pf = gl > 0 ? gp / gl : gp > 0 ? Infinity : 0;
-          if (pf < settings.minPf) continue;
+          if (pf < settings.minPf || sizedGl > 0 && sizedGp / sizedGl < settings.minPf || sizedGp <= sizedGl) continue;
           const candidate = { ratio, steps, activeStep, pf, sizedPf: sizedGl > 0 ? sizedGp / sizedGl : Infinity,
             positiveRate: wins / n, n };
           const distance = Math.abs(steps - settings.steps);
@@ -414,7 +433,7 @@ describe("Relate settled-order sizing", () => {
     const costs = 0;
     const trades: Trade[] = Array.from({ length: 75 }, (_, i) => {
       const entryT = startT + i * hour;
-      const r = i < 74 ? 0.01 : -0.02;
+      const r = i === 72 || i === 73 ? -.002 : .01;
       return {
         cfg: identity.cfg,
         sym: identity.sym,
@@ -496,7 +515,8 @@ describe("Relate settled-order sizing", () => {
     const raised = adjusted.trades.find((x) => (x.relateVol ?? 1) > 1);
     assert.ok(raised, "an order sees the prior 60 accepted settled closes after the validation warm-up");
     assert.equal(raised.relateVol, 1.2, "the first qualified step adds 20% to the previous base volume");
-    assert.ok(Math.abs((raised.mult ?? 1) - 1.4) < 1e-10,
+    const unchanged = neutral.trades.find(row => row.entryT === raised.entryT);
+    assert.ok(unchanged && Math.abs((raised.mult ?? 1) - (unchanged.mult ?? 1) - .2) < 1e-10,
       "Block's 0.2 and Relate's 0.2 additions both use the original base");
     const next = adjusted.trades[adjusted.trades.indexOf(raised) + 1];
     assert.equal(next.relateVol, 1.44, "the following step uses the first adjusted volume");
@@ -588,16 +608,15 @@ describe("Relate settled-order sizing", () => {
     assert.equal(checks.get("execution: modeled volume within Max stack")?.ok, true);
   });
 
-  it("Active never skips: after a loss the base trades its unit and the raise returns at the active step, on Micro and Minimal", () => {
+  it("Relate Active waits for its loss count while the base keeps trading, on Micro and Minimal", () => {
     const hour = 3_600_000;
     const endT = Date.UTC(2026, 9, 20);
     const startT = endT - 82 * hour;
     for (const maxSl of [0.01, 0.0075]) for (const tag of ["mc", "mn"] as const) {
       const cfg = identity.cfg.replace(/\|mc$/, `|${tag}`);
-      // Neutral unraised wins restart their Active level; place the loss on an actually admitted entry.
-      const lossAt = maxSl < .01 ? 73 : 74;
+      const lossAt = 73;
       const rows: Trade[] = Array.from({ length: 81 }, (_, i) => {
-        const r = i === lossAt ? -0.02 : 0.01;
+        const r = i === lossAt || i === lossAt + 1 ? -0.002 : 0.01;
         return { cfg, sym: identity.sym, side: 1, entryT: startT + i * hour,
           exitT: startT + i * hour + 30 * 60_000, entry: 100, exit: 100 * (1 + r),
           r, reason: r > 0 ? "tp" : "sl", bars: 2, mfe: 0, mae: 0, kind: "normal" };
@@ -617,12 +636,12 @@ describe("Relate settled-order sizing", () => {
       const sim = walkForward(universe, [tape], options);
       const at = (i: number) => sim.feed.find((row) => row.entryT === startT + i * hour);
       assert.equal(at(lossAt)?.accepted, true, `${tag}: the loss is an accepted close`);
-      for (const i of [lossAt + 1, lossAt + 2]) {
+      for (const i of [lossAt + 1]) {
         assert.equal(at(i)?.accepted, true, `${tag}: below the active step entry ${i} trades its base`);
         assert.equal(at(i)?.relateShadow, undefined, `${tag}: nothing is skipped`);
         assert.equal(sim.trades.find((row) => row.entryT === startT + i * hour)?.relateVol ?? 1, 1, `${tag}: at unit volume`);
       }
-      const recovered = lossAt + 3;
+      const recovered = lossAt + 2;
       assert.equal(at(recovered)?.accepted, true, `${tag}: the entry at the active step is accepted`);
       assert.equal(sim.trades.find((row) => row.entryT === startT + recovered * hour)?.relateVol ?? 1,
         maxSl >= .01 ? 1.44 : 1, `${tag}: only eligible stops receive a raise`);

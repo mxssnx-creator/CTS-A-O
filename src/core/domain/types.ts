@@ -308,15 +308,17 @@ export type RelateParts = Partial<Record<RelateSource, { volume: number; level: 
 /** Settled-order volume adjustment. It is deliberately disabled until a desk opts in. */
 export interface RelateAdjustmentConfig {
   enabled: boolean;
-  /** Average qualified relation additions, or sum independent additions. */
+  /** Normalize relation shares in Shared mode, or sum them in Additive mode. */
   mode: "shared" | "additive";
+  scope?: "selected" | "overall";
+  volumeFactors?: Partial<Record<RelateSource, number>>;
   /** Auto mode searches the supported ratio, depth and Active grids per relation. */
   auto: boolean;
   /** Each qualified step adds this fraction of the relation's last recorded volume (0.2–6, by 0.2). */
   ratio: number;
-  /** Maximum positive-result run used for the manual/automatic level (2–15). */
+  /** Maximum consecutive settled losses used for the manual/automatic level (2–15). */
   steps: number;
-  /** Skip entries below this positive-result step; 0 keeps the entry at base volume. */
+  /** Skip entries below this loss step; 0 keeps the entry at base volume. */
   activeStep: number;
   /** Minimum settled-order unit PF required before a relation can adjust size. */
   minPf: number;

@@ -66,6 +66,10 @@ export const RELATE_SOURCES: readonly RelateSource[] = [
   "config", "overall", "symbol", "direction", "indication", "strategy", "coordination", "range",
 ];
 
+function activeRelateSources(config: RelateAdjustmentConfig): readonly RelateSource[] {
+  return config.scope === "overall" ? RELATE_SOURCES : RELATE_SOURCES.filter(source => config.sources[source] !== false);
+}
+
 export interface RelateIdentity {
   cfg: string;
   sym: string;
@@ -205,13 +209,14 @@ export function capRelateParts(parts: RelateParts, total: number, shadowCap = MA
 }
 
 /**
- * Per-relation auto search over 30 ratios × 14 step depths × 7 Active thresholds. The scoring pass groups
+ * Per-relation Auto search over configured depths and Active thresholds at the smallest increment. The scoring pass groups
  * historical positive/negative returns by their causal preceding win streak, so candidate scoring is bounded and
  * does not replay every candidate against every order. A candidate must clear the configured PF and sample floor.
  */
-function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig): RelateAutoChoice | null {
-  const tail = rows.slice(-Math.min(c.lastN, rows.length));
-  if (tail.length < c.minTrades || !(relateStats(tail).pf >= c.minPf)) return null;
+function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig, stats: RelateSourceStats): RelateAutoChoice | null {
+  const tail = rows;
+  const floor = Math.max(c.minPf, 1.000001);
+  if (tail.length < c.minTrades || !(stats.pf >= floor)) return null;
 
   const gpByStage = Array<number>(16).fill(0);
   const glByStage = Array<number>(16).fill(0);
@@ -223,7 +228,7 @@ function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig): RelateA
     nByStage[stage]++;
     if (r > 0) { gpByStage[stage] += r; winByStage[stage]++; }
     else if (r < 0) glByStage[stage] -= r;
-    priorStreak = r > 0 ? Math.min(15, priorStreak + 1) : 0;
+    priorStreak = r < 0 ? Math.min(15, priorStreak + 1) : 0;
   }
 
   const gpSuffix = Array<number>(17).fill(0);
@@ -239,16 +244,12 @@ function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig): RelateA
 
   let best: RelateAutoChoice | null = null;
   const stackCap = boundedStack(c.maxStack);
-  // For this existing unit-return scoring rule, ratio never changes PF, positive rate or sample size. The tie
-  // break always prefers 0.2, and all weighted sums are nonnegative and monotone in ratio: if the 0.2 candidate
-  // overflows, a larger ratio cannot make that same candidate finite. Fold those dominated ratio iterations while
-  // retaining the exact same winner and its separate hypothetical sized-PF diagnostic. This is not a causal
-  // funded-feedback search; a future causal scorer must evaluate each ratio independently.
+  // Auto uses the smallest supported increment and calibrates depth and Active per relation.
   const ratio = 0.2;
   const ladder = Array<number>(16).fill(1);
   for (let stage = 1; stage <= 15; stage++)
     ladder[stage] = Math.min(stackCap, ladder[stage - 1] * (1 + ratio));
-  for (let steps = 2; steps <= 15; steps++) {
+  for (let steps = 2; steps <= c.steps; steps++) {
     const sizedGp = Array<number>(17).fill(0);
     const sizedGl = Array<number>(17).fill(0);
     for (let stage = 15; stage >= 0; stage--) {
@@ -256,7 +257,7 @@ function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig): RelateA
       sizedGp[stage] = sizedGp[stage + 1] + gpByStage[stage] * volume;
       sizedGl[stage] = sizedGl[stage + 1] + glByStage[stage] * volume;
     }
-    for (let activeStep = 0; activeStep <= Math.min(6, steps); activeStep++) {
+    for (let activeStep = c.activeStep; activeStep <= Math.min(6, steps); activeStep++) {
       const n = nSuffix[activeStep];
       const gp = gpSuffix[activeStep];
       const gl = glSuffix[activeStep];
@@ -266,8 +267,9 @@ function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig): RelateA
           !Number.isFinite(weightedGp) || !Number.isFinite(weightedGl)) continue;
       const pf = gl > 0 ? gp / gl : gp > 0 ? Infinity : 0;
       const positiveRate = winSuffix[activeStep] / n;
-      if (!(pf >= c.minPf) || !(gp - gl > 0)) continue;
+      if (!(pf >= floor) || !(gp > gl)) continue;
       const sizedPf = weightedGl > 0 ? weightedGp / weightedGl : weightedGp > 0 ? Infinity : 0;
+      if (!(sizedPf >= floor) || !(weightedGp > weightedGl)) continue;
       const candidate = { ratio, steps, activeStep, pf, sizedPf, positiveRate, n };
       const stepDistance = Math.abs(steps - c.steps);
       const bestDistance = best ? Math.abs(best.steps - c.steps) : Infinity;
@@ -287,7 +289,11 @@ function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig): RelateA
 /** Causal settled-order history for the Relate volume adjustment. Only accepted, closed entries are admitted. */
 export class RelateBook {
   private readonly histories = new Map<string, number[]>();
-  private readonly previous = new Map<string, { volume: number; level: number; positive: boolean }>();
+  private readonly cachedStats = new Map<string, RelateSourceStats>();
+  private readonly selected: readonly RelateSource[];
+  private readonly tracked: readonly RelateSource[];
+  private readonly totalWeight: number;
+  private readonly previous = new Map<string, { volume: number; level: number; loss: boolean }>();
   private readonly autoCache = new Map<string, { revision: number; choice: RelateAutoChoice | null }>();
   private readonly keyRevisions = new Map<string, number>();
   private shadowCloses = 0;
@@ -295,11 +301,27 @@ export class RelateBook {
 
   constructor(config: RelateAdjustmentConfig) {
     this.config = config;
+    this.selected = activeRelateSources(config);
+    this.tracked = RELATE_SOURCES.filter(source => source === "config" || this.selected.includes(source));
+    this.totalWeight = this.selected.reduce((sum, source) => sum + this.weight(source), 0);
+  }
+
+  private weight(source: RelateSource): number {
+    const value = this.config.volumeFactors?.[source] ?? 1;
+    return Number.isFinite(value) ? Math.min(8, Math.max(0, value)) : 0;
+  }
+
+  private recent(key: string, rows: readonly number[]): RelateSourceStats {
+    const cached = this.cachedStats.get(key);
+    if (cached) return cached;
+    const stats = relateStats(rows);
+    if (rows.length >= this.config.minTrades) this.cachedStats.set(key, Object.freeze(stats));
+    return stats;
   }
 
   private recordPrevious(key: string, r: number, part: RelateParts[RelateSource], measured: boolean, base: number | undefined): void {
     if (!Number.isFinite(r)) this.previous.delete(key);
-    else if (r <= 0) this.previous.set(key, { volume: 1, level: 0, positive: false });
+    else if (r >= 0) this.previous.set(key, { volume: 1, level: 0, loss: false });
     else {
       const recorded = part ?? { volume: base ?? NaN, level: 0 };
       const tolerance = Number.isFinite(base) ? Math.max(1, Math.abs(base!)) * 1e-10 : 0;
@@ -308,7 +330,7 @@ export class RelateBook {
           recorded.volume <= MAX_EXTERNAL_STACK && Number.isInteger(recorded.level) && recorded.level >= 0 && recorded.level <= 15 &&
           recorded.volume + tolerance >= (base ?? Infinity) &&
           (recorded.level > 0 || Math.abs(recorded.volume - base!) <= tolerance))
-        this.previous.set(key, { volume: recorded.volume, level: recorded.level, positive: true });
+        this.previous.set(key, { volume: recorded.volume, level: recorded.level, loss: true });
       else this.previous.delete(key);
     }
   }
@@ -316,8 +338,7 @@ export class RelateBook {
   add(e: RelateBookEntry): void {
     if (e.accepted !== true) return;
     const keys = sourceKeys(e);
-    for (const source of RELATE_SOURCES) {
-      if (this.config.sources[source] === false) continue;
+    for (const source of this.tracked) {
       const key = keys[source];
       if (!key) continue;
       let rows = this.histories.get(key);
@@ -328,6 +349,7 @@ export class RelateBook {
       const revision = (this.keyRevisions.get(key) ?? 0) + 1;
       this.keyRevisions.set(key, revision);
       this.autoCache.delete(key);
+      this.cachedStats.delete(key);
     }
   }
 
@@ -336,21 +358,21 @@ export class RelateBook {
     if (e.accepted === true || e.relateMeasured !== true) return;
     const keys = sourceKeys(e);
     let observed = false;
-    for (const source of RELATE_SOURCES) {
+    for (const source of this.selected) {
       const key = keys[source];
       const part = e.relateParts?.[source];
-      if (this.config.sources[source] === false || !key || !part?.shadow) continue;
+      if (!key || !part?.shadow) continue;
       this.recordPrevious(key, e.r, part, true, e.relateBase);
       observed = true;
     }
     if (observed) this.shadowCloses++;
   }
 
-  private auto(key: string, rows: readonly number[]): RelateAutoChoice | null {
+  private auto(key: string, rows: readonly number[], stats: RelateSourceStats): RelateAutoChoice | null {
     const cached = this.autoCache.get(key);
     const revision = this.keyRevisions.get(key) ?? 0;
     if (cached?.revision === revision) return cached.choice;
-    const choice = chooseAuto(rows, this.config);
+    const choice = chooseAuto(rows, this.config, stats);
     this.autoCache.set(key, { revision, choice });
     return choice;
   }
@@ -366,25 +388,28 @@ export class RelateBook {
     const extras: Array<{ source: RelateSource; level: number; volume: number; activeStep: number;
       qualified: boolean; previousKnown: boolean }> = [];
     const keys = sourceKeys(x);
-    for (const source of RELATE_SOURCES) {
-      if (this.config.sources[source] === false) continue;
+    const floor = Math.max(this.config.minPf, 1.000001);
+    const exactKey = keys.config!;
+    const own = this.recent(exactKey, this.histories.get(exactKey) ?? []);
+    const exactQualified = own.n >= this.config.minTrades && own.pf >= floor;
+    for (const source of this.tracked) {
       const key = keys[source];
       if (!key) continue;
       const rows = this.histories.get(key) ?? [];
-      const tail = rows.slice(-Math.min(rows.length, this.config.lastN));
-      const recent = relateStats(tail);
+      const recent = source === "config" ? own : this.recent(key, rows);
       stats[source] = recent;
-      const choice = this.config.auto ? this.auto(key, rows) : null;
+      const selected = this.selected.includes(source);
+      const choice = selected && exactQualified && this.config.auto ? this.auto(key, rows, recent) : null;
       if (choice) choices[source] = choice;
       const ratio = choice?.ratio ?? this.config.ratio;
       const steps = choice?.steps ?? this.config.steps;
-      const activeStep = choice?.activeStep ?? (this.config.auto ? 0 : this.config.activeStep);
-      const qualified = this.config.auto
+      const activeStep = choice?.activeStep ?? this.config.activeStep;
+      const qualified = selected && this.weight(source) > 0 && exactQualified && (this.config.auto
         ? choice !== null
-        : recent.n >= this.config.minTrades && recent.pf >= this.config.minPf;
+        : recent.n >= this.config.minTrades && recent.pf >= floor);
       const prior = this.previous.get(key);
-      const level = qualified && prior?.positive ? Math.min(steps, prior.level + 1) : 0;
-      const volume = qualified && prior?.positive
+      const level = qualified && prior?.loss ? Math.min(steps, prior.level + 1) : 0;
+      const volume = qualified && prior?.loss
         ? Math.max(baseUnits, Math.min(cap, prior.level < steps ? prior.volume * (1 + ratio) : prior.volume))
         : baseUnits;
       levels[source] = level;
@@ -398,16 +423,17 @@ export class RelateBook {
     // recorded as shadow below, so its evidence keeps building), but it never vetoes the entry's own base volume —
     // Normal / Trailing / DCA / Axis keep trading their unit. Only an unknown base volume rejects (above).
     const allowed = true;
-    // Shared divides the combined requested additions by the number of independently ready relations. Keep
-    // every source's allocated portion, so the next step compounds from its own recorded effective volume.
-    const divisor = this.config.mode === "shared" ? Math.max(1, admitted.length) : 1;
+    const divisor = this.config.mode === "shared" ? this.totalWeight : 1;
     const requested: RelateParts = {};
-    for (const x of admitted) if (x.level > 0)
-      requested[x.source] = { volume: baseUnits + Math.max(0, x.volume - baseUnits) / divisor, level: x.level };
+    let chosen = 0;
+    for (const x of admitted) if (x.level > 0 && divisor > 0) {
+      const extra = Math.max(0, x.volume - baseUnits) * this.weight(x.source) / divisor;
+      requested[x.source] = { volume: baseUnits + extra, level: x.level };
+      chosen += extra;
+    }
     for (const x of ready)
       if (x.activeStep > 0 && x.level < x.activeStep)
         requested[x.source] = { volume: x.volume, level: x.level, shadow: true };
-    const chosen = admitted.reduce((sum, x) => sum + Math.max(0, x.volume - baseUnits) / divisor, 0);
     const total = Math.min(cap, Math.round((baseUnits + chosen) * 1e12) / 1e12);
     const multiplier = total / base;
     return {
