@@ -1,5 +1,12 @@
 ## 2026-11-26 — Block Auto integrity and bounded windows
 
+The one-worker replay of `9a97149e4bee2dd69614340dce1637fce158b7b0` with the same 12-symbol feed stopped
+at Base 13% when host available memory fell to 1,133 MiB; peak child RSS was 698,500 KiB. It produced no
+post-Base PF, passing/evaluated percentage or settled PF. A portable offline replay and a Stable-04-only
+GitHub workflow now retain the protocol, resource log, and completed or failed evidence. The workflow's
+existence is not proof it has run or passed. Its 24h signal history and 12-position processed-stage windows
+are explicitly recorded; neither changes the independent Signals Last-15 setting.
+
 On Stable-04 baseline `8c0823eb68ca64a0d9090ffa79faf395b1a8ce20`, Block Auto could classify a window with
 an unknown return as an infinite no-loss PF, and its fresh defaults used 15 closes and relation-wide scope.
 The update uses a 30-close minimum and per-relation-key/count defaults, rejects unknown and overflow outcomes,

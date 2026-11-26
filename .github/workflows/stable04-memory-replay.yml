@@ -1,0 +1,57 @@
+name: Stable-04 frozen memory replay
+on:
+  push:
+    branches: [Stable-04]
+    paths: [.github/workflows/stable04-memory-replay.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: stable04-frozen-memory-replay-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 210
+    env:
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_COMPARE: "0"
+      CTS_CORE_VARIANTS: "0"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.19.0"
+      - run: npm ci
+      - name: Build the offline worker
+        run: npm run build:dev
+      - name: Verify causal public fixture and freeze the runtime
+        run: |
+          python3 scripts/prepare-stable04-replay-feed.py runs/stable04-memory-replay
+          node --experimental-strip-types --no-warnings scripts/prepare-stable04-replay.mjs runs/stable04-memory-replay
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+      - name: Run the frozen 12-symbol 24-hour session
+        run: python3 scripts/run-stable04-replay.py runs/stable04-memory-replay
+      - name: Preserve completed or failed evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: stable04-memory-replay-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 30
+          compression-level: 3
+          path: |
+            runs/stable04-memory-replay/feed-causal.json
+            runs/stable04-memory-replay/protocol.json
+            runs/stable04-memory-replay/settings.json
+            runs/stable04-memory-replay/wf.json
+            runs/stable04-memory-replay/command.json
+            runs/stable04-memory-replay/completion.json
+            runs/stable04-memory-replay/run.log
+            runs/stable04-memory-replay/memory.jsonl
+            runs/stable04-memory-replay/raw.json*
+            runs/stable04-memory-replay/report/
