@@ -104,6 +104,27 @@ test("separate symbols, sides, kinds, lanes, Base configs and economic revisions
   assert.equal(book.verdict(siblings[0], "postBase", 9, 1.1).n, 0);
 });
 
+test("cold bookkeeping stays independent in snapshots, restores and later promotion", () => {
+  const other = { ...identity, symbol: "B-USDT" }, book = new ProcessedSetBook("model", 12);
+  enterAndClose(book, identity, 0, .01);
+  enterAndClose(book, other, 2, .01);
+  const snap = book.snapshot(), a = snap.sets.find(x => x.identity.symbol === identity.symbol)!,
+    b = snap.sets.find(x => x.identity.symbol === other.symbol)!;
+  a.validated.push(a.postBase[0]);
+  a.counts.validated.openedOrders = 7;
+  a.evaluations.real.qualified = 3;
+  assert.equal(b.validated.length, 0);
+  assert.equal(a.active.length, 0);
+  assert.equal(b.counts.validated.openedOrders, 0);
+  assert.equal(a.counts.active.openedOrders, 0);
+  assert.equal(b.evaluations.real.qualified, 0);
+  assert.equal(book.summary(identity)!.stages.validated.openedOrders, 0, "checkpoint edits cannot mutate the book");
+  const restored = ProcessedSetBook.restore(book.snapshot());
+  for (let n = 0; n < 8; n++) enterAndClose(restored, identity, 4 + 2 * n, .01);
+  assert.equal(restored.acceptPostBase(identity, "promoted", 20, policy).stage, "validated");
+  assert.equal(restored.summary(other)!.stages.validated.openedOrders, 0, "a sibling stays cold after restore");
+});
+
 test("unknown and losing processed closes are not replaced by candidates or older wins", () => {
   const book = new ProcessedSetBook("model", 9);
   for (let n = 0; n < 8; n++) enterAndClose(book, identity, 2 * n, .01);

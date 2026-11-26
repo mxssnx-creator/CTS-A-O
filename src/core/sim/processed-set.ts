@@ -89,6 +89,13 @@ const stages: ProcessedStage[] = ["postBase", "validated", "active"];
 const counts = (): StageCounts => ({ openedOrders: 0, closedOrders: 0, settledSlices: 0,
   grossProfit: 0, grossLoss: 0, unknownReturns: 0, aggregateUnknown: false });
 const verdictCounts = (): VerdictCounts => ({ insufficient: 0, unknown: 0, failed: 0, qualified: 0 });
+// Most modeled contexts remain cold in later stages. Immutable empty state is shared until the first write.
+const EMPTY_HISTORY = Object.freeze([]) as unknown as Close[];
+const EMPTY_COUNTS = Object.freeze(counts()) as StageCounts;
+const EMPTY_VERDICTS = Object.freeze(verdictCounts()) as VerdictCounts;
+const zeroCounts = (c: StageCounts) => c.openedOrders === 0 && c.closedOrders === 0 && c.settledSlices === 0 &&
+  c.grossProfit === 0 && c.grossLoss === 0 && c.unknownReturns === 0 && !c.aggregateUnknown;
+const zeroVerdicts = (v: VerdictCounts) => v.insufficient === 0 && v.unknown === 0 && v.failed === 0 && v.qualified === 0;
 const nonempty = (s: unknown): s is string => typeof s === "string" && s.trim().length > 0;
 function identityValid(i: ProcessedSetIdentity): boolean {
   return !!i && nonempty(i.baseConfigId) && nonempty(i.symbol) && (i.side === 1 || i.side === -1) &&
@@ -156,9 +163,9 @@ export class ProcessedSetBook {
     const key = processedSetKey(identity);
     let rows = this.sets.get(key);
     if (!rows) {
-      rows = { identity: { ...identity }, postBase: [], validated: [], active: [],
-        counts: { postBase: counts(), validated: counts(), active: counts() },
-        evaluations: { validation: verdictCounts(), real: verdictCounts() } };
+      rows = { identity: { ...identity }, postBase: EMPTY_HISTORY, validated: EMPTY_HISTORY, active: EMPTY_HISTORY,
+        counts: { postBase: EMPTY_COUNTS, validated: EMPTY_COUNTS, active: EMPTY_COUNTS },
+        evaluations: { validation: verdictCounts(), real: EMPTY_VERDICTS } };
       this.sets.set(key, rows);
     }
     return rows;
@@ -280,8 +287,15 @@ export class ProcessedSetBook {
     this.advance(entryT);
     const rows = this.rows(identity);
     rows.evaluations.validation[validation.state]++;
-    if (real) rows.evaluations.real[real.state]++;
-    for (let i = 0; i <= stages.indexOf(stage); i++) rows.counts[stages[i]].openedOrders++;
+    if (real) {
+      if (rows.evaluations.real === EMPTY_VERDICTS) rows.evaluations.real = verdictCounts();
+      rows.evaluations.real[real.state]++;
+    }
+    for (let i = 0; i <= stages.indexOf(stage); i++) {
+      const key = stages[i];
+      if (rows.counts[key] === EMPTY_COUNTS) rows.counts[key] = counts();
+      rows.counts[key].openedOrders++;
+    }
     const opened: ProcessedOpen = { identity: { ...identity }, entryId, entryT, policy: structuredClone(policy), validation, real, stage, slices: [], settledUnitReturn: 0 };
     this.open.set(key, opened);
     this.seenAtClock.add(key);
@@ -311,7 +325,9 @@ export class ProcessedSetBook {
       stats.settledSlices++;
       if (!final) continue;
       stats.closedOrders++;
-      const history = rows[stages[i]];
+      const key = stages[i];
+      if (rows[key] === EMPTY_HISTORY) rows[key] = [];
+      const history = rows[key];
       history.push(row);
       // Preserve the latest full prior window separately from this timestamp's closes. A batch of
       // same-time closes may arrive before an entry, but must not evict the entry's prior evidence.
@@ -364,8 +380,17 @@ export class ProcessedSetBook {
   }
 
   snapshot(): ProcessedSetSnapshot {
-    return structuredClone({ version: 3 as const, basis: this.basis, capacity: this.capacity, clock: this.clock,
+    const result = structuredClone({ version: 3 as const, basis: this.basis, capacity: this.capacity, clock: this.clock,
       sets: [...this.sets.values()], open: [...this.open.values()], seenAtClock: [...this.seenAtClock] });
+    // A checkpoint is mutable public data: shared internal zero objects must not alias across its sets/stages.
+    for (const set of result.sets) {
+      for (const stage of stages) {
+        if (!set[stage].length) set[stage] = [];
+        if (zeroCounts(set.counts[stage])) set.counts[stage] = counts();
+      }
+      if (zeroVerdicts(set.evaluations.real)) set.evaluations.real = verdictCounts();
+    }
+    return result;
   }
 
   /** Restore only structurally consistent books; corrupted state is not turned into qualification evidence. */
@@ -419,7 +444,13 @@ export class ProcessedSetBook {
         set.counts.validated.settledSlices > set.counts.postBase.settledSlices ||
         set.counts.active.settledSlices > set.counts.validated.settledSlices)
         throw new TypeError("invalid processed-stage progression");
-      book.sets.set(key, structuredClone(set));
+      const copy = structuredClone(set);
+      for (const stage of stages) {
+        if (!copy[stage].length) copy[stage] = EMPTY_HISTORY;
+        if (zeroCounts(copy.counts[stage])) copy.counts[stage] = EMPTY_COUNTS;
+      }
+      if (zeroVerdicts(copy.evaluations.real)) copy.evaluations.real = EMPTY_VERDICTS;
+      book.sets.set(key, copy);
     }
     for (const item of snapshot.open) {
       const key = entryKey(item.identity, item.entryId, item.entryT);
