@@ -17,3 +17,12 @@ one 112 ms. The result checksum was identical (`455dedd227677480c7d37138ffef3c85
 the respective peak process RSS measurements were 189,856 and 133,904 KiB. This is one synthetic workload, not an
 end-to-end session result. `scripts/perf/dca-base-cache-bench.mjs` repeats the comparison. The complete slow test and
 the 12-symbol replay must still pass before asserting that the production timeout or memory limit is resolved.
+
+The initial cache alone did not resolve the stress timeout: at approximately 780 seconds its Base stage had reached
+46.7% on one worker. Profiling found that the volatility percentile and trend-strength filters were also rebuilt for
+each indication group. Their fixed bar-derived arrays now have the same batch-bounded lifetime, with local/worker
+result parity and release tests. On eight synthetic 256-combination worker batches (four symbols, three days of
+bars), the prior code took 3,825 ms, DCA feature reuse alone took 2,887 ms, and both caches took 2,378 ms. Every
+worker result had checksum `270cdda2d8f9da9e9b50084376cb1b0b9c4e9de264d9eab0349b88a954df7a99`; respective peak
+process RSS values were 322,592, 325,628 and 311,348 KiB. `scripts/perf/tactic-worker-bench.mjs` repeats that
+synthetic comparison. The complete settings-storm and market replay remain required.

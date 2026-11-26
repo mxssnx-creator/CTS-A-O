@@ -5,6 +5,8 @@ import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { closePool, runOnWorkers } from "../server/pool.server.ts";
 import { laneInd } from "./registry.ts";
 import { dcaTacticConfigs, dcaTacticId } from "./dca-tactic.ts";
+import { DEFAULT_TACTICS } from "../config.ts";
+import { VOL_RANK_BARS } from "./filters.ts";
 
 test("Base shares bounded DCA Tactic features within a batch, then releases them without changing results", async () => {
   const bars = barsFromCandles("A-USDT", 1, syntheticCandles("A", 1, 400, Date.UTC(2026, 9, 1)));
@@ -32,5 +34,33 @@ test("Base shares bounded DCA Tactic features within a batch, then releases them
       tactics: null }], 1, 60_000);
     assert.deepEqual(worker.runsJson.flatMap((chunk) => JSON.parse(chunk)), actual,
       "worker and local Base produce the same ordered results");
+  } finally { closePool(); }
+});
+
+test("Base reuses shared Tactic filters without retaining them after the worker batch", async () => {
+  const bars = barsFromCandles("A-USDT", 1, syntheticCandles("A", 1, 500, Date.UTC(2026, 9, 1)));
+  const configs = dcaTacticConfigs().filter((c) => c.lookback === 8).slice(0, 4);
+  const combos = configs.flatMap((c) => (["follow", "revert"] as const).map((bot) => ({ bot, ind: laneInd(dcaTacticId(c), 1) })));
+  const tactics = { ...DEFAULT_TACTICS, volRegime: true, trendStrength: true, chopRegime: true };
+  const u = makeUniverse([bars]), keys = ["natr14", `rank:natr:${VOL_RANK_BARS}`, "dmi14", "chop14"];
+  const builds = new Map<string, number>();
+  for (const cache of u.caches) {
+    const memo = cache.memo.bind(cache);
+    cache.memo = <T>(key: string, make: () => T): T => memo(key, () => {
+      if (keys.includes(key)) builds.set(key, (builds.get(key) ?? 0) + 1);
+      return make();
+    });
+  }
+  const actual = baseRuns(u, combos, .002, tactics, true, true);
+  const oracle = baseRuns(makeUniverse([bars]), combos, .002, tactics, true, false);
+  assert.deepEqual(actual, oracle);
+  for (const key of keys) assert.equal(builds.get(key), 1, `${key} is built once per series`);
+  for (const cache of u.caches) for (const key of keys) {
+    const released = {};
+    assert.strictEqual(cache.memo(key, () => released), released, `${key} is released after the batch`);
+  }
+  try {
+    const [worker] = await runOnWorkers<{ runsJson: string[] }>([{ type: "s1", bars: [bars], combos, cost: .002, tactics }], 1, 60_000);
+    assert.deepEqual(worker.runsJson.flatMap((chunk) => JSON.parse(chunk)), actual);
   } finally { closePool(); }
 });

@@ -8,9 +8,10 @@ The targeted modeled, realtime, stop and relation isolation suites passed 61 che
 
 The full-focus settings-storm test timed out after 900 seconds. A bounded diagnostic showed Base was progressing
 through 190,378 combinations; its Tactic variants repeatedly rebuilt identical lookback features. Worker batches
-now reuse those arrays and release them after the batch. Focused parity, bounded-lifetime tests and the synthetic
-comparison are recorded in `docs/verification/tactic-base-cache-20261126.md`. The slow test and complete 12-symbol
-replay still need fresh results; neither the timeout nor profit factor is certified by the microbenchmark.
+now reuse those arrays and release them after the batch. The first cache alone was still at 46.7% of Base after
+roughly 780 seconds, so the repeated volatility and trend filters are now also shared for the same bounded lifetime.
+Focused parity tests and synthetic comparisons are in `docs/verification/tactic-base-cache-20261126.md`. The slow
+test and complete 12-symbol replay still need fresh results; neither timeout nor profit factor is certified.
 
 ## 2026-11-26 — Block Auto integrity and bounded windows
 

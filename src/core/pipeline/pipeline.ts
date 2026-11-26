@@ -15,7 +15,7 @@ import { profitFactorRatio } from "../metrics/profit-factor.mjs";
 // Implemented as a generator so the runtime can time-slice it.
 import { BOTS, entrySignal } from "../bots/bots.ts";
 import { cappedExecution, clearCappedProjections, hasMinutePrices } from "../sim/capped-execution.ts";
-import { tacticCooldown } from "../indications/filters.ts";
+import { tacticCooldown, VOL_RANK_BARS } from "../indications/filters.ts";
 import { DEFAULT_PROTECT, GRID_VARIANTS_MAX, PROTECT_GRID, type CoreSettings } from "../config.ts";
 import { RT_COST } from "../model-cost.ts";
 import type {
@@ -2363,9 +2363,10 @@ export function baseRuns(
       done++;
       if (onStep && (done === total || done % step === 0)) onStep(done, total);
     }
-    // Bot triggers and the fixed-lookback DCA features are shared across variants in this worker batch.
+    // Bot triggers, Tactic filters and fixed-lookback DCA features are shared across variants in this worker batch.
     // Each indication's output is still released here; all shared features are released at the end of the batch.
-    if (release) for (const k of u.caches) k.clear(["bot:", "break:shared:", "tactic-dca:features:"]);
+    if (release) for (const k of u.caches) k.clear(["bot:", "break:shared:", "tactic-dca:features:",
+      "natr14", `rank:natr:${VOL_RANK_BARS}`, "dmi14", "chop14"]);
     else for (const c of g) forgetCombo(u, c.bot, c.ind);
   }
   if (release) for (const k of u.caches) k.clear(["bot:"]);

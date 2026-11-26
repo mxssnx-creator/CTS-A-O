@@ -14,8 +14,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Preserve the earlier slow-runtime job while verifying the optimized Base source.
-  group: stable04-core-verification-v3
+  # Preserve the earlier slow-runtime job while verifying the shared Tactic filters.
+  group: stable04-core-verification-v4
   cancel-in-progress: true
 jobs:
   core:
