@@ -82,3 +82,10 @@ reading the checksummed arena after eviction and invalidating when the symbol ma
 50,000-tape comparison, validation metadata heap growth was 24,176,344 bytes before and 10,261,392 bytes after,
 with identical validity checksums. Eviction, corrupted records and stored-vs-ordinary replay parity passed
 focused tests. This is not a full-replay peak-memory measurement.
+
+The failed replay had already retained at least 817,692 strategy tapes and 84,850,303 closes before Real.
+Its close-time index built a sorted permutation and then allocated full second copies of both event columns.
+The index now applies that same permutation in place and yields during long rearrangements. A synthetic
+one-million-event comparison used 27,857,121 bytes of peak array buffers before and 16,000,000 bytes after;
+the recorded dirty-tape ordering checksum matched. Randomized tests cover equal timestamps, strict boundaries
+and backward clocks. The isolated replay must still measure actual peak RSS and elapsed time.

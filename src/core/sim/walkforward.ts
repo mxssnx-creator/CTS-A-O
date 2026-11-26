@@ -4389,9 +4389,25 @@ export class EvalMemo {
     for (let i = 0; i < count; i++) order[i] = i;
     order.sort((a, b) => times[a] - times[b]);
     yield -1;
-    const t2 = new Float64Array(count), o2 = new Int32Array(count);
-    for (let i = 0; i < count; i++) { t2[i] = times[order[i]]; o2[i] = owner[order[i]]; }
-    this.times = t2; this.owner = o2; this.tapes = tapes; this.ptr = 0; this.clock = fromT; this.tracking = true;
+    // Apply the sorted permutation in place. A second times/owner pair formerly added 12 bytes per close
+    // at peak; completed cycles mark themselves as identities so no extra visited array is needed.
+    let moves = 0;
+    for (let i = 0; i < count; i++) {
+      if (order[i] === i) {
+        if (i % 8192 === 8191) yield -1;
+        continue;
+      }
+      const savedTime = times[i], savedOwner = owner[i];
+      let dst = i;
+      while (order[dst] !== i) {
+        const src = order[dst];
+        times[dst] = times[src]; owner[dst] = owner[src]; order[dst] = dst; dst = src;
+        if (++moves % 8192 === 0) yield -1;
+      }
+      times[dst] = savedTime; owner[dst] = savedOwner; order[dst] = dst;
+      if (++moves % 8192 === 0) yield -1;
+    }
+    this.times = times; this.owner = owner; this.tapes = tapes; this.ptr = 0; this.clock = fromT; this.tracking = true;
     this.dirty.clear();
   }
 
