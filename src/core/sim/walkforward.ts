@@ -4720,7 +4720,7 @@ function* selectPositionsGen(
       memo?.staticSeat.set(tp, st);
     }
     if (!st.keep) {
-      if (i % 64 === 0) yield -14;
+      if (i % 8 === 0) yield -14;
       continue;
     }
     const pair = st.pair;
@@ -4753,7 +4753,7 @@ function* selectPositionsGen(
             : ev.lcb * (0.5 + ev.gh),
         window: w,
       });
-    if (i % 64 === 0) yield -14; // a work slice, not a completed simulated step (a non-negative yield counts as one)
+    if (i % 8 === 0) yield -14; // a work slice, not a completed simulated step (a non-negative yield counts as one)
   }
   // Only the optional ladder-vs-base comparison reads this index. In the normal independent-config path,
   // building a full tape-sized Map on every decision minute added allocation and sorting pressure for no result.
@@ -4824,7 +4824,7 @@ export class ContinuousPositionSelection {
         if (!advanced) { yield* this.memo.advanceGen(t); advanced = true; }
         this.update(tp, t, free);
       }
-      if (++n % 64 === 0) yield -14;
+      if (++n % 8 === 0) yield -14;
     }
   }
 
@@ -4834,7 +4834,7 @@ export class ContinuousPositionSelection {
     let n = 0;
     for (const tp of this.memo.dirty) {
       this.update(tp, t, free);
-      if (++n % 64 === 0) yield -14;
+      if (++n % 8 === 0) yield -14;
     }
     const eligible = [...this.candidates.values()];
     if (eligible.every((c) => Number.isFinite(c.score)))
@@ -5464,7 +5464,7 @@ export function* validatedSetGen(
   let seen = 0, advanced = false;
   let t0 = performance.now();
   for (const tp of tapes) {
-    if (++seen % 32 === 0 && performance.now() - t0 > 8) {
+    if (++seen % 8 === 0 && performance.now() - t0 > 8) {
       yield -1;
       t0 = performance.now();
     }
@@ -5545,7 +5545,7 @@ export function* selectFixedGen(
       infos[i] = undefined;
       ca[i] = -1;
       cb[i] = -1;
-      if (++seen % 32 === 0 && performance.now() - t0 > 8) {
+      if (++seen % 8 === 0 && performance.now() - t0 > 8) {
         yield -1;
         t0 = performance.now();
       }
@@ -5556,7 +5556,7 @@ export function* selectFixedGen(
       o.gates.minDdtH ?? 0,
       (o.gates.maxDdtH * tapeHistoryHours(tp, o)) / 72,
     );
-    if (++seen % 32 === 0 && performance.now() - t0 > 8) {
+    if (++seen % 8 === 0 && performance.now() - t0 > 8) {
       yield -1;
       t0 = performance.now();
     }

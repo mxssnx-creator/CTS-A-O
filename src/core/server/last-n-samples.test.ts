@@ -83,3 +83,13 @@ test('large empty catalogs yield before finishing their coverage scan', () => {
   assert.equal(item.value.configs, tapes.length);
   assert.equal(item.value.rows.find(row => row.window === 'validation')!.contexts, tapes.length * 4);
 });
+
+test('held-only catalogs also yield while their coverage is counted', () => {
+  const tapes = Array.from({ length: 128 }, (_, i) => tape({ id: `held-${i}`, heldOnly: true }));
+  const gen = lastNSamplesGen(tapes, 10, options());
+  let item = gen.next();
+  assert.equal(item.done, false, 'held-only contexts must not monopolize the scan');
+  while (!item.done) item = gen.next();
+  assert.equal(item.value.heldOnly, tapes.length);
+  assert.equal(item.value.configs, 0);
+});

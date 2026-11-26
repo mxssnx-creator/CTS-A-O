@@ -17,8 +17,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Let the ranking baseline finish while testing cooperative history-index advances.
-  group: stable04-core-verification-v27
+  # Let the history-index baseline finish while testing smaller selection slices.
+  group: stable04-core-verification-v28
   cancel-in-progress: true
 jobs:
   core:

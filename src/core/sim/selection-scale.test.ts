@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DEFAULT_SETTINGS } from '../config.ts';
-import { defaultWalkForward, pickSeats, pickSeatsGen, selectionRankGen, type Selection } from './walkforward.ts';
+import { defaultWalkForward, makeTape, pickSeats, pickSeatsGen, selectFixedGen, selectionRankGen, type Selection } from './walkforward.ts';
 
 type Candidate = Selection & { pair: string };
 const drain = <T>(g: Generator<number, T>): T => { for (;;) { const next = g.next(); if (next.done) return next.value; } };
@@ -52,4 +52,15 @@ test('priority ranks retain native ordering while yielding during a large select
   assert.deepEqual(step.value, native(rows));
   const unknown = rows.slice(0, 30); unknown[4] = { ...unknown[4], score: NaN };
   assert.deepEqual(drain(selectionRankGen(unknown)), native(unknown));
+});
+
+test('configuration selection yields between small groups of independent tapes', () => {
+  const o = defaultWalkForward(DEFAULT_SETTINGS), protect = { tp: .01, sl: .01, trail: 0, hold: 1, tag: 'mn' as const };
+  const tapes = Array.from({ length: 16 }, (_, i) => makeTape(`cfg-${i}`, 'follow', 'ema-9-21@m1', protect,
+    'normal', ['A'], [], [], []));
+  const gen = selectFixedGen(tapes, 10, o);
+  let yields = 0, item = gen.next();
+  while (!item.done) { yields++; item = gen.next(); }
+  assert.ok(yields >= 2, 'the selection must yield before processing all sixteen tapes');
+  assert.equal(item.value.picks.length, 0);
 });

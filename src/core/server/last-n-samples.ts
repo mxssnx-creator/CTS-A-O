@@ -31,8 +31,9 @@ const empty = (): SampleCount => ({ contexts: 0, full: 0, usable: 0, insufficien
 export function* lastNSamplesGen(tapes: readonly ConfigTape[], at: number, o: WalkForwardOptions): Generator<void, LastNSamples> {
   if (!Number.isFinite(at)) throw new Error("Invalid sample clock");
   const groups = new Map<string, LastNSamples["rows"][number]>();
-  let configs = 0, heldOnly = 0, work = 0;
+  let configs = 0, heldOnly = 0, work = 0, visited = 0;
   for (const tp of tapes) {
+    if ((++visited & 31) === 0) yield;
     if (tp.heldOnly) { heldOnly++; continue; }
     configs++;
     const windows = sampleWindowsForTape(tp, o);
@@ -88,7 +89,6 @@ export function* lastNSamplesGen(tapes: readonly ConfigTape[], at: number, o: Wa
         else row.unknown++;
       }
     }
-    if ((configs & 31) === 0) yield;
   }
   const rows = [...groups.values()];
   for (const row of rows) {
