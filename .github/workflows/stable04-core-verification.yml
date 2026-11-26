@@ -17,8 +17,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Let the cooperative-selection baseline finish while testing cooperative ranking.
-  group: stable04-core-verification-v26
+  # Let the ranking baseline finish while testing cooperative history-index advances.
+  group: stable04-core-verification-v27
   cancel-in-progress: true
 jobs:
   core:

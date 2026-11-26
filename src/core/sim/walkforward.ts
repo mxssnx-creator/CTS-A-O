@@ -4501,6 +4501,7 @@ export class EvalMemo {
   private toT = -Infinity;
   private indexed = new WeakMap<ConfigTape, number>();
   private token = {};
+  private advancing = false;
   uniqueTapes = true;
   tracking = false;
 
@@ -4517,6 +4518,7 @@ export class EvalMemo {
 
   /** Index the exit times of every tape inside [fromT, toT), sorted; slices (yields −1) so a long scan stays responsive. */
   *attach(tapes: readonly ConfigTape[], fromT: number, toT: number): Generator<number, void> {
+    if (this.advancing) throw new Error("position memo advance already in progress");
     let count = 0;
     const lo: number[] = [];
     const indexed = new WeakMap<ConfigTape, number>();
@@ -4607,12 +4609,47 @@ export class EvalMemo {
 
   /** Move the clock to t: every tape with a close settling in [clock, t) becomes dirty. False when t is not a forward move. */
   advance(t: number): boolean {
+    if (this.advancing) throw new Error("position memo advance already in progress");
     if (!this.tracking || !Number.isFinite(t) || t < this.fromT || t > this.toT) return false;
     if (t < this.clock) return false;
     if (t === this.clock) return true;
     while (this.ptr < this.times.length && this.times[this.ptr] < t) this.dirty.add(this.tapes[this.owner[this.ptr++]]);
     this.clock = t;
     return true;
+  }
+
+  /** Gather and publish dirty tapes in bounded slices; a cancelled scan leaves the clock and cursor unchanged. */
+  *advanceGen(t: number): Generator<number, boolean> {
+    if (this.advancing) throw new Error("position memo advance already in progress");
+    if (!this.tracking || !Number.isFinite(t) || t < this.fromT || t > this.toT) return false;
+    if (t < this.clock) return false;
+    if (t === this.clock) return true;
+    const end = lowerBound(this.times, t);
+    // Small advances are faster without a second Set and already fit in a short slice.
+    if (end - this.ptr <= 262_144) {
+      while (this.ptr < end) this.dirty.add(this.tapes[this.owner[this.ptr++]]);
+      this.clock = t;
+      return true;
+    }
+    this.advancing = true;
+    try {
+      let cursor = this.ptr, work = 0;
+      const pending = new Set<ConfigTape>();
+      while (cursor < end) {
+        const tp = this.tapes[this.owner[cursor++]];
+        if (!this.dirty.has(tp)) pending.add(tp);
+        if (++work % 2048 === 0) yield -14;
+      }
+      for (const tp of pending) {
+        this.dirty.add(tp);
+        if (++work % 2048 === 0) yield -14;
+      }
+      this.ptr = cursor;
+      this.clock = t;
+      return true;
+    } finally {
+      this.advancing = false;
+    }
   }
 }
 
@@ -4673,6 +4710,7 @@ function* selectPositionsGen(
     memo.staticSeat.clear();
     memo.staticRefs = refs;
   }
+  let advanced = false;
   for (let i = 0; i < tapes.length; i++) {
     const tp = tapes[i];
     let st = memo?.staticSeat.get(tp);
@@ -4687,6 +4725,7 @@ function* selectPositionsGen(
     }
     const pair = st.pair;
     pairTotal.set(pair, (pairTotal.get(pair) ?? 0) + 1);
+    if (memo && !advanced) { yield* memo.advanceGen(t); advanced = true; }
     const ev = configEvalSummary(tp, t, o),
       w = {
         n: ev.n,
@@ -4778,16 +4817,20 @@ export class ContinuousPositionSelection {
   *reset(validated: ReadonlySet<string>, t: number, o: WalkForwardOptions): Generator<number, void> {
     this.candidates.clear();
     const free: WalkForwardOptions = { ...o, seatSet: "pool", validated: undefined, recordValidation: undefined };
-    let n = 0;
+    let n = 0, advanced = false;
     for (const id of validated) {
       const tp = this.byId.get(id);
-      if (tp) this.update(tp, t, free);
+      if (tp) {
+        if (!advanced) { yield* this.memo.advanceGen(t); advanced = true; }
+        this.update(tp, t, free);
+      }
       if (++n % 64 === 0) yield -14;
     }
   }
 
   *refresh(t: number, o: WalkForwardOptions): Generator<number, { picks: Selection[]; eligible: number }> {
     const free: WalkForwardOptions = { ...o, seatSet: "pool", validated: undefined, recordValidation: undefined };
+    if (this.memo.dirty.size) yield* this.memo.advanceGen(t);
     let n = 0;
     for (const tp of this.memo.dirty) {
       this.update(tp, t, free);
@@ -5418,7 +5461,7 @@ export function* validatedSetGen(
   const out = new Set<string>();
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   const free: WalkForwardOptions = { ...o, seatSet: "pool", validated: undefined };
-  let seen = 0;
+  let seen = 0, advanced = false;
   let t0 = performance.now();
   for (const tp of tapes) {
     if (++seen % 32 === 0 && performance.now() - t0 > 8) {
@@ -5427,6 +5470,7 @@ export function* validatedSetGen(
     }
     const info = selInfoOf(tp, free, botOk);
     if (!info.inScope || !info.canSeat) continue;
+    if (free.evalMemo && !advanced) { yield* free.evalMemo.advanceGen(t); advanced = true; }
     // The initial validated pool must use the same own-direction / Signal
     // context proof and independent history as hourly selection and entry.
     const ev = configEvalSummary(tp, t, free);
@@ -8427,6 +8471,7 @@ export function* walkForwardGen(
       ? { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {}, setPf: emptyValidatedSetPf() } as ValidationSummary : null);
     if (o.recordValidation) {
       let checked = 0;
+      if (sigTapes.length && o.evalMemo) yield* o.evalMemo.advanceGen(t);
       for (const tp of sigTapes) {
         const ev = configEvalSummary(tp, t, o);
         if (o.recordValidation === true)
@@ -8491,7 +8536,7 @@ export function* walkForwardGen(
       if (continuousPicks && batchT > t && batchT >= nextPickAt) {
         nextPickAt = batchT + decisionMs;
         // only when a close has settled since the last derivation (the memo knows which tapes: no column is opened to ask)
-        o.evalMemo!.advance(batchT);
+        yield* o.evalMemo!.advanceGen(batchT);
         if (o.evalMemo!.dirty.size > 0) {
           const fresh = incremental ? yield* incremental.refresh(batchT, stepOpts)
             : yield* selectPositionsGen(allEngine, batchT,

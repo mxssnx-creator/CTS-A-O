@@ -56,3 +56,22 @@ test("minute buckets and irregular fallback both preserve the exact stable event
     }
   }
 });
+
+test("a large close-index advance yields, preserves strict boundaries, and recovers after cancellation", () => {
+  const tapes = Array.from({ length: 3000 }, () => ({ exitT: new Float64Array(100).fill(10), n: 100 }) as ConfigTape);
+  const memo = new EvalMemo();
+  finish(memo.attach(tapes, 0, 20));
+  assert.equal(memo.advance(10), true);
+  assert.equal(memo.dirty.size, 0, "closes at the decision time are not yet evidence");
+  const g = memo.advanceGen(11);
+  assert.equal(g.next().done, false);
+  assert.throws(() => memo.advance(11), /advance already in progress/);
+  for (let i = 0; i < Math.floor(tapes.length * 100 / 2048); i++)
+    assert.equal(g.next().done, false, "the scan and publishing pass both yield");
+  g.return(false);
+  assert.equal(memo.advance(11), true, "an interrupted scan can be retried");
+  assert.deepEqual(memo.dirty, new Set(tapes));
+  memo.dirty.clear();
+  assert.equal(memo.advance(12), true);
+  assert.equal(memo.dirty.size, 0, "completed events are not consumed twice");
+});
