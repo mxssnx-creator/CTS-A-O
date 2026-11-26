@@ -9571,25 +9571,32 @@ export class CoreRuntime {
       }
     }
     // the engine candidates of the run (the feed holds every candidate, executed or not, with its entry and exit)
-    const iv = new Map<string, Array<[number, number]>>();
+    // Keep paired numeric columns rather than one short-lived object for every candidate interval.
+    const iv = new Map<string, { entry: number[]; exit: number[] }>();
     for (const f of sim.feed ?? []) {
       if (f.entryT === undefined || !f.cfg || sigCfg(f.cfg) || isHistoricExitConfig(f.cfg, f.type)) continue;
       const k = `${f.sym}|${f.side > 0 ? 1 : -1}`;
       let l = iv.get(k);
-      if (!l) iv.set(k, (l = []));
-      l.push([f.entryT, f.exitT]);
+      if (!l) iv.set(k, (l = { entry: [], exit: [] }));
+      l.entry.push(f.entryT);
+      l.exit.push(f.exitT);
     }
     const engineIv = new Map<string, { e: Float64Array; mx: Float64Array }>();
     for (const [k, l] of iv) {
-      l.sort((a, b) => a[0] - b[0]);
-      const e = new Float64Array(l.length);
-      const mx = new Float64Array(l.length);
+      // Stable index sorting preserves equal-entry order and therefore the exact running exit maximum.
+      const order = Uint32Array.from({ length: l.entry.length }, (_, i) => i);
+      order.sort((a, b) => l.entry[a] - l.entry[b]);
+      const e = new Float64Array(order.length);
+      const mx = new Float64Array(order.length);
       let m = -Infinity;
-      l.forEach(([en, ex], j) => {
-        e[j] = en;
-        mx[j] = m = Math.max(m, ex);
-      });
+      for (let j = 0; j < order.length; j++) {
+        const i = order[j];
+        e[j] = l.entry[i];
+        mx[j] = m = Math.max(m, l.exit[i]);
+      }
       engineIv.set(k, { e, mx });
+      // Earlier source columns need not coexist with the rest of the completed output.
+      iv.delete(k);
     }
     this.coordCache = { sim, closedBy, hourNet, exitHourNet, srcClosed, engineIv };
     return this.coordCache;

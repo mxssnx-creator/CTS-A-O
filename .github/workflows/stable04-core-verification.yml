@@ -17,8 +17,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Preserve the earlier slow-runtime baseline while checking the signed-window test update.
-  group: stable04-core-verification-v15
+  # Preserve the previous source's slow-runtime baseline while testing the compact coordination index.
+  group: stable04-core-verification-v16
   cancel-in-progress: true
 jobs:
   core:
