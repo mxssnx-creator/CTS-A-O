@@ -3702,7 +3702,7 @@ const noteBase = (m: Map<string, number>, tp: ConfigTape, w: { n: number; pf: nu
 };
 
 /** pickByLane per strategy family (each with `seats` of its own) when family seats are on. */
-function pickSeats(
+export function pickSeats(
   cands: ReadonlyArray<Selection & { pair: string }>,
   seats: number,
   picks: Array<Selection & { pair?: string }>,
@@ -3718,10 +3718,10 @@ function pickSeats(
   for (const r of RANGE_TAGS) {
     const xs = cands.filter((c) => rangeSeat(c.pair) === r);
     const held = picks.filter((p) => rangeSeat(p.pair ?? "") === r);
-    if (xs.length || held.length)
-      rangeOut.push(
-        ...pickByLane(xs, r === "mc" ? microSeats(o) : seats, held, pairs, r === "mc" ? 0 : ls),
-      );
+    if (xs.length || held.length) {
+      for (const pick of pickByLane(xs, r === "mc" ? microSeats(o) : seats, held, pairs, r === "mc" ? 0 : ls))
+        rangeOut.push(pick);
+    }
   }
   const plain = cands.filter((c) => !rangeSeat(c.pair));
   const plainHeld = picks.filter((p) => !rangeSeat(p.pair ?? ""));
@@ -3741,15 +3741,13 @@ function pickSeats(
   const exitFamilies = [...new Set(exits.map((c) => seatFamily(c.pair, o.familySeats)))];
   const exitOut: Selection[] = [];
   for (const f of exitFamilies) {
-    exitOut.push(
-      ...pickByLane(
-        exits.filter((c) => seatFamily(c.pair, o.familySeats) === f),
-        seats,
-        exitHeld.filter((p) => seatFamily(p.pair ?? "", o.familySeats) === f),
-        pairs,
-        ls,
-      ),
-    );
+    for (const pick of pickByLane(
+      exits.filter((c) => seatFamily(c.pair, o.familySeats) === f),
+      seats,
+      exitHeld.filter((p) => seatFamily(p.pair ?? "", o.familySeats) === f),
+      pairs,
+      ls,
+    )) exitOut.push(pick);
   }
   if (!o.familySeats)
     return [...pickByLane(rest, seats, restHeld, pairs, ls), ...trailOut, ...rangeOut, ...exitOut];
@@ -3769,7 +3767,7 @@ function pickSeats(
   }
   const out: Selection[] = [];
   for (const f of ["base", "dca", "axis", "trailing", "trailing-only", ...exitFamilies])
-    out.push(...pickByLane(fams.get(f) ?? [], seats, held.get(f) ?? [], pairs, ls));
+    for (const pick of pickByLane(fams.get(f) ?? [], seats, held.get(f) ?? [], pairs, ls)) out.push(pick);
   return [...out, ...trailOut, ...rangeOut, ...exitOut];
 }
 
@@ -3828,7 +3826,7 @@ function pickByLane(
     // seats of lane k up to `upTo` in total (held included), best first
     let n = heldBy.get(k) ?? 0;
     for (const c of sorted.get(k) ?? []) {
-      if (n >= upTo) break;
+      if (n >= upTo || picks.length >= seats) break;
       if (pairs.has(c.pair)) continue;
       const before = picks.length;
       take(c);
@@ -3844,7 +3842,10 @@ function pickByLane(
     const even = Math.floor(seats / byLane.size);
     for (const k of sorted.keys()) fill(k, Math.max(laneSeats, even));
   }
-  for (const c of [...cands].sort((x, y) => y.score - x.score)) take(c);
+  for (const c of [...cands].sort((x, y) => y.score - x.score)) {
+    if (picks.length >= seats) break;
+    take(c);
+  }
   return picks;
 }
 
