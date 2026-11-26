@@ -10,6 +10,12 @@ No new 12-symbol execution result is available at this checkpoint: post-Base ret
 validation percentage, and settled execution PF remain unavailable. The prior full replay was interrupted.
 No exchange connection, deployment, account action or live-readiness claim is made.
 
+Further follow-up: accepted unknown closes now remain in their Auto windows, automatic counts continue learning
+with recovery holding off, and duplicate candidate close histories are shared without sharing their pauses. A
+16-scenario trace and the bounded synthetic memory comparison are recorded in the verification file. The
+`aa1ee32` 12-symbol retry was stopped by the host reserve at 24% of strategy tapes; it has no PF, validation
+percentage or settled results. No incomplete fallback was accepted.
+
 ## 2026-11-18 — exact stop and trailing distances
 
 The opt-in price-distance grid uses SL 0.2%–2.2% and trailing 0.2%–2.6% at

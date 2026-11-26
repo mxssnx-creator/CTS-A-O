@@ -993,6 +993,12 @@ describe("AutoBlockBook (windowAuto)", () => {
     for (let i = 0; i < 30; i++) b.add({ ...entry(Number.MAX_VALUE), autoRaise: 1 });
     assert.deepEqual(b.scores(), [{ window: 1, n: 30, pf: null }]);
   });
+  it("a nonzero loss whose PF ratio overflows is unavailable rather than a no-loss win", () => {
+    const b = new AutoBlockBook(alt);
+    for (let i = 0; i < 29; i++) b.add({ ...entry(1), autoRaise: 1 });
+    b.add({ ...entry(-Number.MIN_VALUE), autoRaise: 1 });
+    assert.deepEqual(b.scores(), [{ window: 1, n: 30, pf: null }]);
+  });
   it("scores each window on its level at the candidate's entry, not at its exit", () => {
     const b = new AutoBlockBook(alt);
     for (let k = 0; k < 100; k++) {

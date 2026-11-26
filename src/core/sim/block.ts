@@ -295,6 +295,8 @@ export class BlockBook {
   }
   private seenCloses = new Set<string>();
   private keep: number;
+  /** Candidate followers retain their own pauses, but consume the owner's identical accepted-close history. */
+  private historyFollower = false;
   /** `opts`: the book options, or (a boolean) acceptedOnly alone */
   constructor(pause = 0, window = 1, options: BlockBookOpts | boolean = {}) {
     const opts: BlockBookOpts = typeof options === "boolean" ? { acceptedOnly: options } : options;
@@ -312,6 +314,17 @@ export class BlockBook {
     // the tail a level can read (up to 12 levels × window), kept with room to spare
     this.keep = Math.max(64, 12 * this.window);
     this.auto = opts.auto?.enabled ? new BlockAutoEval(opts.auto, Math.max(1, Math.floor(opts.maxLevel ?? 8))) : null;
+  }
+  protected static shareCandidateHistory(books: readonly BlockBook[]): void {
+    const owner = books[0];
+    if (!owner) return;
+    owner.keep = Math.max(...books.map((book) => book.keep));
+    for (let i = 1; i < books.length; i++) {
+      books[i].lists = owner.lists;
+      books[i].times = owner.times;
+      books[i].trimmed = owner.trimmed;
+      books[i].historyFollower = true;
+    }
   }
   /** The per relation × count evaluation (BlockConfig.auto), or null when it is off. */
   readonly auto: BlockAutoEval | null;
@@ -372,7 +385,9 @@ export class BlockBook {
     const keys = BLOCK_SOURCES.map((s) => this.keyOf(s, t));
     // the per relation × count evaluation: this accepted close is one result of every relation at the level it stood
     // at when the position entered (judged on the closes before that entry, whether the relation raised or observed)
-    if (this.auto && t.accepted === true && Number.isFinite(t.entryT) && Number.isFinite(t.r))
+    // Preserve an accepted close with an unknown return in its chronological window: skipping it would let
+    // older winning evidence incorrectly authorize another raise. BlockAutoEval fails that window closed.
+    if (this.auto && t.accepted === true && Number.isFinite(t.entryT))
       for (let i = 0; i < BLOCK_SOURCES.length; i++) {
         const k = keys[i];
         if (!pooled && !isOwnKey(k)) continue;
@@ -389,6 +404,7 @@ export class BlockBook {
         else this.pauseLeft.set(k, left - 1);
       }
       if (isOwnKey(k) && !this.acceptedOnly) continue; // legacy config source judges its raw tape
+      if (this.historyFollower) continue; // a candidate's owner records the same close once
       const l = this.lists.get(k);
       if (l) {
         l.push(t.r);
@@ -718,7 +734,9 @@ export class AutoBlockBook extends BlockBook {
       .filter((w) => Number.isFinite(w)))];
     if (!ws.includes(fallback)) ws.push(fallback);
     this.windows = ws;
-    this.books = ws.map((w) => new BlockBook(b.pause ?? 0, w, { ...bookOpts(b), holdUntilNet: false }));
+    // Candidate books decide their own levels and pauses; only the parent book's per-count Auto is consumed.
+    this.books = ws.map((w) => new BlockBook(b.pause ?? 0, w, { ...bookOpts(b), holdUntilNet: false, auto: undefined }));
+    AutoBlockBook.shareCandidateHistory(this.books);
     this.recent = ws.map(() => []);
     this.cur = ws.indexOf(fallback);
     this.initial = this.cur;
@@ -759,11 +777,14 @@ export class AutoBlockBook extends BlockBook {
     const pooled = pooledIn ?? this.pooledClose(t, signal);
     const scope = exitScopeSuffix(t.cfg, t.type);
     const recent = this.recentFor(scope);
-    // Recovery is tied to actual entry attribution, not rewritten when an automatic window changes.
-    if (this.holdUntilNet) super.add(t, signal, pooled);
+    // Recovery and the active count-evaluation book are independent: turning recovery off must not silently
+    // prevent Block Auto from learning accepted closes.
+    if (this.holdUntilNet || this.auto) super.add(t, signal, pooled);
+    // Without an entry stamp every candidate must judge against the pre-close history, before the owner appends.
+    const priorRaised = pooled && t.autoRaise === undefined ? this.books.map((_, i) => this.decide(i, t).vol > 1) : undefined;
     for (let i = 0; i < this.books.length; i++) {
       // stamped at its entry (a run's feed); unstamped, judged on the closes before this one
-      if (pooled && (t.autoRaise !== undefined ? (t.autoRaise >> i) & 1 : this.decide(i, t).vol > 1)) {
+      if (pooled && (priorRaised ? priorRaised[i] : ((t.autoRaise ?? 0) >> i) & 1)) {
         const r = recent[i];
         r.push(t.r);
         if (r.length > 2 * this.lookback) r.splice(0, r.length - this.lookback);
@@ -793,16 +814,22 @@ export class AutoBlockBook extends BlockBook {
   scores(scope = ""): Array<{ window: number; n: number; pf: number | null }> {
     const recent = this.recentFor(scope);
     return this.windows.map((w, i) => {
-      const xs = recent[i].slice(-this.lookback);
-      if (xs.length < 30 || xs.some((x) => !Number.isFinite(x))) return { window: w, n: xs.length, pf: null };
+      const xs = recent[i];
+      const from = Number.isNaN(this.lookback) ? 0 : Math.max(0, xs.length - this.lookback);
+      const n = xs.length - from;
+      if (n < 30) return { window: w, n, pf: null };
       let gp = 0;
       let gl = 0;
-      for (const x of xs) {
+      for (let j = from; j < xs.length; j++) {
+        const x = xs[j];
+        if (!Number.isFinite(x)) return { window: w, n, pf: null };
         if (x > 0) gp += x;
         else gl -= x;
       }
-      if (!Number.isFinite(gp) || !Number.isFinite(gl)) return { window: w, n: xs.length, pf: null };
-      return { window: w, n: xs.length, pf: gl > 0 ? gp / gl : gp > 0 ? Infinity : 0 };
+      if (!Number.isFinite(gp) || !Number.isFinite(gl)) return { window: w, n, pf: null };
+      const pf = gl > 0 ? gp / gl : gp > 0 ? Infinity : 0;
+      if (gl > 0 && !Number.isFinite(pf)) return { window: w, n, pf: null };
+      return { window: w, n, pf };
     });
   }
   private choose(scope: string) {
