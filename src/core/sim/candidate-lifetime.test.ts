@@ -29,7 +29,9 @@ it("releasing processed Real candidates preserves every settled order, deduplica
   // echoed opts.block is the only changed field (every trade, feed, step and diagnostic field hashes as before).
   // Stable-04: the echoed options differ from main only by the deliberate defaults (Axis per range, signal minimum 2 a day,
   // thin stop ladders); trades, feed, steps and every other key hash identically to main (checked per key).
-  assert.equal(r.fullResultSha256, "c9a895c026b28e6c256f5d8947b60eab87c7c5d4d922b14e565736bcc103fe87");
+  // 26 Nov 2026: Stable-04 changed Block auto's default minimum 15→30 and scope rule→key.
+  // A field-by-field comparison against 8c0823eb confirms only those echoed option values changed.
+  assert.equal(r.fullResultSha256, "bb3f806d8fdd4579bbbf42a8f05c8c3ec514f1287909c12ac84d32e632269030");
   assert.equal(r.stepProgressSha256, "9b11bef4ae499a18825a4df9d13223436fe392839fbdbd07240611de0404a59a");
   assert.deepEqual(r.heap.map((x: { step: number }) => x.step), [1, 2, 3, 4]);
 });

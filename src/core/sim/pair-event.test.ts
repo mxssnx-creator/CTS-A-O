@@ -51,6 +51,37 @@ it("50 variants of one pair entering together execute once per event; off, all o
   assert.ok(on.feed.length >= off.trades.length, "every variant's candidate is recorded");
 });
 
+it("independent modeled stage histories learn concurrently while only one variant can execute per event", () => {
+  const ind = "rsi-mom-14-20@m1";
+  const tapes = [tape(ind, 1), tape(ind, 2)];
+  const result = walkForward(u, tapes, options({
+    basePassed: new Set([`follow|${ind}`]), processedStages: { validationN: 2, realN: 2 },
+  }));
+  const sets = result.processedStages!.sets.filter(s => tapes.some(t => t.id === s.identity.baseConfigId));
+  assert.equal(sets.length, 2, "both exact configs must acquire their own modeled stage record");
+  for (const set of sets) {
+    assert.equal(set.stages.postBase.closedOrders, 12, "the other variant must not consume its samples");
+    assert.ok(set.stages.validated.closedOrders >= 2, "each config must progress on its own prior closes");
+  }
+  assert.ok(result.trades.length > 0, "a mature and otherwise admissible config reaches modeled execution");
+  assert.equal(result.trades.length, minutes(result.trades).size, "the funded pair-event limit remains in force");
+});
+
+it("retains a funded pair event when a non-aligned processing batch splits its minute", () => {
+  const ind = "rsi-mom-14-20@m1";
+  const mk = (k: number, entryT: number) => {
+    const id = `follow|${ind}|tp${k}|sl1|tr0|h32`;
+    const times = [...Array.from({ length: 12 }, (_, i) => START - (12 - i) * 20 * M - H), entryT];
+    const rows: Trade[] = times.map(t => ({ cfg: id, sym: "A", side: 1, entryT: t, exitT: t + 1_000,
+      entry: 100, exit: 101, r: .01, mult: 1, reason: "tp", bars: 1, mfe: .02, mae: .01, kind: "normal" }));
+    return makeTape(id, "follow", ind, { tp: .01, sl: .01, trail: 0, hold: 32 }, "normal", ["A"], rows, [], []);
+  };
+  const tapes = [mk(1, START + 80_000), mk(2, START + 100_000)];
+  const opts = options({ startT: START + 30_000, simH: 1 });
+  assert.equal(walkForward(u, tapes, { ...opts, onePerPairEvent: false }).trades.length, 2);
+  assert.equal(walkForward(u, tapes, { ...opts, onePerPairEvent: true }).trades.length, 1);
+});
+
 it("another type, another pair and a later minute are separate events", () => {
   const tapes = [tape("rsi-mom-14-20@m1", 1), tape("rsi-mom-14-20@m1", 2), tape("rsi-mom-14-20@m1", 3, "dca"),
     tape("ema-9-21@m1", 4), tape("rsi-mom-14-20@m1", 5, "normal", 1)];

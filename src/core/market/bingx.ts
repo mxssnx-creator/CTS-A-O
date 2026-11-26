@@ -104,6 +104,7 @@ export const MAJORS = [
 ];
 
 /** "xrp", "XRPUSDT", "xrp-usdt" → "XRP-USDT" */
+export const MAX_FORCED_SYMBOLS = 50;
 export const normSymbol = (s: string) => {
   const u = s.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
   if (!u) return "";
@@ -229,13 +230,28 @@ export async function rankUniverse(
  */
 export const KLINES_MIN_GAP_MS = 250;
 let klinesNextAt = 0;
+let klinesTurn: Promise<void> = Promise.resolve();
 
-/** Reserve the next request slot: resolves when this request may be sent (requests are spaced, never dropped). */
-async function klinesSlot(gapMs: number): Promise<void> {
-  const now = Date.now();
-  const start = Math.max(now, klinesNextAt);
-  klinesNextAt = start + gapMs;
-  if (start > now) await new Promise((r) => setTimeout(r, start - now));
+/** Serialize actual dispatches, not future reservations: a delayed event loop must not release a burst. */
+async function dispatchKlines<T>(gapMs: number, send: () => Promise<T>): Promise<T> {
+  if (!Number.isFinite(gapMs) || gapMs < 0) throw new RangeError("kline gap must be non-negative and finite");
+  const previous = klinesTurn;
+  let release!: () => void;
+  klinesTurn = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try {
+    let wait = klinesNextAt - performance.now();
+    while (wait > 0) {
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      wait = klinesNextAt - performance.now();
+    }
+    // getJson invokes fetch immediately. Release the next turn after dispatch, not after the response.
+    const request = send();
+    klinesNextAt = performance.now() + gapMs;
+    return request;
+  } finally {
+    release();
+  }
 }
 
 /** One kline page (max 1440), ascending by time. Only CLOSED bars are returned. */
@@ -253,10 +269,9 @@ export async function fetchKlines(
   });
   if (opt.startT) q.set("startTime", String(opt.startT));
   if (opt.endT) q.set("endTime", String(opt.endT));
-  await klinesSlot(opt.gapMs ?? KLINES_MIN_GAP_MS);
-  const data = (await getJson(
+  const data = (await dispatchKlines(opt.gapMs ?? KLINES_MIN_GAP_MS, () => getJson(
     `${opt.host ?? BINGX_HOSTS.mainnet}/openApi/swap/v3/quote/klines?${q}`,
-  )) as Array<Record<string, string | number>>;
+  ))) as Array<Record<string, string | number>>;
   const now = opt.nowT ?? Date.now();
   const tfMs = tfMin * 60_000;
   const out: Candle[] = [];

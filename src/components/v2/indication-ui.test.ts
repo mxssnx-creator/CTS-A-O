@@ -5,6 +5,7 @@ import { breakFocusCoverage, configStrategyLabel, indicationFocusCoverage, indic
 test("registered first-class indication kinds have named UI labels without changing other identities", () => {
   assert.equal(indicationKindLabel("tactic"), "Tactic");
   assert.equal(indicationKindLabel("inverse"), "Inverse");
+  assert.equal(indicationKindLabel("drag"), "Drag");
   assert.equal(indicationKindLabel("signal-coordination"), "Signals Coordination");
   assert.equal(indicationKindLabel("relate"), "Relate");
   assert.equal(indicationKindLabel("break"), "Break");

@@ -6,7 +6,7 @@ import { syntheticCandles } from "../market/bars.ts";
 
 const END = Date.UTC(2026, 9, 17, 12);
 const SYMBOLS = Array.from({ length: 12 }, (_, i) => `S${String.fromCharCode(65 + i)}-USDT`);
-const settings = { symbols: 12, historyDays: 1, symbolRank: "volume" as const, cycleMs: 60_000 };
+const settings = { symbols: 12, historyDays: 1, symbolRank: "volume" as const, cycleMs: 60_000, forceSymbols: [] };
 
 function fixture(completeReplayUniverse?: boolean) {
   const requested: string[] = [];

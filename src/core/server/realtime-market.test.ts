@@ -2,7 +2,7 @@
 // paper / live side and the realtime entry step see the current market, and the next cycle computes on them.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime, realtimeBarDue, type MarketFeed } from "./runtime.server.ts";
+import { CoreRuntime, marketHistoryBars, realtimeBarDue, type MarketFeed } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { syntheticCandles } from "../market/bars.ts";
 import { CandleSeries } from "../market/candle-series.ts";
@@ -91,7 +91,7 @@ describe("realtime market loop", () => {
     };
     const rt = new CoreRuntime(
       new CoreDb(":memory:"),
-      { symbols: 8, historyDays: 1, symbolRank: "volume", cycleMs: 60_000 } as never,
+      { symbols: 8, historyDays: 1, symbolRank: "volume", cycleMs: 60_000, forceSymbols: [] } as never,
       { market: "bingx", priceStream: null, feed },
     );
     const R = rt as unknown as { gen: number; syncMarket(gen: number): Promise<boolean> };
@@ -369,7 +369,7 @@ describe("realtime market loop", () => {
     // 400 bars behind: the gap repair's case
     R.candles.set("GAP-USDT", CandleSeries.fromCandles(Array.from({ length: 60 }, (_, i) => ({ t: now - (460 - i) * M, o: 1, h: 1, l: 1, c: 1, v: 1 }))));
     const s = R.settings;
-    R.backfillKey = `${s.symbols}|${s.tfMin}|${s.historyDays}|${s.symbolRank}|${s.symbolOffset ?? 0}|${(s.forceSymbols ?? []).join(",")}`;
+    R.backfillKey = `${s.symbols}|${s.tfMin}|${marketHistoryBars(rt.settings, rt.wf)}|${s.symbolRank}|${s.symbolOffset ?? 0}|${(s.forceSymbols ?? []).join(",")}`;
     rt.status.source = "bingx";
     try {
       noteRateLimit("BingX 100410: 请稍后重试", Date.now(), KLINES);

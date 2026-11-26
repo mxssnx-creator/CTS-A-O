@@ -16,6 +16,7 @@ import { returnWindow } from "../metrics/return-window.ts";
 import { DerivedCache, derivedCacheBytes } from "./derived-cache.ts";
 import { immutableHistoryGeneration } from "./immutable-history-generation.ts";
 import { tapeOpenTimes } from "./tape-open-times.ts";
+import { EntryEventWindow } from "./entry-event-window.ts";
 import { exitScopeSuffix, isHistoricExitConfig } from "../exit-scope.ts";
 import { applyPriceDistanceGrid } from "../price-distance-grid.ts";
 import { isLowRangeInd, lowRangeGridProtects, lowRangeEnabled } from "../indications/low-range.ts";
@@ -6192,11 +6193,15 @@ export function execDecision(
     relateBase?: (blockVolume: number) => number;
     /** Internal replay collection path; it must apply the processed verdict before publishing execution. */
     processedBase?: boolean;
+    /** Model-only Signal learning; it must not be used for a funded admission. */
+    stageLearning?: boolean;
     sym: string;
     side: number;
   },
 ): ExecDecision {
   if (o.processedStages && !ctx?.processedBase) return { ok: false, why: "processedUnavailable" };
+  if (ctx?.stageLearning && (!o.processedStages || !ctx.processedBase || !isSignalInd(tp.ind) || tp.kind === "exit"))
+    return { ok: false, why: "processedUnavailable" };
   const tg = effectiveStrategyToggles(tp, o);
   const applyRelate = (decision: Extract<ExecDecision, { ok: true }>): ExecDecision => {
     if (!o.relate?.enabled) return decision;
@@ -6237,7 +6242,7 @@ export function execDecision(
   )
     return { ok: false, why: "base" };
   if (!tapeExecutable(tp, o)) return { ok: false, why: "toggle" };
-  if(o.gates?.positionWindows && (!ctx || !positionConfigEval(tp,entryT,o,ctx.sym,ctx.side).ok))
+  if(!ctx?.stageLearning && o.gates?.positionWindows && (!ctx || !positionConfigEval(tp,entryT,o,ctx.sym,ctx.side).ok))
     return {ok:false,why:"configValidation"};
 
   const excludedRange = isSignalInd(tp.ind) ? "sig" : tp.protect.tag;
@@ -6263,12 +6268,12 @@ export function execDecision(
     if (tp.kind !== "exit" && o.signalBasePassed && !o.signalBasePassed.has(`${tp.bot}|${tp.ind}`))
       return { ok: false, why: "signalBase" };
     if (
-      o.signalActive &&
+      !ctx.stageLearning && o.signalActive &&
       !signalActiveHas(o.signalActive, tp.bot, tp.ind, ctx.sym, ctx.side, tp.kind, tp.id)
     )
       return { ok: false, why: "signalInactive" };
     if (
-      o.signalGuardN &&
+      !ctx.stageLearning && o.signalGuardN &&
       ctx.guard?.disabled(guardKey(tp.id, ctx.sym, ctx.side, tp.kind), o.signalGuardN)
     )
       return { ok: false, why: "signalGuard" };
@@ -6285,7 +6290,7 @@ export function execDecision(
     )
       return { ok: false, why: "signalCluster" };
     if (
-      o.signalAccept?.enabled &&
+      !ctx.stageLearning && o.signalAccept?.enabled &&
       ctx.guard &&
       // Own-config acceptance is separate from the explicit shared side/cluster coordination below.
       !ctx.guard.accepts(
@@ -6306,7 +6311,7 @@ export function execDecision(
       return { ok: false, why: "signalSide" };
     // the Signal's own last N on this exact symbol and direction (min PF, DDT and DDR)
     if (
-      !o.probe?.perRange &&
+      !ctx.stageLearning && !o.probe?.perRange &&
       !o.probe?.perCell &&
       (!signalConfigEval(tp, entryT, o, ctx.sym, ctx.side).ok || !o.gates.positionWindows && !signalLastNOk(
         tp,
@@ -6391,7 +6396,7 @@ export function execDecision(
     return { ok: false, why: "lastN" };
 
   // The explicit symbol gate has its own scope, sample and warmup policy. Never impose config Last-N here.
-  if (!probed && ctx?.sym && !engineContextValid(tp, entryT, o, ctx.sym, ctx.side))
+  if (!probed && !ctx?.stageLearning && ctx?.sym && !engineContextValid(tp, entryT, o, ctx.sym, ctx.side))
     return { ok: false, why: "symPf" };
   // engine direction acceptance: this type family × range × side must clear its PF on its candidates' last hours
   if (
@@ -7396,7 +7401,7 @@ function engineTapesOf(tapes: readonly ConfigTape[]): readonly ConfigTape[] | nu
 
 export function splitSignalTapes(
   tapes: readonly ConfigTape[],
-  o: Pick<WalkForwardOptions, "signalActive" | "signalRank">,
+  o: Pick<WalkForwardOptions, "signalActive" | "signalRank" | "processedStages" | "signalBasePassed">,
 ): { engine: readonly ConfigTape[]; signal: ConfigTape[] } {
   const engine = engineTapesOf(tapes);
   if (!engine) return { engine: tapes, signal: [] };
@@ -7407,9 +7412,10 @@ export function splitSignalTapes(
       signal: tapes.filter((t) => isSignalInd(t.ind)),
     };
   const pairs = new Set([...(o.signalActive ?? [])].map((k) => k.split("|").slice(0, 2).join("|")));
+  if (o.processedStages && o.signalBasePassed) for (const pair of o.signalBasePassed) pairs.add(pair);
   return {
     engine,
-    signal: o.signalActive
+    signal: o.signalActive || (o.processedStages && o.signalBasePassed)
       ? tapes.filter((t) => isSignalInd(t.ind) && pairs.has(`${t.bot}|${t.ind}`))
       : [],
   };
@@ -7792,13 +7798,15 @@ export function* walkForwardGen(
   const steps: StepLog[] = [];
   const trades: Trade[] = [];
   const openAtEnd: Trade[] = [];
-  const executedKeys = new Set<string>();
-  // entries per range × symbol × side × entry time (entryCrowd)
-  const crowd = new Map<string, number>();
-  // executed pair events (onePerPairEvent)
-  const pairEvents = new Set<string>();
+  // Event keys cannot match a later timestamp/minute; retain only their current chronological window.
+  const entryEvents = new EntryEventWindow();
+  const executedKeys = entryEvents.duplicates, crowd = entryEvents.crowd, pairEvents = entryEvents.pairEvents;
   const open = new ExitHeap<Trade>(); // taken, by exit
-  const counts = new OpenCounts(); // the caps' counts of the taken orders still open
+  // Only funded entries consume funded capacity; modeled stage parents have their own duplicate tracking.
+  const counts = new OpenCounts();
+  const stageOnlyCounts = new OpenCounts();
+  const coordinationOpen: Trade[] = [];
+  const fundedOpen: Trade[] = [];
   const blockPredecessors = new OpenCounts(); // independent virtual admissions never reserve funded slots
   const hourNet = new Map<number, number>();
   const exitHourNet = new Map<string, Map<number, number>>();
@@ -7893,8 +7901,18 @@ export function* walkForwardGen(
     }
     while (open.size && open.peekT() <= t) {
       const x = open.pop()!;
-      counts.add(x, -1);
       const owned = processedOpen.get(x);
+      if (owned && owned.stage !== "active") stageOnlyCounts.add(x, -1);
+      else {
+        counts.add(x, -1);
+        const at = fundedOpen.indexOf(x);
+        if (at >= 0) fundedOpen.splice(at, 1);
+      }
+      // Engine research still participates in the configured model conflict policy.
+      if (!owned || owned.stage === "active" || !sigCfg(x.cfg) || isHistoricExitConfig(x.cfg, x.kind)) {
+        const at = coordinationOpen.indexOf(x);
+        if (at >= 0) coordinationOpen.splice(at, 1);
+      }
       if (owned) {
         // An endpoint mark is held exposure, never a completed Last-N observation.
         if (!x.markedOpen) processed!.settle(owned, x.exitT, unitReturn(x));
@@ -7926,6 +7944,11 @@ export function* walkForwardGen(
   // the tapes end at the run's end: their positions still open there are orders of the run too (marked to market),
   // or the run would count only the orders that closed in time — a bias toward configs that exit fast
   const markOpen = stopT === endT;
+  // Pair-level Base provenance is required for research; every modeled stage book retains
+  // its own complete config, symbol, side and policy identity. It never admits a live order.
+  const canLearnSignalStage = (tp: ConfigTape) => !!processed && !tp.heldOnly && !tp.carried &&
+    tp.kind !== "exit" && isSignalInd(tp.ind) && tapeExecutable(tp, o) &&
+    !!o.signalBasePassed?.has(`${tp.bot}|${tp.ind}`);
   // Four bytes per closed/open entry plus one small cursor per tape with an entry in this run.
   const signalEntries = yield* signalEntryQueueGen(sigTapes, startT, stopT, markOpen);
   const engineEntries = yield* signalEntryQueueGen(allEngine, startT, stopT, markOpen);
@@ -8129,7 +8152,7 @@ export function* walkForwardGen(
           const i = order[cursor.next++];
           cursor.nextT = cursor.next < order.length ? tp.entryT[order[cursor.next]] : Infinity;
           if (++mergedSignals % 2048 === 0) yield -7;
-          if (take(tp.syms[tp.symI[i]], tp.side[i], tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0)))
+          if (take(tp.syms[tp.symI[i]], tp.side[i], tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0)) || canLearnSignalStage(tp))
             cands.push({ tr: tradeAt(tp, i), tp });
         }
         while (cursor.nextOpen < cursor.openOrder.length) {
@@ -8137,7 +8160,7 @@ export function* walkForwardGen(
           if (cursor.openTimes[i] >= batchEnd) break;
           cursor.nextOpen++;
           const op = tp.open[i];
-          if (take(op.sym, op.side, tp.syms.indexOf(op.sym) * 2 + (op.side > 0 ? 1 : 0)))
+          if (take(op.sym, op.side, tp.syms.indexOf(op.sym) * 2 + (op.side > 0 ? 1 : 0)) || canLearnSignalStage(tp))
             cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
         }
         const nextT = nextSignalEntryT(cursor);
@@ -8159,6 +8182,7 @@ export function* walkForwardGen(
         // Entry gates can touch several relation / acceptance books per candidate. A 300-order batch
         // produced 800 ms main-thread slices on the 12-symbol replay, so hand control back in smaller batches.
         if (++ci % 32 === 0) yield -9;
+        entryEvents.advance(tr.entryT);
         yield* settle(tr.entryT);
         // Keep the full candidate feed for guards/confirmation; accepted-order Block reads only the later marker.
         const fk = `${tr.cfg}|${tr.sym}|${tr.side}|${tr.entryT}`;
@@ -8197,6 +8221,9 @@ export function* walkForwardGen(
         const cls = sigCfg(tr.cfg);
         const isExit = isHistoricExitConfig(tr.cfg, tr.kind);
         const capScope = orderCapScope(tr.cfg);
+        const pairEvent = o.onePerPairEvent
+          ? pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT, o.pairEventAxisOwn !== false) : null;
+        const pairEventTaken = pairEvent !== null && pairEvents.has(pairEvent);
         const ownHours = isExit ? (exitHourNet.get(tr.cfg) ?? new Map<number, number>()) : hourNet;
         const ownS2 = s2For(tr.cfg, tr.kind);
         const caps = capsOf(o, cls);
@@ -8209,15 +8236,26 @@ export function* walkForwardGen(
         const bookLosing =
           (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
           (hourNet.get(hourKey - 1) ?? 0) < 0;
-        const coordRaw = coordBlock(o.coord, tr, ownHours, open.items, engineOpen);
-        const coordWhy =
-          (hedging
+        let coordRaw = coordBlock(o.coord, tr, ownHours, coordinationOpen, engineOpen);
+        const signalCanExecute = !cls || isExit || !stepOpts.signalActive ||
+          signalActiveHas(stepOpts.signalActive, tp.bot, tp.ind, tr.sym, tr.side, tp.kind, tp.id);
+        if (coordRaw === "conflict" && processed && !pairEventTaken && signalCanExecute && coordinationOpen.length > fundedOpen.length) {
+          const fundedWhy = coordBlock(o.coord, tr, ownHours, fundedOpen, engineOpen);
+          // A ready candidate judges real conflicts against funded positions. A cold candidate still uses
+          // the configured modeled-conflict policy, so a rejected sibling cannot supply stage evidence.
+          if (fundedWhy !== "conflict" && processed.readyForActive(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp)))
+            coordRaw = fundedWhy;
+        }
+        const entryCoordWhy = hedging
             ? bookLosing
               ? coordRaw === "confirm"
                 ? null
                 : coordRaw
               : "hedgeIdle"
-            : coordRaw) ??
+            : coordRaw;
+        const confirmDeferred = entryCoordWhy === "confirm" && canLearnSignalStage(tp);
+        const coordWhy =
+          (confirmDeferred ? null : entryCoordWhy) ??
           ownS2?.blocked(tr.sym, tr.side) ??
           (gateOn &&
           sourceUnstable(
@@ -8229,7 +8267,7 @@ export function* walkForwardGen(
             : null);
         if (o.guardPct > 0 && (ownHours.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
         else if (coordWhy) why = coordWhy;
-        else if (counts.dupe(tr.sym, tr.cfg, tr.side)) why = "dupe";
+        else if (counts.dupe(tr.sym, tr.cfg, tr.side) || stageOnlyCounts.dupe(tr.sym, tr.cfg, tr.side)) why = "dupe";
         else if (counts.perSymbol(tr.sym, cls, capScope) >= caps.perSymbol) why = "perSymbol";
         else if (counts.open(cls, capScope) >= caps.maxOpen) why = "maxOpen";
         else if (counts.perSide(tr.side, cls, capScope) >= caps.perSide) why = "perSide";
@@ -8242,13 +8280,18 @@ export function* walkForwardGen(
           (crowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) >= crowdCapOf(o, tr.cfg)
         )
           why = "crowd";
-        else if (o.onePerPairEvent && pairEvents.has(pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT, o.pairEventAxisOwn !== false)))
+        else if (pairEventTaken && !processed)
           why = "pairEvent";
+        // Resource competition governs funding, not a separate model-only evaluation lane.
+        // Actual conflict, duplicate, guard and strategy failures still reject research evidence.
+        const deferredCapacity = processed && ["perSymbol", "maxOpen", "perSide", "maxPositions", "crowd"].includes(why)
+          ? why : "";
+        if (deferredCapacity) why = "";
         const vf = (indicationVolumeFactors.get(tp.id) ?? 1)*relationalVolumeFactor(o.relationalVolumeRatios,{indicationType:kindOfInd(tp.ind),indication:laneOf(tp.ind).base,strategy:tp.kind,range:tp.kind==="exit"?"exit":isSignalInd(tp.ind)?"sig":tp.protect.tag??"wide",symbol:tr.sym});
         const hedgeVol = hedging ? (o.coord?.hedgeVolumeFactor ?? 1) : 1;
         const rangeVol = rangeVolumeFactorFor(tp, o);
         const baseForBlock = (_blockVolume: number) => 1;
-        const dec = why
+        let dec = why
           ? null
           : execDecision(tp, tr.entryT, stepOpts, {
               processedBase: !!processed,
@@ -8260,6 +8303,16 @@ export function* walkForwardGen(
               sym: tr.sym,
               side: tr.side,
             });
+        // A funded sibling blocks execution, not the independent model-only stage history.
+        // The model book cannot transfer these counterfactual samples to paper or venue evidence.
+        const allowActive = !confirmDeferred && !pairEventTaken && !deferredCapacity && !!dec?.ok;
+        if (!why && (confirmDeferred || !dec?.ok) && canLearnSignalStage(tp)) {
+          const learning = execDecision(tp, tr.entryT, stepOpts, {
+            processedBase: true, stageLearning: true, book, guard, direction,
+            relate: relateBook, relateBase: baseForBlock, sym: tr.sym, side: tr.side,
+          });
+          if (learning.ok) dec = learning;
+        }
         // The explicit processed-orders book has an independent gate-qualified unit predecessor.
         // It can keep learning with Ordinary/Block Active off. No raw rejected, cap-conflicting,
         // open-mark or future result qualifies it; actual accepted-orders history remains unchanged.
@@ -8295,7 +8348,7 @@ export function* walkForwardGen(
           continue;
         }
         // Only actual Base-processed admissions enter this book. Conflict/cap/strategy rejects never lend proof.
-        const stage = processed?.enter(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp));
+        const stage = processed?.enter(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp), allowActive);
         const active = !stage || stage.stage === "active";
         // Accepted Real feedback excludes warm-up orders that have not cleared both processed windows.
         fx.accepted = active;
@@ -8345,9 +8398,11 @@ export function* walkForwardGen(
               }
             : {}),
         };
+        // A duplicate event is one observation even when its first copy was stage-only.
         executedKeys.add(dk);
-        if (o.onePerPairEvent) pairEvents.add(pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT, o.pairEventAxisOwn !== false));
-        if (o.entryCrowd) {
+        const coordinated = active || !sigCfg(x.cfg) || isHistoricExitConfig(x.cfg, x.kind);
+        if (active && pairEvent !== null) pairEvents.add(pairEvent);
+        if (active && o.entryCrowd) {
           const ck = crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT);
           crowd.set(ck, (crowd.get(ck) ?? 0) + 1);
         }
@@ -8360,14 +8415,15 @@ export function* walkForwardGen(
           net += x.r * 100;
         } else {
           // Keep processing the predecessor after a failed/short window so it can causally recover.
-          const reason = stage!.validation.state !== "qualified"
+          const reason = stage!.activeDeferred ? (pairEventTaken ? "pairEvent" : deferredCapacity || "processed:entryDeferred") : stage!.validation.state !== "qualified"
             ? `processed:validation:${stage!.validation.state}` : `processed:real:${stage!.real!.state}`;
           skipped++;
           skip(skipName(reason), tr.side, tr.cfg);
           skipR(skipName(reason), tr.r);
         }
         open.push(x.exitT, x);
-        counts.add(x, 1);
+        if (active) { counts.add(x, 1); fundedOpen.push(x); } else stageOnlyCounts.add(x, 1);
+        if (coordinated) coordinationOpen.push(x);
       }
       // Every candidate belongs to exactly one disjoint entry window. Keep its feed object in feed/vopen, but its
       // long deduplication key and materialized Trade are no longer needed after that window has been processed.

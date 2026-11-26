@@ -25,6 +25,7 @@ import {
 import { barsFromCandles, headBars, resample, syntheticCandles, tailBars } from "./market/bars.ts";
 import { isMicroCalculationInd as isMicroFamilyInd } from "./indications/micro-family.ts";
 import { isInverseInd } from "./indications/inverse-config.ts";
+import { isDragInd } from "./indications/drag.ts";
 import { isRelateInd } from "./indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "./config.ts";
@@ -76,7 +77,9 @@ describe("lane combos", () => {
     const relate = plain.filter((c) => isRelateInd(laneOf(c.ind).base));
     const breaking = plain.filter((c) => isBreakRelInd(laneOf(c.ind).base));
     const inverse = plain.filter((c) => isInverseInd(c.ind) && !isMicroFamilyInd(c.ind)).length;
-    assert.equal(lanes.length, (plain.length - none - anchored.length - inverse) * 7 + anchored.length + inverse * 5 + none * 4);
+    const drag = plain.filter((c) => isDragInd(laneOf(c.ind).base)).length;
+    assert.equal(lanes.length, (plain.length - none - anchored.length - inverse - drag) * 7 + anchored.length + inverse * 5 + drag * 3 + none * 4);
+    assert.equal(lanes.filter((c) => isDragInd(laneOf(c.ind).base)).length, drag * 3);
     assert.equal(lanes.filter((c) => isInverseInd(laneOf(c.ind).base) && !isMicroFamilyInd(laneOf(c.ind).base)).length, inverse * 5);
     assert.equal(lanes.filter((c) => isBreakRelInd(laneOf(c.ind).base)).length, breaking.length);
     assert.equal(lanes.filter((c) => isRelateInd(laneOf(c.ind).base)).length, relate.length);

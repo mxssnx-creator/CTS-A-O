@@ -3,6 +3,8 @@ import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL, DEFAULT_SIGNAL_AUTO_SL, DEFAULT_
 import { DEFAULT_MIN_SL_DISTANCE_PCT, SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
 import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "./indications/micro-family.ts";
 import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "./indications/low-range.ts";
+import { DRAG_IDS } from "./indications/drag.ts";
+import { DEFAULT_ARBITRAGE_RESEARCH, type ArbitrageResearchSettings } from "./arbitrage/triangular.ts";
 import { PROVEN_WIDE_TRAIL_PAIRS } from "./proven-wide-trail.ts";
 // CTS-A Core v2 — authoritative defaults. Every number the engine uses lives here.
 import { DEFAULT_STEP_PF } from "./step-pf.ts";
@@ -326,6 +328,8 @@ export interface CoreSettings {
    * hour (the seats are hourly) and whenever the settings, the universe or the tapes cannot be continued.
    */
   runtime?: { cycle?: "full" | "incremental"; heavyEveryBars?: number };
+  /** Quote research only: it cannot send or reconcile venue orders. */
+  arbitrageResearch?: ArbitrageResearchSettings;
   /** tick: open paper positions marked to market from the price stream and the live step (ms) */
   tickMs: number;
   /** effective round-trip position cost (fraction); = 2 × (taker fee + slippage per side) */
@@ -774,6 +778,14 @@ export const PREVIOUS_MICRO_FOCUS_21OCT: readonly string[] = [
   ...MICRO_IDS_BEFORE_CHANNELS_21OCT.map((id) => `follow|inverse-${id}`),
 ];
 
+/** Exact former factory selection; existing custom and off selections remain independent. */
+export const PRE_DRAG_FACTORY_FOCUS: readonly string[] = [
+  ...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_FOCUS_20OCT,
+  ...MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
+  ...INVERSE_MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
+  ...LOW_RANGE_IDS.map((id) => `follow|${id}`),
+];
+
 export const DEFAULT_SETTINGS: CoreSettings = {
   tfMin: 1,
   tfs: [1, 5, 15, 30],
@@ -782,6 +794,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   historyDays: 18,
   symbols: 32,
   symbolRank: "volatility1h",
+  arbitrageResearch: { ...DEFAULT_ARBITRAGE_RESEARCH },
+  forceSymbols: ["BTC-USDT"],
   cycleMs: 250,
   tickMs: 100,
   cost: RT_COST,
@@ -829,10 +843,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
   tactics: DEFAULT_TACTICS,
-  focus: [...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_FOCUS_20OCT,
-    ...MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
-    ...INVERSE_MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
-    ...LOW_RANGE_IDS.map((id) => `follow|${id}`)],
+  focus: [...PRE_DRAG_FACTORY_FOCUS, ...DRAG_IDS.map((id) => `follow|${id}`)],
   pinned: [...PROVEN_WIDE_TRAIL_PAIRS],
   disabledKinds: [],
   block: DEFAULT_BLOCK,

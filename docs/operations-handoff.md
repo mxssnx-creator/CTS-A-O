@@ -5396,3 +5396,32 @@ four stale failing expectations and three intentional slow skips; all four affec
 Compute default/independent1,004.0/986.9s, peak recorded RSS2,388/2,382MiB, worst foreground636/819ms.
 The sub-500ms target, profitable independent market cohorts, stable positive post-Base/execution PF, optimum
 sample counts and complete venue parity remain unestablished. Keep all live engines and monitoring stopped.
+## 2026-11-26 — independent modeled stage admissions
+
+Checkpoint on top of Stable-04 `80b873780687eb6ecf56d5c8309c76c9b8b9e50b`. Modeled
+stage-only entries no longer reserve funded pair events or order capacity. A ready funded candidate
+checks conflict against funded positions; cold research still observes configured modeled conflicts.
+Each exact config, symbol, side and policy keeps its own predecessor history. Timestamp and minute
+admission indexes are bounded to the current event window. Signed policy edits preserve other fields;
+unknown stage names and malformed signed settings fail before save/admission. The isolated signed-policy
+book handles the four sign combinations independently, but **automatic multi-policy orchestration and
+actual opposite-direction negative Main/Last lanes are not implemented**. A negative block setting
+currently filters the original-direction lane and must not be represented as a contrarian execution.
+Perpetual three-leg Arbitrage execution and multi-peer Drag also remain unfinished.
+
+At code `16b0e7ba`, the complete offline 8-symbol replay used 12h evaluated prehistory and
+2026-10-17 09:00–21:00 UTC trading. Base admitted 3/408 pairs (3/24 Drag; 0/384 Micro).
+At 09:00, the Base-qualified config cohort validated 40/98 (40.82%) at pooled historical return
+PF 9.735. All 94 later candidates lacked exact-context processed-stage samples; funded simulated
+positions/orders opened, settled and held were all zero, so execution PF is unavailable. Two four-close
+processed windows gave the same result. A separate 120-minute Minimal-hold and four-close comparison
+admitted 2/408 Base pairs, then 0/522 post-Base configs (0%), with PF unavailable and no funded orders.
+No exchange orders or fills were involved; these retrospective outcomes do not establish positive execution.
+
+The 12+12 baseline reported peak RSS 576 MB and worst observed event-loop delay 1.14 seconds on a shared
+host; it does not meet or establish the warmed sub-500ms target. A longer exploratory 24h replay was
+stopped because the operator's required market protocol is 8 symbols with 12h prehistory and 12h trading;
+its incomplete output is not acceptance evidence. Focused stage, conflict, cap, memory-window, settings,
+policy and restart tests passed against code `1539ee92`; the full offline suite was still running at
+this checkpoint. No deployment, venue action, or live-readiness claim is made.
+

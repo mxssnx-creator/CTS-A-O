@@ -6,6 +6,7 @@ import { validateStepPfOverrides } from "./step-pf.ts";
 import { FINE_SL_TP_MIN, MIN_SL_DISTANCE_PCT, MAX_SL_DISTANCE_PCT, SL_TP_MIN, SL_TP_MAX } from "./protection-policy.ts";
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
 import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, MAX_EXTERNAL_STACK, MAX_FOCUS_PAIRS, mergeGridSettings, type CoreSettings, type SettingsPatch } from "./config.ts";
+import { MAX_FORCED_SYMBOLS } from "./market/bingx.ts";
 import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "./model-cost.ts";
 import { checkPriceDistanceGrid } from "./price-distance-grid.ts";
 import { checkGridVariantBudget } from "./sim/walkforward.ts";
@@ -25,6 +26,17 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     if (v !== undefined && !validVolumeRatio(v))
       throw new Error(`${name} must be 0.1–5 in 0.1 steps`);
   };
+  const arb = s.arbitrageResearch;
+  if (arb !== undefined) {
+    if (!arb || typeof arb !== "object" || Array.isArray(arb)) throw new Error("Arbitrage research settings required");
+    num(arb.maxAgeMs, 1, 60_000, "Arbitrage maximum quote age (ms)");
+    num(arb.maxSkewMs, 0, 60_000, "Arbitrage maximum quote skew (ms)");
+    num(arb.slippage, 0, 0.1, "Arbitrage per-leg slippage");
+    num(arb.minNetReturn, 0, 0.5, "Arbitrage minimum net return");
+    num(arb.startAmount, 0.00000001, 1_000_000_000, "Arbitrage start amount");
+    if (arb.startAsset !== undefined && (typeof arb.startAsset !== "string" || !/^[A-Z0-9]{1,20}$/.test(arb.startAsset)))
+      throw new Error("Arbitrage start asset must be 1–20 uppercase letters or digits");
+  }
   volumeFactor(s.exitStrategy?.volumeFactor, "Exit volume factor");
   num(s.symbols, 1, 120, "symbols");
   if (
@@ -38,8 +50,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
   num(s.live?.syncMs, 250, 60_000, "exchange sync (ms)");
   num(s.symbolOffset, 0, 200, "symbol offset");
   if (s.forceSymbols !== undefined) {
-    if (!Array.isArray(s.forceSymbols) || s.forceSymbols.length > 50)
-      throw new Error("forced symbols: a list of at most 50");
+    if (!Array.isArray(s.forceSymbols) || s.forceSymbols.length > MAX_FORCED_SYMBOLS)
+      throw new Error(`forced symbols: a list of at most ${MAX_FORCED_SYMBOLS}`);
     for (const x of s.forceSymbols)
       if (typeof x !== "string" || !/^[A-Za-z0-9]{1,20}(-?USDT)?$/i.test(x.trim()))
         throw new Error(`forced symbol ${String(x)}: like XRP or XRP-USDT`);

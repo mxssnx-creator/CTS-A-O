@@ -9,6 +9,10 @@ import { SIGNAL_VALID_LAST_N } from "@/core/signal-policy";
 import { roundTripCostFromFees, DEFAULT_MODEL_FEES, MAX_MODEL_RT_COST } from "@/core/model-cost";
 import { MICRO_CONFIG_IDS, MICRO_METHODS } from "@/core/indications/micro-family";
 import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "@/core/indications/low-range";
+import { DRAG_IDS, dragReferenceSelection } from "@/core/indications/drag";
+import { ArbitrageResearch } from "../arbitrage-research";
+import { editProcessedStageBlock, processedStageDefaults } from "@/core/sim/processed-stage-edit";
+import type { ProcessedReplayPolicy } from "@/core/sim/processed-replay";
 import { sizeText } from "@/core/live-labels";
 import { TACTIC_TECHNIQUES } from "@/core/indications/tactic";
 import {
@@ -36,6 +40,7 @@ import {
   LONG_RANGE,
   MAX_EXCHANGE_POSITIONS,
   MAX_EXTERNAL_STACK,
+  MAX_FOCUS_PAIRS,
   MICRO_RANGE,
   MIN_PF_CHOICES,
   MINIMAL_PLUS_RANGE,
@@ -1669,14 +1674,11 @@ export function PositionWindowSettings(props: {
 }
 
 export function ProcessedStageSettings(props: {
-  value?: { validationN?: number; realN?: number } | null;
-  onChange: (value: { validationN: number; realN: number } | null) => void;
+  value?: Partial<ProcessedReplayPolicy> | null;
+  onChange: (value: ProcessedReplayPolicy | null) => void;
 }) {
   const enabled = !!props.value;
-  const policy = {
-    validationN: Math.round(props.value?.validationN ?? 12),
-    realN: Math.round(props.value?.realN ?? 12),
-  };
+  const policy = processedStageDefaults(props.value);
   const put = (key: "validationN" | "realN", value: number) =>
     props.onChange({ ...policy, [key]: Math.round(value) });
   return (
@@ -1704,6 +1706,14 @@ export function ProcessedStageSettings(props: {
             <Num int min={1} max={200} value={policy.realN} onChange={(v) => put("realN", v)} />
           </Field>
         </div>
+      )}
+      {enabled && (["validation", "real"] as const).map((stage) => (
+        <BlockPolicyFields key={stage} label={`${stage === "validation" ? "Main" : "Real"} processed Last-N blocks`}
+          value={policy.blocks?.[stage]} onChange={(block) => props.onChange(editProcessedStageBlock(policy, stage, block))} />
+      ))}
+      {enabled && (policy.blocks?.validation?.shortPolarity === "negative" || policy.blocks?.validation?.minimalPolarity === "negative" ||
+        policy.blocks?.real?.shortPolarity === "negative" || policy.blocks?.real?.minimalPolarity === "negative") && (
+        <div className="v2-warn">A negative block currently filters the original direction; it does not create a separately simulated opposite-direction lane.</div>
       )}
       <div className="v2-muted" style={{ marginTop: 10, fontSize: "var(--v-fs-xs)" }}>
         Enabling this policy does not manufacture history or waive Live proof, risk, ownership, fee or venue checks.
@@ -2950,6 +2960,9 @@ export function SettingsPage() {
     void load();
   }, []);
   if (!s || !wf) return <>{error ? <ErrorNote error={error} /> : <Empty>Loading…</Empty>}</>;
+  const dragFocus = includeIndicationsInFocus(s.focus ?? [], DRAG_IDS);
+  const forcedSymbols: string[] = Array.isArray(s.forceSymbols) ? s.forceSymbols : [];
+  const dragReference = dragReferenceSelection(forcedSymbols);
   const dirty = base !== "" && JSON.stringify({ settings: s, wf }) !== base;
   const onMainnet = s.live?.connId === MAINNET_CONN;
   const applied =
@@ -4124,6 +4137,25 @@ export function SettingsPage() {
             />
           </div>
           <div style={{ marginTop: 10 }}>
+            <button type="button" className="v2-btn"
+              disabled={dragFocus.length > MAX_FOCUS_PAIRS || !dragReference.included}
+              onClick={() => {
+                set(["focus"], dragFocus);
+                set(["disabledKinds"], (s.disabledKinds ?? []).filter((kind: string) => kind !== "drag"));
+                if (dragReference.symbols.length !== forcedSymbols.length)
+                  set(["forceSymbols"], dragReference.symbols);
+              }}>
+              Include BTC Drag and BTC in selection
+            </button>
+            <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 5 }}>
+              {indicationFocusCoverage(s.focus ?? [], DRAG_IDS, s.pinned ?? []).covered}/{DRAG_IDS.length} variants in focus.
+              Uses completed BTC-USDT and symbol bars on 1/5/15m; BTC must be in the selected universe.
+              Missing or out-of-sync BTC data produces no signal. Each config is independently gated.
+              {!dragReference.included && " The forced-symbol list is full: remove one symbol before adding BTC."}
+              {dragFocus.length > MAX_FOCUS_PAIRS && ` The focus limit is ${MAX_FOCUS_PAIRS}; remove entries before including Drag.`}
+            </div>
+          </div>
+          <div style={{ marginTop: 10 }}>
             <InverseFocusInfo focus={s.focus ?? []} pinned={s.pinned ?? []}
               disabled={(s.disabledKinds ?? []).includes("inverse")}
               onInclude={() => {
@@ -4232,6 +4264,10 @@ export function SettingsPage() {
           </div>
         </Panel>
       </div>
+
+      <Panel title="Arbitrage" sub="three-market quote research">
+        <ArbitrageResearch value={s.arbitrageResearch} onChange={v => set(["arbitrageResearch"], v)} />
+      </Panel>
 
       <div className="v2-grid v2-cols-4">
         <Panel title="Block">

@@ -9,6 +9,7 @@ import { trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
 
 const small = {
   symbols: 3,
+  forceSymbols: [], // This injected feed exposes exactly its three synthetic symbols.
   historyDays: 18,
   // lanes over a shorter history keep each synthetic engine light (the suite runs several in parallel)
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },

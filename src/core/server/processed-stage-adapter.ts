@@ -1,6 +1,5 @@
-import { blockRequired, checkBlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
-import { negativeLastN } from "../negative-last-n.ts";
-import type { ProcessedReplayContext, ProcessedReplayPolicy } from "../sim/processed-replay.ts";
+import { blockRequired } from "../../../shared/cts-lastn/blocks.ts";
+import { checkedProcessedReplayPolicy, type ProcessedReplayContext, type ProcessedReplayPolicy } from "../sim/processed-replay.ts";
 import {
   ProcessedSetBook,
   type ProcessedOpen,
@@ -34,26 +33,15 @@ const entryId = (cfg: string, sym: string, side: number, entryT: number) =>
   `${cfg}|${sym}|${side > 0 ? 1 : -1}|${entryT}`;
 
 function checkedPolicy(policy: ProcessedReplayPolicy): ProcessedReplayPolicy {
-  if (
-    !policy ||
-    ![policy.validationN, policy.realN].every((n) => Number.isSafeInteger(n) && n >= 1 && n <= 200)
-  )
-    throw new RangeError("invalid native processed-stage policy");
-  if (policy.blocks) for (const block of Object.values(policy.blocks)) checkBlockPolicy(block);
-  const negativeFilter = negativeLastN(policy.negativeFilter);
+  const checked = checkedProcessedReplayPolicy(policy);
   const required = Math.max(
-    policy.validationN,
-    policy.realN,
-    ...Object.values(policy.blocks ?? {}).map(blockRequired),
-    ...(negativeFilter?.windows ?? []),
+    checked.validationN,
+    checked.realN,
+    ...Object.values(checked.blocks ?? {}).map(blockRequired),
+    ...(checked.negativeFilter?.windows ?? []),
   );
   if (required > MAX_BLOCK_CAPACITY) throw new RangeError("native processed-stage window exceeds capacity");
-  return {
-    validationN: policy.validationN,
-    realN: policy.realN,
-    ...(policy.blocks ? { blocks: structuredClone(policy.blocks) } : {}),
-    ...(negativeFilter ? { negativeFilter } : {}),
-  };
+  return checked;
 }
 
 /** Stable native paper/venue stage identity for the exact windows, filters, blocks and modeled cost. */

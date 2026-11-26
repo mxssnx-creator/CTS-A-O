@@ -137,6 +137,14 @@ const CASES: Record<string, Case> = {
   historyDays: num(2, 45),
   symbols: num(1, 120, { int: true }),
   symbolRank: oneOf(["volatility1h", "change1h5m", "volume", "market", "gainers", "losers"]),
+  forceSymbols: oneOf([[], ["BTC-USDT", "XRP"], Array.from({ length: 50 }, (_, i) => `S${i}`)],
+    ["BTC", ["bad/symbol"], Array.from({ length: 51 }, (_, i) => `S${i}`)]),
+  "arbitrageResearch.maxAgeMs": num(1, 60_000),
+  "arbitrageResearch.maxSkewMs": num(0, 60_000),
+  "arbitrageResearch.slippage": num(0, 0.1),
+  "arbitrageResearch.minNetReturn": num(0, 0.5),
+  "arbitrageResearch.startAmount": num(0.00000001, 1_000_000_000),
+  "arbitrageResearch.startAsset": oneOf(["USDT", "BTC", "A".repeat(20)], ["", "btc", "A/B", "A".repeat(21), 1]),
   cycleMs: num(100, 600_000),
   tickMs: num(50, 10_000),
   cost: num(0, 1),
@@ -576,7 +584,8 @@ function uiSources(): Map<string, string> {
         : spec.startsWith(".")
           ? resolve(dirname(f), spec)
           : null;
-      if (!base || !/settings/i.test(base.split("/").at(-1)!)) continue;
+      if (!base || (!/settings/i.test(base.split("/").at(-1)!) &&
+          base !== join(ROOT, "src/components/v2/arbitrage-research"))) continue;
       for (const cand of [base, `${base}.tsx`, `${base}.ts`])
         if (all.includes(cand)) queue.push(cand);
     }

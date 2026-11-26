@@ -30,6 +30,7 @@ function fixture(replay: boolean, firstFailure?: "reject" | "short") {
   let fail = !!firstFailure;
   const rt = tracked.track(new CoreRuntime(new CoreDb(":memory:"), {
     symbols: universe.length,
+    forceSymbols: [],
     symbolRank: "volume",
     historyDays: 1,
     tfMin: 1,
@@ -71,7 +72,7 @@ describe("offline replay universe backfill", { timeout: 20_000 }, () => {
     const cs = syntheticCandles("past-rank", 1, 240, cut);
     const calls: number[] = [], computed: string[][] = [];
     const rt = tracked.track(new CoreRuntime(new CoreDb(":memory:"), {
-      symbols: 2, symbolRank: "change1h5m", historyDays: 1, tfMin: 1,
+      symbols: 2, symbolRank: "change1h5m", historyDays: 1, tfMin: 1, forceSymbols: [],
       cycleMs: 60_000, tickMs: 60_000,
     }, { replay: true, snapshotPath: "", priceStream: null, feed: {
       rankingAt: cut,
