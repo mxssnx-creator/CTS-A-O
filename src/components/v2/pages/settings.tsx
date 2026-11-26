@@ -1496,15 +1496,19 @@ export function List(props: {
 export function StepPfSettings(props: { value?: import("@/core/step-pf").StepPfRules; set: (path: string[], value: unknown) => void }) {
   const { value, set } = props;
   return <>
-            <Field label="PF per target step" hint="Floor = 1 + target percent × ratio on the 0.1% grid. Stricter range floors remain; Signals keep their own policy.">
+            <Field label="PF per target step" hint="The 0.1% target grid, step PF ratio and Auto PF ratio determine each config's floor. Stricter range and exact floors apply.">
               <select aria-label="PF per target step" className="v2-select" value={!value?.enabled ? "off" : value.mode ?? "auto"}
                 onChange={(e) => set(["gates", "stepPf"], { ratio: 0.2, max: 2, ...value, enabled: e.target.value !== "off", mode: e.target.value === "manual" ? "manual" : "auto" })}>
                 <option value="auto">Auto · each config on 0.1% steps</option><option value="manual">Manual · exact overrides</option><option value="off">Range floors only</option>
               </select>
             </Field>
-            <Field label="Step PF ratio" hint="0.1–1.5; 0.2% target × 0.2 gives PF 1.04 before the range floor.">
+            <Field label="Step PF ratio" hint="Base slope for the automatic increase above neutral PF.">
               <input aria-label="Step PF ratio" className="v2-input" type="number" min="0.1" max="1.5" step="0.05" value={value?.ratio ?? 0.2}
                 onChange={(e) => set(["gates", "stepPf"], { enabled: false, max: 2, ...value, ratio: Number(e.target.value) })} />
+            </Field>
+            <Field label="Auto PF ratio" hint="1–10. Default 4. A higher value increases the automatic floor above neutral PF up to the step maximum.">
+              <Num int min={1} max={10} value={value?.autoPfRatio ?? 4}
+                onChange={autoPfRatio => set(["gates", "stepPf"], { enabled: true, ratio: .2, max: 2, ...value, autoPfRatio })} />
             </Field>
             <Field label="Step PF maximum" hint="Caps the step rule only; a stricter configured range floor still applies.">
               <input aria-label="Step PF maximum" className="v2-input" type="number" min="1" max="2" step="0.05" value={value?.max ?? 2}

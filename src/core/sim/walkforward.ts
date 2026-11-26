@@ -3071,6 +3071,7 @@ export function axisVariants<P>(
   ax0: AxisConfig,
   protects: readonly P[],
 ): Array<{ p0: P; ax: AxisConfig; tag: string }> {
+  if (protects.length === 0) return [];
   const modes: AxisMode[] = ax0.modes?.length ? [...new Set(ax0.modes)] : [ax0.mode ?? "revert"];
   const ranges = ax0.ranges?.length ? ax0.ranges : [ax0.range ?? "atr"];
   const depths = ax0.levelsSet?.length ? ax0.levelsSet : [ax0.levels];

@@ -1,12 +1,17 @@
 /** CTS-G manual step policy. Distances are price PERCENT, not fractions or ATR multipliers. */
-export interface StepPfRules { enabled: boolean; ratio: number; max: number;
+export interface StepPfRules { enabled: boolean; ratio: number; max: number; autoPfRatio?: number;
   mode?: "auto" | "manual"; maxStepPct?: number;
   byStep?: Record<string, number>; bySlRatio?: Record<string, number> }
-export const DEFAULT_STEP_PF: StepPfRules = { enabled: true, ratio: 0.2, max: 2, mode: "auto", maxStepPct: 3.5 };
+export const DEFAULT_AUTO_PF_RATIO = 4;
+export const DEFAULT_STEP_PF: StepPfRules = {
+  enabled: true, ratio: 0.2, max: 2, mode: "auto", maxStepPct: 3.5, autoPfRatio: DEFAULT_AUTO_PF_RATIO,
+};
 
 /** Aliases of one numeric key cannot select different policies by insertion order. */
 export function validateStepPfOverrides(rules: Partial<StepPfRules>): void {
   if (rules.mode !== undefined && !["auto", "manual"].includes(rules.mode)) throw new Error("Invalid step PF mode");
+  if (rules.autoPfRatio !== undefined && (!Number.isInteger(rules.autoPfRatio) || rules.autoPfRatio < 1 || rules.autoPfRatio > 10))
+    throw new Error("Auto PF ratio must be a whole number from 1 to 10");
   if (rules.maxStepPct !== undefined && (!Number.isFinite(rules.maxStepPct) || rules.maxStepPct < .1 ||
       rules.maxStepPct > 100 || Math.abs(rules.maxStepPct * 10 - Math.round(rules.maxStepPct * 10)) > 1e-8))
     throw new Error("Step PF maximum distance must use 0.1% increments between 0.1% and 100%");
@@ -40,7 +45,8 @@ export function stepPfFloor(legacy: number, tpPercent: number | undefined, rules
   const cap = typeof rules.max === "number" && Number.isFinite(rules.max)
     ? Math.max(1, Math.min(2, rules.max)) : DEFAULT_STEP_PF.max;
   const step = Math.max(0.1, Math.min(rules.maxStepPct ?? 3.5, Math.floor(tpPercent * 10 + 1e-9) / 10));
-  return Math.max(legacy, Math.min(cap, Math.round((1 + step * ratio) * 1e6) / 1e6));
+  const strength = (rules.autoPfRatio ?? DEFAULT_AUTO_PF_RATIO) / DEFAULT_AUTO_PF_RATIO;
+  return Math.max(legacy, Math.min(cap, Math.round((1 + step * ratio * strength) * 1e6) / 1e6));
 }
 
 export function protectStepPct(p: { tp: number; trail: number; trailOnly?: boolean }): number {
