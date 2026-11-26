@@ -8040,7 +8040,7 @@ export function* walkForwardGen(
       : o.mode === "fixed"
         ? yield* selectFixedRuntimeGen(selTapes, t, o)
         : null;
-    let { picks, eligible } = withProbe(
+    const { picks: initialPicks, eligible } = withProbe(
       groups
         ? sel!
         : o.mode === "durable"
@@ -8052,6 +8052,7 @@ export function* walkForwardGen(
       t,
       o,
     );
+    let picks = initialPicks;
     // Strategy Base reports Signals from the same own-context history/Last-N
     // evaluator as activation and entry, never from a pooled representative.
     const signalChecks: ValidationCheck[] = [];

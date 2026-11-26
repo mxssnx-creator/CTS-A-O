@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EvalMemo, type ConfigTape } from "./walkforward.ts";
 
-const finish = (g: Generator<number, void>) => { while (!g.next().done) {} };
+const finish = (g: Generator<number, void>) => { while (!g.next().done) { /* drain yielded slices */ } };
 
 test("the bounded close index matches a scalar chronology across ties and strict boundaries", () => {
   let seed = 13579;

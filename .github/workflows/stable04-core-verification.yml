@@ -14,7 +14,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: stable04-core-verification
+  # Preserve the earlier slow-runtime job while verifying the final source snapshot.
+  group: stable04-core-verification-v2
   cancel-in-progress: true
 jobs:
   core:
