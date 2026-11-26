@@ -149,6 +149,7 @@ const CASES: Record<string, Case> = {
   "fees.slippageRatio": num(0, 10),
   "gates.stepPf.mode": oneOf(["auto", "manual"], ["invalid", null]),
   "gates.stepPf.maxStepPct": {ok:[.1,3.5,100],bad:[0,.15,100.1,"1",NaN]},
+  "gates.stepPf.autoPfRatio": num(1, 10, { int: true }),
   "gates.stepPf.ratio": num(0.1, 1.5),
   "gates.stepPf.max": num(1, 2),
   "adjust.window": num(5, 100, { int: true }),

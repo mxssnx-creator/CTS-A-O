@@ -8,7 +8,7 @@ permissions:
   contents: read
 concurrency:
   # Retain the corrected Signal baseline while verifying bounded close-event indexing.
-  group: stable04-frozen-memory-replay-v12
+  group: stable04-frozen-memory-replay-v13
   # A newer source supersedes an obsolete replay of the same frozen protocol.
   cancel-in-progress: true
 jobs:
@@ -37,7 +37,7 @@ jobs:
           node --experimental-strip-types --no-warnings scripts/prepare-stable04-replay.mjs runs/stable04-memory-replay
         env:
           NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
-      - name: Run the frozen session with fixed-cohort membership scheduling
+      - name: Run the frozen session with precomputed volume policy
         run: python3 scripts/run-stable04-replay.py runs/stable04-memory-replay
       - name: Preserve completed or failed evidence
         if: always()

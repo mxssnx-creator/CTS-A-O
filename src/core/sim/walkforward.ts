@@ -4,7 +4,7 @@ import {partialFloorOf, positionStageStats} from "../position-windows.ts";
 import { simulationClock } from "../progress.ts";
 import {blockRequired} from "../../../shared/cts-lastn/blocks.ts";
 import { positionCounts, positionStats, positionTapeValid, type PositionWindows } from "../position-windows.ts";
-import {relationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
+import {prepareRelationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
 import { RT_COST } from "../model-cost.ts";
 import { EVALUATION_HISTORY_H, PRECALC_HISTORY_H } from "../market/history-requirements.ts";
 import { ProcessedReplay, ownedProcessedPolicy, type ProcessedReplayPolicy, type ProcessedReplayReport, type ProcessedReplaySummary } from "./processed-replay.ts";
@@ -7917,6 +7917,8 @@ export function* walkForwardGen(
   o: WalkForwardOptions,
 ): Generator<number, WalkForwardResult> {
   const processed = o.processedStages ? new ProcessedReplay(ownedProcessedPolicy(o.processedStages, o.gates.positionWindows), o.cost) : null;
+  // Settings are frozen for this replay; do not clone and validate the same volume policy for every candidate.
+  const relationalFactor = prepareRelationalVolumeFactor(o.relationalVolumeRatios);
   const processedOpen = new Map<Trade, ProcessedOpen>();
   const processedFloor = (tp: ConfigTape) => processedMinPfForTape(tp, o);
   const byId = new Map<string, ConfigTape>(), indicationVolumeFactors = new Map<string, number>();
@@ -8445,7 +8447,10 @@ export function* walkForwardGen(
         else if (pairEvent !== null && pairEvents.has(pairEvent) &&
           (!processed || processed.preview(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp)).stage === "active"))
           why = "pairEvent";
-        const vf = (indicationVolumeFactors.get(tp.id) ?? 1)*relationalVolumeFactor(o.relationalVolumeRatios,{indicationType:kindOfInd(tp.ind),indication:laneOf(tp.ind).base,strategy:tp.kind,range:tp.kind==="exit"?"exit":isSignalInd(tp.ind)?"sig":tp.protect.tag??"wide",symbol:tr.sym});
+        const vf = (indicationVolumeFactors.get(tp.id) ?? 1) * (relationalFactor ? relationalFactor({
+          indicationType: kindOfInd(tp.ind), indication: laneOf(tp.ind).base, strategy: tp.kind,
+          range: tp.kind === "exit" ? "exit" : isSignalInd(tp.ind) ? "sig" : tp.protect.tag ?? "wide", symbol: tr.sym,
+        }) : 1);
         const hedgeVol = hedging ? (o.coord?.hedgeVolumeFactor ?? 1) : 1;
         const rangeVol = rangeVolumeFactorFor(tp, o);
         const baseForBlock = (_blockVolume: number) => 1;

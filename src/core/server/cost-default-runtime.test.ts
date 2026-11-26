@@ -20,12 +20,12 @@ afterEach(() => { for (const runtime of runtimes.splice(0)) runtime.dispose(); }
 
 it("step PF leaf edits preserve enabled, ratio, maximum and unrelated gate settings", () => {
   const { runtime } = fixture(undefined, 38);
-  runtime.updateSettings({ gates: { stepPf: { enabled: true, ratio: 0.35, max: 1.6 } } });
+  runtime.updateSettings({ gates: { stepPf: { enabled: true, ratio: 0.35, max: 1.6, autoPfRatio: 7 } } });
   const minPf = runtime.settings.gates.minPf;
   runtime.updateSettings({ gates: { stepPf: { ratio: 0.4 } } });
-  assert.deepEqual(runtime.settings.gates.stepPf, { enabled: true, ratio: 0.4, max: 1.6, mode:"auto", maxStepPct:3.5 });
+  assert.deepEqual(runtime.settings.gates.stepPf, { enabled: true, ratio: 0.4, max: 1.6, mode:"auto", maxStepPct:3.5, autoPfRatio:7 });
   runtime.updateSettings({ gates: { stepPf: { enabled: false } } });
-  assert.deepEqual(runtime.settings.gates.stepPf, { enabled: false, ratio: 0.4, max: 1.6, mode:"auto", maxStepPct:3.5 });
+  assert.deepEqual(runtime.settings.gates.stepPf, { enabled: false, ratio: 0.4, max: 1.6, mode:"auto", maxStepPct:3.5, autoPfRatio:7 });
   assert.equal(runtime.settings.gates.minPf, minPf);
   assert.deepEqual(runtime.wf.gates?.stepPf, runtime.settings.gates.stepPf);
 });
