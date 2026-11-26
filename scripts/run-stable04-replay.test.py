@@ -66,6 +66,24 @@ class LaunchBoundaryTests(unittest.TestCase):
                 replay.main(self.out, False)
             process.assert_not_called()
 
+    def test_modeled_warmup_uses_a_separate_24_hour_target_account(self):
+        self.freeze(False)
+        protocol = json.loads((self.out / 'protocol.json').read_text())
+        protocol['window']['evaluationFromT'] = 1791925200000
+        protocol['window']['processedWarmupH'] = 24
+        protocol['policy']['modeledWarmupScope'] = 'offline modeled stage warmup'
+        (self.out / 'protocol.json').write_text(json.dumps(protocol))
+        with patch.object(replay.subprocess, 'Popen', side_effect=RuntimeError('intercept')) as process:
+            with self.assertRaisesRegex(RuntimeError, 'intercept'):
+                replay.main(self.out, modeled_warmup=True)
+        args = process.call_args.args[0]
+        self.assertEqual(args[args.index('--run') + 1], '24')
+        self.assertEqual(args[args.index('--evaluation-from') + 1], '2026-10-13T21:00:00.000Z')
+        with patch.object(replay.subprocess, 'Popen') as process:
+            with self.assertRaisesRegex(ValueError, 'modes'):
+                replay.main(self.out, staged_warmup=True, modeled_warmup=True)
+            process.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

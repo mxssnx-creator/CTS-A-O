@@ -406,6 +406,8 @@ export interface RangeOpts {
 export interface WalkForwardOptions {
   /** Opt-in native model stages; full own-parent windows, no raw-history bootstrap. Paper/live fail closed. */
   processedStages?: ProcessedReplayPolicy;
+  /** Offline model warmup; the caller must build this exact Base cohort at or before fromT. */
+  processedWarmup?: { fromT: number; untilT: number; baseCutT: number };
   /** Per Axis set, relative to the corresponding base volume. Captured once at entry. */
   axisVolumeFactor?: number;
   /** Historic Exit owns its range ratio; never inherits Wide or a Signal parameter range. */
@@ -3222,6 +3224,8 @@ export interface WalkForwardResult {
   processedStages?: ProcessedReplayReport;
   /** Aggregate-only modeled result, explicitly requested in place of per-set checkpoint details. */
   processedStageSummary?: ProcessedReplaySummary;
+  /** Modeled pre-start admissions; they do not occupy or fund the reported execution account. */
+  processedWarmup?: { fromT: number; untilT: number; baseCutT: number };
   startT: number;
   /** seatSet "validated": the validated set V the run selected from (ids), evaluated at startT */
   validated?: string[];
@@ -7499,7 +7503,8 @@ export class SignalActivationBook {
 /** Last-N is a count, independent of the broad selection window: retain the configured source history. */
 export function tapeRetentionHours(s: CoreSettings, o: WalkForwardOptions, tf: number): number {
   const needsLastN = (o.validLastN ?? 0) > 0 || o.lastN > 0 || (o.rangeGate?.lastN ?? 0) > 0;
-  return Math.max(
+  const warmupH = o.processedWarmup ? Math.max(0, (o.processedWarmup.untilT - o.processedWarmup.fromT) / H) : 0;
+  return warmupH + Math.max(
     o.preH,
     o.longH,
     o.symH ?? 0,
@@ -7868,11 +7873,12 @@ export class OpenCounts {
  */
 export function walkForwardSteps(
   u: Pick<Universe, "nowT" | "baseTf" | "bars">,
-  o: Pick<WalkForwardOptions, "simH" | "stepH" | "startT">,
+  o: Pick<WalkForwardOptions, "simH" | "stepH" | "startT" | "processedWarmup">,
 ): number {
   const endT = u.nowT;
-  const startT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
-  const stopT = o.startT === undefined ? endT : Math.min(endT, startT + o.simH * H);
+  const targetT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
+  const startT = o.processedWarmup?.fromT ?? targetT;
+  const stopT = o.startT === undefined ? endT : Math.min(endT, targetT + o.simH * H);
   const barH = (u.baseTf ?? u.bars[0]?.tfMin ?? 60) / 60;
   const stepMs = Math.max(o.stepH, barH) * H;
   if (!(stepMs > 0) || !(stopT > startT)) return 0;
@@ -7962,7 +7968,7 @@ export function* walkForwardGen(
   // Settings are frozen for this replay; do not clone and validate the same volume policy for every candidate.
   const relationalFactor = prepareRelationalVolumeFactor(o.relationalVolumeRatios);
   const processedOpen = new Map<Trade, ProcessedOpen>();
-  const activePosition = (position: Trade) => processedOpen.get(position)?.stage === "active";
+  const activePosition = (position: Trade) => processedOpen.get(position)?.stage === "active" && !historicalActive.has(position);
   const warmupPosition = (position: Trade) => processedOpen.get(position)?.stage !== "active";
   const processedFloor = (tp: ConfigTape) => processedMinPfForTape(tp, o);
   const byId = new Map<string, ConfigTape>(), indicationVolumeFactors = new Map<string, number>();
@@ -7978,6 +7984,15 @@ export function* walkForwardGen(
   const { engine: allEngine, signal: sigTapes } = splitSignalTapes(tapes, o);
   const endT = u.nowT;
   const startT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
+  const barH = (u.baseTf ?? u.bars[0]?.tfMin ?? 60) / 60;
+  const stepH = Math.max(o.stepH, barH);
+  const warmup = o.processedWarmup;
+  const replayStartT = warmup?.fromT ?? startT;
+  if (warmup && (!processed || !o.causalBase || !o.basePassed || (sigTapes.length > 0 && !o.signalBasePassed) ||
+      !Number.isFinite(warmup.fromT) || warmup.fromT < 0 || warmup.fromT >= startT || warmup.untilT !== startT ||
+      !Number.isFinite(warmup.baseCutT) || warmup.baseCutT < 0 || warmup.baseCutT > warmup.fromT ||
+      !(stepH > 0) || (startT - warmup.fromT) % (stepH * H) !== 0))
+    throw new Error("processed warmup requires a pre-warmup causal Base snapshot and aligned execution boundary");
   // seatSet "validated": each step selects only its causally validated cohort; explicit snapshots remain frozen.
   assertSeatSet(o);
   if (o.gates.positionWindows && !o.evalMemo) o = { ...o, evalMemo: new EvalMemo() };
@@ -8000,7 +8015,7 @@ export function* walkForwardGen(
   const everValidated = new Set<string>();
   let selTapes = allEngine;
   if (o.seatSet === "validated") {
-    validatedIds = o.validated ? new Set(o.validated) : yield* validatedSetGen(allEngine, startT, o, validationRecord);
+    validatedIds = o.validated ? new Set(o.validated) : yield* validatedSetGen(allEngine, replayStartT, o, validationRecord);
     o = { ...o, validated: validatedIds };
     selTapes = validatedTapes(allEngine, validatedIds, o);
     for (const id of validatedIds) everValidated.add(id);
@@ -8021,6 +8036,8 @@ export function* walkForwardGen(
   const pairEvents = new Set<string>();
   const open = new ExitHeap<Trade>(); // taken, by exit
   const counts = new OpenCounts(); // the caps' counts of the taken orders still open
+  const historicalActiveCounts = new OpenCounts(); // modeled pre-start Active orders never spend funded capacity
+  const historicalActive = new WeakSet<Trade>();
   const warmupCounts = new OpenCounts(); // modeled predecessors are not funded Active exposure
   const blockPredecessors = new OpenCounts(); // independent virtual admissions never reserve funded slots
   const hourNet = new Map<number, number>();
@@ -8109,7 +8126,7 @@ export function* walkForwardGen(
       if (fx.cfg && !sigCfg(fx.cfg) && !isHistoricExitConfig(fx.cfg, fx.type)) engineOpen.add(fx.sym, fx.side, -1);
       if (fx.blockProcessed && fx.cfg) blockPredecessors.add({cfg:fx.cfg,sym:fx.sym,side:fx.side}, -1);
       // resultLean: the books still read every settled entry; only the returned copy of the feed is not kept
-      if (!lean) feed.push(fx);
+      if (!lean && (!warmup || (fx.entryT !== undefined && fx.entryT >= startT))) feed.push(fx);
       feedBooks(fx, book, guard, direction, relateBook);
       if (!fx.open) s2For(fx.cfg ?? "", fx.type, true)?.close(fx);
       if (++settled % 32 === 0) yield -2;
@@ -8117,7 +8134,7 @@ export function* walkForwardGen(
     while (open.size && open.peekT() <= t) {
       const x = open.pop()!;
       const owned = processedOpen.get(x);
-      (owned && owned.stage !== "active" ? warmupCounts : counts).add(x, -1);
+      (owned && owned.stage !== "active" ? warmupCounts : historicalActive.has(x) ? historicalActiveCounts : counts).add(x, -1);
       if (owned) {
         // An endpoint mark is held exposure, never a completed Last-N observation.
         if (!x.markedOpen) processed!.settle(owned, x.exitT, unitReturn(x));
@@ -8133,7 +8150,10 @@ export function* walkForwardGen(
         hours = exitHourNet.get(x.cfg) ?? new Map<number, number>();
         exitHourNet.set(x.cfg, hours);
       }
-      hours.set(k, (hours.get(k) ?? 0) + x.r * 100);
+      // The post-start account is flat at the boundary; a later close of a historical model position
+      // still advances its owned stages, but cannot create funded P&L or trigger an account-hour guard.
+      if (!(warmup && historicalActive.has(x) && x.exitT >= startT))
+        hours.set(k, (hours.get(k) ?? 0) + x.r * 100);
       if (sigCfg(x.cfg) && !isHistoricExitConfig(x.cfg, x.kind)) {
         const src = signalSourceOf(x.cfg.split("|")[1]);
         let l = srcClosed.get(src);
@@ -8150,12 +8170,10 @@ export function* walkForwardGen(
   // or the run would count only the orders that closed in time — a bias toward configs that exit fast
   const markOpen = stopT === endT;
   // Four bytes per closed/open entry plus one small cursor per tape with an entry in this run.
-  const signalEntries = yield* signalEntryQueueGen(sigTapes, startT, stopT, markOpen);
-  const engineEntries = yield* signalEntryQueueGen(allEngine, startT, stopT, markOpen);
+  const signalEntries = yield* signalEntryQueueGen(sigTapes, replayStartT, stopT, markOpen);
+  const engineEntries = yield* signalEntryQueueGen(allEngine, replayStartT, stopT, markOpen);
   let held = new Set<string>();
   // re-evaluating more often than one bar cannot change anything: the step is at least one bar
-  const barH = (u.baseTf ?? u.bars[0]?.tfMin ?? 60) / 60;
-  const stepH = Math.max(o.stepH, barH);
   const signalSteps: Array<{ t: number; keys: string[] }> = [];
   // the hourly signal index, shared by every run over the same tape set
   // (its slices yield −1: not a simulated step)
@@ -8178,7 +8196,7 @@ export function* walkForwardGen(
   const signalActivation = o.signalRank && sigIdx.length
     ? new SignalActivationBook(sigIdx, o.signalRank, signalHistoryHours(o), o) : null;
   const recordSignalStep = (t: number, keys: Set<string>) => {
-    if (lean) return;
+    if (lean || t < startT) return;
     const before = signalSteps.at(-1)?.keys;
     // Identical ordered sets share their preceding snapshot; replay/audit reads the last change at or before t.
     if (before?.length === keys.size) {
@@ -8203,9 +8221,9 @@ export function* walkForwardGen(
   const continuousPicks = o.continuous !== false && !!o.gates.positionWindows && o.mode === "fixed" &&
     o.seatSet === "validated" && !frozenValidation && !groups;
   // the run's exit events, so a re-derivation touches only the tapes whose closes changed
-  if (continuousPicks && o.evalMemo && !o.evalMemo.tracking) yield* o.evalMemo.attach(allEngine, startT, stopT);
+  if (continuousPicks && o.evalMemo && !o.evalMemo.tracking) yield* o.evalMemo.attach(allEngine, replayStartT, stopT);
   let incremental = continuousPicks && o.seatPer === "config" && !o.ladderNeedsBase && o.evalMemo?.uniqueTapes &&
-    o.evalMemo.covers(startT, stopT, allEngine.length)
+    o.evalMemo.covers(replayStartT, stopT, allEngine.length)
     ? new ContinuousPositionSelection(o.evalMemo, byId) : null;
   // Duplicate IDs do not have an unambiguous stable input position. Preserve the full selector for those catalogs.
   if (incremental) for (let i = 0; i < allEngine.length; i++) {
@@ -8214,11 +8232,21 @@ export function* walkForwardGen(
     }
     if ((i + 1) % 2048 === 0) yield -1;
   }
-  for (let t = startT; t < stopT; t += stepH * H) {
+  for (let t = replayStartT; t < stopT; t += stepH * H) {
+    if (warmup && t === startT) {
+      // Warmup earns modeled stage history but cannot appear as a target-period order or skip.
+      for (const row of [skips, skipsBySide, skipsByRange, skipPf]) for (const k of Object.keys(row)) delete row[k];
+      sigFunnel.candidates = sigFunnel.inactive = sigFunnel.inactiveBySide["1"] = sigFunnel.inactiveBySide["-1"] = 0;
+      invertMissing = 0;
+      hourNet.clear();
+      exitHourNet.clear();
+      everValidated.clear();
+      if (frozenValidation && validatedIds) for (const id of validatedIds) everValidated.add(id);
+    }
     // A short/losing run-start window is not a permanent rejection. Re-evaluate the same Base-qualified
     // built cohort on each new decision clock, using only its own already settled history. Explicit caller
     // snapshots remain frozen; previously admitted losses and held protection stay in their original books.
-    if (t > startT && o.seatSet === "validated" && !frozenValidation) {
+    if (t > replayStartT && o.seatSet === "validated" && !frozenValidation) {
       validationRecord = newValidationRecord();
       validatedIds = yield* validatedSetGen(allEngine, t, o, validationRecord);
       for (const id of validatedIds) everValidated.add(id);
@@ -8327,7 +8355,7 @@ export function* walkForwardGen(
     const batchMs = sigTapes.length ? 60_000 : continuousPicks ? Math.min(decisionMs, stepH * H) : stepH * H;
     let nextPickAt = t + decisionMs;
     for (let batchT = t; batchT < stepEnd; batchT += batchMs) {
-      yield simulationClock((batchT - startT) / 60_000); // the simulated clock, for a progress bar that moves by minute
+      yield simulationClock((batchT - replayStartT) / 60_000); // includes modeled warmup work
       if (batchT !== t && signalActivation) {
         const act = yield* signalActivation.at(batchT);
         const all = hedgeKeys.size ? new Set([...act, ...hedgeKeys]) : act;
@@ -8450,7 +8478,8 @@ export function* walkForwardGen(
         // A predecessor is only a modeled sample; it cannot reserve or conflict with an Active slot.
         const preview = processed?.preview(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp));
         const warmup = !!preview && preview.stage !== "active";
-        const admissionCounts = warmup ? warmupCounts : counts;
+        const historical = tr.entryT < startT;
+        const admissionCounts = warmup ? warmupCounts : historical ? historicalActiveCounts : counts;
         const admissionCrowd = warmup ? warmupCrowd : crowd;
         const gateOn = cls && !isExit && o.signalSourceGate?.enabled;
         // hedge-only signal: trades while the book is losing (this or the previous hour), without confirmation
@@ -8462,7 +8491,8 @@ export function* walkForwardGen(
           (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
           (hourNet.get(hourKey - 1) ?? 0) < 0;
         const coordRaw = coordBlock(o.coord, tr, ownHours, open.items, engineOpen,
-          processed ? (warmup ? warmupPosition : activePosition) : undefined);
+          processed ? (warmup ? warmupPosition : historical
+            ? (position: Trade) => historicalActive.has(position) : activePosition) : undefined);
         const coordWhy =
           (hedging
             ? bookLosing
@@ -8614,13 +8644,14 @@ export function* walkForwardGen(
           admissionCrowd.set(ck, (admissionCrowd.get(ck) ?? 0) + 1);
         }
         if (stage) processedOpen.set(x, stage);
-        if (active) {
+        if (active && historical) historicalActive.add(x);
+        if (active && !historical) {
           if (x.markedOpen) openAtEnd.push(x);
           else trades.push(x);
           taken++;
           rangeRow(stepRange(x.cfg)).taken++;
           net += x.r * 100;
-        } else {
+        } else if (!active) {
           // Keep processing the predecessor after a failed/short window so it can causally recover.
           const reason = stage!.validation.state !== "qualified"
             ? `processed:validation:${stage!.validation.state}` : `processed:real:${stage!.real!.state}`;
@@ -8637,7 +8668,7 @@ export function* walkForwardGen(
       cands.length = 0;
       yield -17;
     }
-    steps.push({
+    if (t >= startT) steps.push({
       t,
       main: eligible,
       real: stepPicks.map((p) => p.id),
@@ -8715,7 +8746,7 @@ export function* walkForwardGen(
   let drained = 0;
   while (vopen.size) {
     const open = vopen.pop()!;
-    if (!lean) feed.push(open);
+    if (!lean && (!warmup || (open.entryT !== undefined && open.entryT >= startT))) feed.push(open);
     if (++drained % 32 === 0) yield -12;
   }
   const hasHedgeEnd = !!(o.coord?.enabled && o.coord.hedge && sigIdx.length);
@@ -8751,6 +8782,7 @@ export function* walkForwardGen(
     })(), processedSummaryOnly ? "summary" : "full") : undefined;
   return {
     startT,
+    ...(warmup ? { processedWarmup: { fromT: replayStartT, untilT: startT, baseCutT: warmup.baseCutT } } : {}),
     ...(processedResult ? processedSummaryOnly ? { processedStageSummary: processedResult }
       : { processedStages: processedResult as ProcessedReplayReport } : {}),
     ...(validatedIds ? { validated: [...everValidated] } : {}),

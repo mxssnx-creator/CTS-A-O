@@ -330,3 +330,69 @@ test("native exact symbol and direction windows cannot borrow one another's wins
   assert.equal(result.processedStages!.validation.qualified, 3);
   assert.equal(result.processedStages!.validation.insufficient, 12);
 });
+
+test("causal modeled warmup keeps pre-start positions and losses out of the funded account", () => {
+  const f = fixture([]), begin = T - H;
+  const older = Array.from({ length: 80 }, (_, i) => trade(.02, T - 11 * H + i * 2 * M));
+  const learning = Array.from({ length: 4 }, (_, i) => trade(.02, begin + (2 * i + 1) * M));
+  const ghost = { ...trade(-.10, T - 2 * M), exitT: T + 3 * M };
+  const target = [trade(.02, T + M), trade(.02, T + 4 * M)];
+  const tape = makeTape(id, 'follow', ind, protect, 'normal', symbols,
+    [...older, ...learning, ghost, ...target].sort((a, b) => a.exitT - b.exitT), [], []);
+  const options = { ...f.options, simH: 1, startT: T, causalBase: true,
+    processedWarmup: { fromT: begin, untilT: T, baseCutT: begin },
+    onePerPairEvent: false, maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0 };
+  const result = walkForward(f.universe, [tape], options);
+  assert.deepEqual(result.processedWarmup, { fromT: begin, untilT: T, baseCutT: begin });
+  assert.equal(result.startT, T); assert.equal(result.endT, T + H); assert.equal(result.steps.length, 1);
+  assert.deepEqual(result.trades.map(row => row.entryT), [T + M],
+    'the ghost does not consume the target account slot, but its later settled loss rejects subsequent entries');
+  assert.equal(result.trades[0].r, .02);
+  assert.equal(result.skips['processed:validation:failed'], 1);
+  assert.ok(result.feed.every(row => row.entryT !== undefined && row.entryT >= T), 'reported candidate feed excludes historical entries');
+  const own = result.processedStages!.sets.find(row => row.identity.baseConfigId === id)!;
+  assert.equal(own.stages.postBase.closedOrders, 7, 'modeled stage evidence includes its own warmup closes and loss');
+  assert.equal(own.stages.active.closedOrders, 2, 'modeled Active includes ghost and the target order');
+  assert.throws(() => walkForward(f.universe, [tape], { ...options, causalBase: false }), /pre-warmup causal Base/);
+  assert.throws(() => walkForward(f.universe, [tape], { ...options, processedWarmup: { fromT: begin, untilT: T, baseCutT: T } }), /pre-warmup causal Base/);
+  assert.throws(() => walkForward(f.universe, [tape], { ...options, processedStages: undefined }), /pre-warmup causal Base/);
+});
+
+test("a historical loss across the boundary cannot trip the target account hour guard", () => {
+  const f = fixture([]), begin = T - H, siblingProtect = { ...protect, tp: .03 };
+  const siblingId = configId('follow', ind, siblingProtect);
+  const older = Array.from({ length: 80 }, (_, i) => trade(.02, T - 11 * H + i * 2 * M));
+  const prior = Array.from({ length: 4 }, (_, i) => trade(.02, begin + (2 * i + 1) * M));
+  const ghost = { ...trade(-.10, T - 2 * M), exitT: T + 3 * M };
+  const main = makeTape(id, 'follow', ind, protect, 'normal', symbols,
+    [...older, ...prior, ghost].sort((a, b) => a.exitT - b.exitT), [], []);
+  const otherPrior = prior.map(row => ({ ...row, cfg: siblingId, sym: symbols[1], entryT: row.entryT + M, exitT: row.exitT + M }));
+  const target = trade(.02, T + 4 * M, 1, symbols[1], siblingId);
+  const other = makeTape(siblingId, 'follow', ind, siblingProtect, 'normal', symbols,
+    [...otherPrior, target], [], []);
+  const result = walkForward(f.universe, [main, other], { ...f.options, simH: 1, startT: T,
+    causalBase: true, processedWarmup: { fromT: begin, untilT: T, baseCutT: begin },
+    onePerPairEvent: false, maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0, guardPct: 1 });
+  assert.deepEqual(result.trades.map(row => [row.cfg, row.entryT]), [[siblingId, T + 4 * M]],
+    JSON.stringify({ skips: result.skips, sets: result.processedStages?.sets }));
+  assert.equal(result.skips.hourGuard ?? 0, 0, 'a model-only loss is not a funded loss');
+  assert.equal(result.processedStages!.sets.find(row => row.identity.baseConfigId === id)!.stages.postBase.grossLoss, .1,
+    'the same loss remains in its own modeled stage');
+});
+
+test("a pre-start modeled position cannot conflict with the opposite funded direction", () => {
+  const f = fixture([]), begin = T - H;
+  const prior = Array.from({ length: 4 }, (_, i) => [
+    trade(.02, begin + (2 * i + 1) * M, 1), trade(.02, begin + (2 * i + 2) * M, -1),
+  ]).flat();
+  const ghost = { ...trade(.02, T - 2 * M), exitT: T + 5 * M };
+  const target = trade(.02, T + M, -1);
+  const tape = makeTape(id, 'follow', ind, protect, 'normal', symbols,
+    [...prior, ghost, target].sort((a, b) => a.exitT - b.exitT), [], []);
+  const result = walkForward(f.universe, [tape], { ...f.options, simH: 1, startT: T,
+    causalBase: true, processedWarmup: { fromT: begin, untilT: T, baseCutT: begin },
+    onePerPairEvent: false, maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0,
+    coord: { ...f.options.coord!, enabled: true, conflict: true } });
+  assert.deepEqual(result.trades.map(row => [row.entryT, row.side]), [[T + M, -1]], JSON.stringify(result.skips));
+  assert.equal(result.skips.conflict ?? 0, 0);
+});

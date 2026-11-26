@@ -2920,6 +2920,8 @@ export class CoreRuntime {
   }
 
   updateSettings(patch: SettingsPatch, wfPatch?: Partial<WalkForwardOptions>) {
+    if (wfPatch?.processedWarmup && (!this.replay || this.conn))
+      throw new Error("processed warmup is available only in an unconnected replay");
     if(patch.relationalVolumeRatios!==undefined)relationalVolumeSettings(patch.relationalVolumeRatios,true);
     this.tickMemo=null;this.tickSentBook=null;
     const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${evaluationHistorySettings(this.settings, this.wf).historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`;
@@ -4457,7 +4459,12 @@ export class CoreRuntime {
     const u = makeUniverse(allBars, this.evaluationFromT);
     if (!u.bars.length) return;
     // causal evaluation: the stages see only the history before the simulated run (its start, as walkForward sets it)
-    const runStartT = Math.floor((u.nowT - wf.simH * H) / H) * H;
+    const defaultStartT = Math.floor((u.nowT - wf.simH * H) / H) * H;
+    const targetStartT = wf.processedWarmup ? (wf.startT ?? defaultStartT) : defaultStartT;
+    if (wf.processedWarmup && (!this.replay || this.conn || !wf.processedStages || !wf.causalBase ||
+        wf.processedWarmup.untilT !== targetStartT || wf.processedWarmup.baseCutT !== wf.processedWarmup.fromT))
+      throw new Error("processed warmup requires an unconnected replay and a causal Base snapshot at warmup start");
+    const runStartT = wf.processedWarmup?.fromT ?? targetStartT;
     const rangeFitCutT = wf.causalBase ? runStartT : undefined;
     if (this.evaluationFromT !== undefined && (!wf.causalBase || this.evaluationFromT >= runStartT))
       throw new Error(
@@ -5920,7 +5927,7 @@ export class CoreRuntime {
     const rangePublication = publishMinimalPlus(
       [...strategyTapes, ...sigTapes], newBuildStats, s.grid.minimalPlus,
       // Strictly before the run, never fitted on its future closes.
-      wf.startT ?? Math.floor((wu.nowT - wf.simH * H) / H) * H,
+      wf.processedWarmup?.baseCutT ?? wf.startT ?? Math.floor((wu.nowT - wf.simH * H) / H) * H,
       heldIds, !!(wf.probe?.perRange || wf.probe?.perCell),
     );
     const tapes = rangePublication.tapes;
@@ -5942,11 +5949,13 @@ export class CoreRuntime {
     // simH / stepH, which ran the bar past 100 %)
     const steps = Math.max(1, walkForwardSteps(wu, wf));
     const positionPolicy = wf.gates?.positionWindows;
-    const validationProgress = positionPolicy
+    const validationDetail = positionPolicy
       ? `positions Main / Real / Entry ${positionPolicy.main} / ${positionPolicy.real} / ${positionPolicy.entry} · own range/config overrides apply`
       : `engine ${wf.preH}h pre / Last-${wf.validLastN ?? 0}${sig.enabled ? ` · Signals ${signalHistoryHours(wf)}h / Last-${wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN ?? 0}` : ""} · entry Last-${wf.lastN}`;
+    const validationProgress = validationDetail + (wf.processedWarmup
+      ? ` · ${processedWarmupHours(wf)}h modeled warmup + ${wf.simH}h target` : "");
     this.setStage("Real", 0, steps, `${wf.simH}h sim · step 0/${steps}`);
-    const reportSimulation = simulationProgress(steps, wf.simH, validationProgress,
+    const reportSimulation = simulationProgress(steps, wf.simH + processedWarmupHours(wf), validationProgress,
       (completed, label) => this.setStage("Real", completed, steps, label));
     const sim = await this.researchSimulation(wu, tapes, wf, gen, reportSimulation, signal);
     signal.throwIfAborted();
@@ -11235,6 +11244,7 @@ export interface SetListings {
 /** The walk-forward knobs that are user settings (grids, toggles and gates come from CoreSettings). */
 export const WF_KEYS = [
   "processedStages",
+  "processedWarmup",
   "preH",
   "simH",
   "stepH",
@@ -11364,6 +11374,12 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     if (raw.reportDetail !== undefined && raw.reportDetail !== "summary")
       throw new Error("processedStages reportDetail must be summary when specified");
     p.processedStages = { ...raw, validationN, realN };
+  }
+  if (p.processedWarmup === null || p.processedWarmup === false) p.processedWarmup = undefined;
+  else if (p.processedWarmup !== undefined) {
+    const w = p.processedWarmup as WalkForwardOptions["processedWarmup"];
+    processedWarmupHours({ processedWarmup: w });
+    p.processedWarmup = { fromT: w!.fromT, untilT: w!.untilT, baseCutT: w!.baseCutT };
   }
   const num = (k: string, lo: number, hi: number, int = false) => {
     if (p[k] === undefined) return;
@@ -13045,7 +13061,7 @@ export function signalDataHours(s: CoreSettings, wf: WalkForwardOptions): number
 export function signalLaneDataHours(s: CoreSettings, wf: WalkForwardOptions, tf: number): number {
   const warmupTf = tf === s.tfMin ? tf : Math.max(tf, ...s.signals.lanes.filter((lane) => s.tfs.includes(lane)));
   const cadenceWarmup = (s.tactics.signalMinDaily ?? 0) > 0 ? SIGNAL_CADENCE_DAYS * 24 : 0;
-  return 24 + cadenceWarmup + signalHistoryHours(wf) + wf.simH + tacticWarmupBars(s.tactics) * warmupTf / 60;
+  return 24 + cadenceWarmup + signalHistoryHours(wf) + wf.simH + processedWarmupHours(wf) + tacticWarmupBars(s.tactics) * warmupTf / 60;
 }
 function signalLaneSeriesOf(sym: string, cs: CandleSeries, s: CoreSettings, wf: WalkForwardOptions): Bars[] {
   const lanes = Object.freeze([...s.tfs]);
@@ -13066,7 +13082,18 @@ export function signalLaneSeriesFrom(candles: ReadonlyMap<string, CandleSeries>,
 /** General configs need their whole own evaluation window on every lane, plus replay and indicator warmup. */
 export function strategyDataHours(s: CoreSettings, wf: WalkForwardOptions): number {
   const slowest = Math.max(1, ...s.tfs);
-  return 24 + Math.max(wf.longH, wf.preH, wf.symH ?? 0) + wf.simH + tacticWarmupBars(s.tactics) * slowest / 60;
+  return 24 + Math.max(wf.longH, wf.preH, wf.symH ?? 0) + wf.simH + processedWarmupHours(wf) + tacticWarmupBars(s.tactics) * slowest / 60;
+}
+
+/** Additional physical history required for an explicitly bounded, offline modeled warmup. */
+export function processedWarmupHours(wf: Pick<WalkForwardOptions, "processedWarmup">): number {
+  const w = wf.processedWarmup;
+  if (!w) return 0;
+  if (typeof w !== "object" || !Number.isFinite(w.fromT) || !Number.isFinite(w.untilT) ||
+      !Number.isFinite(w.baseCutT) || w.fromT < 0 || w.untilT <= w.fromT || w.baseCutT !== w.fromT ||
+      (w.untilT - w.fromT) > 240 * H)
+    throw new Error("invalid processed warmup boundaries");
+  return (w.untilT - w.fromT) / H;
 }
 export function marketHistoryBars(s: CoreSettings, wf: WalkForwardOptions): number {
   return Math.ceil(Math.max(s.historyDays * 24, strategyDataHours(s, wf), signalDataHours(s, wf)) * 60 / s.tfMin);

@@ -74,6 +74,25 @@ describe("frozen full-engine session study", () => {
     p.actualWf.simH = p.window.runH; p.actualWf.preH = 5; writeFileSync(file, JSON.stringify(p));
     assert.throws(() => validateFrozenSessionRuntime(rt,file,feed,p.window.evaluationFromT,p.window.endT,root), /walk-forward window differs/);
   }));
+  it("seals a separate modeled warmup and rejects Base proof from its future", () => fixture(({root,file,p,raw}) => {
+    const H = 3_600_000;
+    p.window = { evaluationFromT: 0, tradeStartT: 8 * H, endT: 32 * H, preH: 6, runH: 24, processedWarmupH: 2 };
+    p.actualWf = { ...p.actualWf, causalBase: true, processedStages: { validationN: 2, realN: 2 },
+      processedWarmup: { fromT: 6 * H, untilT: 8 * H, baseCutT: 6 * H } };
+    writeFileSync(file, JSON.stringify(p));
+    assert.doesNotThrow(() => readSessionStudy(file, root));
+    raw.window = { startT: 8 * H, endT: 32 * H };
+    assert.throws(() => validateFrozenSessionResult(raw, file, root), /omitted or changed/);
+    raw.processedStageProgress = { warmup: { ...p.actualWf.processedWarmup } };
+    assert.doesNotThrow(() => validateFrozenSessionResult(raw, file, root));
+    p.actualWf.processedWarmup.baseCutT = 8 * H;
+    writeFileSync(file, JSON.stringify(p));
+    assert.throws(() => readSessionStudy(file, root), /modeled-stage warmup/);
+    p.actualWf.processedWarmup.baseCutT = 6 * H;
+    p.actualWf.processedStages = undefined;
+    writeFileSync(file, JSON.stringify(p));
+    assert.throws(() => readSessionStudy(file, root), /modeled-stage warmup/);
+  }));
   it("rejects an incomplete symbol universe and memory fallback rather than calling them a full test", () => fixture(({root,file,raw}) => {
     raw.engine.universe.pop(); assert.throws(()=>validateFrozenSessionResult(raw,file,root),/exact frozen symbol/); raw.engine.universe=["A-USDT","B-USDT"];
     raw.engine.mem.computeLevel=1; assert.throws(()=>validateFrozenSessionResult(raw,file,root),/Degraded/); raw.engine.mem.computeLevel=0;

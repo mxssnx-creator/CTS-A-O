@@ -35,12 +35,18 @@ export function readSessionStudy(protocolPath, root = defaultRoot) {
   const bytes = readFileSync(protocolPath), p = JSON.parse(bytes);
   if (p.schema !== "cts-session-study-v1" || !p.id || !Array.isArray(p.symbols) || !p.symbols.length || new Set(p.symbols).size !== p.symbols.length)
     throw new Error("Invalid frozen session study identity/symbols");
-  if (!p.window || !Number.isFinite(p.window.evaluationFromT) || !Number.isFinite(p.window.tradeStartT) || !Number.isFinite(p.window.endT) || p.window.tradeStartT - p.window.evaluationFromT !== p.window.preH * H || p.window.endT - p.window.tradeStartT !== p.window.runH * H)
+  const stageH = p.window?.processedWarmupH ?? 0;
+  if (!p.window || !Number.isSafeInteger(stageH) || stageH < 0 || stageH > 240 ||
+      !Number.isFinite(p.window.evaluationFromT) || !Number.isFinite(p.window.tradeStartT) || !Number.isFinite(p.window.endT) || p.window.tradeStartT - p.window.evaluationFromT !== (p.window.preH + stageH) * H || p.window.endT - p.window.tradeStartT !== p.window.runH * H)
     throw new Error("Invalid frozen session study windows");
   if (!p.feed?.sha256 || !p.actualSettings || !p.actualWf || !Array.isArray(p.source?.files) || !p.source.files.length || studySha256(studyExactJson(p.source.files)) !== p.source.sha256)
     throw new Error("Missing frozen session settings/feed/source seal");
   if (p.actualWf.preH !== p.window.preH || p.actualWf.simH !== p.window.runH)
     throw new Error("Frozen session walk-forward window differs from protocol window");
+  const warmup = p.actualWf.processedWarmup;
+  if (stageH ? !warmup || warmup.fromT !== p.window.tradeStartT - stageH * H || warmup.untilT !== p.window.tradeStartT ||
+      warmup.baseCutT !== warmup.fromT || !p.actualWf.causalBase || !p.actualWf.processedStages : !!warmup)
+    throw new Error("Frozen modeled-stage warmup differs from protocol boundaries or causal Base proof");
   if (p.source.scope === SESSION_STUDY_SOURCE_SCOPE &&
       studyExactJson(sessionStudySourceFiles(root)) !== studyExactJson(p.source.files))
     throw new Error("Session source changed after freeze: engine/shared inventory");
@@ -83,6 +89,8 @@ export function validateFrozenSessionResult(raw, protocolPath, root = defaultRoo
   if (studyExactJson([...(raw.symbols ?? [])].sort()) !== expected || studyExactJson([...(raw.engine?.universe ?? [])].sort()) !== expected)
     throw new Error("Completed study did not process the exact frozen symbol universe");
   if (raw.window?.startT !== p.window.tradeStartT || raw.window?.endT !== p.window.endT) throw new Error("Completed study execution window differs");
+  if (studyExactJson(raw.processedStageProgress?.warmup ?? null) !== studyExactJson(p.actualWf.processedWarmup ?? null))
+    throw new Error("Completed study omitted or changed its modeled-stage warmup");
   if (p.liveSinceT !== undefined && raw.settings?.live?.replaySinceT !== p.liveSinceT) throw new Error("Completed study omitted its frozen paper Live evaluation boundary");
   validateFrozenSessionBook(raw.settings?.book, p.account);
   const mem = raw.engine?.mem;

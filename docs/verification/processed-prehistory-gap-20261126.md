@@ -19,9 +19,19 @@ A correct warmup must replay chronological, actually gate-qualified predecessor 
 settlements using information available at each decision, retain each exact config/symbol/direction
 identity and cost basis, handle positions open across the warmup boundary, and keep the reported 24-hour
 funded account distinct from warmup activity. Importing raw candidates directly or evaluating a past
-Base gate using future evidence would produce misleading qualification. This warmup is not implemented
-by the memory changes and must be established by independent causality and end-to-end tests before
-claiming profitable progression or live readiness.
+Base gate using future evidence would produce misleading qualification. The memory changes alone did not
+implement this warmup.
+
+An **opt-in offline modeled warmup** now evaluates a frozen Base cohort before the warmup interval, then
+processes that cohort chronologically through the owned stages. Historical model positions stay separate
+from target account capacity and reported P&L, including when they close after the target boundary; their
+settled net results still affect their own modeled stage histories. The replay requires explicit, aligned
+boundaries and records them in the result. It is rejected by connected and ordinary runtimes: it neither
+seeds the durable paper/venue ledger nor establishes live readiness. Unit tests cover cold windows,
+same-time decisions, separate sides, boundary-spanning positions, losses and account guards; a controlled
+synthetic engine test verifies the full runtime path. The 12-symbol market-data run and full-catalog memory
+verification must still complete before making claims about market performance or capacity. A fixed symbol
+cohort selected as of the target start is retrospective during warmup and is labeled accordingly.
 
 The e75 focused run completed in 800.08 seconds with 77/77 report checks and peak child RSS 3,256,164
 KiB. Its maximum reported loop slice was 2,332 ms, so it does not establish the 500 ms cycle objective.

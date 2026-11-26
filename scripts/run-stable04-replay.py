@@ -24,25 +24,31 @@ def signal_exit_reason(returncode):
         return f'process terminated by signal {-returncode}'
 
 
-def main(out, staged_warmup=False):
+def main(out, staged_warmup=False, modeled_warmup=False):
+    if staged_warmup and modeled_warmup:
+        raise ValueError('Replay modes cannot be combined')
     out.mkdir(parents=True, exist_ok=True)
     spill = out / 'spill'
     spill.mkdir(mode=0o700, exist_ok=True)
     feed, protocol = out / 'feed-causal.json', out / 'protocol.json'
     sealed = json.loads(protocol.read_text())
     expected_window = {
-        'evaluationFromT': 1791925200000 if staged_warmup else 1792011600000,
+        'evaluationFromT': 1791925200000 if staged_warmup or modeled_warmup else 1792011600000,
         'tradeStartT': 1792011600000 if staged_warmup else 1792098000000,
         'endT': 1792184400000, 'preH': 24, 'runH': 48 if staged_warmup else 24,
     }
+    if modeled_warmup:
+        expected_window['processedWarmupH'] = 24
     if sealed.get('window') != expected_window:
         raise ValueError('Frozen protocol window does not match requested replay mode')
     if staged_warmup != ('targetWindow' in sealed.get('policy', {})):
         raise ValueError('Frozen protocol staged-warmup scope does not match requested replay mode')
+    if modeled_warmup != ('modeledWarmupScope' in sealed.get('policy', {})):
+        raise ValueError('Frozen protocol modeled-warmup scope does not match requested replay mode')
     settings, wf = (out / 'settings.json').read_text(), (out / 'wf.json').read_text()
     args = ['node', '--experimental-strip-types', '--no-warnings', '--expose-gc', 'scripts/core-session.mjs',
             '--feed', str(feed), '--symbols', '12', '--pre', '24', '--run', '48' if staged_warmup else '24', '--end-at', '2026-10-16T21:00:00.000Z',
-            '--evaluation-from', '2026-10-13T21:00:00.000Z' if staged_warmup else '2026-10-14T21:00:00.000Z', '--selection-hours', '24', '--replay-preload-all',
+            '--evaluation-from', '2026-10-13T21:00:00.000Z' if staged_warmup or modeled_warmup else '2026-10-14T21:00:00.000Z', '--selection-hours', '24', '--replay-preload-all',
             '--max-wait-min', '165',
             '--settings', settings, '--toggles', json.dumps({'axis': True, 'block': True, 'exit': False}), '--wf', wf,
             '--frozen-session', str(protocol), '--chunk-allocations', '--no-archive',
@@ -118,6 +124,7 @@ def main(out, staged_warmup=False):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] != '--staged-warmup'):
-        raise SystemExit('usage: run-stable04-replay.py OUTPUT_DIR [--staged-warmup]')
-    raise SystemExit(main(pathlib.Path(sys.argv[1]).resolve(), len(sys.argv) == 3))
+    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ('--staged-warmup', '--modeled-warmup')):
+        raise SystemExit('usage: run-stable04-replay.py OUTPUT_DIR [--staged-warmup|--modeled-warmup]')
+    raise SystemExit(main(pathlib.Path(sys.argv[1]).resolve(), len(sys.argv) == 3 and sys.argv[2] == '--staged-warmup',
+                          len(sys.argv) == 3 and sys.argv[2] == '--modeled-warmup'))
