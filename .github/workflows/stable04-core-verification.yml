@@ -4,9 +4,12 @@ on:
     branches: [Stable-04]
     paths:
       - 'src/core/**'
+      - 'shared/**'
       - 'scripts/perf/**'
       - 'scripts/test-core.mjs'
       - 'scripts/lib/core-test-offline-guard.cjs'
+      - 'scripts/lib/session-study.mjs'
+      - 'scripts/lib/session-study.test.mjs'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/stable04-core-verification.yml'
@@ -14,8 +17,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Preserve the earlier slow-runtime job while verifying the shared Tactic filters.
-  group: stable04-core-verification-v4
+  # Preserve the earlier slow-runtime job while verifying the updated branch.
+  group: stable04-core-verification-v5
   cancel-in-progress: true
 jobs:
   core:
@@ -44,6 +47,11 @@ jobs:
         run: npm run build:dev
       - name: Run core tests without exchange connections
         run: npm run test:core -- --test-shard=${{ matrix.shard }}/4
+      - name: Verify shared policies and frozen-session source scope
+        if: matrix.shard == 1
+        run: >-
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test
+          shared/cts-lastn/blocks.test.ts shared/cts-volume/ratios.test.ts scripts/lib/session-study.test.mjs
   slow-runtime:
     runs-on: ubuntu-24.04
     timeout-minutes: 65
@@ -66,3 +74,28 @@ jobs:
         run: npm run build:dev
       - name: Exercise slow synthetic runtime and memory cases
         run: npm run test:core:slow
+  parallel-stress:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_COMPARE: "0"
+      CTS_CORE_SLOW: "1"
+      CTS_CORE_WORKERS: "2"
+      CTS_CORE_MEM_SOFT_MB: "1"
+      CTS_CORE_MEM_HARD_MB: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.19.0"
+      - run: npm ci
+      - name: Exercise the same settings storm with two workers
+        run: >-
+          node --no-wasm-code-gc --require ./scripts/lib/core-test-offline-guard.cjs --expose-gc
+          --max-old-space-size=4096 --heap-growing-percent=50 --experimental-strip-types --no-warnings
+          --test --test-concurrency=1 --test-name-pattern='stress: a storm' src/core/server/runtime.test.ts

@@ -15,7 +15,7 @@ process.env.CTS_CORE_COMPARE = '0';
 const { CoreRuntime } = await import('../src/core/server/runtime.server.ts');
 const { CoreDb } = await import('../src/core/server/db.server.ts');
 const { checkSettings } = await import('../src/core/settings-check.ts');
-const { studyCanonical, studyExactJson, studySha256, sessionStudySourceFiles, studyWithRequestedWindow } = await import('./lib/session-study.mjs');
+const { SESSION_STUDY_SOURCE_SCOPE, studyCanonical, studyExactJson, studySha256, sessionStudySourceFiles, studyWithRequestedWindow } = await import('./lib/session-study.mjs');
 const symbols = ['AVAX', 'DOT', 'ATOM', 'APT', 'BTC', 'ETH', 'BNB', 'DOGE', 'ADA', 'BCH', 'ETC', 'ARB'].map(s => s + '-USDT');
 const t = s => Date.parse(s), evaluationFromT = t('2026-10-14T21:00:00Z'), tradeStartT = t('2026-10-15T21:00:00Z'), endT = t('2026-10-16T21:00:00Z');
 const settings = { forceSymbols: symbols, signals: { hist: { lookbackH: 24 } }, exitStrategy: { enabled: false } };
@@ -61,7 +61,8 @@ try {
   const feed = readFileSync(resolve(out, 'feed-causal.json'));
   assert.equal(studySha256(feed), 'e99c7a7b808752717a6443cd09a498238c0836ff6eca7366ac04aaba3d74fadc');
   const files = sessionStudySourceFiles(root);
-  const source = { files, sha256: studySha256(studyExactJson(files)), checkpoint: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim() };
+  const source = { files, sha256: studySha256(studyExactJson(files)), scope: SESSION_STUDY_SOURCE_SCOPE,
+    checkpoint: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim() };
   const p = {
     schema: 'cts-session-study-v1', id: 'stable04-12-symbol-memory-24h-20261126', symbols,
     window: { evaluationFromT, tradeStartT, endT, preH: 24, runH: 24 },

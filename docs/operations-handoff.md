@@ -19,6 +19,11 @@ roughly 780 seconds, so the repeated volatility and trend filters are now also s
 Focused parity tests and synthetic comparisons are in `docs/verification/tactic-base-cache-20261126.md`. The slow
 test and complete 12-symbol replay still need fresh results; neither timeout nor profit factor is certified.
 
+The immutable volatility percentile now uses a bounded causal sorted window, preserving exact scalar results while
+reducing repeated rank work. Synthetic timing and worker parity are in the same verification file. The frozen
+session source seal now includes shared Last-N, volume and Relate modules and dependency manifests; a marked seal
+also rejects added or removed engine/shared source files. Older unmarked protocols remain readable.
+
 ## 2026-11-26 — Block Auto integrity and bounded windows
 
 The automatic Block count selector now actually evaluates each relation key independently, enforces the

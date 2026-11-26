@@ -33,6 +33,28 @@ function keep(
   return out;
 }
 
+/** Exact causal rank among the prior finite values, with at most p values retained. */
+export function pastPercentileRank(x: Float64Array, p: number): Float64Array {
+  if (!Number.isSafeInteger(p) || p < 1) throw new RangeError("Percentile window must be a positive integer");
+  const out = new Float64Array(x.length).fill(Number.NaN);
+  const sorted: number[] = [];
+  const lower = (v: number) => {
+    let lo = 0, hi = sorted.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (sorted[mid] < v) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  };
+  for (let i = 0; i < x.length; i++) {
+    const v = x[i];
+    if (i >= p && Number.isFinite(v) && sorted.length > p / 2) out[i] = lower(v) / sorted.length;
+    if (i >= p && Number.isFinite(x[i - p])) sorted.splice(lower(x[i - p]), 1);
+    if (Number.isFinite(v)) sorted.splice(lower(v), 0, v);
+  }
+  return out;
+}
+
 /** Rolling percentile rank (0..1) of x[i] within the previous `p` values (causal). */
 function pctRank(k: SeriesCache, key: string, x: Float64Array, p: number): Float64Array {
   return k.memo(`rank:${key}:${p}`, () => {
@@ -54,21 +76,7 @@ function pctRank(k: SeriesCache, key: string, x: Float64Array, p: number): Float
           if (count > p / 2) out[i] = below / count;
         },
       );
-    const out = new Float64Array(x.length).fill(Number.NaN);
-    for (let i = p; i < x.length; i++) {
-      const v = x[i];
-      if (!Number.isFinite(v)) continue;
-      let below = 0;
-      let cnt = 0;
-      for (let j = i - p; j < i; j++) {
-        const w = x[j];
-        if (!Number.isFinite(w)) continue;
-        cnt++;
-        if (w < v) below++;
-      }
-      if (cnt > p / 2) out[i] = below / cnt;
-    }
-    return out;
+    return pastPercentileRank(x, p);
   });
 }
 

@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 
 const H = 3_600_000;
 const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+export const SESSION_STUDY_SOURCE_SCOPE = "engine-shared-manifests-v1";
 export const studySha256 = (value) => createHash("sha256").update(value).digest("hex");
 export function studyCanonical(value) {
   if (value instanceof Set) return [...value].sort().map(studyCanonical);
@@ -22,8 +23,12 @@ export function studyWithRequestedWindow(wf, preH, simH) {
 
 /** Seal economic source and the common report instrumentation separately for each arm. */
 export function sessionStudySourceFiles(root = defaultRoot) {
-  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(resolve(dir, e.name)) : /\.(?:ts|tsx|mjs|cjs)$/.test(e.name) && !/\.test\.[^.]+$/.test(e.name) && e.name !== "test-support.ts" ? [resolve(dir, e.name)] : []);
-  return [...walk(resolve(root, "src/core")), ...walk(resolve(root, "scripts/lib")), resolve(root, "scripts/core-session.mjs"), resolve(root, "package.json")].sort().map((file) => ({ path: relative(root, file), sha256: studySha256(readFileSync(file)) }));
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(resolve(dir, e.name)) :
+    (/\.(?:ts|tsx|js|mjs|cjs)$/.test(e.name) || e.name === "package.json") && !/\.test\.[^.]+$/.test(e.name) && e.name !== "test-support.ts" ? [resolve(dir, e.name)] : []);
+  // The engine imports shared Last-N, volume and Relate modules; a changed dependency must invalidate the seal too.
+  return [...walk(resolve(root, "src/core")), ...walk(resolve(root, "shared")), ...walk(resolve(root, "scripts/lib")),
+    resolve(root, "scripts/core-session.mjs"), resolve(root, "package.json"), resolve(root, "package-lock.json")]
+    .sort().map((file) => ({ path: relative(root, file), sha256: studySha256(readFileSync(file)) }));
 }
 
 export function readSessionStudy(protocolPath, root = defaultRoot) {
@@ -36,6 +41,11 @@ export function readSessionStudy(protocolPath, root = defaultRoot) {
     throw new Error("Missing frozen session settings/feed/source seal");
   if (p.actualWf.preH !== p.window.preH || p.actualWf.simH !== p.window.runH)
     throw new Error("Frozen session walk-forward window differs from protocol window");
+  if (p.source.scope === SESSION_STUDY_SOURCE_SCOPE &&
+      studyExactJson(sessionStudySourceFiles(root)) !== studyExactJson(p.source.files))
+    throw new Error("Session source changed after freeze: engine/shared inventory");
+  if (p.source.scope !== undefined && p.source.scope !== SESSION_STUDY_SOURCE_SCOPE)
+    throw new Error("Unsupported frozen session source scope");
   for (const f of p.source.files) {
     const file = resolve(root, f.path);
     if (!file.startsWith(root + sep) || studySha256(readFileSync(file)) !== f.sha256)

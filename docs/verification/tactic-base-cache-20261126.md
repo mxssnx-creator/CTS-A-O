@@ -26,3 +26,13 @@ bars), the prior code took 3,825 ms, DCA feature reuse alone took 2,887 ms, and 
 worker result had checksum `270cdda2d8f9da9e9b50084376cb1b0b9c4e9de264d9eab0349b88a954df7a99`; respective peak
 process RSS values were 322,592, 325,628 and 311,348 KiB. `scripts/perf/tactic-worker-bench.mjs` repeats that
 synthetic comparison. The complete settings-storm and market replay remain required.
+
+The volatility rank itself also scanned all 336 prior values for every bar. Its immutable-series path now keeps
+only the finite values in that causal window in sorted order and finds the strict-less-than count by binary search.
+The streaming path is unchanged. A scalar oracle covered missing values, infinities, duplicates, signed zero, multiple
+window sizes and causal prefixes. On 20,000 synthetic values repeated ten times, the scalar version took 228 ms and
+the bounded version 54 ms with identical checksum
+`c850406a7ec0c357ed5d23062e2d34c8f3ae4dbfb540af6d2597beeb5033b3e0`. The eight-batch worker comparison improved from
+2,728 ms to 2,369 ms with identical output; observed peak RSS was 303,612 versus 336,028 KiB. These individual
+measurements do not establish the complete runtime or peak memory. `scripts/perf/percentile-rank-bench.mjs` repeats
+the scalar comparison.

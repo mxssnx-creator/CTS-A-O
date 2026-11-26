@@ -1,9 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { studySha256, studyExactJson, studyWithRequestedWindow, validateFrozenSessionRuntime, validateFrozenSessionResult, validateFrozenSessionBook } from "./session-study.mjs";
+import { SESSION_STUDY_SOURCE_SCOPE, readSessionStudy, sessionStudySourceFiles, studySha256, studyExactJson, studyWithRequestedWindow, validateFrozenSessionRuntime, validateFrozenSessionResult, validateFrozenSessionBook } from "./session-study.mjs";
 
 function fixture(fn) {
   const root = mkdtempSync(join(tmpdir(), "cts-frozen-session-"));
@@ -20,6 +20,27 @@ function fixture(fn) {
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 describe("frozen full-engine session study", () => {
+  it("seals shared trading modules and dependency manifests, and rejects later shared changes", () => fixture(({root,file,p}) => {
+    for (const dir of ["src/core", "scripts/lib", "shared/cts-relate"]) mkdirSync(join(root,dir), {recursive:true});
+    for (const [path, contents] of [["src/core/engine.ts", "engine"], ["scripts/lib/helper.mjs", "helper"],
+      ["scripts/core-session.mjs", "report"], ["shared/cts-relate/recovery.ts", "recovery"],
+      ["shared/cts-relate/package.json", "{}"], ["package.json", "{}"], ["package-lock.json", "{}"]])
+      writeFileSync(join(root,path), contents);
+    writeFileSync(join(root,"shared/cts-relate/recovery.test.ts"), "test-only");
+    const files = sessionStudySourceFiles(root), names = files.map((x) => x.path);
+    assert.ok(names.includes("shared/cts-relate/recovery.ts"));
+    assert.ok(names.includes("shared/cts-relate/package.json"));
+    assert.ok(names.includes("package-lock.json"));
+    assert.ok(!names.includes("shared/cts-relate/recovery.test.ts"));
+    p.source = {files, sha256:studySha256(studyExactJson(files)), scope:SESSION_STUDY_SOURCE_SCOPE, checkpoint:"verified-source"};
+    writeFileSync(file,JSON.stringify(p));
+    assert.doesNotThrow(() => readSessionStudy(file,root));
+    writeFileSync(join(root,"shared/cts-relate/recovery.ts"), "changed");
+    assert.throws(() => readSessionStudy(file,root), /source changed/);
+    writeFileSync(join(root,"shared/cts-relate/recovery.ts"), "recovery");
+    writeFileSync(join(root,"shared/cts-relate/new-policy.ts"), "new module");
+    assert.throws(() => readSessionStudy(file,root), /source changed/);
+  }));
   it("keeps requested replay hours when desk snapshots contain stale windows", () => {
     const wf = studyWithRequestedWindow({ preH: 24, simH: 12, longH: 100, causalBase: true }, 150, 24);
     assert.deepEqual(wf, { preH: 150, simH: 24, longH: 100, causalBase: true });
