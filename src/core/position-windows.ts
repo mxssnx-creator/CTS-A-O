@@ -79,30 +79,34 @@ export function positionTapeValid(tp: PositionTapeColumns): boolean {
     const exit = tp.exitT;
     if (ArrayBuffer.isView(exit) && cached.buffer.deref() === exit.buffer) return cached.valid;
   }
-  const columns = [tp.syms, tp.exitT, tp.entryT, tp.symI, tp.side, tp.r];
+  // A stored tape exposes columns through getters. Resolve each immutable column once: repeatedly calling
+  // those getters for every cell needlessly visits the storage cache hundreds of thousands of times.
+  const symbols = tp.syms, exits = tp.exitT, entries = tp.entryT,
+    symbolSlots = tp.symI, sides = tp.side, returns = tp.r;
+  const columns = [symbols, exits, entries, symbolSlots, sides, returns];
   if (!generation && cached?.kind === "ordinary" && cached.n === tp.n &&
       columns.every((v, i) => v !== undefined && v === cached.columns[i].deref())) return cached.valid;
   let valid =
     Number.isSafeInteger(tp.n) &&
     tp.n >= 0 &&
-    Array.isArray(tp.syms) &&
-    [tp.exitT, tp.entryT, tp.symI, tp.side, tp.r].every((a) => a && a.length >= tp.n);
+    Array.isArray(symbols) &&
+    [exits, entries, symbolSlots, sides, returns].every((a) => a && a.length >= tp.n);
   if (valid)
     for (let i = 0; i < tp.n; i++) {
-      const symbol = tp.symI[i],
-        exit = tp.exitT[i],
-        entry = tp.entryT[i];
+      const symbol = symbolSlots[i],
+        exit = exits[i],
+        entry = entries[i];
       if (
         !Number.isInteger(symbol) ||
         symbol < 0 ||
-        symbol >= tp.syms.length ||
-        !tp.syms[symbol] ||
-        ![1, -1].includes(tp.side[i]) ||
+        symbol >= symbols.length ||
+        !symbols[symbol] ||
+        ![1, -1].includes(sides[i]) ||
         !Number.isFinite(exit) ||
         !Number.isFinite(entry) ||
         exit < entry ||
         (i > 0 &&
-          (exit < tp.exitT[i - 1] || (exit === tp.exitT[i - 1] && entry < tp.entryT[i - 1])))
+          (exit < exits[i - 1] || (exit === exits[i - 1] && entry < entries[i - 1])))
       ) {
         valid = false;
         break;
@@ -110,9 +114,9 @@ export function positionTapeValid(tp: PositionTapeColumns): boolean {
     }
   // Malformed/null columns are not cacheable WeakRef targets. Keep their
   // fail-closed verdict, without retaining them or changing the next check.
-  if (generation && Array.isArray(tp.syms) && ArrayBuffer.isView(tp.exitT))
-    sourceChecks.set(tp, { n: tp.n, kind: "stored", generation, symbols: new WeakRef(tp.syms),
-      buffer: new WeakRef(tp.exitT.buffer), valid });
+  if (generation && Array.isArray(symbols) && ArrayBuffer.isView(exits))
+    sourceChecks.set(tp, { n: tp.n, kind: "stored", generation, symbols: new WeakRef(symbols),
+      buffer: new WeakRef(exits.buffer), valid });
   else if (!generation && columns.every((v) => v !== null && (typeof v === 'object' || typeof v === 'function')))
     sourceChecks.set(tp, { n: tp.n, kind: "ordinary", columns: columns.map((v) => new WeakRef(v as object)), valid });
   else sourceChecks.delete(tp);
