@@ -7,7 +7,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: stable04-exploratory-staged-warmup-v2
+  # Keep the prior diagnostic while measuring the compact modeled-stage ledger.
+  group: stable04-exploratory-staged-warmup-v3
   cancel-in-progress: true
 jobs:
   staged-warmup:

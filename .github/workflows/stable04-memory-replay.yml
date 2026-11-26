@@ -7,8 +7,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Retain the prior replay while checking compact spilled endpoint marks.
-  group: stable04-frozen-memory-replay-v18
+  # Retain the prior replay while checking the compact modeled-stage ledger.
+  group: stable04-frozen-memory-replay-v19
   # A newer source supersedes an obsolete replay of the same frozen protocol.
   cancel-in-progress: true
 jobs:
