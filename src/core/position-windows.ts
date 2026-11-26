@@ -1,5 +1,6 @@
 import {blockPrefix,blockRequired,checkBlockPolicy,evaluateBlocks,type BlockPolicy} from "../../shared/cts-lastn/blocks.ts";
 import { SIGNAL_EVALUATION_LAST_N } from "./signal-policy.ts";
+import { immutableHistoryGeneration } from "./sim/immutable-history-generation.ts";
 /** Position-count evaluation policy. Time controls data availability, never membership of these samples. */
 export interface PositionCounts {
   base: number;
@@ -62,12 +63,25 @@ interface PositionTapeColumns {
 // A live stored-tape wrapper must not pin an evicted decompressed arena through
 // validation metadata. Weak column identities still invalidate on replacement
 // or reloading, and the ordinary in-memory owner retains its own columns.
-const sourceChecks = new WeakMap<object, { n: number; columns: WeakRef<object>[]; valid: boolean }>();
+type SourceCheck = { n: number; valid: boolean } & (
+  | { kind: "stored"; generation: object; symbols: WeakRef<object>; buffer: WeakRef<object> }
+  | { kind: "ordinary"; columns: WeakRef<object>[] }
+);
+const sourceChecks = new WeakMap<object, SourceCheck>();
 /** Published columns are immutable. Unknown ownership or chronology anywhere makes the last N unknowable. */
 export function positionTapeValid(tp: PositionTapeColumns): boolean {
-  const columns = [tp.syms, tp.exitT, tp.entryT, tp.symI, tp.side, tp.r];
+  const generation = immutableHistoryGeneration(tp);
   const cached = sourceChecks.get(tp);
-  if (cached?.n === tp.n && columns.every((v, i) => v !== undefined && v === cached.columns[i].deref())) return cached.valid;
+  if (generation && cached?.kind === "stored" && cached.n === tp.n && cached.generation === generation &&
+      cached.symbols.deref() === tp.syms) {
+    // A stored tape's non-configurable column getters all view one checksummed immutable arena. Reading one
+    // still verifies an evicted/corrupted disk record, without retaining six separate column WeakRefs per tape.
+    const exit = tp.exitT;
+    if (ArrayBuffer.isView(exit) && cached.buffer.deref() === exit.buffer) return cached.valid;
+  }
+  const columns = [tp.syms, tp.exitT, tp.entryT, tp.symI, tp.side, tp.r];
+  if (!generation && cached?.kind === "ordinary" && cached.n === tp.n &&
+      columns.every((v, i) => v !== undefined && v === cached.columns[i].deref())) return cached.valid;
   let valid =
     Number.isSafeInteger(tp.n) &&
     tp.n >= 0 &&
@@ -96,8 +110,11 @@ export function positionTapeValid(tp: PositionTapeColumns): boolean {
     }
   // Malformed/null columns are not cacheable WeakRef targets. Keep their
   // fail-closed verdict, without retaining them or changing the next check.
-  if (columns.every((v) => v !== null && (typeof v === 'object' || typeof v === 'function')))
-    sourceChecks.set(tp, { n: tp.n, columns: columns.map((v) => new WeakRef(v as object)), valid });
+  if (generation && Array.isArray(tp.syms) && ArrayBuffer.isView(tp.exitT))
+    sourceChecks.set(tp, { n: tp.n, kind: "stored", generation, symbols: new WeakRef(tp.syms),
+      buffer: new WeakRef(tp.exitT.buffer), valid });
+  else if (!generation && columns.every((v) => v !== null && (typeof v === 'object' || typeof v === 'function')))
+    sourceChecks.set(tp, { n: tp.n, kind: "ordinary", columns: columns.map((v) => new WeakRef(v as object)), valid });
   else sourceChecks.delete(tp);
   return valid;
 }

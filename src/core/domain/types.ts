@@ -483,7 +483,7 @@ export interface BlockConfig {
    * choose the window by results: one book per candidate window, fed the same closes; each close counts for a window
    * when that window's level (from the closes before it) would have raised it. The window whose raised closes had the
    * best PF over its last `windowLookback` raised closes is the one in use (causal; `window` until every candidate has
-   * 30). Default off.
+   * the configured minimum). Enabled by default for independently evaluated source keys.
    */
   windowAuto?: boolean;
   /** Evaluate each source key independently rather than using one shared auto-window winner. */

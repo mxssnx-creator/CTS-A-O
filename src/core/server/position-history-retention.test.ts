@@ -38,6 +38,11 @@ test('position validation does not pin evicted immutable history buffers', () =>
       assert.equal(buffer.deref()===undefined,true,'validation metadata must not retain the evicted history arena');
       assert.equal(positionTapeValid(tape),true,'reloaded history remains valid');
       assert.ok(store.stats.reads>=2,'released columns are reloaded and revalidated');
+      const symbols=tape.syms;
+      tape.syms=[];
+      assert.equal(positionTapeValid(tape),false,'replacing the symbol mapping invalidates the compact stored verdict');
+      tape.syms=symbols;
+      assert.equal(positionTapeValid(tape),true);
       const empty={n:0,syms:[],exitT:[],entryT:[],symI:[],side:[],r:[]};
       assert.equal(positionTapeValid(empty),true);
       empty.side=undefined;

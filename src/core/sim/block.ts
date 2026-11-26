@@ -44,7 +44,7 @@ export const BLOCK_SOURCES: readonly BlockSource[] = [
   "lane",
   "range",
 ];
-/** The config's own relations (config-wide and its symbol × side lane): window 1, never pooled with another config. */
+/** The config's own relations: never pooled with another config. */
 export const OWN_BLOCK_SOURCES: readonly BlockSource[] = ["config", "lane"];
 const isOwnKey = (k: string) => k.startsWith("c:") || k.startsWith("l:");
 
@@ -175,6 +175,8 @@ export interface BlockBookOpts {
   sideKeys?: boolean;
   /** BlockConfig.configScope: "config" (default) = the config source keys the config alone, every symbol and side */
   configScope?: "config" | "context";
+  /** Independent candidate windows also apply to exact config and lane keys. */
+  ownWindow?: boolean;
   /** BlockConfig.auto: the per relation × count evaluation (recorded when set; maxLevel bounds the counts) */
   auto?: BlockAutoConfig;
   maxLevel?: number;
@@ -218,6 +220,10 @@ export interface BlockBookEntry {
   autoRaise?: number;
   /** AutoBlockBook pause attribution: per-window bitmask of BLOCK_SOURCES that raised the entry. */
   autoSources?: number[];
+  /** Entry-time levels, packed in four bits per source for independent automatic windows. */
+  autoLevels?: number;
+  /** Distinguishes independent source masks from legacy shared-window masks. */
+  autoWindowVersion?: 1;
   /** exit time (ms): windowHours measures each pooled source's activity on it */
   exitT?: number;
   /** entry time (ms): poolDedupe recognises the same close under another config by it */
@@ -289,6 +295,7 @@ export class BlockBook {
   readonly sideKeys: boolean;
   /** BlockConfig.configScope of the config source's key */
   readonly configScope: "config" | "context";
+  private readonly ownWindow: boolean;
   /** The book key of a source for a position, under this book's config scope. */
   keyOf(s: BlockSource, t: { sym: string; side: number; kind: string; ind?: string; type?: string; cfg?: string }): string {
     return sourceKey(s, t, this.sideKeys, this.configScope);
@@ -307,6 +314,7 @@ export class BlockBook {
     this.poolDedupe = !!opts.poolDedupe;
     this.sideKeys = !!opts.sideKeys;
     this.configScope = opts.configScope === "config" ? "config" : "context";
+    this.ownWindow = !!opts.ownWindow;
     this.pause = Math.max(0, Math.floor(pause || 0));
     this.window = Math.max(1, Math.floor(window || 1));
     this.windowHours = opts.windowHours && opts.windowHours > 0 ? opts.windowHours : 0;
@@ -336,7 +344,7 @@ export class BlockBook {
     const l = this.lists.get(key), ts = this.times.get(key);
     if (!l || !ts) return 0;
     const end = firstAfter(ts, entryT);
-    const w = isOwnKey(key) ? 1 : this.window;
+    const w = isOwnKey(key) && !this.ownWindow ? 1 : this.ownWindow ? this.windowOf(key, maxLevel) : this.window;
     // a trimmed list starts later than the entry's judging tail: that entry's level is not known
     if (this.trimmed.has(key) && end < maxLevel * w) return -1;
     return levelOfTail(l, maxLevel, w, this.levelMinWin, end);
@@ -391,7 +399,10 @@ export class BlockBook {
       for (let i = 0; i < BLOCK_SOURCES.length; i++) {
         const k = keys[i];
         if (!pooled && !isOwnKey(k)) continue;
-        const level = this.levelAt(k, t.entryT!, this.auto.maxLevel);
+        const level = t.autoLevels === undefined
+          ? this.levelAt(k, t.entryT!, this.auto.maxLevel)
+          : Number.isSafeInteger(t.autoLevels) && t.autoLevels >= 0 && t.autoLevels <= 0xffff_ffff
+            ? (t.autoLevels >>> (i * 4)) & 15 : -1;
         if (level >= 1) this.auto.record(BLOCK_SOURCES[i], k, level, t.r);
       }
     const timed = this.windowHours > 0;
@@ -448,11 +459,11 @@ export class BlockBook {
   }
   level(key: string, maxLevel: number): number {
     if (this.recoveryUnknown(key)) return 0;
-    // the exact config source always judges one close per level; pooled sources their (activity-scaled) window
+    // Fixed/shared books retain one close per own level; independent Auto uses the selected window per key.
     return Math.max(this.recoveryLevel(key, maxLevel), levelOfTail(
       this.lists.get(key) ?? [],
       maxLevel,
-      isOwnKey(key) ? 1 : this.windowOf(key, maxLevel),
+      isOwnKey(key) && !this.ownWindow ? 1 : this.windowOf(key, maxLevel),
       this.levelMinWin,
     ));
   }
@@ -470,7 +481,7 @@ export class BlockBook {
   }
   /** Available rows in the exact judging tail, including unknown outcomes; config always uses window 1. */
   sampleCount(key: string, maxLevel: number): number {
-    const n = Math.max(0, Math.floor(maxLevel)) * (isOwnKey(key) ? 1 : this.windowOf(key, maxLevel));
+    const n = Math.max(0, Math.floor(maxLevel)) * (isOwnKey(key) && !this.ownWindow ? 1 : this.windowOf(key, maxLevel));
     return Math.min((this.lists.get(key) ?? []).length, n);
   }
   paused(key: string): boolean {
@@ -707,6 +718,9 @@ const bookOpts = (b: BlockConfig): BlockBookOpts => ({
 
 export const DEFAULT_WINDOW_CANDIDATES: readonly number[] = [5, 10, 15, 25, 35];
 
+type WindowRing = { values: number[]; next: number };
+type IndependentWindowState = { recent: Array<WindowRing | undefined>; cur: number };
+
 /**
  * Block book that picks its pooled window by results (BlockConfig.windowAuto). One BlockBook per candidate window is
  * fed every close. Each candidate window applies the configured mode, Active threshold and source pauses to the
@@ -723,24 +737,35 @@ export class AutoBlockBook extends BlockBook {
   private readonly exitStates = new Map<string, { recent: number[][]; cur: number }>();
   private readonly initial: number;
   private readonly lookback: number;
+  private readonly minSamples: number;
+  private readonly independent: boolean;
+  private readonly independentStates = new Map<string, IndependentWindowState>();
   private readonly config: BlockConfig;
   private readonly active: boolean;
   // Direct legacy callers historically judged against minActiveLevel; production passes the actual toggle.
   constructor(b: BlockConfig, active = true) {
     const fallback = Math.max(1, Math.floor(b.window ?? 1));
-    super(b.pause ?? 0, fallback, bookOpts(b));
+    super(b.pause ?? 0, fallback, { ...bookOpts(b), ownWindow: b.windowIndependent === true });
+    this.independent = b.windowIndependent === true;
     const ws = [...new Set((b.windowCandidates?.length ? b.windowCandidates : DEFAULT_WINDOW_CANDIDATES)
       .map((w) => Math.max(1, Math.min(500, Math.floor(w))))
       .filter((w) => Number.isFinite(w)))];
     if (!ws.includes(fallback)) ws.push(fallback);
     this.windows = ws;
     // Candidate books decide their own levels and pauses; only the parent book's per-count Auto is consumed.
-    this.books = ws.map((w) => new BlockBook(b.pause ?? 0, w, { ...bookOpts(b), holdUntilNet: false, auto: undefined }));
-    AutoBlockBook.shareCandidateHistory(this.books);
+    this.books = ws.map((w) => new BlockBook(b.pause ?? 0, w, {
+      ...bookOpts(b), ownWindow: this.independent, holdUntilNet: false, auto: undefined,
+    }));
+    // When the parent records accepted closes for recovery or per-count Auto, it can own the common history.
+    // Candidate books keep their own pauses while reusing that one chronological tail.
+    AutoBlockBook.shareCandidateHistory(this.independent && (this.holdUntilNet || this.auto) ? [this, ...this.books] : this.books);
     this.recent = ws.map(() => []);
     this.cur = ws.indexOf(fallback);
     this.initial = this.cur;
-    this.lookback = Math.max(30, Math.floor(b.windowLookback ?? 300));
+    this.minSamples = Number.isFinite(b.windowMinSamples)
+      ? Math.max(30, Math.min(5000, Math.floor(b.windowMinSamples!))) : 30;
+    this.lookback = Number.isFinite(b.windowLookback)
+      ? Math.max(this.minSamples, Math.min(5000, Math.floor(b.windowLookback!))) : Math.max(this.minSamples, 300);
     // The accepted config record is available in every candidate book; legacy raw config tapes are not.
     const sources = sourcesOf(b);
     this.config = { ...b, sources: { ...sources, config: this.acceptedOnly && sources.config } };
@@ -756,12 +781,60 @@ export class AutoBlockBook extends BlockBook {
       (s) => book.paused(book.keyOf(s, t)),
     );
   }
+  /** Each candidate judges each source on its own entry-time level, without another source winning Shared. */
+  private independentMasks(t: BlockBookEntry): number[] {
+    const type = t.type ?? "normal", signal = (t.ind ?? "").startsWith("sig-");
+    const plain = type === "normal" || type === "trailing" || type === "trailing-only";
+    const range = type === "exit" ? "" : rangeOfId(t.cfg) || (plain && !signal ? "wide" : "");
+    if (this.config.excludeKinds?.includes(type) || (range && this.config.excludeRanges?.includes(range)))
+      return this.books.map(() => 0);
+    const enabled = sourcesOf(this.config);
+    const min = this.active ? Math.max(1, this.config.minActiveLevel) : 1;
+    const cap = blockStackCap(this.config);
+    const ownSignal = this.config.signalsOwn && signal;
+    const verdicts = new Map<number, boolean | null>();
+    return this.books.map((book) => {
+      let mask = 0;
+      for (let j = 0; j < BLOCK_SOURCES.length; j++) {
+        const source = BLOCK_SOURCES[j];
+        if (ownSignal && !OWN_BLOCK_SOURCES.includes(source)) continue;
+        const key = book.keyOf(source, t);
+        const level = book.level(key, this.config.maxLevel);
+        if (level < min || book.paused(key)) continue;
+        const autoLevel = Math.min(level, this.auto?.maxLevel ?? level), code = j * 16 + autoLevel;
+        if (this.auto && !verdicts.has(code)) verdicts.set(code, this.auto.verdict(source, key, autoLevel).raise);
+        const verdict = verdicts.get(code);
+        if (!(verdict ?? enabled[source])) continue;
+        const requested = blockRatioOf(this.config, source) * level;
+        if (!(requested > 0) || !(cap > 1)) continue;
+        const extra = stepRaise(requested, this.config, cap - 1);
+        if (Math.floor(extra * 1_000_000) > 0) mask |= 1 << j;
+      }
+      return mask;
+    });
+  }
   /**
    * Each window's verdict at the entry. Judged at the exit instead, the books held closes made after the entry (its
    * sibling configs on the same move close first with the same sign): winners looked raised, losers not.
    */
   override stampEntry(t: BlockBookEntry) {
     if (this.books.length > 31) return; // one bit per window
+    if (this.independent) {
+      // Four bits per relation preserve the actual selected count at entry even if its window changes before exit.
+      if (this.auto) {
+        let levels = 0;
+        for (let i = 0; i < BLOCK_SOURCES.length; i++) {
+          const level = this.level(this.keyOf(BLOCK_SOURCES[i], t), this.auto.maxLevel);
+          levels |= Math.min(15, Math.max(0, level)) << (i * 4);
+        }
+        t.autoLevels = levels >>> 0;
+      }
+      const masks = this.independentMasks(t);
+      t.autoSources = masks;
+      t.autoWindowVersion = 1;
+      t.autoRaise = masks.reduce((bits, mask, i) => mask ? bits | (1 << i) : bits, 0);
+      return;
+    }
     let m = 0;
     const sources = this.pause > 0 ? [] as number[] : undefined;
     for (let i = 0; i < this.books.length; i++) {
@@ -776,26 +849,54 @@ export class AutoBlockBook extends BlockBook {
     if (!this.accepts(t)) return;
     const pooled = pooledIn ?? this.pooledClose(t, signal);
     const scope = exitScopeSuffix(t.cfg, t.type);
-    const recent = this.recentFor(scope);
+    const recent = this.independent ? undefined : this.recentFor(scope);
+    // A legacy close without an independent entry-time stamp cannot prove its source attribution.
+    const priorRaised = !this.independent && pooled && t.autoRaise === undefined
+      ? this.books.map((_, i) => this.decide(i, t).vol > 1) : undefined;
     // Recovery and the active count-evaluation book are independent: turning recovery off must not silently
     // prevent Block Auto from learning accepted closes.
-    if (this.holdUntilNet || this.auto) super.add(t, signal, pooled);
-    // Without an entry stamp every candidate must judge against the pre-close history, before the owner appends.
-    const priorRaised = pooled && t.autoRaise === undefined ? this.books.map((_, i) => this.decide(i, t).vol > 1) : undefined;
+    // An old unstamped entry cannot establish its selected entry-time count after windows have changed.
+    if (this.holdUntilNet || this.auto)
+      super.add(this.independent && (t.autoWindowVersion !== 1 || t.autoLevels === undefined)
+        ? { ...t, entryT: undefined } : t, signal, pooled);
+    const changed = new Set<string>();
     for (let i = 0; i < this.books.length; i++) {
       // stamped at its entry (a run's feed); unstamped, judged on the closes before this one
-      if (pooled && (priorRaised ? priorRaised[i] : ((t.autoRaise ?? 0) >> i) & 1)) {
-        const r = recent[i];
+      if (!this.independent && pooled && (priorRaised ? priorRaised[i] : ((t.autoRaise ?? 0) >> i) & 1)) {
+        const r = recent![i];
         r.push(t.r);
         if (r.length > 2 * this.lookback) r.splice(0, r.length - this.lookback);
       }
-      const mask = t.autoSources?.[i];
+      const rawMask = this.independent && t.autoWindowVersion !== 1 ? undefined : t.autoSources?.[i];
+      const mask = Number.isSafeInteger(rawMask) && rawMask! >= 0 && rawMask! < (1 << BLOCK_SOURCES.length)
+        ? rawMask : undefined;
+      if (this.independent && mask !== undefined) {
+        for (let j = 0; j < BLOCK_SOURCES.length; j++) {
+          if (!(mask & (1 << j))) continue;
+          const key = this.keyOf(BLOCK_SOURCES[j], t);
+          if (!pooled && !isOwnKey(key)) continue;
+          const state = this.independentState(key);
+          const ring = state.recent[i] ??= { values: [], next: 0 };
+          if (ring.values.length < this.lookback) ring.values.push(t.r);
+          else { ring.values[ring.next] = t.r; ring.next = (ring.next + 1) % this.lookback; }
+          changed.add(key);
+        }
+      }
       this.books[i].add(mask === undefined ? t : {
         ...t,
         bsrc: BLOCK_SOURCES.filter((_, source) => !!(mask & (1 << source))),
       }, signal, pooled);
     }
-    this.choose(scope);
+    if (this.independent) for (const key of changed) this.chooseKey(key);
+    else this.choose(scope);
+  }
+  private independentState(key: string): IndependentWindowState {
+    let state = this.independentStates.get(key);
+    if (!state) {
+      state = { recent: new Array(this.windows.length), cur: this.initial };
+      this.independentStates.set(key, state);
+    }
+    return state;
   }
   private state(scope: string) {
     let state = this.exitStates.get(scope);
@@ -807,17 +908,42 @@ export class AutoBlockBook extends BlockBook {
   }
   private recentFor(scope: string): number[][] { return scope ? this.state(scope).recent : this.recent; }
   private curForKey(key: string): number {
+    if (this.independent) return this.independentStates.get(key)?.cur ?? this.initial;
     const at = key.lastIndexOf("|#exit:");
     return at < 0 ? this.cur : this.state(key.slice(at)).cur;
   }
-  /** PF of each candidate's last `lookback` raised closes (null below 30). */
+  /** The bounded attributed observations for one relation key, separate from every other source/key. */
+  scoresForKey(key: string): Array<{ window: number; n: number; pf: number | null }> {
+    const state = this.independentStates.get(key);
+    return this.windows.map((window, i) => {
+      const xs = state?.recent[i]?.values ?? [];
+      if (xs.length < this.minSamples) return { window, n: xs.length, pf: null };
+      let gp = 0, gl = 0;
+      for (const x of xs) {
+        if (!Number.isFinite(x)) return { window, n: xs.length, pf: null };
+        if (x > 0) gp += x; else gl -= x;
+      }
+      if (!Number.isFinite(gp) || !Number.isFinite(gl)) return { window, n: xs.length, pf: null };
+      if (gp === 0 && gl === 0) return { window, n: xs.length, pf: null };
+      const pf = gl > 0 ? gp / gl : gp > 0 ? Infinity : 0;
+      return { window, n: xs.length, pf: gl > 0 && !Number.isFinite(pf) ? null : pf };
+    });
+  }
+  private chooseKey(key: string): void {
+    const state = this.independentState(key), scores = this.scoresForKey(key);
+    if (scores.some((x) => x.pf === null)) { state.cur = this.initial; return; }
+    let best = state.cur;
+    for (let i = 0; i < scores.length; i++) if (scores[i].pf! > scores[best].pf!) best = i;
+    state.cur = best;
+  }
+  /** PF of each candidate's last `lookback` raised closes (null below the configured minimum). */
   scores(scope = ""): Array<{ window: number; n: number; pf: number | null }> {
     const recent = this.recentFor(scope);
     return this.windows.map((w, i) => {
       const xs = recent[i];
       const from = Number.isNaN(this.lookback) ? 0 : Math.max(0, xs.length - this.lookback);
       const n = xs.length - from;
-      if (n < 30) return { window: w, n, pf: null };
+      if (n < this.minSamples) return { window: w, n, pf: null };
       let gp = 0;
       let gl = 0;
       for (let j = from; j < xs.length; j++) {
@@ -827,6 +953,7 @@ export class AutoBlockBook extends BlockBook {
         else gl -= x;
       }
       if (!Number.isFinite(gp) || !Number.isFinite(gl)) return { window: w, n, pf: null };
+      if (gp === 0 && gl === 0) return { window: w, n, pf: null };
       const pf = gl > 0 ? gp / gl : gp > 0 ? Infinity : 0;
       if (gl > 0 && !Number.isFinite(pf)) return { window: w, n, pf: null };
       return { window: w, n, pf };

@@ -83,6 +83,7 @@ const x01Block: BlockConfig = {
   steps: 7,
   window: 5,
   windowAuto: true,
+  windowIndependent: false, // the recorded x01 fixture used the shared legacy selection
   windowCandidates: [5, 10, 15, 25, 35],
   excludeKinds: ["axis"],
 };

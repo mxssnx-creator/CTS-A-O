@@ -49,3 +49,35 @@ does not upload the raw dump's sibling `session-*` directories. Its raw dump the
 complete independent trade evidence, even if the run itself succeeds. The workflow now includes those
 sidecars and queues subsequent fixed-workflow runs under a shared concurrency group. The report has its own
 separate sidecars and is preserved independently.
+
+Further review found the automatic count selector ignored both its `windowIndependent` switch and the configured
+`windowMinSamples`: all relations used a shared winner and the minimum was hard-coded to 30. Fresh defaults now
+enable automatic, independently selected windows. Each source key and candidate count has its own bounded
+last-N observations, and a selection needs the configured minimum (at least 30) for every candidate. Config and
+lane counts use their own selected window too. Candidate source eligibility and the actual per-count Auto level are
+stamped at entry; old shared stamps without independent attribution cannot be reused as proof. Unknown outcomes
+remain in their own windows and prevent automatic selection; an all-flat 0/0 sample also has unavailable PF.
+Excluded Block types and ranges do not
+create hypothetical source evidence. Existing explicit settings can still select the shared or fixed policy.
+
+The legacy shared selector matched its prior 16-scenario trace checksum
+`1ba1671e365be662b104973fa4b918f9f214d26cb88b07a89d9abfea69a3dbb6`. A separate synthetic run of 8,000
+accepted entries across 100 configs retained 2,690,328 bytes before sharing the independent parent's history and
+2,173,712 bytes afterwards, with identical sampled decision checksums. This is a scoped heap measurement, not
+a whole-engine speed claim. A subsequent Block, position-window, history and processed-stage suite passed 226 tests; the
+independent source and settings regressions also cover minimums, causality, unknowns and retained history.
+The two GitHub runs started before this independent-window repair and cannot validate its new behavior.
+
+The first GitHub run stopped after 2,680.86 seconds at the 7,500 MiB RSS guard while preparing Real;
+its peak child RSS was 7,734,024 KiB. No hourly, post-Base, or settled PF results were produced. Its
+launcher set `CTS_CORE_HISTORY_CACHE_MB`, but the history store only read `CTS_HISTORY_CACHE_MB`, so the
+intended 32 MiB cache was not applied. The store now accepts both names with the original name taking
+precedence, and the replay launcher uses the original name explicitly. The next replay logs heap, external
+buffers and RSS while keeping the existing reserve and process guard. A completed run is still needed to
+measure the effect on the complete engine.
+
+Stored-history validation now retains two weak identities per immutable tape instead of six, while still
+reading the checksummed arena after eviction and invalidating when the symbol mapping changes. In a synthetic
+50,000-tape comparison, validation metadata heap growth was 24,176,344 bytes before and 10,261,392 bytes after,
+with identical validity checksums. Eviction, corrupted records and stored-vs-ordinary replay parity passed
+focused tests. This is not a full-replay peak-memory measurement.

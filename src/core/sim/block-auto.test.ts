@@ -14,7 +14,7 @@ const T0 = Date.UTC(2026, 9, 1);
 const cfgA = "follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32";
 const cfgB = "revert|ema-21-55@m15|tp2|sl1|tr0|h32";
 const policy = (auto: BlockConfig["auto"] = { enabled: true, n: 10, min: 4, pf: 1.1, scope: "rule" }): BlockConfig =>
-  ({ ...DEFAULT_BLOCK, auto, historySource: "accepted-orders" });
+  ({ ...DEFAULT_BLOCK, auto, historySource: "accepted-orders", windowAuto: false });
 const row = (cfg: string, sym: string, side: number, entryT: number, exitT: number, r: number): BlockBookEntry =>
   ({ cfg, sym, side, kind: "osc", ind: cfg.split("|")[1], type: "normal", r, entryT, exitT, accepted: true });
 
@@ -140,7 +140,7 @@ describe("Block auto evaluation per relation × count", () => {
       longH: 336,
       seatPer: "config" as const,
       // only the overall relation switched on manually; Auto decides each count once it has 4 results
-      block: { ...base.block, sources: { config: false, overall: true }, auto: { enabled: true, n: 10, min: 4, pf: 1.1 } },
+      block: { ...base.block, windowAuto: false, sources: { config: false, overall: true }, auto: { enabled: true, n: 10, min: 4, pf: 1.1 } },
       blockTrace: true,
     };
     const at = NOW - 2 * H + 10 * 60_000;

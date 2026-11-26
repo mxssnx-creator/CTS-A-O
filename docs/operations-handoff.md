@@ -1,5 +1,18 @@
 ## 2026-11-26 — Block Auto integrity and bounded windows
 
+The automatic Block count selector now actually evaluates each relation key independently, enforces the
+configured minimum of at least 30 observations, and retains bounded entry-stamped samples. Fresh settings
+enable it; explicit shared and fixed choices remain supported. Accepted-order feed replay preserves the
+entry-time attribution. See `docs/verification/block-auto-integrity-20261126.md` for tests and limitations.
+The earlier isolated replays used the previous selector and cannot certify this repair. A replay of the new
+source is required before reporting post-Base PF, validated percentage or settled execution PF.
+
+The first isolated replay (`45816167296`) stopped at the 7,500 MiB process RSS guard during Real setup
+after 2,680.86 seconds. Its requested 32 MiB history cache was ignored because the launcher used a different
+environment variable name. The store now accepts both spellings, the launcher uses the canonical one, and
+immutable-history validation retains less per-tape metadata. Synthetic measurements and regression coverage
+are documented in the verification file; the effect on the complete replay remains unmeasured.
+
 The one-worker replay of `9a97149e4bee2dd69614340dce1637fce158b7b0` with the same 12-symbol feed stopped
 at Base 13% when host available memory fell to 1,133 MiB; peak child RSS was 698,500 KiB. It produced no
 post-Base PF, passing/evaluated percentage or settled PF. A portable offline replay and a Stable-04-only

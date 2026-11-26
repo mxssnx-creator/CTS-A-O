@@ -51,7 +51,7 @@ const close = (cfg: string, r: number, sym = "AAA-USDT", side = 1, type = "norma
   ({ cfg, sym, side, kind: "osc", ind, r, type, accepted: true });
 
 // the config's own relations only (config-wide + its lane), as a desk sets them: the independence these cases check
-const own = { ...o, block: { ...o.block, auto: { enabled: false }, sources: {
+const own = { ...o, block: { ...o.block, windowAuto: false, auto: { enabled: false }, sources: {
   config: true, lane: true, overall: false, symbol: false, direction: false, indication: false, type: false, range: false } } };
 
 describe("Block: the config's own relations and the pooled ones under Auto", () => {
@@ -86,7 +86,7 @@ describe("Block: the config's own relations and the pooled ones under Auto", () 
 
   it("under the shipped Auto a pooled count raises only while its own record passes", () => {
     const a = tape(id(1), 5);
-    const shipped = { ...o, block: { ...o.block, auto: { enabled: true, n: 10, min: 4, pf: 1.1 } } };
+    const shipped = { ...o, block: { ...o.block, windowAuto: false, auto: { enabled: true, n: 10, min: 4, pf: 1.1 } } };
     const book = blockBookOf(shipped.block);
     // other configs' closes: three winners, then four that entered at that level and lost, then the level back up
     for (let i = 0; i < 3; i++) book.add({ ...close(id(2), 0.01, "BBB-USDT"), entryT: T0 + i * H - 1, exitT: T0 + i * H });

@@ -70,7 +70,7 @@ describe("Block sources", () => {
   });
 
   // the pooled-feed options judge the legacy candidate feed (an accepted-orders book takes accepted orders only)
-  const LEGACY_BLOCK: BlockConfig = { ...DEFAULT_BLOCK, historySource: "real-candidates" };
+  const LEGACY_BLOCK: BlockConfig = { ...DEFAULT_BLOCK, historySource: "real-candidates", windowAuto: false };
 
   it("levelMinWin: seven losses and one big win are level 8 on the sum, no level with a win share", () => {
     const xs = [-0.01, -0.01, -0.01, -0.01, -0.01, -0.01, -0.01, 0.2];

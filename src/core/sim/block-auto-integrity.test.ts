@@ -21,6 +21,7 @@ test("Block Auto requires 30 samples for each independent config and block count
 
 test("an accepted close with unknown unit return remains in its actual Block Auto window", () => {
   const book = blockBookOf({ ...DEFAULT_BLOCK, maxLevel: 1, historySource: "accepted-orders",
+    windowAuto: false,
     auto: { enabled: true, n: 3, min: 2, pf: 1.1, scope: "key" } });
   const close = (i: number, r: number): BlockBookEntry => ({ cfg: "follow|test|tp1", sym: "A", side: 1,
     kind: "trend", type: "normal", entryT: i * 2 + 1, exitT: i * 2 + 2, r, accepted: true });
@@ -40,6 +41,7 @@ test("an accepted close with unknown unit return remains in its actual Block Aut
 test("automatic count evaluation learns accepted closes even when recovery holding is disabled", () => {
   const book = blockBookOf({ ...DEFAULT_BLOCK, maxLevel: 1, historySource: "accepted-orders",
     windowAuto: true, window: 1, windowCandidates: [1, 2], holdUntilNet: false,
+    windowIndependent: false,
     auto: { enabled: true, n: 3, min: 2, pf: 1.1, scope: "key" } });
   const close = (i: number, r: number): BlockBookEntry => ({ cfg: "follow|test|tp1", sym: "A", side: 1,
     kind: "trend", type: "normal", entryT: i * 2 + 1, exitT: i * 2 + 2, r, accepted: true });

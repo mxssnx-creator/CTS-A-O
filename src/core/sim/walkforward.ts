@@ -3310,6 +3310,10 @@ export interface BlockFeedEntry {
   autoRaise?: number;
   /** windowAuto pause attribution: BLOCK_SOURCES bitmask per candidate window, stamped at entry. */
   autoSources?: number[];
+  /** Entry-time independent Block Auto levels, packed per source. */
+  autoLevels?: number;
+  /** Independent-window source masks use a versioned entry stamp. */
+  autoWindowVersion?: 1;
   /** Passed every actual Real entry gate; only settled accepted orders feed accepted-order Block history. */
   accepted?: boolean;
   /** Proven relation portions from the modeled accepted entry; absent legacy provenance is unknown. */
@@ -8167,7 +8171,8 @@ export function* walkForwardGen(
           const fe = blockEntryOf(tr, "candidate-unit");
           fx = { exitT: tr.exitT, ...fe, ...(tr.markedOpen ? { open: true } : {}) };
           // the auto window scores the windows on their levels now, at the entry (paper and the audit replay the stamps)
-          book?.stampEntry(fx);
+          // Accepted-only books can stamp after admission, avoiding per-candidate masks for rejected orders.
+          if (!book?.acceptedOnly || book.processedOnly) book?.stampEntry(fx);
           seen.set(fk, fx);
           vopen.push(fx.exitT, fx);
           if (!sigCfg(tr.cfg) && !isHistoricExitConfig(tr.cfg, tr.kind)) engineOpen.add(tr.sym, tr.side, 1);
@@ -8299,6 +8304,7 @@ export function* walkForwardGen(
         const active = !stage || stage.stage === "active";
         // Accepted Real feedback excludes warm-up orders that have not cleared both processed windows.
         fx.accepted = active;
+        if (active && book?.acceptedOnly && !book.processedOnly) book.stampEntry(fx);
         delete fx.relateShadow;
         if (dec.blockAttribution) fx.blockAttribution = dec.blockAttribution;
         // the sources that raised it pause once it closes positive (the feed entry carries them into the book)

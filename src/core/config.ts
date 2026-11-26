@@ -161,6 +161,10 @@ export const DEFAULT_BLOCK: BlockConfig = {
   },
   configScope: "config",
   auto: { enabled: true, n: 30, min: 30, pf: 1.1, scope: "key" },
+  windowAuto: true,
+  windowIndependent: true,
+  windowMinSamples: 30,
+  windowLookback: 300,
   mode: "overall",
   historySource: "accepted-orders",
   // Each raised Block group keeps its last applied extra volume until that group's realized extra net is recovered.

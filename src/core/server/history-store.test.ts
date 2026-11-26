@@ -26,6 +26,7 @@ import {
   HistoryStorageError,
   BoundedHistory,
   historyOf,
+  historyCacheBytes,
   transferHistoriesGen,
   readHistoryManifest,
 } from "./history-store.server.ts";
@@ -34,6 +35,12 @@ import { tapeOpenTimes } from "../sim/tape-open-times.ts";
 
 const end = Date.UTC(2026, 9, 17),
   H = 3_600_000;
+test("history cache accepts both configured spellings with canonical precedence", () => {
+  assert.equal(historyCacheBytes({ CTS_HISTORY_CACHE_MB: "32" }), 32 * 1024 * 1024);
+  assert.equal(historyCacheBytes({ CTS_CORE_HISTORY_CACHE_MB: "64" }), 64 * 1024 * 1024);
+  assert.equal(historyCacheBytes({ CTS_HISTORY_CACHE_MB: "", CTS_CORE_HISTORY_CACHE_MB: "64" }), 64 * 1024 * 1024);
+  assert.equal(historyCacheBytes({ CTS_HISTORY_CACHE_MB: "32", CTS_CORE_HISTORY_CACHE_MB: "64" }), 32 * 1024 * 1024);
+});
 function fixture() {
   const u = makeUniverse(
     ["A", "B"].flatMap((sym) => {

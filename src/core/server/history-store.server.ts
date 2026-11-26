@@ -28,13 +28,15 @@ const MiB = 1048576;
 /**
  * Decompressed column cache. 64 MiB thrashed on a 6-symbol replay (669 MiB of raw columns): every re-evaluated tape was
  * read, decompressed and checksummed again (~250 s of a 1,230 s profile). The budget follows the machine: 6 % of its
- * memory, between 64 MiB and 1 GiB; CTS_HISTORY_CACHE_MB (1–8192) sets it explicitly.
+ * memory, between 64 MiB and 1 GiB; CTS_HISTORY_CACHE_MB (1–8192) sets it explicitly. The longer
+ * CTS_CORE_HISTORY_CACHE_MB spelling is accepted too, since existing launchers already use it.
  */
 export const HISTORY_CACHE_BYTES = historyCacheBytes();
-function historyCacheBytes(): number {
-  const env = process.env.CTS_HISTORY_CACHE_MB;
-  if (env !== undefined && env !== "") {
-    const mb = Number(env);
+export function historyCacheBytes(env: NodeJS.ProcessEnv = process.env): number {
+  const value = env.CTS_HISTORY_CACHE_MB === undefined || env.CTS_HISTORY_CACHE_MB === ""
+    ? env.CTS_CORE_HISTORY_CACHE_MB : env.CTS_HISTORY_CACHE_MB;
+  if (value !== undefined && value !== "") {
+    const mb = Number(value);
     if (Number.isFinite(mb) && mb >= 1 && mb <= 8192) return Math.floor(mb * MiB);
   }
   const main = Math.max(64 * MiB, Math.min(1024 * MiB, Math.floor((totalmem() * 0.06) / MiB) * MiB));

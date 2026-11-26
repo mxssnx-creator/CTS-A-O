@@ -141,7 +141,7 @@ describe("Every Block relation learns final modeled Real admissions; direction g
 
 describe("automatic windows preserve entry-time accepted-order evidence and explicit candidate diagnostics", () => {
   const base = { ...DEFAULT_SETTINGS.block, historySource: "accepted-orders" as const, maxLevel: 1, minActiveLevel: 1, window: 1,
-    windowAuto: true, windowCandidates: [1], sources: { config: false, overall: true, symbol: true } };
+    windowAuto: true, windowIndependent: false, windowCandidates: [1], sources: { config: false, overall: true, symbol: true } };
   const own = { sym: "A", side: 1, kind: "osc", r: .01 };
   it("a rejected entry cannot enter accepted-order auto scores through a later winning candidate close", () => {
     const book = new AutoBlockBook(base);

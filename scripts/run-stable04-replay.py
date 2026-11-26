@@ -30,10 +30,12 @@ def main(out):
     (out / 'command.json').write_text(json.dumps(args, indent=2) + '\n')
     env = {k: v for k, v in os.environ.items() if not k.upper().startswith(('BINGX', 'BINANCE', 'BYBIT', 'OKX'))}
     env.update(CTS_CORE_STATE='off', CTS_CORE_AUTOSTART='0', CTS_CORE_LIVE='0', CTS_CORE_COMPARE='0', CTS_CORE_VARIANTS='0',
-               CTS_CORE_WORKERS='2', CTS_CORE_HISTORY_MEMORY_MB='64', CTS_CORE_HISTORY_CACHE_MB='32', CTS_CORE_DERIVED_CACHE_MB='64',
+               CTS_CORE_WORKERS='2', CTS_CORE_HISTORY_MEMORY_MB='64', CTS_HISTORY_CACHE_MB='32', CTS_CORE_DERIVED_CACHE_MB='64',
                CTS_CORE_HISTORY_DIR=str(spill), TMPDIR=str(spill), CTS_CORE_MEM_RSS_SOFT_MB='6500', CTS_CORE_MEM_RSS_HARD_MB='7500',
                CTS_CORE_TAPE_MEMORY_TRACE='1', MALLOC_ARENA_MAX='2', MALLOC_MMAP_THRESHOLD_='1048576',
                NODE_OPTIONS='--max-old-space-size=5500 --require ' + str(ROOT / 'scripts/lib/core-test-offline-guard.cjs'))
+    print(json.dumps({'historyCacheMiB': 32, 'historyResidentMiB': 64, 'derivedCacheMiB': 64,
+                      'rssSoftMiB': 6500, 'rssHardMiB': 7500, 'workers': 2}), flush=True)
     start = time.monotonic()
     started = datetime.datetime.now(datetime.timezone.utc).isoformat()
     reason = None
@@ -57,6 +59,8 @@ def main(out):
                     read_log.seek(cursor)
                     new_log = read_log.read()
                     cursor = read_log.tell()
+                if new_log:
+                    print(new_log, end='', flush=True)
                 if 'compute aborted' in new_log:
                     reason = 'memory guard aborted compute; incomplete fallback refused'
                     os.killpg(proc.pid, signal.SIGTERM)
@@ -69,6 +73,11 @@ def main(out):
         except subprocess.TimeoutExpired:
             os.killpg(proc.pid, signal.SIGKILL)
             proc.wait()
+        with (out / 'run.log').open() as read_log:
+            read_log.seek(cursor)
+            final_log = read_log.read()
+            if final_log:
+                print(final_log, end='', flush=True)
     # The process might exit between polls; inspect the final tail as well.
     if reason is None and 'compute aborted' in (out / 'run.log').read_text(errors='replace'):
         reason = 'memory guard aborted compute; incomplete fallback refused'

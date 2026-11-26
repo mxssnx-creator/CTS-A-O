@@ -47,6 +47,12 @@ try {
   const thinStops = Array.from({ length: 11 }, (_, i) => (i + 2) / 10);
   for (const range of ['micro', 'minimal', 'short']) assert.deepEqual(rt.settings.grid[range].slOfTp, thinStops);
   assert.deepEqual(rt.settings.block.auto, { enabled: true, n: 30, min: 30, pf: 1.1, scope: 'key' });
+  assert.equal(rt.settings.block.windowAuto, true);
+  assert.equal(rt.settings.block.windowIndependent, true);
+  assert.equal(rt.settings.block.windowMinSamples, 30);
+  assert.equal(rt.wf.block.windowAuto, true);
+  assert.equal(rt.wf.block.windowIndependent, true);
+  assert.equal(rt.wf.block.windowMinSamples, 30);
   assert.equal(rt.settings.gates.stepPf.enabled, true);
   assert.equal(rt.settings.gates.stepPf.mode, 'auto');
   assert.equal(rt.wf.preH, 24);

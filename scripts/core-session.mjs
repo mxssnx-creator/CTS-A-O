@@ -928,6 +928,11 @@ async function runEngine() {
     if (Date.now() - lastLog > 30_000) {
       lastLog = Date.now();
       process.stderr.write(`  [${Math.round((Date.now() - t0) / 1000)} s] ${progressLine()}\n`);
+      if (process.env.CTS_CORE_TAPE_MEMORY_TRACE === "1") {
+        const m = process.memoryUsage(), mb = (n) => Math.round(n / 1048576);
+        process.stderr.write(`[session-memory] ${JSON.stringify({ rssMb: mb(m.rss), heapMb: mb(m.heapUsed),
+          externalMb: mb(m.external), buffersMb: mb(m.arrayBuffers), stage: rt.status.stage })}\n`);
+      }
     }
   }
   // the dump reads the paper step's seats (rt.paper.selected), and that step runs after the compute in the same

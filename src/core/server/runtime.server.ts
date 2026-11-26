@@ -2924,6 +2924,7 @@ export class CoreRuntime {
     const prevCompute = computeKey(this.settings, this.wf);
     const next = mergeSettings(this.settings, patch);
     if(patch.gates) checkSettings({gates:next.gates});
+    if (patch.block) checkSettings({ block: next.block });
     if (patch.grid) {
       checkLowRangeComplete(next.grid);
       checkRangeReplacementsComplete(next.grid);
