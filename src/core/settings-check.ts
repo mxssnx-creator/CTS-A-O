@@ -686,6 +686,12 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       int(s.relate.minTrades, "Relate minimum trades");
       num(s.relate.minTrades, 60, 250, "Relate minimum trades");
     }
+    if (s.relate.recoveryMinTrades !== undefined) {
+      int(s.relate.recoveryMinTrades, "Relate recovery trades");
+      num(s.relate.recoveryMinTrades, 6, s.relate.lastN ?? 250, "Relate recovery trades");
+    }
+    if (s.relate.recoveryMaxDrawdown !== undefined)
+      num(s.relate.recoveryMaxDrawdown, 0, 1, "Relate maximum recovery drawdown");
     if (s.relate.minTrades !== undefined && s.relate.lastN !== undefined && s.relate.minTrades > s.relate.lastN)
       throw new Error("Relate minimum trades must not exceed last-N");
     if (s.relate.maxStack !== undefined) {

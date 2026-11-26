@@ -96,7 +96,7 @@ describe("Relate realtime learning", () => {
       hooks.tapes = [tape(trade(61 * H))];
       hooks.paper.selected = [id.cfg];
       hooks.lastSelection = { picks: [{ id: id.cfg, score: 1, window: { n: 60, net: 1, pf: 2, ddt: 0 } }], eligible: 1 };
-      assert.equal(hooks.booksAt()(61 * H).relate!.decide(id).volume, 1, "the relation is below its active step");
+      assert.equal(hooks.booksAt()(61 * H).relate!.preview(id).volume, 1, "the relation is below its active step");
       const row = trade(61 * H);
       const open: OpenPosition = { ...row, entryI: 0, stop: 99, target: 101, peak: 100, trailOn: false, mtm: 0 };
       drain(hooks.stepPaperGen({ opens: new Map([[id.cfg, [open]]]), t: row.entryT }));
@@ -159,7 +159,7 @@ describe("Relate realtime learning", () => {
     try {
       for (let i = 0; i < 1; i++) {
         const row = trade((61 + i) * H, -.001);
-        const before = hooks.booksAt()(row.entryT).relate!.decide(id);
+        const before = hooks.booksAt()(row.entryT).relate!.preview(id);
         // a pending shadow from before the change (or a restarted desk) still replays into its own progression
         assert.equal(before.volume, 1, "below the active step");
         hooks.relateShadowPending.set(orderKey(row), { entryT: row.entryT, base: 1, parts: before.parts });
@@ -170,9 +170,12 @@ describe("Relate realtime learning", () => {
         assert.equal(hooks.relateShadowPending.has(orderKey(row)), false);
       }
       const book = hooks.booksAt()(64 * H).relate!;
-      const next = book.decide(id);
+      const next = book.preview(id);
       assert.equal(next.allowed, true);
       assert.equal(next.volume, 1.44);
+      const guarded = book.decide(id, 1, 64 * H);
+      assert.equal(guarded.levels.config, 2);
+      assert.equal(guarded.volume, 1, "legacy shadow evidence alone does not qualify the size increase");
       assert.equal(book.summary().closes, 60);
       assert.equal(book.summary().shadowCloses, 1);
       assert.equal(hooks.realtimeLearning!.accepted.length, 0);
@@ -195,7 +198,7 @@ describe("Relate realtime learning", () => {
       assert.equal(stored.accepted, true);
       assert.equal(stored.relateBase, 3);
       assert.equal(stored.relateParts?.config?.volume, 3.6);
-      const next = hooks.booksAt()(63 * H).relate!.decide(id, 2);
+      const next = hooks.booksAt()(63 * H).relate!.preview(id, 2);
       assert.equal(next.volume, 2.16);
       assert.equal(hooks.realtimeLearning!.accepted[0].mult, 3.6);
     } finally {

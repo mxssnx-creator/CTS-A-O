@@ -4797,11 +4797,19 @@ export function SettingsPage() {
             </Field>
             <Field label="Last-N evaluation" hint="Executed-close window. The supported range is 60–250; default 250.">
               <Num int min={60} max={250} value={s.relate.lastN}
-                onChange={(v) => set(["relate"], { ...s.relate, lastN: v, minTrades: Math.min(s.relate.minTrades, v) })} />
+                onChange={(v) => set(["relate"], { ...s.relate, lastN: v, minTrades: Math.min(s.relate.minTrades, v), recoveryMinTrades: Math.min(s.relate.recoveryMinTrades ?? 12, v) })} />
             </Field>
             <Field label="Minimum sample" hint="The relation needs at least this many executed closes before PF is judged; minimum 60 and no more than Last-N.">
               <Num int min={60} max={s.relate.lastN} value={s.relate.minTrades}
                 onChange={(v) => set(["relate", "minTrades"], v)} />
+            </Field>
+            <Field label="Relate recovery closes" hint="minimum closes at the same loss step, split into earlier and later samples">
+              <Num int min={6} max={s.relate.lastN} value={s.relate.recoveryMinTrades ?? 12}
+                onChange={(v) => set(["relate"], { ...s.relate, recoveryMinTrades: v })} />
+            </Field>
+            <Field label="Relate maximum recovery drawdown" hint="fraction of gross sized profit allowed as drawdown in each sample">
+              <Num min={0} max={1} step={.05} value={s.relate.recoveryMaxDrawdown ?? .5}
+                onChange={(v) => set(["relate"], { ...s.relate, recoveryMaxDrawdown: v })} />
             </Field>
             <Field label="Max external stack × base" hint="Caps the combined Block, coordination, strategy, range, and Relate sizing groups whether Relate adjustments are on or off. The same 8× limit includes possible DCA and Axis ladder fills, which reserve a smaller external base. Venue minimums and account risk caps still apply.">
               <Num int step={1} min={1} max={MAX_EXTERNAL_STACK} value={s.relate.maxStack}

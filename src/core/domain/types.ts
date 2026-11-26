@@ -303,7 +303,7 @@ export type RelateSource =
   | "range";
 
 /** Entry-time logical volume of one relation in original-base units. Shadow portions do not claim an execution. */
-export type RelateParts = Partial<Record<RelateSource, { volume: number; level: number; shadow?: true }>>;
+export type RelateParts = Partial<Record<RelateSource, { volume: number; level: number; shadow?: true; trialSize?: number }>>;
 
 /** Settled-order volume adjustment. It is deliberately disabled until a desk opts in. */
 export interface RelateAdjustmentConfig {
@@ -326,6 +326,10 @@ export interface RelateAdjustmentConfig {
   lastN: number;
   /** Minimum sample before the PF window is judged; 60–lastN. */
   minTrades: number;
+  /** Minimum timed outcomes at the same loss step, shared between two chronological cohorts. */
+  recoveryMinTrades?: number;
+  /** Maximum drawdown as a fraction of gross sized profit in either recovery cohort. */
+  recoveryMaxDrawdown?: number;
   /** Modeled total multiplier ceiling, reserving capacity for intrinsic ladder fills as well as external factors. */
   maxStack: number;
   /** Maximum original-entry stop distance for a modeled Relate raise, as a fraction of entry. */

@@ -57,7 +57,7 @@ test("folded Auto scoring matches every scalar ratio/step/Active candidate on va
         strategy: false, coordination: false, range: false } };
     const book = new RelateBook(config);
     for (const r of rows) book.add({ ...identity, r, accepted: true, relateMeasured: true, relateBase: 1 });
-    const actual = book.decide(identity).choices.config;
+    const actual = book.preview(identity).choices.config;
     const expected = exhaustive(rows, scenario.cap, scenario.steps, config.minPf);
     assert.ok(actual && expected);
     assert.deepEqual([actual.ratio, actual.steps, actual.activeStep, actual.n, actual.pf, actual.positiveRate],
@@ -78,7 +78,7 @@ test("overflow in deeper hypothetical ladders still selects the closest finite c
   rows[16] = 4e307;
   const book = new RelateBook(config);
   for (const r of rows) book.add({ ...identity, r, accepted: true, relateMeasured: true, relateBase: 1 });
-  const choice = book.decide(identity).choices.config;
+  const choice = book.preview(identity).choices.config;
   assert.ok(choice);
   assert.equal(choice.ratio, .2);
   assert.equal(choice.steps, 8);

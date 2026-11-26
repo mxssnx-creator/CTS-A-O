@@ -1,3 +1,9 @@
+## 2026-11-26 — Same-step Relate recovery qualification
+
+Relate now stamps the proposed loss step and size before entry. Each exact Set and contributing Overall relation qualifies from its own bounded, after-cost history. Two chronological groups at the same loss step must pass the configured return PF, size-weighted PF and drawdown limits. Relate Active advances its internal loss steps while withholding its volume addition. The existing modeled and paper orders retain their own captured allocation when they settle.
+
+A bounded eight-symbol, 1-minute Normal and Trailing replay used 25 November 2026 00:00–12:00 UTC for prehistory and 12:00–24:00 UTC for trading. Base passed 0 of 144 tested EMA, RSI and MACD protection cells (0%). Post-Base PF and the validation percentage were unavailable because no post-Base configs were evaluated. All three arms opened zero modeled positions and orders. There were no exchange fills. The synthetic 50-symbol close-and-sizing benchmark measured 0.251 ms at p95 with 250 closes retained per relation. The benchmark measures calculation cost.
+
 ## 2026-11-26 — Relate loss progression, Overall and Active
 
 Relate now progresses on settled losses with a fresh default of 12 steps. A win or flat close resets its relation. Overall evaluates all relation windows and each entry needs its own qualified exact Set. Shared mode allocates the increase using configured relation weights. Relate Active suppresses its sizing portion until the required loss count while the base trade and internal close tracking continue. Auto requires the historical unit PF and hypothetical sized PF to clear the configured floor.

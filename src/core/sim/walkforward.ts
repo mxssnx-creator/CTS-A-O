@@ -3469,6 +3469,7 @@ export function feedBooks(
       coordination: isSignalCoordinationInd(e.ind) ? (e.cfg.split("|")[0] ?? "signal") : "ordinary",
       range: rangeOfId(e.cfg) || "wide",
       r: e.r,
+      closedAt: e.exitT,
       accepted: e.accepted === true,
       relateMeasured: e.relateMeasured,
       relateBase: e.relateBase,
@@ -6233,7 +6234,7 @@ export function execDecision(
       strategy: tp.kind,
       coordination: isSignalCoordinationInd(tp.ind) ? tp.bot : "ordinary",
       range: tp.protect.tag ?? "wide",
-    }, base);
+    }, base, entryT);
     if (!relation.allowed)
       return { ok: false, why: "relateActive", relateParts: relation.parts, relateBaseVol: decision.vol, relateBase: base };
     // Active gates every entry independently of raise eligibility. When the path cannot prove this limit,

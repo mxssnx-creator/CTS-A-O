@@ -209,6 +209,8 @@ export const DEFAULT_RELATE_ADJUSTMENT: RelateAdjustmentConfig = {
   minPf: 1.5,
   lastN: 250,
   minTrades: 60,
+  recoveryMinTrades: 12,
+  recoveryMaxDrawdown: 0.5,
   maxStack: MAX_EXTERNAL_STACK,
   maxSl: 0.0075,
   sources: {

@@ -93,11 +93,11 @@ test("Relate and direction books do not borrow Exit, sibling Exit, or ordinary r
   const ordinary = { ...identity, cfg: normal, strategy: "normal" };
   const sibling = { ...identity, cfg: exitB };
   relate.add({ ...identity, r: .02, accepted: true, relateMeasured: true, relateBase: 1 });
-  assert.equal(relate.decide(identity).stats.overall?.n, 1);
-  assert.equal(relate.decide(ordinary).stats.overall?.n, 0);
-  assert.equal(relate.decide(sibling).stats.overall?.n, 0);
+  assert.equal(relate.preview(identity).stats.overall?.n, 1);
+  assert.equal(relate.preview(ordinary).stats.overall?.n, 0);
+  assert.equal(relate.preview(sibling).stats.overall?.n, 0);
   relate.add({ ...ordinary, r: -.01, accepted: true, relateMeasured: true, relateBase: 1 });
-  assert.equal(relate.decide(identity).stats.overall?.n, 1);
+  assert.equal(relate.preview(identity).stats.overall?.n, 1);
   const direction = new CandidateDirectionBook();
   direction.add(row(exitA, "exit", -.01));
   assert.equal(direction.tailSum(1, 1).n, 0);

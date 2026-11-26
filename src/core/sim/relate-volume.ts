@@ -1,3 +1,4 @@
+import { DEFAULT_RELATE_RECOVERY_TRADES, DEFAULT_RELATE_RECOVERY_DRAWDOWN, recoveryQualified, type RelateTrial } from "../../../shared/cts-relate/recovery.ts";
 import type { Protect, RelateAdjustmentConfig, RelateParts, RelateSource, StratKind } from "../domain/types.ts";
 import { MAX_EXTERNAL_STACK } from "../config.ts";
 import { exitScopeSuffix } from "../exit-scope.ts";
@@ -82,6 +83,7 @@ export interface RelateIdentity {
 
 export interface RelateBookEntry extends RelateIdentity {
   r: number;
+  closedAt?: number;
   accepted?: boolean;
   /** True only when the entry's relation parts were captured, including an explicitly neutral entry. */
   relateMeasured?: boolean;
@@ -196,14 +198,14 @@ export function capRelateParts(parts: RelateParts, total: number, shadowCap = MA
   const out: RelateParts = {};
   for (const { source, part } of entries) {
     const extra = Math.min(left, Math.round(Math.max(0, part.volume - base) * scale * 1e12) / 1e12);
-    out[source] = { volume: Math.min(totalUnits, Math.round((baseUnits + extra) * 1e12) / 1e12), level: part.level };
+    out[source] = { volume: Math.min(totalUnits, Math.round((baseUnits + extra) * 1e12) / 1e12), level: part.level, ...(part.trialSize !== undefined && { trialSize: part.trialSize }) };
     left = Math.max(0, left - extra);
   }
   for (const source of RELATE_SOURCES) {
     const part = parts[source];
     if (part?.shadow && Number.isFinite(part.volume) && part.volume > 0 &&
         Number.isInteger(part.level) && part.level >= 0 && part.level <= 15)
-      out[source] = { volume: Math.max(baseUnits, Math.min(cap, part.volume)), level: part.level, shadow: true };
+      out[source] = { volume: Math.max(baseUnits, Math.min(cap, part.volume)), level: part.level, shadow: true, ...(part.trialSize !== undefined && { trialSize: part.trialSize }) };
   }
   return out;
 }
@@ -286,9 +288,17 @@ function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig, stats: R
   return best;
 }
 
+interface RelateTrialWindow {
+  latestAt: number;
+  revision: number;
+  rows: RelateTrial[];
+  revisions: number[];
+}
+
 /** Causal settled-order history for the Relate volume adjustment. Only accepted, closed entries are admitted. */
 export class RelateBook {
   private readonly histories = new Map<string, number[]>();
+  private readonly trials = new Map<string, RelateTrialWindow>();
   private readonly cachedStats = new Map<string, RelateSourceStats>();
   private readonly selected: readonly RelateSource[];
   private readonly tracked: readonly RelateSource[];
@@ -335,6 +345,29 @@ export class RelateBook {
     }
   }
 
+  private recordTrial(key: string, e: RelateBookEntry, source: RelateSource): void {
+    let window = this.trials.get(key);
+    if (!window && e.closedAt !== undefined && Number.isFinite(e.closedAt)) {
+      window = { latestAt: 0, revision: 0, rows: [], revisions: [] };
+      this.trials.set(key, window);
+    }
+    if (!window) return;
+    const revision = ++window.revision;
+    const part = e.relateParts?.[source];
+    if (e.closedAt !== undefined && Number.isFinite(e.closedAt) && e.closedAt >= window.latestAt) {
+      window.latestAt = e.closedAt;
+      if (e.relateMeasured === true && part && part.level > 0 &&
+          part.trialSize !== undefined && Number.isFinite(part.trialSize) && part.trialSize >= 1) {
+        window.rows.unshift([e.closedAt, part.level, Number.isFinite(e.r) ? e.r : null, part.trialSize]);
+        window.revisions.unshift(revision);
+      }
+    }
+    while (window.revisions.length && window.revisions.at(-1)! <= revision - this.config.lastN) {
+      window.rows.pop();
+      window.revisions.pop();
+    }
+  }
+
   add(e: RelateBookEntry): void {
     if (e.accepted !== true) return;
     const keys = sourceKeys(e);
@@ -344,6 +377,7 @@ export class RelateBook {
       let rows = this.histories.get(key);
       if (!rows) this.histories.set(key, (rows = []));
       rows.push(Number.isFinite(e.r) ? e.r : NaN);
+      this.recordTrial(key, e, source);
       if (rows.length > this.config.lastN) rows.splice(0, rows.length - this.config.lastN);
       this.recordPrevious(key, e.r, e.relateParts?.[source], e.relateMeasured === true, e.relateBase);
       const revision = (this.keyRevisions.get(key) ?? 0) + 1;
@@ -377,7 +411,16 @@ export class RelateBook {
     return choice;
   }
 
-  decide(x: RelateIdentity, base = 1): RelateDecision {
+  /** Preview the uncensored volume calculation for diagnostics. */
+  preview(x: RelateIdentity, base = 1): RelateDecision {
+    return this.plan(x, base);
+  }
+
+  decide(x: RelateIdentity, base: number, before: number): RelateDecision {
+    return this.plan(x, base, Number.isFinite(before) ? before : 0);
+  }
+
+  private plan(x: RelateIdentity, base: number, before?: number): RelateDecision {
     const levels: Partial<Record<RelateSource, number>> = {};
     const stats: Partial<Record<RelateSource, RelateSourceStats>> = {};
     const choices: Partial<Record<RelateSource, RelateAutoChoice>> = {};
@@ -386,8 +429,13 @@ export class RelateBook {
       return { volume: 1, allowed: false, level: 0, levels, stats, choices, parts: {}, maxStack: cap };
     const baseUnits = Math.min(base, cap);
     const extras: Array<{ source: RelateSource; level: number; volume: number; activeStep: number;
-      qualified: boolean; previousKnown: boolean }> = [];
+      qualified: boolean; previousKnown: boolean; trialSize?: number }> = [];
     const keys = sourceKeys(x);
+    const divisor = this.config.mode === "shared" ? this.totalWeight : 1;
+    const minTrials = this.config.recoveryMinTrades ?? DEFAULT_RELATE_RECOVERY_TRADES;
+    const maxDrawdown = this.config.recoveryMaxDrawdown ?? DEFAULT_RELATE_RECOVERY_DRAWDOWN;
+    const timed = before !== undefined;
+    let exactRecovery = false;
     const floor = Math.max(this.config.minPf, 1.000001);
     const exactKey = keys.config!;
     const own = this.recent(exactKey, this.histories.get(exactKey) ?? []);
@@ -404,16 +452,25 @@ export class RelateBook {
       const ratio = choice?.ratio ?? this.config.ratio;
       const steps = choice?.steps ?? this.config.steps;
       const activeStep = choice?.activeStep ?? this.config.activeStep;
-      const qualified = selected && this.weight(source) > 0 && exactQualified && (this.config.auto
+      const eligible = selected && this.weight(source) > 0 && exactQualified && (this.config.auto
         ? choice !== null
         : recent.n >= this.config.minTrades && recent.pf >= floor);
-      const prior = this.previous.get(key);
-      const level = qualified && prior?.loss ? Math.min(steps, prior.level + 1) : 0;
-      const volume = qualified && prior?.loss
+      const evidence = this.trials.get(key);
+      const prior = !timed || (evidence?.latestAt ?? 0) < before ? this.previous.get(key) : undefined;
+      const progress = (timed || eligible) && prior?.loss;
+      const level = progress ? Math.min(steps, prior.level + 1) : 0;
+      const volume = progress
         ? Math.max(baseUnits, Math.min(cap, prior.level < steps ? prior.volume * (1 + ratio) : prior.volume))
         : baseUnits;
+      const share = selected && this.weight(source) > 0 && divisor > 0 ? this.weight(source) / divisor : 1;
+      const trialSize = timed && level > 0
+        ? Math.min(cap, baseUnits + (volume - baseUnits) * share) / baseUnits : undefined;
+      const proved = timed && exactQualified && recent.pf >= floor && level >= Math.max(1, activeStep) &&
+        !!evidence && recoveryQualified(evidence.rows, level, before, 0, minTrials, floor, maxDrawdown);
+      if (source === "config") exactRecovery = proved && level >= activeStep;
+      const qualified = eligible && (!timed || exactRecovery && proved);
       levels[source] = level;
-      extras.push({ source, level, volume, activeStep, qualified, previousKnown: !!prior });
+      extras.push({ source, level, volume, activeStep, qualified, previousKnown: !!prior, trialSize });
     }
 
     // Before a relation has qualified evidence and a known previous entry, base orders can build that evidence.
@@ -423,17 +480,23 @@ export class RelateBook {
     // recorded as shadow below, so its evidence keeps building), but it never vetoes the entry's own base volume —
     // Normal / Trailing / DCA / Axis keep trading their unit. Only an unknown base volume rejects (above).
     const allowed = true;
-    const divisor = this.config.mode === "shared" ? this.totalWeight : 1;
     const requested: RelateParts = {};
     let chosen = 0;
     for (const x of admitted) if (x.level > 0 && divisor > 0) {
       const extra = Math.max(0, x.volume - baseUnits) * this.weight(x.source) / divisor;
-      requested[x.source] = { volume: baseUnits + extra, level: x.level };
+      requested[x.source] = { volume: baseUnits + extra, level: x.level,
+        ...(x.trialSize !== undefined && { trialSize: x.trialSize }) };
       chosen += extra;
     }
     for (const x of ready)
       if (x.activeStep > 0 && x.level < x.activeStep)
         requested[x.source] = { volume: x.volume, level: x.level, shadow: true };
+    if (timed) for (const x of extras) {
+      if (!requested[x.source] && x.trialSize !== undefined)
+        requested[x.source] = { volume: baseUnits * x.trialSize, level: x.level, shadow: true, trialSize: x.trialSize };
+      else if (requested[x.source]?.shadow && x.trialSize !== undefined)
+        requested[x.source]!.trialSize = x.trialSize;
+    }
     const total = Math.min(cap, Math.round((baseUnits + chosen) * 1e12) / 1e12);
     const multiplier = total / base;
     return {
