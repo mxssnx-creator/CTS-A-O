@@ -89,3 +89,13 @@ The index now applies that same permutation in place and yields during long rear
 one-million-event comparison used 27,857,121 bytes of peak array buffers before and 16,000,000 bytes after;
 the recorded dirty-tape ordering checksum matched. Randomized tests cover equal timestamps, strict boundaries
 and backward clocks. The isolated replay must still measure actual peak RSS and elapsed time.
+
+An independent-Block CPU profile identified repeated candidate-window scoring as a hotspot. Each candidate now
+caches its exact score until a retained return changes, preserving the original physical addition order. Replacing a
+ring slot with the same value advances the ring without recomputing an unchanged score. A scalar oracle covered
+wraparound, unknown/overflow outcomes and caller mutation; 14,400 mixed entries across eight scenarios matched
+16,512 before/after source states. A separate trace checksum matched as well. In isolated 200-config, 180,000-entry
+benchmarks, repeated returns took 14,582 ms before and 5,727 ms after (7,703,176 vs 7,778,896 retained heap bytes),
+while varied returns took 13,736 ms before and 7,821 ms after (7,684,664 vs 7,762,280 bytes). Both decision
+checksums matched. `scripts/perf/benchmark-independent-block.mjs` reproduces these synthetic workloads; these
+measurements do not establish full-session speed, memory usage or profit factor.

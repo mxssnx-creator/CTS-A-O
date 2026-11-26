@@ -44,6 +44,38 @@ test("automatic counts use each relation key's own attributed, bounded sample an
   assert.equal(book.scoresForKey(bs)[1].n, 35, "each candidate's retention is bounded to last-N");
 });
 
+test("independent scores stay exact after repeated slots, wraparound, unknown results and returned-value mutation", () => {
+  const book = new AutoBlockBook({ ...policy, windowMinSamples: 30, windowLookback: 30 }, false);
+  const mask = bit("symbol"), sample = row("A", "cfg-A", 0, [], 0), key = book.keyOf("symbol", sample);
+  const rings = [0, 1].map(() => ({ values: [] as number[], next: 0 }));
+  const pf = (xs: number[]): number | null => {
+    if (xs.length < 30) return null;
+    let gp = 0, gl = 0;
+    for (const x of xs) {
+      if (!Number.isFinite(x)) return null;
+      if (x > 0) gp += x; else gl -= x;
+    }
+    if (!Number.isFinite(gp) || !Number.isFinite(gl) || (gp === 0 && gl === 0)) return null;
+    const value = gl > 0 ? gp / gl : gp > 0 ? Infinity : 0;
+    return gl > 0 && !Number.isFinite(value) ? null : value;
+  };
+  for (let i = 0; i < 260; i++) {
+    const value = i === 120 ? NaN : i === 165 ? Infinity : i >= 190 && i < 225 ? 1e308 : i % 30 < 20 ? .01 : -.02;
+    const masks = [mask, i % 3 ? mask : 0];
+    book.add(row("A", "cfg-A", value, masks, i));
+    for (let j = 0; j < rings.length; j++) if (masks[j]) {
+      const ring = rings[j];
+      if (ring.values.length < 30) ring.values.push(value);
+      else { ring.values[ring.next] = value; ring.next = (ring.next + 1) % 30; }
+    }
+    const expected = rings.map((ring, j) => ({ window: j + 1, n: ring.values.length, pf: pf(ring.values) }));
+    const scores = book.scoresForKey(key);
+    assert.deepEqual(scores, expected, `score mismatch after close ${i}`);
+    scores[0].pf = -99;
+    assert.deepEqual(book.scoresForKey(key), expected, "caller-owned result cannot mutate a stored score");
+  }
+});
+
 test("the explicitly shared policy also honors a configured minimum above 30", () => {
   const book = new AutoBlockBook({ ...policy, windowIndependent: false, windowCandidates: [1] }, false);
   for (let i = 0; i < 34; i++) book.add(row("A", "cfg-A", 1, [bit("symbol")], i));

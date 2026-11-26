@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 const root = process.argv[2];
 const { DEFAULT_BLOCK } = await import(pathToFileURL(root + '/src/core/config.ts'));
-const { AutoBlockBook, sourceKey, BLOCK_SOURCES } = await import(pathToFileURL(root + '/src/core/sim/block.ts'));
+const { AutoBlockBook, BLOCK_SOURCES } = await import(pathToFileURL(root + '/src/core/sim/block.ts'));
 const hash = createHash('sha256');
 let seed = 134268;
 const rnd = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
@@ -21,9 +21,9 @@ for (const independent of [false, true]) for (const windowHours of [0, 2]) for (
     book.add(x, i % 11 === 0);
     if (i % 7 === 0) {
       const result = BLOCK_SOURCES.map(source => {
-        const key = sourceKey(source, x);
+        const key = book.keyOf(source, x);
         return [book.level(key, 4), book.windowOf(key, 4), book.paused(key), book.sampleCount(key, 4),
-          book.tailSum(key, 6), book.sourceScores(key)];
+          book.tailSum(key, 6), book.scoresForKey(key)];
       });
       hash.update(JSON.stringify([result, book.scores()]));
     }

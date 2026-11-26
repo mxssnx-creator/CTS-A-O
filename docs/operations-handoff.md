@@ -14,6 +14,10 @@ immutable-history validation retains less per-tape metadata. The Real close-time
 sorted columns in place, avoiding a second full pair of event arrays. Synthetic measurements and regression coverage
 are documented in the verification file; the effect on the complete replay remains unmeasured.
 
+Independent Block window scores now retain exact cached results until the underlying ring changes. Focused
+before/after traces and synthetic CPU/heap measurements are in the verification file. The updated 12-symbol
+replay runs independently of the previous compact-index replay, which is retained as a baseline.
+
 The one-worker replay of `9a97149e4bee2dd69614340dce1637fce158b7b0` with the same 12-symbol feed stopped
 at Base 13% when host available memory fell to 1,133 MiB; peak child RSS was 698,500 KiB. It produced no
 post-Base PF, passing/evaluated percentage or settled PF. A portable offline replay and a Stable-04-only

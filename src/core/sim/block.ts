@@ -718,7 +718,7 @@ const bookOpts = (b: BlockConfig): BlockBookOpts => ({
 
 export const DEFAULT_WINDOW_CANDIDATES: readonly number[] = [5, 10, 15, 25, 35];
 
-type WindowRing = { values: number[]; next: number };
+type WindowRing = { values: number[]; next: number; cachedPf?: number | null };
 type IndependentWindowState = { recent: Array<WindowRing | undefined>; cur: number };
 
 /**
@@ -877,9 +877,21 @@ export class AutoBlockBook extends BlockBook {
           if (!pooled && !isOwnKey(key)) continue;
           const state = this.independentState(key);
           const ring = state.recent[i] ??= { values: [], next: 0 };
-          if (ring.values.length < this.lookback) ring.values.push(t.r);
-          else { ring.values[ring.next] = t.r; ring.next = (ring.next + 1) % this.lookback; }
-          changed.add(key);
+          if (ring.values.length < this.lookback) {
+            ring.values.push(t.r);
+            if (ring.cachedPf !== undefined) ring.cachedPf = undefined;
+            changed.add(key);
+          } else {
+            const at = ring.next, differs = !Object.is(ring.values[at], t.r);
+            ring.values[at] = t.r;
+            ring.next = (at + 1) % this.lookback;
+            // The physical score order is unchanged when an equal value replaces the slot. Advancing the
+            // ring pointer still matters for the next close, but cannot change this candidate's current PF.
+            if (differs) {
+              if (ring.cachedPf !== undefined) ring.cachedPf = undefined;
+              changed.add(key);
+            }
+          }
         }
       }
       this.books[i].add(mask === undefined ? t : {
@@ -916,17 +928,21 @@ export class AutoBlockBook extends BlockBook {
   scoresForKey(key: string): Array<{ window: number; n: number; pf: number | null }> {
     const state = this.independentStates.get(key);
     return this.windows.map((window, i) => {
-      const xs = state?.recent[i]?.values ?? [];
+      const ring = state?.recent[i], xs = ring?.values ?? [];
       if (xs.length < this.minSamples) return { window, n: xs.length, pf: null };
+      if (ring?.cachedPf !== undefined) return { window, n: xs.length, pf: ring.cachedPf };
       let gp = 0, gl = 0;
       for (const x of xs) {
-        if (!Number.isFinite(x)) return { window, n: xs.length, pf: null };
+        if (!Number.isFinite(x)) { ring!.cachedPf = null; return { window, n: xs.length, pf: null }; }
         if (x > 0) gp += x; else gl -= x;
       }
-      if (!Number.isFinite(gp) || !Number.isFinite(gl)) return { window, n: xs.length, pf: null };
-      if (gp === 0 && gl === 0) return { window, n: xs.length, pf: null };
+      if (!Number.isFinite(gp) || !Number.isFinite(gl) || (gp === 0 && gl === 0)) {
+        ring!.cachedPf = null;
+        return { window, n: xs.length, pf: null };
+      }
       const pf = gl > 0 ? gp / gl : gp > 0 ? Infinity : 0;
-      return { window, n: xs.length, pf: gl > 0 && !Number.isFinite(pf) ? null : pf };
+      ring!.cachedPf = gl > 0 && !Number.isFinite(pf) ? null : pf;
+      return { window, n: xs.length, pf: ring!.cachedPf };
     });
   }
   private chooseKey(key: string): void {
