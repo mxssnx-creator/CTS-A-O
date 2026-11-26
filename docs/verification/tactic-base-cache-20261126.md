@@ -36,3 +36,17 @@ the bounded version 54 ms with identical checksum
 2,728 ms to 2,369 ms with identical output; observed peak RSS was 303,612 versus 336,028 KiB. These individual
 measurements do not establish the complete runtime or peak memory. `scripts/perf/percentile-rank-bench.mjs` repeats
 the scalar comparison.
+
+The feature scan validated the same candle repeatedly in overlapping windows and allocated a temporary array on
+each validation. It now maintains counts of invalid candles and gaps for the exact causal window, without retaining
+an extra per-bar array. The first candle's preceding gap is excluded; the current candle and its gap are included.
+The accumulation order for the trading features is unchanged. `scripts/perf/compare-dca-features.mjs` compares
+source roots: 30 clean and malformed datasets, including incremental prefixes, produced 19,800 identical state and
+feature arrays (checksum `dc9986a09f90c3c7845eb14ebf8012ae256876f77bf5edaac41f48c807d8e3c7`). Tests also check
+exactly when invalid candles and gaps leave the window, and exercise all 2,256 configured Tactics.
+
+In three alternating runs of the eight-batch synthetic worker benchmark, the baseline took 3,031, 2,262 and
+2,318 ms; the updated scan took 1,813, 2,028 and 1,696 ms. All six outputs had checksum
+`270cdda2d8f9da9e9b50084376cb1b0b9c4e9de264d9eab0349b88a954df7a99`. Peak RSS ranged from 300,704 to
+305,604 KiB before and from 302,296 to 316,432 KiB after, so this small benchmark does not demonstrate a peak-memory
+improvement. It also does not establish the full replay runtime or the live cycle latency.

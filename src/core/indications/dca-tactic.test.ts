@@ -50,6 +50,44 @@ test("all Tactic candidates are causal and incremental results equal the full or
   }
 });
 
+test("Tactic validity recovers exactly when malformed bars and gaps leave the causal window", () => {
+  const config = {
+    lookback: 8, basis: "percent" as const, spacing: 0.5, level: 2, recovery: 0.5, method: "bounce" as const,
+  };
+  const cases: { name: string; mutate: (b: Bars) => void; lastInvalid: number }[] = [
+    ...(["o", "h", "l", "c", "v"] as const).map((key) => ({
+      name: `non-finite ${key}`, mutate: (b: Bars) => { b[key][40] = Number.NaN; }, lastInvalid: 56,
+    })),
+    { name: "nonpositive low", mutate: (b) => { b.l[40] = 0; }, lastInvalid: 56 },
+    { name: "negative volume", mutate: (b) => { b.v[40] = -1; }, lastInvalid: 56 },
+    { name: "high below body", mutate: (b) => { b.h[40] = 0; }, lastInvalid: 56 },
+    { name: "low above body", mutate: (b) => { b.l[40] = 1e9; }, lastInvalid: 56 },
+    { name: "gap before first bar", mutate: (b) => {
+      for (let i = 40; i < b.n; i++) b.t[i] += 60_000;
+    }, lastInvalid: 55 },
+  ];
+  const valid = (b: Bars, stream?: StreamMath) => {
+    const k = new SeriesCache(b);
+    if (stream) k.enableStreaming(stream);
+    dcaTacticState(k, config);
+    return k.memo<{ valid: Int8Array } | null>("tactic-dca:features:8", () => null)!.valid;
+  };
+  for (const c of cases) {
+    const input = bars(waveBars(80));
+    c.mutate(input);
+    const full = valid(input);
+    for (let i = 16; i < input.n; i++)
+      assert.equal(full[i], i >= 40 && i <= c.lastInvalid ? 0 : 1, `${c.name} at ${i}`);
+    const stream = new StreamMath();
+    for (const n of [16, 39, 40, 41, 55, 56, 57, 80]) {
+      const prefix: Bars = { ...input, n, ...Object.fromEntries(
+        (["t", "o", "h", "l", "c", "v"] as const).map((key) => [key, input[key].slice(0, n)]),
+      ) };
+      assert.deepEqual(valid(prefix, stream), full.slice(0, n), `${c.name} streaming prefix ${n}`);
+    }
+  }
+});
+
 test("every registered decline cell has causal long and short onsets, with impossible ATR cells rejected", () => {
   for (const c of dcaTacticConfigs()) for (const mirrored of [false, true]) {
     const rows = declineCellBars(c, mirrored), cache = new SeriesCache(bars(rows));

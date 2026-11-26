@@ -7,8 +7,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Retain earlier runs while verifying the full engine/shared source seal.
-  group: stable04-frozen-memory-replay-v4
+  # Retain the previous sealed baseline while measuring rolling Tactic validation.
+  group: stable04-frozen-memory-replay-v5
   # A newer source supersedes an obsolete replay of the same frozen protocol.
   cancel-in-progress: true
 jobs:
@@ -37,7 +37,7 @@ jobs:
           node --experimental-strip-types --no-warnings scripts/prepare-stable04-replay.mjs runs/stable04-memory-replay
         env:
           NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
-      - name: Run the frozen session with sealed shared modules and optimized Tactic filters
+      - name: Run the frozen session with sealed sources and rolling Tactic validation
         run: python3 scripts/run-stable04-replay.py runs/stable04-memory-replay
       - name: Preserve completed or failed evidence
         if: always()

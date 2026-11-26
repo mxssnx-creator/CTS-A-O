@@ -17,8 +17,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Preserve the earlier slow-runtime job while verifying the updated branch.
-  group: stable04-core-verification-v5
+  # Preserve the earlier slow-runtime baseline while verifying rolling Tactic validation.
+  group: stable04-core-verification-v6
   cancel-in-progress: true
 jobs:
   core:

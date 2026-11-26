@@ -417,6 +417,8 @@ const CASES: Record<string, Case> = {
   "relate.minPf": num(0, 100),
   "relate.lastN": num(60, 250, { int: true }),
   "relate.minTrades": num(60, 250, { int: true }),
+  "relate.recoveryMinTrades": { ...num(6, 250, { int: true }), with: [["relate.lastN", 250]] },
+  "relate.recoveryMaxDrawdown": num(0, 1),
   "relate.maxStack": num(1, 8, { int: true }),
   "relate.maxSl": num(0.0025, 0.015, { also: [0.005, 0.0075, 0.01, 0.0125], bad: [0.003, 0.008] }),
 };
@@ -496,6 +498,20 @@ describe("settings completeness: every leaf of DEFAULT_SETTINGS is range-checked
         if (!rejects(withLeaves([[k, bad]]))) loose.push(`${k} = ${JSON.stringify(bad)}`);
     }
     assert.deepEqual(loose, []);
+  });
+
+  it("Relate recovery requires no more samples than its configured last-N window", () => {
+    assert.doesNotThrow(() => checkSettings(withLeaves([
+      ["relate.lastN", 60],
+      ["relate.recoveryMinTrades", 60],
+    ])));
+    assert.equal(rejects(withLeaves([
+      ["relate.lastN", 60],
+      ["relate.recoveryMinTrades", 61],
+    ])), true);
+    assert.throws(() => checkMerged(DEFAULT_SETTINGS, {
+      relate: { lastN: 60, recoveryMinTrades: 61 },
+    }));
   });
 
   it("Trailing only permits the complete 16 × 16 protection grid and refuses either oversized range", () => {

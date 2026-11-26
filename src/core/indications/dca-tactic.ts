@@ -104,7 +104,30 @@ function declineFeatures(k: SeriesCache, lookback: number): DcaFeatures {
       (Object.fromEntries(
         names.map((name) => [name, name === "valid" ? new Int8Array(b.n) : new Float64Array(b.n)]),
       ) as DcaFeatures);
-    for (let i = Math.max(2 * lookback, 16, frame?.from ?? 0); i < b.n; i++) {
+    // Validate the current bar and the preceding 2 × lookback bars with a rolling count. The first bar's
+    // preceding gap is outside the window; every later gap, including the current bar's, must be contiguous.
+    // This avoids validating the same bars and allocating a temporary array for every overlapping window.
+    const rowBad = (j: number) =>
+      !Number.isFinite(b.o[j]) || !Number.isFinite(b.h[j]) || !Number.isFinite(b.l[j]) ||
+      !Number.isFinite(b.c[j]) || !Number.isFinite(b.v[j]) || b.l[j] <= 0 ||
+      b.h[j] < Math.max(b.o[j], b.c[j]) || b.l[j] > Math.min(b.o[j], b.c[j]) || b.v[j] < 0;
+    const gapBad = (j: number) => b.t[j] - b.t[j - 1] !== b.tfMin * 60000;
+    const first = Math.max(2 * lookback, 16, frame?.from ?? 0);
+    let badRows = 0, badGaps = 0;
+    if (first < b.n) {
+      for (let j = first - 2 * lookback; j <= first; j++) {
+        if (rowBad(j)) badRows++;
+        if (j > first - 2 * lookback && gapBad(j)) badGaps++;
+      }
+    }
+    for (let i = first; i < b.n; i++) {
+      if (i > first) {
+        if (rowBad(i - 2 * lookback - 1)) badRows--;
+        if (rowBad(i)) badRows++;
+        if (gapBad(i - 2 * lookback)) badGaps--;
+        if (gapBad(i)) badGaps++;
+      }
+      if (badRows || badGaps) continue;
       let high = -Infinity,
         low = Infinity,
         total = 0,
@@ -113,20 +136,8 @@ function declineFeatures(k: SeriesCache, lookback: number): DcaFeatures {
         recent = 0,
         previous = 0,
         highAt = -1,
-        lowAt = -1,
-        valid = true;
+        lowAt = -1;
       for (let j = i - 2 * lookback; j < i; j++) {
-        if (
-          ![b.o[j], b.h[j], b.l[j], b.c[j], b.v[j]].every(Number.isFinite) ||
-          b.l[j] <= 0 ||
-          b.h[j] < Math.max(b.o[j], b.c[j]) ||
-          b.l[j] > Math.min(b.o[j], b.c[j]) ||
-          b.v[j] < 0 ||
-          (j > i - 2 * lookback && b.t[j] - b.t[j - 1] !== b.tfMin * 60000)
-        ) {
-          valid = false;
-          break;
-        }
         if (j < i - lookback) {
           previous += b.c[j];
           continue;
@@ -148,16 +159,6 @@ function declineFeatures(k: SeriesCache, lookback: number): DcaFeatures {
         total += b.v[j];
         weighted += ((b.h[j] + b.l[j] + b.c[j]) / 3) * b.v[j];
       }
-      if (
-        !valid ||
-        ![b.o[i], b.h[i], b.l[i], b.c[i], b.v[i]].every(Number.isFinite) ||
-        b.l[i] <= 0 ||
-        b.h[i] < Math.max(b.o[i], b.c[i]) ||
-        b.l[i] > Math.min(b.o[i], b.c[i]) ||
-        b.v[i] < 0 ||
-        b.t[i] - b.t[i - 1] !== b.tfMin * 60000
-      )
-        continue;
       out.peak[i] = high;
       out.trough[i] = low;
       out.highAt[i] = highAt;
