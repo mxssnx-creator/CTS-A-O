@@ -5425,7 +5425,8 @@ stopped because the operator's required market protocol is 8 symbols with 12h pr
 its incomplete output is not acceptance evidence. Focused stage, conflict, cap, memory-window, settings,
 policy and restart tests passed against code `1539ee92`. The complete offline core inventory passed
 5,218 tests with three skipped, and the production build passed with no database URL. Follow-up script
-fixtures pin archived Signal Last-12 explicitly and include the full seven-day cadence warmup; 35 targeted
-script tests pass at `5b501dfe`. The browser UI test could not start because the runner's Chromium binary
-was absent. No deployment, venue action, or live-readiness claim is made.
+fixtures pin archived Signal Last-12 explicitly and include the full seven-day cadence warmup. At `5b501dfe`,
+820 script tests passed with eight skipped (excluding the browser suite), 87 app/component tests passed,
+and four shared signed-window arithmetic tests passed. The browser UI test could not start because the
+runner's Chromium binary was absent. No deployment, venue action, or live-readiness claim is made.
 
