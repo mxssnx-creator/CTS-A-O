@@ -4,6 +4,7 @@ import { validatedSetPf, type ValidatedSetPf } from "./validated-set-pf.ts";
 /** Current passing sets' historical validation, separate from later processed/executed returns. */
 export interface ValidationProgress {
   at: number;
+  scope?: "modeled-processed-context";
   evaluated: number;
   passed: number;
   closes: number;
@@ -15,7 +16,8 @@ export interface ValidationProgress {
   pooledPf?: number | null;
 }
 
-export function validationProgressOf(summary: ValidationSummary | undefined, at: number): ValidationProgress | null {
+export function validationProgressOf(summary: ValidationSummary | undefined, at: number,
+  scope?: ValidationProgress["scope"]): ValidationProgress | null {
   if (!summary || !Number.isFinite(at) || !Number.isSafeInteger(summary.evaluated) ||
       !Number.isSafeInteger(summary.passed) || !Number.isSafeInteger(summary.closes) ||
       summary.evaluated < 0 || summary.passed < 0 || summary.passed > summary.evaluated || summary.closes < 0 ||
@@ -24,7 +26,7 @@ export function validationProgressOf(summary: ValidationSummary | undefined, at:
   const ratio = summary.gl > 0 ? summary.gp / summary.gl : null;
   const setPf = validatedSetPf(summary.setPf);
   if (setPf && setPf.sets !== summary.passed) return null;
-  return { at, evaluated: summary.evaluated, passed: summary.passed, closes: summary.closes,
+  return { at, ...(scope ? { scope } : {}), evaluated: summary.evaluated, passed: summary.passed, closes: summary.closes,
     pf: setPf?.pf ?? null, noLoss: setPf?.noLoss ?? false, setPf,
     pfBasis: setPf ? "validated-set-mean" : "unavailable",
     pooledPf: summary.passed > 0 && ratio !== null && Number.isFinite(ratio) ? ratio : null };

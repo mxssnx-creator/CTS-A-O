@@ -344,7 +344,7 @@ export function OverviewPage() {
           value={validation.pfText}
           className={pfTone(validation.pf, minPf)}
           sub={validation.available
-            ? `${validation.counts} engine configs · ${fmt.frac(validation.fraction)} validated · historical passing windows at ${fmt.time(validation.at)} UTC · ${validation.basisText}`
+            ? `${validation.counts} ${validation.cohort} · ${fmt.frac(validation.fraction)} validated · historical passing windows at ${fmt.time(validation.at)} UTC · ${validation.basisText}`
             : "Passing validation snapshot unavailable"}
         />
         <Kpi

@@ -62,6 +62,9 @@ test("native replay advances through two own processed windows, retains losses a
   assert.equal(report.validation.contexts, 16, "eight symbols × two sides, including empty siblings");
   assert.equal(report.validation.full, 1);
   assert.equal(report.validation.fullPct, 6.25);
+  assert.equal(report.validation.passingWindows.evaluated, 16);
+  assert.equal(report.validation.passingWindows.passed, 1);
+  assert.equal(report.validation.passingWindows.setPf?.noLossSets, 1, "the finite gate sentinel is not reported as PF");
   assert.equal(report.seededFromCandidates, false);
   const restored = ProcessedSetBook.restore(JSON.parse(JSON.stringify(report.snapshot)));
   assert.deepEqual(restored.snapshot(), report.snapshot, "model checkpoint survives serialization exactly");
@@ -78,6 +81,44 @@ test("a raw winning history cannot bootstrap cold or losing processed contexts",
   const legacy = fixture([-.01, -.01, -.01, -.01, -.01], { processedStages: undefined });
   assert.equal(legacy.result.trades.length, 5, "explicit legacy control reproduces the old behavior");
   assert.equal(legacy.result.processedStages, undefined);
+});
+
+test("Base-approved siblings warm their own stages despite empty raw seats", () => {
+  const f = fixture([.02, .02, .02, .02, .02, -.01]);
+  const siblingProtect = { ...protect, tp: .03 };
+  const siblingId = configId("follow", ind, siblingProtect);
+  const baseHistory = [trade(-.01, T - M * 3), trade(-.01, T - M * 2)];
+  const losingShorts = f.future.map(row => trade(-.02, row.entryT, -1, symbols[0], siblingId));
+  const longTape = makeTape(id, "follow", ind, protect, "normal", symbols, [...baseHistory, ...f.future], [], []);
+  const shortTape = makeTape(siblingId, "follow", ind, siblingProtect, "normal", symbols, losingShorts, [], []);
+  const options = { ...f.options, onePerPairEvent: false, recordValidation: "summary" as const };
+  const sim = walkForward(f.universe, [longTape, shortTape], options);
+  assert.equal(sim.steps[0].validationSummary?.passed, 0);
+  const own = sim.processedStages!.sets.find(set => set.identity.baseConfigId === id)!;
+  const other = sim.processedStages!.sets.find(set => set.identity.baseConfigId === siblingId)!;
+  assert.equal(own.stages.postBase.closedOrders, 6);
+  assert.equal(other.stages.postBase.closedOrders, 6);
+  assert.equal(other.stages.validated.closedOrders, 0);
+  assert.deepEqual(sim.trades.map(row => [row.cfg, row.side, row.r]), [[id, 1, .02], [id, 1, -.01]]);
+  assert.equal(walkForward(f.universe, [longTape, shortTape], { ...options,
+    validated: new Set<string>() }).processedStages!.sets.length, 0, "explicit frozen selection remains authoritative");
+  assert.equal(walkForward(f.universe, [longTape, shortTape], { ...options,
+    basePassed: new Set<string>() }).processedStages!.sets.length, 0, "a failed Base batch never enters the book");
+});
+
+test("siblings can collect warmup at the same onset while Active still spends one pair-event slot", () => {
+  const f = fixture([.02, .02, .02, .02, .02, .02]);
+  const otherProtect = { ...protect, tp: .03 };
+  const otherId = configId("follow", ind, otherProtect);
+  const other = makeTape(otherId, "follow", ind, otherProtect, "normal", symbols,
+    f.future.map(row => ({ ...row, cfg: otherId })), [], []);
+  const simulation = walkForward(f.universe, [f.tape, other], { ...f.options, onePerPairEvent: true });
+  const sets = simulation.processedStages!.sets;
+  assert.equal(sets.length, 2);
+  assert.ok(sets.every(set => set.stages.postBase.closedOrders >= 4));
+  assert.ok(sets.every(set => set.stages.validated.closedOrders >= 2));
+  assert.equal(simulation.trades.length, 2);
+  assert.equal(simulation.skips.pairEvent, 2);
 });
 
 test("an unknown settled return remains in the processed window and checkpoint", () => {

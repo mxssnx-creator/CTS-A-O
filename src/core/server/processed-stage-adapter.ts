@@ -60,7 +60,7 @@ function checkedPolicy(policy: ProcessedReplayPolicy): ProcessedReplayPolicy {
 export function nativeProcessedRevision(policy: ProcessedReplayPolicy, cost: number): string {
   if (!Number.isFinite(cost) || cost < 0)
     throw new RangeError("invalid native processed-stage cost");
-  return JSON.stringify(["processed-native-v1", cost, checkedPolicy(policy)]);
+  return JSON.stringify(["processed-native-v2", cost, checkedPolicy(policy)]);
 }
 
 /**
@@ -139,37 +139,7 @@ export class NativeProcessedStageAdapter {
     minPf: number,
   ): NativeProcessedDecision {
     const identity = this.identity(tp, symbol, side, minPf);
-    const validation = this.book.verdict(
-      identity,
-      "postBase",
-      this.policy.validationN,
-      minPf,
-      at,
-      this.policy.negativeFilter,
-      this.policy.blocks?.validation,
-    );
-    const real =
-      validation.state === "qualified"
-        ? this.book.verdict(
-            identity,
-            "validated",
-            this.policy.realN,
-            minPf,
-            at,
-            this.policy.negativeFilter,
-            this.policy.blocks?.real,
-          )
-        : null;
-    return {
-      stage:
-        validation.state !== "qualified"
-          ? "postBase"
-          : real?.state === "qualified"
-            ? "active"
-            : "validated",
-      validation,
-      real,
-    };
+    return this.book.preview(identity, at, { ...this.policy, minPf });
   }
 
   enter(

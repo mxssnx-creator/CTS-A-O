@@ -1,17 +1,25 @@
 import { positionCounts } from "../position-windows.ts";
+import { blockRequired } from "../../../shared/cts-lastn/blocks.ts";
 import { profitFactor, type TradeLike } from "../metrics/stats.ts";
 import type { BaseLastNStats, Gates } from "../domain/types.ts";
 
 /** A range cell's own sample setting; the global off switch also disables its range overrides. */
-export function baseLastNForRange(gates: Pick<Gates, "baseLastN" | "baseRangeLastN" | "positionWindows">, tag: string): number {
-  if (gates.positionWindows) return positionCounts(gates.positionWindows, tag || "wide").base;
+export function baseLastNForRange(
+  gates: Pick<Gates, "baseLastN" | "baseRangeLastN" | "positionWindows">,
+  tag: string,
+  configId?: string,
+): number {
+  if (gates.positionWindows) {
+    const blocks = gates.positionWindows.blocks?.base;
+    return blocks ? blockRequired(blocks) : positionCounts(gates.positionWindows, tag || "wide", configId).base;
+  }
   const base = gates.baseLastN ?? 0;
   if (base === 0) return 0;
   return (tag === "mc" ? gates.baseRangeLastN?.micro : tag === "mn" ? gates.baseRangeLastN?.minimal : undefined) ?? base;
 }
 
 /** Call with closes in stable exit/entry order and no observations after the Base cut. */
-export function baseLastNOf(trades: readonly TradeLike[], requested: number, stop: number): BaseLastNStats | undefined {
+export function baseLastNOf(trades: readonly TradeLike[], requested: number, stop: number, signed = false): BaseLastNStats | undefined {
   if (!(Number.isSafeInteger(requested) && requested >= 0)) throw new RangeError("invalid Base last-N");
   if (requested === 0) return undefined;
   const selected = trades.slice(-requested);
@@ -31,7 +39,8 @@ export function baseLastNOf(trades: readonly TradeLike[], requested: number, sto
   gp *= 100; gl *= 100;
   if (!(Number.isFinite(gp) && Number.isFinite(gl) && Number.isFinite(stop) && stop >= 0))
     return { requested, n: selected.length, gp: 0, gl: 0, stop: 0, invalid: true };
-  return { requested, n: selected.length, gp, gl, stop, mdd:mdd*100 };
+  return { requested, n: selected.length, gp, gl, stop, mdd: mdd * 100,
+    ...(signed ? { signedReturns: selected.map((trade) => trade.r) } : {}) };
 }
 
 /** Apply the existing last-N sample-floor rule without silently qualifying unknown or stale evidence. */

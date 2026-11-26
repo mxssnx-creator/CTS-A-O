@@ -234,6 +234,7 @@ import {
   passedCellsOf,
   validatedSetGen,
   validatedTapes,
+  processedBaseTapeEligible,
   cellAllowed,
   walkForwardSteps,
   feedBooks,
@@ -275,7 +276,7 @@ import {
   positionVolume,
   rangeVolumeFactorFor,
   kindOfInd,
-  minPfForTape,
+  processedMinPfForTape,
   freshEntry,
   seatedForEntry,
   stepSeats,
@@ -288,6 +289,7 @@ import {
   mirrorId,
 } from "../sim/walkforward.ts";
 import { NativeProcessedStageAdapter, type NativeProcessedSnapshot } from "./processed-stage-adapter.ts";
+import { ownedProcessedPolicy } from "../sim/processed-replay.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
   ENGINE_PROOF_PF,
@@ -1436,8 +1438,8 @@ export class CoreRuntime {
 
   /** Restore the opt-in native stage book once. Invalid durable evidence fails closed instead of starting empty. */
   private nativeProcessedStages(): NativeProcessedStageAdapter | null {
-    const policy = this.wf.processedStages;
-    if (!policy) return null;
+    if (!this.wf.processedStages) return null;
+    const policy = ownedProcessedPolicy(this.wf.processedStages, this.wf.gates.positionWindows);
     const key = JSON.stringify([policy, this.settings.cost]);
     if (this.processedNativeError && this.processedNativeKey === key) return null;
     if (this.processedNative && this.processedNativeKey === key) return this.processedNative;
@@ -7788,6 +7790,7 @@ export class CoreRuntime {
     const selected = this.paper.selected;
     if (selected && this.promotionSelectedMemo?.selected !== selected)
       this.promotionSelectedMemo = { selected, ids: new Set(selected) };
+    const processed = !!this.wf.processedStages;
     const eligible =
       selected &&
       this.promotionSelectedMemo?.ids.has(lane.cfg) &&
@@ -7795,11 +7798,11 @@ export class CoreRuntime {
       !tp.heldOnly &&
       (isSignalInd(ind) ||
         (baseAllowsTape(tp, this.wf) &&
-          (!this.wf.basePassed || configEval(tp, now, this.liveContextWf()).ok) &&
-          configDirectionEval(tp, now, this.liveContextWf(), lane.side).ok &&
-          engineContextValid(tp, now, this.liveContextWf(), lane.sym, lane.side))) &&
+          (processed || ((!this.wf.basePassed || configEval(tp, now, this.liveContextWf()).ok) &&
+            configDirectionEval(tp, now, this.liveContextWf(), lane.side).ok &&
+            engineContextValid(tp, now, this.liveContextWf(), lane.sym, lane.side))))) &&
       (!isSignalInd(ind) ||
-        (signalValidationOk(tp, now, this.wf, lane.sym, lane.side) &&
+        ((processed || signalValidationOk(tp, now, this.wf, lane.sym, lane.side)) &&
           (!this.wf.signalBasePassed || this.wf.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) &&
           (!this.wf.signalActive ||
             signalActiveHas(
@@ -9669,11 +9672,13 @@ export class CoreRuntime {
       entryT: number;
       stopHit?: number;
       kind?: string;
+      processedStage?: "postBase" | "validated" | "active";
     }>,
     srcClosed: ReadonlyMap<string, Array<{ exitT: number; r: number }>>,
     confirmPool?: ConfirmPool | null,
     /** entries that hold a crowd seat without a position (refused by the live validation after the simulation's rules) */
     crowdSeats?: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; kind?: string }>,
+    wouldFundPairEvent?: () => boolean,
   ): string | null {
     const hk = Math.floor(op.entryT / H);
     if (this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
@@ -9701,7 +9706,8 @@ export class CoreRuntime {
       const same = (x: { cfg: string; sym: string; side: number; entryT: number; kind?: string }) =>
         Math.floor(x.entryT / 60_000) === Math.floor(op.entryT / 60_000) && x.cfg !== op.cfg &&
         pairEventKey(x.cfg, x.sym, x.side, x.kind ?? op.kind, x.entryT, axisOwn) === k;
-      if (open.some(same) || crowdSeats?.some(same)) return "pairEvent";
+      if ((open.some((x) => (!wouldFundPairEvent || x.processedStage === "active") && same(x)) ||
+          crowdSeats?.some(same)) && (!wouldFundPairEvent || wouldFundPairEvent())) return "pairEvent";
     }
     // confirmation as in the simulation: an engine candidate (taken or not) open at the entry, not only a position
     const coordWhy = coordBlock(this.wf.coord, op, hourNet, at, confirmPool);
@@ -9839,14 +9845,27 @@ export class CoreRuntime {
           wfSel,
         );
     const { picks, eligible } = selection;
-    const postBaseValidation = captureValidation
-      ? validationProgressOf((selection as { validationSummary?: ValidationSummary }).validationSummary, t) : null;
+    const processedProof = this.sim.processedStages;
+    const postBaseValidation = this.wf.processedStages
+      ? processedProof ? validationProgressOf(processedProof.validation.passingWindows, processedProof.at, "modeled-processed-context") : null
+      : captureValidation ? validationProgressOf((selection as { validationSummary?: ValidationSummary }).validationSummary, t) : null;
     if (!fast && !reuse) {
       this.lastSelection = { picks, eligible };
       this.lastSelectionAt = t;
     }
     const tSelect = performance.now() - tp0;
     const sel = new Set([...picks.map((p) => p.id), ...sigTapes.map((tp) => tp.id)]);
+    const processedEntries = new Set<string>();
+    if (nativeStages && this.wf.validated === undefined) {
+      for (let i = 0; i < engineTapes.length; i++) {
+        const tp = engineTapes[i];
+        if (processedBaseTapeEligible(tp, this.wf)) {
+          processedEntries.add(tp.id);
+          sel.add(tp.id);
+        }
+        if ((i + 1) % 512 === 0) yield 0;
+      }
+    }
     // sets that still hold an open position stay processed until that position is closed (even when no longer
     // selected): their tape carries the open position forward until its exit
     const holding = new Set(this.paper.positions.map((p) => p.cfg));
@@ -9923,7 +9942,7 @@ export class CoreRuntime {
         const isSig = isSignalInd(tp.ind);
         for (const op of ops) {
           if (prevByKey.has(posId(op))) continue;
-          if (!isSig && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
+          if (!isSig && !processedEntries.has(id) && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
             pSkip("notSelected");
             continue;
           }
@@ -9950,7 +9969,7 @@ export class CoreRuntime {
         // held = this exact position was already in the paper book; a set that is no longer selected keeps
         // only those (its other tape positions were never taken and must not bypass the caps)
         const held = prevByKey.has(posId(op));
-        if (!held && !isSig && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
+        if (!held && !isSig && !processedEntries.has(id) && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
           pSkip("notSelected");
           continue;
         }
@@ -10243,6 +10262,14 @@ export class CoreRuntime {
           srcClosed,
           confirmPool,
           crowdSeats,
+          nativeStages ? () => {
+            try {
+              return nativeStages.preview(tp, op.sym, op.side > 0 ? 1 : -1, op.entryT,
+                processedMinPfForTape(tp, this.wf)).stage === "active";
+            } catch {
+              return true;
+            }
+          } : undefined,
         );
         if (back) {
           pSkip(`${sigCfg(op.cfg) ? "sig:" : ""}heldBack:${back}`);
@@ -10348,7 +10375,7 @@ export class CoreRuntime {
           continue;
         }
         try {
-          const minProcessedPf = Math.max(this.wf.lastNMinPf, minPfForTape(tp, this.wf));
+          const minProcessedPf = processedMinPfForTape(tp, this.wf);
           processedStage = nativeStages.enter(tp, op.sym, op.side > 0 ? 1 : -1, op.entryT, minProcessedPf).stage;
           processedPolicy = nativeStages.revision;
           if (!this.persistNativeProcessedStages()) {

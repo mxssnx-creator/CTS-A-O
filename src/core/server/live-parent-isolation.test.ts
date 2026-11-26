@@ -8,6 +8,8 @@ import { fakeRt, lane, SimExchange } from "../test-support.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { isolateNewParents } from "./live-parent-isolation.ts";
+import { nativeProcessedRevision } from "./processed-stage-adapter.ts";
+import { DEFAULT_POSITION_WINDOWS } from "../position-windows.ts";
 import { flushLiveKv, liveKv, resetLiveBackoff, stepLive, type ControlStatus } from "./live.server.ts";
 import { makeCoid, type ControlContribution } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
@@ -56,10 +58,13 @@ it("the pure selector folds Block legs, retains tracked parents, and never guess
 it("processed mode rejects a non-active venue parent and persists active stage evidence through its close", async () => {
   const { rt, ex, step } = setup();
   Object.assign(rt.settings.live, { positionSize: "lanes", laneOrders: false, positionMode: "hedge" });
-  (rt as unknown as { wf: { processedStages: { validationN: number; realN: number } } }).wf = {
-    processedStages: { validationN: 2, realN: 2 },
-  };
-  const policy = JSON.stringify(["processed-native-v1", rt.settings.cost, { validationN: 2, realN: 2 }]);
+  const windows = { validationN: 2, realN: 2 };
+  const main = { long: 2, short: 1, minimal: 1, shortPolarity: "negative", minimalPolarity: "positive" } as const;
+  Object.assign(rt, { wf: { processedStages: windows, gates: {
+    positionWindows: { ...DEFAULT_POSITION_WINDOWS, blocks: { main } },
+  } } });
+  const policy = nativeProcessedRevision({ ...windows, blocks: { validation: main } }, rt.settings.cost);
+  const unsignedPolicy = nativeProcessedRevision(windows, rt.settings.cost);
   try {
     rt.paper.positions = [{ ...pos(A, 1), processedStage: "validated", processedPolicy: policy }];
     await step();
@@ -67,7 +72,7 @@ it("processed mode rejects a non-active venue parent and persists active stage e
     const rejectedControl = liveKv<ControlStatus>(rt.db, "controlStatus")!;
     assert.ok(rejectedControl.actions.some((row) => /processed-stage identity/.test(row.msg ?? "")), JSON.stringify(rejectedControl.actions));
 
-    rt.paper.positions = [{ ...pos(A, 1), processedStage: "active", processedPolicy: `${policy}-stale` }];
+    rt.paper.positions = [{ ...pos(A, 1), processedStage: "active", processedPolicy: unsignedPolicy }];
     await step();
     const staleControl = liveKv<ControlStatus>(rt.db, "controlStatus")!;
     assert.ok(staleControl.actions.some((row) => /processed-stage identity/.test(row.msg ?? "")), JSON.stringify(staleControl.actions));
@@ -103,7 +108,7 @@ it("a pending processed venue request keeps its exact active policy across resta
   (rt as unknown as { wf: { processedStages: { validationN: number; realN: number } } }).wf = {
     processedStages: { validationN: 2, realN: 2 },
   };
-  const policy = JSON.stringify(["processed-native-v1", rt.settings.cost, { validationN: 2, realN: 2 }]);
+  const policy = nativeProcessedRevision({ validationN: 2, realN: 2 }, rt.settings.cost);
   const place = ex.order.bind(ex);
   ex.order = async (request) => request.type === "MARKET" && request.reduceOnly !== "true"
     ? { order: { orderId: "pending-processed", status: "NEW", executedQty: 0 } }
@@ -141,7 +146,7 @@ for (const side of [1, -1] as const) for (const terminal of ["FILLED", "CANCELLE
   let rt = make();
   const ex = new SimExchange().withEquity(100), key = `${SYM}|${side === 1 ? "LONG" : "SHORT"}`;
   ex.px.set(SYM, 10);
-  const policy = JSON.stringify(["processed-native-v1", rt.settings.cost, { validationN: 2, realN: 2 }]);
+  const policy = nativeProcessedRevision({ validationN: 2, realN: 2 }, rt.settings.cost);
   const parent = { ...pos(A, side), processedStage: "active" as const, processedPolicy: policy };
   const place = ex.order.bind(ex), status = ex.orderStatus.bind(ex);
   let phase: "partial" | "stale" | "full" = "partial", requested = 0, partial = 0, entryCoid = "";

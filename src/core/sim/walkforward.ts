@@ -7,7 +7,7 @@ import { positionCounts, positionStats, positionTapeValid, type PositionWindows 
 import {relationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
 import { RT_COST } from "../model-cost.ts";
 import { EVALUATION_HISTORY_H, PRECALC_HISTORY_H } from "../market/history-requirements.ts";
-import { ProcessedReplay, type ProcessedReplayPolicy, type ProcessedReplayReport } from "./processed-replay.ts";
+import { ProcessedReplay, ownedProcessedPolicy, type ProcessedReplayPolicy, type ProcessedReplayReport } from "./processed-replay.ts";
 import type { ProcessedOpen } from "./processed-set.ts";
 import { minimumStopFraction } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
@@ -3051,6 +3051,17 @@ export function baseAllowsTape(
   return (!targets || targets.includes(tp.protect.tp)) && cellAllowed(tp, o, pair);
 }
 
+/** Base-built engine configurations can collect their own processed closes before any raw tape earns a seat. */
+export function processedBaseTapeEligible(tp: ConfigTape, o: WalkForwardOptions): boolean {
+  if (!o.processedStages || tp.heldOnly || tp.carried || isSignalInd(tp.ind)) return false;
+  const pair = `${tp.bot}|${tp.ind}`;
+  const proof = tp.kind === "exit" ? o.exitBasePassed : o.basePassed;
+  return !!proof?.has(pair) &&
+    (tp.kind === "exit" || !o.bots.length || o.bots.includes(tp.bot)) &&
+    (tp.kind === "exit" || !o.excludeRanges?.includes(tp.protect.tag ?? "wide")) &&
+    baseAllowsTape(tp, o) && tapeExecutable(tp, o);
+}
+
 /**
  * Every Axis set the settings ask for, each its own tape: every mode (`modes`, else `mode`) × range type × ladder
  * depth, desk sets also plain and hybrid (`hybrids`, else `hybrid`); revert with fixed exits: one set per protect.
@@ -4766,6 +4777,14 @@ export function minPfForTape(
   );
 }
 
+/** One configured floor for the exact processed Set in modeled and paper admission. */
+export function processedMinPfForTape(tp: ConfigTape, o: WalkForwardOptions): number {
+  const normal = tp.kind !== "exit" && isPlainKind(tp.kind) && effectiveStrategyToggles(tp, o).normal &&
+    !(o.signalOwnBase && isSignalInd(tp.ind) && o.rangeOpts?.sig?.normal !== false)
+    ? o.normalBaseMinPf ?? 0 : 0;
+  return Math.max(o.lastNMinPf, minPfForTape(tp, o), normal);
+}
+
 function minGreenForTape(
   tp: Pick<ConfigTape, "kind">,
   o: Pick<WalkForwardOptions, "gates" | "exitMinGreenHourShare">,
@@ -6274,7 +6293,7 @@ export function execDecision(
   )
     return { ok: false, why: "base" };
   if (!tapeExecutable(tp, o)) return { ok: false, why: "toggle" };
-  if(o.gates?.positionWindows && (!ctx || !positionConfigEval(tp,entryT,o,ctx.sym,ctx.side).ok))
+  if(!o.processedStages && o.gates?.positionWindows && (!ctx || !positionConfigEval(tp,entryT,o,ctx.sym,ctx.side).ok))
     return {ok:false,why:"configValidation"};
 
   const excludedRange = isSignalInd(tp.ind) ? "sig" : tp.protect.tag;
@@ -6343,6 +6362,7 @@ export function execDecision(
       return { ok: false, why: "signalSide" };
     // the Signal's own last N on this exact symbol and direction (min PF, DDT and DDR)
     if (
+      !o.processedStages &&
       !o.probe?.perRange &&
       !o.probe?.perCell &&
       (!signalConfigEval(tp, entryT, o, ctx.sym, ctx.side).ok || !o.gates.positionWindows && !signalLastNOk(
@@ -6365,6 +6385,7 @@ export function execDecision(
   // Runtime admission carries its Base provenance. Recheck this exact config as of the entry, not the last seat
   // refresh: short holds can settle several losing closes within one selection step. Held exits bypass entries.
   if (
+    !o.processedStages &&
     !isSignalInd(tp.ind) &&
     o.basePassed &&
     !o.probe?.perRange &&
@@ -6374,6 +6395,7 @@ export function execDecision(
     return { ok: false, why: "configValidation" };
 
   if (
+    !o.processedStages &&
     !isSignalInd(tp.ind) &&
     !o.probe?.perRange &&
     !o.probe?.perCell &&
@@ -6428,7 +6450,7 @@ export function execDecision(
     return { ok: false, why: "lastN" };
 
   // The explicit symbol gate has its own scope, sample and warmup policy. Never impose config Last-N here.
-  if (!probed && ctx?.sym && !engineContextValid(tp, entryT, o, ctx.sym, ctx.side))
+  if (!probed && !o.processedStages && ctx?.sym && !engineContextValid(tp, entryT, o, ctx.sym, ctx.side))
     return { ok: false, why: "symPf" };
   // engine direction acceptance: this type family × range × side must clear its PF on its candidates' last hours
   if (
@@ -6467,7 +6489,7 @@ export function execDecision(
   const sigBase = plain && tp.kind !== "exit" && o.rangeOpts?.sig?.normal !== false && !!o.signalOwnBase && isSignalInd(tp.ind);
   const kindBaseOn = tp.kind === "exit" ? tg.exit !== false : tg.normal;
   // The enabled plain type's unraised base trades on the config's own recent record.
-  const gatedBase = plain && tp.kind !== "exit" && kindBaseOn && !sigBase && (o.normalBaseMinPf ?? 0) > 0;
+  const gatedBase = !o.processedStages && plain && tp.kind !== "exit" && kindBaseOn && !sigBase && (o.normalBaseMinPf ?? 0) > 0;
   const baseOk = () => o.gates.positionWindows && ctx ? (()=>{
     const ev=positionConfigEval(tp,entryT,o,ctx.sym,ctx.side);
     return ev.ok&&qualifiedPf(ev.gp??NaN,ev.gl??NaN,o.normalBaseMinPf??0);
@@ -7790,9 +7812,9 @@ export function* walkForwardGen(
   tapes: readonly ConfigTape[],
   o: WalkForwardOptions,
 ): Generator<number, WalkForwardResult> {
-  const processed = o.processedStages ? new ProcessedReplay(o.processedStages, o.cost) : null;
+  const processed = o.processedStages ? new ProcessedReplay(ownedProcessedPolicy(o.processedStages, o.gates.positionWindows), o.cost) : null;
   const processedOpen = new Map<Trade, ProcessedOpen>();
-  const processedFloor = (tp: ConfigTape) => Math.max(o.lastNMinPf, minPfForTape(tp, o));
+  const processedFloor = (tp: ConfigTape) => processedMinPfForTape(tp, o);
   const byId = new Map<string, ConfigTape>(), indicationVolumeFactors = new Map<string, number>();
   let indexed = 0, indexedAt = performance.now();
   for (const tp of tapes) {
@@ -7810,6 +7832,15 @@ export function* walkForwardGen(
   assertSeatSet(o);
   if (o.gates.positionWindows && !o.evalMemo) o = { ...o, evalMemo: new EvalMemo() };
   const frozenValidation = o.validated !== undefined;
+  // Explicit caller snapshots can still restrict the replay. Auto-selection scores do not own the processed book.
+  const processedEntries = new Set<string>();
+  if (processed && !frozenValidation) {
+    for (let i = 0; i < allEngine.length; i++) {
+      const tp = allEngine[i];
+      if (processedBaseTapeEligible(tp, o)) processedEntries.add(tp.id);
+      if ((i + 1) % 512 === 0) yield -1;
+    }
+  }
   const newValidationRecord = (): { summary: ValidationSummary; checks?: ValidationCheck[] } | undefined => o.recordValidation ? {
     summary: { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {}, setPf: emptyValidatedSetPf() },
     ...(o.recordValidation === true ? { checks: [] } : {}),
@@ -8111,6 +8142,7 @@ export function* walkForwardGen(
     const selectedEntries = new Set<string>();
     const seat = (ps: readonly Selection[]) => {
       selectedEntries.clear();
+      for (const id of processedEntries) selectedEntries.add(id);
       for (const p of ps) {
         const tid = o.invertSeats ? mirrorId(p.id) : p.id;
         if (tid && byId.has(tid)) selectedEntries.add(tid);
@@ -8266,6 +8298,8 @@ export function* walkForwardGen(
           )
             ? "sourceUnstable"
             : null);
+        const pairEvent = o.onePerPairEvent
+          ? pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT, o.pairEventAxisOwn !== false) : null;
         if (o.guardPct > 0 && (ownHours.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
         else if (coordWhy) why = coordWhy;
         else if (counts.dupe(tr.sym, tr.cfg, tr.side)) why = "dupe";
@@ -8281,7 +8315,8 @@ export function* walkForwardGen(
           (crowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) >= crowdCapOf(o, tr.cfg)
         )
           why = "crowd";
-        else if (o.onePerPairEvent && pairEvents.has(pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT, o.pairEventAxisOwn !== false)))
+        else if (pairEvent !== null && pairEvents.has(pairEvent) &&
+          (!processed || processed.preview(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp)).stage === "active"))
           why = "pairEvent";
         const vf = (indicationVolumeFactors.get(tp.id) ?? 1)*relationalVolumeFactor(o.relationalVolumeRatios,{indicationType:kindOfInd(tp.ind),indication:laneOf(tp.ind).base,strategy:tp.kind,range:tp.kind==="exit"?"exit":isSignalInd(tp.ind)?"sig":tp.protect.tag??"wide",symbol:tr.sym});
         const hedgeVol = hedging ? (o.coord?.hedgeVolumeFactor ?? 1) : 1;
@@ -8386,7 +8421,8 @@ export function* walkForwardGen(
             : {}),
         };
         executedKeys.add(dk);
-        if (o.onePerPairEvent) pairEvents.add(pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT, o.pairEventAxisOwn !== false));
+        // Warm-up decisions own a modeled order, but they do not spend a funded pair-event slot.
+        if (active && pairEvent !== null) pairEvents.add(pairEvent);
         if (o.entryCrowd) {
           const ck = crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT);
           crowd.set(ck, (crowd.get(ck) ?? 0) + 1);
@@ -8519,7 +8555,10 @@ export function* walkForwardGen(
     startT,
     ...(processed ? { processedStages: processed.report(stopT, (function* () {
       for (const tp of [...allEngine, ...sigTapes]) {
-        if (tp.heldOnly) continue;
+        if (tp.heldOnly || tp.carried) continue;
+        if (isSignalInd(tp.ind) && tp.kind !== "exit") {
+          if (o.signalBasePassed && !o.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) continue;
+        } else if (!baseAllowsTape(tp, o)) continue;
         const minPf = processedFloor(tp);
         for (const sym of new Set(tp.syms)) for (const side of [1, -1] as const)
           yield { identity: processed.identity(tp, sym, side, minPf), minPf };

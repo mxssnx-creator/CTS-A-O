@@ -720,6 +720,8 @@ export interface BaseLastNStats {
   stop: number;
   invalid?: true;
   mdd?: number;
+  /** Exact chronological unit returns retained only when a signed Base policy needs them. */
+  signedReturns?: number[];
 }
 
 export interface Stats {

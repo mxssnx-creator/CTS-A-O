@@ -268,11 +268,11 @@ test("parallel major/minor policies keep own stages, full windows and restart id
 });
 
 const signedBlocks={long:20,short:10,minimal:3,shortPolarity:"negative" as const,minimalPolarity:"negative" as const};
-test("disjoint processed blocks use 33 own closes, preserve long PF and restart without parent borrowing",()=>{
+test("disjoint processed blocks use the PF of all 33 own closes and restart without parent borrowing",()=>{
  const p={validationN:20,realN:20,minPf:1.1,blocks:{validation:signedBlocks,real:signedBlocks}};
  let book=new ProcessedSetBook("paper",95);
  for(let n=0;n<33;n++){const held=book.acceptPostBase(identity,String(n),n*2,p);assert.equal(held.stage,"postBase");book.close(identity,String(n),n*2,"final",n*2+1,n<20?2:-1,true);}
- const held=book.acceptPostBase(identity,"qualified",66,p);assert.equal(held.stage,"validated");assert.equal(held.validation.n,33);assert.equal(held.validation.pf,4);assert.equal(held.real!.state,"insufficient");
+ const held=book.acceptPostBase(identity,"qualified",66,p);assert.equal(held.stage,"validated");assert.equal(held.validation.n,33);assert.equal(held.validation.pf,40/13);assert.equal(held.real!.state,"insufficient");
  book=ProcessedSetBook.restore(JSON.parse(JSON.stringify(book.snapshot())));
  assert.equal(book.verdict(identity,"postBase",20,1.1,67,undefined,signedBlocks).state,"qualified");
  assert.equal(book.verdict({...identity,lane:"sibling"},"postBase",20,1.1,67,undefined,signedBlocks).state,"insufficient");

@@ -1,7 +1,7 @@
 import { applyPriceDistanceGrid, type PriceDistanceGrid } from "../price-distance-grid.ts";
 import { slCalibrationOf, slRatiosOf, type AutoSlRatios } from "../sl-ratios.ts";
 import { calibrateSlBounds, slWithinBounds, type SlBounds, type SlSample } from "../sl-calibration.ts";
-import { partialFloorOf, positionCounts } from "../position-windows.ts";
+import { partialFloorOf, positionStageStats } from "../position-windows.ts";
 import { SL_TP_RATIOS, minimumStopFraction } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { profitFactorRatio } from "../metrics/profit-factor.mjs";
@@ -314,7 +314,8 @@ function basePositionMiss(
   g: Parameters<typeof passesBase>[1],
 ): BaseGate[] {
   const recent = st.baseLast;
-  const requested = positionCounts(g.positionWindows!, st.rangeTag ?? "wide", st.configId).base;
+  const blocks = g.positionWindows?.blocks?.base;
+  const requested = baseLastNForRange(g, st.rangeTag ?? "wide", st.configId);
   if (
     !recent ||
     recent.invalid ||
@@ -330,12 +331,15 @@ function basePositionMiss(
     return ["lastN"];
   const miss: BaseGate[] = [];
   // a window shorter than requested is judged on its closes when gates.lastNFloor admits it (strict policies never)
-  const partial = partialFloorOf(g.positionWindows, g.lastNFloor);
+  const partial = blocks ? 0 : partialFloorOf(g.positionWindows, g.lastNFloor);
   if (recent.n !== requested && !(partial > 0 && recent.n >= partial && recent.n < requested)) miss.push("closes");
   const net = recent.gp - recent.gl;
   const loss = recent.gl + (g.lossPrior ? recent.stop : 0);
   if (!(net > 0)) miss.push("net");
-  if (!(recent.gp >= g.minPf * loss)) miss.push("pf");
+  const signed = blocks && recent.signedReturns?.length === recent.n
+    ? positionStageStats(recent.signedReturns, requested, blocks, g.minPf) : null;
+  if (blocks && (!signed || !signed.known)) miss.push("lastN");
+  if (!(recent.gp >= g.minPf * loss) || (signed?.complete && !signed.blocksPassed)) miss.push("pf");
   if (ddrFails(recent.mdd, net, g.maxDdr)) miss.push("ddr");
   return miss;
 }
@@ -1970,7 +1974,7 @@ export function cellStats(
   if (p.hold < 1 && !(p.maxHoldMin !== undefined && hasMinutePrices(u))) return null;
   const id = configId(bot, ind, p);
   const countRange = isSignalInd(ind) ? "sig" : bot === "exit" ? "exit" : (p.tag ?? "wide");
-  if (positionWindows) baseLastN = positionCounts(positionWindows, countRange, id).base;
+  if (positionWindows) baseLastN = baseLastNForRange({ positionWindows }, countRange, id);
   const series = seriesOf(u, ind);
   if (!series.length) return null;
   // Synchronous cells reuse one job-scoped buffer. Each series/direction supplies an already chronological run.
@@ -2012,7 +2016,7 @@ export function cellStats(
       });
     }
   }
-  const st: RangeBaseStat = cell.stats(baseLastN, Math.max(0, p.sl) * 100);
+  const st: RangeBaseStat = cell.stats(baseLastN, Math.max(0, p.sl) * 100, !!positionWindows?.blocks?.base);
   if (positionWindows && st.baseLast) {
     st.configId = id;
     st.rangeTag = countRange;
@@ -2175,7 +2179,7 @@ export function* runComboSteps(
   const isTrades = trades.filter((t) => t.exitT <= u.splitT);
   const is = statsOf(isTrades, u.splitT);
   const countRange = isSignalInd(ind) ? "sig" : bot === "exit" ? "exit" : (protect.tag ?? "wide");
-  if (positionWindows) baseLastN = positionCounts(positionWindows, countRange, id).base;
+  if (positionWindows) baseLastN = baseLastNForRange({ positionWindows }, countRange, id);
   const closed = positionWindows ? trades.filter((t) => t.exitT < u.nowT) : trades;
   const full = {
     ...statsOf(positionWindows ? closed.slice(-baseLastN) : closed, u.nowT),
@@ -2184,7 +2188,7 @@ export function* runComboSteps(
     slRatio: protectSlRatio(protect),
     slRatioKnown: true as const,
   };
-  const baseLast = baseLastNOf(closed, baseLastN, Math.max(0, protect.sl) * 100);
+  const baseLast = baseLastNOf(closed, baseLastN, Math.max(0, protect.sl) * 100, !!positionWindows?.blocks?.base);
   if (baseLast) full.baseLast = baseLast;
   return {
     id,

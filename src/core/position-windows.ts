@@ -261,6 +261,6 @@ export function mainnetPositionWindows(
 export function positionStageStats(values:readonly number[],requested:number,blocks?:BlockPolicy,minPf=1.05,partialFloor=0){
  if(!blocks)return {...positionStats(values,requested,partialFloor),blocksPassed:true};
  const total=blockRequired(blocks),v=evaluateBlocks(blockPrefix(values.slice(-total).reverse(),total),blocks,Math.max(1.000001,minPf));
- const end=Math.max(0,values.length-blocks.short-blocks.minimal),stats=positionStats(values.slice(Math.max(0,end-blocks.long),end),blocks.long);
- return {...stats,n:v.count,requested:total,complete:v.count===total,known:v.state!=="unknown",blocksPassed:v.state==="qualified"};
+ const stats=positionStats(values,total);
+ return {...stats,blocksPassed:v.state==="qualified"&&stats.net>0&&stats.gp>=stats.gl*minPf};
 }

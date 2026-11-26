@@ -498,7 +498,7 @@ export function StatisticsPage() {
           <Kpi label="Validated sets PF" value={validation.pfText} className={pfTone(validation.pf)}
             sub={validation.basisText} />
           <Kpi label="Validated percentage" value={fmt.frac(validation.fraction)}
-            sub={`${validation.counts} engine configs passed / evaluated`} />
+            sub={`${validation.counts} ${validation.cohort} passed / evaluated`} />
           <Kpi label="Validation snapshot" value={validation.at === null ? "Unavailable" : `${fmt.time(validation.at)} UTC`}
             sub="Current selection snapshot; separate from the execution time filter" />
         </div>

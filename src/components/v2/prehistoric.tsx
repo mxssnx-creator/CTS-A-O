@@ -120,7 +120,7 @@ export function PrehistoricPanel(props: {
           v={validation.pfText}
           cls={pfTone(validation.pf, props.minPf)}
           sub={st.postBaseValidation
-            ? `${fmt.num(st.postBaseValidation.passed)} / ${fmt.num(st.postBaseValidation.evaluated)} engine configs · ${fmt.frac(st.postBaseValidation.evaluated > 0 ? st.postBaseValidation.passed / st.postBaseValidation.evaluated : null)} · ${fmt.time(st.postBaseValidation.at)} UTC`
+            ? `${fmt.num(st.postBaseValidation.passed)} / ${fmt.num(st.postBaseValidation.evaluated)} ${validation.cohort} · ${fmt.frac(validation.fraction)} · ${fmt.time(st.postBaseValidation.at)} UTC`
             : "engine selection-pool validation unavailable"}
         />
         <Stat

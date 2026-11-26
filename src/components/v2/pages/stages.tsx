@@ -86,7 +86,7 @@ export function StagesPage() {
           <div className="v2-stage">
             <div className="t">2 · Main</div>
             <div className="n">{validation.pfText} PF</div>
-            <p>{validation.counts} validated · {fmt.frac(validation.fraction)} · {fmt.time(validation.at)} UTC. {validation.basisText}.</p>
+            <p>{validation.counts} {validation.cohort} validated · {fmt.frac(validation.fraction)} · {fmt.time(validation.at)} UTC. {validation.basisText}.</p>
             <p>
               {positionPolicy ? <>Each exact config × symbol × direction needs its complete own Main N {positionPolicy.main}; range/config overrides apply. Positive net, the own effective PF floor and confidence checks remain required. Drawdown recovery is limited to {positionPolicy.maxDrawdownPositions} completed positions.</> : <>In-sample return PF meets each range's effective floor (global {g.minPf}, with range
               overrides), DDT ≤ max({g.minDdtH ?? 0} h, {g.maxDdtH} h per 72 h), ≥ {g.minTrades}{" "}

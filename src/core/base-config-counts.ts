@@ -5,7 +5,6 @@ import type { BotType, Gates, Protect } from "./domain/types.ts";
 import { statsOf, type TradeLike } from "./metrics/stats.ts";
 import { minPfOf } from "./minimal-coord.ts";
 import { configId, passesBase } from "./pipeline/pipeline.ts";
-import { positionCounts } from "./position-windows.ts";
 import { baseLastNForRange, baseLastNOf } from "./pipeline/base-lastn.ts";
 import { SIGNAL_MIN_PF, SIGNAL_VALID_LAST_N } from "./signal-policy.ts";
 
@@ -67,8 +66,8 @@ export class BaseConfigCounter {
     const tag = protect.tag ?? "";
     const id = configId(bot as BotType, ind, protect);
     const countRange = ind.startsWith("sig-") ? "sig" : kind === "exit" ? "exit" : tag || "wide";
-    const gates = { ...o.gates, baseLastN: o.gates.positionWindows
-      ? positionCounts(o.gates.positionWindows, countRange, id).base : baseLastNForRange(o.gates, tag) };
+    const gates = { ...o.gates, baseLastN: baseLastNForRange(o.gates, o.gates.positionWindows ? countRange : tag, id) };
+    const signed = !!gates.positionWindows?.blocks?.base;
     const key = JSON.stringify([bot, ind, tag, kind]);
     let row = this.counts.get(key);
     if (!row) {
@@ -132,7 +131,7 @@ export class BaseConfigCounter {
     const stats = statsOf(gates.positionWindows?closed.slice(-gates.baseLastN):closed, o.cutT);
     stats.rangeTag=countRange;
     stats.configId=id;
-    stats.baseLast = baseLastNOf(closed, gates.baseLastN, Math.max(0, protect.sl) * 100);
+    stats.baseLast = baseLastNOf(closed, gates.baseLastN, Math.max(0, protect.sl) * 100, signed);
     row.evaluated++;
     // The floor is a return ratio from actual gross gains/losses. In particular, a no-loss sample's finite display
     // sentinel is not used to decide whether that sample clears the PF floor.
@@ -151,7 +150,7 @@ export class BaseConfigCounter {
         const history = statsOf(gates.positionWindows?xs.slice(-required):xs, o.cutT);
         history.rangeTag=countRange;
         history.configId=id;
-        history.baseLast = baseLastNOf(xs, gates.baseLastN, Math.max(0, protect.sl) * 100);
+        history.baseLast = baseLastNOf(xs, gates.baseLastN, Math.max(0, protect.sl) * 100, signed);
         return { history, last: statsOf(required > 0 ? xs.slice(-required) : xs, o.cutT) };
       });
       if (contexts.some(({ history, last }) => history.n >= o.gates.minTrades && last.n >= required && history.pf >= row.floorPf && last.pf >= row.floorPf)) row.pfPassed++;

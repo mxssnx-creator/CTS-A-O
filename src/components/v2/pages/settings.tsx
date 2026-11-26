@@ -1682,7 +1682,7 @@ export function ProcessedStageSettings(props: {
   return (
     <Panel
       title="Persistent own-stage progression"
-      sub="Opt-in Base → Main → Real predecessor windows. Only accepted, settled parents feed their exact next stage; raw candidates and sibling wins never bootstrap a window."
+      sub="Base-qualified configurations can collect their own paper results while Main and Real warm up. Only settled orders from the exact predecessor can qualify the next stage."
     >
       <Switch
         label="Use persistent processed stages"

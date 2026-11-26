@@ -1,4 +1,4 @@
-import {blockPrefix,blockRequired,blockPolicyKey,checkBlockPolicy,evaluateBlocks,type BlockPolicy} from "../../../shared/cts-lastn/blocks.ts";
+import {blockPrefix,blockRequired,blockPolicyKey,checkBlockPolicy,evaluateBlocks,blockWindow,type BlockPolicy} from "../../../shared/cts-lastn/blocks.ts";
 import { profitFactor } from "../metrics/stats.ts";
 import { negativeLastN, negativeLastNDecision, type NegativeLastN } from "../negative-last-n.ts";
 
@@ -74,6 +74,7 @@ export interface ProcessedOpen {
   /** Sum of settled net contributions on the original parent notional. Null retains any unknown slice. */
   settledUnitReturn: number | null;
 }
+export type ProcessedStageDecision = Pick<ProcessedOpen, "stage" | "validation" | "real">;
 export interface ProcessedSetSnapshot {
   version: 3;
   basis: ProcessedBasis;
@@ -163,6 +164,32 @@ export class ProcessedSetBook {
     return rows;
   }
 
+  private historyBefore(identity: ProcessedSetIdentity, source: ProcessedStage, beforeT?: number) {
+    const history = this.sets.get(processedSetKey(identity))?.[source] ?? [];
+    let end = history.length;
+    if (beforeT !== undefined) {
+      let start = 0;
+      while (start < end) {
+        const mid = (start + end) >>> 1;
+        if (history[mid].exitT < beforeT) start = mid + 1;
+        else end = mid;
+      }
+    }
+    return { history, end };
+  }
+
+  windowEconomics(identity: ProcessedSetIdentity, source: ProcessedStage, n: number, at: number) {
+    const { history, end } = this.historyBefore(identity, source, at);
+    if (end < n) return null;
+    let gp = 0, gl = 0;
+    for (let i = end - n; i < end; i++) {
+      const r = history[i].unitReturn;
+      if (r === null || !Number.isFinite(r)) return null;
+      if (r > 0) gp += r; else gl -= r;
+    }
+    return Number.isFinite(gp) && Number.isFinite(gl) ? { gp, gl } : null;
+  }
+
   /**
    * No empty, partial, or unknown window is promoted to a passing PF. A decision at beforeT can
    * use only closes strictly earlier than that time, including when same-time closes arrived first.
@@ -177,26 +204,19 @@ export class ProcessedSetBook {
       !Number.isFinite(minPf) || minPf <= 1 ||
       (beforeT !== undefined && (!Number.isFinite(beforeT) || beforeT < 0 || beforeT < this.clock)))
       throw new RangeError("invalid processed-set policy or decision time");
-    const history = this.sets.get(processedSetKey(identity))?.[source] ?? [];
-    let end = history.length;
-    if (beforeT !== undefined) {
-      let lo = 0, hi = end;
-      while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        if (history[mid].exitT < beforeT) lo = mid + 1; else hi = mid;
-      }
-      end = lo;
-    }
+    const { history, end } = this.historyBefore(identity, source, beforeT);
     const recentLoss = () => negativeLastNDecision(history.slice(Math.max(0,end-Math.max(0,...filter?.windows ?? [])),end)
       .reverse().map(x=>x.unitReturn), filter);
     if (blocks) {
       const sample = history.slice(Math.max(0,end-n),end).reverse().map(close=>close.unitReturn);
-      const result = evaluateBlocks(blockPrefix(sample,n),blocks,minPf);
+      const prefix = blockPrefix(sample,n);
+      const result = evaluateBlocks(prefix,blocks,minPf);
       const decision = { n:result.count, blockPolicyKey:result.key };
       if (result.state === "unknown" || result.state === "insufficient") return {...decision,state:result.state,pf:null};
-      const pf = profitFactor(result.long.gp,result.long.gl);
+      const aggregate = blockWindow(prefix,0,n,minPf);
+      const pf = profitFactor(aggregate.gp,aggregate.gl);
       if (!Number.isFinite(pf)) return {...decision,state:"unknown",pf:null};
-      if (result.state === "failed" || pf < minPf) return {...decision,state:"failed",pf,blockedBy:"signed-block"};
+      if (result.state === "failed" || aggregate.state !== "qualified") return {...decision,state:"failed",pf,blockedBy:"signed-block"};
       const loss = recentLoss();
       if (loss.state === "unknown" || loss.state === "insufficient") return {...decision,state:"unknown",pf:null};
       if (!loss.pass) return {...decision,state:"failed",pf,blockedBy:"negative-filter"};
@@ -241,20 +261,23 @@ export class ProcessedSetBook {
     return prepared.map(p => this.acceptPostBase(p.own, entryId, entryT, p.policy));
   }
 
+  /** Inspect the strictly prior owned windows without opening an order or retiring an observation. */
+  preview(identity: ProcessedSetIdentity, entryT: number, policy: ProcessedPolicy): ProcessedStageDecision {
+    if (!validPolicy(policy,this.capacity)) throw new RangeError("invalid processed-set policy");
+    const validation = this.verdict(identity, "postBase", policy.validationN, policy.minPf, entryT, policy.negativeFilter,policy.blocks?.validation);
+    const real = validation.state === "qualified" ? this.verdict(identity, "validated", policy.realN, policy.minPf, entryT, policy.negativeFilter,policy.blocks?.real) : null;
+    const stage = validation.state !== "qualified" ? "postBase" : real?.state === "qualified" ? "active" : "validated";
+    return { stage, validation, real };
+  }
+
   /** Record one actually processed, Base-qualified entry and freeze its stage at admission. */
   acceptPostBase(identity: ProcessedSetIdentity, entryId: string, entryT: number, policy: ProcessedPolicy): ProcessedOpen {
     if (!identityValid(identity) || !nonempty(entryId)) throw new TypeError("invalid processed entry");
     if (!Number.isFinite(entryT) || entryT < 0 || entryT < this.clock) throw new RangeError("processed events must be chronological");
-    // Validate both windows before mutating the clock or records.
-    if (!validPolicy(policy,this.capacity)) throw new RangeError("invalid processed-set policy");
-    const validation = this.verdict(identity, "postBase", policy.validationN, policy.minPf, entryT, policy.negativeFilter,policy.blocks?.validation);
-    const real = validation.state === "qualified" ? this.verdict(identity, "validated", policy.realN, policy.minPf, entryT, policy.negativeFilter,policy.blocks?.real) : null;
-    if (real === null && (!Number.isSafeInteger(policy.realN) || policy.realN < 1 || policy.realN > this.capacity))
-      throw new RangeError("invalid processed-set policy");
+    const { stage, validation, real } = this.preview(identity, entryT, policy);
     const key = entryKey(identity, entryId, entryT);
     if (this.open.has(key) || (entryT === this.clock && this.seenAtClock.has(key))) throw new Error("duplicate processed entry");
     this.advance(entryT);
-    const stage = validation.state !== "qualified" ? "postBase" : real?.state === "qualified" ? "active" : "validated";
     const rows = this.rows(identity);
     rows.evaluations.validation[validation.state]++;
     if (real) rows.evaluations.real[real.state]++;

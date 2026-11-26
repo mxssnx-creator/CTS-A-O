@@ -18,6 +18,30 @@ test("Base last-N defaults to 40 and rejects malformed settings", () => {
   for (const n of [-1, 1.5, 501, NaN, Infinity]) assert.throws(() => checkSettings({ gates: { ...DEFAULT_SETTINGS.gates, baseLastN: n } }));
 });
 
+test("Base evaluates the configured signed blocks and the PF of the complete window", () => {
+  const both = { long: 2, short: 2, minimal: 1, shortPolarity: "negative", minimalPolarity: "positive" } as const;
+  const options = { ...DEFAULT_SETTINGS.gates, minPf: 1.2, maxDdr: 0,
+    positionWindows: { ...DEFAULT_SETTINGS.gates.positionWindows!, blocks: { base: both } } };
+  const requested = baseLastNForRange(options, "sh");
+  assert.equal(requested, 5);
+  const cell = (values: number[], signed = true) => {
+    const rows = values.map((value, i) => trade(i, value));
+    const acc = new BaseCellAccumulator();
+    for (const row of rows) acc.push(row.r, row.entryT, row.exitT);
+    const result = acc.stats(requested, 0, signed);
+    assert.deepEqual(result.baseLast, baseLastNOf(rows, requested, 0, signed));
+    return result;
+  };
+  const qualified = cell([.06, .02, -.01, -.02, .01]);
+  assert.equal(passesBase(qualified, options), true);
+  assert.equal(passesBase(qualified, { ...options, positionWindows: { ...options.positionWindows,
+    blocks: { base: { ...both, shortPolarity: "positive" } } } }), false);
+  assert.equal(passesBase(cell([.015, .015, -.04, -.03, .01]), options), false, "the winning Long cannot hide a losing full book");
+  assert.equal(passesBase(cell([.06, .02, -.01, -.02, -.001]), options), false, "Last has its own sign");
+  assert.equal(passesBase(cell([.06, -.01, -.02, .01]), options), false, "a signed window needs all of its closes");
+  assert.equal(passesBase(cell([.06, .02, -.01, -.02, .01], false), options), false, "old unsigned proof is insufficient");
+});
+
 test("Micro and Minimal own Last-30 Base results are used for admission and rejection counts", () => {
   const own = { ...DEFAULT_SETTINGS.gates, positionWindows:null, minTrades: 9, maxDdr: 0, lastNFloor: 9 };
   assert.equal(baseLastNForRange(own, "mc"), 30);
