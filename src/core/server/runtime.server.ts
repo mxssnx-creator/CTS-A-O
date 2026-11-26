@@ -13,6 +13,7 @@ import { returnWindow } from "../metrics/return-window.ts";
 import { migrateMinuteCaps } from "./minute-cap-migration.server.ts";
 import { migrateMinimumProtectionPolicy } from "./protection-policy-migration.server.ts";
 import { migrateFineLadders } from "./fine-ladder-migration.server.ts";
+import { migrateDragFactoryFocus } from "./drag-focus-migration.server.ts";
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
 import { isHistoricExitConfig } from "../exit-scope.ts";
 import { lstatSync } from "node:fs";
@@ -288,6 +289,7 @@ import {
   mirrorId,
 } from "../sim/walkforward.ts";
 import { NativeProcessedStageAdapter, type NativeProcessedSnapshot } from "./processed-stage-adapter.ts";
+import { checkedProcessedReplayPolicy, type ProcessedReplayPolicy } from "../sim/processed-replay.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
   ENGINE_PROOF_PF,
@@ -1281,6 +1283,7 @@ export class CoreRuntime {
     migrateDcaTwoSteps(db);
     migrateMicroBreakoutFocus(db);
     migrateMicroContextFocus(db);
+    migrateDragFactoryFocus(db);
     migrateHistoricExitOptIn(db);
     migrateMinimumProtectionPolicy(db);
     migratePositionWindows(db);
@@ -11327,7 +11330,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     if (!raw || !Number.isSafeInteger(validationN) || validationN < 1 || validationN > 200 ||
       !Number.isSafeInteger(realN) || realN < 1 || realN > 200)
       throw new Error("processedStages requires validationN and realN in 1–200");
-    p.processedStages = { ...raw, validationN, realN };
+    p.processedStages = checkedProcessedReplayPolicy({ ...raw, validationN, realN } as ProcessedReplayPolicy);
   }
   const num = (k: string, lo: number, hi: number, int = false) => {
     if (p[k] === undefined) return;
@@ -12915,6 +12918,7 @@ function mergeSettings(
     exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, ...(base.exitStrategy ?? {}) },
     signals: mergeSignals(base.signals),
     sizing: sizingSettings(base.sizing),
+    arbitrageResearch: { ...DEFAULT_SETTINGS.arbitrageResearch!, ...(base.arbitrageResearch ?? {}) },
   };
   for (const p of patches) {
     if (!p) continue;
@@ -12942,6 +12946,7 @@ function mergeSettings(
       adjust: { ...out.adjust, ...(p.adjust ?? {}) },
       signals: mergeSignals(out.signals, p.signals),
       sizing: sizingSettings({ ...out.sizing, ...(p.sizing ?? {}) }),
+      arbitrageResearch: { ...out.arbitrageResearch, ...(p.arbitrageResearch ?? {}) },
       tfs: p.tfs ? [...p.tfs] : out.tfs,
       tfDays: { ...out.tfDays, ...(p.tfDays ?? {}) },
     };

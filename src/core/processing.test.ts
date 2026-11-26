@@ -20,6 +20,7 @@ import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { isMicroCalculationInd as isMicroFamilyInd, microAnchorTf } from "./indications/micro-family.ts";
 import { INVERSE_TIMEFRAMES, isInverseInd } from "./indications/inverse-config.ts";
 import { isLowRangeInd, LOW_RANGE_TIMEFRAMES } from "./indications/low-range.ts";
+import { DRAG_TIMEFRAMES, isDragInd } from "./indications/drag.ts";
 import { SeriesCache } from "./indications/cache.ts";
 import { MarketSource } from "./indications/market.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
@@ -129,7 +130,7 @@ describe("every indication works", () => {
     const declines = new Map(dcaTacticConfigs().map((c) => [dcaTacticId(c), c]));
     for (const x of engine) {
       let fired = 0;
-      const referencePair = x.id.startsWith("inverse-pair-");
+      const referencePair = x.id.startsWith("inverse-pair-") || isDragInd(x.id);
       const decline = declines.get(x.id);
       const cases = decline ? [false, true].map((mirror) => barsFromCandles("DCA-USDT", 1,
         declineCellBars(decline, mirror).map((c) => ({ t: c.timestamp, o: c.open, h: c.high, l: c.low, c: c.close, v: c.volume }))))
@@ -200,11 +201,14 @@ describe("every indication works", () => {
             missing.push(`${x.id}@m${lane}: unexpected ${family} lane`);
       }
       else for (const tf of tfs) {
-        const eligible = isLowRangeInd(x.id) ? (LOW_RANGE_TIMEFRAMES as readonly number[]).includes(tf)
+        const eligible = isDragInd(x.id) ? (DRAG_TIMEFRAMES as readonly number[]).includes(tf)
+          : isLowRangeInd(x.id) ? (LOW_RANGE_TIMEFRAMES as readonly number[]).includes(tf)
           : !isInverseInd(x.id) || (INVERSE_TIMEFRAMES as readonly number[]).includes(tf);
         if (eligible && !got.has(String(tf)) && !got.has(`${tf}c`)) missing.push(`${x.id}@m${tf}`);
         if (!eligible && (got.has(String(tf)) || got.has(`${tf}c`))) missing.push(`${x.id}@m${tf}: ineligible lane`);
       }
+      if (got && isDragInd(x.id) && [...got].some((lane) => lane.endsWith("c")))
+        missing.push(`${x.id}: unexpected combined Drag lane`);
     }
     assert.deepEqual(missing, []);
     // a disabled kind drops only its own indications

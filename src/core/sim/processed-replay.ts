@@ -11,6 +11,28 @@ export interface ProcessedReplayPolicy {
   negativeFilter?: NegativeLastN;
 }
 
+/** Reject malformed or unrecognized stages before they can be silently ignored in replay or native admission. */
+export function checkedProcessedReplayPolicy(policy: ProcessedReplayPolicy): ProcessedReplayPolicy {
+  if (!policy || typeof policy !== "object" || Array.isArray(policy) ||
+    Object.keys(policy).some(k => !["validationN", "realN", "blocks", "negativeFilter"].includes(k)) ||
+    ![policy.validationN, policy.realN].every(n => Number.isSafeInteger(n) && n >= 1 && n <= 200))
+    throw new RangeError("invalid processed-stage policy");
+  if (policy.blocks !== undefined) {
+    if (!policy.blocks || typeof policy.blocks !== "object" || Array.isArray(policy.blocks))
+      throw new RangeError("invalid processed-stage blocks");
+    for (const [stage, block] of Object.entries(policy.blocks)) {
+      if (!["validation", "real"].includes(stage) || !block || typeof block !== "object" || Array.isArray(block) ||
+        Object.keys(block).some(k => !["long", "short", "minimal", "shortPolarity", "minimalPolarity"].includes(k)))
+        throw new RangeError("invalid processed-stage block");
+      checkBlockPolicy(block);
+    }
+  }
+  const filter = negativeLastN(policy.negativeFilter);
+  return { validationN: policy.validationN, realN: policy.realN,
+    ...(policy.blocks ? { blocks: structuredClone(policy.blocks) } : {}),
+    ...(filter ? { negativeFilter: filter } : {}) };
+}
+
 /** Stable economic-policy identity carried from modeled admission through paper and venue ownership. */
 export function processedReplayRevision(policy: ProcessedReplayPolicy, cost: number): string {
   if (!Number.isFinite(cost) || cost < 0) throw new RangeError("invalid processed replay cost");
@@ -61,13 +83,9 @@ export class ProcessedReplay {
   private readonly revision: string;
 
   constructor(policy: ProcessedReplayPolicy, cost: number) {
-    if (!policy || ![policy.validationN, policy.realN].every(n => Number.isSafeInteger(n) && n >= 1 && n <= 200) ||
-      !Number.isFinite(cost) || cost < 0) throw new RangeError("invalid processed replay policy");
-    if(policy.blocks)for(const b of Object.values(policy.blocks))checkBlockPolicy(b);
-    const negativeFilter = negativeLastN(policy.negativeFilter);
-    this.policy = { validationN: policy.validationN, realN: policy.realN,
-      ...(policy.blocks?{blocks:structuredClone(policy.blocks)}:{}),
-      ...(negativeFilter ? { negativeFilter } : {}) };
+    if (!Number.isFinite(cost) || cost < 0) throw new RangeError("invalid processed replay cost");
+    this.policy = checkedProcessedReplayPolicy(policy);
+    const negativeFilter = this.policy.negativeFilter;
     this.revision = processedReplayRevision(this.policy, cost);
     this.book = new ProcessedSetBook("model", Math.max(policy.validationN, policy.realN, ...Object.values(policy.blocks??{}).map(blockRequired), ...negativeFilter?.windows ?? []));
   }
@@ -78,11 +96,21 @@ export class ProcessedReplay {
       lane: JSON.stringify([tp.ind, this.policy.validationN, this.policy.realN, minPf]), economicRevision: this.revision };
   }
 
-  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number): ProcessedOpen {
+  /** Read the exact predecessor windows without opening an entry or mutating their counters. */
+  readyForActive(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number): boolean {
+    const identity = this.identity(tp, symbol, side, minPf);
+    const validation = this.book.verdict(identity, "postBase", this.policy.validationN, minPf, entryT,
+      this.policy.negativeFilter, this.policy.blocks?.validation);
+    return validation.state === "qualified" && this.book.verdict(identity, "validated", this.policy.realN, minPf,
+      entryT, this.policy.negativeFilter, this.policy.blocks?.real).state === "qualified";
+  }
+
+  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number,
+    allowActive = true): ProcessedOpen {
     const identity = this.identity(tp, symbol, side, minPf);
     // An onset has one parent. Future exit price/time/return cannot change its identity.
     const entryId = JSON.stringify([tp.id, symbol, side, entryT]);
-    return this.book.acceptPostBase(identity, entryId, entryT, { ...this.policy, minPf });
+    return this.book.acceptPostBase(identity, entryId, entryT, { ...this.policy, minPf }, allowActive);
   }
 
   settle(open: ProcessedOpen, exitT: number, unitReturn: number | null): void {

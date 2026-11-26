@@ -188,13 +188,17 @@ describe("live record judges before the simulation", () => {
   });
 
   it("the adjuster reads a set's exchange window once it is full, never mixed with paper closes", () => {
-    const paper = Array.from({ length: 30 }, (_, i) => ({ cfg: "b|ema|tr0|x", r: 0.01, exitT: i }));
-    const exchange = Array.from({ length: 30 }, (_, i) => ({ cfg: "b|ema|tr0|y", r: -0.01, exitT: 100 + i }));
+    // A changed stop belongs to the same economic set; a different target does not.
+    const paper = Array.from({ length: 30 }, (_, i) => ({ cfg: "b|ema|tp1|sl1|tr0|h24", r: 0.01, exitT: i }));
+    const exchange = Array.from({ length: 30 }, (_, i) => ({ cfg: "b|ema|tp1|sl2|tr0|h24", r: -0.01, exitT: 100 + i }));
     const w = DEFAULT_ADJUST.window;
     const mixed = adjustTrades(paper, exchange.slice(0, w - 1), w);
     assert.ok(mixed.every((t) => !t.net), "a short exchange record: the paper book decides");
     const full = adjustTrades(paper, exchange, w);
     assert.ok(full.every((t) => t.net), "a full exchange window replaces the paper closes of its set");
+    const sibling = { ...paper[0], cfg: "b|ema|tp2|sl1|tr0|h24" };
+    assert.ok(adjustTrades([sibling], exchange, w).some((t) => t.cfg === sibling.cfg && !t.net),
+      "a different target retains its own paper evidence");
     const { state } = evaluateAdjust({}, full, { ...DEFAULT_ADJUST, enabled: true }, { minSl: 0.01, minTrail: 0.01 }, 0.5);
     const s = Object.values(state)[0];
     assert.equal(s.n, w);

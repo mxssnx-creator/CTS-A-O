@@ -50,6 +50,7 @@ export const INDICATION_KINDS = [
   "micro",
   "inverse",
   "low-range",
+  "drag",
 ] as const;
 export type IndicationKind = (typeof INDICATION_KINDS)[number];
 

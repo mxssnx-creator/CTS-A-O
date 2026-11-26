@@ -5409,3 +5409,45 @@ four stale failing expectations and three intentional slow skips; all four affec
 Compute default/independent1,004.0/986.9s, peak recorded RSS2,388/2,382MiB, worst foreground636/819ms.
 The sub-500ms target, profitable independent market cohorts, stable positive post-Base/execution PF, optimum
 sample counts and complete venue parity remain unestablished. Keep all live engines and monitoring stopped.
+## 2026-11-26 — independent modeled stage admissions
+
+Checkpoint on top of Stable-04 `80b873780687eb6ecf56d5c8309c76c9b8b9e50b`. Modeled
+stage-only entries no longer reserve funded pair events or order capacity. A ready funded candidate
+checks conflict against funded positions; cold research still observes configured modeled conflicts.
+Each exact config, symbol, side and policy keeps its own predecessor history. Timestamp and minute
+admission indexes are bounded to the current event window. Signed policy edits preserve other fields;
+unknown stage names and malformed signed settings fail before save/admission. The isolated signed-policy
+book handles the four sign combinations independently, but **automatic multi-policy orchestration and
+actual opposite-direction negative Main/Last lanes are not implemented**. A negative block setting
+currently filters the original-direction lane and must not be represented as a contrarian execution.
+Perpetual three-leg Arbitrage execution and multi-peer Drag also remain unfinished.
+
+At code `1b987c44` (the same source tree as GitHub checkpoint `200896ab`), the complete offline 8-symbol replay used 12h evaluated prehistory and
+2026-10-17 09:00–21:00 UTC trading. Base admitted 3/408 pairs (3/24 Drag; 0/384 Micro).
+At 09:00, the Base-qualified config cohort validated 40/98 (40.82%) at pooled historical return
+PF 9.735. All 94 later candidates lacked exact-context processed-stage samples; funded simulated
+positions/orders opened, settled and held were all zero, so execution PF is unavailable. Two four-close
+processed windows gave the same result; two one-close windows left 88 candidates insufficient and six
+failed, with no funded orders. A separate 120-minute Minimal-hold and four-close comparison
+admitted 2/408 Base pairs, then 0/522 post-Base configs (0%), with PF unavailable and no funded orders.
+No exchange orders or fills were involved; these retrospective outcomes do not establish positive execution.
+
+At code `60707fe3`, a tactics-off sensitivity with the same 8 symbols and 12+12-hour window validated
+475/22,828 post-Base configs (2.08%) at pooled historical PF 6.675. With separate Last-4/4 processed
+windows, all 2,270 candidates were insufficient and no funded orders opened. With Last-1/1, one ARB-USDT
+short position contained two settled modeled orders, one loss and one win, with execution return PF 21.15;
+both came from Micro indications, not Drag. The other 2,268 entries were insufficient, failed or blocked
+by the funded pair-event rule. A rerun reproduced both trade rows, validation and skip counts exactly.
+Two orders are not evidence of stable profitability; neither sensitivity changed production defaults.
+
+The current-source 12+12 run reported peak RSS 579 MB and a 629 ms Paper-phase stall on a shared host;
+it does not meet or establish the warmed sub-500ms target. A longer exploratory 24h replay was
+stopped because the operator's required market protocol is 8 symbols with 12h prehistory and 12h trading;
+its incomplete output is not acceptance evidence. Focused stage, conflict, cap, memory-window, settings,
+policy and restart tests passed against code `1539ee92`. The complete offline core inventory passed
+5,218 tests with three skipped, and the production build passed with no database URL. Follow-up script
+fixtures pin archived Signal Last-12 explicitly and include the full seven-day cadence warmup. At `5b501dfe`,
+820 script tests passed with eight skipped (excluding the browser suite), 87 app/component tests passed,
+and four shared signed-window arithmetic tests passed. The browser UI test could not start because the
+runner's Chromium binary was absent. No deployment, venue action, or live-readiness claim is made.
+

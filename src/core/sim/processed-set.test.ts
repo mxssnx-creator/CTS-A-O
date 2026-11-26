@@ -13,6 +13,30 @@ const enterAndClose = (book: ProcessedSetBook, i: ProcessedSetIdentity, at: numb
   return admission;
 };
 
+test("a model-only deferred active entry survives restart without becoming an owned position", () => {
+  const p = { validationN: 1, realN: 1, minPf: 1.1 };
+  let book = new ProcessedSetBook("model", 2);
+  for (const at of [0, 2]) {
+    book.acceptPostBase(identity, `seed-${at}`, at, p, false);
+    book.close(identity, `seed-${at}`, at, "final", at + 1, .02, true);
+  }
+  const pending = book.acceptPostBase(identity, "deferred", 4, p, false);
+  assert.equal(pending.real?.state, "qualified");
+  assert.equal(pending.stage, "validated");
+  assert.equal(pending.activeDeferred, true);
+  assert.equal(book.activePositions().length, 0);
+  assert.equal(book.summary(identity)!.deferredActive, 1);
+  book = ProcessedSetBook.restore(JSON.parse(JSON.stringify(book.snapshot())));
+  book.close(identity, "deferred", 4, "final", 5, -.03, true);
+  assert.equal(book.verdict(identity, "validated", 1, 1.1).state, "failed");
+  assert.equal(book.summary(identity)!.stages.active.closedOrders, 0);
+  const corrupted = book.snapshot();
+  corrupted.sets[0].deferredActive = 0;
+  assert.throws(() => ProcessedSetBook.restore(corrupted), /invalid processed-stage progression/);
+  for (const basis of ["paper", "venue"] as const)
+    assert.throws(() => new ProcessedSetBook(basis, 2).acceptPostBase(identity, "bad", 0, p, false), /model-only/);
+});
+
 test("signed Validation blocks retain the configured independent recent-loss veto", () => {
   const book = new ProcessedSetBook("model", 12);
   [0.02, 0.03, -0.001].forEach((r, i) => enterAndClose(book, identity, 2 * i, r));
@@ -265,6 +289,35 @@ test("parallel major/minor policies keep own stages, full windows and restart id
   assert.equal(edited[0].stage,"postBase");
   const before=b.snapshot();assert.throws(()=>b.acceptParallelPostBase(identity,"bad",12,[lanes[0],lanes[0]]));
   assert.deepEqual(b.snapshot(),before,"invalid duplicate policy must not partially mutate the book");
+});
+
+test("positive and negative Short and Last policies retain independent stage histories through restart", () => {
+  const signs = ["positive", "negative"] as const;
+  const lanes = signs.flatMap(shortPolarity => signs.map(minimalPolarity => ({
+    id: `${shortPolarity}/${minimalPolarity}`, role: "independent" as const,
+    validationN: 1, realN: 1, minPf: 1.1,
+    blocks: { validation: { long: 1, short: 1, minimal: 1, shortPolarity, minimalPolarity } },
+  })));
+  let book = new ProcessedSetBook("model", 10), clock = 0, seq = 0;
+  const feed = (value: number) => {
+    const opened = book.acceptParallelPostBase(identity, `event-${seq++}`, clock, lanes);
+    clock++;
+    for (const row of opened) book.close(row.identity, row.entryId, row.entryT, "final", clock, value, true);
+    clock++;
+  };
+  for (const [i, lane] of lanes.entries()) {
+    const p = lane.blocks.validation;
+    feed(.04);
+    feed(p.shortPolarity === "positive" ? .01 : -.01);
+    feed(p.minimalPolarity === "positive" ? .01 : -.01);
+    const opened = book.acceptParallelPostBase(identity, `check-${seq++}`, clock, lanes);
+    assert.equal(new Set(opened.map(x => x.identity.lane)).size, 4);
+    assert.deepEqual(opened.map(x => x.validation.state), lanes.map((_, j) => i === j ? "qualified" : "failed"));
+    clock++;
+    for (const row of opened) book.close(row.identity, row.entryId, row.entryT, "final", clock, .02, true);
+    clock++;
+    if (i === 1) book = ProcessedSetBook.restore(JSON.parse(JSON.stringify(book.snapshot())));
+  }
 });
 
 const signedBlocks={long:20,short:10,minimal:3,shortPolarity:"negative" as const,minimalPolarity:"negative" as const};

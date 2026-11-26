@@ -17,7 +17,7 @@ test("a cgroup v2 parent can limit an unlimited child", () => {
   const estimate = cgroupMemoryEstimate(read(files));
   assert.ok(estimate);
   assert.equal(estimate.availMb, 296);
-  assert.equal(memLevel(estimate.availMb), "hard");
+  assert.equal(memLevel(estimate.availMb, 2500, 1200), "hard");
 });
 
 test("the tightest v2 ancestor or child wins, including ancestor usage by siblings", () => {

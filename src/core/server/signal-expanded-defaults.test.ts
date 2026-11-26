@@ -59,6 +59,9 @@ it("fresh Expanded defaults preserve the catalog and current independent Signal 
   assert.equal(DEFAULT_SIGNALS.combinedVolumeFactors["low-range"], 1);
   assert.equal(rt.settings.signals.combinedVolumeFactors["low-range"], 1);
   expected.combinedVolumeFactors["low-range"] = 1; // New indication kind; retain exact archived values for every prior kind.
+  assert.equal(Object.hasOwn(expected.combinedVolumeFactors, "drag"), false, "archived receipt predates Drag");
+  assert.equal(rt.settings.signals.combinedVolumeFactors.drag, 1);
+  expected.combinedVolumeFactors.drag = 1;
   const normalized = { ...rt.settings.signals, sourcesMode: "allow", sources: Object.fromEntries(SIGNAL_SOURCES.map(s => [s.name, true])) };
   assert.deepEqual(normalized, expected);
   assert.deepEqual(signalCombos(rt.settings.signals, rt.settings.tfs), signalCombos(expected, recorded.actualSettings.tfs));

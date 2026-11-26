@@ -30,6 +30,7 @@ const protocol = JSON.parse(
 );
 protocol.model.roundTripCost = RT_COST; // new synthetic protocol; archived source stays immutable
 const MIN = 60_000;
+const CADENCE_WARMUP = 7 * 24 * 60;
 const START = Math.floor(1_790_000_000_000 / (30 * MIN)) * 30 * MIN;
 const candles = (n = 4800) =>
   syntheticCandles("FIXTURE-USDT", 1, n, START + (n - 1) * MIN, 53).map((c) => ({
@@ -38,14 +39,15 @@ const candles = (n = 4800) =>
     l: Math.min(c.l, c.o * 0.996),
   }));
 const fixture = () => {
-  const cs = candles();
+  // The default Signal cadence gate needs seven complete days before it can admit any source onsets.
+  const cs = candles(CADENCE_WARMUP + 4800);
   const p = structuredClone(protocol);
   p.data = {
     ...p.data,
     symbols: ["FIXTURE-USDT"],
     startT: START,
-    isStartT: START + 300 * MIN,
-    splitT: START + 3000 * MIN,
+    isStartT: START + (CADENCE_WARMUP + 300) * MIN,
+    splitT: START + (CADENCE_WARMUP + 3000) * MIN,
     endT: START + cs.length * MIN,
   };
   const group = researchCells(p).filter(
@@ -208,7 +210,7 @@ describe("four-source frozen independent Signal research", () => {
       },
     });
     assert.equal(froze, true);
-    assert.equal(report.method.isSourceCandles, 3000);
+    assert.equal(report.method.isSourceCandles, CADENCE_WARMUP + 3000);
     assert.equal(report.is.length, cells.length);
     assert.equal(report.oos.length, cells.length, "all unqualified losing cells remain diagnostic");
     for (const row of report.is)
@@ -221,12 +223,13 @@ describe("four-source frozen independent Signal research", () => {
   });
 
   it("all source/range/lane indicator and default-filter prefixes ignore poisoned future data", () => {
-    const cs = candles(7200),
-      cut = 4800;
+    const cs = candles(CADENCE_WARMUP + 7200),
+      cut = CADENCE_WARMUP + 4800;
     const poison = cs.map((c, i) =>
       i < cut ? c : { ...c, o: c.o * 5, h: c.h * 5, l: c.l * 5, c: c.c * 5, v: c.v * 10 },
     );
     const groups = [...new Map(researchCells(protocol).map((c) => [c.ind, c])).values()];
+    let activeSources = 0;
     for (const group of groups) {
       const a = new SeriesCache(
         barsFromCandles(
@@ -247,9 +250,12 @@ describe("four-source frozen independent Signal research", () => {
         indicationState(group.ind, a),
         group.ind,
       );
+      const fullEntries = entrySignal("follow", group.ind, b, DEFAULT_TACTICS);
+      const prefixEntries = entrySignal("follow", group.ind, a, DEFAULT_TACTICS);
+      if (prefixEntries.some(Boolean)) activeSources++;
       assert.deepEqual(
-        entrySignal("follow", group.ind, b, DEFAULT_TACTICS).slice(0, a.b.n),
-        entrySignal("follow", group.ind, a, DEFAULT_TACTICS),
+        fullEntries.slice(0, a.b.n),
+        prefixEntries,
         `${group.ind} filtered`,
       );
       assert.deepEqual(
@@ -270,6 +276,7 @@ describe("four-source frozen independent Signal research", () => {
       a.clear();
       b.clear();
     }
+    assert.ok(activeSources > 0, "the prefix check includes cadence-qualified source entries");
   });
 
   it("IS selection and all IS row hashes are unchanged by OOS mutations and repeats are deterministic", () => {
