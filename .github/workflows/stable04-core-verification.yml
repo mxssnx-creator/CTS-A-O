@@ -17,8 +17,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Let the modeled-warmup baseline finish while testing smaller processing slices.
-  group: stable04-core-verification-v20
+  # Let the latency baseline finish while testing compact summary context keys.
+  group: stable04-core-verification-v21
   cancel-in-progress: true
 jobs:
   core:

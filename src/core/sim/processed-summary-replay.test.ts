@@ -75,3 +75,41 @@ test("summary ledger keeps both prior and same-time close windows when many held
   assert.deepEqual(lean.preview(tp, "X-USDT", 1, 1001, 1.1), full.preview(tp, "X-USDT", 1, 1001, 1.1));
   assert.equal(lean.preview(tp, "X-USDT", 1, 1001, 1.1).validation.state, "failed");
 });
+
+test("shared context slots never share histories across configs or policy identities", () => {
+  const policy: ProcessedReplayPolicy = { validationN: 2, realN: 2, reportDetail: "summary" };
+  const full = new ProcessedReplay(policy, .0015), lean = new ProcessedSummaryReplay(policy, .0015);
+  const tp = { id: 'config|["one"]', ind: 'indicator|["one"]', kind: "normal" };
+  const symbol = 'X|["USDT"]';
+  for (let i = 0; i < 2; i++) {
+    const a = full.enter(tp, symbol, 1, 10 + i * 2, 1.1), b = lean.enter(tp, symbol, 1, 10 + i * 2, 1.1);
+    full.settle(a, 11 + i * 2, .02); lean.settle(b, 11 + i * 2, .02);
+  }
+  const cases: Array<[typeof tp, string, 1 | -1, number, string]> = [
+    [tp, symbol, 1, 1.1, "qualified"],
+    [{ ...tp, id: "different" }, symbol, 1, 1.1, "insufficient"],
+    [{ ...tp, ind: "different" }, symbol, 1, 1.1, "insufficient"],
+    [{ ...tp, kind: "axis" }, symbol, 1, 1.1, "insufficient"],
+    [tp, "different", 1, 1.1, "insufficient"],
+    [tp, symbol, -1, 1.1, "insufficient"],
+    [tp, symbol, 1, 1.2, "insufficient"],
+  ];
+  for (const [config, sym, side, floor, expected] of cases) {
+    const actual = lean.preview(config, sym, side, 20, floor);
+    assert.deepEqual(actual, full.preview(config, sym, side, 20, floor));
+    assert.equal(actual.validation.state, expected);
+  }
+  let at = 30;
+  for (const [config, sym, side, floor] of cases.slice(1)) {
+    for (let i = 0; i < 2; i++, at += 2) {
+      const a = full.enter(config, sym, side, at, floor), b = lean.enter(config, sym, side, at, floor);
+      assert.deepEqual([b.stage, b.validation, b.real], [a.stage, a.validation, a.real]);
+      full.settle(a, at + 1, .02); lean.settle(b, at + 1, .02);
+    }
+  }
+  for (const [config, sym, side, floor] of cases) {
+    const actual = lean.preview(config, sym, side, at, floor);
+    assert.deepEqual(actual, full.preview(config, sym, side, at, floor));
+    assert.equal(actual.validation.state, "qualified");
+  }
+});

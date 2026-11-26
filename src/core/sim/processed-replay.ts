@@ -173,6 +173,11 @@ interface SummaryRows {
   validated?: ProcessedHistoryRow[];
   lastEntryT: number;
 }
+interface SummaryConfig {
+  group: string;
+  primary: Map<number, SummaryRows>;
+  others?: Map<string, Map<number, SummaryRows>>;
+}
 
 /**
  * Offline, summary-only replay ledger. It retains exactly the predecessor close windows needed for
@@ -182,7 +187,10 @@ interface SummaryRows {
 export class ProcessedSummaryReplay {
   readonly policy: ProcessedReplayPolicy;
   private readonly capacity: number;
-  private readonly contexts = new Map<string, Map<string, SummaryRows>>();
+  private readonly contexts = new Map<string, SummaryConfig>();
+  // A configuration usually has one kind/policy lane but many symbol-direction histories.
+  // Store the group once per configuration and share compact symbol-direction keys globally.
+  private readonly slots = new Map<string, number>();
   private readonly held = new WeakMap<ProcessedOpen, { rows: SummaryRows; entryT: number; stage: ProcessedOpen["stage"] }>();
   private clock = -1;
   private readonly empty: ProcessedHistoryRow[] = [];
@@ -208,13 +216,31 @@ export class ProcessedSummaryReplay {
       if (create) throw new Error("foreign processed economic revision");
       return undefined;
     }
-    // Lane contains the indication, windows and PF floor.
-    let byContext = this.contexts.get(identity.baseConfigId);
-    const key = JSON.stringify([identity.symbol, identity.side, identity.kind, identity.lane]);
-    let row = byContext?.get(key);
+    // Lane contains the indication, windows and PF floor. A changed lane or kind retains
+    // a separate group even when it has the same Base config ID.
+    let config = this.contexts.get(identity.baseConfigId);
+    if (!config && !create) return undefined;
+    const group = JSON.stringify([identity.kind, identity.lane]);
+    let byContext = config?.group === group ? config.primary : config?.others?.get(group);
+    if (!byContext && !create) return undefined;
+    if (!config) {
+      config = { group, primary: new Map() };
+      this.contexts.set(identity.baseConfigId, config);
+      byContext = config.primary;
+    } else if (!byContext) {
+      config.others ??= new Map();
+      config.others.set(group, (byContext = new Map()));
+    }
+    const key = JSON.stringify([identity.symbol, identity.side]);
+    let slot = this.slots.get(key);
+    if (slot === undefined) {
+      if (!create) return undefined;
+      slot = this.slots.size;
+      this.slots.set(key, slot);
+    }
+    let row = byContext!.get(slot);
     if (!row && create) {
-      if (!byContext) this.contexts.set(identity.baseConfigId, (byContext = new Map()));
-      byContext.set(key, (row = { postBase: [], lastEntryT: -1 }));
+      byContext!.set(slot, (row = { postBase: [], lastEntryT: -1 }));
     }
     return row;
   }
