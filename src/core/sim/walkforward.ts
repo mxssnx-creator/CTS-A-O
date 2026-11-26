@@ -4375,20 +4375,28 @@ export class EvalMemo {
   private clock = -Infinity;
   private fromT = -Infinity;
   private toT = -Infinity;
-  private indexed = new WeakSet<ConfigTape>();
+  private indexed = new WeakMap<ConfigTape, number>();
   private token = {};
+  uniqueTapes = true;
   tracking = false;
 
   /** A cached verdict may skip its settled-close lookup only for this exact attached index and forward clock. */
   tokenFor(tp: ConfigTape, forward: boolean): object | undefined {
     return forward && this.indexed.has(tp) ? this.token : undefined;
   }
+  /** Input order is also the stable tie order in the selector. */
+  indexOf(tp: ConfigTape): number | undefined { return this.indexed.get(tp); }
+  covers(fromT: number, toT: number, tapes: number): boolean {
+    return this.tracking && this.tapes.length === tapes && this.clock <= fromT &&
+      fromT >= this.fromT && toT <= this.toT;
+  }
 
   /** Index the exit times of every tape inside [fromT, toT), sorted; slices (yields −1) so a long scan stays responsive. */
   *attach(tapes: readonly ConfigTape[], fromT: number, toT: number): Generator<number, void> {
     let count = 0;
     const lo: number[] = [];
-    const indexed = new WeakSet<ConfigTape>();
+    const indexed = new WeakMap<ConfigTape, number>();
+    let uniqueTapes = true;
     // Minute-aligned market closes admit a stable counting sort with a small, bounded time-axis table. If any
     // close is not exactly aligned, or the time span is too large, use the general stable permutation below.
     const minute = 60_000, origin = Math.floor(fromT / minute) * minute;
@@ -4398,7 +4406,8 @@ export class EvalMemo {
     let at = performance.now();
     let scanned = 0;
     for (let i = 0; i < tapes.length; i++) {
-      indexed.add(tapes[i]);
+      if (indexed.has(tapes[i])) uniqueTapes = false;
+      indexed.set(tapes[i], i);
       const x = tapes[i].exitT;
       let j = lowerBound(x, fromT);
       const start = j;
@@ -4467,7 +4476,8 @@ export class EvalMemo {
       }
     }
     this.times = times; this.owner = owner; this.tapes = tapes; this.ptr = 0; this.clock = fromT;
-    this.fromT = fromT; this.toT = toT; this.indexed = indexed; this.token = {}; this.tracking = true;
+    this.fromT = fromT; this.toT = toT; this.indexed = indexed; this.uniqueTapes = uniqueTapes;
+    this.token = {}; this.tracking = true;
     this.dirty.clear();
   }
 
@@ -4606,6 +4616,62 @@ function* selectPositionsGen(
     ...(o.recordValidation === true ? { checks } : {}),
     ...(o.recordValidation === "summary" ? { validationSummary: summary } : {}),
   };
+}
+
+/**
+ * For independent per-config seats, only tapes with newly settled closes can change their score or eligibility.
+ * Rebuild the small passing set after each update, preserving the full selector's original tape order for ties.
+ * Other seat policies use the ordinary full selector.
+ */
+export class ContinuousPositionSelection {
+  private readonly candidates = new Map<ConfigTape, Selection & { pair: string; index: number }>();
+  private readonly memo: EvalMemo;
+  private readonly byId: ReadonlyMap<string, ConfigTape>;
+  constructor(memo: EvalMemo, byId: ReadonlyMap<string, ConfigTape>) {
+    this.memo = memo;
+    this.byId = byId;
+  }
+
+  private update(tp: ConfigTape, t: number, o: WalkForwardOptions): void {
+    const index = this.memo.indexOf(tp);
+    const keep = index !== undefined && !(tp.kind !== "exit" && o.bots.length && !o.bots.includes(tp.bot)) &&
+      baseAllowsTape(tp, o) && cellAllowed(tp, o) && !tp.heldOnly && tapeExecutable(tp, o);
+    if (!keep) {
+      this.candidates.delete(tp);
+      this.memo.dirty.delete(tp);
+      this.memo.byTape.delete(tp);
+      return;
+    }
+    const ev = configEvalSummary(tp, t, o);
+    if (!ev.ok) { this.candidates.delete(tp); return; }
+    const score = o.rankBy === "green"
+      ? ev.gh + Math.min(1, Math.max(0, ev.lcb)) * 1e-6 : ev.lcb * (0.5 + ev.gh);
+    this.candidates.set(tp, { id: tp.id, pair: seatKey(tp, o), index, score,
+      window: { n: ev.n, net: ev.net, pf: ev.pf, gp: (ev.gp ?? 0) / 100, gl: (ev.gl ?? 0) / 100, ddt: ev.ddt } });
+  }
+
+  *reset(validated: ReadonlySet<string>, t: number, o: WalkForwardOptions): Generator<number, void> {
+    this.candidates.clear();
+    const free: WalkForwardOptions = { ...o, seatSet: "pool", validated: undefined, recordValidation: undefined };
+    let n = 0;
+    for (const id of validated) {
+      const tp = this.byId.get(id);
+      if (tp) this.update(tp, t, free);
+      if (++n % 64 === 0) yield -14;
+    }
+  }
+
+  *refresh(t: number, o: WalkForwardOptions): Generator<number, { picks: Selection[]; eligible: number }> {
+    const free: WalkForwardOptions = { ...o, seatSet: "pool", validated: undefined, recordValidation: undefined };
+    let n = 0;
+    for (const tp of this.memo.dirty) {
+      this.update(tp, t, free);
+      if (++n % 64 === 0) yield -14;
+    }
+    const eligible = [...this.candidates.values()].sort((a, b) => b.score - a.score || a.index - b.index);
+    return { picks: pickSeats(eligible, seatsOf(free), [], new Set<string>(), free).map(
+      ({ id, score, window }) => ({ id, score, window })), eligible: eligible.length };
+  }
 }
 
 export function configEval(tp: ConfigTape, t: number, o: WalkForwardOptions): ConfigEval {
@@ -8085,6 +8151,16 @@ export function* walkForwardGen(
     o.seatSet === "validated" && !frozenValidation && !groups;
   // the run's exit events, so a re-derivation touches only the tapes whose closes changed
   if (continuousPicks && o.evalMemo && !o.evalMemo.tracking) yield* o.evalMemo.attach(allEngine, startT, stopT);
+  let incremental = continuousPicks && o.seatPer === "config" && !o.ladderNeedsBase && o.evalMemo?.uniqueTapes &&
+    o.evalMemo.covers(startT, stopT, allEngine.length)
+    ? new ContinuousPositionSelection(o.evalMemo, byId) : null;
+  // Duplicate IDs do not have an unambiguous stable input position. Preserve the full selector for those catalogs.
+  if (incremental) for (let i = 0; i < allEngine.length; i++) {
+    if (byId.get(allEngine[i].id) !== allEngine[i] || o.evalMemo!.indexOf(allEngine[i]) !== i) {
+      incremental = null; break;
+    }
+    if ((i + 1) % 2048 === 0) yield -1;
+  }
   for (let t = startT; t < stopT; t += stepH * H) {
     // A short/losing run-start window is not a permanent rejection. Re-evaluate the same Base-qualified
     // built cohort on each new decision clock, using only its own already settled history. Explicit caller
@@ -8186,6 +8262,7 @@ export function* walkForwardGen(
       }
     };
     seat(picks);
+    if (incremental && validatedIds) yield* incremental.reset(validatedIds, t, stepOpts);
     // Reporting/selection cadence does not determine candle precision or candidate memory. Process one minute
     // at a time, with the same stable entry ordering, and release the completed batch before assembling the next.
     // Continuous evaluation: the picks are re-derived every decisionMin minutes from the closes settled so far (the memo makes
@@ -8206,8 +8283,9 @@ export function* walkForwardGen(
         // only when a close has settled since the last derivation (the memo knows which tapes: no column is opened to ask)
         o.evalMemo!.advance(batchT);
         if (o.evalMemo!.dirty.size > 0) {
-          const fresh = yield* selectPositionsGen(allEngine, batchT,
-            { ...stepOpts, seatSet: "pool", validated: undefined, recordValidation: undefined });
+          const fresh = incremental ? yield* incremental.refresh(batchT, stepOpts)
+            : yield* selectPositionsGen(allEngine, batchT,
+              { ...stepOpts, seatSet: "pool", validated: undefined, recordValidation: undefined });
           picks = fresh.picks;
           engineRank = rankOf(picks);
           seat(picks);
