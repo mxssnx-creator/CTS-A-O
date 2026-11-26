@@ -2363,8 +2363,9 @@ export function baseRuns(
       done++;
       if (onStep && (done === total || done % step === 0)) onStep(done, total);
     }
-    // bot triggers are reused by every indication: kept; the indication's own series are released
-    if (release) for (const k of u.caches) k.clear(["bot:", "break:shared:"]);
+    // Bot triggers and the fixed-lookback DCA features are shared across variants in this worker batch.
+    // Each indication's output is still released here; all shared features are released at the end of the batch.
+    if (release) for (const k of u.caches) k.clear(["bot:", "break:shared:", "tactic-dca:features:"]);
     else for (const c of g) forgetCombo(u, c.bot, c.ind);
   }
   if (release) for (const k of u.caches) k.clear(["bot:"]);

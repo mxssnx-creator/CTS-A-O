@@ -4,6 +4,14 @@ Relate now progresses on settled losses with a fresh default of 12 steps. A win 
 
 The targeted modeled, realtime, stop and relation isolation suites passed 61 checks. The synthetic 50-symbol benchmark measured 0.394 ms p95 for a close and sizing decision, compared with 0.460 ms on the preceding source. Post-Base return PF, validated Sets and validation percentage are unavailable for CTS-A-O on a new market replay. No venue test was run for this revision.
 
+## 2026-11-26 — Tactic Base feature reuse
+
+The full-focus settings-storm test timed out after 900 seconds. A bounded diagnostic showed Base was progressing
+through 190,378 combinations; its Tactic variants repeatedly rebuilt identical lookback features. Worker batches
+now reuse those arrays and release them after the batch. Focused parity, bounded-lifetime tests and the synthetic
+comparison are recorded in `docs/verification/tactic-base-cache-20261126.md`. The slow test and complete 12-symbol
+replay still need fresh results; neither the timeout nor profit factor is certified by the microbenchmark.
+
 ## 2026-11-26 — Block Auto integrity and bounded windows
 
 The automatic Block count selector now actually evaluates each relation key independently, enforces the

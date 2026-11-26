@@ -678,11 +678,19 @@ describe("runtime coordination", { timeout: process.env.CTS_CORE_SLOW === "1" ? 
       // computes: all engine indications remain in focus, while the final known fixture restores its bounded
       // symbol/protection scope after arbitrary presets. A follow-up compute may still be required; the real
       // cancellation/replacement and final publication must finish within the same 900s ceiling.
-      await until(
-        () =>
-          rt.status.appliedSettingsAt >= at && rt.status.state === "running" && !rt.status.pending,
-        900_000,
-      );
+      const trace = setInterval(() => {
+        const s = rt.status;
+        console.log("[storm-progress]", JSON.stringify({ state: s.state, stage: s.stage, progress: s.progress,
+          label: s.label, settingsAt: s.settingsAt, appliedSettingsAt: s.appliedSettingsAt,
+          pending: s.pending, computes: s.computes, heartbeat: s.heartbeat, error: s.error,
+          memory: s.mem && { level: s.mem.level, rssMb: s.mem.rssMb, aborts: s.mem.aborts, fallback: s.mem.fallback } }));
+      }, 30_000);
+      try {
+        await until(
+          () => rt.status.appliedSettingsAt >= at && rt.status.state === "running" && !rt.status.pending,
+          900_000,
+        );
+      } finally { clearInterval(trace); }
       rt.stop();
       assert.equal(rt.status.error ?? null, null);
       assert.ok(rt.sim && rt.tapes.length > 0);

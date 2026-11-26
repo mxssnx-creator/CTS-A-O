@@ -37,7 +37,7 @@ jobs:
           node --experimental-strip-types --no-warnings scripts/prepare-stable04-replay.mjs runs/stable04-memory-replay
         env:
           NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
-      - name: Run the frozen session with cached Block scores and the updated Relate policy
+      - name: Run the frozen session with shared Tactic features and cached Block scores
         run: python3 scripts/run-stable04-replay.py runs/stable04-memory-replay
       - name: Preserve completed or failed evidence
         if: always()
