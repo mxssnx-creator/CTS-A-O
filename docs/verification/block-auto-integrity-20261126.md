@@ -43,3 +43,9 @@ An offline 12-symbol replay using `aa1ee32c2cb56ffb1f84bd89ae819ea1f4252980` and
 memory guard stopped it at 24% of strategy tapes after 550 seconds when host availability fell to 1,147 MiB
 against a 1,200 MiB reserve. Peak child RSS was 2,007,324 KiB. The incomplete fallback was refused; no
 hourly, post-Base validation or funded-execution results were produced. This run predates the further fixes.
+
+The first isolated GitHub replay (`45816167296`, source `4d8380e9fc267f2245ed3c339bb12cbc4c81345a`)
+does not upload the raw dump's sibling `session-*` directories. Its raw dump therefore cannot be treated as
+complete independent trade evidence, even if the run itself succeeds. The workflow now includes those
+sidecars and queues subsequent fixed-workflow runs under a shared concurrency group. The report has its own
+separate sidecars and is preserved independently.

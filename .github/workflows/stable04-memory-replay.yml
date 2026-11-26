@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: stable04-frozen-memory-replay-${{ github.sha }}
+  group: stable04-frozen-memory-replay
   cancel-in-progress: false
 jobs:
   replay:
@@ -54,4 +54,5 @@ jobs:
             runs/stable04-memory-replay/run.log
             runs/stable04-memory-replay/memory.jsonl
             runs/stable04-memory-replay/raw.json*
+            runs/stable04-memory-replay/session-*/**
             runs/stable04-memory-replay/report/
