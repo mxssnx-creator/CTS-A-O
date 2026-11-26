@@ -4388,47 +4388,82 @@ export class EvalMemo {
     let count = 0;
     const lo: number[] = [];
     const indexed = new WeakSet<ConfigTape>();
+    // Minute-aligned market closes admit a stable counting sort with a small, bounded time-axis table. If any
+    // close is not exactly aligned, or the time span is too large, use the general stable permutation below.
+    const minute = 60_000, origin = Math.floor(fromT / minute) * minute;
+    const bucketCount = Math.ceil((toT - origin) / minute);
+    let buckets: Uint32Array | undefined = Number.isSafeInteger(origin) && Number.isSafeInteger(bucketCount) &&
+      bucketCount > 0 && bucketCount <= 100_000 ? new Uint32Array(bucketCount) : undefined;
     let at = performance.now();
+    let scanned = 0;
     for (let i = 0; i < tapes.length; i++) {
       indexed.add(tapes[i]);
       const x = tapes[i].exitT;
       let j = lowerBound(x, fromT);
       const start = j;
-      for (; j < x.length && j < tapes[i].n && x[j] < toT; j++);
+      for (; j < x.length && j < tapes[i].n && x[j] < toT; j++) {
+        if (buckets) {
+          const bucket = (x[j] - origin) / minute;
+          if (!Number.isSafeInteger(bucket) || bucket < 0 || bucket >= buckets.length || buckets[bucket] === 0xffff_ffff)
+            buckets = undefined;
+          else buckets[bucket]++;
+        }
+        if (++scanned % 8192 === 0 && performance.now() - at > 8) { yield -1; at = performance.now(); }
+      }
       lo.push(j - start);
       count += j - start;
       if (performance.now() - at > 8) { yield -1; at = performance.now(); }
     }
+    if (count > 0xffff_ffff) throw new RangeError("Close index exceeds the supported 32-bit event count");
     const times = new Float64Array(count), owner = new Int32Array(count);
-    let k = 0;
-    for (let i = 0; i < tapes.length; i++) {
-      if (!lo[i]) continue;
-      const x = tapes[i].exitT;
-      let j = lowerBound(x, fromT);
-      for (let n = 0; n < lo[i]; n++, j++) { times[k] = x[j]; owner[k] = i; k++; }
-      if (performance.now() - at > 8) { yield -1; at = performance.now(); }
-    }
-    const order = new Uint32Array(count);
-    for (let i = 0; i < count; i++) order[i] = i;
-    order.sort((a, b) => times[a] - times[b]);
-    yield -1;
-    // Apply the sorted permutation in place. A second times/owner pair formerly added 12 bytes per close
-    // at peak; completed cycles mark themselves as identities so no extra visited array is needed.
-    let moves = 0;
-    for (let i = 0; i < count; i++) {
-      if (order[i] === i) {
-        if (i % 8192 === 8191) yield -1;
-        continue;
+    if (buckets) {
+      let offset = 0;
+      for (let i = 0; i < buckets.length; i++) {
+        const n = buckets[i]; buckets[i] = offset; offset += n;
+        if (i % 8192 === 8191 && performance.now() - at > 8) { yield -1; at = performance.now(); }
       }
-      const savedTime = times[i], savedOwner = owner[i];
-      let dst = i;
-      while (order[dst] !== i) {
-        const src = order[dst];
-        times[dst] = times[src]; owner[dst] = owner[src]; order[dst] = dst; dst = src;
+      let written = 0;
+      for (let i = 0; i < tapes.length; i++) {
+        if (!lo[i]) continue;
+        const x = tapes[i].exitT;
+        let j = lowerBound(x, fromT);
+        for (let n = 0; n < lo[i]; n++, j++) {
+          const dst = buckets[(x[j] - origin) / minute]++;
+          times[dst] = x[j]; owner[dst] = i;
+          if (++written % 8192 === 0 && performance.now() - at > 8) { yield -1; at = performance.now(); }
+        }
+        if (performance.now() - at > 8) { yield -1; at = performance.now(); }
+      }
+    } else {
+      let k = 0;
+      for (let i = 0; i < tapes.length; i++) {
+        if (!lo[i]) continue;
+        const x = tapes[i].exitT;
+        let j = lowerBound(x, fromT);
+        for (let n = 0; n < lo[i]; n++, j++) { times[k] = x[j]; owner[k] = i; k++; }
+        if (performance.now() - at > 8) { yield -1; at = performance.now(); }
+      }
+      const order = new Uint32Array(count);
+      for (let i = 0; i < count; i++) order[i] = i;
+      order.sort((a, b) => times[a] - times[b]);
+      yield -1;
+      // Apply the sorted permutation in place; completed cycles serve as the visited marker.
+      let moves = 0;
+      for (let i = 0; i < count; i++) {
+        if (order[i] === i) {
+          if (i % 8192 === 8191) yield -1;
+          continue;
+        }
+        const savedTime = times[i], savedOwner = owner[i];
+        let dst = i;
+        while (order[dst] !== i) {
+          const src = order[dst];
+          times[dst] = times[src]; owner[dst] = owner[src]; order[dst] = dst; dst = src;
+          if (++moves % 8192 === 0) yield -1;
+        }
+        times[dst] = savedTime; owner[dst] = savedOwner; order[dst] = dst;
         if (++moves % 8192 === 0) yield -1;
       }
-      times[dst] = savedTime; owner[dst] = savedOwner; order[dst] = dst;
-      if (++moves % 8192 === 0) yield -1;
     }
     this.times = times; this.owner = owner; this.tapes = tapes; this.ptr = 0; this.clock = fromT;
     this.fromT = fromT; this.toT = toT; this.indexed = indexed; this.token = {}; this.tracking = true;

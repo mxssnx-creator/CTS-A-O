@@ -17,8 +17,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Preserve the earlier slow-runtime baseline while verifying corrected Signal evaluation.
-  group: stable04-core-verification-v7
+  # Preserve the earlier slow-runtime baseline while verifying bounded close-event indexing.
+  group: stable04-core-verification-v8
   cancel-in-progress: true
 jobs:
   core:

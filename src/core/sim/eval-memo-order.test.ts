@@ -26,3 +26,33 @@ test("the bounded close index matches a scalar chronology across ties and strict
     assert.equal(memo.advance(25), false, "a backward clock cannot consume or invent events");
   }
 });
+
+test("minute buckets and irregular fallback both preserve the exact stable event order", () => {
+  let seed = 44173;
+  const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32);
+  const M = 60_000;
+  for (const irregular of [false, true]) for (let trial = 0; trial < 40; trial++) {
+    const tapes = Array.from({ length: 50 }, (_, tape) => {
+      const xs = Array.from({ length: Math.floor(random() * 35) }, () =>
+        (Math.floor(random() * 50) - 10) * M,
+      );
+      if (irregular && tape === 0) xs.push(7 * M + 1);
+      xs.sort((a, b) => a - b);
+      return { exitT: Float64Array.from(xs), n: xs.length } as ConfigTape;
+    });
+    const from = -3 * M + 1, to = 31 * M + 1;
+    const expected = tapes.flatMap((tp, owner) => [...tp.exitT]
+      .filter(t => t >= from && t < to).map(time => ({ time, owner })))
+      .sort((a, b) => a.time - b.time);
+    const memo = new EvalMemo();
+    finish(memo.attach(tapes, from, to));
+    const actual = memo as unknown as { times: Float64Array; owner: Int32Array };
+    assert.deepEqual([...actual.times], expected.map(x => x.time), `${irregular} trial ${trial} times`);
+    assert.deepEqual([...actual.owner], expected.map(x => x.owner), `${irregular} trial ${trial} owners`);
+    for (const t of [from, -M, 0, 5 * M, 6 * M + 1, 31 * M, to]) {
+      assert.equal(memo.advance(t), true);
+      const expectedDirty = new Set(expected.filter(x => x.time < t).map(x => tapes[x.owner]));
+      assert.deepEqual(memo.dirty, expectedDirty, `${irregular} trial ${trial} at ${t}`);
+    }
+  }
+});
