@@ -5409,19 +5409,23 @@ actual opposite-direction negative Main/Last lanes are not implemented**. A nega
 currently filters the original-direction lane and must not be represented as a contrarian execution.
 Perpetual three-leg Arbitrage execution and multi-peer Drag also remain unfinished.
 
-At code `16b0e7ba`, the complete offline 8-symbol replay used 12h evaluated prehistory and
+At code `1b987c44` (the same source tree as GitHub checkpoint `200896ab`), the complete offline 8-symbol replay used 12h evaluated prehistory and
 2026-10-17 09:00–21:00 UTC trading. Base admitted 3/408 pairs (3/24 Drag; 0/384 Micro).
 At 09:00, the Base-qualified config cohort validated 40/98 (40.82%) at pooled historical return
 PF 9.735. All 94 later candidates lacked exact-context processed-stage samples; funded simulated
 positions/orders opened, settled and held were all zero, so execution PF is unavailable. Two four-close
-processed windows gave the same result. A separate 120-minute Minimal-hold and four-close comparison
+processed windows gave the same result; two one-close windows left 88 candidates insufficient and six
+failed, with no funded orders. A separate 120-minute Minimal-hold and four-close comparison
 admitted 2/408 Base pairs, then 0/522 post-Base configs (0%), with PF unavailable and no funded orders.
 No exchange orders or fills were involved; these retrospective outcomes do not establish positive execution.
 
-The 12+12 baseline reported peak RSS 576 MB and worst observed event-loop delay 1.14 seconds on a shared
-host; it does not meet or establish the warmed sub-500ms target. A longer exploratory 24h replay was
+The current-source 12+12 run reported peak RSS 579 MB and a 629 ms Paper-phase stall on a shared host;
+it does not meet or establish the warmed sub-500ms target. A longer exploratory 24h replay was
 stopped because the operator's required market protocol is 8 symbols with 12h prehistory and 12h trading;
 its incomplete output is not acceptance evidence. Focused stage, conflict, cap, memory-window, settings,
-policy and restart tests passed against code `1539ee92`; the full offline suite was still running at
-this checkpoint. No deployment, venue action, or live-readiness claim is made.
+policy and restart tests passed against code `1539ee92`. The complete offline core inventory passed
+5,218 tests with three skipped, and the production build passed with no database URL. Follow-up script
+fixtures pin archived Signal Last-12 explicitly and include the full seven-day cadence warmup; 35 targeted
+script tests pass at `5b501dfe`. The browser UI test could not start because the runner's Chromium binary
+was absent. No deployment, venue action, or live-readiness claim is made.
 
