@@ -1,0 +1,38 @@
+name: Stable-04 offline core verification
+on:
+  push:
+    branches: [Stable-04]
+    paths: [.github/workflows/stable04-core-verification.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: stable04-core-verification
+  cancel-in-progress: true
+jobs:
+  core:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    env:
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_COMPARE: "0"
+      CTS_CORE_TEST_CONCURRENCY: "1"
+      CTS_CORE_TEST_WORKERS: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.19.0"
+      - run: npm ci
+      - name: Build the offline worker
+        run: npm run build:dev
+      - name: Run core tests without exchange connections
+        run: npm run test:core -- --test-shard=${{ matrix.shard }}/4
