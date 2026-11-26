@@ -7,7 +7,7 @@ import { positionCounts, positionStats, positionTapeValid, type PositionWindows 
 import {prepareRelationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
 import { RT_COST } from "../model-cost.ts";
 import { EVALUATION_HISTORY_H, PRECALC_HISTORY_H } from "../market/history-requirements.ts";
-import { ProcessedReplay, ownedProcessedPolicy, type ProcessedReplayPolicy, type ProcessedReplayReport, type ProcessedReplaySummary } from "./processed-replay.ts";
+import { ProcessedReplay, ProcessedSummaryReplay, ownedProcessedPolicy, type ProcessedReplayPolicy, type ProcessedReplayReport, type ProcessedReplaySummary } from "./processed-replay.ts";
 import type { ProcessedOpen } from "./processed-set.ts";
 import { minimumStopFraction } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
@@ -7956,7 +7956,9 @@ export function* walkForwardGen(
   tapes: readonly ConfigTape[],
   o: WalkForwardOptions,
 ): Generator<number, WalkForwardResult> {
-  const processed = o.processedStages ? new ProcessedReplay(ownedProcessedPolicy(o.processedStages, o.gates.positionWindows), o.cost) : null;
+  const processedPolicy = o.processedStages && ownedProcessedPolicy(o.processedStages, o.gates.positionWindows);
+  const processed = processedPolicy ? processedPolicy.reportDetail === "summary"
+    ? new ProcessedSummaryReplay(processedPolicy, o.cost) : new ProcessedReplay(processedPolicy, o.cost) : null;
   // Settings are frozen for this replay; do not clone and validate the same volume policy for every candidate.
   const relationalFactor = prepareRelationalVolumeFactor(o.relationalVolumeRatios);
   const processedOpen = new Map<Trade, ProcessedOpen>();

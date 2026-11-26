@@ -36,6 +36,45 @@ interface Close {
   /** Complete parent net unit return, summed from its own settled contributions. */
   unitReturn: number | null;
 }
+/** The fields needed for a chronological, bounded Last-N calculation. */
+export type ProcessedHistoryRow = Pick<Close, "exitT" | "unitReturn">;
+
+export function processedHistoryEnd(history: readonly ProcessedHistoryRow[], beforeT?: number): number {
+  let end = history.length;
+  if (beforeT !== undefined) {
+    let start = 0;
+    while (start < end) {
+      const mid = (start + end) >>> 1;
+      if (history[mid].exitT < beforeT) start = mid + 1; else end = mid;
+    }
+  }
+  return end;
+}
+
+/** Retain a full strictly prior window in addition to the current same-time batch. */
+export function appendProcessedHistory<T extends ProcessedHistoryRow>(history: T[], row: T, capacity: number): void {
+  history.push(row);
+  let currentStart = processedHistoryEnd(history, row.exitT);
+  if (currentStart > capacity) {
+    const remove = currentStart - capacity;
+    history.splice(0, remove);
+    currentStart -= remove;
+  }
+  const currentCount = history.length - currentStart;
+  if (currentCount > capacity) history.splice(currentStart, currentCount - capacity);
+}
+
+export function processedWindowEconomics(history: readonly ProcessedHistoryRow[], n: number, at: number) {
+  const end = processedHistoryEnd(history, at);
+  if (end < n) return null;
+  let gp = 0, gl = 0;
+  for (let i = end - n; i < end; i++) {
+    const r = history[i].unitReturn;
+    if (r === null || !Number.isFinite(r)) return null;
+    if (r > 0) gp += r; else gl -= r;
+  }
+  return Number.isFinite(gp) && Number.isFinite(gl) ? { gp, gl } : null;
+}
 interface SetRows {
   identity: ProcessedSetIdentity;
   postBase: Close[];
@@ -102,8 +141,11 @@ function identityValid(i: ProcessedSetIdentity): boolean {
     nonempty(i.kind) && nonempty(i.lane) && nonempty(i.economicRevision);
 }
 /** JSON encoding avoids collisions when config or lane IDs themselves contain separators. */
-export function processedSetKey(i: ProcessedSetIdentity): string {
+export function assertProcessedSetIdentity(i: ProcessedSetIdentity): void {
   if (!identityValid(i)) throw new TypeError("invalid processed-set identity");
+}
+export function processedSetKey(i: ProcessedSetIdentity): string {
+  assertProcessedSetIdentity(i);
   return JSON.stringify([i.baseConfigId, i.symbol, i.side, i.kind, i.lane, i.economicRevision]);
 }
 const entryKey = (i: ProcessedSetIdentity, id: string, entryT: number) =>
@@ -126,6 +168,58 @@ function validVerdict(v: ProcessedVerdict | null | undefined, n: number, minPf: 
   if (v.state === "failed") return v.n === n && typeof v.pf === "number" && Number.isFinite(v.pf) && v.pf >= 0 && (v.pf < minPf || Boolean(v.blockedBy));
   if (v.state === "qualified") return v.n === n && typeof v.pf === "number" && Number.isFinite(v.pf) && v.pf >= minPf;
   return false;
+}
+
+/** The same owned-stage gate is used by full checkpoints and summary-only replays. */
+export function processedWindowVerdict(history: readonly ProcessedHistoryRow[], capacity: number,
+  n: number, minPf: number, beforeT?: number, negative?: NegativeLastN, blocks?: BlockPolicy): ProcessedVerdict {
+  if (blocks) { checkBlockPolicy(blocks); n = blockRequired(blocks); }
+  const filter = negativeLastN(negative);
+  if (filter?.windows.some(w => w > capacity)) throw new RangeError("negative window exceeds capacity");
+  if (!Number.isSafeInteger(n) || n < 1 || n > capacity || !Number.isFinite(minPf) || minPf <= 1 ||
+    (beforeT !== undefined && (!Number.isFinite(beforeT) || beforeT < 0)))
+    throw new RangeError("invalid processed-set policy or decision time");
+  const end = processedHistoryEnd(history, beforeT);
+  const recentLoss = () => negativeLastNDecision(history.slice(Math.max(0,end-Math.max(0,...filter?.windows ?? [])),end)
+    .reverse().map(x=>x.unitReturn), filter);
+  if (blocks) {
+    const sample = history.slice(Math.max(0,end-n),end).reverse().map(close=>close.unitReturn);
+    const prefix = blockPrefix(sample,n);
+    const result = evaluateBlocks(prefix,blocks,minPf);
+    const decision = { n:result.count, blockPolicyKey:result.key };
+    if (result.state === "unknown" || result.state === "insufficient") return {...decision,state:result.state,pf:null};
+    const aggregate = blockWindow(prefix,0,n,minPf);
+    const pf = profitFactor(aggregate.gp,aggregate.gl);
+    if (!Number.isFinite(pf)) return {...decision,state:"unknown",pf:null};
+    if (result.state === "failed" || aggregate.state !== "qualified") return {...decision,state:"failed",pf,blockedBy:"signed-block"};
+    if (filter) {
+      const loss = recentLoss();
+      if (loss.state === "unknown" || loss.state === "insufficient") return {...decision,state:"unknown",pf:null};
+      if (!loss.pass) return {...decision,state:"failed",pf,blockedBy:"negative-filter"};
+    }
+    return {...decision,state:"qualified",pf};
+  }
+  // Coverage scans visit millions of empty or short contexts. Read the existing bounded window directly
+  // instead of allocating a sliced array for every verdict, including contexts without a set.
+  const start = Math.max(0, end - n), length = end - start;
+  for (let i = start; i < end; i++)
+    if (history[i].unitReturn === null || !Number.isFinite(history[i].unitReturn))
+      return { state: "unknown", n: length, pf: null };
+  if (length < n) return { state: "insufficient", n: length, pf: null };
+  let gp = 0, gl = 0;
+  for (let i = start; i < end; i++) {
+    const r = history[i].unitReturn!;
+    if (r > 0) gp += r; else gl -= r;
+  }
+  if (!Number.isFinite(gp) || !Number.isFinite(gl)) return { state: "unknown", n: length, pf: null };
+  const pf = profitFactor(gp, gl);
+  if (!Number.isFinite(pf)) return { state: "unknown", n: length, pf: null };
+  if (filter) {
+    const loss = recentLoss();
+    if (loss.state === "unknown" || loss.state === "insufficient") return {state:"unknown", n:length,pf:null};
+    if (!loss.pass) return {state:"failed",n:length,pf,blockedBy:"negative-filter"};
+  }
+  return { state: gp > gl && pf >= minPf ? "qualified" : "failed", n: length, pf };
 }
 
 /**
@@ -171,87 +265,18 @@ export class ProcessedSetBook {
     return rows;
   }
 
-  private historyBefore(identity: ProcessedSetIdentity, source: ProcessedStage, beforeT?: number) {
-    const history = this.sets.get(processedSetKey(identity))?.[source] ?? EMPTY_HISTORY;
-    let end = history.length;
-    if (beforeT !== undefined) {
-      let start = 0;
-      while (start < end) {
-        const mid = (start + end) >>> 1;
-        if (history[mid].exitT < beforeT) start = mid + 1;
-        else end = mid;
-      }
-    }
-    return { history, end };
-  }
-
   windowEconomics(identity: ProcessedSetIdentity, source: ProcessedStage, n: number, at: number) {
-    const { history, end } = this.historyBefore(identity, source, at);
-    if (end < n) return null;
-    let gp = 0, gl = 0;
-    for (let i = end - n; i < end; i++) {
-      const r = history[i].unitReturn;
-      if (r === null || !Number.isFinite(r)) return null;
-      if (r > 0) gp += r; else gl -= r;
-    }
-    return Number.isFinite(gp) && Number.isFinite(gl) ? { gp, gl } : null;
+    const history = this.sets.get(processedSetKey(identity))?.[source] ?? EMPTY_HISTORY;
+    return processedWindowEconomics(history, n, at);
   }
 
-  /**
-   * No empty, partial, or unknown window is promoted to a passing PF. A decision at beforeT can
-   * use only closes strictly earlier than that time, including when same-time closes arrived first.
-   * Without beforeT this reports the latest completed record, including closes at the book's clock.
-   */
+  /** A decision reads only the strictly earlier completed closes of its own predecessor. */
   verdict(identity: ProcessedSetIdentity, source: ProcessedStage, n: number, minPf: number,
-    beforeT?: number, negative?: NegativeLastN,blocks?:BlockPolicy): ProcessedVerdict {
-    if(blocks){checkBlockPolicy(blocks);n=blockRequired(blocks);}
-    const filter = negativeLastN(negative);
-    if (filter?.windows.some(w=>w>this.capacity)) throw new RangeError("negative window exceeds capacity");
-    if (!stages.includes(source) || !Number.isSafeInteger(n) || n < 1 || n > this.capacity ||
-      !Number.isFinite(minPf) || minPf <= 1 ||
-      (beforeT !== undefined && (!Number.isFinite(beforeT) || beforeT < 0 || beforeT < this.clock)))
+    beforeT?: number, negative?: NegativeLastN, blocks?: BlockPolicy): ProcessedVerdict {
+    if (!stages.includes(source) || (beforeT !== undefined && beforeT < this.clock))
       throw new RangeError("invalid processed-set policy or decision time");
-    const { history, end } = this.historyBefore(identity, source, beforeT);
-    const recentLoss = () => negativeLastNDecision(history.slice(Math.max(0,end-Math.max(0,...filter?.windows ?? [])),end)
-      .reverse().map(x=>x.unitReturn), filter);
-    if (blocks) {
-      const sample = history.slice(Math.max(0,end-n),end).reverse().map(close=>close.unitReturn);
-      const prefix = blockPrefix(sample,n);
-      const result = evaluateBlocks(prefix,blocks,minPf);
-      const decision = { n:result.count, blockPolicyKey:result.key };
-      if (result.state === "unknown" || result.state === "insufficient") return {...decision,state:result.state,pf:null};
-      const aggregate = blockWindow(prefix,0,n,minPf);
-      const pf = profitFactor(aggregate.gp,aggregate.gl);
-      if (!Number.isFinite(pf)) return {...decision,state:"unknown",pf:null};
-      if (result.state === "failed" || aggregate.state !== "qualified") return {...decision,state:"failed",pf,blockedBy:"signed-block"};
-      if (filter) {
-        const loss = recentLoss();
-        if (loss.state === "unknown" || loss.state === "insufficient") return {...decision,state:"unknown",pf:null};
-        if (!loss.pass) return {...decision,state:"failed",pf,blockedBy:"negative-filter"};
-      }
-      return {...decision,state:"qualified",pf};
-    }
-    // Coverage scans visit millions of empty or short contexts. Read the existing bounded window directly
-    // instead of allocating a sliced array for every verdict, including contexts without a set.
-    const start = Math.max(0, end - n), length = end - start;
-    for (let i = start; i < end; i++)
-      if (history[i].unitReturn === null || !Number.isFinite(history[i].unitReturn))
-        return { state: "unknown", n: length, pf: null };
-    if (length < n) return { state: "insufficient", n: length, pf: null };
-    let gp = 0, gl = 0;
-    for (let i = start; i < end; i++) {
-      const r = history[i].unitReturn!;
-      if (r > 0) gp += r; else gl -= r;
-    }
-    if (!Number.isFinite(gp) || !Number.isFinite(gl)) return { state: "unknown", n: length, pf: null };
-    const pf = profitFactor(gp, gl);
-    if (!Number.isFinite(pf)) return { state: "unknown", n: length, pf: null };
-    if (filter) {
-      const loss = recentLoss();
-      if (loss.state === "unknown" || loss.state === "insufficient") return {state:"unknown", n:length,pf:null};
-      if (!loss.pass) return {state:"failed",n:length,pf,blockedBy:"negative-filter"};
-    }
-    return { state: gp > gl && pf >= minPf ? "qualified" : "failed", n: length, pf };
+    const history = this.sets.get(processedSetKey(identity))?.[source] ?? EMPTY_HISTORY;
+    return processedWindowVerdict(history, this.capacity, n, minPf, beforeT, negative, blocks);
   }
 
   /** Separate policy histories, including after restart. No lane inherits another lane's later-stage passes. */
@@ -335,22 +360,7 @@ export class ProcessedSetBook {
       const key = stages[i];
       if (rows[key] === EMPTY_HISTORY) rows[key] = [];
       const history = rows[key];
-      history.push(row);
-      // Preserve the latest full prior window separately from this timestamp's closes. A batch of
-      // same-time closes may arrive before an entry, but must not evict the entry's prior evidence.
-      let lo = 0, hi = history.length;
-      while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        if (history[mid].exitT < exitT) lo = mid + 1; else hi = mid;
-      }
-      let currentStart = lo;
-      if (currentStart > this.capacity) {
-        const remove = currentStart - this.capacity;
-        history.splice(0, remove);
-        currentStart -= remove;
-      }
-      const currentCount = history.length - currentStart;
-      if (currentCount > this.capacity) history.splice(currentStart, currentCount - this.capacity);
+      appendProcessedHistory(history, row, this.capacity);
       if (row.unitReturn === null) stats.unknownReturns++;
       else if (row.unitReturn > 0) stats.grossProfit += row.unitReturn;
       else stats.grossLoss -= row.unitReturn;
