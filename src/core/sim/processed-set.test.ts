@@ -13,6 +13,13 @@ const enterAndClose = (book: ProcessedSetBook, i: ProcessedSetIdentity, at: numb
   return admission;
 };
 
+test("overflowing finite parent returns remain unknown in a complete owned window", () => {
+  const book = new ProcessedSetBook("model", 12);
+  enterAndClose(book, identity, 0, Number.MAX_VALUE);
+  enterAndClose(book, identity, 2, Number.MAX_VALUE);
+  assert.deepEqual(book.verdict(identity, "postBase", 2, 1.1, 4), { state: "unknown", n: 2, pf: null });
+});
+
 test("signed Validation blocks retain the configured independent recent-loss veto", () => {
   const book = new ProcessedSetBook("model", 12);
   [0.02, 0.03, -0.001].forEach((r, i) => enterAndClose(book, identity, 2 * i, r));

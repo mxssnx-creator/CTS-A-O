@@ -14,6 +14,16 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
+def signal_exit_reason(returncode):
+    """Do not report a killed child as a successful or unexplained completed run."""
+    if returncode is None or returncode >= 0:
+        return None
+    try:
+        return f'process terminated by signal {signal.Signals(-returncode).name}'
+    except ValueError:
+        return f'process terminated by signal {-returncode}'
+
+
 def main(out, staged_warmup=False):
     out.mkdir(parents=True, exist_ok=True)
     spill = out / 'spill'
@@ -91,6 +101,8 @@ def main(out, staged_warmup=False):
     # The process might exit between polls; inspect the final tail as well.
     if reason is None and 'compute aborted' in (out / 'run.log').read_text(errors='replace'):
         reason = 'memory guard aborted compute; incomplete fallback refused'
+    if reason is None:
+        reason = signal_exit_reason(proc.returncode)
     complete_files = (out / 'raw.json').is_file() and (out / 'report/index.html').is_file() and (out / 'report/data.json').is_file()
     if proc.returncode == 0 and not complete_files:
         reason = 'session returned success without all expected result files'

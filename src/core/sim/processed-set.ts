@@ -172,7 +172,7 @@ export class ProcessedSetBook {
   }
 
   private historyBefore(identity: ProcessedSetIdentity, source: ProcessedStage, beforeT?: number) {
-    const history = this.sets.get(processedSetKey(identity))?.[source] ?? [];
+    const history = this.sets.get(processedSetKey(identity))?.[source] ?? EMPTY_HISTORY;
     let end = history.length;
     if (beforeT !== undefined) {
       let start = 0;
@@ -224,27 +224,34 @@ export class ProcessedSetBook {
       const pf = profitFactor(aggregate.gp,aggregate.gl);
       if (!Number.isFinite(pf)) return {...decision,state:"unknown",pf:null};
       if (result.state === "failed" || aggregate.state !== "qualified") return {...decision,state:"failed",pf,blockedBy:"signed-block"};
-      const loss = recentLoss();
-      if (loss.state === "unknown" || loss.state === "insufficient") return {...decision,state:"unknown",pf:null};
-      if (!loss.pass) return {...decision,state:"failed",pf,blockedBy:"negative-filter"};
+      if (filter) {
+        const loss = recentLoss();
+        if (loss.state === "unknown" || loss.state === "insufficient") return {...decision,state:"unknown",pf:null};
+        if (!loss.pass) return {...decision,state:"failed",pf,blockedBy:"negative-filter"};
+      }
       return {...decision,state:"qualified",pf};
     }
-    const values = history.slice(Math.max(0, end - n), end);
-    if (values.some((x) => x.unitReturn === null || !Number.isFinite(x.unitReturn)))
-      return { state: "unknown", n: values.length, pf: null };
-    if (values.length < n) return { state: "insufficient", n: values.length, pf: null };
+    // Coverage scans visit millions of empty or short contexts. Read the existing bounded window directly
+    // instead of allocating a sliced array for every verdict, including contexts without a set.
+    const start = Math.max(0, end - n), length = end - start;
+    for (let i = start; i < end; i++)
+      if (history[i].unitReturn === null || !Number.isFinite(history[i].unitReturn))
+        return { state: "unknown", n: length, pf: null };
+    if (length < n) return { state: "insufficient", n: length, pf: null };
     let gp = 0, gl = 0;
-    for (const row of values) {
-      const r = row.unitReturn!;
+    for (let i = start; i < end; i++) {
+      const r = history[i].unitReturn!;
       if (r > 0) gp += r; else gl -= r;
     }
-    if (!Number.isFinite(gp) || !Number.isFinite(gl)) return { state: "unknown", n: values.length, pf: null };
+    if (!Number.isFinite(gp) || !Number.isFinite(gl)) return { state: "unknown", n: length, pf: null };
     const pf = profitFactor(gp, gl);
-    if (!Number.isFinite(pf)) return { state: "unknown", n: values.length, pf: null };
-    const loss = recentLoss();
-    if (loss.state === "unknown" || loss.state === "insufficient") return {state:"unknown", n:values.length,pf:null};
-    if (!loss.pass) return {state:"failed",n:values.length,pf,blockedBy:"negative-filter"};
-    return { state: gp > gl && pf >= minPf ? "qualified" : "failed", n: values.length, pf };
+    if (!Number.isFinite(pf)) return { state: "unknown", n: length, pf: null };
+    if (filter) {
+      const loss = recentLoss();
+      if (loss.state === "unknown" || loss.state === "insufficient") return {state:"unknown", n:length,pf:null};
+      if (!loss.pass) return {state:"failed",n:length,pf,blockedBy:"negative-filter"};
+    }
+    return { state: gp > gl && pf >= minPf ? "qualified" : "failed", n: length, pf };
   }
 
   /** Separate policy histories, including after restart. No lane inherits another lane's later-stage passes. */

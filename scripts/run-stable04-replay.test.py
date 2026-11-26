@@ -12,6 +12,12 @@ spec.loader.exec_module(replay)
 
 
 class LaunchBoundaryTests(unittest.TestCase):
+    def test_child_signal_is_reported_without_guessing_its_cause(self):
+        self.assertEqual(replay.signal_exit_reason(-9), 'process terminated by signal SIGKILL')
+        self.assertEqual(replay.signal_exit_reason(-999), 'process terminated by signal 999')
+        self.assertIsNone(replay.signal_exit_reason(0))
+        self.assertIsNone(replay.signal_exit_reason(1))
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

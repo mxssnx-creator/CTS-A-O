@@ -7,8 +7,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Retain the prior replay while checking the compact paper coordination index.
-  group: stable04-frozen-memory-replay-v15
+  # Retain the prior replay while checking lower-allocation processed verdict scans.
+  group: stable04-frozen-memory-replay-v16
   # A newer source supersedes an obsolete replay of the same frozen protocol.
   cancel-in-progress: true
 jobs:
