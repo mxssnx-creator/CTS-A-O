@@ -7773,7 +7773,7 @@ export function* scheduledEngineEntriesGen(
   selectionEndT = endT,
 ): Generator<number, Array<{ tr: Trade; tp: ConfigTape }>> {
   const out: Array<{ tr: Trade; tp: ConfigTape }> = [];
-  let visited = 0;
+  let visitedRows = 0, visitedCursors = 0;
   while (queue.peekT() < endT) {
     const c = queue.pop()!;
     const tp = c.tp, accept = selected.has(tp.id);
@@ -7785,16 +7785,17 @@ export function* scheduledEngineEntriesGen(
       const i = c.order[c.next++];
       c.nextT = c.next < c.order.length ? entryT![c.order[c.next]] : Infinity;
       if (accept) out.push({ tr: tradeAt(tp, i), tp });
-      if (++visited % 2048 === 0) yield -6;
+      if (++visitedRows % 256 === 0) yield -6;
     }
     let openView: readonly OpenPosition[] | undefined;
     while (c.nextOpen < c.openOrder.length && c.openTimes[c.openOrder[c.nextOpen]] < until) {
       const i = c.openOrder[c.nextOpen++];
       if (accept) out.push({ tr: markedOpenTrade(tp, packedOpenAt(c, i) ?? (openView ??= tapeOpenView(tp))[i], markT), tp });
+      if (++visitedRows % 256 === 0) yield -6;
     }
     const nextT = nextSignalEntryT(c);
     if (Number.isFinite(nextT)) queue.push(nextT, c);
-    if (++visited % 32 === 0) yield -6;
+    if (++visitedCursors % 8 === 0) yield -6;
   }
   return out;
 }
@@ -8306,7 +8307,7 @@ export function* walkForwardGen(
         if (o.recordValidation === true)
           signalChecks.push([tp.id, ev.ok ? 1 : 0, ev.n, ev.pf, (ev.gp ?? 0) / 100, (ev.gl ?? 0) / 100]);
         summarizeValidation(validationSummary, ev, ev.n, (ev.gp ?? 0) / 100, (ev.gl ?? 0) / 100);
-        if (++checked % 32 === 0) yield -6;
+        if (++checked % 8 === 0) yield -6;
       }
     }
     const stepPicks = picks; // the step's record keeps the picks the step started with
@@ -8381,7 +8382,7 @@ export function* walkForwardGen(
       // the picks are re-derived inside the hour, so no entry past this batch may be skipped.
       const cands = yield* scheduledEngineEntriesGen(engineEntries, batchEnd, scheduledEntries, stopT,
         continuousPicks ? batchEnd : stepEnd);
-      let mergedSignals = 0;
+      let mergedSignalRows = 0, mergedSignalCursors = 0;
       while (signalEntries.peekT() < batchEnd) {
         const cursor = signalEntries.pop()!;
         const { tp, order } = cursor;
@@ -8396,7 +8397,7 @@ export function* walkForwardGen(
         while (cursor.nextT < batchEnd) {
           const i = order[cursor.next++];
           cursor.nextT = cursor.next < order.length ? tp.entryT[order[cursor.next]] : Infinity;
-          if (++mergedSignals % 2048 === 0) yield -7;
+          if (++mergedSignalRows % 256 === 0) yield -7;
           if (take(tp.syms[tp.symI[i]], tp.side[i], tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0)))
             cands.push({ tr: tradeAt(tp, i), tp });
         }
@@ -8408,10 +8409,11 @@ export function* walkForwardGen(
           const op = packedOpenAt(cursor, i) ?? (openView ??= tapeOpenView(tp))[i];
           if (take(op.sym, op.side, tp.syms.indexOf(op.sym) * 2 + (op.side > 0 ? 1 : 0)))
             cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
+          if (++mergedSignalRows % 256 === 0) yield -7;
         }
         const nextT = nextSignalEntryT(cursor);
         if (Number.isFinite(nextT)) signalEntries.push(nextT, cursor);
-        if (++mergedSignals % 32 === 0) yield -7;
+        if (++mergedSignalCursors % 8 === 0) yield -7;
       }
       // best first: at the same entry time the better candidate takes a capped slot first
       yield* stableSortGen(

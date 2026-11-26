@@ -49,7 +49,7 @@ export function* lastNSamplesGen(tapes: readonly ConfigTape[], at: number, o: Wa
     // history for every scalar lookup; only this bounded tape is retained across cooperative yields.
     const exits = tp.exitT, returns = tp.r, symbolSlots = tp.symI, sides = tp.side;
     if (!tp.carried && !corrupt) for (let i = tp.n - 1; i >= 0; i--) {
-      if ((++work & 4095) === 0) yield;
+      if ((++work & 1023) === 0) yield;
       const exit = exits[i];
       if (!Number.isFinite(exit) || exit > nextExit) { corrupt = true; break; }
       nextExit = exit;
@@ -88,7 +88,7 @@ export function* lastNSamplesGen(tapes: readonly ConfigTape[], at: number, o: Wa
         else row.unknown++;
       }
     }
-    if ((configs & 255) === 0) yield;
+    if ((configs & 31) === 0) yield;
   }
   const rows = [...groups.values()];
   for (const row of rows) {

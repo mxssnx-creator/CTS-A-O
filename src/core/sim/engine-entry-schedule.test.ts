@@ -75,3 +75,16 @@ test('scheduling accepts the union of fixed processed sets and changing seats',(
  assert.equal(combined.filter(x=>x.cfg==='first').length,360,'fixed cohort remains scheduled for all three hours');
  assert.equal(combined.filter(x=>x.cfg==='second').length,120,'the changing seat is scheduled only in its hour');
 });
+
+test('a large set of open marks gives control back before all positions are materialized',()=>{
+ const id='many-open',open:OpenPosition[]=Array.from({length:2048},(_,i)=>({cfg:id,sym:'A',side:1,
+  entryT:start+i,entryI:i,entry:100,stop:99,target:102,peak:100,trailOn:false,mtm:-.003}));
+ const tape=makeTape(id,'follow','ema-9-21@m1',{tp:.01,sl:.01,trail:0,hold:1},'normal',['A'],[],open,[]);
+ const queue=drain(signalEntryQueueGen([tape],start,stop,true));
+ const gen=scheduledEngineEntriesGen(queue,start+H,new Set([id]),stop),first=gen.next();
+ assert.equal(first.done,false,'processing thousands of endpoint marks must not monopolize one event-loop slice');
+ let item=gen.next();while(!item.done)item=gen.next();
+ assert.equal(item.value.length,open.length);
+ assert.deepEqual(item.value.map(x=>x.tr.entryT),open.map(x=>x.entryT));
+ assert.ok(item.value.every(x=>x.tr.markedOpen&&x.tr.r===-.003));
+});
