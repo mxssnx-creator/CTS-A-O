@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ProcessedReplay, ProcessedSummaryReplay, type ProcessedReplayPolicy } from "./processed-replay.ts";
+import { ProcessedReplay, ProcessedSummaryReplay, type ProcessedReplayPolicy, type ProcessedSummaryOpen } from "./processed-replay.ts";
 import type { ProcessedOpen } from "./processed-set.ts";
 
 const context = (i: number) => ({ id: `follow|config:${i}|[ind]`, ind: `indicator|${i % 3}`, kind: i % 2 ? "axis" : "normal" });
@@ -17,7 +17,7 @@ for (const [name, extra] of scenarios) {
   test(`summary-only ledger matches full ledger across chronological ${name} events`, () => {
     const policy: ProcessedReplayPolicy = { validationN: 3, realN: 3, reportDetail: "summary", ...extra };
     const full = new ProcessedReplay(policy, .0015), lean = new ProcessedSummaryReplay(policy, .0015);
-    const pending: Array<{ full: ProcessedOpen; lean: ProcessedOpen; exit: number; r: number | null }> = [];
+    const pending: Array<{ full: ProcessedOpen; lean: ProcessedSummaryOpen; exit: number; r: number | null }> = [];
     let rng = 1234567;
     const random = (n: number) => (((rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0) >>> 8) % n);
     const identities = Array.from({ length: 5 }, (_, i) => ["X-USDT", "Y-USDT"].flatMap(sym =>
@@ -38,7 +38,8 @@ for (const [name, extra] of scenarios) {
         if (used.has(key)) continue;
         used.add(key);
         assert.deepEqual(lean.preview(context(i), sym, side, now, 1.1), full.preview(context(i), sym, side, now, 1.1));
-        const a = full.enter(context(i), sym, side, now, 1.1), b = lean.enter(context(i), sym, side, now, 1.1);
+        const a = full.enter(context(i), sym, side, now, 1.1), b = tick % 2
+          ? lean.enter(context(i), sym, side, now, 1.1) : lean.enterCompact(context(i), sym, side, now, 1.1);
         assert.deepEqual([b.stage, b.validation, b.real], [a.stage, a.validation, a.real]);
         const r = [0.02, -0.01, 0, null, 0.015][random(5)];
         // A close can share a later entry's timestamp; it must not be counted by that entry.
@@ -133,4 +134,14 @@ test("same-time close sharing is bounded and retains independent exact outcomes"
   full.settle(a, 21, .02); lean.settle(b, 21, .02);
   assert.equal(cache.size, 1, "only the current timestamp remains cached");
   assert.deepEqual(lean.preview(contexts[0], "X", 1, 22, 1.1), full.preview(contexts[0], "X", 1, 22, 1.1));
+});
+
+test("compact admissions reject foreign, early and duplicate closes", () => {
+  const lean = new ProcessedSummaryReplay({ validationN: 1, realN: 1, reportDetail: "summary" }, .0015);
+  const opened = lean.enterCompact(context(0), "X", 1, 10, 1.1);
+  assert.throws(() => lean.settle({ ...opened }, 11, .02), /no matching open/);
+  assert.throws(() => lean.settle(opened, 9, .02), /invalid processed close/);
+  lean.settle(opened, 11, .02);
+  assert.throws(() => lean.settle(opened, 12, .02), /no matching open/);
+  assert.equal(lean.preview(context(0), "X", 1, 12, 1.1).stage, "validated");
 });

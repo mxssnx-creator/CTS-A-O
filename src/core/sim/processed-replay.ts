@@ -35,6 +35,8 @@ export interface ProcessedReplayContext {
   kind: string;
   ind: string;
 }
+/** The offline summary walker only needs the frozen admission decision while an order is open. */
+export type ProcessedSummaryOpen = Pick<ProcessedOpen, "stage" | "validation" | "real">;
 export interface ProcessedReplayCoverage {
   contexts: number;
   full: number;
@@ -193,7 +195,7 @@ export class ProcessedSummaryReplay {
   // A configuration usually has one kind/policy lane but many symbol-direction histories.
   // Store the group once per configuration and share compact symbol-direction keys globally.
   private readonly slots = new Map<string, number>();
-  private readonly held = new WeakMap<ProcessedOpen, { rows: SummaryRows; entryT: number; stage: ProcessedOpen["stage"] }>();
+  private readonly held = new WeakMap<ProcessedSummaryOpen, { rows: SummaryRows; entryT: number; stage: ProcessedOpen["stage"] }>();
   private clock = -1;
   private readonly empty: ProcessedHistoryRow[] = [];
   private readonly economicRevision: string;
@@ -270,19 +272,32 @@ export class ProcessedSummaryReplay {
     return this.decision(this.identity(tp, symbol, side, minPf), entryT, minPf);
   }
 
-  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number): ProcessedOpen {
+  private admit(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number) {
     const identity = this.identity(tp, symbol, side, minPf), decision = this.decision(identity, entryT, minPf);
     const rows = this.rows(identity, true)!;
     if (rows.lastEntryT === entryT) throw new Error("duplicate processed entry");
     rows.lastEntryT = entryT;
     this.clock = entryT;
+    return { identity, decision, rows };
+  }
+
+  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number): ProcessedOpen {
+    const { identity, decision, rows } = this.admit(tp, symbol, side, entryT, minPf);
     const opened: ProcessedOpen = { identity, entryId: String(entryT), entryT,
       policy: { ...this.policy, minPf }, ...decision, slices: [], settledUnitReturn: 0 };
     this.held.set(opened, { rows, entryT, stage: decision.stage });
     return opened;
   }
 
-  settle(open: ProcessedOpen, exitT: number, unitReturn: number | null): void {
+  /** No checkpoint is emitted in summary mode, so the walker need not retain full per-entry metadata. */
+  enterCompact(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number): ProcessedSummaryOpen {
+    const { decision, rows } = this.admit(tp, symbol, side, entryT, minPf);
+    const opened: ProcessedSummaryOpen = { ...decision };
+    this.held.set(opened, { rows, entryT, stage: decision.stage });
+    return opened;
+  }
+
+  settle(open: ProcessedSummaryOpen, exitT: number, unitReturn: number | null): void {
     const own = this.held.get(open);
     if (!own) throw new Error("processed close has no matching open entry");
     if (!Number.isFinite(exitT) || exitT < own.entryT || exitT < this.clock)

@@ -7,7 +7,7 @@ import { positionCounts, positionStats, positionTapeValid, type PositionWindows 
 import {prepareRelationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
 import { RT_COST } from "../model-cost.ts";
 import { EVALUATION_HISTORY_H, PRECALC_HISTORY_H } from "../market/history-requirements.ts";
-import { ProcessedReplay, ProcessedSummaryReplay, ownedProcessedPolicy, type ProcessedReplayPolicy, type ProcessedReplayReport, type ProcessedReplaySummary } from "./processed-replay.ts";
+import { ProcessedReplay, ProcessedSummaryReplay, ownedProcessedPolicy, type ProcessedReplayPolicy, type ProcessedReplayReport, type ProcessedReplaySummary, type ProcessedSummaryOpen } from "./processed-replay.ts";
 import type { ProcessedOpen } from "./processed-set.ts";
 import { minimumStopFraction } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
@@ -7968,7 +7968,7 @@ export function* walkForwardGen(
     ? new ProcessedSummaryReplay(processedPolicy, o.cost) : new ProcessedReplay(processedPolicy, o.cost) : null;
   // Settings are frozen for this replay; do not clone and validate the same volume policy for every candidate.
   const relationalFactor = prepareRelationalVolumeFactor(o.relationalVolumeRatios);
-  const processedOpen = new Map<Trade, ProcessedOpen>();
+  const processedOpen = new Map<Trade, ProcessedOpen | ProcessedSummaryOpen>();
   const activePosition = (position: Trade) => processedOpen.get(position)?.stage === "active" && !historicalActive.has(position);
   const warmupPosition = (position: Trade) => processedOpen.get(position)?.stage !== "active";
   const processedFloor = (tp: ConfigTape) => processedMinPfForTape(tp, o);
@@ -8138,7 +8138,11 @@ export function* walkForwardGen(
       (owned && owned.stage !== "active" ? warmupCounts : historicalActive.has(x) ? historicalActiveCounts : counts).add(x, -1);
       if (owned) {
         // An endpoint mark is held exposure, never a completed Last-N observation.
-        if (!x.markedOpen) processed!.settle(owned, x.exitT, unitReturn(x));
+        if (!x.markedOpen) {
+          if (processed instanceof ProcessedSummaryReplay) processed.settle(owned, x.exitT, unitReturn(x));
+          else if (processed instanceof ProcessedReplay && "identity" in owned) processed.settle(owned, x.exitT, unitReturn(x));
+          else throw new Error("processed open does not belong to its ledger");
+        }
         processedOpen.delete(x);
         if (owned.stage !== "active") {
           if (++settled % 32 === 0) yield -2;
@@ -8586,7 +8590,9 @@ export function* walkForwardGen(
           continue;
         }
         // Only actual Base-processed admissions enter this book. Conflict/cap/strategy rejects never lend proof.
-        const stage = processed?.enter(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp));
+        const stage = processed instanceof ProcessedSummaryReplay
+          ? processed.enterCompact(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp))
+          : processed?.enter(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp));
         if (stage && stage.stage !== preview?.stage) throw new Error("processed admission changed during entry");
         const active = !stage || stage.stage === "active";
         // Accepted Real feedback excludes warm-up orders that have not cleared both processed windows.

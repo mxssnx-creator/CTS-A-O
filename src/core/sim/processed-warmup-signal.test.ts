@@ -31,5 +31,11 @@ test('modeled warmup advances independent long and short Signal stages without f
   assert.deepEqual(result.trades.map(x => [x.entryT, x.side]), [[T + M, 1], [T + 3 * M, -1]], JSON.stringify(result.skips));
   assert.equal(result.processedStages!.sets.length, 2);
   assert.ok(result.processedStages!.sets.every(x => x.stages.validated.closedOrders >= 2));
+  const compact = walkForward(universe, [tape], { ...opts,
+    processedStages: { ...opts.processedStages, reportDetail: 'summary' } });
+  assert.deepEqual(compact.trades, result.trades);
+  assert.deepEqual(compact.skips, result.skips);
+  assert.deepEqual(compact.processedStageSummary!.validation, result.processedStages!.validation);
+  assert.deepEqual(compact.processedStageSummary!.real, result.processedStages!.real);
   assert.throws(() => walkForward(universe, [tape], { ...opts, signalBasePassed: undefined }), /pre-warmup causal Base/);
 });
