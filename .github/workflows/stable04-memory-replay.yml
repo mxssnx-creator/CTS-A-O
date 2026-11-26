@@ -7,8 +7,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Retain the corrected Signal baseline while verifying bounded close-event indexing.
-  group: stable04-frozen-memory-replay-v13
+  # Keep the earlier baseline while rechecking modeled predecessor capacity isolation.
+  group: stable04-frozen-memory-replay-v14
   # A newer source supersedes an obsolete replay of the same frozen protocol.
   cancel-in-progress: true
 jobs:

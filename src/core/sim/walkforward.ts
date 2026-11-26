@@ -354,12 +354,13 @@ export class EngineOpenCount implements ConfirmPool {
  * the engine candidates (taken or not) open at the entry; without it, the executed engine orders in `open` (the rule
  * before 6 Oct, which refused most signals: an engine candidate a cap or gate did not take never confirmed).
  */
-export function coordBlock(
+export function coordBlock<T extends { cfg: string; sym: string; side: number }>(
   c: CoordSettings | undefined,
   tr: { cfg: string; sym: string; side: number; entryT: number },
   hourNet: ReadonlyMap<number, number>,
-  open: ReadonlyArray<{ cfg: string; sym: string; side: number }>,
+  open: ReadonlyArray<T>,
   confirmPool?: ConfirmPool | null,
+  includeOpen?: (position: T) => boolean,
 ): string | null {
   if (!c?.enabled) return null;
   const hk = Math.floor(tr.entryT / H);
@@ -368,14 +369,14 @@ export function coordBlock(
   if (c.hourLock > 0 && (hourNet.get(hk) ?? 0) >= c.hourLock) return "hourLock";
   if (c.cooldown !== "off" && (hourNet.get(hk - 1) ?? 0) < 0 && (c.cooldown === "all" || signal))
     return "cooldown";
-  if (c.conflict && open.some((x) => x.sym === tr.sym && x.side !== tr.side &&
+  if (c.conflict && open.some((x) => (!includeOpen || includeOpen(x)) && x.sym === tr.sym && x.side !== tr.side &&
       (exit ? x.cfg === tr.cfg : !isHistoricExitConfig(x.cfg)))) return "conflict";
   if (
     c.confirm &&
     signal &&
     !(confirmPool
       ? confirmPool.confirms(tr.sym, tr.side, tr.entryT)
-      : open.some((x) => x.sym === tr.sym && x.side === tr.side && !sigCfg(x.cfg) && !isHistoricExitConfig(x.cfg)))
+      : open.some((x) => (!includeOpen || includeOpen(x)) && x.sym === tr.sym && x.side === tr.side && !sigCfg(x.cfg) && !isHistoricExitConfig(x.cfg)))
   )
     return "confirm";
   return null;
@@ -7920,6 +7921,8 @@ export function* walkForwardGen(
   // Settings are frozen for this replay; do not clone and validate the same volume policy for every candidate.
   const relationalFactor = prepareRelationalVolumeFactor(o.relationalVolumeRatios);
   const processedOpen = new Map<Trade, ProcessedOpen>();
+  const activePosition = (position: Trade) => processedOpen.get(position)?.stage === "active";
+  const warmupPosition = (position: Trade) => processedOpen.get(position)?.stage !== "active";
   const processedFloor = (tp: ConfigTape) => processedMinPfForTape(tp, o);
   const byId = new Map<string, ConfigTape>(), indicationVolumeFactors = new Map<string, number>();
   let indexed = 0, indexedAt = performance.now();
@@ -7972,10 +7975,12 @@ export function* walkForwardGen(
   let entryKeyTime = -Infinity, pairEventMinute = -Infinity;
   // entries per range × symbol × side × entry time (entryCrowd)
   const crowd = new Map<string, number>();
+  const warmupCrowd = new Map<string, number>();
   // executed pair events (onePerPairEvent)
   const pairEvents = new Set<string>();
   const open = new ExitHeap<Trade>(); // taken, by exit
   const counts = new OpenCounts(); // the caps' counts of the taken orders still open
+  const warmupCounts = new OpenCounts(); // modeled predecessors are not funded Active exposure
   const blockPredecessors = new OpenCounts(); // independent virtual admissions never reserve funded slots
   const hourNet = new Map<number, number>();
   const exitHourNet = new Map<string, Map<number, number>>();
@@ -8070,8 +8075,8 @@ export function* walkForwardGen(
     }
     while (open.size && open.peekT() <= t) {
       const x = open.pop()!;
-      counts.add(x, -1);
       const owned = processedOpen.get(x);
+      (owned && owned.stage !== "active" ? warmupCounts : counts).add(x, -1);
       if (owned) {
         // An endpoint mark is held exposure, never a completed Last-N observation.
         if (!x.markedOpen) processed!.settle(owned, x.exitT, unitReturn(x));
@@ -8354,7 +8359,7 @@ export function* walkForwardGen(
         // produced 800 ms main-thread slices on the 12-symbol replay, so hand control back in smaller batches.
         if (++ci % 32 === 0) yield -9;
         if (tr.entryT !== entryKeyTime) {
-          executedKeys.clear(); crowd.clear(); entryKeyTime = tr.entryT;
+          executedKeys.clear(); crowd.clear(); warmupCrowd.clear(); entryKeyTime = tr.entryT;
         }
         const minute = Math.floor(tr.entryT / 60_000);
         if (minute !== pairEventMinute) { pairEvents.clear(); pairEventMinute = minute; }
@@ -8400,6 +8405,11 @@ export function* walkForwardGen(
         const ownHours = isExit ? (exitHourNet.get(tr.cfg) ?? new Map<number, number>()) : hourNet;
         const ownS2 = s2For(tr.cfg, tr.kind);
         const caps = capsOf(o, cls);
+        // A predecessor is only a modeled sample; it cannot reserve or conflict with an Active slot.
+        const preview = processed?.preview(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp));
+        const warmup = !!preview && preview.stage !== "active";
+        const admissionCounts = warmup ? warmupCounts : counts;
+        const admissionCrowd = warmup ? warmupCrowd : crowd;
         const gateOn = cls && !isExit && o.signalSourceGate?.enabled;
         // hedge-only signal: trades while the book is losing (this or the previous hour), without confirmation
         const hedging =
@@ -8409,7 +8419,8 @@ export function* walkForwardGen(
         const bookLosing =
           (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
           (hourNet.get(hourKey - 1) ?? 0) < 0;
-        const coordRaw = coordBlock(o.coord, tr, ownHours, open.items, engineOpen);
+        const coordRaw = coordBlock(o.coord, tr, ownHours, open.items, engineOpen,
+          processed ? (warmup ? warmupPosition : activePosition) : undefined);
         const coordWhy =
           (hedging
             ? bookLosing
@@ -8431,21 +8442,21 @@ export function* walkForwardGen(
           ? pairEventKey(tr.cfg, tr.sym, tr.side, tr.kind, tr.entryT, o.pairEventAxisOwn !== false) : null;
         if (o.guardPct > 0 && (ownHours.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
         else if (coordWhy) why = coordWhy;
-        else if (counts.dupe(tr.sym, tr.cfg, tr.side)) why = "dupe";
-        else if (counts.perSymbol(tr.sym, cls, capScope) >= caps.perSymbol) why = "perSymbol";
-        else if (counts.open(cls, capScope) >= caps.maxOpen) why = "maxOpen";
-        else if (counts.perSide(tr.side, cls, capScope) >= caps.perSide) why = "perSide";
+        else if (admissionCounts.dupe(tr.sym, tr.cfg, tr.side)) why = "dupe";
+        else if (admissionCounts.perSymbol(tr.sym, cls, capScope) >= caps.perSymbol) why = "perSymbol";
+        else if (admissionCounts.open(cls, capScope) >= caps.maxOpen) why = "maxOpen";
+        else if (admissionCounts.perSide(tr.side, cls, capScope) >= caps.perSide) why = "perSide";
         else if (
-          counts.positionsFull(tr.sym, tr.side, cls, cls ? o.signalMaxPositions : o.maxPositions, capScope)
+          admissionCounts.positionsFull(tr.sym, tr.side, cls, cls ? o.signalMaxPositions : o.maxPositions, capScope)
         )
           why = "maxPositions";
         else if (
           o.entryCrowd &&
-          (crowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) >= crowdCapOf(o, tr.cfg)
+          (admissionCrowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) >= crowdCapOf(o, tr.cfg)
         )
           why = "crowd";
         else if (pairEvent !== null && pairEvents.has(pairEvent) &&
-          (!processed || processed.preview(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp)).stage === "active"))
+          (!processed || !warmup))
           why = "pairEvent";
         const vf = (indicationVolumeFactors.get(tp.id) ?? 1) * (relationalFactor ? relationalFactor({
           indicationType: kindOfInd(tp.ind), indication: laneOf(tp.ind).base, strategy: tp.kind,
@@ -8502,6 +8513,7 @@ export function* walkForwardGen(
         }
         // Only actual Base-processed admissions enter this book. Conflict/cap/strategy rejects never lend proof.
         const stage = processed?.enter(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp));
+        if (stage && stage.stage !== preview?.stage) throw new Error("processed admission changed during entry");
         const active = !stage || stage.stage === "active";
         // Accepted Real feedback excludes warm-up orders that have not cleared both processed windows.
         fx.accepted = active;
@@ -8557,7 +8569,7 @@ export function* walkForwardGen(
         if (active && pairEvent !== null) pairEvents.add(pairEvent);
         if (o.entryCrowd) {
           const ck = crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT);
-          crowd.set(ck, (crowd.get(ck) ?? 0) + 1);
+          admissionCrowd.set(ck, (admissionCrowd.get(ck) ?? 0) + 1);
         }
         if (stage) processedOpen.set(x, stage);
         if (active) {
@@ -8575,7 +8587,7 @@ export function* walkForwardGen(
           skipR(skipName(reason), tr.r);
         }
         open.push(x.exitT, x);
-        counts.add(x, 1);
+        admissionCounts.add(x, 1);
       }
       // Every candidate belongs to exactly one disjoint entry window. Keep its feed object in feed/vopen, but its
       // long deduplication key and materialized Trade are no longer needed after that window has been processed.

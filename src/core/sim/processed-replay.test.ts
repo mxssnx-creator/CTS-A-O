@@ -150,6 +150,65 @@ test("siblings can collect warmup at the same onset while Active still spends on
   assert.equal(simulation.skips.pairEvent, 2);
 });
 
+test("an unqualified warmup order does not consume a funded Active slot", () => {
+  const f = fixture([.02, .02, .02, .02, .02, .02]);
+  const otherProtect = { ...protect, tp: .03 };
+  const otherId = configId("follow", ind, otherProtect);
+  for (const conflict of [false, true]) {
+    const warmup = { ...trade(.02, T + 8 * M + M / 2, conflict ? -1 : 1,
+      conflict ? symbols[0] : symbols[1], otherId), exitT: T + 13 * M };
+    const other = makeTape(otherId, "follow", ind, otherProtect, "normal", symbols, [warmup], [], []);
+    const sim = walkForward(f.universe, [f.tape, other], {
+      ...f.options, onePerPairEvent: false, maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0,
+      coord: { ...f.options.coord!, enabled: conflict, conflict },
+    });
+    assert.deepEqual(sim.trades.map(row => row.entryT), [f.future[4].entryT, f.future[5].entryT]);
+    const warmupSet = sim.processedStages!.sets.find(set => set.identity.baseConfigId === otherId)!;
+    assert.equal(warmupSet.stages.postBase.closedOrders, 1);
+    assert.equal(warmupSet.stages.active.openedOrders, 0);
+  }
+});
+
+test("Active exposure does not block a modeled predecessor or bypass its own caps", () => {
+  const f = fixture([.02, .02, .02, .02, .02, .02]);
+  const otherProtect = { ...protect, tp: .03 };
+  const otherId = configId("follow", ind, otherProtect);
+  const history = Array.from({ length: 160 }, (_, i) => trade(.02, T - 11 * H + i * 2 * M));
+  const longer = f.future.map((row, i) => i === 4 ? { ...row, exitT: T + 13 * M } : row);
+  const main = makeTape(id, "follow", ind, protect, "normal", symbols,
+    [...history, ...longer].sort((a, b) => a.exitT - b.exitT), [], []);
+  const warmup = { ...trade(.02, T + 9 * M + M / 2, -1, symbols[0], otherId), exitT: T + 14 * M };
+  const other = makeTape(otherId, "follow", ind, otherProtect, "normal", symbols, [warmup], [], []);
+  const sim = walkForward(f.universe, [main, other], {
+    ...f.options, onePerPairEvent: false, maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0,
+    coord: { ...f.options.coord!, enabled: true, conflict: true },
+  });
+  assert.deepEqual(sim.trades.map(row => row.entryT), [f.future[4].entryT], "Active still honors its own duplicate guard");
+  const warmupSet = sim.processedStages!.sets.find(set => set.identity.baseConfigId === otherId)!;
+  assert.equal(warmupSet.stages.postBase.closedOrders, 1);
+  assert.equal(warmupSet.stages.active.openedOrders, 0);
+});
+
+test("two independently qualified Active sets still share the configured execution cap", () => {
+  const f = fixture([.02, .02, .02, .02, .02, .02]);
+  const otherProtect = { ...protect, tp: .03 };
+  const otherId = configId("follow", ind, otherProtect);
+  const history = Array.from({ length: 160 }, (_, i) => trade(.02, T - 11 * H + i * 2 * M));
+  const longer = f.future.map((row, i) => i === 4 ? { ...row, exitT: T + 13 * M } : row);
+  const main = makeTape(id, "follow", ind, protect, "normal", symbols,
+    [...history, ...longer].sort((a, b) => a.exitT - b.exitT), [], []);
+  const otherRows = Array.from({ length: 5 }, (_, i) => trade(.02, T + (2 * i + 2) * M, 1, symbols[1], otherId));
+  const other = makeTape(otherId, "follow", ind, otherProtect, "normal", symbols, otherRows, [], []);
+  const sim = walkForward(f.universe, [main, other], {
+    ...f.options, onePerPairEvent: false, maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0,
+  });
+  assert.equal(sim.trades.filter(row => row.cfg === id).length, 1);
+  assert.equal(sim.trades.filter(row => row.cfg === otherId).length, 0);
+  assert.equal(sim.skips.maxOpen, 1);
+  const own = sim.processedStages!.sets.find(set => set.identity.baseConfigId === otherId)!;
+  assert.equal(own.stages.validated.closedOrders, 2, "the blocked candidate had already qualified both predecessor windows");
+});
+
 test("an unknown settled return remains in the processed window and checkpoint", () => {
   const f = fixture([.02, NaN]);
   assert.equal(f.result.trades.length, 0);

@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: stable04-exploratory-staged-warmup-v1
+  group: stable04-exploratory-staged-warmup-v2
   cancel-in-progress: true
 jobs:
   staged-warmup:
