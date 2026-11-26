@@ -5419,6 +5419,14 @@ failed, with no funded orders. A separate 120-minute Minimal-hold and four-close
 admitted 2/408 Base pairs, then 0/522 post-Base configs (0%), with PF unavailable and no funded orders.
 No exchange orders or fills were involved; these retrospective outcomes do not establish positive execution.
 
+At code `60707fe3`, a tactics-off sensitivity with the same 8 symbols and 12+12-hour window validated
+475/22,828 post-Base configs (2.08%) at pooled historical PF 6.675. With separate Last-4/4 processed
+windows, all 2,270 candidates were insufficient and no funded orders opened. With Last-1/1, one ARB-USDT
+short position contained two settled modeled orders, one loss and one win, with execution return PF 21.15;
+both came from Micro indications, not Drag. The other 2,268 entries were insufficient, failed or blocked
+by the funded pair-event rule. A rerun reproduced both trade rows, validation and skip counts exactly.
+Two orders are not evidence of stable profitability; neither sensitivity changed production defaults.
+
 The current-source 12+12 run reported peak RSS 579 MB and a 629 ms Paper-phase stall on a shared host;
 it does not meet or establish the warmed sub-500ms target. A longer exploratory 24h replay was
 stopped because the operator's required market protocol is 8 symbols with 12h prehistory and 12h trading;
