@@ -7,8 +7,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Re-run the focused diagnostic after the incremental history-index change.
-  group: stable04-focused-latency-v1
+  # Preserve the prior run while measuring the smaller selection slices.
+  group: stable04-focused-latency-v2
   cancel-in-progress: true
 jobs:
   focused-diagnostic:
