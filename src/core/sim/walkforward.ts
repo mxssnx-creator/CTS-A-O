@@ -3701,62 +3701,124 @@ const noteBase = (m: Map<string, number>, tp: ConfigTape, w: { n: number; pf: nu
   m.set(k, Math.max(m.get(k) ?? -Infinity, w.pf));
 };
 
-/** pickByLane per strategy family (each with `seats` of its own) when family seats are on. */
+/** Cooperatively filter a potentially large candidate catalog without changing its order. */
+function* filterSeatsGen<T>(values: readonly T[], keep: (value: T) => boolean): Generator<number, T[]> {
+  const result: T[] = [];
+  let work = 0;
+  for (const value of values) {
+    if (keep(value)) result.push(value);
+    if (++work % 1024 === 0) yield -14;
+  }
+  return result;
+}
+
+/** Match native stable score sorting; keep its exact behavior for unusual non-finite scores. */
+function* sortSeatsGen<T extends Selection>(values: T[]): Generator<number, void> {
+  let finite = true, work = 0;
+  for (const value of values) {
+    if (!Number.isFinite(value.score)) finite = false;
+    if (++work % 1024 === 0) yield -14;
+  }
+  if (!finite) values.sort((x, y) => y.score - x.score);
+  else yield* stableSortGen(values, (x, y) => y.score - x.score);
+}
+
+/** The synchronous API is retained for existing callers; the simulation drives the generator in slices. */
 export function pickSeats(
   cands: ReadonlyArray<Selection & { pair: string }>,
   seats: number,
   picks: Array<Selection & { pair?: string }>,
   pairs: Set<string>,
-  o: Pick<
-    WalkForwardOptions,
-    "familySeats" | "laneSeats" | "rangeSeats" | "portfolio" | "seatPer" | "microSeats"
-  >,
+  o: Pick<WalkForwardOptions, "familySeats" | "laneSeats" | "rangeSeats" | "portfolio" | "seatPer" | "microSeats">,
 ): Selection[] {
-  const ls = o.laneSeats ?? 0;
-  // ranges: micro per cell (no cap of its own); short / minimal / plus with seats of their own when range seats are on
-  const rangeOut: Selection[] = [];
+  const gen = pickSeatsGen(cands, seats, picks, pairs, o);
+  for (;;) { const next = gen.next(); if (next.done) return next.value; }
+}
+
+/** Pick each range and strategy family independently while yielding during large catalogs. */
+export function* pickSeatsGen(
+  cands: ReadonlyArray<Selection & { pair: string }>,
+  seats: number,
+  picks: Array<Selection & { pair?: string }>,
+  pairs: Set<string>,
+  o: Pick<WalkForwardOptions, "familySeats" | "laneSeats" | "rangeSeats" | "portfolio" | "seatPer" | "microSeats">,
+  alreadySorted = false,
+): Generator<number, Selection[]> {
+  const ls = o.laneSeats ?? 0, rangeOut: Selection[] = [];
+  let work = 0;
+  let ordered = alreadySorted;
+  let previousScore = Infinity;
+  if (ordered) for (const c of cands) {
+    if (!Number.isFinite(c.score) || c.score > previousScore) ordered = false;
+    previousScore = c.score;
+    if (++work % 1024 === 0) yield -14;
+  }
+  const byRange = new Map<RangeTag, Array<Selection & { pair: string }>>();
+  const heldByRange = new Map<RangeTag, Array<Selection & { pair?: string }>>();
+  const plain: Array<Selection & { pair: string }> = [], plainHeld: Array<Selection & { pair?: string }> = [];
+  for (const c of cands) {
+    const tag = rangeSeat(c.pair);
+    if (!tag) plain.push(c);
+    else {
+      let xs = byRange.get(tag);
+      if (!xs) byRange.set(tag, (xs = []));
+      xs.push(c);
+    }
+    if (++work % 1024 === 0) yield -14;
+  }
+  for (const p of picks) {
+    const tag = rangeSeat(p.pair ?? "");
+    if (!tag) plainHeld.push(p);
+    else {
+      let xs = heldByRange.get(tag);
+      if (!xs) heldByRange.set(tag, (xs = []));
+      xs.push(p);
+    }
+    if (++work % 1024 === 0) yield -14;
+  }
   for (const r of RANGE_TAGS) {
-    const xs = cands.filter((c) => rangeSeat(c.pair) === r);
-    const held = picks.filter((p) => rangeSeat(p.pair ?? "") === r);
+    const xs = byRange.get(r) ?? [], held = heldByRange.get(r) ?? [];
     if (xs.length || held.length) {
-      for (const pick of pickByLane(xs, r === "mc" ? microSeats(o) : seats, held, pairs, r === "mc" ? 0 : ls))
-        rangeOut.push(pick);
+      const selected = yield* pickByLaneGen(xs, r === "mc" ? microSeats(o) : seats, held, pairs, r === "mc" ? 0 : ls, ordered);
+      for (const pick of selected) { rangeOut.push(pick); if (++work % 1024 === 0) yield -14; }
     }
   }
-  const plain = cands.filter((c) => !rangeSeat(c.pair));
-  const plainHeld = picks.filter((p) => !rangeSeat(p.pair ?? ""));
   const exitFamily = (pair: string) => famOfKey(pair).startsWith("exit-");
-  const exits = plain.filter((c) => exitFamily(c.pair));
-  const exitHeld = plainHeld.filter((p) => exitFamily(p.pair ?? ""));
-  const trail = plain.filter((c) => !exitFamily(c.pair) && c.pair.endsWith("|tr"));
-  const rest = plain.filter((c) => !exitFamily(c.pair) && !c.pair.endsWith("|tr"));
-  const trailHeld = plainHeld.filter(
-    (p) => !exitFamily(p.pair ?? "") && (p.pair ?? "").endsWith("|tr"),
-  );
-  const restHeld = plainHeld.filter(
-    (p) => !exitFamily(p.pair ?? "") && !(p.pair ?? "").endsWith("|tr"),
-  );
-  const trailOut = pickByLane(trail, seats, trailHeld, pairs, ls);
-  // Historic Exit set × direction × lane seats remain independent even when family seats are off.
-  const exitFamilies = [...new Set(exits.map((c) => seatFamily(c.pair, o.familySeats)))];
-  const exitOut: Selection[] = [];
-  for (const f of exitFamilies) {
-    for (const pick of pickByLane(
-      exits.filter((c) => seatFamily(c.pair, o.familySeats) === f),
-      seats,
-      exitHeld.filter((p) => seatFamily(p.pair ?? "", o.familySeats) === f),
-      pairs,
-      ls,
-    )) exitOut.push(pick);
+  const exits: typeof plain = [], trail: typeof plain = [], rest: typeof plain = [];
+  const exitHeld: typeof plainHeld = [], trailHeld: typeof plainHeld = [], restHeld: typeof plainHeld = [];
+  for (const c of plain) {
+    (exitFamily(c.pair) ? exits : c.pair.endsWith("|tr") ? trail : rest).push(c);
+    if (++work % 1024 === 0) yield -14;
   }
-  if (!o.familySeats)
-    return [...pickByLane(rest, seats, restHeld, pairs, ls), ...trailOut, ...rangeOut, ...exitOut];
+  for (const p of plainHeld) {
+    const pair = p.pair ?? "";
+    (exitFamily(pair) ? exitHeld : pair.endsWith("|tr") ? trailHeld : restHeld).push(p);
+    if (++work % 1024 === 0) yield -14;
+  }
+  const trailOut = yield* pickByLaneGen(trail, seats, trailHeld, pairs, ls, ordered);
+  const exitFamilySet = new Set<string>();
+  for (const c of exits) {
+    exitFamilySet.add(seatFamily(c.pair, o.familySeats));
+    if (++work % 1024 === 0) yield -14;
+  }
+  const exitFamilies = [...exitFamilySet], exitOut: Selection[] = [];
+  for (const f of exitFamilies) {
+    const own = yield* filterSeatsGen(exits, (c) => seatFamily(c.pair, o.familySeats) === f);
+    const held = yield* filterSeatsGen(exitHeld, (p) => seatFamily(p.pair ?? "", o.familySeats) === f);
+    const selected = yield* pickByLaneGen(own, seats, held, pairs, ls, ordered);
+    for (const pick of selected) { exitOut.push(pick); if (++work % 1024 === 0) yield -14; }
+  }
+  if (!o.familySeats) {
+    const selected = yield* pickByLaneGen(rest, seats, restHeld, pairs, ls, ordered);
+    return [...selected, ...trailOut, ...rangeOut, ...exitOut];
+  }
   const fams = new Map<string, Array<Selection & { pair: string }>>();
   for (const c of rest) {
     const f = famOfKey(c.pair);
     let xs = fams.get(f);
     if (!xs) fams.set(f, (xs = []));
     xs.push(c);
+    if (++work % 1024 === 0) yield -14;
   }
   const held = new Map<string, Selection[]>();
   for (const p of restHeld) {
@@ -3764,87 +3826,90 @@ export function pickSeats(
     let xs = held.get(f);
     if (!xs) held.set(f, (xs = []));
     xs.push(p);
+    if (++work % 1024 === 0) yield -14;
   }
   const out: Selection[] = [];
-  for (const f of ["base", "dca", "axis", "trailing", "trailing-only", ...exitFamilies])
-    for (const pick of pickByLane(fams.get(f) ?? [], seats, held.get(f) ?? [], pairs, ls)) out.push(pick);
+  for (const f of ["base", "dca", "axis", "trailing", "trailing-only", ...exitFamilies]) {
+    const selected = yield* pickByLaneGen(fams.get(f) ?? [], seats, held.get(f) ?? [], pairs, ls, ordered);
+    for (const pick of selected) { out.push(pick); if (++work % 1024 === 0) yield -14; }
+  }
   return [...out, ...trailOut, ...rangeOut, ...exitOut];
 }
 
-/**
- * Real seats with a share per timeframe lane: `picks` (held) first, then floor(free / lanes) of each lane's best
- * candidates, then the best remaining — one config per bot × indication pair. Without it the slower lanes
- * (longer history, bigger windows, higher scores) take every seat and the fast lanes never trade.
- */
-function pickByLane(
+/** Preserve each lane's held seats and score order, yielding while sorting or scanning large lanes. */
+function* pickByLaneGen(
   cands: ReadonlyArray<Selection & { pair: string }>,
   seats0: number,
   picks: Selection[],
   pairs: Set<string>,
-  /** minimum seats per lane group (short lanes get more than a sliver of the portfolio) */
   laneSeats = 0,
-): Selection[] {
+  alreadySorted = false,
+): Generator<number, Selection[]> {
   const laneKey = (pair: string) => {
     const fields = pair.split("|");
     const ind = fields[rangeSeat(pair) ? 2 : 1] ?? "";
     const l = laneOf(ind);
-    // signals are a share of their own (they compete with each other, not with the engine's lanes)
-    return isSignalInd(ind)
-      ? "signal"
-      : l.tf === null
-        ? "plain"
-        : `${l.tf}${l.combined ? "c" : ""}`;
+    return isSignalInd(ind) ? "signal" : l.tf === null ? "plain" : `${l.tf}${l.combined ? "c" : ""}`;
   };
   const byLane = new Map<string, Array<Selection & { pair: string }>>();
+  let work = 0;
   for (const c of cands) {
     const k = laneKey(c.pair);
     let xs = byLane.get(k);
     if (!xs) byLane.set(k, (xs = []));
     xs.push(c);
+    if (++work % 1024 === 0) yield -14;
   }
-  // held seats count toward their own lane's minimum: a lane short of laneSeats gets the missing seats even when
-  // held seats of other lanes fill the portfolio (they no longer starve a fast lane for as long as they hold)
   const heldBy = new Map<string, number>();
   for (const p of picks) {
     const pair = (p as Selection & { pair?: string }).pair;
     if (pair) heldBy.set(laneKey(pair), (heldBy.get(laneKey(pair)) ?? 0) + 1);
+    if (++work % 1024 === 0) yield -14;
   }
   let deficit = 0;
   for (const k of byLane.keys()) deficit += Math.max(0, laneSeats - (heldBy.get(k) ?? 0));
   const seats = Math.max(seats0, laneSeats * byLane.size, picks.length + deficit);
-  const free = seats - picks.length;
-  if (free <= 0) return picks;
+  if (seats - picks.length <= 0) return picks;
   const take = (c: Selection & { pair: string }) => {
     if (picks.length >= seats || pairs.has(c.pair)) return;
-    pairs.add(c.pair);
-    picks.push(c);
+    pairs.add(c.pair); picks.push(c);
   };
-  const sorted = new Map(
-    [...byLane].map(([k, xs]) => [k, [...xs].sort((x, y) => y.score - x.score)]),
-  );
-  const fill = (k: string, upTo: number) => {
-    // seats of lane k up to `upTo` in total (held included), best first
+  const sorted = new Map<string, Array<Selection & { pair: string }>>();
+  for (const [key, xs] of byLane) {
+    if (alreadySorted) sorted.set(key, xs);
+    else {
+      const copy = [...xs];
+      yield* sortSeatsGen(copy);
+      sorted.set(key, copy);
+    }
+  }
+  const fill = function* (k: string, upTo: number): Generator<number, void> {
     let n = heldBy.get(k) ?? 0;
     for (const c of sorted.get(k) ?? []) {
       if (n >= upTo || picks.length >= seats) break;
-      if (pairs.has(c.pair)) continue;
-      const before = picks.length;
-      take(c);
-      if (picks.length > before) {
-        n++;
-        heldBy.set(k, n);
+      if (!pairs.has(c.pair)) {
+        const before = picks.length;
+        take(c);
+        if (picks.length > before) { n++; heldBy.set(k, n); }
       }
+      if (++work % 1024 === 0) yield -14;
     }
   };
   if (byLane.size > 1) {
-    // 1) every lane its missing minimum, 2) up to an even share of all seats (held included); 3) best of the rest
-    for (const k of sorted.keys()) fill(k, laneSeats);
+    for (const k of sorted.keys()) yield* fill(k, laneSeats);
     const even = Math.floor(seats / byLane.size);
-    for (const k of sorted.keys()) fill(k, Math.max(laneSeats, even));
+    for (const k of sorted.keys()) yield* fill(k, Math.max(laneSeats, even));
   }
-  for (const c of [...cands].sort((x, y) => y.score - x.score)) {
+  let all: ReadonlyArray<Selection & { pair: string }> = cands;
+  if (!alreadySorted) {
+    const copy = [...cands];
+    yield* sortSeatsGen(copy);
+    all = copy;
+  }
+  for (const c of all) {
     if (picks.length >= seats) break;
     take(c);
+    if (++work % 1024 === 0) yield -14;
   }
   return picks;
 }
@@ -4616,9 +4681,10 @@ function* selectPositionsGen(
     basePf,
     o,
   );
-  eligible.sort((a, b) => b.score - a.score);
+  yield* sortSeatsGen(eligible);
+  const selected = yield* pickSeatsGen(eligible, seatsOf(o), [], new Set<string>(), o, true);
   return {
-    picks: pickSeats(eligible, seatsOf(o), [], new Set<string>(), o).map(
+    picks: selected.map(
       ({ id, score, window }) => ({ id, score, window }),
     ),
     eligible: eligible.length,
@@ -4677,8 +4743,12 @@ export class ContinuousPositionSelection {
       this.update(tp, t, free);
       if (++n % 64 === 0) yield -14;
     }
-    const eligible = [...this.candidates.values()].sort((a, b) => b.score - a.score || a.index - b.index);
-    return { picks: pickSeats(eligible, seatsOf(free), [], new Set<string>(), free).map(
+    const eligible = [...this.candidates.values()];
+    if (eligible.every((c) => Number.isFinite(c.score)))
+      yield* stableSortGen(eligible, (a, b) => b.score - a.score || a.index - b.index);
+    else eligible.sort((a, b) => b.score - a.score || a.index - b.index);
+    const selected = yield* pickSeatsGen(eligible, seatsOf(free), [], new Set<string>(), free, true);
+    return { picks: selected.map(
       ({ id, score, window }) => ({ id, score, window })), eligible: eligible.length };
   }
 }
