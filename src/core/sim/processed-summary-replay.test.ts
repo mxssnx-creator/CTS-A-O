@@ -113,3 +113,24 @@ test("shared context slots never share histories across configs or policy identi
     assert.equal(actual.validation.state, "qualified");
   }
 });
+
+test("same-time close sharing is bounded and retains independent exact outcomes", () => {
+  const policy: ProcessedReplayPolicy = { validationN: 1, realN: 1, reportDetail: "summary" };
+  const full = new ProcessedReplay(policy, .0015), lean = new ProcessedSummaryReplay(policy, .0015);
+  const contexts = Array.from({ length: 4200 }, (_, i) => ({ id: `config-${i}`, ind: "same", kind: "normal" }));
+  const opened = contexts.map(tp => [full.enter(tp, "X", 1, 10, 1.1), lean.enter(tp, "X", 1, 10, 1.1)] as const);
+  for (let i = 0; i < opened.length; i++) {
+    const value = i === 0 ? null : i === 1 ? -0 : i === 2 ? 0 : i / 1_000_000;
+    full.settle(opened[i][0], 11, value); lean.settle(opened[i][1], 11, value);
+  }
+  const cache = (lean as unknown as { closeRows: Map<unknown, unknown> }).closeRows;
+  assert.equal(cache.size, 4096, "a timestamp with many unique returns cannot create an unbounded cache");
+  for (const tp of contexts) {
+    assert.deepEqual(lean.preview(tp, "X", 1, 11, 1.1), full.preview(tp, "X", 1, 11, 1.1));
+    assert.deepEqual(lean.preview(tp, "X", 1, 12, 1.1), full.preview(tp, "X", 1, 12, 1.1));
+  }
+  const a = full.enter(contexts[0], "X", 1, 20, 1.1), b = lean.enter(contexts[0], "X", 1, 20, 1.1);
+  full.settle(a, 21, .02); lean.settle(b, 21, .02);
+  assert.equal(cache.size, 1, "only the current timestamp remains cached");
+  assert.deepEqual(lean.preview(contexts[0], "X", 1, 22, 1.1), full.preview(contexts[0], "X", 1, 22, 1.1));
+});

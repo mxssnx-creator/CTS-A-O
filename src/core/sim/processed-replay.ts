@@ -178,6 +178,8 @@ interface SummaryConfig {
   primary: Map<number, SummaryRows>;
   others?: Map<string, Map<number, SummaryRows>>;
 }
+const NEGATIVE_ZERO = Symbol("negative zero return");
+const SAME_TIME_CLOSE_CACHE_LIMIT = 4096;
 
 /**
  * Offline, summary-only replay ledger. It retains exactly the predecessor close windows needed for
@@ -195,6 +197,10 @@ export class ProcessedSummaryReplay {
   private clock = -1;
   private readonly empty: ProcessedHistoryRow[] = [];
   private readonly economicRevision: string;
+  // Close rows are read-only inside this summary ledger. Reuse identical values only within the
+  // current chronological timestamp, and bound the cache even when every return is different.
+  private readonly closeRows = new Map<number | null | symbol, ProcessedHistoryRow>();
+  private closeRowsT = -1;
 
   constructor(policy: ProcessedReplayPolicy, cost: number) {
     if (policy.reportDetail !== "summary") throw new Error("compact replay requires summary-only reporting");
@@ -282,7 +288,14 @@ export class ProcessedSummaryReplay {
     if (!Number.isFinite(exitT) || exitT < own.entryT || exitT < this.clock)
       throw new TypeError("invalid processed close");
     this.clock = exitT;
-    const row = { exitT, unitReturn: unitReturn !== null && Number.isFinite(unitReturn) ? unitReturn : null };
+    const value = unitReturn !== null && Number.isFinite(unitReturn) ? unitReturn : null;
+    if (!Object.is(exitT, this.closeRowsT)) { this.closeRows.clear(); this.closeRowsT = exitT; }
+    const key = Object.is(value, -0) ? NEGATIVE_ZERO : value;
+    let row = this.closeRows.get(key);
+    if (!row) {
+      row = { exitT, unitReturn: value };
+      if (this.closeRows.size < SAME_TIME_CLOSE_CACHE_LIMIT) this.closeRows.set(key, row);
+    }
     appendProcessedHistory(own.rows.postBase, row, this.capacity);
     if (own.stage !== "postBase") {
       own.rows.validated ??= [];
