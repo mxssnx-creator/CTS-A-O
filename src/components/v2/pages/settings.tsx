@@ -375,11 +375,12 @@ export function BlockSources(props: {
         />
         <div>Auto evaluation on</div>
       </div>
-      <Field label="Newest results" hint="results each count is judged on · 5 – 200">
-        <Num value={auto.n ?? 30} min={5} max={200} step={1} onChange={(v) => props.set(["block", "auto", "n"], v)} />
+      <Field label="Newest results" hint="results each count is judged on · default 30 · 5 – 200">
+        <Num value={auto.n ?? 30} min={5} max={200} step={1} onChange={(v) =>
+          props.set(["block", "auto"], { ...auto, n: v, min: Math.min(auto.min ?? 30, v) })} />
       </Field>
-      <Field label="Results before Auto decides" hint="below this the relation's switch holds · 1 – newest results">
-        <Num value={auto.min ?? 15} min={1} max={auto.n ?? 200} step={1} onChange={(v) => props.set(["block", "auto", "min"], v)} />
+      <Field label="Results before Auto decides" hint="default 30; below this the relation's switch holds · 1 – newest results">
+        <Num value={auto.min ?? 30} min={1} max={auto.n ?? 200} step={1} onChange={(v) => props.set(["block", "auto", "min"], v)} />
       </Field>
       <Field label="Minimum PF per count" hint="a count raises while the PF of its newest results is at least this · 0.5 – 5">
         <Num value={auto.pf ?? 1.1} min={0.5} max={5} step={0.05} onChange={(v) => props.set(["block", "auto", "pf"], v)} />
@@ -391,7 +392,7 @@ export function BlockSources(props: {
         <select
           className="v2-select"
           aria-label="Block auto scope"
-          value={auto.scope ?? "rule"}
+          value={auto.scope ?? "key"}
           onChange={(e) => props.set(["block", "auto", "scope"], e.target.value)}
         >
           <option value="rule">Per relation × count</option>

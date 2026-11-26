@@ -77,21 +77,23 @@ export interface BlockAutoConfig {
   enabled?: boolean;
   /** newest results a count is judged on (default 30) */
   n?: number;
-  /** results a count needs before Auto decides; below it the relation's manual switch holds (default 15) */
+  /** results a count needs before Auto decides; below it the relation's manual switch holds (default 30) */
   min?: number;
   /** a count raises while the PF of its newest n results is at least this (default 1.1) */
   pf?: number;
-  /** "rule" (default): one record per relation × count; "key": per relation key × count (per config for own relations) */
+  /** "key" (default): per relation key × count; "rule": one pooled record per relation × count */
   scope?: "rule" | "key";
 }
-export const DEFAULT_BLOCK_AUTO: Required<BlockAutoConfig> = { enabled: true, n: 30, min: 15, pf: 1.1, scope: "rule" };
+export const DEFAULT_BLOCK_AUTO: Required<BlockAutoConfig> = { enabled: true, n: 30, min: 30, pf: 1.1, scope: "key" };
 
 /** One count's verdict: raises (auto), does not raise (auto), or not yet decided (the manual switch holds). */
 export interface BlockAutoVerdict {
   source: BlockSource;
   level: number;
   n: number;
-  pf: number;
+  pf: number | null;
+  /** An empty, flat or invalid sample has no measured PF; no-loss is explicitly distinguished. */
+  state: "empty" | "flat" | "unknown" | "overflow" | "no-loss" | "measured";
   /** true / false = Auto decided; null = fewer than min results */
   raise: boolean | null;
 }
@@ -108,12 +110,12 @@ export class BlockAutoEval {
   readonly pf: number;
   readonly scope: "rule" | "key";
   readonly maxLevel: number;
-  private results = new Map<string, number[]>();
+  private results = new Map<string, { values: number[]; next: number }>();
   constructor(a: BlockAutoConfig, maxLevel: number) {
     this.n = Math.max(1, Math.floor(a.n ?? DEFAULT_BLOCK_AUTO.n));
     this.min = Math.max(1, Math.min(this.n, Math.floor(a.min ?? DEFAULT_BLOCK_AUTO.min)));
     this.pf = Number.isFinite(a.pf) ? a.pf! : DEFAULT_BLOCK_AUTO.pf;
-    this.scope = a.scope === "key" ? "key" : "rule";
+    this.scope = (a.scope ?? DEFAULT_BLOCK_AUTO.scope) === "key" ? "key" : "rule";
     this.maxLevel = maxLevel;
   }
   private keyFor(source: BlockSource, key: string, level: number): string {
@@ -121,35 +123,41 @@ export class BlockAutoEval {
   }
   record(source: BlockSource, key: string, level: number, r: number): void {
     const k = this.keyFor(source, key, level);
-    let l = this.results.get(k);
-    if (!l) this.results.set(k, (l = []));
-    l.push(r);
-    // only the newest n are judged (trimmed in batches)
-    if (l.length > 4 * this.n) l.splice(0, l.length - this.n);
+    let window = this.results.get(k);
+    if (!window) this.results.set(k, (window = { values: [], next: 0 }));
+    if (window.values.length < this.n) window.values.push(r);
+    else {
+      window.values[window.next] = r;
+      window.next = (window.next + 1) % this.n;
+    }
+  }
+  private score(window?: { values: number[]; next: number }): Omit<BlockAutoVerdict, "source" | "level"> {
+    const l = window?.values ?? [];
+    const n = l.length;
+    if (!n) return { n, pf: null, state: "empty", raise: null };
+    let gp = 0, gl = 0;
+    const start = n === this.n ? window!.next : 0;
+    for (let i = 0; i < n; i++) {
+      const r = l[(start + i) % n];
+      if (!Number.isFinite(r)) return { n, pf: null, state: "unknown", raise: false };
+      if (r > 0) gp += r;
+      else gl -= r;
+      if (!Number.isFinite(gp) || !Number.isFinite(gl))
+        return { n, pf: null, state: "overflow", raise: false };
+    }
+    if (gp === 0 && gl === 0) return { n, pf: null, state: "flat", raise: n < this.min ? null : false };
+    if (gl === 0) return { n, pf: Infinity, state: "no-loss", raise: n < this.min ? null : true };
+    const pf = gp / gl;
+    if (!Number.isFinite(pf)) return { n, pf: null, state: "overflow", raise: false };
+    return { n, pf, state: "measured", raise: n < this.min ? null : pf >= this.pf };
   }
   verdict(source: BlockSource, key: string, level: number): BlockAutoVerdict {
-    const l = this.results.get(this.keyFor(source, key, level)) ?? [];
-    const from = Math.max(0, l.length - this.n);
-    let gp = 0, gl = 0;
-    for (let i = from; i < l.length; i++) {
-      if (l[i] > 0) gp += l[i];
-      else gl -= l[i];
-    }
-    const n = l.length - from;
-    const pf = gl > 0 ? gp / gl : gp > 0 ? Infinity : 0;
-    return { source, level, n, pf, raise: n < this.min ? null : pf >= this.pf };
+    return { source, level, ...this.score(this.results.get(this.keyFor(source, key, level))) };
   }
   /** Every recorded count (rule scope: relation × level; key scope: relation key × level), for the statistics. */
-  table(): Array<{ key: string; n: number; pf: number; raise: boolean | null }> {
-    const out: Array<{ key: string; n: number; pf: number; raise: boolean | null }> = [];
-    for (const [k, l] of this.results) {
-      const from = Math.max(0, l.length - this.n);
-      let gp = 0, gl = 0;
-      for (let i = from; i < l.length; i++) if (l[i] > 0) gp += l[i]; else gl -= l[i];
-      const n = l.length - from;
-      const pf = gl > 0 ? gp / gl : gp > 0 ? Infinity : 0;
-      out.push({ key: k, n, pf, raise: n < this.min ? null : pf >= this.pf });
-    }
+  table(): Array<{ key: string } & Omit<BlockAutoVerdict, "source" | "level">> {
+    const out: Array<{ key: string } & Omit<BlockAutoVerdict, "source" | "level">> = [];
+    for (const [k, window] of this.results) out.push({ key: k, ...this.score(window) });
     return out.sort((a, b) => a.key.localeCompare(b.key, "en", { numeric: true }));
   }
 }

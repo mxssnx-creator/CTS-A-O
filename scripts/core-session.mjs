@@ -504,7 +504,7 @@ async function runVariants(rt, sim) {
     // block.auto: each relation × count's record at the end (results@PF, + raises / - does not / ? undecided)
     if (extra && res.blockAuto?.length)
       process.stderr.write(`    block auto: ${res.blockAuto.filter((x) => x.n > 0).map((x) =>
-        `${x.key} ${x.n}@${Number.isFinite(x.pf) ? x.pf.toFixed(2) : "inf"}${x.raise === null ? "?" : x.raise ? "+" : "-"}`).join(" · ")}\n`);
+        `${x.key} ${x.n}@${x.state === "no-loss" ? "no loss" : Number.isFinite(x.pf) ? x.pf.toFixed(2) : "unavailable"}${x.raise === null ? "?" : x.raise ? "+" : "-"}`).join(" · ")}\n`);
     const summary = summarizeRun(res, sim.startT, sim.endT);
     res = null;
     return { summary, ms: Date.now() - ts };

@@ -3257,7 +3257,8 @@ export interface WalkForwardResult {
   /** why each signal unit is or is not in signalActiveEnd (counts per direction and reason, the top long units) */
   signalActivationEnd?: SignalActivationEnd;
   /** block.auto: each relation × block count's record at the end of the run (key "source#level", or "key#level") */
-  blockAuto?: Array<{ key: string; n: number; pf: number; raise: boolean | null }>;
+  blockAuto?: Array<{ key: string; n: number; pf: number | null;
+    state: "empty" | "flat" | "unknown" | "overflow" | "no-loss" | "measured"; raise: boolean | null }>;
   /**
    * the signal candidates of the run before any gate: every config's entry in the run, and how many of them belonged to
    * a unit not active at their step (dropped before the gates — counted here, not as skips: they are every config of

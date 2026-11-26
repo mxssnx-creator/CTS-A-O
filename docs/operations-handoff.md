@@ -1,3 +1,15 @@
+## 2026-11-26 — Block Auto integrity and bounded windows
+
+On Stable-04 baseline `8c0823eb68ca64a0d9090ffa79faf395b1a8ce20`, Block Auto could classify a window with
+an unknown return as an infinite no-loss PF, and its fresh defaults used 15 closes and relation-wide scope.
+The update uses a 30-close minimum and per-relation-key/count defaults, rejects unknown and overflow outcomes,
+and bounds each candidate's chronological window to its newest N returns. Explicit saved/custom policies remain
+unchanged. See `docs/verification/block-auto-integrity-20261126.md` for scope and test evidence.
+
+No new 12-symbol execution result is available at this checkpoint: post-Base return PF, passing/evaluated and
+validation percentage, and settled execution PF remain unavailable. The prior full replay was interrupted.
+No exchange connection, deployment, account action or live-readiness claim is made.
+
 ## 2026-11-18 — exact stop and trailing distances
 
 The opt-in price-distance grid uses SL 0.2%–2.2% and trailing 0.2%–2.6% at
