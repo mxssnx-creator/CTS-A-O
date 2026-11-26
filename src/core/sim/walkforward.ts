@@ -7963,6 +7963,9 @@ export function* walkForwardGen(
   const trades: Trade[] = [];
   const openAtEnd: Trade[] = [];
   const executedKeys = new Set<string>();
+  // Entries are consumed in timestamp order. Exact-identity and crowd keys cannot recur after their timestamp;
+  // pair events can recur later in the same minute, including across minute-batch boundaries.
+  let entryKeyTime = -Infinity, pairEventMinute = -Infinity;
   // entries per range × symbol × side × entry time (entryCrowd)
   const crowd = new Map<string, number>();
   // executed pair events (onePerPairEvent)
@@ -8343,6 +8346,11 @@ export function* walkForwardGen(
         // Entry gates can touch several relation / acceptance books per candidate. A 300-order batch
         // produced 800 ms main-thread slices on the 12-symbol replay, so hand control back in smaller batches.
         if (++ci % 32 === 0) yield -9;
+        if (tr.entryT !== entryKeyTime) {
+          executedKeys.clear(); crowd.clear(); entryKeyTime = tr.entryT;
+        }
+        const minute = Math.floor(tr.entryT / 60_000);
+        if (minute !== pairEventMinute) { pairEvents.clear(); pairEventMinute = minute; }
         yield* settle(tr.entryT);
         // Keep the full candidate feed for guards/confirmation; accepted-order Block reads only the later marker.
         const fk = `${tr.cfg}|${tr.sym}|${tr.side}|${tr.entryT}`;

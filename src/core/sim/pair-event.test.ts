@@ -64,6 +64,25 @@ it("another type, another pair and a later minute are separate events", () => {
   assert.ok(per((t) => t.cfg.includes("tp5")) > 0, "a minute later is another event");
 });
 
+it("retains a pair event across a batch boundary inside the same minute", () => {
+  // The run starts at :30, so a one-minute batch boundary also falls at :30. Entries at :10 and :50
+  // belong to different batches but to the same pair-event minute; a later minute is independent.
+  const make = (k: number, entries: number[]) => {
+    const ind = "rsi-mom-14-20@m1", id = `follow|${ind}|tp${k}|sl1|tr0|h32`;
+    const pre = Array.from({ length: 12 }, (_, i) => START - (13 - i) * 20 * M);
+    const rows: Trade[] = [...pre, ...entries].map(entryT => ({ cfg: id, sym: "A", side: 1,
+      entryT, exitT: entryT + 1_000, entry: 100, exit: 101, r: .01, mult: 1,
+      reason: "tp", bars: 1, mfe: .02, mae: 0, kind: "normal" }));
+    return makeTape(id, "follow", ind, { tp: .01, sl: .01, trail: 0, hold: 32 }, "normal", ["A"], rows, [], []);
+  };
+  const first = START + M + 10_000, late = START + M + 50_000, next = START + 2 * M + 10_000;
+  const sim = walkForward(u, [make(1, [first, first]), make(2, [late, next])],
+    options({ startT: START + 30_000, simH: 1, onePerPairEvent: true }));
+  assert.deepEqual(sim.trades.map(x => x.entryT), [first, next]);
+  assert.equal(sim.skips.duplicate, 1, "an exact retry at one timestamp is still deduplicated");
+  assert.equal(sim.skips.pairEvent, 1, "the later batch cannot spend the same event twice");
+});
+
 it("paper applies the same rule: a second variant of the pair in the same minute is held back, another minute is not", async () => {
   const { CoreRuntime } = await import("../server/runtime.server.ts");
   const { CoreDb } = await import("../server/db.server.ts");

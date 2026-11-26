@@ -317,7 +317,7 @@ describe("session CLI background comparison policy", () => {
     }
   });
 });
-function replay({ signalExitSets = false, postGateRejected, exitOrders = false, endpointOccupancy = false, caps = false, weighted = false, invalidReturn = false, qualification, thresholds, thresholdRange = "Short", variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData, positionWindows, lowRange = false } = {}) {
+function replay({ signalExitSets = false, postGateRejected, exitOrders = false, endpointOccupancy = false, caps = false, weighted = false, invalidReturn = false, qualification, thresholds, thresholdRange = "Short", variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData, positionWindows, lowRange = false, processedStageEvidence } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -336,6 +336,10 @@ function replay({ signalExitSets = false, postGateRejected, exitOrders = false, 
       closes: { "TEST-USDT": Array.from({ length: 60 }, (_, i) => [H + i * M, i < 1 ? 100 : i < 3 ? 150 : 120]) },
       openEnd: [], engine: { basePassed: 0, baseEvaluated: 0, mainPairs: 0, tapes: 0, real: 0, computeMs: 0 },
     };
+    if (processedStageEvidence) {
+      raw.settings.wfPatch = { processedStages: { validationN: 12, realN: 12 } };
+      if (processedStageEvidence !== "missing") raw.processedStageProgress = processedStageEvidence;
+    }
     if (exitOrders) {
       const protect = { tp: .01, sl: .02, trail: 0, hold: 60, exitType: "historic", exitSide: 1, exitSet: 0 };
       raw.trades = raw.trades.map((x, i) => ({ ...x, kind: "exit", cfg: configId("follow", i ? "sig-ema-cross-s@m1" : "ema-9-21@m1", protect) }));
@@ -521,6 +525,26 @@ function summaryOf(html) {
 }
 
 describe("session reports: return PF primary, simulated provenance", () => {
+  it("separates owned-stage coverage from hourly historical checks and handles missing archived evidence", () => {
+    const coverage = { contexts: 2, qualified: 0, insufficient: 2, failed: 0, unknown: 0,
+      passingWindows: { evaluated: 2, passed: 0, closes: 0, gp: 0, gl: 0 } };
+    const evidence = { basis: "model", at: 2 * H, coverageScope: "visible-config-symbol-direction",
+      seededFromCandidates: false, validation: coverage, real: coverage };
+    const current = replay({ processedStageEvidence: evidence });
+    assert.deepEqual(current.data.processedStageProgress, evidence);
+    assert.deepEqual(current.report.processedStageProgress, evidence);
+    assert.match(current.md, /Validation: 0 \/ 2 contexts qualified \(0\.00%\)/);
+    assert.match(current.md, /Hourly configuration checks below use raw historical tapes/);
+    assert.match(current.writeup, /Hourly configuration checks describe raw historical tapes/);
+    assert.match(current.html, /not owned-stage validation results/);
+    assert.match(summaryOf(current.html), /Validation: 0 \/ 2 contexts qualified/);
+    const old = replay({ processedStageEvidence: "missing" });
+    assert.equal(old.data.processedStageProgress, null);
+    assert.match(old.md, /Owned modeled-stage aggregates were not retained/);
+    assert.match(old.writeup, /Owned modeled-stage aggregates were not retained/);
+    assert.match(old.html, /not owned-stage validation results/);
+    assert.match(summaryOf(old.html), /Owned modeled-stage aggregates were not retained/);
+  });
   it("renders count-based qualification without relabelling it as an hour-window gate", () => {
     const { md, report, writeup } = replay({ positionWindows: structuredClone(DEFAULT_GATES.positionWindows), lowRange: true });
     assert.match(md, /complete own Main \/ Real \/ Entry samples of 40 \/ 12 \/ 12/);

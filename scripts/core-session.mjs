@@ -1555,6 +1555,14 @@ async function runEngine() {
       .filter((x) => x.checks)
       .map((x) => ({ t: x.t, real: x.real, checks: x.checks })),
     validationSummary: (sim.steps ?? []).map((x) => ({ t: x.t, summary: x.validationSummary ?? null })),
+    // The modeled owned-stage result is a different cohort from the raw tape-history checks above.
+    // Persist its bounded aggregate, not the potentially very large per-set snapshot, in the report.
+    processedStageProgress: sim.processedStages ? {
+      basis: sim.processedStages.basis, at: sim.processedStages.at,
+      coverageScope: sim.processedStages.coverageScope,
+      seededFromCandidates: sim.processedStages.seededFromCandidates,
+      validation: sim.processedStages.validation, real: sim.processedStages.real,
+    } : null,
     // every step per range: tapes, configs validated, candidates, orders taken (the continuity of each range)
     stepsByRange: (sim.steps ?? []).map((x) => ({ t: x.t, byRange: x.byRange ?? null })),
     // the tape trades of every config that was validated at a step or executed (measurement: the lookback and the
@@ -3731,6 +3739,7 @@ const ENABLED_RANGES = [
   .filter(([k]) => raw.settings.ranges?.[k])
   .map(([, l]) => l);
 const report = {
+  processedStageProgress: raw.processedStageProgress ?? null,
   evidence: {
     kind: "simulated",
     pfBasis: "net-returns",
@@ -3906,6 +3915,18 @@ const feasText = T.feasible
   ? ""
   : ` · **infeasible: margin exceeded equity** (${T.marginOver.minutes} min, first ${hm(T.marginOver.firstT)} UTC, max margin ÷ equity ${f2(T.marginOver.maxRatio)}×)`;
 const sigOn = !!signalsOn;
+const ownedStages = raw.processedStageProgress;
+const ownedStagesEnabled = !!(ownedStages || raw.settings?.wfPatch?.processedStages || raw.settings?.effectiveWf?.processedStages);
+const stageCoverageText = (label, c) => {
+  if (!c || !Number.isSafeInteger(c.contexts) || !Number.isSafeInteger(c.qualified)) return `${label}: unavailable`;
+  const percent = c.contexts ? `${(100 * c.qualified / c.contexts).toFixed(2)}%` : "unavailable";
+  const m = validationProgressOf(c.passingWindows, ownedStages.at, "modeled-processed-context");
+  const pf = Number.isFinite(m?.setPf?.finiteMean) ? m.setPf.finiteMean.toFixed(4) : "unavailable";
+  return `${label}: ${c.qualified} / ${c.contexts} contexts qualified (${percent}); insufficient ${c.insufficient}, failed ${c.failed}, unknown ${c.unknown}; finite passing-window mean PF ${pf}, no-loss contexts ${m?.setPf?.noLossSets ?? "unavailable"}`;
+};
+const ownedStagesText = !ownedStagesEnabled ? "" : ownedStages
+  ? `End-of-run owned modeled stages — ${stageCoverageText("Validation", ownedStages.validation)}; ${stageCoverageText("Real", ownedStages.real)}. These are separate from funded execution and are not hourly snapshots.`
+  : "Owned modeled-stage aggregates were not retained in this archived session; do not infer them from the historical configuration checks.";
 const lines = [
   `# Simulated trading session — ${symText}, ${preH} h pre-historic + ${runH} h run (${tacticsLabel}, signals ${sigOn ? "on" : "off"})`,
   ``,
@@ -3924,7 +3945,13 @@ const lines = [
   `**Virtual diagnostic:** ${T.virtual.n} closes · Return PF ${pfStr(T.virtual.gpR, T.virtual.glR, T.virtual.n)} before funding allocation; ${T.zeroAllocatedOrders} zero allocations and ${T.unknownAllocations} unknown allocations. Position episodes and explicitly virtual counts describe the native virtual book. Funded opening/settlement totals and headline occupancy use verified allocations; PF uses funded settled orders.`,
   baseGateMd(E),
   baseWhyMd(E),
-  afterBaseMd(E, raw.tapeAgg, trades),
+  ...(ownedStagesEnabled ? [`**Owned modeled stages:** ${ownedStagesText} Hourly configuration checks below use raw historical tapes, not the owned processed-stage book.`, ``] : []),
+  ownedStagesEnabled ? afterBaseMd(E, raw.tapeAgg, trades)
+    .replace("After each evaluation: PF and sets validated", "Historical config checks and funded execution")
+    .replace("Validation: the sets validated at the run start", "Historical checks: the configs passing their raw-history gates at the run start")
+    .replace("Validation percentages use", "Historical config percentages use")
+    .replace("post-Base validation PF", "historical config-validation PF")
+    .replace("sets validated (%)", "historical configs passed (%)") : afterBaseMd(E, raw.tapeAgg, trades),
   stepsRangeMd(raw.stepsByRange),
   `## Hour by hour`,
   ``,
@@ -4338,6 +4365,9 @@ const data = clean({
   settings: report.settings,
   engine: minuteSelection ? { ...raw.engine, signalSteps: [] } : raw.engine,
   evalStats: raw.tapeAgg?.evalStats ?? null,
+  processedStageProgress: raw.processedStageProgress ?? null,
+  ownedStagesEnabled,
+  ownedStagesText,
   validationProgress: (raw.validationSummary ?? []).map((x) => ({
     t: x.t, progress: validationProgressOf(x.summary, x.t), failures: x.summary?.failures ?? null,
   })),
@@ -4683,6 +4713,7 @@ function renderWriteup(d, dir) {
     sessionQualificationEvidence(d.evidence?.qualification).note,
     d.evidence?.returns?.note ?? sessionReturnEvidence({}).note,
     `The combined account PF includes all funded settled orders, including Signals. The Base-to-execution benchmark below isolates engine orders from Base-qualified pairs whose configs passed post-Base validation; Signal orders use their own activation and qualification and remain separate. Pre-validation/unfiltered candidate PF is diagnostic only.`,
+    ...(ownedStagesEnabled ? [ownedStagesText, `Hourly configuration checks describe raw historical tapes, not the owned modeled-stage book.`] : []),
     ``,
     `Settings (desk, ${s.desk ?? "flags"}): stage gate min PF ${s.gates.minPf}, focus ${s.focus === 0 ? "every combo" : s.focus + " pairs"}, disabled kinds ${s.disabledKinds.length ? s.disabledKinds.join(", ") : "none"}, ` +
       `toggles ${Object.entries(s.toggles)
@@ -5420,7 +5451,7 @@ ${sec(
 <div class="card" style="margin-top:14px"><h3>Cumulative net per strategy type</h3><div class="cap">Closed orders, $, at every hour end</div><div class="chart" id="cTy"></div></div>
 `,
 )}
-${sec("hourly", "Hour by hour", `<p class="note">One row per hour (UTC). Settled orders and PF / net use the owned cohort <i>closed</i> in the hour; positions are native virtual symbol × direction episodes (opened / closed in the hour / open at its end). Entry requests and open-order counts are virtual diagnostics. DD % and DDT now are on the minute equity; DDR (hour) is the hour's own closed curve, cum columns add every hour so far. Click a header to sort.</p><div class="tw tall" id="tHours"></div><h3>Post-Base validation at each decision clock</h3><p class="note">All eligible configs, including failed evaluations, are counted at their actual decision time using only their own settled history. These repeated hourly cohorts are not unique-set totals. Passing-set mean PF, no-loss sets and pooled-window PF are separate from subsequent execution PF. Missing archived evidence remains unavailable.</p><div class="tw tall" id="tValidationHours"></div>`)}
+${sec("hourly", "Hour by hour", `<p class="note">One row per hour (UTC). Settled orders and PF / net use the owned cohort <i>closed</i> in the hour; positions are native virtual symbol × direction episodes (opened / closed in the hour / open at its end). Entry requests and open-order counts are virtual diagnostics. DD % and DDT now are on the minute equity; DDR (hour) is the hour's own closed curve, cum columns add every hour so far. Click a header to sort.</p><div class="tw tall" id="tHours"></div><h3>${D.ownedStagesEnabled ? "Historical configuration checks at each decision clock" : "Post-Base validation at each decision clock"}</h3><p class="note">${D.ownedStagesEnabled ? esc(D.ownedStagesText + " The hourly rows below evaluate raw hypothetical configuration history; they are not owned-stage validation results.") : "All eligible configs, including failed evaluations, are counted at their actual decision time using only their own settled history."} These repeated hourly cohorts are not unique-set totals. Passing-set mean PF, no-loss sets and pooled-window PF are separate from subsequent execution PF. Missing archived evidence remains unavailable.</p><div class="tw tall" id="tValidationHours"></div>`)}
 ${sec(
   "types",
   "Strategy types",
