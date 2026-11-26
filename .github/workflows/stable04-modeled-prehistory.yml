@@ -7,8 +7,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Preserve the separate staged-account diagnostic while testing a flat target account.
-  group: stable04-modeled-warmup-v1
+  # Preserve the earlier warmup run while testing the compact, cooperative replay.
+  group: stable04-modeled-warmup-v2
   cancel-in-progress: true
 jobs:
   modeled-warmup:
