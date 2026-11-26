@@ -12,6 +12,8 @@ export interface ProcessedReplayPolicy {
   validationN: number;
   realN: number;
   negativeFilter?: NegativeLastN;
+  /** Summary mode omits the modeled per-set checkpoint from this replay result; economic decisions are unchanged. */
+  reportDetail?: "summary";
 }
 
 export function ownedProcessedPolicy(policy: ProcessedReplayPolicy, windows?: PositionWindows | null): ProcessedReplayPolicy {
@@ -43,7 +45,7 @@ export interface ProcessedReplayCoverage {
   qualifiedPct: number | null;
   passingWindows: ValidationSummary;
 }
-export interface ProcessedReplayReport {
+export interface ProcessedReplaySummary {
   basis: "model";
   at: number;
   coverageScope: "visible-config-symbol-direction";
@@ -51,6 +53,8 @@ export interface ProcessedReplayReport {
   seededFromCandidates: false;
   validation: ProcessedReplayCoverage;
   real: ProcessedReplayCoverage;
+}
+export interface ProcessedReplayReport extends ProcessedReplaySummary {
   sets: ProcessedSetSummary[];
   /** Causal ledger checkpoint, not permission to restore paper or venue ownership. */
   snapshot: ProcessedSetSnapshot;
@@ -123,10 +127,13 @@ export class ProcessedReplay {
       unitReturn !== null && Number.isFinite(unitReturn) ? unitReturn : null, true);
   }
 
-  report(at: number, contexts: Iterable<{ identity: ProcessedSetIdentity; minPf: number }>): ProcessedReplayReport {
+  /** Yield during large coverage scans; summary mode avoids copying per-set details or the modeled checkpoint. */
+  *reportGen(at: number, contexts: Iterable<{ identity: ProcessedSetIdentity; minPf: number }>,
+    detail: "full" | "summary" = "full"): Generator<number, ProcessedReplaySummary | ProcessedReplayReport> {
     const validation = coverage(), real = coverage(), sets: ProcessedSetSummary[] = [];
     const mainN = this.policy.blocks?.validation ? blockRequired(this.policy.blocks.validation) : this.policy.validationN;
     const realN = this.policy.blocks?.real ? blockRequired(this.policy.blocks.real) : this.policy.realN;
+    let scanned = 0, lastYield = performance.now();
     for (const { identity, minPf } of contexts) {
       count(validation, this.book.verdict(identity, "postBase", this.policy.validationN, minPf, at,
         this.policy.negativeFilter, this.policy.blocks?.validation), mainN,
@@ -134,12 +141,24 @@ export class ProcessedReplay {
       count(real, this.book.verdict(identity, "validated", this.policy.realN, minPf, at,
         this.policy.negativeFilter, this.policy.blocks?.real), realN,
         () => this.book.windowEconomics(identity, "validated", realN, at));
-      const summary = this.book.summary(identity);
-      if (summary) sets.push(summary);
+      if (detail === "full") {
+        const summary = this.book.summary(identity);
+        if (summary) sets.push(summary);
+      }
+      if (++scanned % 64 === 0 && performance.now() - lastYield >= 8) {
+        yield -15;
+        lastYield = performance.now();
+      }
     }
     finishCoverage(validation);
     finishCoverage(real);
-    return { basis: "model", at, coverageScope: "visible-config-symbol-direction",
-      seededFromCandidates: false, validation, real, sets, snapshot: this.book.snapshot() };
+    const result: ProcessedReplaySummary = { basis: "model", at, coverageScope: "visible-config-symbol-direction",
+      seededFromCandidates: false, validation, real };
+    return detail === "summary" ? result : { ...result, sets, snapshot: this.book.snapshot() };
+  }
+
+  report(at: number, contexts: Iterable<{ identity: ProcessedSetIdentity; minPf: number }>): ProcessedReplayReport {
+    const gen = this.reportGen(at, contexts);
+    for (let next = gen.next(); ; next = gen.next()) if (next.done) return next.value as ProcessedReplayReport;
   }
 }

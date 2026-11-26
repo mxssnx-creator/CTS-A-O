@@ -979,6 +979,7 @@ async function runEngine() {
   clearInterval(rssT);
   const sim = rt.sim;
   if (!sim) throw new Error("no simulated run");
+  const processedStageEvidence = sim.processedStages ?? sim.processedStageSummary;
   // the symbols the reported compute covered (every tape carries its universe)
   const uni = new Set();
   const seenSyms = new Set();
@@ -1557,11 +1558,12 @@ async function runEngine() {
     validationSummary: (sim.steps ?? []).map((x) => ({ t: x.t, summary: x.validationSummary ?? null })),
     // The modeled owned-stage result is a different cohort from the raw tape-history checks above.
     // Persist its bounded aggregate, not the potentially very large per-set snapshot, in the report.
-    processedStageProgress: sim.processedStages ? {
-      basis: sim.processedStages.basis, at: sim.processedStages.at,
-      coverageScope: sim.processedStages.coverageScope,
-      seededFromCandidates: sim.processedStages.seededFromCandidates,
-      validation: sim.processedStages.validation, real: sim.processedStages.real,
+    processedStageProgress: processedStageEvidence ? {
+      basis: processedStageEvidence.basis, at: processedStageEvidence.at,
+      coverageScope: processedStageEvidence.coverageScope,
+      reportDetail: sim.processedStageSummary ? "summary-only" : "full-result-aggregate",
+      seededFromCandidates: processedStageEvidence.seededFromCandidates,
+      validation: processedStageEvidence.validation, real: processedStageEvidence.real,
     } : null,
     // every step per range: tapes, configs validated, candidates, orders taken (the continuity of each range)
     stepsByRange: (sim.steps ?? []).map((x) => ({ t: x.t, byRange: x.byRange ?? null })),
@@ -3925,7 +3927,7 @@ const stageCoverageText = (label, c) => {
   return `${label}: ${c.qualified} / ${c.contexts} contexts qualified (${percent}); insufficient ${c.insufficient}, failed ${c.failed}, unknown ${c.unknown}; finite passing-window mean PF ${pf}, no-loss contexts ${m?.setPf?.noLossSets ?? "unavailable"}`;
 };
 const ownedStagesText = !ownedStagesEnabled ? "" : ownedStages
-  ? `End-of-run owned modeled stages — ${stageCoverageText("Validation", ownedStages.validation)}; ${stageCoverageText("Real", ownedStages.real)}. These are separate from funded execution and are not hourly snapshots.`
+  ? `End-of-run owned modeled stages — ${stageCoverageText("Validation", ownedStages.validation)}; ${stageCoverageText("Real", ownedStages.real)}. These are separate from funded execution and are not hourly snapshots.${ownedStages.reportDetail === "summary-only" ? " The modeled per-set checkpoint was not retained in this summary-only run." : ""}`
   : "Owned modeled-stage aggregates were not retained in this archived session; do not infer them from the historical configuration checks.";
 const lines = [
   `# Simulated trading session — ${symText}, ${preH} h pre-historic + ${runH} h run (${tacticsLabel}, signals ${sigOn ? "on" : "off"})`,

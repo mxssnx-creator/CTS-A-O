@@ -9845,7 +9845,7 @@ export class CoreRuntime {
           wfSel,
         );
     const { picks, eligible } = selection;
-    const processedProof = this.sim.processedStages;
+    const processedProof = this.sim.processedStages ?? this.sim.processedStageSummary;
     const postBaseValidation = this.wf.processedStages
       ? processedProof ? validationProgressOf(processedProof.validation.passingWindows, processedProof.at, "modeled-processed-context") : null
       : captureValidation ? validationProgressOf((selection as { validationSummary?: ValidationSummary }).validationSummary, t) : null;
@@ -11354,6 +11354,8 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     if (!raw || !Number.isSafeInteger(validationN) || validationN < 1 || validationN > 200 ||
       !Number.isSafeInteger(realN) || realN < 1 || realN > 200)
       throw new Error("processedStages requires validationN and realN in 1–200");
+    if (raw.reportDetail !== undefined && raw.reportDetail !== "summary")
+      throw new Error("processedStages reportDetail must be summary when specified");
     p.processedStages = { ...raw, validationN, realN };
   }
   const num = (k: string, lo: number, hi: number, int = false) => {

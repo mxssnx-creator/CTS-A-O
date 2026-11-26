@@ -7,7 +7,7 @@ import { positionCounts, positionStats, positionTapeValid, type PositionWindows 
 import {relationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
 import { RT_COST } from "../model-cost.ts";
 import { EVALUATION_HISTORY_H, PRECALC_HISTORY_H } from "../market/history-requirements.ts";
-import { ProcessedReplay, ownedProcessedPolicy, type ProcessedReplayPolicy, type ProcessedReplayReport } from "./processed-replay.ts";
+import { ProcessedReplay, ownedProcessedPolicy, type ProcessedReplayPolicy, type ProcessedReplayReport, type ProcessedReplaySummary } from "./processed-replay.ts";
 import type { ProcessedOpen } from "./processed-set.ts";
 import { minimumStopFraction } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
@@ -3218,6 +3218,8 @@ export interface StepLog {
 export interface WalkForwardResult {
   /** Own processed-stage evidence, separately labeled from raw historical validation and funded returns. */
   processedStages?: ProcessedReplayReport;
+  /** Aggregate-only modeled result, explicitly requested in place of per-set checkpoint details. */
+  processedStageSummary?: ProcessedReplaySummary;
   startT: number;
   /** seatSet "validated": the validated set V the run selected from (ids), evaluated at startT */
   validated?: string[];
@@ -8673,9 +8675,8 @@ export function* walkForwardGen(
       ? [...(yield* activeSignalsAtGen(sigIdx, stopT, o.signalRank, signalHistoryHours(o), o, activationRep))]
       : []
     : undefined;
-  return {
-    startT,
-    ...(processed ? { processedStages: processed.report(stopT, (function* () {
+  const processedSummaryOnly = o.processedStages?.reportDetail === "summary";
+  const processedResult = processed ? yield* processed.reportGen(stopT, (function* () {
       for (const tp of [...allEngine, ...sigTapes]) {
         if (tp.heldOnly || tp.carried) continue;
         if (isSignalInd(tp.ind) && tp.kind !== "exit") {
@@ -8685,7 +8686,11 @@ export function* walkForwardGen(
         for (const sym of new Set(tp.syms)) for (const side of [1, -1] as const)
           yield { identity: processed.identity(tp, sym, side, minPf), minPf };
       }
-    })()) } : {}),
+    })(), processedSummaryOnly ? "summary" : "full") : undefined;
+  return {
+    startT,
+    ...(processedResult ? processedSummaryOnly ? { processedStageSummary: processedResult }
+      : { processedStages: processedResult as ProcessedReplayReport } : {}),
     ...(validatedIds ? { validated: [...everValidated] } : {}),
     endT: stopT,
     opts: rest,

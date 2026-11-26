@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import type { OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
 import { ProcessedSetBook } from "./processed-set.ts";
+import { ProcessedReplay } from "./processed-replay.ts";
 import { defaultWalkForward, execDecision, makeTape, packTapes, walkForward,
   type WalkForwardOptions, type WalkForwardResult } from "./walkforward.ts";
 import { retireOwnedIdleWorkers, runOnWorkers } from "../server/pool.server.ts";
@@ -68,6 +69,34 @@ test("native replay advances through two own processed windows, retains losses a
   assert.equal(report.seededFromCandidates, false);
   const restored = ProcessedSetBook.restore(JSON.parse(JSON.stringify(report.snapshot)));
   assert.deepEqual(restored.snapshot(), report.snapshot, "model checkpoint survives serialization exactly");
+});
+
+test("summary-only replay retains the same decisions and coverage without copying its checkpoint", () => {
+  const values = [.02, .02, .02, .02, .02, -.04, .02, .02, .02, .02];
+  const full = fixture(values).result;
+  const lean = fixture(values, { processedStages: { validationN: 2, realN: 2, reportDetail: "summary" } }).result;
+  assert.ok(full.processedStages?.snapshot);
+  assert.equal(lean.processedStages, undefined);
+  assert.ok(lean.processedStageSummary);
+  assert.deepEqual(lean.processedStageSummary!.validation, full.processedStages!.validation);
+  assert.deepEqual(lean.processedStageSummary!.real, full.processedStages!.real);
+  for (const key of ["trades", "skips", "steps", "stats", "feed"] as const)
+    assert.deepEqual(lean[key], full[key], key);
+});
+
+test("large modeled coverage scans yield while retaining empty contexts", () => {
+  const p = new ProcessedReplay({ validationN: 2, realN: 2 }, .001);
+  function* contexts() {
+    for (let i = 0; i < 12_000; i++) yield { identity: p.identity({ id: `cfg-${i}`, ind, kind: "normal" },
+      symbols[0], 1, 1.1), minPf: 1.1 };
+  }
+  const gen = p.reportGen(T, contexts(), "summary");
+  let yields = 0, next = gen.next();
+  while (!next.done) { yields++; next = gen.next(); }
+  assert.ok(yields > 0, "a large coverage pass must give control back to the event loop");
+  assert.equal(next.value.validation.contexts, 12_000);
+  assert.equal(next.value.validation.insufficient, 12_000);
+  assert.equal("snapshot" in next.value, false);
 });
 
 test("a raw winning history cannot bootstrap cold or losing processed contexts", () => {
@@ -166,13 +195,17 @@ test("native non-replay admission fails closed until its persistent adapter exis
 
 test("worker transport preserves every processed decision, close, count and empty context", async () => {
   const f = fixture([.02, -.01, .02, .02, -.01, .02, .02, .02]);
+  const lean = fixture([.02, -.01, .02, .02, -.01, .02, .02, .02],
+    { processedStages: { validationN: 2, realN: 2, reportDetail: "summary" } });
   const owner = {};
   try {
-    const [reply] = await runOnWorkers<{ sim: WalkForwardResult }>([{ type: "research-real",
-      nowT: T + 12 * H, baseTf: 1, packed: packTapes([f.tape]), wf: f.options }],
+    const [reply, summaryReply] = await runOnWorkers<{ sim: WalkForwardResult }>([{ type: "research-real",
+      nowT: T + 12 * H, baseTf: 1, packed: packTapes([f.tape]), wf: f.options }, { type: "research-real",
+      nowT: T + 12 * H, baseTf: 1, packed: packTapes([lean.tape]), wf: lean.options }],
     1, 30_000, undefined, false, undefined, owner);
     assert.ok(f.result.trades.length > 0);
     assert.deepEqual(reply.sim, f.result);
+    assert.deepEqual(summaryReply.sim, lean.result);
   } finally { await retireOwnedIdleWorkers(owner); }
 });
 

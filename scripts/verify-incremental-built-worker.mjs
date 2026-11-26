@@ -93,6 +93,13 @@ try {
     wf,
   });
   assert.deepEqual(real.sim, walkForward(u, initial, wf));
+  const summaryWf = { ...wf, basePassed: new Set(pairs),
+    processedStages: { validationN: 2, realN: 2, reportDetail: "summary" } };
+  const staged = await request({ type: "research-real", nowT: u.nowT, baseTf: u.baseTf,
+    packed: packTapes(initial), wf: summaryWf });
+  assert.ok(staged.sim.processedStageSummary);
+  assert.equal(staged.sim.processedStages, undefined);
+  assert.deepEqual(staged.sim, walkForward(u, initial, summaryWf));
   const positions = [-1, 1].map((side) => ({
     cfg: "follow|trend-ema@m1|built",
     sym: "BTC-USDT",
@@ -140,6 +147,7 @@ try {
       checks: [
         "realtime incremental tape exact parity",
         "historical Real complete-result parity",
+        "processed-stage summary transport parity",
         "Long/Short tick math exact parity",
         "Long/Short stop-gap marks and one modeled cost",
       ],

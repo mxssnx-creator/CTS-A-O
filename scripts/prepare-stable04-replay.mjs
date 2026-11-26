@@ -28,7 +28,7 @@ const settings = { forceSymbols: symbols, ...(focused ? { focus, pinned: [] } : 
   exitStrategy: { enabled: false } };
 const toggles = { axis: true, block: true, exit: false };
 // These stage windows are not the independent Signals Last-15 setting.
-const wf = { signalLongH: 24, recordValidation: 'summary', processedStages: { validationN: 12, realN: 12 } };
+const wf = { signalLongH: 24, recordValidation: 'summary', processedStages: { validationN: 12, realN: 12, reportDetail: 'summary' } };
 checkSettings(settings);
 const db = new CoreDb(':memory:');
 const rt = new CoreRuntime(db, { symbols: 12, signals: { enabled: true } }, {
@@ -84,7 +84,7 @@ try {
     actualSettings: studyCanonical(rt.settings), actualWf: studyCanonical(rt.wf),
     account: { balance: 10, leverage: 10, sizing: { mode: 'equityPct', pct: .002 } },
     policy: { tactics: 'factory defaults', history: '24h evaluated, 24h trading, older physical candles for indicator and 7-day cadence warmup',
-      processedStages: 'explicit opt-in validationN=12, realN=12; separate from Signals Last-15',
+      processedStages: 'explicit opt-in validationN=12, realN=12; separate from Signals Last-15; modeled per-set checkpoint omitted, coverage aggregates retained',
       scope: focused ? 'focused diagnostic: three ordinary pairs plus automatic Micro focus, one Signal source; offline modeled orders; no exchange'
         : 'offline modeled orders; no exchange' },
   };

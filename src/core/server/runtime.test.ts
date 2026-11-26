@@ -97,6 +97,10 @@ describe("walk-forward patch sanitiser", () => {
     assert.deepEqual(sanitizeWf({ processedStages: { validationN: 12, realN: 8 } }), {
       processedStages: { validationN: 12, realN: 8 },
     });
+    assert.deepEqual(sanitizeWf({ processedStages: { validationN: 12, realN: 8, reportDetail: "summary" } }), {
+      processedStages: { validationN: 12, realN: 8, reportDetail: "summary" },
+    });
+    assert.throws(() => sanitizeWf({ processedStages: { validationN: 12, realN: 8, reportDetail: "other" } } as never), /reportDetail/);
     const disabled = sanitizeWf({ processedStages: null } as never) as Record<string, unknown>;
     assert.equal(Object.hasOwn(disabled, "processedStages"), true,
       "an explicit off patch must override a previously persisted policy");
