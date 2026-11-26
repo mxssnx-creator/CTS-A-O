@@ -92,12 +92,16 @@ export class ProcessedReplay {
   readonly book: ProcessedSetBook;
   readonly policy: ProcessedReplayPolicy;
   private readonly revision: string;
+  private readonly compactEntryIds: boolean;
 
   constructor(policy: ProcessedReplayPolicy, cost: number) {
     if (!policy || ![policy.validationN, policy.realN].every(n => Number.isSafeInteger(n) && n >= 1 && n <= 200) ||
       !Number.isFinite(cost) || cost < 0) throw new RangeError("invalid processed replay policy");
     if(policy.blocks)for(const b of Object.values(policy.blocks))checkBlockPolicy(b);
     const negativeFilter = negativeLastN(policy.negativeFilter);
+    // Summary-only model replays never emit a checkpoint. Identity already owns config/symbol/side,
+    // so the onset timestamp is a unique compact parent ID within that identity.
+    this.compactEntryIds = policy.reportDetail === "summary";
     this.policy = { validationN: policy.validationN, realN: policy.realN,
       ...(policy.blocks?{blocks:structuredClone(policy.blocks)}:{}),
       ...(negativeFilter ? { negativeFilter } : {}) };
@@ -114,7 +118,7 @@ export class ProcessedReplay {
   enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number): ProcessedOpen {
     const identity = this.identity(tp, symbol, side, minPf);
     // An onset has one parent. Future exit price/time/return cannot change its identity.
-    const entryId = JSON.stringify([tp.id, symbol, side, entryT]);
+    const entryId = this.compactEntryIds ? String(entryT) : JSON.stringify([tp.id, symbol, side, entryT]);
     return this.book.acceptPostBase(identity, entryId, entryT, { ...this.policy, minPf });
   }
 

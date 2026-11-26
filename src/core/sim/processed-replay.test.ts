@@ -84,6 +84,28 @@ test("summary-only replay retains the same decisions and coverage without copyin
     assert.deepEqual(lean[key], full[key], key);
 });
 
+test("compact modeled parent IDs remain scoped to exact config, symbol, side and onset", () => {
+  const compact = new ProcessedReplay({ validationN: 2, realN: 2, reportDetail: "summary" }, .001);
+  const full = new ProcessedReplay({ validationN: 2, realN: 2 }, .001);
+  const tp = { id, kind: "normal", ind }, other = { ...tp, id: `${id}|other` };
+  const scopes = [[tp, symbols[0], 1], [tp, symbols[0], -1], [tp, symbols[1], 1], [other, symbols[0], 1]] as const;
+  const small = scopes.map(([cfg, sym, side]) => compact.enter(cfg, sym, side, T, 1.1));
+  const normal = scopes.map(([cfg, sym, side]) => full.enter(cfg, sym, side, T, 1.1));
+  assert.equal(new Set(small.map(x => x.entryId)).size, 1, "the containing identity supplies the independent scope");
+  assert.equal(new Set(normal.map(x => x.entryId)).size, scopes.length, "full checkpoints retain their existing IDs");
+  assert.throws(() => compact.enter(tp, symbols[0], 1, T, 1.1), /duplicate processed entry/);
+  for (const x of small) compact.settle(x, T + 1, .02);
+  for (const x of normal) full.settle(x, T + 1, .02);
+  const identities = scopes.map(([cfg, sym, side]) => ({ identity: compact.identity(cfg, sym, side, 1.1), minPf: 1.1 }));
+  const run = (p: ProcessedReplay) => {
+    const g = p.reportGen(T + 2, identities, "summary");
+    for (let next = g.next(); ; next = g.next()) if (next.done) return next.value;
+  };
+  assert.deepEqual(run(compact), run(full));
+  const snapshot = compact.book.snapshot();
+  assert.deepEqual(ProcessedSetBook.restore(JSON.parse(JSON.stringify(snapshot))).snapshot(), snapshot);
+});
+
 test("large modeled coverage scans yield while retaining empty contexts", () => {
   const p = new ProcessedReplay({ validationN: 2, realN: 2 }, .001);
   function* contexts() {

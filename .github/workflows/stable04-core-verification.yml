@@ -17,8 +17,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Preserve the previous source's slow-runtime baseline while checking processed verdict scans.
-  group: stable04-core-verification-v17
+  # Retain the previous source's baseline while checking summary-only parent ownership.
+  group: stable04-core-verification-v18
   cancel-in-progress: true
 jobs:
   core:
