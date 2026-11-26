@@ -31,7 +31,7 @@ import {
   readHistoryManifest,
 } from "./history-store.server.ts";
 import { runOnWorkers, retireOwnedIdleWorkers } from "./pool.server.ts";
-import { tapeOpenTimes } from "../sim/tape-open-times.ts";
+import { tapeOpenTimes, tapeOpenView } from "../sim/tape-open-times.ts";
 
 const end = Date.UTC(2026, 9, 17),
   H = 3_600_000;
@@ -86,6 +86,8 @@ test("spilled positions remain lazy, lossless, mutable and transferable", () => 
     assert.equal(owner.positions, undefined);
     assert.deepEqual(Array.from(tapeOpenTimes(saved)), original.open.map((p) => p.entryT));
     assert.equal(owner.positions, undefined, "timestamp scheduling must not retain all open objects");
+    assert.deepEqual(tapeOpenView(saved), original.open);
+    assert.equal(owner.positions, undefined, "read-only replay marks must not retain spilled positions");
     const clean = describeStoredTape(saved)!;
     assert.equal(clean.meta.open, undefined, "clean manifests refer to the disk record");
     const restored = restoreStoredTapes([clean]);
@@ -94,6 +96,7 @@ test("spilled positions remain lazy, lossless, mutable and transferable", () => 
     const before = original.open[0].stop;
     saved.open[0].stop = before + 1;
     assert.equal(saved.open[0].stop, before + 1, "ordinary position mutation persists on the tape");
+    assert.equal(tapeOpenView(saved)[0].stop, before + 1, "a mutable override wins over the stored view");
     saved.pending = [{ sym: "new", side: 1 }];
     const changed = restoreStoredTapes([describeStoredTape(saved)!]);
     try {

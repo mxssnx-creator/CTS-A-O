@@ -3,7 +3,7 @@
 import { allCombos, configId, microLaneFloor } from "../pipeline/pipeline.ts";
 import { afterEach, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { baseFocus, basePass, CoreRuntime as BaseRuntime, sanitizeWf } from "./runtime.server.ts";
+import { baseFocus, basePass, CoreRuntime as BaseRuntime, onCoreEvent, sanitizeWf } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { auditStateGen, type AuditInput } from "../audit.ts";
 import { CoreDb } from "./db.server.ts";
@@ -678,23 +678,27 @@ describe("runtime coordination", { timeout: process.env.CTS_CORE_SLOW === "1" ? 
       );
       rt.start();
       const at = rt.status.settingsAt;
-      // the wait is on the state (the final settings applied, the runtime running, nothing pending), not on a count of
-      // computes: all engine indications remain in focus, while the final known fixture restores its bounded
-      // symbol/protection scope after arbitrary presets. A follow-up compute may still be required; the real
-      // cancellation/replacement and final publication must finish within the same 900s ceiling.
+      // Capture the paper publication synchronously: a subsequent compute can clear phase timings and start
+      // before a polling timer observes the brief idle state. Both the final revision and its paper step must
+      // have completed with nothing pending; the deadline still catches a stuck compute or paper step.
+      let completedPhases = false;
+      const unsubscribe = onCoreEvent((event) => {
+        const s = rt.status;
+        if (event.type === "paper" && s.appliedSettingsAt >= at && !s.pending && s.computes > 0 &&
+            s.paperCompute === s.computes && rt.sim && s.phases.Pipeline && s.phases.Tapes && s.phases.Simulation)
+          completedPhases = true;
+      });
       const trace = setInterval(() => {
         const s = rt.status;
         console.log("[storm-progress]", JSON.stringify({ state: s.state, stage: s.stage, progress: s.progress,
           label: s.label, settingsAt: s.settingsAt, appliedSettingsAt: s.appliedSettingsAt,
-          pending: s.pending, computes: s.computes, heartbeat: s.heartbeat, error: s.error,
+          pending: s.pending, computes: s.computes, paperCompute: s.paperCompute, paperSteps: s.paperSteps,
+          heartbeat: s.heartbeat, error: s.error,
           memory: s.mem && { level: s.mem.level, rssMb: s.mem.rssMb, aborts: s.mem.aborts, fallback: s.mem.fallback } }));
       }, 30_000);
       try {
-        await until(
-          () => rt.status.appliedSettingsAt >= at && rt.status.state === "running" && !rt.status.pending,
-          900_000,
-        );
-      } finally { clearInterval(trace); }
+        await until(() => completedPhases, 900_000);
+      } finally { clearInterval(trace); unsubscribe(); }
       rt.stop();
       assert.equal(rt.status.error ?? null, null);
       assert.ok(rt.sim && rt.tapes.length > 0);
@@ -716,7 +720,7 @@ describe("runtime coordination", { timeout: process.env.CTS_CORE_SLOW === "1" ? 
         for (const v of Object.values(p.legs ?? {}))
           assert.ok((v ?? 0) <= b.maxMult - 1 + 1e-9, `leg ${v}`);
       }
-      assert.ok(rt.status.phases.Pipeline && rt.status.phases.Tapes && rt.status.phases.Simulation);
+      assert.ok(completedPhases, "the final paper publication followed all required compute phases");
     },
   );
 

@@ -17,8 +17,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Retain the previous source's baseline while checking summary-only parent ownership.
-  group: stable04-core-verification-v18
+  # Retain the previous source's baseline while checking spilled endpoint marks.
+  group: stable04-core-verification-v19
   cancel-in-progress: true
 jobs:
   core:

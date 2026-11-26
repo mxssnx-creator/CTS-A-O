@@ -22,7 +22,7 @@ import { StringDecoder } from "node:string_decoder";
 import { serialize, deserialize } from "node:v8";
 import { inTapeLayout, tapeBytes, tapeViews, type ConfigTape } from "../sim/walkforward.ts";
 import { registerImmutableHistoryGeneration } from "../sim/immutable-history-generation.ts";
-import { TAPE_OPEN_TIMES } from "../sim/tape-open-times.ts";
+import { TAPE_OPEN_TIMES, TAPE_OPEN_VIEW, TAPE_OPEN_OVERRIDE } from "../sim/tape-open-times.ts";
 
 const MiB = 1048576;
 /**
@@ -257,6 +257,14 @@ function storedOpenTimes(this: Stored): Float64Array {
   const open = value.positions?.open ?? value.store.positions(value.record).open;
   return Float64Array.from(open, (p) => p.entryT);
 }
+function storedOpenView(this: Stored): readonly ConfigTape["open"][number][] {
+  const value = this[slot];
+  // Preserve a caller's mutable override; otherwise a one-use mark must not pin every spilled position.
+  return value.positions?.open ?? value.store.positions(value.record).open;
+}
+function storedOpenOverride(this: Stored): readonly ConfigTape["open"][number][] | undefined {
+  return this[slot].positions?.open;
+}
 export const historyOf = (tape: ConfigTape): Stored[typeof slot] | undefined =>
   (tape as Stored)[slot];
 function metadata(t: ConfigTape, includePositions = true): Metadata {
@@ -456,6 +464,8 @@ export class TapeHistoryStore {
     if (record.positions) {
       Object.defineProperties(tape, positionDescriptors);
       Object.defineProperty(tape, TAPE_OPEN_TIMES, { value: storedOpenTimes, enumerable: false });
+      Object.defineProperty(tape, TAPE_OPEN_VIEW, { value: storedOpenView, enumerable: false });
+      Object.defineProperty(tape, TAPE_OPEN_OVERRIDE, { value: storedOpenOverride, enumerable: false });
     }
     registerImmutableHistoryGeneration(tape, () => this.resource.closed ? undefined : this.derivedGeneration);
     return tape;

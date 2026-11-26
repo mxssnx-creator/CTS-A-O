@@ -15,7 +15,7 @@ import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf, type Valid
 import { returnWindow } from "../metrics/return-window.ts";
 import { DerivedCache, derivedCacheBytes } from "./derived-cache.ts";
 import { immutableHistoryGeneration } from "./immutable-history-generation.ts";
-import { tapeOpenTimes } from "./tape-open-times.ts";
+import { tapeOpenTimes, tapeOpenView, tapeOpenOverride, storedTapeOpen } from "./tape-open-times.ts";
 import { exitScopeSuffix, isHistoricExitConfig } from "../exit-scope.ts";
 import { applyPriceDistanceGrid } from "../price-distance-grid.ts";
 import { isLowRangeInd, lowRangeGridProtects, lowRangeEnabled } from "../indications/low-range.ts";
@@ -1592,7 +1592,8 @@ export function seatedForEntry(
  * A tape's position still open at its end as an order closing at `endT` at its mark: r = mtm × ladder weight incl.
  * cost (as a closed order's r carries every leg), vol = the ladder weight.
  */
-export function markedOpenTrade(tp: ConfigTape, op: OpenPosition, endT: number): Trade {
+type MarkableOpen = Pick<OpenPosition, "sym" | "side" | "entryT" | "entry" | "mtm" | "w">;
+export function markedOpenTrade(tp: ConfigTape, op: MarkableOpen, endT: number): Trade {
   const w = op.w ?? 1;
   return {
     cfg: tp.id,
@@ -7684,8 +7685,36 @@ export type SignalEntryCursor = {
   nextT: number;
   openOrder: Uint32Array;
   openTimes: Float64Array;
+  /** Read-only endpoint fields for spilled positions, indexed like openTimes. */
+  packedOpen?: Float64Array;
   nextOpen: number;
 };
+
+/** Compact only the fields used for endpoint marks; unusual records fall back to the original lossless view. */
+function* packOpenMarks(tp: ConfigTape, open: readonly OpenPosition[]): Generator<number, Float64Array | undefined> {
+  const values = new Float64Array(open.length * 4);
+  for (let i = 0; i < open.length; i++) {
+    const p = open[i], sym = tp.syms.indexOf(p.sym), weight = p.w ?? 1;
+    if (sym < 0 || typeof p.entryT !== "number" || typeof p.entry !== "number" ||
+        typeof p.mtm !== "number" || typeof weight !== "number" || (p.side !== 1 && p.side !== -1)) return undefined;
+    const at = i * 4;
+    values[at] = p.entry; values[at + 1] = p.mtm; values[at + 2] = weight;
+    values[at + 3] = sym * 2 + (p.side > 0 ? 1 : 0);
+    if ((i & 2047) === 2047) yield -3;
+  }
+  return values;
+}
+
+function packedOpenAt(cursor: SignalEntryCursor, i: number): MarkableOpen | undefined {
+  const values = cursor.packedOpen;
+  if (!values) return undefined;
+  // A mutable tape access after scheduling remains authoritative, as it was before compaction.
+  const override = tapeOpenOverride(cursor.tp);
+  if (override) return override[i];
+  const at = i * 4, slot = values[at + 3];
+  return { sym: cursor.tp.syms[Math.floor(slot / 2)], side: slot % 2 ? 1 : -1,
+    entryT: cursor.openTimes[i], entry: values[at], mtm: values[at + 1], w: values[at + 2] };
+}
 /** Only metadata and the next closed-entry timestamp are needed while a history has no due entry. */
 export function nextSignalEntryT(cursor: SignalEntryCursor): number {
   return Math.min(cursor.nextT, cursor.nextOpen < cursor.openOrder.length
@@ -7708,14 +7737,23 @@ export function* signalEntryQueueGen(
     for (let i = 0; i < tp.n; i++)
       if (entryT[i] >= startT && entryT[i] < stopT) order[j++] = i;
     order.sort((a, b) => entryT[a] - entryT[b] || a - b);
-    const openTimes = markOpen ? tapeOpenTimes(tp) : new Float64Array(0);
+    let packedOpen: Float64Array | undefined;
+    let openSnapshot: readonly OpenPosition[] | undefined;
+    let openTimes: Float64Array;
+    if (markOpen && storedTapeOpen(tp) && !tapeOpenOverride(tp)) {
+      // One lossless disk read supplies both the clock index and compact marking fields.
+      openSnapshot = tapeOpenView(tp);
+      openTimes = Float64Array.from(openSnapshot, p => p.entryT);
+    } else openTimes = markOpen ? tapeOpenTimes(tp) : new Float64Array(0);
     const eligibleOpen: number[] = [];
     for (let i = 0; i < openTimes.length; i++)
       if (openTimes[i] >= startT && openTimes[i] < stopT) eligibleOpen.push(i);
+    if (openSnapshot && eligibleOpen.length) packedOpen = yield* packOpenMarks(tp, openSnapshot);
     const openOrder = Uint32Array.from(eligibleOpen);
     openOrder.sort((a, b) => openTimes[a] - openTimes[b] || a - b);
     if (order.length || openOrder.length) {
-      const cursor = { tp, order, next: 0, nextT: order.length ? entryT[order[0]] : Infinity, openOrder, openTimes, nextOpen: 0 };
+      const cursor = { tp, order, next: 0, nextT: order.length ? entryT[order[0]] : Infinity, openOrder, openTimes,
+        ...(packedOpen ? { packedOpen } : {}), nextOpen: 0 };
       queue.push(nextSignalEntryT(cursor), cursor);
     }
     yield -3;
@@ -7744,9 +7782,10 @@ export function* scheduledEngineEntriesGen(
       if (accept) out.push({ tr: tradeAt(tp, i), tp });
       if (++visited % 2048 === 0) yield -6;
     }
+    let openView: readonly OpenPosition[] | undefined;
     while (c.nextOpen < c.openOrder.length && c.openTimes[c.openOrder[c.nextOpen]] < until) {
       const i = c.openOrder[c.nextOpen++];
-      if (accept) out.push({ tr: markedOpenTrade(tp, tp.open[i], markT), tp });
+      if (accept) out.push({ tr: markedOpenTrade(tp, packedOpenAt(c, i) ?? (openView ??= tapeOpenView(tp))[i], markT), tp });
     }
     const nextT = nextSignalEntryT(c);
     if (Number.isFinite(nextT)) queue.push(nextT, c);
@@ -8331,11 +8370,12 @@ export function* walkForwardGen(
           if (take(tp.syms[tp.symI[i]], tp.side[i], tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0)))
             cands.push({ tr: tradeAt(tp, i), tp });
         }
+        let openView: readonly OpenPosition[] | undefined;
         while (cursor.nextOpen < cursor.openOrder.length) {
           const i = cursor.openOrder[cursor.nextOpen];
           if (cursor.openTimes[i] >= batchEnd) break;
           cursor.nextOpen++;
-          const op = tp.open[i];
+          const op = packedOpenAt(cursor, i) ?? (openView ??= tapeOpenView(tp))[i];
           if (take(op.sym, op.side, tp.syms.indexOf(op.sym) * 2 + (op.side > 0 ? 1 : 0)))
             cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
         }
