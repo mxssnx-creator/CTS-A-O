@@ -1,3 +1,11 @@
+## 2026-11-26 — Signed Last-N and Auto PF strength
+
+Strategy Settings accept an integer Auto PF strength from 1 to 10, with default 4. Negative Short requires a loss-to-gain ratio at the applicable threshold. Last remains a signed trigger. Axis omits a Wide ladder when it has no protection cell.
+
+The eight-symbol cached replay ending 17 October 2026 at 23:00 Vienna used 48 hours of indicator warmup, 12 hours of evaluated history and 12 hours of trading. Tactics and Signals were off. Base passed 83 of 384 evaluations. Post-Base passed 279 of 22,260 configurations (1.25%) with pooled historical return PF 5.618. The funded model opened 36 positions and 358 orders. It settled 27 positions and 269 orders at return PF 0.197, leaving 9 positions and 89 orders open. Maximum modeled equity drawdown was 0.97%, and zero of 12 hours were positive. The complete isolated replay finished in 83.6 seconds of computation with 74 passing session checks. Earlier resource-constrained attempts are excluded.
+
+The change is contained in `c4e5e3d90c50e3451569ac1bf41be2d2d2677895`. The focused CTS-A-O suite passed 97 tests and type checking completed. Positive funded execution, CTS-A-O venue PF, and the warmed foreground cycle target remain to be demonstrated.
+
 ## Independent CTS-A-O stage replay · 26 November 2026
 
 With persistent stage progression enabled, each eligible Base configuration can start its own paper history when its raw selector is cold. Signed Base blocks use the complete after-cost window and the configured signs. Main and Real consume strictly prior settled results of their own predecessor. Siblings can warm up at the same onset and the configured pair-event cap still limits Active entries. Native order allocation checks the same signed policy as the paper owner. Post-Base validation displays modeled config, symbol and side contexts and their passing historical windows.
