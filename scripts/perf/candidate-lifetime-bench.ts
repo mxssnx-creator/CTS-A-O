@@ -61,8 +61,10 @@ const fixture = () => {
       "trend", "break", "active", "direction", "move", "rsi", "bollinger", "sar", "macd", "ema",
       "osc", "volume", "channel", "ichimoku", "smooth", "tactic", "relate",
     ].map((kind) => [kind, 1])) },
-    // Freeze the archived Block ladder too; current factory defaults changed 6→7 independently of lifecycle.
-    block: { ...DEFAULT_SETTINGS.block, ranges: { ...DEFAULT_SETTINGS.block.ranges, steps: [0, 6] } },
+    // Freeze the archived Block ladder and auto policy: later factory defaults do not alter this lifecycle seal.
+    block: { ...DEFAULT_SETTINGS.block, auto: { enabled: true, n: 30, min: 15, pf: 1.1, scope: "rule" as const },
+      windowAuto: undefined, windowIndependent: undefined, windowMinSamples: undefined, windowLookback: undefined,
+      ranges: { ...DEFAULT_SETTINGS.block.ranges, steps: [0, 6] } },
     dca: { levels:1,addRatio:2.5,step:.02,stopGap:.5,slOfTp:1 },
     axisVolumeFactor: undefined, exitVolumeFactor: undefined,
     longH: 336, preH: 20, signalLongH: 336,

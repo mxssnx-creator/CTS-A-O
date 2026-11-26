@@ -2,7 +2,14 @@ name: Stable-04 offline core verification
 on:
   push:
     branches: [Stable-04]
-    paths: [.github/workflows/stable04-core-verification.yml]
+    paths:
+      - 'src/core/**'
+      - 'scripts/perf/**'
+      - 'scripts/test-core.mjs'
+      - 'scripts/lib/core-test-offline-guard.cjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/stable04-core-verification.yml'
   workflow_dispatch:
 permissions:
   contents: read

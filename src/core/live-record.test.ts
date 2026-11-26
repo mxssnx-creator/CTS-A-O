@@ -188,13 +188,17 @@ describe("live record judges before the simulation", () => {
   });
 
   it("the adjuster reads a set's exchange window once it is full, never mixed with paper closes", () => {
-    const paper = Array.from({ length: 30 }, (_, i) => ({ cfg: "b|ema|tr0|x", r: 0.01, exitT: i }));
-    const exchange = Array.from({ length: 30 }, (_, i) => ({ cfg: "b|ema|tr0|y", r: -0.01, exitT: 100 + i }));
+    // Adjusted stop distances remain the same config set; a different target is an independent set.
+    const paper = Array.from({ length: 30 }, (_, i) => ({ cfg: "b|ema|tp1|sl1|tr0|h4", r: 0.01, exitT: i }));
+    const exchange = Array.from({ length: 30 }, (_, i) => ({ cfg: "b|ema|tp1|sl2|tr0|h4", r: -0.01, exitT: 100 + i }));
+    const sibling = { cfg: "b|ema|tp2|sl1|tr0|h4", r: 0.02, exitT: 50 };
     const w = DEFAULT_ADJUST.window;
     const mixed = adjustTrades(paper, exchange.slice(0, w - 1), w);
     assert.ok(mixed.every((t) => !t.net), "a short exchange record: the paper book decides");
     const full = adjustTrades(paper, exchange, w);
     assert.ok(full.every((t) => t.net), "a full exchange window replaces the paper closes of its set");
+    assert.deepEqual(adjustTrades([sibling], exchange, w), [sibling, ...exchange.map((t) => ({ ...t, net: true }))],
+      "exchange closes cannot replace a different config set's paper evidence");
     const { state } = evaluateAdjust({}, full, { ...DEFAULT_ADJUST, enabled: true }, { minSl: 0.01, minTrail: 0.01 }, 0.5);
     const s = Object.values(state)[0];
     assert.equal(s.n, w);

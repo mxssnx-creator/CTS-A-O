@@ -67,15 +67,23 @@ for (const auto of [false, true]) test(`Block keeps each Exit's pooled sources, 
   assert.equal(bookLevels(book, a, 1).overall, 1);
   assert.notEqual(sourceKey("overall", a), sourceKey("overall", n));
   if (book instanceof AutoBlockBook) {
-    const isolated = new AutoBlockBook({ ...DEFAULT_BLOCK, windowAuto: true, window: 1, windowCandidates: [1, 2],
-      sources: { config: false, overall: true } }, false);
-    for (let i = 0; i < 35; i++) {
-      const e = { ...a, entryT: START + i * M, exitT: START + (i + 1) * M };
-      isolated.stampEntry(e);
-      isolated.add(e);
+    for (const independent of [false, true]) {
+      const isolated = new AutoBlockBook({ ...DEFAULT_BLOCK, windowAuto: true, windowIndependent: independent,
+        window: 1, windowCandidates: [1, 2], sources: { config: false, overall: true } }, false);
+      for (let i = 0; i < 35; i++) {
+        const e = { ...a, entryT: START + i * M, exitT: START + (i + 1) * M };
+        isolated.stampEntry(e);
+        isolated.add(e);
+      }
+      if (independent) {
+        assert.ok(isolated.scoresForKey(sourceKey("overall", a)).some((x) => x.n >= 30));
+        assert.ok(isolated.scoresForKey(sourceKey("overall", n)).every((x) => x.n === 0));
+        assert.ok(isolated.scoresForKey(sourceKey("overall", b)).every((x) => x.n === 0));
+      } else {
+        assert.ok(isolated.scores(exitScopeSuffix(exitA, "exit")).some((x) => x.n > 0));
+        assert.ok(isolated.scores().every((x) => x.n === 0), "Exit closes cannot tune another strategy's auto window");
+      }
     }
-    assert.ok(isolated.scores(exitScopeSuffix(exitA, "exit")).some((x) => x.n > 0));
-    assert.ok(isolated.scores().every((x) => x.n === 0), "Exit closes cannot tune another strategy's auto window");
   }
 });
 
