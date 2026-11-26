@@ -17,8 +17,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Let the large-selection baseline finish while testing cooperative seat selection.
-  group: stable04-core-verification-v25
+  # Let the cooperative-selection baseline finish while testing cooperative ranking.
+  group: stable04-core-verification-v26
   cancel-in-progress: true
 jobs:
   core:

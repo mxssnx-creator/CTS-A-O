@@ -222,6 +222,37 @@ export function* stableSortGen<T>(
   }
 }
 
+/** Sort short native runs, then merge them cooperatively to bound long selection slices. */
+function* selectionSortGen<T>(values: T[], compare: (a: T, b: T) => number): Generator<number, void> {
+  const n = values.length, chunk = 2048;
+  if (n < 2) return;
+  if (n <= chunk) { values.sort(compare); return; }
+  for (let left = 0; left < n; left += chunk) {
+    const run = values.slice(left, Math.min(n, left + chunk));
+    run.sort(compare);
+    for (let i = 0; i < run.length; i++) values[left + i] = run[i];
+    yield -14;
+  }
+  let source = values, target = new Array<T>(n), work = 0;
+  for (let width = chunk; width < n; width *= 2) {
+    for (let left = 0; left < n; left += width * 2) {
+      const mid = Math.min(left + width, n), right = Math.min(left + 2 * width, n);
+      let a = left, b = mid, out = left;
+      while (a < mid && b < right) {
+        target[out++] = compare(source[a], source[b]) <= 0 ? source[a++] : source[b++];
+        if (++work % 1024 === 0) yield -14;
+      }
+      while (a < mid) { target[out++] = source[a++]; if (++work % 1024 === 0) yield -14; }
+      while (b < right) { target[out++] = source[b++]; if (++work % 1024 === 0) yield -14; }
+    }
+    [source, target] = [target, source];
+  }
+  if (source !== values) for (let i = 0; i < n; i++) {
+    values[i] = source[i];
+    if (++work % 1024 === 0) yield -14;
+  }
+}
+
 /** One fail-closed PF gate for Base, selection and last-N (no fabricated wins from NaN/overflow). */
 function qualifiedPf(gp: number, gl: number, floor: number): boolean {
   if (!(Number.isFinite(gp) && Number.isFinite(gl) && gp >= 0 && gl >= 0 && Number.isFinite(floor)))
@@ -3531,6 +3562,25 @@ export interface Selection {
   window: { n: number; net: number; pf: number; ddt: number; gp?: number; gl?: number };
 }
 
+/** Keep priority ordering unchanged while making large rank construction cooperative. */
+export function* selectionRankGen(selections: readonly Selection[]): Generator<number, Map<string, number>> {
+  const sorted = [...selections];
+  const compare = (a: Selection, b: Selection) => b.score - a.score || (a.id < b.id ? -1 : 1);
+  let finite = true, work = 0;
+  for (const item of sorted) {
+    if (!Number.isFinite(item.score)) finite = false;
+    if (++work % 1024 === 0) yield -14;
+  }
+  if (finite) yield* selectionSortGen(sorted, compare);
+  else sorted.sort(compare);
+  const ranks = new Map<string, number>();
+  for (let i = 0; i < sorted.length; i++) {
+    ranks.set(sorted[i].id, i);
+    if (++work % 1024 === 0) yield -14;
+  }
+  return ranks;
+}
+
 /** Share of exit-hours in [a, b) with a positive summed return. */
 function greenShare(tp: ConfigTape, a: number, b: number): number {
   if (b <= a) return 0;
@@ -3720,7 +3770,7 @@ function* sortSeatsGen<T extends Selection>(values: T[]): Generator<number, void
     if (++work % 1024 === 0) yield -14;
   }
   if (!finite) values.sort((x, y) => y.score - x.score);
-  else yield* stableSortGen(values, (x, y) => y.score - x.score);
+  else yield* selectionSortGen(values, (x, y) => y.score - x.score);
 }
 
 /** The synchronous API is retained for existing callers; the simulation drives the generator in slices. */
@@ -4745,7 +4795,7 @@ export class ContinuousPositionSelection {
     }
     const eligible = [...this.candidates.values()];
     if (eligible.every((c) => Number.isFinite(c.score)))
-      yield* stableSortGen(eligible, (a, b) => b.score - a.score || a.index - b.index);
+      yield* selectionSortGen(eligible, (a, b) => b.score - a.score || a.index - b.index);
     else eligible.sort((a, b) => b.score - a.score || a.index - b.index);
     const selected = yield* pickSeatsGen(eligible, seatsOf(free), [], new Set<string>(), free, true);
     return { picks: selected.map(
@@ -8405,23 +8455,23 @@ export function* walkForwardGen(
       if (exits) rangeRow("exit").validated += exits;
     }
     const stepEnd = Math.min(stopT, t + stepH * H);
-    const rankOf = (ps: readonly Selection[]) =>
-      new Map([...ps].sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1)).map((p, i) => [p.id, i] as [string, number]));
-    let engineRank = rankOf(picks);
+    let engineRank = yield* selectionRankGen(picks);
     const selectedEntries = new Set<string>();
     // The Base-qualified processed cohort is fixed for this replay. Check it alongside the current seats
     // instead of copying its entire set into a new union on every intra-hour selection refresh.
     const scheduledEntries: Pick<ReadonlySet<string>, "has"> = processedEntries.size
       ? { has: (id) => processedEntries.has(id) || selectedEntries.has(id) } : selectedEntries;
-    const seat = (ps: readonly Selection[]) => {
+    const seat = function* (ps: readonly Selection[]): Generator<number, void> {
       selectedEntries.clear();
+      let indexed = 0;
       for (const p of ps) {
         const tid = o.invertSeats ? mirrorId(p.id) : p.id;
         if (tid && byId.has(tid)) selectedEntries.add(tid);
         else invertMissing++;
+        if (++indexed % 1024 === 0) yield -14;
       }
     };
-    seat(picks);
+    yield* seat(picks);
     if (incremental && validatedIds) yield* incremental.reset(validatedIds, t, stepOpts);
     // Reporting/selection cadence does not determine candle precision or candidate memory. Process one minute
     // at a time, with the same stable entry ordering, and release the completed batch before assembling the next.
@@ -8447,8 +8497,8 @@ export function* walkForwardGen(
             : yield* selectPositionsGen(allEngine, batchT,
               { ...stepOpts, seatSet: "pool", validated: undefined, recordValidation: undefined });
           picks = fresh.picks;
-          engineRank = rankOf(picks);
-          seat(picks);
+          engineRank = yield* selectionRankGen(picks);
+          yield* seat(picks);
         }
       }
       const prio = bestFirst(picks, stepOpts, engineRank);

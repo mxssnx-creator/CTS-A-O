@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DEFAULT_SETTINGS } from '../config.ts';
-import { defaultWalkForward, pickSeats, pickSeatsGen, type Selection } from './walkforward.ts';
+import { defaultWalkForward, pickSeats, pickSeatsGen, selectionRankGen, type Selection } from './walkforward.ts';
 
 type Candidate = Selection & { pair: string };
 const drain = <T>(g: Generator<number, T>): T => { for (;;) { const next = g.next(); if (next.done) return next.value; } };
@@ -38,4 +38,18 @@ test('unlimited Micro selection handles more entries than a function call can sp
   assert.equal(out.length, n);
   assert.equal(out[0].id, 'cfg-0');
   assert.equal(out[n - 1].id, `cfg-${n - 1}`);
+});
+
+test('priority ranks retain native ordering while yielding during a large selection', () => {
+  const rows: Selection[] = Array.from({ length: 80_000 }, (_, i) => ({ id: `cfg-${i % 19_007}`,
+    score: (i * 97 % 53) / 10, window: { n: 12, net: .1, pf: 1.5, ddt: 0 } }));
+  const native = (xs: Selection[]) => new Map([...xs].sort((a, b) => b.score - a.score ||
+    (a.id < b.id ? -1 : 1)).map((p, i) => [p.id, i] as [string, number]));
+  const gen = selectionRankGen(rows);
+  let step = gen.next();
+  assert.equal(step.done, false, 'large rank preparation must hand control back');
+  while (!step.done) step = gen.next();
+  assert.deepEqual(step.value, native(rows));
+  const unknown = rows.slice(0, 30); unknown[4] = { ...unknown[4], score: NaN };
+  assert.deepEqual(drain(selectionRankGen(unknown)), native(unknown));
 });
