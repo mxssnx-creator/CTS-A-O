@@ -8813,7 +8813,50 @@ export function* walkForwardGen(
           }
         }
         if (dec && !dec.ok) why = dec.why;
+        // A funded lane and a learning sibling use separate exposure/cap
+        // histories even when they share the same market candidate.
+        const trySiblingPaper = () => {
+          if (!processed || preview?.stage !== "active" || !processed.previewWarmup(
+              tp, tr.sym, tr.side, tr.entryT, processedFloor(tp), baseCheck)) return null;
+          const paperCoord = coordBlock(o.coord, tr, ownHours, open.items, engineOpen, warmupPosition);
+          const paperRaw = paperCoord === "confirm" ? null : paperCoord;
+          const paperWhy = (hedging ? (bookLosing ? paperRaw : "hedgeIdle") : paperRaw) ??
+            ownS2?.blocked(tr.sym, tr.side) ??
+            (gateOn && sourceUnstable(srcClosed.get(signalSourceOf(tr.cfg.split("|")[1])), tr.entryT,
+              o.gates.positionWindows ? {...o.signalSourceGate!,lastN:o.signalSourceGate!.lastN??o.gates.positionWindows.main} : o.signalSourceGate!)
+              ? "sourceUnstable" : null);
+          const paperAvailable = !(o.guardPct > 0 && (ownHours.get(hourKey) ?? 0) <= -o.guardPct) && !paperWhy &&
+            !warmupCounts.dupe(tr.sym, tr.cfg, tr.side) &&
+            warmupCounts.perSymbol(tr.sym, cls, capScope) < caps.perSymbol &&
+            warmupCounts.open(cls, capScope) < caps.maxOpen &&
+            warmupCounts.perSide(tr.side, cls, capScope) < caps.perSide &&
+            !warmupCounts.positionsFull(tr.sym, tr.side, cls, cls ? o.signalMaxPositions : o.maxPositions, capScope) &&
+            (!o.entryCrowd || (warmupCrowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) < crowdCapOf(o, tr.cfg));
+          const paperDecision = !paperAvailable ? null : dec?.ok ? dec : execDecision(tp, tr.entryT, stepOpts, {
+            processedBase: true, book, guard, direction, relate: relateBook, relateBase: baseForBlock,
+            sym: tr.sym, side: tr.side,
+          });
+          if (!paperDecision?.ok) return null;
+          const paperStage = processed.enter(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp), baseCheck, "warmup");
+          const paper: Trade = { ...tr, mult: 1 };
+          processedOpen.set(paper, paperStage);
+          open.push(paper.exitT, paper);
+          warmupCounts.add(paper, 1);
+          executedKeys.add(dk);
+          if (o.entryCrowd) {
+            const ck = crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT);
+            warmupCrowd.set(ck, (warmupCrowd.get(ck) ?? 0) + 1);
+          }
+          return paperStage;
+        };
         if (why || !dec || !dec.ok) {
+          if (["confirm", "conflict", "dupe", "perSymbol", "maxOpen", "perSide", "maxPositions", "crowd", "pairEvent"].includes(why)) {
+            const paperStage = trySiblingPaper();
+            if (paperStage?.stage === "real") {
+              fx.accepted = true;
+              if (book?.acceptedOnly && !book.processedOnly) book.stampEntry(fx);
+            }
+          }
           if (dec && !dec.ok && dec.why === "relateActive" && o.relate?.enabled) {
             const shadowBase = dec.relateBase ?? baseForBlock(dec.relateBaseVol ?? 1);
             const shadowCap = relateExternalStackCap(o.relate.maxStack, tp.kind, tp.protect);
@@ -8827,8 +8870,11 @@ export function* walkForwardGen(
           skipR(skipName(why), tr.r);
           continue;
         }
+        // The paper successor gets its own cap decision; Active never advances it implicitly.
+        if (preview?.stage === "active") trySiblingPaper();
         // Only actual Base-processed admissions enter this book. Conflict/cap/strategy rejects never lend proof.
-        const stage = processed?.enter(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp), baseCheck);
+        const stage = processed?.enter(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp), baseCheck,
+          preview?.stage === "active" ? "active" : "all");
         if (stage && stage.stage !== preview?.stage) throw new Error("processed admission changed during entry");
         const active = !stage || stage.stage === "active";
         // Accepted Real feedback belongs to Real, even when its distinct Exec gate needs more evidence.

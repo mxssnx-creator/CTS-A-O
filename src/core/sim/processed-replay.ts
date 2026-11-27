@@ -1,4 +1,4 @@
-import { checkBlockPolicy, type BlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
+import { blockPolicyKey, checkBlockPolicy, type BlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
 import { negativeLastN, type NegativeLastN } from "../negative-last-n.ts";
 import type { PositionWindows } from "../position-windows.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf } from "../validated-set-pf.ts";
@@ -24,8 +24,10 @@ export interface ProcessedReplayPolicy extends Omit<ProcessedPolicy, "minPf" | "
   lanes?: readonly ProcessedLaneOptions[];
   /** At each continuation, choose whether its own window includes the originating Base Long count. */
   longModes?: Partial<Record<ProcessedGate, "inherit" | "none" | "both">>;
+  /** All configured windows at each stage. Every parent gets the complete next-stage choice. */
+  stageBlocks?: Partial<Record<ProcessedGate, readonly BlockPolicy[]>>;
 }
-type SinglePolicy = Omit<ProcessedReplayPolicy, "lanes" | "reportDetail" | "longModes">;
+type SinglePolicy = Omit<ProcessedReplayPolicy, "lanes" | "reportDetail" | "longModes" | "stageBlocks">;
 type ProcessedLaneOptions = Partial<Omit<SinglePolicy, "baseScope" | "autoBase">> & { id: string };
 const continuationGates = ["validation", "real", "exec"] as const;
 
@@ -76,43 +78,64 @@ export function processedLanes(policy: ProcessedReplayPolicy) {
     return { id, policy: checkedProcessedPolicy({ ...base, execN: base.execN ?? base.realN, ...patch, blocks,
       baseScope: base.baseScope, autoBase: base.autoBase }) };
   }) ?? [{ id: "", policy: base }];
+  const configured = policy.stageBlocks;
+  if (configured !== undefined) {
+    if (!configured || typeof configured !== "object" || Array.isArray(configured) ||
+        Object.entries(configured).some(([stage, choices]) =>
+          !continuationGates.includes(stage as ProcessedGate) || !Array.isArray(choices) || !choices.length))
+      throw new RangeError("invalid processed-stage windows");
+    for (const choices of Object.values(configured)) {
+      for (const block of choices!) checkBlockPolicy(block);
+      if (new Set(choices!.map(blockPolicyKey)).size !== choices!.length)
+        throw new RangeError("duplicate processed-stage window");
+    }
+  }
   const modes = policy.longModes;
-  if (modes === undefined) return lanes;
-  if (!modes || typeof modes !== "object" || Array.isArray(modes) ||
+  if (modes === undefined && configured === undefined) return lanes;
+  if (modes !== undefined && (!modes || typeof modes !== "object" || Array.isArray(modes) ||
       Object.entries(modes).some(([stage, mode]) => !continuationGates.includes(stage as ProcessedGate) ||
-        !["inherit", "none", "both"].includes(mode)))
+        !["inherit", "none", "both"].includes(mode))))
     throw new RangeError("invalid processed Long choices");
-  const stages = continuationGates.filter(stage => modes[stage] !== undefined);
+  const stages = continuationGates.filter(stage => modes?.[stage] !== undefined || configured?.[stage] !== undefined);
   if (!stages.length) return lanes;
   return lanes.flatMap(({ id, policy: original }) => {
     const baseLong = original.baseBlock?.long ?? 0;
-    let paths: { signature: (readonly [ProcessedGate, number])[]; blocks: NonNullable<SinglePolicy["blocks"]> }[] = [
+    let paths: { signature: (readonly [ProcessedGate, number | string])[]; blocks: NonNullable<SinglePolicy["blocks"]> }[] = [
       { signature: [], blocks: { ...original.blocks } },
     ];
     for (const stage of stages) {
       const count = { validation: original.validationN, real: original.realN, exec: original.execN }[stage];
       if (count === undefined) throw new RangeError("Enable Exec before choosing its Long modes");
-      const mode = modes[stage];
-      if (mode !== "none" && !baseLong) throw new RangeError("Set a positive Base Long count before inheriting it");
-      const choices = mode === "both" ? [baseLong, 0] : [mode === "inherit" ? baseLong : 0];
-      const block = original.blocks?.[stage];
-      paths = paths.flatMap(path => choices.map(long => {
-        const window: BlockPolicy = block ? { ...block, long } : {
-          long, short: count, minimal: 0, shortPolarity: "positive", minimalPolarity: "positive",
-        };
-        checkBlockPolicy(window);
-        return { signature: [...path.signature, [stage, long] as const], blocks: { ...path.blocks, [stage]: window } };
-      }));
+      const mode = modes?.[stage];
+      if ((mode === "inherit" || mode === "both") && !baseLong)
+        throw new RangeError("Set a positive Base Long count before inheriting it");
+      const template = original.blocks?.[stage] ?? {
+        long: 0, short: count, minimal: 0, shortPolarity: "positive" as const, minimalPolarity: "positive" as const,
+      };
+      const candidates = configured?.[stage] ?? [template];
+      const windows = new Map<string, BlockPolicy>();
+      for (const block of candidates) {
+        const longs = mode === "both" ? [baseLong, 0] : mode === "inherit" ? [baseLong] : mode === "none" ? [0] : [block.long];
+        for (const long of longs) {
+          const window = { ...block, long };
+          checkBlockPolicy(window);
+          windows.set(blockPolicyKey(window), window);
+        }
+      }
+      paths = paths.flatMap(path => [...windows].map(([key, window]) => ({
+        signature: [...path.signature, [stage, configured ? key : window.long] as const],
+        blocks: { ...path.blocks, [stage]: window },
+      })));
     }
     return paths.map(({ signature, blocks }) => ({
-      id: JSON.stringify(["related-long", id, signature]), policy: { ...original, blocks },
+      id: JSON.stringify([configured ? "stage-windows" : "related-long", id, signature]), policy: { ...original, blocks },
     }));
   });
 }
 
 export function frozenProcessedPolicy(policy: ProcessedReplayPolicy): ProcessedReplayPolicy {
   const base = checkedProcessedPolicy(policy);
-  const lanes = (policy.lanes || policy.longModes) && processedLanes(policy).map(({ id, policy }) => ({ id, ...policy }));
+  const lanes = (policy.lanes || policy.longModes || policy.stageBlocks) && processedLanes(policy).map(({ id, policy }) => ({ id, ...policy }));
   return { ...base, ...(lanes && { lanes }) };
 }
 
@@ -518,13 +541,24 @@ export class ProcessedLaneReplay {
       ledger.preview(tp, symbol, side, at, minPf))) : null;
   }
 
-  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, at: number, minPf: number, base?: ProcessedBaseCheck):
+  /** A funded sibling must not prevent other lanes from sampling their own paper stages. */
+  previewWarmup(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, at: number, minPf: number,
+    base?: ProcessedBaseCheck): ProcessedStageDecision | null {
+    const decisions = this.eligible(base).map(({ ledger }) => ledger.preview(tp, symbol, side, at, minPf))
+      .filter(decision => decision.stage !== "active");
+    return decisions.length ? furthestProcessedDecision(decisions) : null;
+  }
+
+  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, at: number, minPf: number, base?: ProcessedBaseCheck,
+    selection: "all" | "warmup" | "active" = "all"):
     ProcessedOpen | ProcessedSummaryOpen | ReplayEntry {
     const enter = (ledger: ReplayLedger) => ledger instanceof ProcessedSummaryReplay
       ? ledger.enterCompact(tp, symbol, side, at, minPf) : ledger.enter(tp, symbol, side, at, minPf);
     const ledgers = this.ledgers;
-    if (ledgers.length === 1 && !this.checksBase) return enter(ledgers[0].ledger);
-    const lanes = this.eligible(base).map(({ ledger, index }) => ({ index, open: enter(ledger) }));
+    if (ledgers.length === 1 && !this.checksBase && selection === "all") return enter(ledgers[0].ledger);
+    const lanes = this.eligible(base).filter(({ ledger }) => selection === "all" ||
+      (ledger.preview(tp, symbol, side, at, minPf).stage === "active") === (selection === "active"))
+      .map(({ ledger, index }) => ({ index, open: enter(ledger) }));
     if (!lanes.length) throw new Error("no Base-qualified processed lane");
     const { stage, validation, real, exec } = furthestProcessedDecision(lanes.map(l => l.open));
     return { stage, validation, real, ...(exec !== undefined && { exec }), lanes };
@@ -549,7 +583,7 @@ export class ProcessedLaneReplay {
           yield { identity: ledger.identity(tp, symbol, side, minPf), minPf };
       })(), detail));
     }
-    if (!this.policy.lanes && !this.policy.longModes) return reports[0];
+    if (!this.policy.lanes && !this.policy.longModes && !this.policy.stageBlocks) return reports[0];
     const lanes = reports.map(({ validation, real, exec }, i) => ({
       id: this.ledgers[i].id, policy: this.ledgers[i].ledger.policy, validation, real, ...(exec && { exec }),
     }));

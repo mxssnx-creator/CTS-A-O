@@ -57,7 +57,7 @@ import {
 import { RANGE_LABEL, RANGE_OWN_BASE } from "@/core/minimal-coord";
 import { DEFAULT_PRICE_DISTANCE_GRID, PRICE_DISTANCE_RANGES, type PriceDistanceGrid } from "@/core/price-distance-grid";
 import { blockRatioOf, blockStackCap, stepRaise } from "@/core/sim/block";
-import { processedLanes, requiresOppositeMainSource, type ProcessedReplayPolicy } from "@/core/sim/processed-replay";
+import { processedLanes, type ProcessedReplayPolicy } from "@/core/sim/processed-replay";
 import { DEFAULT_AUTO_PF_RATIO } from "@/core/step-pf";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES, signalSourceEnabled } from "@/core/signal-config";
 import { SIGNAL_COORDINATION_RATIOS } from "@/core/signal-coordination";
@@ -1681,7 +1681,9 @@ export function ProcessedStageSettings(props: {
   const enabled = !!props.value;
   const [laneDraft, setLaneDraft] = useState(JSON.stringify(props.value?.lanes ?? [], null, 2));
   const [laneError, setLaneError] = useState("");
+  const [stageDraft, setStageDraft] = useState(JSON.stringify(props.value?.stageBlocks ?? {}, null, 2));
   useEffect(() => setLaneDraft(JSON.stringify(props.value?.lanes ?? [], null, 2)), [props.value?.lanes]);
+  useEffect(() => setStageDraft(JSON.stringify(props.value?.stageBlocks ?? {}, null, 2)), [props.value?.stageBlocks]);
   const policy: ProcessedReplayPolicy = props.value ?? {
     validationN: 12, realN: 12, execN: 12, baseScope: "context",
     autoPf: { mode: "independent", ratio: DEFAULT_AUTO_PF_RATIO },
@@ -1694,9 +1696,14 @@ export function ProcessedStageSettings(props: {
   const gates = policy.execN === undefined ? ["validation", "real"] as const : ["validation", "real", "exec"] as const;
   const put = (key: "validationN" | "realN" | "execN", value: number) =>
     props.onChange({ ...policy, [key]: Math.round(value) });
-  const needsOppositeSource = policy.lanes?.some(lane => requiresOppositeMainSource({
-    ...policy, ...lane, execN: lane.execN ?? policy.execN ?? policy.realN, blocks: { ...policy.blocks, ...lane.blocks },
-  })) ?? requiresOppositeMainSource(policy);
+  // Inspect only the Main choices. Expanding the full stage Cartesian product
+  // during every settings render can allocate thousands of unrelated lanes.
+  const negative = (block: NonNullable<ProcessedReplayPolicy["blocks"]>["validation"]) => !!block &&
+    ((block.short > 0 && block.shortPolarity === "negative") ||
+     (block.minimal > 0 && block.minimalPolarity === "negative"));
+  const needsOppositeSource = (policy.lanes ?? [undefined]).some(lane =>
+    (lane ? lane.execN ?? policy.execN ?? policy.realN : policy.execN) !== undefined &&
+    (policy.stageBlocks?.validation?.some(negative) ?? negative(lane?.blocks?.validation ?? policy.blocks?.validation)));
   return (
     <Panel
       title="Persistent own-stage progression"
@@ -1795,6 +1802,23 @@ export function ProcessedStageSettings(props: {
               }} />
             {laneError && <span role="alert" className="v2-warn">{laneError}</span>}
             {needsOppositeSource && <span className="v2-warn">Negative Main lanes are available for replay. Native orders require an opposite-side source.</span>}
+          </Field>
+          <Field label="Windows per stage" hint="List each Main, Real and Exec window under validation, real and exec. Every qualified parent receives each choice at the next stage.">
+            <textarea aria-label="Windows per stage" aria-invalid={!!laneError}
+              className="v2-input" rows={4} value={stageDraft} onChange={e => setStageDraft(e.target.value)}
+              onBlur={() => {
+                try {
+                  const stageBlocks: ProcessedReplayPolicy["stageBlocks"] = JSON.parse(stageDraft);
+                  if (!stageBlocks || Array.isArray(stageBlocks) || typeof stageBlocks !== "object")
+                    throw new TypeError("Enter a stage map of window arrays");
+                  const changed = { ...policy, stageBlocks: Object.keys(stageBlocks).length ? stageBlocks : undefined };
+                  processedLanes(changed);
+                  props.onChange(changed);
+                  setLaneError("");
+                } catch (error) {
+                  setLaneError(error instanceof Error ? error.message : "Invalid stage windows");
+                }
+              }} />
           </Field>
         </div>
       )}
