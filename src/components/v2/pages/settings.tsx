@@ -57,7 +57,7 @@ import {
 import { RANGE_LABEL, RANGE_OWN_BASE } from "@/core/minimal-coord";
 import { DEFAULT_PRICE_DISTANCE_GRID, PRICE_DISTANCE_RANGES, type PriceDistanceGrid } from "@/core/price-distance-grid";
 import { blockRatioOf, blockStackCap, stepRaise } from "@/core/sim/block";
-import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
+import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES, signalSourceEnabled } from "@/core/signal-config";
 import { SIGNAL_COORDINATION_RATIOS } from "@/core/signal-coordination";
 import { Confirm, downloadFile, Empty, ErrorNote, fmt, Panel, Pill, Switch, usePoll } from "../ui";
 
@@ -502,7 +502,6 @@ export function SignalsSettings(props: {
   const hist = { ...DEFAULT_SIGNALS.hist, ...(g.hist ?? {}) };
   const exits: string = g.exits ?? DEFAULT_SIGNALS.exits;
   const lanes: number[] = g.lanes?.length ? g.lanes : DEFAULT_SIGNALS.lanes;
-  const src: Record<string, boolean> = g.sources ?? {};
   const set = (path: string[], v: unknown) => props.set(["signals", ...path], v);
   const counts = signalConfigCounts(g);
   const st = props.status;
@@ -1286,7 +1285,7 @@ export function SignalsSettings(props: {
             <div key={x.name} style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <Switch
                 label={`Signal source ${x.label}`}
-                checked={src[x.name] !== false}
+                checked={signalSourceEnabled(g, x.name)}
                 onChange={(v) => set(["sources", x.name], v)}
               />
               <span>{x.label}</span>

@@ -31,6 +31,7 @@ export interface Candle {
 
 export const INDICATION_KINDS = [
   "trend",
+  "trend-reversal",
   "break",
   "active",
   "direction",
