@@ -1,3 +1,22 @@
+## 2026-11-27 — October Last-N archive restored
+
+The exact October replay ran at the original eight symbols and 9 October 02:00–14:00 Vienna trading
+window. The 24-hour cache had zero indicator-only candles and built zero tapes. The longer archived
+feed has identical candles in the scored window across all 16 series. Its 48-hour indicator-only prefix
+restored 55 tapes while preserving 12 hours of evaluated prehistory and the 0.15% round-trip cost.
+The runtime regression checks every built tape for entries before the evaluation boundary.
+
+At 9 October 14:00 Vienna time, the warmed 6/4/4 profile had post-Base PF 3.302 with 18 of 880 exact
+contexts passing (2.05%) and Real PF 1.961 with 5 of 880 passing (0.57%). Exec qualified 0 of 880 at
+cutoff and had no funded opens or settlements. The separate 4/2/2 and 4/1/1 studies each qualified
+21 of 880 (2.39%) at post-Base PF 2.312. They settled 5 and 13 modeled orders at PF 21.327 and 1.415
+respectively. Each had 3 of 12 positive hours. Both used the same Base protection, scope and PF floors.
+
+The verified profile, command, order/position counts and drawdown are in
+`docs/execution-audit-20261030/README.md`. Tested code is `ddb02f48c8de144949c14092f659cdf00f63e38a`
+with tree `0cfca918fd50a26062bca9096d2848a29133dedc`. All 131 focused tests and type checking passed.
+The work is an offline replay correction. The shorter windows remain research profiles.
+
 ## 2026-11-27 — Exact Last-N handoffs and 50-symbol replay
 
 Tested code is `780b9f8f1c0710c2fee4d3f79b0b8d8b9c17a6f2` with tree
