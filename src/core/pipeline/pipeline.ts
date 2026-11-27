@@ -2,7 +2,7 @@ import { applyPriceDistanceGrid, type PriceDistanceGrid } from "../price-distanc
 import { slCalibrationOf, slRatiosOf, type AutoSlRatios } from "../sl-ratios.ts";
 import { calibrateSlBounds, slWithinBounds, type SlBounds, type SlSample } from "../sl-calibration.ts";
 import { partialFloorOf, positionStageStats, positionStats } from "../position-windows.ts";
-import { blockPolicyKey, blockRequired, type BlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
+import { blockPolicyKey, blockPrefix, blockRequired, evaluateBlocks, type BlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
 import { SL_TP_RATIOS, minimumStopFraction } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { profitFactorRatio } from "../metrics/profit-factor.mjs";
@@ -313,10 +313,12 @@ export interface Combo {
 function basePositionMiss(
   st: Parameters<typeof passesBase>[0],
   g: Parameters<typeof passesBase>[1],
+  indexed?: { keys: ReadonlySet<string>; windows: WeakMap<number[], IndexedBaseWindow> },
 ): BaseGate[] {
   const recent = st.baseLast;
   const scoped = st.baseContextBlock;
-  if (scoped && !g.baseContext?.blocks.some(block => blockPolicyKey(block) === blockPolicyKey(scoped))) return ["lastN"];
+  if (scoped && !(indexed ? indexed.keys.has(blockPolicyKey(scoped))
+    : g.baseContext?.blocks.some(block => blockPolicyKey(block) === blockPolicyKey(scoped)))) return ["lastN"];
   const blocks = scoped ?? g.positionWindows?.blocks?.base;
   const requested = scoped ? blockRequired(scoped) : baseLastNForRange(g, st.rangeTag ?? "wide", st.configId);
   if (
@@ -340,11 +342,25 @@ function basePositionMiss(
   const loss = recent.gl + (g.lossPrior ? recent.stop : 0);
   if (!(net > 0)) miss.push("net");
   const signed = blocks && recent.signedReturns?.length === recent.n
-    ? positionStageStats(recent.signedReturns, requested, blocks, g.minPf) : null;
+    ? signedBaseWindow(recent.signedReturns, requested, blocks, g.minPf, indexed?.windows) : null;
   if (blocks && (!signed || !signed.known)) miss.push("lastN");
   if (!(recent.gp >= g.minPf * loss) || (signed?.complete && !signed.blocksPassed)) miss.push("pf");
   if (ddrFails(recent.mdd, net, g.maxDdr)) miss.push("ddr");
   return miss;
+}
+
+type IndexedBaseWindow = { stats: ReturnType<typeof positionStats>; prefix: ReturnType<typeof blockPrefix> };
+function signedBaseWindow(values: number[], n: number, blocks: BlockPolicy, minPf: number,
+  indexed?: WeakMap<number[], IndexedBaseWindow>) {
+  if (!indexed) return positionStageStats(values, n, blocks, minPf);
+  let window = indexed.get(values);
+  if (!window) {
+    window = { stats: positionStats(values, n), prefix: blockPrefix(values.slice(-n).reverse(), n) };
+    indexed.set(values, window);
+  }
+  const { stats, prefix } = window;
+  const verdict = evaluateBlocks(prefix, blocks, Math.max(1.000001, minPf));
+  return { ...stats, blocksPassed: verdict.state === "qualified" && stats.net > 0 && stats.gp >= stats.gl * minPf };
 }
 
 export function passesBase(
@@ -1180,7 +1196,16 @@ export function rangeCellPass(
   ind?: string,
 ): (tag: string, st: RangeBaseStat) => boolean {
   const g = baseSetsGates(gates);
-  return (tag, st) => baseSlPolicyKnown(g, st, ind) && passesBase(st, { ...g, baseLastN: baseLastNForRange(g, tag), minPf: minPfOf(g, tag, ind, st.stepPct, st.slRatio) });
+  const indexed = g.baseContext?.blocks.length ? {
+    keys: new Set(g.baseContext.blocks.map(blockPolicyKey)), windows: new WeakMap<number[], IndexedBaseWindow>(),
+  } : undefined;
+  return (tag, st) => {
+    if (!baseSlPolicyKnown(g, st, ind)) return false;
+    if (st.baseContextBlock && st.baseLast?.n !== blockRequired(st.baseContextBlock)) return false;
+    const resolved = { ...g, baseLastN: baseLastNForRange(g, tag),
+      minPf: minPfOf(g, tag, ind, st.stepPct, st.slRatio) };
+    return indexed && resolved.positionWindows ? basePositionMiss(st, resolved, indexed).length === 0 : passesBase(st, resolved);
+  };
 }
 
 /** Legacy cached proofs cannot silently waive a configured SL-specific policy. */
@@ -2005,8 +2030,9 @@ export function cellStats(
   const maxBlock = Math.max(0, ...ownBlocks.map(blockRequired));
   let symbol: string | undefined, best: RangeBaseStat | undefined, bestPassed = false;
   const consider = (st: RangeBaseStat) => {
-    const passed = contextPass!(st);
     const betterNet = best && Number.isFinite(st.net) && (!Number.isFinite(best.net) || st.net > best.net);
+    if (bestPassed && !betterNet) return;
+    const passed = contextPass!(st);
     if (!best || (passed !== bestPassed ? passed : betterNet)) {
       best = st;
       bestPassed = passed;
@@ -2019,14 +2045,21 @@ export function cellStats(
       if (maxBlock) {
         const all = own.stats(maxBlock, Math.max(0, p.sl) * 100, true);
         const recent = all.baseLast;
-        if (recent && !recent.invalid && recent.signedReturns) for (const block of ownBlocks) {
-          const n = blockRequired(block), returns = recent.signedReturns.slice(-n);
-          const w = positionStats(returns, n);
-          if (!w.known) continue;
-          consider(summarize(own, { ...all, baseContextBlock: block, baseLast: {
-            requested: n, n: w.n, gp: w.gp * 100, gl: w.gl * 100, mdd: w.mdd * 100,
-            stop: recent.stop, signedReturns: returns,
-          } }));
+        if (recent && !recent.invalid && recent.signedReturns) {
+          const bySize = new Map<number, BaseLastNStats>();
+          for (const block of ownBlocks) {
+            const n = blockRequired(block);
+            let baseLast = bySize.get(n);
+            if (!baseLast) {
+              const returns = recent.signedReturns.slice(-n);
+              const w = positionStats(returns, n);
+              if (!w.known) continue;
+              baseLast = { requested: n, n: w.n, gp: w.gp * 100, gl: w.gl * 100, mdd: w.mdd * 100,
+                stop: recent.stop, signedReturns: returns };
+              bySize.set(n, baseLast);
+            }
+            consider(summarize(own, { ...all, baseContextBlock: block, baseLast }));
+          }
         }
       }
       own.reset();

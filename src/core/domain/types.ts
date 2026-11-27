@@ -620,6 +620,8 @@ export interface Trade {
   vol?: number;
   /** Block level at execution (broker) or DCA legs added (sim) */
   level?: number;
+  /** Net unit return on the exact source tape before external execution sizing. */
+  unitR?: number | null;
   /** External execution multiplier (Block × relation × type factor); r / mult is the underlying strategy return. */
   mult?: number;
   /** Exact Block multiplier before coordination, strategy, range and Relate sizing. */

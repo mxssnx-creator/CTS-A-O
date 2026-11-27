@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import type { OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
 import { ProcessedSetBook } from "./processed-set.ts";
-import { ProcessedReplay } from "./processed-replay.ts";
+import { ownedProcessedPolicy, processedLanes, ProcessedReplay } from "./processed-replay.ts";
 import { defaultWalkForward, execDecision, makeTape, packTapes, walkForward,
   type WalkForwardOptions, type WalkForwardResult } from "./walkforward.ts";
 import { retireOwnedIdleWorkers, runOnWorkers } from "../server/pool.server.ts";
@@ -43,7 +43,7 @@ test("every named signed lane produces only its own immediate predecessor sets",
   const base = { validationN: 4, realN: 4, execN: 4 };
   const profiles = (["positive", "negative"] as const).flatMap(short => (["positive", "negative"] as const).map(last => {
     const b = block(short, last);
-    return { id: `${short}/${last}`, blocks: { validation: b, real: b, exec: b } };
+    return { id: `${short}/${last}`, blocks: { validation: block("positive", "positive"), real: b, exec: b } };
   }));
   let seed = 73;
   const values = Array.from({ length: 310 }, () => {
@@ -67,6 +67,20 @@ test("every named signed lane produces only its own immediate predecessor sets",
   assert.doesNotThrow(() => ProcessedSetBook.restore(full.snapshot));
 });
 
+test("named policies inherit Base and Exec windows even when the parent profile omits execN", () => {
+  const block = { long: 2, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const replacement = { ...block, minimal: 2, minimalPolarity: "negative" } as const;
+  const profile = ownedProcessedPolicy({ validationN: 2, realN: 3, lanes: [
+    { id: "inherited" }, { id: "specific", blocks: { exec: replacement } },
+  ] }, { base: 4, main: 4, real: 4, entry: 4, maxDrawdownPositions: 4, blocks: { base: block, entry: block } });
+  const [first, second] = processedLanes(profile).map(l => l.policy);
+  assert.deepEqual(first.baseBlock, block);
+  assert.deepEqual(second.baseBlock, block);
+  assert.equal(first.execN, 3);
+  assert.deepEqual(first.blocks?.exec, block);
+  assert.deepEqual(second.blocks?.exec, replacement);
+});
+
 test("a signed Base sibling cannot fill Main or use the opposite direction's source rows", () => {
   const positive = { long: 2, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
   const negativeLast = { ...positive, minimalPolarity: "negative" } as const;
@@ -79,6 +93,52 @@ test("a signed Base sibling cannot fill Main or use the opposite direction's sou
   assert.ok(sets[0].stages.real!.closedOrders > 0);
   assert.ok(sets[0].stages.active.closedOrders > 0);
   assert.equal(result.processedStages!.lanes!.find(l => l.id === "negative-last")!.validation.qualified, 0);
+});
+
+test("a filled portfolio slot leaves the other four-stage lane's own Real close intact", () => {
+  const f = fixture(Array(9).fill(.02), {
+    processedStages: { validationN: 1, realN: 1, execN: 1 },
+    maxOpen: 1, maxPerSymbol: 1, maxPerSide: 1, onePerPairEvent: true,
+  });
+  const otherProtect = { ...protect, tp: .0315 }, otherId = configId("follow", ind, otherProtect);
+  const history = [...Array.from({ length: 12 }, (_, i) => trade(.02, T - (26 - i * 2) * M, 1, symbols[0], otherId)),
+    ...f.future.map(row => ({ ...row, cfg: otherId }))];
+  const other = makeTape(otherId, "follow", ind, otherProtect, "normal", symbols, history, [], []);
+  const r = walkForward(f.universe, [f.tape, other], f.options);
+  const proof = r.processedStages!;
+  const sets = proof.sets.filter(s => s.identity.symbol === symbols[0]);
+  assert.equal(sets.length, 2);
+  assert.equal(r.trades.length, 6, "only one actual Exec parent can occupy the portfolio");
+  assert.ok(sets.every(s => s.stages.postBase.closedOrders === 9 && s.stages.real!.closedOrders === 7));
+  assert.deepEqual(sets.map(s => s.execDeferred ?? 0).sort(), [0, 6]);
+  assert.equal(r.skips["processed:portfolio:perSymbol"], 6);
+  for (const s of sets)
+    assert.equal(s.evaluations.exec!.qualified, s.stages.active.openedOrders + (s.execDeferred ?? 0));
+  assert.deepEqual(ProcessedSetBook.restore(JSON.parse(JSON.stringify(proof.snapshot))).snapshot(), proof.snapshot);
+
+  const compact = walkForward(f.universe, [f.tape, other], {
+    ...f.options, processedStages: { ...f.options.processedStages!, reportDetail: "summary" },
+  });
+  assert.deepEqual(compact.trades, r.trades);
+  assert.deepEqual(compact.processedStageSummary!.exec, proof.exec);
+});
+
+test("a current failing parent cannot certify its child's older qualifying window in the report", () => {
+  const values = [...Array(8).fill(.02), -.005];
+  const f = fixture(values, { processedStages: { validationN: 1, realN: 2, execN: 2 } });
+  const r = f.result.processedStages!;
+  assert.equal(r.validation.qualified, 0);
+  for (const stage of [r.real, r.exec!]) {
+    assert.equal(stage.qualified, 0);
+    assert.equal(stage.parentBlocked, symbols.length * 2);
+    assert.equal(stage.passingWindows.evaluated, symbols.length * 2);
+  }
+  const book = ProcessedSetBook.restore(r.snapshot);
+  const own = r.sets[0].identity;
+  const policy = { validationN: 1, realN: 2, execN: 2, minPf: 1.08 };
+  assert.equal(book.gate(own, "validated", policy, "real", r.at).state, "qualified");
+  assert.equal(book.gate(own, "real", policy, "exec", r.at).state, "qualified");
+  assert.equal(f.result.trades.at(-1)!.r, -.005, "the admitted settlement stays in measured PF");
 });
 
 test("native replay advances through two own processed windows, retains losses and recovers", () => {
@@ -439,4 +499,67 @@ test("a pre-start modeled position cannot conflict with the opposite funded dire
     coord: { ...f.options.coord!, enabled: true, conflict: true } });
   assert.deepEqual(result.trades.map(row => [row.entryT, row.side]), [[T + M, -1]], JSON.stringify(result.skips));
   assert.equal(result.skips.conflict ?? 0, 0);
+});
+
+test("a window grid preserves the Cartesian owned path results without copying every earlier set", () => {
+  const small = { long: 1, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const deep = { ...small, long: 2 };
+  const shorter = { ...small, long: 0 };
+  const windowGrid = { base: [small, deep], validation: [small, shorter], real: [small, deep], exec: [small, deep] };
+  const common = { validationN: 3, realN: 3, execN: 3, baseScope: "context" as const,
+    autoPf: { mode: "independent" as const, ratio: 4 }, reportDetail: "summary" as const };
+  const lanes = windowGrid.base.flatMap((baseBlock, b) => windowGrid.validation.flatMap((validation, m) =>
+    windowGrid.real.flatMap((real, r) => windowGrid.exec.map((exec, e) => ({
+      id: [b,m,r,e].join("/"), baseBlock, blocks: { validation, real, exec },
+    })))));
+  const values = Array.from({ length: 310 }, (_, i) => i % 19 === 0 ? -.006 : .02);
+  const expected = fixture(values, { processedStages: { ...common, lanes } }).result;
+  const replay = fixture(values, { processedStages: { ...common, windowGrid } }).result;
+  assert.deepEqual(replay.trades, expected.trades);
+  const a = replay.processedStageSummary!, b = expected.processedStageSummary!;
+  assert.deepEqual(a.windowGrid?.choices, { base: 2, validation: 2, real: 2, exec: 2 });
+  for (const [stage, downstream] of [["validation",4],["real",2],["exec",1]] as const) {
+    assert.equal(a[stage]!.contexts * downstream, b[stage]!.contexts);
+    assert.equal(a[stage]!.qualified * downstream, b[stage]!.qualified);
+    assert.equal(a[stage]!.full * downstream, b[stage]!.full);
+  }
+  assert.ok(replay.trades.some(t => t.r < 0), "economic history includes every admitted loss");
+});
+
+test("the window grid evaluates a negative Main trigger but requires independently priced opposite exposure", () => {
+  const block = { long: 2, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  // Base uses the longer own count window for selection. The Main loss trigger is judged on its
+  // own processed closes and can qualify, but the supplied tape can fill only its original side.
+  const result = fixture(Array.from({ length: 310 }, (_, i) => i % 8 === 4 ? -.005 : .02), {
+    processedStages: { validationN: 4, realN: 4, execN: 4, reportDetail: "summary",
+      windowGrid: { base: [block, { ...block, minimalPolarity: "negative" }],
+        validation: [{ ...block, minimalPolarity: "negative" }], real: [block], exec: [block] } },
+  }).result;
+  assert.ok(result.processedStageSummary?.windowGrid?.oppositeSourceMissing);
+  assert.equal(result.trades.length, 0);
+  assert.equal(result.processedStageSummary?.real.full, 0);
+});
+
+test("negative Main uses a priced mirror without granting that mirror its own Base qualification", () => {
+  const block = { long: 2, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const negativeLast = { ...block, minimalPolarity: "negative" } as const;
+  const { tape, universe, options, future } = fixture(Array.from({ length: 310 }, (_, i) => i % 9 === 4 ? -.005 : .02));
+  const oppositeId = configId("revert", ind, protect);
+  const oppositePast = Array.from({ length: 160 }, (_, i) => trade(.012, T - 11 * H + i * 2 * M, -1, symbols[0], oppositeId));
+  const oppositeFuture = future.map(row => trade(.008, row.entryT, -1, row.sym, oppositeId));
+  const opposite = makeTape(oppositeId, "revert", ind, protect, "normal", symbols, [...oppositePast, ...oppositeFuture], [], []);
+  const result = walkForward(universe, [tape, opposite], { ...options,
+    basePassed: new Set([`follow|${ind}`]),
+    basePassedRanges: { [`follow|${ind}`]: ["mn"] },
+    processedStages: { validationN: 4, realN: 4, execN: 4, reportDetail: "summary",
+      windowGrid: { base: [block, negativeLast], validation: [negativeLast], real: [block], exec: [block] } },
+  });
+  const grid = result.processedStageSummary!.windowGrid!;
+  assert.ok(grid.inverseEntries > grid.inverseExecEntries);
+  assert.ok(grid.inverseExecEntries > 0);
+  assert.equal(grid.oppositeSourceMissing, 0);
+  assert.equal(result.trades.length, grid.inverseExecEntries);
+  assert.ok(result.trades.every(t => t.cfg === oppositeId && t.side === -1 && t.unitR === .008));
+  assert.equal(result.feed.filter(t => t.cfg === oppositeId).length, grid.inverseEntries,
+    "a mirror price sample feeds no strategy or shared record until the original path actually admits it");
 });

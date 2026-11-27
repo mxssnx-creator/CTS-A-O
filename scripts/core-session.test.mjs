@@ -533,11 +533,11 @@ describe("session reports: return PF primary, simulated provenance", () => {
     const current = replay({ processedStageEvidence: evidence });
     assert.deepEqual(current.data.processedStageProgress, evidence);
     assert.deepEqual(current.report.processedStageProgress, evidence);
-    assert.match(current.md, /Validation: 0 \/ 2 contexts qualified \(0\.00%\)/);
+    assert.match(current.md, /Main: 0 \/ 2 contexts qualified \(0\.00%\)/);
     assert.match(current.md, /Hourly configuration checks below use raw historical tapes/);
     assert.match(current.writeup, /Hourly configuration checks describe raw historical tapes/);
     assert.match(current.html, /not owned-stage validation results/);
-    assert.match(summaryOf(current.html), /Validation: 0 \/ 2 contexts qualified/);
+    assert.match(summaryOf(current.html), /Main: 0 \/ 2 contexts qualified/);
     const old = replay({ processedStageEvidence: "missing" });
     assert.equal(old.data.processedStageProgress, null);
     assert.match(old.md, /Owned modeled-stage aggregates were not retained/);

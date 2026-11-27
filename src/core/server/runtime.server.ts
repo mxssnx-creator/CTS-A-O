@@ -291,8 +291,8 @@ import {
 } from "../sim/walkforward.ts";
 import { NativeProcessedStageAdapter, type NativeProcessedSnapshot } from "./processed-stage-adapter.ts";
 import { blockPolicyKey, blockRequired } from "../../../shared/cts-lastn/blocks.ts";
-import { checkedProcessedPolicy, ownedProcessedPolicy, processedLanes, type ProcessedReplayPolicy } from "../sim/processed-replay.ts";
-import type { ProcessedStage } from "../sim/processed-set.ts";
+import { checkedProcessedPolicy, checkedProcessedWindowGrid, ownedProcessedPolicy, processedLanes, type ProcessedReplayPolicy } from "../sim/processed-replay.ts";
+import { isOppositeMainWindow, type ProcessedStage } from "../sim/processed-set.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
   ENGINE_PROOF_PF,
@@ -1441,7 +1441,7 @@ export class CoreRuntime {
 
   /** Restore the opt-in native stage book once. Invalid durable evidence fails closed instead of starting empty. */
   private nativeProcessedStages(): NativeProcessedStageAdapter | null {
-    if (!this.wf.processedStages) return null;
+    if (!this.wf.processedStages || this.wf.processedStages.windowGrid) return null;
     const policy = ownedProcessedPolicy(this.wf.processedStages, this.wf.gates.positionWindows);
     const key = JSON.stringify([policy, this.settings.cost]);
     if (this.processedNativeError && this.processedNativeKey === key) return null;
@@ -2923,6 +2923,8 @@ export class CoreRuntime {
   }
 
   updateSettings(patch: SettingsPatch, wfPatch?: Partial<WalkForwardOptions>) {
+    if (wfPatch?.processedStages?.windowGrid && (!this.replay || this.conn))
+      throw new Error("processed window grids require offline replay");
     if (wfPatch?.processedWarmup && (!this.replay || this.conn))
       throw new Error("processed warmup is available only in an unconnected replay");
     if(patch.relationalVolumeRatios!==undefined)relationalVolumeSettings(patch.relationalVolumeRatios,true);
@@ -4828,15 +4830,23 @@ export class CoreRuntime {
     }
     const normalBasePassedKeys = new Set([...passedKeys, ...exitBase.passed]);
     for (const k of s.pinned ?? []) if (passedKeys.has(k)) main.add(k);
-    // contrarian execution (wf.invertSeats, an evaluation knob): each engine pair's mirror (follow ↔ revert, the same
-    // entries on the other side) computes the same cells, so a seat's entries can execute on its mirror's tape; a
-    // mirror that did not pass Base itself never takes a seat (wf.basePassed)
-    if (wf.invertSeats)
+    // Price the opposite side of the eligible cells for both inversion studies. Only the already
+    // qualified source can authorize a modeled handoff. The mirror gets no additional Base proof.
+    const gridNeedsOpposite = wf.processedStages?.windowGrid?.validation.some(isOppositeMainWindow);
+    const oppositePairs = new Set<string>();
+    const buildTrailingOnlyCells = gridNeedsOpposite ? { ...pairTrailingOnlyCells } : pairTrailingOnlyCells;
+    if (wf.invertSeats || gridNeedsOpposite)
       for (const k of [...main]) {
+        if (!wf.invertSeats && !passedKeys.has(k)) continue;
         if (isLowRangeInd(k.split("|")[1] ?? "")) continue;
         const m = mirrorId(k);
         if (!m || isSignalInd(k.split("|")[1] ?? "")) continue;
         main.add(m);
+        if (gridNeedsOpposite && passedKeys.has(k)) {
+          oppositePairs.add(m);
+          if (pairTrailingOnlyCells[k]?.length)
+            buildTrailingOnlyCells[m] = [...new Set([...(buildTrailingOnlyCells[m] ?? []), ...pairTrailingOnlyCells[k]])];
+        }
         if (pairTags[k]) pairTags[m] = [...new Set([...(pairTags[m] ?? []), ...pairTags[k]])];
         if (pairTps[k]) {
           const t = (pairTps[m] ??= {});
@@ -5668,7 +5678,7 @@ export class CoreRuntime {
     // built for comparison even though validated-seat admission deliberately removes them from passedKeys.
     const heldUnpassedPairs = new Set(
       [...main].filter((pair) =>
-        !passedKeys.has(pair) && !addedKeys.has(pair) && !isSignalInd(pair.split("|")[1] ?? ""),
+        !passedKeys.has(pair) && !oppositePairs.has(pair) && !addedKeys.has(pair) && !isSignalInd(pair.split("|")[1] ?? ""),
       ),
     );
     const built = await tapesFor(engineMain, wf.protects, dcaOpt, "strategy tapes", {
@@ -5677,7 +5687,7 @@ export class CoreRuntime {
       pairTps,
       pairSl,
       pairCells,
-      ...(s.grid?.trailingOnly === true ? { pairTrailingOnlyCells } : {}),
+      ...(s.grid?.trailingOnly === true ? { pairTrailingOnlyCells: buildTrailingOnlyCells } : {}),
       ...(wf.seatSet === "validated"
         ? { heldPairsOnly: heldUnpassedPairs }
         : {}),
@@ -5954,7 +5964,10 @@ export class CoreRuntime {
     const positionPolicy = wf.gates?.positionWindows;
     const stagePolicies = wf.processedStages && processedLanes(ownedProcessedPolicy(wf.processedStages, positionPolicy));
     const stages = stagePolicies?.[0].policy;
-    const validationDetail = stages
+    const windowGrid = wf.processedStages?.windowGrid;
+    const validationDetail = windowGrid
+      ? `Last-N windows · Base ${windowGrid.base.length} / Main ${windowGrid.validation.length} / Real ${windowGrid.real.length} / Exec ${windowGrid.exec.length}`
+      : stages
       ? stagePolicies.length > 1 ? `${stagePolicies.length} independent Last-N stage policies`
         : `predecessor closes Main ${stages.blocks?.validation ? blockRequired(stages.blocks.validation) : stages.validationN}` +
           ` / Real ${stages.blocks?.real ? blockRequired(stages.blocks.real) : stages.realN}` +
@@ -9709,20 +9722,24 @@ export class CoreRuntime {
     /** entries that hold a crowd seat without a position (refused by the live validation after the simulation's rules) */
     crowdSeats?: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; kind?: string }>,
     wouldFundPairEvent?: () => boolean,
+    portfolio?: { applies: boolean; counts: (row: { processedStage?: ProcessedStage }) => boolean },
   ): string | null {
     const hk = Math.floor(op.entryT / H);
-    if (this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
+    const accountCheck = portfolio?.applies !== false;
+    if (accountCheck && this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
     // (coordination reads only the entry's own symbol: the whole book filtered per candidate was ~340 MB of garbage in
     // 5 min on x02, 8 Oct allocation profile)
-    const at = open.filter((x) => x.sym === op.sym && x.entryT <= op.entryT && !x.stopHit);
+    const at = open.filter((x) => x.sym === op.sym && x.entryT <= op.entryT && !x.stopHit &&
+      (!portfolio || (portfolio.applies ? portfolio.counts(x) : !portfolio.counts(x) && x.side === op.side)));
     // entry crowding: at most entryCrowd[range] configs of a range on one symbol × side × entry time (as simulated)
-    if (this.wf.entryCrowd) {
+    if (accountCheck && this.wf.entryCrowd) {
       const cap = crowdCapOf(this.wf, op.cfg);
       if (cap < Infinity) {
         const k = crowdKey(op.cfg, op.sym, op.side, op.entryT);
         let n = 0;
         for (const x of open)
-          if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
+          if ((!portfolio || portfolio.counts(x)) && x.entryT === op.entryT &&
+            crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
         if (crowdSeats)
           for (const x of crowdSeats)
             if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
@@ -9730,13 +9747,13 @@ export class CoreRuntime {
       }
     }
     // one order per pair event (as simulated): another config of this pair, type, symbol and side already entered this minute
-    if (this.wf.onePerPairEvent) {
+    if (accountCheck && this.wf.onePerPairEvent) {
       const axisOwn = this.wf.pairEventAxisOwn !== false;
       const k = pairEventKey(op.cfg, op.sym, op.side, op.kind, op.entryT, axisOwn);
       const same = (x: { cfg: string; sym: string; side: number; entryT: number; kind?: string }) =>
         Math.floor(x.entryT / 60_000) === Math.floor(op.entryT / 60_000) && x.cfg !== op.cfg &&
         pairEventKey(x.cfg, x.sym, x.side, x.kind ?? op.kind, x.entryT, axisOwn) === k;
-      if ((open.some((x) => (!wouldFundPairEvent || x.processedStage === "active") && same(x)) ||
+      if ((open.some((x) => (portfolio ? portfolio.counts(x) : !wouldFundPairEvent || x.processedStage === "active") && same(x)) ||
           crowdSeats?.some(same)) && (!wouldFundPairEvent || wouldFundPairEvent())) return "pairEvent";
     }
     // confirmation as in the simulation: an engine candidate (taken or not) open at the entry, not only a position
@@ -9812,6 +9829,9 @@ export class CoreRuntime {
     if (!this.tapes.length || !this.sim) return;
     if (fast && !this.lastSelection) return;
     const nativeStages = this.wf.processedStages ? this.nativeProcessedStages() : null;
+    const separatePortfolio = nativeStages?.separatesPortfolio === true;
+    const ownsPortfolioSlot = (p: { processedStage?: ProcessedStage }) =>
+      !separatePortfolio || p.processedStage === undefined || p.processedStage === "active";
     // sub-timings (the Paper phase is one synchronous slice: its slowest part is named in the phase record)
     const tp0 = performance.now();
     const nowT = Math.floor(Date.now() / H) * H;
@@ -10104,6 +10124,7 @@ export class CoreRuntime {
       if (representedHeld.has(k)) continue;
       provisionalHeld.add(k);
       positions.push({ ...p, vol: p.vol ?? 1, level: p.level ?? 0 });
+      if (!ownsPortfolioSlot(p)) continue;
       const cls = orderCapScope(p.cfg);
       perSym.set(`${cls}|${p.sym}`, (perSym.get(`${cls}|${p.sym}`) ?? 0) + 1);
       perSide.set(`${cls}|${p.side}`, (perSide.get(`${cls}|${p.side}`) ?? 0) + 1);
@@ -10221,8 +10242,9 @@ export class CoreRuntime {
     let slice = 0;
     // Only retries of an identical config and open event deduplicate; sibling sources and strategy cells stay separate.
     const openKeys = new Set<string>();
-    for (const { op, held } of cands) if (held) openKeys.add(openDupKey(op));
-    for (const p of positions) if (provisionalHeld.has(orderKey(p))) openKeys.add(openDupKey(p));
+    const admissionKey = separatePortfolio ? orderKey : openDupKey;
+    for (const { op, held } of cands) if (held) openKeys.add(admissionKey(op));
+    for (const p of positions) if (provisionalHeld.has(orderKey(p))) openKeys.add(admissionKey(p));
     let releaseIndex = 0;
     const releaseDue = (at: number) => {
       const due: Array<(typeof releases)[number]> = [];
@@ -10233,13 +10255,14 @@ export class CoreRuntime {
       for (const p of positions) if (!keys.has(orderKey(p))) positions[write++] = p;
       positions.length = write;
       for (const { p } of due) {
+        openKeys.delete(admissionKey(p));
+        if (!ownsPortfolioSlot(p)) continue;
         const cls = orderCapScope(p.cfg);
         const sym = `${cls}|${p.sym}`, side = `${cls}|${p.side}`, pos = `${cls}|${p.sym}|${p.side}`;
         perSym.set(sym, (perSym.get(sym) ?? 1) - 1);
         perSide.set(side, (perSide.get(side) ?? 1) - 1);
         openBy.set(cls, (openBy.get(cls) ?? 1) - 1);
-        if (!positions.some((x) => `${orderCapScope(x.cfg)}|${x.sym}|${x.side}` === pos)) openPos.delete(pos);
-        openKeys.delete(openDupKey(p));
+        if (!positions.some((x) => ownsPortfolioSlot(x) && `${orderCapScope(x.cfg)}|${x.sym}|${x.side}` === pos)) openPos.delete(pos);
       }
       if (nativeStages) {
         for (const { p, at: exitT } of due) {
@@ -10270,9 +10293,25 @@ export class CoreRuntime {
         pSkip("stale");
         continue;
       }
-      if (!held && openKeys.has(openDupKey(op))) {
+      if (!held && openKeys.has(admissionKey(op))) {
         pSkip("duplicate");
         continue;
+      }
+      const side = op.side > 0 ? 1 : -1;
+      let baseCheck: ReturnType<typeof processedBaseCheck> | undefined;
+      let portfolioBlocked = "";
+      let wantsExec = !separatePortfolio;
+      if (!held && separatePortfolio && nativeStages) {
+        try {
+          baseCheck = nativeStages.checksBase ? processedBaseCheck(tp, this.wf, op.sym, side, op.entryT) : undefined;
+          const proof = nativeStages.preview(tp, op.sym, side, op.entryT, processedMinPfForTape(tp, this.wf), baseCheck);
+          if (!proof) { pSkip("exec:processedBase"); continue; }
+          wantsExec = proof.stage === "active";
+        } catch (err) {
+          this.db.event("error", `native processed-stage preview failed: ${err instanceof Error ? err.message : err}`);
+          pSkip("exec:processedUnavailable");
+          continue;
+        }
       }
       if (!held) {
         while (ci < closedBy.length && closedBy[ci].exitT <= op.entryT) {
@@ -10285,23 +10324,30 @@ export class CoreRuntime {
           }
           hours.set(k, (hours.get(k) ?? 0) + x.r * 100);
         }
-        const back = this.entryHeldBack(
+        const heldBack = (applies: boolean) => this.entryHeldBack(
           { cfg: op.cfg, sym: op.sym, side: op.side, entryT: op.entryT },
           isHistoricExitConfig(op.cfg) ? (exitHourNet.get(op.cfg) ?? new Map()) : hourNet,
           positions,
           srcClosed,
           confirmPool,
           crowdSeats,
-          nativeStages ? () => {
+          nativeStages && !separatePortfolio ? () => {
             try {
-              return nativeStages.preview(tp, op.sym, op.side > 0 ? 1 : -1, op.entryT,
+              return nativeStages.preview(tp, op.sym, side, op.entryT,
                 processedMinPfForTape(tp, this.wf), nativeStages.checksBase
                   ? processedBaseCheck(tp, this.wf, op.sym, op.side, op.entryT) : undefined)?.stage === "active";
             } catch {
               return true;
             }
           } : undefined,
+          separatePortfolio ? { applies, counts: ownsPortfolioSlot } : undefined,
         );
+        let back = heldBack(wantsExec);
+        if (separatePortfolio && wantsExec &&
+            (back === "hourGuard" || back === "crowd" || back === "pairEvent" || back === "conflict")) {
+          portfolioBlocked = back;
+          back = heldBack(false);
+        }
         if (back) {
           pSkip(`${sigCfg(op.cfg) ? "sig:" : ""}heldBack:${back}`);
           continue;
@@ -10311,13 +10357,16 @@ export class CoreRuntime {
         // the live validation after the simulation's own rules: a config it pauses keeps the crowd seat the
         // simulation gave it (judged first, its seat went to a config the simulation had crowded out)
         if (
-          lvN > 0 &&
+          lvN > 0 && wantsExec && !portfolioBlocked &&
           !liveEntryOk(lvOf(tp, op.entryT, lvSide, op.sym))
         ) {
           lvSkipped++;
           pSkip("liveValidation");
           crowdSeats.push(op);
-          continue;
+          if (!separatePortfolio) continue;
+          const modelBack = heldBack(false);
+          if (modelBack) { pSkip(`heldBack:${modelBack}`); continue; }
+          portfolioBlocked = "liveValidation";
         }
       }
       // a held position continues regardless of the entry rules (they decided at its entry) and keeps its execution
@@ -10355,7 +10404,7 @@ export class CoreRuntime {
       const c = perSym.get(`${cls}|${op.sym}`) ?? 0;
       const sd = perSide.get(`${cls}|${op.side}`) ?? 0;
       const posKey = `${op.sym}|${op.side}`;
-      const capWhy = held
+      const capWhy = held || !wantsExec || !!portfolioBlocked
         ? null
         : c >= caps.perSymbol
           ? "perSymbol"
@@ -10396,7 +10445,8 @@ export class CoreRuntime {
       if (!held) this.relateShadowPending.delete(orderKey(op));
       if (capWhy) {
         pSkip(`${pre}cap:${capWhy}`);
-        continue;
+        if (!separatePortfolio) continue;
+        portfolioBlocked = capWhy;
       }
       let processedStage = prev?.processedStage;
       let processedPolicy = prev?.processedPolicy;
@@ -10411,13 +10461,15 @@ export class CoreRuntime {
         }
         try {
           const minProcessedPf = processedMinPfForTape(tp, this.wf);
-          const side = op.side > 0 ? 1 : -1;
-          const baseCheck = nativeStages.checksBase ? processedBaseCheck(tp, this.wf, op.sym, side, op.entryT) : undefined;
-          if (baseCheck && !nativeStages.preview(tp, op.sym, side, op.entryT, minProcessedPf, baseCheck)) {
-            pSkip(`${pre}exec:processedBase`);
-            continue;
+          if (!separatePortfolio && nativeStages.checksBase) {
+            baseCheck = processedBaseCheck(tp, this.wf, op.sym, side, op.entryT);
+            if (!nativeStages.preview(tp, op.sym, side, op.entryT, minProcessedPf, baseCheck)) {
+              pSkip(`${pre}exec:processedBase`);
+              continue;
+            }
           }
-          processedStage = nativeStages.enter(tp, op.sym, side, op.entryT, minProcessedPf, baseCheck).stage;
+          processedStage = nativeStages.enter(tp, op.sym, side, op.entryT, minProcessedPf, baseCheck, !portfolioBlocked).stage;
+          if (portfolioBlocked) pSkip(`${pre}exec:portfolio:${portfolioBlocked}`);
           processedPolicy = nativeStages.revision;
           if (!this.persistNativeProcessedStages()) {
             pSkip(`${pre}exec:processedUnavailable`);
@@ -10429,10 +10481,12 @@ export class CoreRuntime {
           continue;
         }
       }
-      openPos.add(`${cls}|${posKey}`);
-      perSym.set(`${cls}|${op.sym}`, c + 1);
-      perSide.set(`${cls}|${op.side}`, sd + 1);
-      openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
+      if (ownsPortfolioSlot({ processedStage })) {
+        openPos.add(`${cls}|${posKey}`);
+        perSym.set(`${cls}|${op.sym}`, c + 1);
+        perSide.set(`${cls}|${op.side}`, sd + 1);
+        openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
+      }
       // new entries take the relation volume the simulation ended with (within the Block maximum)
       const vf = held ? 1 : volumeFactorForStrategy(tp, this.wf)*relationalVolumeFactor(this.wf.relationalVolumeRatios,{indicationType:kindOfInd(tp.ind),indication:laneOf(tp.ind).base,strategy:tp.kind,range:tp.kind==="exit"?"exit":isSignalInd(tp.ind)?"sig":tp.protect.tag??"wide",symbol:op.sym});
       const positionVf = held ? (prev?.volFactor ?? 1) : vf;
@@ -10462,7 +10516,7 @@ export class CoreRuntime {
         : this.wf.relate?.enabled
           ? capRelateParts(d.relateParts ?? {}, relateVol, relationCap, 1)
           : undefined;
-      openKeys.add(openDupKey(op));
+      openKeys.add(admissionKey(op));
       // the price at adoption, set once (a position held from before keeps its own, or none)
       const heldPx = prev ? prev.heldPx : this.heldPxOf(op.sym);
       positions.push({
@@ -11303,6 +11357,7 @@ export const WF_KEYS = [
   "seatPer",
   "seatSet",
   "bestFirst",
+  "onePerPairEvent",
   "laneSeats",
   "microSeats",
   "mode",
@@ -11400,7 +11455,8 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     const data = { ...raw, validationN, realN, execN } as ProcessedReplayPolicy;
     if (data.lanes !== undefined) processedLanes(data);
     p.processedStages = { ...checkedProcessedPolicy(data), ...(data.reportDetail && { reportDetail: data.reportDetail }),
-      ...(data.lanes && { lanes: structuredClone(data.lanes) }) };
+      ...(data.lanes && { lanes: structuredClone(data.lanes) }),
+      ...(data.windowGrid && { windowGrid: checkedProcessedWindowGrid(data) }) };
   }
   if (p.processedWarmup === null || p.processedWarmup === false) p.processedWarmup = undefined;
   else if (p.processedWarmup !== undefined) {
@@ -12536,6 +12592,9 @@ export function computeKey(s: CoreSettings, wf: Partial<WalkForwardOptions>): st
 }
 
 function processedBaseDiscoverySettings(s: CoreSettings, policy?: ProcessedReplayPolicy): CoreSettings {
+  if (policy?.windowGrid) return { ...s, gates: { ...s.gates, baseContext: {
+    defaultWindow: false, blocks: [...policy.windowGrid.base],
+  } } };
   if (policy?.baseScope !== "context") return s;
   const lanes = processedLanes(ownedProcessedPolicy(policy, s.gates.positionWindows));
   const everyLaneUsesAuto = policy.autoBase !== false && lanes.every(lane => lane.policy.autoPf);

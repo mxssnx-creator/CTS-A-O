@@ -298,7 +298,7 @@ describe("first-class Micro", () => {
       .picks.map((p) => p.id)
       .sort();
     const own = tapes.filter((_, i) => i % 2 === 0);
-    assert.equal(selected.length, 980);
+    assert.equal(selected.length, 490);
     assert.deepEqual(
       selected,
       selectFixed(own, now, o)
@@ -354,12 +354,12 @@ describe("first-class Micro", () => {
     assert.equal(fast.ready.at(-1), 1);
     assert.ok(fast.states.adaptive.some((x) => x !== 0));
   });
-  it("keeps Micro/Minimal/Short and TP, SL, trailing identities independently computable", () => {
+  it("keeps Micro and Minimal protection identities independent and excludes broader ranges", () => {
     const ind = "micro-1-drawdown-turn-fast@m1";
     for (const tag of ["mc", "mn", "sh", "gn", "lg"])
       assert.equal(
         rangeAppliesTo(ind, tag, { enabled: () => true, microOwnInds: "minimal" }),
-        true,
+        tag === "mc" || tag === "mn",
       );
     assert.equal(minPfOf({ minPf: 1.05 }, "mc", ind), 1.05);
     assert.equal(minPfOf({ minPf: 1.5 }, "mc", ind), 1.5);
@@ -382,8 +382,8 @@ describe("first-class Micro", () => {
       undefined,
       { minSl: 0, minTrail: 0, microOwnInds: "minimal" },
     );
-    assert.equal(tapes.length, 6);
-    assert.equal(new Set(tapes.map((t) => t.id)).size, 6);
+    assert.equal(tapes.length, 4);
+    assert.equal(new Set(tapes.map((t) => t.id)).size, 4);
     assert.deepEqual([...new Set(tapes.map((t) => t.kind))].sort(), ["normal", "trailing"]);
     assert.ok(tapes.every((t) => t.n > 0));
   });

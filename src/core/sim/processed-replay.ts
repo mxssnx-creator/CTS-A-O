@@ -1,13 +1,14 @@
-import { checkBlockPolicy, type BlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
+import { blockPolicyKey, checkBlockPolicy, type BlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
 import { negativeLastN, type NegativeLastN } from "../negative-last-n.ts";
 import type { PositionWindows } from "../position-windows.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf } from "../validated-set-pf.ts";
 import type { ValidationSummary } from "./walkforward.ts";
 import { appendProcessedHistory, assertProcessedSetIdentity, checkProcessedAutoPf, processedGateSize,
-  processedGateVerdict, processedPolicyCapacity, processedStageDecision, processedWindowEconomics,
+  processedAdmission, processedGateVerdict, processedPolicyCapacity, processedStageDecision, processedWindowEconomics,
   ProcessedSetBook, type ProcessedHistoryRow, type ProcessedOpen, type ProcessedSetIdentity,
   type ProcessedPolicy, type ProcessedSetSnapshot, type ProcessedSetSummary, type ProcessedStageDecision,
   type ProcessedVerdict } from "./processed-set.ts";
+export { requiresOppositeMainSource } from "./processed-set.ts";
 
 /** Opt-in modeled progression. Native paper/venue admission requires its own persistent adapter. */
 export interface ProcessedReplayPolicy extends Omit<ProcessedPolicy, "minPf" | "negativeFilter"> {
@@ -22,18 +23,46 @@ export interface ProcessedReplayPolicy extends Omit<ProcessedPolicy, "minPf" | "
   reportDetail?: "summary";
   /** Each named policy gets the entire causal stage chain and its own Short and Last signs. */
   lanes?: readonly ProcessedLaneOptions[];
+  /** Separate window choices for each stage, evaluated lazily under their immediate parent during replay. */
+  windowGrid?: ProcessedWindowGrid;
 }
-type SinglePolicy = Omit<ProcessedReplayPolicy, "lanes" | "reportDetail">;
+export type ProcessedWindowGrid = Record<"base" | "validation" | "real" | "exec", readonly BlockPolicy[]>;
+type SinglePolicy = Omit<ProcessedReplayPolicy, "lanes" | "windowGrid" | "reportDetail">;
 type ProcessedLaneOptions = Partial<Omit<SinglePolicy, "baseScope" | "autoBase">> & { id: string };
 
 export function ownedProcessedPolicy(policy: ProcessedReplayPolicy, windows?: PositionWindows | null): ProcessedReplayPolicy {
+  if (policy.windowGrid) return policy;
   const validation = policy.blocks?.validation ?? windows?.blocks?.main;
   const real = policy.blocks?.real ?? windows?.blocks?.real;
-  const exec = policy.execN !== undefined ? policy.blocks?.exec ?? windows?.blocks?.entry : undefined;
-  const baseBlock = policy.baseBlock ?? (policy.execN !== undefined ? windows?.blocks?.base : undefined);
-  return { ...policy, ...(baseBlock && { baseBlock }), ...((validation || real || exec) && { blocks: {
+  const hasExec = policy.execN !== undefined || policy.lanes !== undefined;
+  const exec = hasExec ? policy.blocks?.exec ?? windows?.blocks?.entry : undefined;
+  const baseBlock = policy.baseBlock ?? (hasExec ? windows?.blocks?.base : undefined);
+  return { ...policy, ...(hasExec && policy.execN === undefined && { execN: policy.realN }),
+    ...(baseBlock && { baseBlock }), ...((validation || real || exec) && { blocks: {
     ...(validation && {validation}), ...(real && {real}), ...(exec && {exec}),
   } }) };
+}
+
+export function checkedProcessedWindowGrid(policy: ProcessedReplayPolicy): ProcessedWindowGrid {
+  const grid = policy.windowGrid;
+  if (!grid || policy.lanes || policy.baseBlock || policy.blocks || policy.execN === undefined ||
+      policy.reportDetail !== "summary" || policy.autoPf?.mode === "main")
+    throw new RangeError("a window grid requires summary replay, four independent stages and separate Auto PF");
+  for (const stage of ["base", "validation", "real", "exec"] as const) {
+    const windows = grid[stage];
+    if (!Array.isArray(windows) || !windows.length) throw new RangeError("processed window grid is empty at " + stage);
+    const keys = new Set<string>();
+    for (const window of windows) {
+      checkBlockPolicy(window);
+      if (stage === "base" && window.long === 0) throw new RangeError("Base requires a positive Long window");
+      const key = blockPolicyKey(window);
+      if (keys.has(key)) throw new RangeError("duplicate processed window at " + stage);
+      keys.add(key);
+    }
+  }
+  if (!Number.isSafeInteger(grid.base.length * grid.validation.length * grid.real.length * grid.exec.length))
+    throw new RangeError("processed window grid has too many distinct paths to count accurately");
+  return structuredClone(grid);
 }
 
 /** Canonical persisted economics. Reporting detail never changes the qualifying lane's identity. */
@@ -89,15 +118,11 @@ export function furthestProcessedDecision<T extends ProcessedStageDecision>(lane
 
 export const processedLaneKey = (tp: ProcessedReplayContext, policy: SinglePolicy, minPf: number, id: string) =>
   JSON.stringify([tp.ind, policy.validationN, policy.realN, minPf, ...(id ? [id] : [])]);
-export type ProcessedBaseCheck = (block?: BlockPolicy, autoPf?: SinglePolicy["autoPf"], scope?: "context") => boolean;
+export type ProcessedBaseCheck = ((block?: BlockPolicy, autoPf?: SinglePolicy["autoPf"], scope?: "context") => boolean) & {
+  available?: () => number;
+  prepare?: (capacity: number, autoPf?: SinglePolicy["autoPf"]) => (block: BlockPolicy, key: string) => boolean;
+};
 export const requiresProcessedBaseCheck = (policy: SinglePolicy) => !!(policy.baseBlock || policy.baseScope);
-/** A negative Main trigger requires a separately priced order on the other side. */
-export function requiresOppositeMainSource(policy: SinglePolicy): boolean {
-  const block = policy.blocks?.validation;
-  return policy.execN !== undefined && !!block &&
-    ((block.short > 0 && block.shortPolarity === "negative") ||
-     (block.minimal > 0 && block.minimalPolarity === "negative"));
-}
 export const qualifiesProcessedBase = (policy: SinglePolicy, check?: ProcessedBaseCheck) =>
   !requiresProcessedBaseCheck(policy) || check?.(policy.baseBlock, policy.autoBase === false ? undefined : policy.autoPf,
     policy.baseScope) === true;
@@ -121,6 +146,10 @@ export interface ProcessedReplayCoverage {
   insufficient: number;
   unknown: number;
   failed: number;
+  /** The required predecessor did not qualify at this clock. Included in insufficient. */
+  parentBlocked?: number;
+  /** A qualifying negative Main trigger whose opposite-direction source is missing. Included in unknown. */
+  oppositeSourceUnavailable?: number;
   fullPct: number | null;
   qualifiedPct: number | null;
   passingWindows: ValidationSummary;
@@ -128,12 +157,14 @@ export interface ProcessedReplayCoverage {
 export interface ProcessedReplaySummary {
   basis: "model";
   at: number;
-  coverageScope: "visible-config-symbol-direction";
+  coverageScope: "visible-config-symbol-direction" | "visible-config-symbol-direction-window-path";
   /** Raw candidate history is never imported into either processed window. */
   seededFromCandidates: false;
   validation: ProcessedReplayCoverage;
   real: ProcessedReplayCoverage;
   exec?: ProcessedReplayCoverage;
+  windowGrid?: { choices: Record<keyof ProcessedWindowGrid, number>; oppositeSourceMissing: number;
+    inverseEntries: number; inverseExecEntries: number };
   lanes?: Array<{ id: string; policy: SinglePolicy; validation: ProcessedReplayCoverage;
     real: ProcessedReplayCoverage; exec?: ProcessedReplayCoverage }>;
 }
@@ -142,32 +173,42 @@ export interface ProcessedReplayReport extends ProcessedReplaySummary {
   /** Causal ledger checkpoint, not permission to restore paper or venue ownership. */
   snapshot: ProcessedSetSnapshot;
 }
-const coverage = (): ProcessedReplayCoverage => ({ contexts: 0, full: 0, qualified: 0,
+export const coverage = (): ProcessedReplayCoverage => ({ contexts: 0, full: 0, qualified: 0,
   insufficient: 0, unknown: 0, failed: 0, fullPct: null, qualifiedPct: null,
   passingWindows: { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {}, setPf: emptyValidatedSetPf() } });
-function count(c: ProcessedReplayCoverage, v: ProcessedVerdict, n: number,
-  economics: () => { gp: number; gl: number } | null) {
-  c.contexts++;
+export function count(c: ProcessedReplayCoverage, v: ProcessedVerdict, n: number,
+  economics: () => { gp: number; gl: number } | null, represented = 1) {
+  c.contexts += represented;
   // Unknown economics is unavailable evidence, even if the count is complete.
-  if (v.n === n && v.state !== "unknown") c.full++;
-  c[v.state]++;
-  c.passingWindows.evaluated++;
+  if (v.n === n && v.state !== "unknown") c.full += represented;
+  c[v.state] += represented;
+  if (v.unavailable === "opposite-main-source")
+    c.oppositeSourceUnavailable = (c.oppositeSourceUnavailable ?? 0) + represented;
+  c.passingWindows.evaluated += represented;
   if (v.state === "qualified") {
     const rows = economics();
     const summary = c.passingWindows;
-    summary.passed++;
+    summary.passed += represented;
     if (rows) {
-      summary.closes += v.n;
-      summary.gp += rows.gp;
-      summary.gl += rows.gl;
+      summary.closes += v.n * represented;
+      summary.gp += rows.gp * represented;
+      summary.gl += rows.gl * represented;
     }
-    addValidatedSetPf(summary.setPf!, v.n, rows?.gp, rows?.gl);
+    addValidatedSetPf(summary.setPf!, v.n, rows?.gp, rows?.gl, represented);
   }
 }
-function finishCoverage(c: ProcessedReplayCoverage) {
+export function finishCoverage(c: ProcessedReplayCoverage) {
   if (!c.contexts) return;
   c.fullPct = 100 * c.full / c.contexts;
   c.qualifiedPct = 100 * c.qualified / c.contexts;
+}
+
+export function countBlockedParent(c: ProcessedReplayCoverage, represented = 1): void {
+  if (!represented) return;
+  c.contexts += represented;
+  c.insufficient += represented;
+  c.parentBlocked = (c.parentBlocked ?? 0) + represented;
+  c.passingWindows.evaluated += represented;
 }
 
 /** Connects actual native replay admissions/settlements to the independently tested processed book. */
@@ -194,11 +235,12 @@ export class ProcessedReplay {
       lane: processedLaneKey(tp, this.policy, minPf, this.laneId), economicRevision: this.revision };
   }
 
-  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number): ProcessedOpen {
+  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number,
+    allowExec = true): ProcessedOpen {
     const identity = this.identity(tp, symbol, side, minPf);
     // An onset has one parent. Future exit price/time/return cannot change its identity.
     const entryId = this.compactEntryIds ? String(entryT) : JSON.stringify([tp.id, symbol, side, entryT]);
-    return this.book.acceptPostBase(identity, entryId, entryT, { ...this.policy, minPf });
+    return this.book.acceptPostBase(identity, entryId, entryT, { ...this.policy, minPf }, allowExec);
   }
 
   preview(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number) {
@@ -221,12 +263,15 @@ export class ProcessedReplay {
       const main = this.book.gate(identity, "postBase", p, "validation", at);
       count(validation, main, mainN,
         () => this.book.windowEconomics(identity, "postBase", mainN, at));
-      count(real, this.book.gate(identity, "validated", p, "real", at, main), realN,
-        () => this.book.windowEconomics(identity, "validated", realN, at));
+      const realVerdict = main.state === "qualified" ? this.book.gate(identity, "validated", p, "real", at, main) : null;
+      if (realVerdict) count(real, realVerdict, realN, () => this.book.windowEconomics(identity, "validated", realN, at));
+      else countBlockedParent(real);
       if (exec) {
         const n = processedGateSize(p, "exec");
-        count(exec, this.book.gate(identity, "real", p, "exec", at, main), n,
-          () => this.book.windowEconomics(identity, "real", n, at));
+        if (realVerdict?.state === "qualified") {
+          count(exec, this.book.gate(identity, "real", p, "exec", at, main), n,
+            () => this.book.windowEconomics(identity, "real", n, at));
+        } else countBlockedParent(exec);
       }
       if (detail === "full") {
         const summary = this.book.summary(identity);
@@ -351,8 +396,9 @@ export class ProcessedSummaryReplay {
     return this.decision(this.identity(tp, symbol, side, minPf), entryT, minPf);
   }
 
-  private admit(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number) {
-    const identity = this.identity(tp, symbol, side, minPf), decision = this.decision(identity, entryT, minPf);
+  private admit(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number, allowExec: boolean) {
+    const identity = this.identity(tp, symbol, side, minPf);
+    const decision = processedAdmission(this.decision(identity, entryT, minPf), allowExec);
     const rows = this.rows(identity, true)!;
     if (rows.lastEntryT === entryT) throw new Error("duplicate processed entry");
     rows.lastEntryT = entryT;
@@ -360,8 +406,9 @@ export class ProcessedSummaryReplay {
     return { identity, decision, rows };
   }
 
-  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number): ProcessedOpen {
-    const { identity, decision, rows } = this.admit(tp, symbol, side, entryT, minPf);
+  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number,
+    allowExec = true): ProcessedOpen {
+    const { identity, decision, rows } = this.admit(tp, symbol, side, entryT, minPf, allowExec);
     const opened: ProcessedOpen = { identity, entryId: String(entryT), entryT,
       policy: { ...this.policy, minPf }, ...decision, slices: [], settledUnitReturn: 0 };
     this.held.set(opened, { rows, entryT, stage: decision.stage });
@@ -369,8 +416,9 @@ export class ProcessedSummaryReplay {
   }
 
   /** No checkpoint is emitted in summary mode, so the walker need not retain full per-entry metadata. */
-  enterCompact(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number): ProcessedSummaryOpen {
-    const { decision, rows } = this.admit(tp, symbol, side, entryT, minPf);
+  enterCompact(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number,
+    allowExec = true): ProcessedSummaryOpen {
+    const { decision, rows } = this.admit(tp, symbol, side, entryT, minPf, allowExec);
     const opened: ProcessedSummaryOpen = { ...decision };
     this.held.set(opened, { rows, entryT, stage: decision.stage });
     return opened;
@@ -416,12 +464,15 @@ export class ProcessedSummaryReplay {
       const mainVerdict = processedGateVerdict(main, cap, p, "validation", at);
       count(validation, mainVerdict,
         mainN, () => processedWindowEconomics(main, mainN, at));
-      count(real, processedGateVerdict(later, cap, p, "real", at, mainVerdict),
-        realN, () => processedWindowEconomics(later, realN, at));
+      const realVerdict = mainVerdict.state === "qualified" ? processedGateVerdict(later, cap, p, "real", at, mainVerdict) : null;
+      if (realVerdict) count(real, realVerdict, realN, () => processedWindowEconomics(later, realN, at));
+      else countBlockedParent(real);
       if (exec) {
         const n = processedGateSize(p, "exec"), history = rows?.real ?? this.empty;
-        count(exec, processedGateVerdict(history, cap, p, "exec", at, mainVerdict),
-          n, () => processedWindowEconomics(history, n, at));
+        if (realVerdict?.state === "qualified") {
+          count(exec, processedGateVerdict(history, cap, p, "exec", at, mainVerdict),
+            n, () => processedWindowEconomics(history, n, at));
+        } else countBlockedParent(exec);
       }
       if (++scanned % 64 === 0 && performance.now() - lastYield >= 8) { yield -15; lastYield = performance.now(); }
     }
@@ -434,14 +485,17 @@ export class ProcessedSummaryReplay {
 }
 
 type ReplayLedger = ProcessedReplay | ProcessedSummaryReplay;
-type ReplayContext = { tp: ProcessedReplayContext; symbol: string; side: 1 | -1; minPf: number };
-type ReplayEntry = ProcessedSummaryOpen & { lanes: Array<{ index: number; open: ProcessedOpen | ProcessedSummaryOpen }> };
+export type ReplayContext = { tp: ProcessedReplayContext; symbol: string; side: 1 | -1; minPf: number };
+export type ReplayEntry = ProcessedSummaryOpen & { lanes: Array<{ index: number; open: ProcessedOpen | ProcessedSummaryOpen }> };
 
 function combineCoverage(rows: readonly ProcessedReplayCoverage[]): ProcessedReplayCoverage {
   const result = coverage(), passing = result.passingWindows;
   for (const row of rows) {
     for (const key of ["contexts", "full", "qualified", "insufficient", "unknown", "failed"] as const)
       result[key] += row[key];
+    if (row.parentBlocked) result.parentBlocked = (result.parentBlocked ?? 0) + row.parentBlocked;
+    if (row.oppositeSourceUnavailable)
+      result.oppositeSourceUnavailable = (result.oppositeSourceUnavailable ?? 0) + row.oppositeSourceUnavailable;
     for (const key of ["evaluated", "passed", "closes", "gp", "gl"] as const) passing[key] += row.passingWindows[key];
     mergeValidatedSetPf(passing.setPf!, row.passingWindows.setPf!);
   }
@@ -484,16 +538,17 @@ export class ProcessedLaneReplay {
       ledger.preview(tp, symbol, side, at, minPf))) : null;
   }
 
-  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, at: number, minPf: number, base?: ProcessedBaseCheck):
+  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, at: number, minPf: number, base?: ProcessedBaseCheck,
+    allowExec = true):
     ProcessedOpen | ProcessedSummaryOpen | ReplayEntry {
     const enter = (ledger: ReplayLedger) => ledger instanceof ProcessedSummaryReplay
-      ? ledger.enterCompact(tp, symbol, side, at, minPf) : ledger.enter(tp, symbol, side, at, minPf);
+      ? ledger.enterCompact(tp, symbol, side, at, minPf, allowExec) : ledger.enter(tp, symbol, side, at, minPf, allowExec);
     const ledgers = this.ledgers;
     if (ledgers.length === 1 && !this.checksBase) return enter(ledgers[0].ledger);
     const lanes = this.eligible(base).map(({ ledger, index }) => ({ index, open: enter(ledger) }));
     if (!lanes.length) throw new Error("no Base-qualified processed lane");
-    const { stage, validation, real, exec } = furthestProcessedDecision(lanes.map(l => l.open));
-    return { stage, validation, real, ...(exec !== undefined && { exec }), lanes };
+    const { stage, validation, real, exec, execDeferred } = furthestProcessedDecision(lanes.map(l => l.open));
+    return { stage, validation, real, ...(exec !== undefined && { exec }), ...(execDeferred && { execDeferred }), lanes };
   }
 
   settle(entry: ProcessedOpen | ProcessedSummaryOpen | ReplayEntry, at: number, r: number | null): void {
@@ -520,7 +575,7 @@ export class ProcessedLaneReplay {
       id: this.ledgers[i].id, policy: this.ledgers[i].ledger.policy, validation, real, ...(exec && { exec }),
     }));
     const exec = lanes.flatMap(l => l.exec ? [l.exec] : []);
-    const result: ProcessedReplaySummary = { basis: "model", at, coverageScope: "visible-config-symbol-direction",
+    const result: ProcessedReplaySummary = { basis: "model", at, coverageScope: "visible-config-symbol-direction-window-path",
       seededFromCandidates: false, validation: combineCoverage(lanes.map(l => l.validation)),
       real: combineCoverage(lanes.map(l => l.real)), ...(exec.length && { exec: combineCoverage(exec) }), lanes };
     if (detail === "summary") return result;

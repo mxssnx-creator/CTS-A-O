@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ProcessedSetBook, processedGateVerdict, processedSetKey, processedStageDecision, type ProcessedSetIdentity } from "./processed-set.ts";
+import { ProcessedSetBook, processedGateVerdict, processedSetKey, processedStageDecision, processedWindowVerdict,
+  type ProcessedSetIdentity } from "./processed-set.ts";
 import { negativeLastN } from "../negative-last-n.ts";
 
 const identity: ProcessedSetIdentity = { baseConfigId: "follow|ema|short|normal|tp1|sl1", symbol: "A-USDT",
@@ -23,16 +24,41 @@ test("Exec requires its own Real terminal positions and the original receipt sur
   const admitted = book.acceptPostBase(identity, "exec", 23, p);
   assert.equal(admitted.stage, "active");
   assert.equal(admitted.exec?.state, "qualified");
+  assert.equal(admitted.orderPath?.length, 4);
+  assert.equal(new Set(admitted.orderPath?.map(x => x.orderId)).size, 4);
+  assert.equal(admitted.orderPath![0].parentOrderId, admitted.entryId);
+  for (let i = 1; i < admitted.orderPath!.length; i++)
+    assert.equal(admitted.orderPath![i].parentOrderId, admitted.orderPath![i - 1].orderId);
   const snapshot = JSON.parse(JSON.stringify(book.snapshot()));
   const forged = structuredClone(snapshot);
   forged.open[0].exec.state = "insufficient";
   assert.throws(() => ProcessedSetBook.restore(forged), /invalid processed open entry/);
+  const misrouted = structuredClone(snapshot);
+  misrouted.open[0].orderPath[3].parentOrderId = misrouted.open[0].orderPath[1].orderId;
+  assert.throws(() => ProcessedSetBook.restore(misrouted), /invalid processed open entry/);
   book = ProcessedSetBook.restore(snapshot);
   book.close(identity, "exec", 23, "done", 24, -.05, true);
+  const settled = book.snapshot();
+  assert.equal(settled.sets[0].active.at(-1)!.order?.parentOrderId, settled.sets[0].real!.at(-1)!.order?.orderId);
+  settled.sets[0].real!.at(-1)!.unitReturn = .5;
+  assert.throws(() => ProcessedSetBook.restore(settled), /invalid processed close parent/);
   assert.equal(book.summary(identity)?.stages.active.grossLoss, .05);
   assert.equal(book.summary(identity)?.stages.real?.closedOrders, 3);
   assert.equal(book.summary(identity)?.stages.active.closedOrders, 1);
   assert.equal(book.preview(identity, 25, p).stage, "postBase", "later losses stay in each admitted cohort");
+});
+
+test("a valid negative Main trigger cannot substitute the Base side's price path for an opposite order", () => {
+  const validation = { long: 2, short: 0, minimal: 1, shortPolarity: "positive", minimalPolarity: "negative" } as const;
+  const p = { validationN: 3, realN: 1, execN: 1, minPf: 1.1, blocks: { validation } };
+  const history = [.02, .03, -.001].map((unitReturn, exitT) => ({ unitReturn, exitT }));
+  assert.equal(processedWindowVerdict(history, 8, 3, p.minPf, 4, undefined, validation).state, "qualified");
+  const evaluated = processedStageDecision(() => history, 8, p, 4);
+  assert.equal(evaluated.stage, "postBase");
+  assert.equal(evaluated.validation.state, "unknown");
+  assert.equal(evaluated.validation.unavailable, "opposite-main-source");
+  assert.equal(evaluated.real, null);
+  assert.equal(evaluated.exec, null);
 });
 
 test("Auto PF consumes disjoint prior closes, and Main reuse preserves the exact earlier decision floor", () => {

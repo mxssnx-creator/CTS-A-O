@@ -1123,6 +1123,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     if (g.coordination) {
       const c = g.coordination;
       bool(c.enabled, "signals coordination");
+      bool(c.strategyOnly, "signals coordination strategy-only routing");
       num(c.minSources, 2, 100, "signals coordination minimum sources");
       int(c.minSources, "signals coordination minimum sources");
       volumeFactor(c.volumeFactor, "signals coordination volume factor");

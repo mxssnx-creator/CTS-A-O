@@ -511,11 +511,8 @@ export function SignalsSettings(props: {
   return (
     <div className="v2-lines" style={{ gap: 10 }}>
       <div className="v2-muted">
-        Strategy routing: classic and coordinated Signals use the Signals range and independently
-        qualified Exit configs. The protection settings below define the Signals candidate grid;
-        historical ranking selects eligible configs using their own source, parameter range, lane,
-        type, symbol and direction. Ordinary Short / General / Long and Micro grids are not expanded
-        into Signals. Short / Medium below are Signal source parameter ranges.
+        Signals Coordination uses the selected sources as votes. Each Signals protection, timeframe,
+        symbol and direction qualifies on its own history. Short and Medium select source parameters.
       </div>
       <Field label="Minimum Signals per day · 7-day average"
         hint="Each source, symbol, range and lane counts its own raw onsets over the preceding seven complete days; missing history pauses new entries. 0 disables this filter.">
@@ -1247,8 +1244,9 @@ export function SignalsSettings(props: {
               ))}
             </select>
           </Field>
-          <Field label="Strategy processing" hint="independent Signal configurations and historic Exit; ordinary strategy grids are not expanded">
-            <span>Signals + Exit</span>
+          <Field label="Standalone Signal orders" hint="Uses standalone sources as well as coordination. Turn on to reproduce a legacy Signal profile.">
+            <Switch label="Standalone Signal orders" checked={coordination.strategyOnly !== true}
+              onChange={(enabled) => set(["coordination", "strategyOnly"], !enabled)} />
           </Field>
           <div className="v2-muted" style={{ gridColumn: "1 / -1", fontSize: "var(--v-fs-xs)" }}>
             Votes combine the selected source pool and Short / Medium parameter variants. A source

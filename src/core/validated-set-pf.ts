@@ -20,16 +20,17 @@ export const emptyValidatedSetPf = (): ValidatedSetPfAccumulator => ({
 });
 
 /** Call only for a set that passed its own gate; missing/empty evidence remains in the denominator. */
-export function addValidatedSetPf(a: ValidatedSetPfAccumulator, n: number, gp: number | undefined, gl: number | undefined): void {
-  a.sets++;
+export function addValidatedSetPf(a: ValidatedSetPfAccumulator, n: number, gp: number | undefined, gl: number | undefined, represented = 1): void {
+  a.sets += represented;
   if (!Number.isSafeInteger(n) || n < 1 || typeof gp !== "number" || typeof gl !== "number" ||
       !Number.isFinite(gp) || !Number.isFinite(gl) || gp < 0 || gl < 0 || gp + gl === 0) {
-    a.unavailableSets++; return;
+    a.unavailableSets += represented; return;
   }
-  if (gl === 0) { a.noLossSets++; return; }
+  if (gl === 0) { a.noLossSets += represented; return; }
   const pf = gp / gl;
-  if (!Number.isFinite(pf)) { a.unavailableSets++; return; }
-  a.finiteMean += (pf - a.finiteMean) / ++a.finiteSets;
+  if (!Number.isFinite(pf)) { a.unavailableSets += represented; return; }
+  a.finiteSets += represented;
+  a.finiteMean += (pf - a.finiteMean) * (represented / a.finiteSets);
 }
 
 export function mergeValidatedSetPf(a: ValidatedSetPfAccumulator, b: ValidatedSetPfAccumulator): void {

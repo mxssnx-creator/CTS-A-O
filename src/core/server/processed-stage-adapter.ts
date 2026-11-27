@@ -59,12 +59,14 @@ export class NativeProcessedStageAdapter {
   readonly revision: string;
   readonly checksBase: boolean;
   readonly hasNativeSource: boolean;
+  readonly separatesPortfolio: boolean;
   private readonly lanes: Array<ReturnType<typeof processedLanes>[number] & { revision: string }>;
   private readonly open = new Map<string, ProcessedOpen[]>();
   private readonly settledQueue: string[];
   private readonly settled: Set<string>;
 
   constructor(policy: ProcessedReplayPolicy, cost: number, snapshot?: NativeProcessedSnapshot) {
+    if (policy.windowGrid) throw new Error("processed window grids require offline replay");
     this.policy = checkedPolicy(policy);
     this.revision = nativeProcessedRevision(this.policy, cost);
     // The native paper entry receives the Base side's price path. A negative Main lane needs a separate
@@ -73,6 +75,7 @@ export class NativeProcessedStageAdapter {
       .map(l => ({ ...l, revision: nativeProcessedRevision(l.policy, cost) }));
     this.checksBase = this.lanes.some(l => requiresProcessedBaseCheck(l.policy));
     this.hasNativeSource = this.lanes.length > 0;
+    this.separatesPortfolio = this.lanes.some(l => l.policy.execN !== undefined);
     if (snapshot) {
       if (
         snapshot.version !== 1 ||
@@ -149,6 +152,7 @@ export class NativeProcessedStageAdapter {
     at: number,
     minPf: number,
     base?: ProcessedBaseCheck,
+    allowExec = true,
   ): ProcessedOpen {
     const id = entryId(tp.id, symbol, side, at);
     if (this.open.has(id) || this.settled.has(id))
@@ -158,7 +162,7 @@ export class NativeProcessedStageAdapter {
     }));
     if (!set.length) throw new Error("no Base-qualified native processed lane");
     for (const own of set) this.book.preview(own.identity, at, own.policy);
-    const opened = set.map(own => this.book.acceptPostBase(own.identity, id, at, own.policy));
+    const opened = set.map(own => this.book.acceptPostBase(own.identity, id, at, own.policy, allowExec));
     this.open.set(id, opened);
     return structuredClone(furthestProcessedDecision(opened));
   }
@@ -177,7 +181,8 @@ export class NativeProcessedStageAdapter {
     const opened = current?.length ? furthestProcessedDecision(current) : undefined;
     return opened
       ? structuredClone({ stage: opened.stage, validation: opened.validation, real: opened.real,
-          ...(opened.exec !== undefined && { exec: opened.exec }) })
+          ...(opened.exec !== undefined && { exec: opened.exec }),
+          ...(opened.execDeferred && { execDeferred: opened.execDeferred }) })
       : null;
   }
 

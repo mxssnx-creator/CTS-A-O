@@ -47,8 +47,9 @@ export function signalCombos(
   if (!sig.enabled) return [];
   const lanes = sig.lanes.filter((tf) => engineTfs.includes(tf));
   const out: Array<{ bot: "follow"; ind: string }> = [];
-  // "deny" (default): a source runs unless it is set false; "allow": only the sources set true run
-  for (const src of SIGNAL_SOURCES) {
+  const coord = sig.coordination;
+  // The selected sources still vote when their standalone order paths are disabled.
+  if (!coord.strategyOnly) for (const src of SIGNAL_SOURCES) {
     if (!signalSourceEnabled(sig, src.name)) continue;
     for (const range of ["short", "medium"] as const) {
       if (!sig.ranges[range]) continue;
@@ -56,7 +57,6 @@ export function signalCombos(
         out.push({ bot: "follow", ind: laneInd(signalId(src.name, range), tf) });
     }
   }
-  const coord = sig.coordination;
   if (coord.enabled) {
     const sources = SIGNAL_SOURCES.filter((src) =>
       signalSourceEnabled(sig, src.name),

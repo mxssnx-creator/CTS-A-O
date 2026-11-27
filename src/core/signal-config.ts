@@ -522,6 +522,8 @@ export interface SignalClusterSettings {
 /** Independent majority-vote coordinators, one ID per input-range mix and domination threshold. */
 export interface SignalCoordinationSettings {
   enabled: boolean;
+  /** Use the source pool only as votes for new Signals Coordination orders. */
+  strategyOnly?: boolean;
   /** Minimum number of active, non-conflicting source votes on a bar. */
   minSources: number;
   /** Active pair × type × symbol × direction cap, applied separately from classic signals. */
