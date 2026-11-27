@@ -11496,6 +11496,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
       throw new Error("rolling Base must be enabled explicitly");
     const data = { ...raw, validationN, realN, execN, ...(automatic && {
       windowGrid: defaultProcessedWindowGrid(), inheritBaseLong: true, reportDetail: "summary", rollingBase: true,
+      autoPf: raw.autoPf === false ? undefined : raw.autoPf ?? { mode: "independent", ratio: 4 },
     }) } as ProcessedReplayPolicy;
     ownedProcessedPolicy(data);
     if (data.rollingBase) {

@@ -553,20 +553,29 @@ test("negative Main uses a priced mirror without granting that mirror its own Ba
   const oppositePast = Array.from({ length: 160 }, (_, i) => trade(.012, T - 11 * H + i * 2 * M, -1, symbols[0], oppositeId));
   const oppositeFuture = future.map(row => trade(.008, row.entryT, -1, row.sym, oppositeId));
   const opposite = makeTape(oppositeId, "revert", ind, protect, "normal", symbols, [...oppositePast, ...oppositeFuture], [], []);
-  const result = walkForward(universe, [tape, opposite], { ...options,
-    basePassed: new Set([`follow|${ind}`]),
-    basePassedRanges: { [`follow|${ind}`]: ["mn"] },
-    processedStages: { validationN: 4, realN: 4, execN: 4, reportDetail: "summary",
-      windowGrid: { base: [block, negativeLast], validation: [negativeLast], real: [block], exec: [block] } },
-  });
-  const grid = result.processedStageSummary!.windowGrid!;
-  assert.ok(grid.inverseEntries > grid.inverseExecEntries);
-  assert.ok(grid.inverseExecEntries > 0);
-  assert.equal(grid.oppositeSourceMissing, 0);
-  assert.equal(result.trades.length, grid.inverseExecEntries);
-  assert.ok(result.trades.every(t => t.cfg === oppositeId && t.side === -1 && t.unitR === .008));
-  assert.equal(result.feed.filter(t => t.cfg === oppositeId).length, grid.inverseEntries,
-    "a mirror price sample feeds no strategy or shared record until the original path actually admits it");
+  const omitLong = { ...block, long: 0 };
+  const policies = [
+    { windowGrid: { base: [block, negativeLast], validation: [negativeLast], real: [block], exec: [block] } },
+    { inheritBaseLong: true as const, windowGrid: {
+      base: [block, negativeLast, { ...block, long: 3 }],
+      validation: [{ ...omitLong, minimalPolarity: "negative" as const }], real: [omitLong], exec: [omitLong],
+    } },
+  ];
+  for (const policy of policies) {
+    const result = walkForward(universe, [tape, opposite], { ...options,
+      basePassed: new Set([`follow|${ind}`]),
+      basePassedRanges: { [`follow|${ind}`]: ["mn"] },
+      processedStages: { validationN: 4, realN: 4, execN: 4, reportDetail: "summary", ...policy },
+    });
+    const grid = result.processedStageSummary!.windowGrid!;
+    assert.ok(grid.inverseEntries > grid.inverseExecEntries);
+    assert.ok(grid.inverseExecEntries > 0);
+    assert.equal(grid.oppositeSourceMissing, 0);
+    assert.equal(result.trades.length, grid.inverseExecEntries);
+    assert.ok(result.trades.every(t => t.cfg === oppositeId && t.side === -1 && t.unitR === .008));
+    assert.equal(result.feed.filter(t => t.cfg === oppositeId).length, grid.inverseEntries,
+      "a mirror price sample feeds no strategy or shared record until the original path actually admits it");
+  }
 });
 
 test("a cold exact context learns real prehistory entries and keeps them out of the scored account", () => {

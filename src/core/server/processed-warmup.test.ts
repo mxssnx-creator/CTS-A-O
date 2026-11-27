@@ -43,6 +43,9 @@ test('automatic Last-N expands the older signed stage lengths and freezes its co
     { base: 400, validation: 160, real: 320, exec: 320 });
   assert.equal(policy.execN, 4);
   assert.deepEqual(policy.autoPf, input.autoPf);
+  const defaults = { validationN: 6, realN: 4, windowGrid: 'auto' };
+  assert.deepEqual(sanitizeWf({ processedStages: defaults as never }).processedStages!.autoPf, input.autoPf);
+  assert.equal(sanitizeWf({ processedStages: { ...defaults, autoPf: false } as never }).processedStages!.autoPf, undefined);
   const expected = {
     base: { longs: [10, 20, 30, 40, 50], shorts: [4, 8, 12, 16] },
     validation: { longs: [0], shorts: [4, 8, 12, 16] },
