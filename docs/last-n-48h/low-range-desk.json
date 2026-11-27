@@ -1,0 +1,281 @@
+{
+  "settings": {
+    "symbols": 50,
+    "forceSymbols": [
+      "BTC-USDT",
+      "ETH-USDT",
+      "SOL-USDT",
+      "XRP-USDT",
+      "BCH-USDT",
+      "LTC-USDT",
+      "ADA-USDT",
+      "AVAX-USDT",
+      "DOGE-USDT",
+      "BNB-USDT",
+      "LINK-USDT",
+      "DOT-USDT",
+      "SUI-USDT",
+      "TRX-USDT",
+      "XLM-USDT",
+      "HBAR-USDT",
+      "AAVE-USDT",
+      "NEAR-USDT",
+      "UNI-USDT",
+      "ICP-USDT",
+      "ARB-USDT",
+      "OP-USDT",
+      "APT-USDT",
+      "FIL-USDT",
+      "ATOM-USDT",
+      "ETC-USDT",
+      "INJ-USDT",
+      "WIF-USDT",
+      "FET-USDT",
+      "WLD-USDT",
+      "POL-USDT",
+      "XAUT-USDT",
+      "HYPE-USDT",
+      "RUNE-USDT",
+      "ZEC-USDT",
+      "PENDLE-USDT",
+      "JUP-USDT",
+      "1000PEPE-USDT",
+      "SEI-USDT",
+      "TIA-USDT",
+      "LDO-USDT",
+      "ALGO-USDT",
+      "ENA-USDT",
+      "ONDO-USDT",
+      "CRV-USDT",
+      "DYDX-USDT",
+      "BERA-USDT",
+      "SAND-USDT",
+      "MANA-USDT",
+      "XMR-USDT"
+    ],
+    "tfMin": 1,
+    "tfs": [
+      1,
+      5,
+      15
+    ],
+    "tfDays": {
+      "1": 11,
+      "5": 11,
+      "15": 11,
+      "30": 11
+    },
+    "historyDays": 11,
+    "focus": [
+      "follow|trend-reversal-reclaim-16@m1",
+      "follow|trend-reversal-reclaim-16@m5",
+      "revert|trend-reversal-reclaim-16@m1",
+      "revert|trend-reversal-reclaim-16@m5",
+      "follow|trend-reversal-psar-10@m1",
+      "follow|trend-reversal-psar-10@m5",
+      "follow|trend-reversal-structure-10@m1",
+      "follow|trend-reversal-structure-10@m5",
+      "follow|trend-reversal-confluence-10@m1",
+      "follow|trend-reversal-confluence-10@m5",
+      "follow|rsi-mid-52-48@m1",
+      "follow|rsi-mid-52-48@m5",
+      "revert|rsi-fast@m1",
+      "revert|rsi-fast@m5",
+      "follow|cfl-break-20@m5",
+      "revert|mc-rsi2-20@m5",
+      "follow|micro-1x5-market-momentum-fast@m1",
+      "follow|micro-1-drawdown-turn-fast@m1",
+      "follow|low-range-3-mid-reclaim-standalone@m1",
+      "follow|low-range-3-mid-reclaim-standalone@m5",
+      "follow|low-range-24-compression-break-standalone@m1",
+      "follow|low-range-24-compression-break-standalone@m5",
+      "follow|low-range-6-edge-turn-standalone-inverse@m1",
+      "follow|low-range-6-edge-turn-standalone-inverse@m5"
+    ],
+    "pinned": [],
+    "grid": {
+      "tp": [],
+      "minimalPlus": false,
+      "short": false,
+      "general": false,
+      "long": false,
+      "baseCells": true,
+      "baseTrailCells": true,
+      "trailingOnly": true,
+      "holdH": [
+        0.5,
+        1.5
+      ],
+      "rangeFit": {
+        "enabled": false
+      },
+      "baseBest": true,
+      "micro": false,
+      "minimal": false,
+      "lowRange": {
+        "enabled": true,
+        "step": 0.002,
+        "steps": [
+          3,
+          5
+        ],
+        "coordination": "independent",
+        "minTf": 1,
+        "volumeFactor": 1,
+        "holdAuto": true,
+        "holdCandidatesMin": [
+          15,
+          30
+        ],
+        "maxSlRatio": 2.5,
+        "maxTrailRatio": 1,
+        "slRatios": [
+          0.75,
+          1.25
+        ],
+        "trailRatios": [
+          0,
+          0.75
+        ],
+        "maxHoldMin": 30
+      }
+    },
+    "tactics": {
+      "signalMinDaily": 2,
+      "session": false,
+      "volRegime": false,
+      "trendStrength": false,
+      "chopRegime": false,
+      "cooldown": false,
+      "cooldownBars": 4
+    },
+    "exitStrategy": {
+      "enabled": false
+    },
+    "signals": {
+      "enabled": false,
+      "sourcesMode": "allow",
+      "lanes": [
+        1,
+        5,
+        15
+      ],
+      "sources": {
+        "ema-cross": true,
+        "macd-cross": true,
+        "rsi-reversal": true,
+        "psar": true,
+        "bb-break": true,
+        "trend-reversal-structure-10": true,
+        "trend-reversal-psar-10-s": true,
+        "trend-reversal-rsi-10-s": true
+      },
+      "coordination": {
+        "enabled": true,
+        "strategyOnly": true,
+        "minSources": 2,
+        "count": 0,
+        "volumeFactor": 1,
+        "ranges": {
+          "short": true,
+          "normal": true,
+          "long": true
+        }
+      },
+      "holdH": 1.5,
+      "exits": "pct",
+      "normal": {
+        "tp": [
+          0.006,
+          0.01,
+          0.015
+        ],
+        "slOfTp": [
+          0.75,
+          1.25
+        ]
+      },
+      "trailing": {
+        "tp": [
+          0.01
+        ],
+        "trailOfTp": [
+          0.4,
+          0.6
+        ],
+        "slOfTp": 1
+      },
+      "trailRatios": [
+        1
+      ],
+      "trailingOnly": {
+        "enabled": true,
+        "sl": [
+          0.01
+        ],
+        "trail": [
+          0.004,
+          0.006
+        ],
+        "trailStep": 1
+      },
+      "hist": {
+        "enabled": false,
+        "lookbackH": 150
+      }
+    },
+    "toggles": {
+      "normal": true,
+      "trailing": true,
+      "exit": false,
+      "block": false,
+      "blockActive": false,
+      "dca": false,
+      "dcaActive": false,
+      "axis": false
+    },
+    "relate": {
+      "enabled": false,
+      "mode": "additive",
+      "auto": true,
+      "ratio": 0.2,
+      "steps": 12,
+      "activeStep": 0,
+      "minPf": 1.5,
+      "lastN": 250,
+      "minTrades": 60,
+      "recoveryMinTrades": 12,
+      "recoveryMaxDrawdown": 0.5,
+      "maxStack": 8,
+      "maxSl": 0.0075,
+      "sources": {
+        "config": true,
+        "overall": true,
+        "symbol": true,
+        "direction": true,
+        "indication": true,
+        "strategy": true,
+        "coordination": true,
+        "range": true
+      }
+    },
+    "cost": 0.00176
+  },
+  "wf": {
+    "causalBase": true,
+    "recordValidation": "summary",
+    "signalLongH": 150,
+    "processedStages": {
+      "validationN": 6,
+      "realN": 4,
+      "execN": 4,
+      "reportDetail": "summary",
+      "baseScope": "context",
+      "autoPf": {
+        "mode": "independent",
+        "ratio": 4
+      },
+      "rollingBase": true
+    }
+  }
+}
