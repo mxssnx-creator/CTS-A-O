@@ -1,3 +1,57 @@
+## 2026-11-27 — Paired 50-symbol Execute PF and lane dispatch audit
+
+The 48h evaluated prehistory consists of 24h for the Base snapshot and 24h of owned
+stage warmup. The scored windows were 23–25 November and 25–27 November, from 01:00
+Vienna time in each case. The runs used the same 50 BingX USDT perpetuals and 0.176%
+modeled round-trip cost. Each Base window qualifies from its own strictly earlier
+positions. Main, Real and Exec then read their immediate predecessor’s own settles.
+The readiness report now rechecks the Base proof at its own decision boundary. A
+position open or settled under an earlier permission keeps its original provenance.
+
+| Replay | Main paths passed / evaluated | Pooled Post-Base PF | Settled Exec PF | Positions opened/closed/held | Orders opened/settled/held |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Original broad 6/4/4, 23–25 Nov | 129/69,600 (0.1853%) | 2.174 | 1.266 | 52/52/0 | 98/98/0 |
+| Original broad 6/4/4, 25–27 Nov | 187/83,000 (0.2253%) | 1.816 | 0.285 | 72/71/1 | 105/104/1 |
+| Integrated broad 6/4/4, 23–25 Nov | 72/69,600 (0.1034%) | 2.256 | 1.390 | 48/48/0 | 77/77/0 |
+| Integrated broad 6/4/4, 25–27 Nov | 51/83,000 (0.0614%) | 1.774 | 0.253 | 57/57/0 | 84/84/0 |
+| Tighter protection and holds, 23–25 Nov | 21/42,000 (0.0500%) | 1.959 | 0.555 | 8/8/0 | 12/12/0 |
+| Tighter protection and holds, 25–27 Nov | 19/38,800 (0.0490%) | 2.118 | 1.005 | 12/12/0 | 12/12/0 |
+| Full grid with the earlier Signals inputs, 25–27 Nov | 4,265/4,121,600,000 (0.000103%) | 2.540 | 0.388 | 12/12/0 | 14/14/0 |
+| Full grid with verified Signals inputs, 25–27 Nov | 4,265/4,121,600,000 (0.00010348%) | 2.540 | 0.388 | 12/12/0 | 14/14/0 |
+
+Each denominator includes empty logical contexts. Historical-window PF and funded
+settled return PF refer to different cohorts. In the original broad comparison,
+the earlier run settled 88 Short and 10 Long orders. Later there were 36 Short and
+68 Long orders, with losses in both directions. Time-limit exits rose from 21 to
+40 and fixed-stop exits rose from 15 to 24. With the same recent prices and code,
+removing the pair-event cap yielded PF 0.222 on 103 settles; the cap control settled
+84 at PF 0.253. The bounded losing-window experiment yielded PF 0.291 on 76 settles.
+No higher-throughput profitable setting was demonstrated across both windows.
+
+Four formerly unregistered names are replaced with registered sources in the replay
+desk. The unlimited Signals path now uses the minute-level eligibility and PF checks
+regardless of its cap. In the separate 50-symbol Signals runs, the dedicated
+coordination built 450 tapes and evaluated its own stages. At the cutoff 5 units were eligible for activation. The separate coordination run with Normal and Trailing enabled and Ordinary confirmation off had 0/1,440,000,000 passing paths (0%), with no measured post-Base PF. It settled 0 orders. The 50-symbol combined run settled 0 Signals orders.
+
+The staged replay reuses exact window scans and the offline history arena uses up to
+768 MiB of resident tape storage when host headroom allows. Explicit environment
+budgets still take precedence. At the same 11.5h of the 72h simulation, the 256 MiB
+resident / 128 MiB cache diagnostic took about 302s and the 768 MiB resident / 384 MiB
+cache arm about 60s. Both overlapped other local work and ended early under resource
+pressure. The subsequent serial run with the automatic resident budget completed
+in 356s with 3,044 MiB peak RSS. The final combined run completed in 406.2s with 3,012 MiB peak RSS. It passed all 64 report and allocation checks. Independently priced opposite paths produced 8,675 Main entries and 0 modeled Exec promotions, including warmup. Main pass count at the endpoint and historical stage admissions are separate. Feed SHA-256 `59fa2841c4ce43a33da7abfb2a0c8140cdaa42401b4e145bd1d81919f503f9d9`.
+
+Protection dispatch fills up to four independent lanes when the plan allows and
+drains every pending request before the control step can return. Within each lane,
+a replacement waits for exact terminal reconciliation against a fresh order book.
+Unresolved identities retain ownership. The modeled 60-action dispatch required 16
+rounds, down from 31 under the previous contiguous batching rule. No venue orders
+were sent. The full grid was exercised offline; the persistent venue-capable adapter
+continues to accept independent single and named lanes through its existing boundary.
+
+Local code `6676bd8ab89550e6ed606c601d14547ba09bc14d`. TypeScript passed. The combined stage, Signal, paper and simulated venue suite passed 225/225. Storage/recovery tests passed 53/53, including overlapping stage tests. Worker packaging passed 4/4.
+The final funded book and exact executable source are verified in the replay evidence.
+
 ## 2026-11-27 — Exact Last-N handoffs and 50-symbol replay
 
 Tested code is `780b9f8f1c0710c2fee4d3f79b0b8d8b9c17a6f2` with tree
