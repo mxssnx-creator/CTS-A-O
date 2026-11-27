@@ -25,10 +25,9 @@ export function assertConnectionNetwork(network: Network, conn: ConnId): void {
 }
 
 const TIMEOUT_MS = 10_000;
-// Match the bounded transport budget: a valid request can spend more than five seconds in transit (observed
-// on VST). Re-signing with the same five-second window only repeats that refusal. This does not retry an
-// unknown write outcome or extend the HTTP deadline.
-const RECEIVE_WINDOW_MS = TIMEOUT_MS;
+// BingX's documented maximum recvWindow is 5 seconds. Keep the HTTP deadline longer so a slow response can
+// still be read; the exchange will explicitly refuse a request that arrived outside this signed window.
+const RECEIVE_WINDOW_MS = 5_000;
 const env = (k: string) => (process.env[k] ?? "").trim();
 
 /**

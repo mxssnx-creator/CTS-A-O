@@ -38,11 +38,13 @@ The direct Base→Exec grid remains an offline summary/window-grid research path
 
 The focused exchange and runtime safety suites run against mocks/offline fixtures. They cover lifecycle, parent isolation, stall handling, exchange minimums, Bybit behavior and signed/request-budget handling; they do not verify a connected BingX account, venue fills, balances, control orders, reconnect recovery or live PF. No venue order was submitted. Venue readiness and live execution PF remain unverified because this workspace has no connected exchange credentials or reachable exchange deployment.
 
+The exchange adapter audit found that BingX requests used `recvWindow=10000`, although BingX's current swap API reference documents a 5000 ms maximum. The client now signs with `recvWindow=5000`; the 10-second HTTP timeout remains only a response deadline. A write is re-signed only after BingX explicitly rejects its timestamp, never after an unknown timeout. The focused signing tests cover the maximum window and this retry boundary.
+
 ## Checks and code change
 
 The change in this branch lets direct research grids specify only Base and Exec windows. It normalizes those two windows, counts only Base×Exec paths and reports zero Main/Real policy choices. Existing four-stage grids retain their four-stage shape. Regression coverage checks both positive/negative direct lanes and the omitted Main/Real choices.
 
-The focused processing suite passed 58 checks in the earlier isolated run. In this audit, both direct Base→Exec regression cases passed, and all 80 exchange-module tests passed sequentially across nine files with isolated request-budget state. These exchange tests use mocks/offline fixtures. The replay test runner was later killed with code 137 when rerun alongside an absent test-file path; the full project typecheck and targeted TypeScript check also exited with code 137. These memory failures do not establish a source defect, but typechecking this revision remains incomplete.
+The focused processing suite passed 58 checks in the earlier isolated run. In this audit, both direct Base→Exec regression cases passed, and all 81 exchange-module tests passed sequentially across nine files with isolated request-budget state. These exchange tests use mocks/offline fixtures. The replay test runner was later killed with code 137 when rerun alongside an absent test-file path; the full project typecheck and targeted TypeScript check also exited with code 137. These memory failures do not establish a source defect, but typechecking this revision remains incomplete.
 
 ## To complete the requested replay
 

@@ -8,6 +8,7 @@ import { ExchangeRejected, signed, staleTimestamp, stopAlreadyExists } from "./b
 describe("signed requests: stale timestamp", () => {
   const orig = globalThis.fetch;
   let urls: string[] = [];
+  let originalEnv: Record<string, string | undefined> = {};
   /** the exchange's replies, in order */
   const reply = (...bodies: object[]) => {
     globalThis.fetch = (async (url: string | URL) => {
@@ -18,13 +19,20 @@ describe("signed requests: stale timestamp", () => {
   const ts = (u: string) => Number(new URL(u).searchParams.get("timestamp"));
   beforeEach(() => {
     urls = [];
+    originalEnv = {
+      BINGX_X02_API_KEY: process.env.BINGX_X02_API_KEY,
+      BINGX_X02_SECRET: process.env.BINGX_X02_SECRET,
+      CTS_BINGX_RATE_BUDGET_FILE: process.env.CTS_BINGX_RATE_BUDGET_FILE,
+    };
     process.env.BINGX_X02_API_KEY = "k";
     process.env.BINGX_X02_SECRET = "s";
+    process.env.CTS_BINGX_RATE_BUDGET_FILE = ":memory:";
   });
   afterEach(() => {
     globalThis.fetch = orig;
-    delete process.env.BINGX_X02_API_KEY;
-    delete process.env.BINGX_X02_SECRET;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
   });
 
   it("re-signs once with a fresh timestamp and returns the answer", async () => {
@@ -33,20 +41,41 @@ describe("signed requests: stale timestamp", () => {
     assert.deepEqual(out, { orders: [] });
     assert.equal(urls.length, 2);
     assert.ok(ts(urls[1]) >= ts(urls[0]), "signed again, not resent as it was");
-    for (const url of urls) assert.equal(new URL(url).searchParams.get("recvWindow"), "10000");
+    for (const url of urls) assert.equal(new URL(url).searchParams.get("recvWindow"), "5000");
   });
 
-  it("accepts a request arriving after five seconds within the bounded transport window", async () => {
+  it("uses BingX's documented maximum receive window for a slow request", async () => {
     globalThis.fetch = (async (input: string | URL) => {
       const url = new URL(String(input));
       urls.push(String(input));
-      const transitMs = 5_400;
+      const transitMs = 4_900;
       return new Response(JSON.stringify(transitMs <= Number(url.searchParams.get("recvWindow"))
         ? { code: 0, data: { orders: [] } }
         : { code: 109400, msg: "timestamp is invalid" }));
     }) as typeof fetch;
     assert.deepEqual(await signed("testnet", "bingx-vst-02", "GET", "/openApi/swap/v2/trade/openOrders"), { orders: [] });
     assert.equal(urls.length, 1, "slow but in-window delivery needs no duplicate request");
+    assert.equal(new URL(urls[0]).searchParams.get("recvWindow"), "5000");
+  });
+
+  it("re-signs a write only after BingX explicitly refuses its expired timestamp", async () => {
+    let requests = 0;
+    globalThis.fetch = (async (input: string | URL) => {
+      const url = new URL(String(input));
+      urls.push(String(input));
+      requests++;
+      assert.equal(url.searchParams.get("recvWindow"), "5000");
+      const transitMs = requests === 1 ? 5_400 : 250;
+      return new Response(JSON.stringify(transitMs <= Number(url.searchParams.get("recvWindow"))
+        ? { code: 0, data: { orderId: "safe-after-explicit-refusal" } }
+        : { code: 109400, msg: "timestamp is invalid" }));
+    }) as typeof fetch;
+    assert.deepEqual(
+      await signed("testnet", "bingx-vst-02", "POST", "/openApi/swap/v2/trade/order", { symbol: "X-USDT" }),
+      { orderId: "safe-after-explicit-refusal" },
+    );
+    assert.equal(urls.length, 2, "only the explicit stale-timestamp refusal permits re-signing a write");
+    assert.ok(ts(urls[1]) >= ts(urls[0]));
   });
 
   it("a second stale refusal is thrown (one retry), and other refusals are never retried", async () => {
