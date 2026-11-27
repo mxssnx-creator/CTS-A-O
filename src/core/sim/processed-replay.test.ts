@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
+import { sigActiveKey } from "../signals.ts";
 import { ProcessedSetBook } from "./processed-set.ts";
 import { frozenProcessedPolicy, processedLanes, ProcessedReplay, type ProcessedReplayPolicy } from "./processed-replay.ts";
 import { defaultWalkForward, execDecision, makeTape, packTapes, walkForward,
@@ -54,6 +55,68 @@ test("each continuation combines its own no-Long and inherited Base Long alterna
   assert.equal(results.processedStages?.lanes?.length, 8);
   assert.ok(results.processedStages?.lanes?.every(lane => lane.validation.qualified && lane.real.qualified && lane.exec?.qualified));
   assert.throws(() => processedLanes({ ...policy, baseBlock: undefined }), /Base Long/);
+});
+
+test("every parent receives the complete independent window grid at each next stage", () => {
+  const positive = { long: 2, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const negative = { ...positive, minimalPolarity: "negative" } as const;
+  const choices = [positive, negative];
+  const policy: ProcessedReplayPolicy = {
+    validationN: 4, realN: 4, execN: 4,
+    stageBlocks: { validation: choices, real: choices, exec: choices },
+  };
+  const lanes = processedLanes(policy);
+  assert.equal(lanes.length, 8);
+  assert.equal(new Set(lanes.map(lane => lane.id)).size, 8);
+  assert.deepEqual(processedLanes(frozenProcessedPolicy(policy)), lanes);
+  const future = Array.from({ length: 80 }, (_, i) => i % 5 === 2 ? -.01 : .02);
+  const combined = fixture(future, { processedStages: policy }).result;
+  for (const lane of lanes) {
+    const reference = fixture(future, { processedStages: lane.policy }).result.processedStages!.sets[0];
+    const actual = combined.processedStages!.sets.find(set => JSON.parse(set.identity.lane).at(-1) === lane.id)!;
+    assert.ok(actual);
+    assert.deepEqual(actual.stages, reference.stages);
+    assert.deepEqual(actual.evaluations, reference.evaluations);
+    for (let i = 1; i < actual.lineage!.length; i++)
+      assert.equal(actual.lineage![i].parentSetId, actual.lineage![i - 1].setId);
+  }
+  assert.throws(() => processedLanes({ ...policy, stageBlocks: { real: [positive, positive] } }), /duplicate/);
+  assert.throws(() => processedLanes({ ...policy, execN: undefined, stageBlocks: { exec: choices } }), /Exec/);
+});
+
+test("a blocked Active signal cannot starve a slower sibling's modeled predecessor", () => {
+  const f = fixture(Array(30).fill(.02));
+  const signal = "sig-ema-cross-s@m1", signalId = configId("follow", signal, protect);
+  const history = Array.from({ length: 160 }, (_, i) => trade(.02, T - 11 * H + i * 2 * M, 1, symbols[0], signalId));
+  const future = Array.from({ length: 30 }, (_, i) => trade(.02, T + (2 * i + 1) * M, 1, symbols[0], signalId));
+  const tape = makeTape(signalId, "follow", signal, protect, "normal", symbols, [...history, ...future], [], []);
+  const slow = { id: "slow", validationN: 5, realN: 5, execN: 5 };
+  const fast = { id: "fast", validationN: 1, realN: 1, execN: 1 };
+  const options = { ...f.options, basePassed: new Set([`follow|${signal}`]),
+    basePassedRanges: { [`follow|${signal}`]: ["mn"] }, signalBasePassed: new Set([`follow|${signal}`]),
+    signalActive: new Set([sigActiveKey("follow", signal, symbols[0], 1, "normal", signalId)]),
+    coord: { ...f.options.coord!, enabled: true, confirm: true, conflict: false, cooldown: "off" as const, hourLock: 0 } };
+  const replay = (lanes: typeof slow[]) => walkForward(f.universe, [tape], { ...options,
+    processedStages: { validationN: 1, realN: 1, execN: 1, lanes } });
+  const alone = replay([slow]), both = replay([fast, slow]);
+  const own = (r: WalkForwardResult) => r.processedStages!.sets.find(s => JSON.parse(s.identity.lane).at(-1) === "slow")!;
+  assert.ok(own(alone).stages.validated.closedOrders > 0, JSON.stringify(alone.skips));
+  assert.deepEqual(own(both).stages, own(alone).stages);
+  assert.equal(both.trades.length, 0, "confirmation still blocks funded Signal orders");
+});
+
+test("a funded sibling does not change the slower lane's own overlapping paper cap", () => {
+  const f = fixture(Array(24).fill(.02));
+  const history = Array.from({ length: 160 }, (_, i) => trade(.02, T - 11 * H + i * 2 * M));
+  const rows = f.future.map((row, i) => i === 3 ? { ...row, exitT: T + 15 * M } : row);
+  const tape = makeTape(id, "follow", ind, protect, "normal", symbols,
+    [...history, ...rows].sort((a, b) => a.exitT - b.exitT), [], []);
+  const slow = { id: "slow", validationN: 5, realN: 5, execN: 5 };
+  const fast = { id: "fast", validationN: 1, realN: 1, execN: 1 };
+  const replay = (lanes: typeof slow[]) => walkForward(f.universe, [tape], { ...f.options,
+    processedStages: { validationN: 1, realN: 1, execN: 1, lanes } });
+  const own = (r: WalkForwardResult) => r.processedStages!.sets.find(s => JSON.parse(s.identity.lane).at(-1) === "slow")!;
+  assert.deepEqual(own(replay([fast, slow])).stages, own(replay([slow])).stages);
 });
 
 test("every named signed lane produces only its own immediate predecessor sets", () => {
