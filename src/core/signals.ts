@@ -188,7 +188,8 @@ export const SIGNAL_RATE_MIN_DAYS = 0.25;
  * Sources (signal pairs) the filters remove before any of their configs is computed:
  *  - too few signals: no symbol reaches `minPerDay` entries a day (closes of the Base run are the count, an upper
  *    bound of what a single position slot can take);
- *  - losing: at least `minTrades` closes on some symbol, pooled net not positive and pooled PF below 1.
+ *  - losing: every measured protection config loses after costs. A qualifying
+ *    sibling can continue through its own exact Base gate.
  * A source without a Base run, or with a history too short to judge, is kept: no evidence is not a veto.
  * Coordinators (composites of several sources) are not sources and are never filtered here.
  */
@@ -206,6 +207,7 @@ export function signalSourcesToDrop<
   historyDays: (run: R) => number,
 ): Set<string> {
   const drop = new Set<string>();
+  const keep = new Set<string>();
   const minPerDay = sig.minPerDay ?? 0;
   const dropLosing = sig.dropLosing === true;
   if (!(minPerDay > 0) && !dropLosing) return drop;
@@ -216,7 +218,6 @@ export function signalSourcesToDrop<
     const days = historyDays(r);
     const by = (typeof r.bySym === "string" ? JSON.parse(r.bySym) : r.bySym) as Record<string, { n: number; dayN?: number[] }> | undefined;
     const stats = Object.values(by ?? {});
-    const counts = stats.map((x) => x.n);
     // the rate is the mean over the last `rateDays` days (daily counts when the run carries them, else the whole history)
     const window = Math.max(1, Math.min(Math.round(sig.rateDays ?? 7), 14, Math.ceil(days)));
     const rateOf = (x: { n: number; dayN?: number[] }) =>
@@ -225,10 +226,15 @@ export function signalSourcesToDrop<
       drop.add(pair);
       continue;
     }
-    if (dropLosing && r.full && counts.some((n) => n >= sig.minTrades) && r.full.n >= sig.minTrades &&
-        Number.isFinite(r.full.net) && r.full.net <= 0 && Number.isFinite(r.full.pf) && r.full.pf < 1)
-      drop.add(pair);
+    if (dropLosing && r.full && stats.some(x => x.n >= sig.minTrades) && r.full.n >= sig.minTrades &&
+        Number.isFinite(r.full.net) && Number.isFinite(r.full.pf)) {
+      if (r.full.net <= 0 && r.full.pf < 1) drop.add(pair);
+      else keep.add(pair);
+    } else {
+      keep.add(pair);
+    }
   }
+  for (const pair of keep) drop.delete(pair);
   return drop;
 }
 

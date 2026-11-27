@@ -302,6 +302,17 @@ describe("signal confirmation judges engine candidates", () => {
     assert.equal(r2.skips.confirm ?? 0, 0, "never under the engine's name");
   });
 
+  it("a Signal's own modeled predecessor can settle while engine confirmation still gates execution", () => {
+    const tape = sigTape(IN_RUN);
+    const result = walkForward(u, [tape], {
+      ...base, processedStages: { validationN: 1, realN: 1, execN: 1 },
+      signalBasePassed: new Set([`${tape.bot}|${tape.ind}`]),
+    });
+    assert.equal(result.trades.length, 0);
+    assert.ok(result.processedStages?.sets.some(set => set.stages.postBase.closedOrders === 1),
+      JSON.stringify({ skips: result.skips, stages: result.processedStages?.validation }));
+  });
+
   it("a signal family's run: the engine candidates confirm its signals, and only the family executes", () => {
     const held = engTape("macd-cross@m15", SYM, IN_RUN - 5 * 60_000);
     const s = sigTape(IN_RUN);

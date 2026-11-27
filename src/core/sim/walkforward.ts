@@ -8731,9 +8731,12 @@ export function* walkForwardGen(
         const bookLosing =
           (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
           (hourNet.get(hourKey - 1) ?? 0) < 0;
-        const coordRaw = coordBlock(o.coord, tr, ownHours, open.items, engineOpen,
+        const coordination = coordBlock(o.coord, tr, ownHours, open.items, engineOpen,
           processed ? (warmup ? warmupPosition : historical
             ? (position: Trade) => historicalActive.has(position) : activePosition) : undefined);
+        // A qualifying Signal needs its own modeled predecessor evidence.
+        // Its Active order still needs the configured engine confirmation.
+        const coordRaw = warmup && coordination === "confirm" ? null : coordination;
         const coordWhy =
           (hedging
             ? bookLosing

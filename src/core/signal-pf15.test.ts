@@ -30,7 +30,7 @@ function own(cfg: string, sym: string, side: 1 | -1, pf: number, count = 75, end
 }
 after(() => closePool());
 
-describe("Signals PF 1.5, own Strategy Base and independent TP/SL", () => {
+describe("Signals PF 1.55, own Strategy Base and independent TP/SL", () => {
   it("Last-4 admits simultaneous independent configs and reopens a closed config while sibling orders remain held", () => {
     const symbols = Array.from({ length: 12 }, (_, i) => `S${i}-USDT`);
     const tapes = ["s", "m"].flatMap(range => [1, 5, 15, 30].flatMap(tf => ["normal", "trailing", "trailing-only"].flatMap(kind =>
@@ -67,19 +67,19 @@ describe("Signals PF 1.5, own Strategy Base and independent TP/SL", () => {
   });
   it("retains stricter floors from history through native admission and every ranking mode", () => {
     for (const ind of ["sig-ema-cross-s@m1", "sig-ema-cross-m@m30", "sig-coord-v2-test@m15"]) {
-      assert.equal(minPfOf({ minPf: 1.05 }, undefined, ind), 1.5);
+      assert.equal(minPfOf({ minPf: 1.05 }, undefined, ind), 1.55);
       assert.equal(minPfOf({ minPf: 1.8 }, undefined, ind), 1.8);
-      assert.equal(minPfOf({ minPf: 1.05, rangeMinPf: { short: 1.9 } }, "sh", ind), 1.5, "a borrowed protection tag cannot replace the Signals range floor");
+      assert.equal(minPfOf({ minPf: 1.05, rangeMinPf: { short: 1.9 } }, "sh", ind), 1.55, "a borrowed protection tag cannot replace the Signals range floor");
       assert.equal(minPfOf({ minPf: 1.9, rangeMinPf: { short: 1.1 } }, "sh", ind), 1.9, "an explicit global floor still applies");
-      assert.equal(liveMinPfOf({ gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.05 }, live: { ...DEFAULT_SETTINGS.live, liveMinPf: 1.1 } }, undefined, ind), 1.5);
+      assert.equal(liveMinPfOf({ gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.05 }, live: { ...DEFAULT_SETTINGS.live, liveMinPf: 1.1 } }, undefined, ind), 1.55);
     }
     assert.equal(minPfOf({ minPf: 1.05, rangeMinPf: { short: 1.9 } }, "sh", "ema-cross"), 1.9, "ordinary strategies retain their own range floor");
-    assert.equal(signalHistValidationOf(0.002, { ...DEFAULT_SETTINGS.gates, minPf: 1.05 }).minPf, 1.5);
+    assert.equal(signalHistValidationOf(0.002, { ...DEFAULT_SETTINGS.gates, minPf: 1.05 }).minPf, 1.55);
     for (const rank of ["net", "drawdown", "lowdd"] as const) {
       const s = signalSettings({ rank, minBlockShare: 0, minTrades: 3 });
       const row = (pf: number) => ({ bot: "follow", ind: "sig-ema-cross-s@m15", kind: "normal", cfg: "own", bySym: { A: { n: 75, pf, net: 1, dd: 0.1, recentN: 25, recentNet: 1 } } });
-      assert.equal(activeSignals([row(1.49)], s).size, 0);
-      assert.equal(activeSignals([row(1.5)], s).size, 2);
+      assert.equal(activeSignals([row(1.54)], s).size, 0);
+      assert.equal(activeSignals([row(1.55)], s).size, 2);
     }
   });
   it("requires the validated Signal config in every selector", () => {
@@ -137,7 +137,7 @@ describe("Signals PF 1.5, own Strategy Base and independent TP/SL", () => {
     const counter = new BaseConfigCounter({ gates: options.gates, signalLastN: options.signalValidLastN, cost: 0.002, cutT: NOW, fromT: NOW - 336 * H });
     counter.record("follow", ind, p, "normal", [...own(cfg, "A", 1, 1.8), ...own(cfg, "B", 1, 1.4)]);
     counter.record("follow", ind, p, "normal", own(cfg, "B", 1, 1.4));
-    const row = counter.rows()[0]; assert.equal(row.minPf, 1.6); assert.equal(row.floorPf, 1.5); assert.equal(row.passed, 1); assert.equal(row.evaluated, 2);
+    const row = counter.rows()[0]; assert.equal(row.minPf, 1.6); assert.equal(row.floorPf, 1.55); assert.equal(row.passed, 1); assert.equal(row.evaluated, 2);
   });
   it("admits every qualified independent set on twelve symbols, three sources, four protections and all Signal lanes/types", () => {
     const symbols = Array.from({length:12}, (_,i) => `S${i}-USDT`);
