@@ -52,7 +52,7 @@ import {
   type SettingsPatch,
 } from "../config.ts";
 import { checkLowRangeComplete, checkRangeReplacementsComplete, checkSettings } from "../settings-check.ts";
-import { BoundedHistory, HistoryStorageError, historyOf, withHistoryMetadata, HISTORY_CACHE_BYTES, transferHistoriesGen, type HistoryTransfer } from "./history-store.server.ts";
+import { BoundedHistory, HistoryStorageError, historyMemoryBytes, historyOf, withHistoryMetadata, HISTORY_CACHE_BYTES, transferHistoriesGen, type HistoryTransfer } from "./history-store.server.ts";
 import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "../model-cost.ts";
 import { evaluationHistorySettings } from "../market/history-requirements.ts";
 import { baseLastNForRange } from "../pipeline/base-lastn.ts";
@@ -4362,7 +4362,12 @@ export class CoreRuntime {
     const controller = new AbortController();
     this.computeAbort = controller;
     const owner = {};
-    const history = new BoundedHistory();
+    // The offline grid revisits many tapes per candle. Keep more of that working set resident when
+    // the host has room. Reserve the configured soft floor and most of the remaining RAM for other work.
+    const replayBudgetMb = this.replay && !this.conn && this.wf.processedStages?.windowGrid &&
+      process.env.CTS_CORE_HISTORY_MEMORY_MB === undefined
+      ? Math.min(768, Math.floor((memInfo().availMb - memSoftMb()) / 4)) : 0;
+    const history = new BoundedHistory(Math.max(historyMemoryBytes(), replayBudgetMb * 1048576));
     const publication = { done: false };
     try {
       await this.computeWithHistory(gen, history, publication, controller.signal, owner);
