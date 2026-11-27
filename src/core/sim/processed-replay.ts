@@ -65,7 +65,7 @@ export function defaultProcessedWindowGrid(): ProcessedWindowGrid {
     longs.flatMap(long => shorts.flatMap(short => MINIMAL_COUNTS.flatMap(minimal =>
       signs.flatMap(shortPolarity => signs.map(minimalPolarity => ({ long, short, minimal, shortPolarity, minimalPolarity }))))));
   return {
-    base: choices([10, 20, 30, 40, 50], short),
+    base: choices([10, 20, 30, 40, 50, 60, 70, 80, 90, 100], short),
     validation: choices([0], short),
     real: choices([0], extended),
     exec: choices([0], extended),

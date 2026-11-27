@@ -649,6 +649,22 @@ test("Main, Real and Exec inherit only their own Base Long and keep independent 
   }
 });
 
+test("inherited Long 100 waits for its own closes through Exec", () => {
+  const short = { long: 0, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const windowGrid = { base: [50, 100].map(long => ({ ...short, long })), validation: [short], real: [short], exec: [short] };
+  const policy = { validationN: 3, realN: 4, execN: 5, baseScope: "context", reportDetail: "summary",
+    autoPf: { mode: "independent", ratio: 4 }, windowGrid, inheritBaseLong: true } as const;
+  const run = (count: number) => fixture(Array(count).fill(.02), { processedStages: policy })
+    .result.processedStageSummary!.windowGrid!.windows!;
+  const early = run(86);
+  assert.equal(early.base!.find(row => row.block.long === 100)!.qualified, 1);
+  assert.equal(early.validation!.find(row => row.block.long === 50)!.qualified, 1);
+  assert.equal(early.validation!.find(row => row.block.long === 100)!.qualified, 0);
+  const mature = run(340);
+  for (const stage of ["validation", "real", "exec"] as const)
+    assert.ok(mature[stage]!.find(row => row.block.long === 100)!.qualified > 0, stage);
+});
+
 test("an increased Exec PF floor leaves the admitted Real parent and earlier histories intact", () => {
   const block = { long: 0, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
   const grid = { base: [{ ...block, long: 2 }], validation: [block], real: [block], exec: [block] };

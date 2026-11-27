@@ -32,7 +32,7 @@ test('a normal runtime refuses offline warmup before changing or persisting its 
   } finally { runtime.dispose(); db.db.close(); }
 });
 
-test('automatic Last-N expands the older signed stage lengths and freezes its concrete policy', () => {
+test('automatic Last-N extends Long through 100 and freezes its signed stage policy', () => {
   const input = { validationN: 6, realN: 4, windowGrid: 'auto', autoPf: { mode: 'independent', ratio: 4 } };
   const wf = sanitizeWf({ processedStages: input as never });
   const policy = wf.processedStages!;
@@ -40,14 +40,14 @@ test('automatic Last-N expands the older signed stage lengths and freezes its co
   assert.equal(policy.rollingBase, true);
   assert.equal(policy.inheritBaseLong, true);
   assert.deepEqual(processedGridChoices(policy.windowGrid!, policy.inheritBaseLong),
-    { base: 400, validation: 160, real: 320, exec: 320 });
+    { base: 800, validation: 160, real: 320, exec: 320 });
   assert.equal(policy.execN, 4);
   assert.deepEqual(policy.autoPf, input.autoPf);
   const defaults = { validationN: 6, realN: 4, windowGrid: 'auto' };
   assert.deepEqual(sanitizeWf({ processedStages: defaults as never }).processedStages!.autoPf, input.autoPf);
   assert.equal(sanitizeWf({ processedStages: { ...defaults, autoPf: false } as never }).processedStages!.autoPf, undefined);
   const expected = {
-    base: { longs: [10, 20, 30, 40, 50], shorts: [4, 8, 12, 16] },
+    base: { longs: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100], shorts: [4, 8, 12, 16] },
     validation: { longs: [0], shorts: [4, 8, 12, 16] },
     real: { longs: [0], shorts: [4, 8, 12, 16, 20, 24, 28, 30] },
     exec: { longs: [0], shorts: [4, 8, 12, 16, 20, 24, 28, 30] },
