@@ -79,13 +79,19 @@ describe("Low-Range Short integration", () => {
   });
 
   it("builds exactly the same cost-aware Short cells for Base and tapes on every configured step and ratio", () => {
-    for (const trailingOnly of [false, true]) {
-      const g = { ...DEFAULT_SETTINGS.grid, lowRange: { ...legacy, enabled: true }, trailingOnly };
+    const presets = [
+      { fixedSlBands: undefined, counts: [491, 895] },
+      { fixedSlBands: {}, counts: [548, 816] },
+      { fixedSlBands: { short: [.4], long: [] }, counts: [34, 48] },
+    ];
+    for (const { fixedSlBands, counts } of presets) for (const trailingOnly of [false, true]) {
+      const g = { ...DEFAULT_SETTINGS.grid, lowRange: { ...legacy, enabled: true }, fixedSlBands, trailingOnly };
       const base = completeBaseRangeProtects(g, cost).filter((p) => p.lowRangeOnly);
       const exec = protectGrid(REF_TF, g, cost).filter((p) => p.lowRangeOnly);
       assert.deepEqual(base.map(protectCellKey).sort(), exec.map(protectCellKey).sort());
       assert.ok(gridVariants(g) >= protectGrid(REF_TF, g).length, "ordinary grid budget is an upper bound before floor deduplication");
-      assert.equal(base.length, trailingOnly ? 895 : 491, "distinct Low-Range cells after stop/trailing floors");
+      assert.equal(base.length, counts[Number(trailingOnly)], "distinct Low-Range cells after stop/trailing floors");
+      assert.equal(new Set(base.map(protectCellKey)).size, base.length);
       for (const p of base) {
         assert.equal(p.tag, "sh");
         assert.ok(p.sl + 1e-12 >= cost + 0.001);

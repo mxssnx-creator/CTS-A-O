@@ -756,6 +756,13 @@ export interface ComboRun {
   ruleTps?: Array<Record<string, number[]>>;
 }
 
+/** Strategy range stored in a Base cell key, including keys saved before fixed stop bands. */
+export function protectCellRange(key: string): string {
+  const start = key.startsWith("sbshort|") ? 8 : key.startsWith("sblong|") ? 7 : 0;
+  const end = key.indexOf("|", start);
+  return key.slice(start, end < 0 ? key.length : end);
+}
+
 /** The effective protection policy proved by Base; preserve legacy keys for the default policy. */
 export const protectCellKey = (p: Pick<Protect, "stopBand" | "tp" | "sl" | "trail" | "hold" | "tag" | "maxHoldMin" | "trailOnly" | "trailFixed" | "trailStep" | "trailFree" | "trailMax" | "riskCaps" | "priceDistance">) =>
   `${p.stopBand ? `sb${p.stopBand}|` : ""}${p.tag ?? ""}|${p.tp}|${p.sl}|${p.trail}|${p.hold}${p.maxHoldMin !== undefined ? `|hm${p.maxHoldMin}` : ""}` +
@@ -1969,7 +1976,7 @@ export function rangeBaseStats(
       continue;
     }
     // Every range proof must name the lane cell actually simulated, including its converted hold.
-    if (cellsOut && (k || p.priceDistance) && pass && pass(k, cand)) {
+    if (cellsOut && (k || p.stopBand || p.priceDistance) && pass && pass(k, cand)) {
       const lane = laneProtect(p, ind);
       // The executable tape caps no-TP protection after lane scaling; publish that same effective cell.
       cellsOut.push(protectCellKey(capTrailingOnlyProtect(lane)));

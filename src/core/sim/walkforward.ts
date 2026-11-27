@@ -70,6 +70,7 @@ import {
   protectKind,
   laneProtect,
   protectCellKey,
+  protectCellRange,
   baseSetsGates,
   passesBase,
   REF_TF,
@@ -2430,7 +2431,7 @@ export function* buildTapesGen(
     // grid.baseCells: the Base-passed cells of this pair, and the ranges they cover
     const cellKeys = floors?.pairCells?.[pairKey];
     const cellSet = cellKeys ? new Set(cellKeys) : null;
-    const cellTags = cellKeys ? new Set(cellKeys.map((k) => k.slice(0, k.indexOf("|")))) : null;
+    const cellTags = cellKeys ? new Set(cellKeys.map(protectCellRange)) : null;
     const noTpCells = floors?.pairTrailingOnlyCells ? new Set(floors.pairTrailingOnlyCells[pairKey] ?? []) : null;
     const microInd = isMicroInd(laneOf(c.ind).base);
     const own = floors?.pairProtects?.[`${c.bot}|${c.ind}`];
@@ -2520,7 +2521,7 @@ export function* buildTapesGen(
                   : !exitConfig && !isSignalInd(c.ind) && p0.trailOnly && !!noTpCells &&
                     !noTpCells.has(protectCellKey(p))
                     ? "baseCell"
-                  : !exitConfig && p0.priceDistance && !p0.trailOnly && !!floors?.pairTags && !cellSet?.has(protectCellKey(p))
+                  : !exitConfig && (p0.priceDistance || p0.stopBand) && !(p0.trailOnly && !!noTpCells) && !!floors?.pairTags && !cellSet?.has(protectCellKey(p))
                     ? "baseCell"
                   : !exitConfig && !!p0.tag && !!cellSet && !(p0.trailOnly && !!noTpCells) &&
                     (isLowRangeInd(c.ind) || cellTags!.has(p0.tag)) &&
@@ -3170,7 +3171,7 @@ export function tapeExecutable(
   if (tp.protect) {
     const base = laneOf(tp.ind).base, tag = tp.kind === "exit" ? "exit" : tp.protect.tag;
     if (!microIndFits(false, tag, isMicroInd(base), isMicroFamilyInd(base))) return false;
-    if (isLowRangeInd(base) && tag !== "lr") return false;
+    if (isLowRangeInd(base) && tag !== "lr" && !(tag === "sh" && tp.protect.lowRangeOnly === true)) return false;
   }
   const tg = effectiveStrategyToggles(tp, o);
   // A trailing Exit, DCA or hybrid Axis must also respect the master. Never silently change its qualified economics.
@@ -5403,7 +5404,7 @@ export interface PassedCells {
 export function passedCellsOf(pairCells: Readonly<Record<string, readonly string[]>>): Record<string, PassedCells> {
   const out: Record<string, PassedCells> = {};
   for (const [pair, ks] of Object.entries(pairCells))
-    out[pair] = { tags: new Set(ks.map((k) => k.slice(0, k.indexOf("|")))), keys: new Set(ks) };
+    out[pair] = { tags: new Set(ks.map(protectCellRange)), keys: new Set(ks) };
   return out;
 }
 /** Whether a tape's cell is one its pair's Base passed (true without cells for the pair / its range: the pair level decides). */
@@ -5417,7 +5418,7 @@ export function cellAllowed(
   if (tp.protect.trailOnly && !isSignalInd(tp.ind) && o.basePassedTrailingOnlyCells)
     return o.basePassedTrailingOnlyCells[pair]?.keys.has(protectCellKey(tp.protect)) ?? false;
   const c = o.basePassedCells?.[pair];
-  if (tp.protect.priceDistance) return c?.keys.has(protectCellKey(tp.protect)) ?? false;
+  if (tp.protect.priceDistance || tp.protect.stopBand) return c?.keys.has(protectCellKey(tp.protect)) ?? false;
   const tag = tp.protect.tag;
   if (!c) return !o.basePassedCells || !isLowRangeInd(tp.ind);
   if (!tag || !c.tags.has(tag)) return !isLowRangeInd(tp.ind);
