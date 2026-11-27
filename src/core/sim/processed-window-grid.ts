@@ -152,7 +152,7 @@ export class ProcessedWindowGridReplay {
       type HistoryIndex = Map<readonly ProcessedHistoryRow[], { view: ProcessedWindowIndex; scans: StageScan[] }>;
       const indexes = new Map<number, HistoryIndex>();
       const decide = (depth: number, parent: Group, path: ProcessedVerdict[], multiplicity: number) => {
-        if (!parent.history.length) return undefined;
+        if (parent.history.length < levels[depth][0].size) return undefined;
         const floor = floors[depth];
         let byHistory = indexes.get(floor);
         if (!byHistory) indexes.set(floor, byHistory = new Map());
@@ -358,13 +358,21 @@ export class ProcessedWindowGridReplay {
             const mask = group.mask & eligible;
             if (!mask || !group.history.length) continue;
             const represented = multiplicity * (mask === group.mask ? group.count : popcount(mask));
+            const nextLevel = levels[depth + 1];
+            if (group.history.length < nextLevel[0].size) {
+              const safeMagnitude = Number.MAX_VALUE / (2 * group.history.length);
+              if (group.history.every(row => row.unitReturn !== null && Math.abs(row.unitReturn) <= safeMagnitude)) {
+                count(gates[depth], insufficient, nextLevel[0].size, () => null, represented * nextLevel.length);
+                continue;
+              }
+            }
             const floor = Math.max(minPf, this.policy.stageMinPf?.[stages[depth + 1]] ?? 0);
             const view = new ProcessedWindowIndex(group.history, at, this.capacity, floor, this.policy.autoPf, this.negative);
             let pass = 0n;
             let pricedOpposite = 0n;
             if (depth === 0)
               for (const child of group.children ?? []) if (child.history.length) pricedOpposite |= child.mask;
-            for (const window of levels[depth + 1]) {
+            for (const window of nextLevel) {
               let proof = view.evaluate(window.block, window.key);
               if (depth === 0 && proof.state === "qualified" && window.opposite && !(window.bit & pricedOpposite))
                 proof = { ...proof, state: "unknown", pf: null, unavailable: "opposite-main-source" };
