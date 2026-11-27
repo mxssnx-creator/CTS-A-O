@@ -261,7 +261,8 @@ export function processedWindowVerdict(history: readonly ProcessedHistoryRow[], 
     const aggregate = blockWindow(prefix,0,n,minPf);
     const pf = profitFactor(aggregate.gp,aggregate.gl);
     if (!Number.isFinite(pf)) return {...decision,state:"unknown",pf:null};
-    if (result.state === "failed" || aggregate.state !== "qualified") return {...decision,state:"failed",pf,blockedBy:"signed-block"};
+    if (result.state === "failed" || aggregate.state !== "qualified" || pf < minPf)
+      return {...decision,state:"failed",pf,blockedBy:"signed-block"};
     if (filter) {
       const loss = recentLoss();
       if (loss.state === "unknown" || loss.state === "insufficient") return {...decision,state:"unknown",pf:null};
@@ -426,7 +427,8 @@ export class ProcessedWindowIndex {
         !passes(block.minimal, block.short, block.shortPolarity === "negative") ||
         !passes(block.minimal + block.short, block.long, false) || !passes(0, n, false)) return false;
     const full = this.window(0, n);
-    if (!Number.isFinite(profitFactor(full.gp, full.gl))) return false;
+    const pf = profitFactor(full.gp, full.gl);
+    if (!Number.isFinite(pf) || pf < floor) return false;
     return !nearBoundary || this.evaluate(block, key).state === "qualified";
   }
 }

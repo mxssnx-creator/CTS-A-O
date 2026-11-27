@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DEFAULT_SETTINGS } from '../config.ts';
+import { processedGridChoices } from "../sim/processed-replay.ts";
 import { defaultWalkForward, walkForwardSteps } from '../sim/walkforward.ts';
 import { CoreRuntime, defaultProcessedWarmup, processedWarmupHours, sanitizeWf, signalDataHours, strategyDataHours } from './runtime.server.ts';
 import { CoreDb } from './db.server.ts';
@@ -37,6 +38,9 @@ test('automatic Last-N expands the older signed stage lengths and freezes its co
   const policy = wf.processedStages!;
   assert.equal(wf.causalBase, true);
   assert.equal(policy.rollingBase, true);
+  assert.equal(policy.inheritBaseLong, true);
+  assert.deepEqual(processedGridChoices(policy.windowGrid!, policy.inheritBaseLong),
+    { base: 400, validation: 160, real: 320, exec: 320 });
   assert.equal(policy.execN, 4);
   assert.deepEqual(policy.autoPf, input.autoPf);
   const expected = {
@@ -56,6 +60,12 @@ test('automatic Last-N expands the older signed stage lengths and freezes its co
   }
   assert.deepEqual(sanitizeWf(wf), wf);
   assert.throws(() => sanitizeWf({ ...wf, causalBase: false }), /requires causal replay/);
+  const stageMinPf = { validation: 1.25, real: 1.4, exec: 1.65 };
+  assert.deepEqual(sanitizeWf({ processedStages: { ...policy, stageMinPf } }).processedStages!.stageMinPf, stageMinPf);
+  assert.throws(() => sanitizeWf({ processedStages: { ...policy, stageMinPf: { exec: 1 } } }), /exceed one/);
+  assert.throws(() => sanitizeWf({ processedStages: { ...policy, windowGrid: {
+    ...policy.windowGrid!, exec: [policy.windowGrid!.base[0]],
+  } } }), /Short\/Last templates/);
 });
 
 test('a venue-capable runtime refuses rolling Base before changing its saved policy', () => {

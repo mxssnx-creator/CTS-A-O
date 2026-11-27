@@ -25,17 +25,25 @@ export interface ProcessedReplayPolicy extends Omit<ProcessedPolicy, "minPf" | "
   lanes?: readonly ProcessedLaneOptions[];
   /** Separate window choices for each stage, evaluated lazily under their immediate parent during replay. */
   windowGrid?: ProcessedWindowGrid;
+  /** Evaluate each later Short/Last template both alone and with the Long count from its own Base lane. */
+  inheritBaseLong?: true;
+  /** Optional stricter PF floors by stage in offline grid comparisons. */
+  stageMinPf?: Partial<Record<keyof ProcessedWindowGrid, number>>;
   /** Discover exact Base contexts continuously during an unconnected historical replay. */
   rollingBase?: true;
 }
 export type ProcessedWindowGrid = Record<"base" | "validation" | "real" | "exec", readonly BlockPolicy[]>;
-type SinglePolicy = Omit<ProcessedReplayPolicy, "lanes" | "windowGrid" | "rollingBase" | "reportDetail">;
+type SinglePolicy = Omit<ProcessedReplayPolicy, "lanes" | "windowGrid" | "inheritBaseLong" | "stageMinPf" | "rollingBase" | "reportDetail">;
 type ProcessedLaneOptions = Partial<Omit<SinglePolicy, "baseScope" | "autoBase">> & { id: string };
 
 export function ownedProcessedPolicy(policy: ProcessedReplayPolicy, windows?: PositionWindows | null): ProcessedReplayPolicy {
   if (policy.rollingBase !== undefined &&
       (policy.rollingBase !== true || (!policy.windowGrid && policy.baseScope !== "context")))
     throw new RangeError("rolling Base requires an exact context policy or a processed window grid");
+  if (policy.inheritBaseLong !== undefined && (policy.inheritBaseLong !== true || !policy.windowGrid))
+    throw new RangeError("inherited Long requires a processed window grid");
+  if (policy.stageMinPf !== undefined && !policy.windowGrid)
+    throw new RangeError("stage PF floors require a processed window grid");
   if (policy.windowGrid) return policy;
   const validation = policy.blocks?.validation ?? windows?.blocks?.main;
   const real = policy.blocks?.real ?? windows?.blocks?.real;
@@ -64,11 +72,22 @@ export function defaultProcessedWindowGrid(): ProcessedWindowGrid {
   };
 }
 
+export function processedGridChoices(grid: ProcessedWindowGrid, inheritBaseLong?: true): Record<keyof ProcessedWindowGrid, number> {
+  const descendants = inheritBaseLong ? 2 : 1;
+  return { base: grid.base.length, validation: descendants * grid.validation.length,
+    real: descendants * grid.real.length, exec: descendants * grid.exec.length };
+}
+
 export function checkedProcessedWindowGrid(policy: ProcessedReplayPolicy): ProcessedWindowGrid {
   const grid = policy.windowGrid;
   if (!grid || policy.lanes || policy.baseBlock || policy.blocks || policy.execN === undefined ||
       policy.reportDetail !== "summary" || policy.autoPf?.mode === "main")
     throw new RangeError("a window grid requires summary replay, four independent stages and separate Auto PF");
+  if (policy.stageMinPf !== undefined &&
+      (!policy.stageMinPf || typeof policy.stageMinPf !== "object" || Array.isArray(policy.stageMinPf) ||
+        Object.entries(policy.stageMinPf).some(([stage, floor]) =>
+          !["base", "validation", "real", "exec"].includes(stage) || !Number.isFinite(floor) || floor <= 1)))
+    throw new RangeError("stage PF floors must be finite and exceed one");
   for (const stage of ["base", "validation", "real", "exec"] as const) {
     const windows = grid[stage];
     if (!Array.isArray(windows) || !windows.length) throw new RangeError("processed window grid is empty at " + stage);
@@ -76,12 +95,15 @@ export function checkedProcessedWindowGrid(policy: ProcessedReplayPolicy): Proce
     for (const window of windows) {
       checkBlockPolicy(window);
       if (stage === "base" && window.long === 0) throw new RangeError("Base requires a positive Long window");
+      if (policy.inheritBaseLong && stage !== "base" && window.long !== 0)
+        throw new RangeError("inherited Long requires Short/Last templates without a fixed Long value");
       const key = blockPolicyKey(window);
       if (keys.has(key)) throw new RangeError("duplicate processed window at " + stage);
       keys.add(key);
     }
   }
-  if (!Number.isSafeInteger(grid.base.length * grid.validation.length * grid.real.length * grid.exec.length))
+  const choices = processedGridChoices(grid, policy.inheritBaseLong);
+  if (!Number.isSafeInteger(choices.base * choices.validation * choices.real * choices.exec))
     throw new RangeError("processed window grid has too many distinct paths to count accurately");
   return structuredClone(grid);
 }

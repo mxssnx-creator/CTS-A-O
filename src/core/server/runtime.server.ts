@@ -292,7 +292,7 @@ import {
 } from "../sim/walkforward.ts";
 import { NativeProcessedStageAdapter, type NativeProcessedSnapshot } from "./processed-stage-adapter.ts";
 import { blockPolicyKey, blockRequired } from "../../../shared/cts-lastn/blocks.ts";
-import { checkedProcessedPolicy, checkedProcessedWindowGrid, defaultProcessedWindowGrid, ownedProcessedPolicy, processedLanes, type ProcessedReplayPolicy } from "../sim/processed-replay.ts";
+import { checkedProcessedPolicy, checkedProcessedWindowGrid, defaultProcessedWindowGrid, ownedProcessedPolicy, processedGridChoices, processedLanes, type ProcessedReplayPolicy } from "../sim/processed-replay.ts";
 import { isOppositeMainWindow, type ProcessedStage } from "../sim/processed-set.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
@@ -6003,8 +6003,9 @@ export class CoreRuntime {
     const stagePolicies = wf.processedStages && processedLanes(ownedProcessedPolicy(wf.processedStages, positionPolicy));
     const stages = stagePolicies?.[0].policy;
     const windowGrid = wf.processedStages?.windowGrid;
-    const validationDetail = windowGrid
-      ? `Last-N windows · Base ${windowGrid.base.length} / Main ${windowGrid.validation.length} / Real ${windowGrid.real.length} / Exec ${windowGrid.exec.length}`
+    const choices = windowGrid && processedGridChoices(windowGrid, wf.processedStages?.inheritBaseLong);
+    const validationDetail = choices
+      ? `Last-N windows · Base ${choices.base} / Main ${choices.validation} / Real ${choices.real} / Exec ${choices.exec}`
       : stages
       ? stagePolicies.length > 1 ? `${stagePolicies.length} independent Last-N stage policies`
         : `predecessor closes Main ${stages.blocks?.validation ? blockRequired(stages.blocks.validation) : stages.validationN}` +
@@ -11494,7 +11495,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     if (raw.rollingBase !== undefined && raw.rollingBase !== true)
       throw new Error("rolling Base must be enabled explicitly");
     const data = { ...raw, validationN, realN, execN, ...(automatic && {
-      windowGrid: defaultProcessedWindowGrid(), reportDetail: "summary", rollingBase: true,
+      windowGrid: defaultProcessedWindowGrid(), inheritBaseLong: true, reportDetail: "summary", rollingBase: true,
     }) } as ProcessedReplayPolicy;
     ownedProcessedPolicy(data);
     if (data.rollingBase) {
@@ -11505,6 +11506,8 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     p.processedStages = { ...checkedProcessedPolicy(data), ...(data.reportDetail && { reportDetail: data.reportDetail }),
       ...(data.lanes && { lanes: structuredClone(data.lanes) }),
       ...(data.windowGrid && { windowGrid: checkedProcessedWindowGrid(data) }),
+      ...(data.inheritBaseLong && { inheritBaseLong: true }),
+      ...(data.stageMinPf && { stageMinPf: { ...data.stageMinPf } }),
       ...(data.rollingBase && { rollingBase: true }) };
   }
   if (p.processedWarmup === null || p.processedWarmup === false) p.processedWarmup = undefined;

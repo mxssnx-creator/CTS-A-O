@@ -4351,6 +4351,7 @@ function positionEvaluationInput(tp: ConfigTape, t: number) {
 export function processedBaseCheck(tp: ConfigTape, o: WalkForwardOptions, sym: string, side: number, at: number): ProcessedBaseCheck {
   let own: Uint32Array | undefined, end = 0, loaded = false;
   const verdicts = new Map<string, boolean>();
+  const studyFloor = o.processedStages?.stageMinPf?.base ?? 0;
 
   const available = () => {
     if (!loaded) {
@@ -4388,7 +4389,7 @@ export function processedBaseCheck(tp: ConfigTape, o: WalkForwardOptions, sym: s
     if (cached !== undefined) return cached;
     const capacity = n + (autoPf ? PROCESSED_AUTO_PF_SAMPLES : 0);
     const history = recentRows(capacity);
-    const minPf = Math.max(minPfForTape(tp, { ...o, gates: baseGates }),
+    const minPf = Math.max(studyFloor, minPfForTape(tp, { ...o, gates: baseGates }),
       minPfOf(gates, tag, tp.ind, protectStepPct(tp.protect), protectSlRatio(tp.protect)));
     const sampleN = Math.min(end, n);
     let passed = processedGateVerdict(history, capacity, { validationN: sampleN, realN: sampleN,
@@ -4419,7 +4420,7 @@ export function processedBaseCheck(tp: ConfigTape, o: WalkForwardOptions, sym: s
     const base = !configuredAuto && rules ? { ...o.gates, stepPf: { ...rules, mode: "manual" as const } } : o.gates;
     const gates = baseSetsGates(base);
     if (!gates.positionWindows) return block => check(block, configuredAuto, "context");
-    const minPf = Math.max(minPfForTape(tp, { ...o, gates: base }),
+    const minPf = Math.max(studyFloor, minPfForTape(tp, { ...o, gates: base }),
       minPfOf(gates, tag, tp.ind, protectStepPct(tp.protect), protectSlRatio(tp.protect)));
     const auto = rules?.enabled && (rules.mode ?? "auto") === "auto" ? configuredAuto : undefined;
     const history = recentRows(capacity);

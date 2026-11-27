@@ -1,5 +1,5 @@
 import { blockPolicyKey, blockRequired, type BlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
-import { checkedProcessedWindowGrid, count, countBlockedParent, coverage, finishCoverage, furthestProcessedDecision, type ProcessedBaseCheck,
+import { checkedProcessedWindowGrid, count, countBlockedParent, coverage, finishCoverage, furthestProcessedDecision, processedGridChoices, type ProcessedBaseCheck,
   type ProcessedGridWindowCoverage, type ProcessedReplayContext, type ProcessedReplayPolicy, type ProcessedReplaySummary, type ReplayContext,
   type ReplayEntry } from "./processed-replay.ts";
 import { appendProcessedHistory, isOppositeMainWindow, processedAdmission, PROCESSED_AUTO_PF_SAMPLES, processedWindowEconomics, ProcessedWindowIndex,
@@ -29,8 +29,12 @@ interface Accepted {
   mask: bigint;
   children?: Accepted[];
 }
+interface Branch {
+  levels: Window[][];
+  initial: Group[][];
+}
 interface EntryPlan {
-  accepted: Accepted[];
+  accepted: Array<{ branch: number; lanes: Accepted[] }>;
   best: ProcessedStageDecision;
   oppositeSourceMissing: number;
 }
@@ -39,7 +43,7 @@ interface StageScan {
   missing: number;
 }
 interface Context {
-  groups?: Group[];
+  groups?: Array<Group[] | undefined>;
   directT?: number;
   oppositeT?: number;
 }
@@ -68,8 +72,10 @@ function popcount(mask: bigint): number {
 export class ProcessedWindowGridReplay {
   readonly checksBase = true;
   readonly usesOppositeSource: boolean;
-  private readonly levels: Window[][];
-  private readonly initial: Group[][];
+  private readonly branches: Branch[];
+  private readonly choices;
+  private readonly baseMinimum: number;
+  private readonly baseMaximum: number;
   private readonly capacity: number;
   private readonly negative;
   private readonly contexts = new Map<string, Context>();
@@ -86,59 +92,80 @@ export class ProcessedWindowGridReplay {
   constructor(policy: ProcessedReplayPolicy) {
     this.policy = policy;
     const grid = checkedProcessedWindowGrid(policy);
+    this.choices = processedGridChoices(grid, policy.inheritBaseLong);
     this.negative = negativeLastN(policy.negativeFilter);
-    this.levels = stages.map(stage => grid[stage].map((block, i) => ({ block, key: blockPolicyKey(block),
-      size: blockRequired(block), bit: 1n << BigInt(i), opposite: stage === "validation" && isOppositeMainWindow(block),
-    })).sort((a, b) => a.size - b.size));
-    this.usesOppositeSource = this.levels[1].some(window => window.opposite);
-    this.initial = this.levels.map(level => [{ mask: (1n << BigInt(level.length)) - 1n, count: level.length, history: empty }]);
-    this.capacity = Math.max(...this.levels.flatMap(level => level.map(window => window.size)), ...this.negative?.windows ?? []) +
-      (policy.autoPf ? PROCESSED_AUTO_PF_SAMPLES : 0);
+    const baseLongs = policy.inheritBaseLong ? [...new Set(grid.base.map(window => window.long))] : [0];
+    this.branches = baseLongs.map(baseLong => {
+      const levels = stages.map(stage => {
+        const choices = !baseLong ? grid[stage] : stage === "base" ? grid.base.filter(window => window.long === baseLong)
+          : grid[stage].flatMap(window => [window, { ...window, long: baseLong }]);
+        return choices.map((block, i) => ({ block, key: blockPolicyKey(block),
+          size: blockRequired(block), bit: 1n << BigInt(i), opposite: stage === "validation" && isOppositeMainWindow(block),
+        })).sort((a, b) => a.size - b.size);
+      });
+      const initial = levels.map(level => [{ mask: (1n << BigInt(level.length)) - 1n, count: level.length, history: empty }]);
+      return { levels, initial };
+    });
+    this.baseMinimum = Math.min(...this.branches.map(branch => branch.levels[0][0].size));
+    this.baseMaximum = Math.max(...this.branches.map(branch => branch.levels[0].at(-1)!.size));
+    this.usesOppositeSource = this.branches[0].levels[1].some(window => window.opposite);
+    this.capacity = Math.max(...this.branches.flatMap(({ levels }) => levels.map(level => level.at(-1)!.size)),
+      ...this.negative?.windows ?? []) + (policy.autoPf ? PROCESSED_AUTO_PF_SAMPLES : 0);
   }
 
-  private baseMask(base?: ProcessedBaseCheck, onQualified?: (window: Window) => void): bigint {
-    if (!base) return 0n;
-    const auto = this.policy.autoBase === false ? undefined : this.policy.autoPf;
+  private baseMasks(base?: ProcessedBaseCheck, onQualified?: (window: Window) => void): Array<bigint | undefined> {
+    if (!base) return [];
     const available = base.available?.() ?? Infinity;
-    const windows = this.levels[0];
-    if (available < windows[0].size) return 0n;
-    const capacity = windows.at(-1)!.size + (auto ? PROCESSED_AUTO_PF_SAMPLES : 0);
+    if (available < this.baseMinimum) return [];
+    const auto = this.policy.autoBase === false ? undefined : this.policy.autoPf;
+    const capacity = this.baseMaximum + (auto ? PROCESSED_AUTO_PF_SAMPLES : 0);
     const check = base.prepare?.(capacity, auto);
-    let root = 0n;
-    for (const window of windows) {
-      if (window.size > available) break;
-      if (check ? check(window.block, window.key) : base(window.block, auto, "context")) {
-        root |= window.bit;
-        onQualified?.(window);
+    const roots: Array<bigint | undefined> = [];
+    for (const [branch, { levels }] of this.branches.entries()) {
+      let mask = 0n;
+      for (const window of levels[0]) {
+        if (window.size > available) break;
+        if (check ? check(window.block, window.key) : base(window.block, auto, "context")) {
+          mask |= window.bit;
+          onQualified?.(window);
+        }
       }
+      if (mask) roots[branch] = mask;
     }
-    return root;
+    return roots;
   }
 
   private plan(key: string, at: number, minPf: number, base: ProcessedBaseCheck | undefined,
     inverse: boolean, oppositeAvailable: boolean): EntryPlan | null {
     const existing = this.contexts.get(key)?.groups;
-    // An opposite order can only open a Main child. It cannot warm up a cold Base parent.
+    // An opposite order can only open a Main child under an existing Base branch.
     if (inverse && !existing) return null;
-    const root = this.baseMask(base);
-    let plan: EntryPlan | null = null;
-    if (root) {
-      const result: EntryPlan = { accepted: [], best: { stage: "postBase", validation: insufficient, real: null, exec: null },
-        oppositeSourceMissing: 0 };
-      let deepest = 0;
-      const indexes = new Map<readonly ProcessedHistoryRow[], { view: ProcessedWindowIndex; scans: StageScan[] }>();
+    const roots = this.baseMasks(base);
+    if (!roots.length) return null;
+    const result: EntryPlan = { accepted: [], best: { stage: "postBase", validation: insufficient, real: null, exec: null },
+      oppositeSourceMissing: 0 };
+    let deepest = 0;
+    const floors = stages.map(stage => Math.max(minPf, this.policy.stageMinPf?.[stage] ?? 0));
+    for (const [branch, root] of roots.entries()) {
+      if (!root || (inverse && !existing?.[branch])) continue;
+      const { levels, initial } = this.branches[branch];
+      type HistoryIndex = Map<readonly ProcessedHistoryRow[], { view: ProcessedWindowIndex; scans: StageScan[] }>;
+      const indexes = new Map<number, HistoryIndex>();
       const decide = (depth: number, parent: Group, path: ProcessedVerdict[], multiplicity: number) => {
         if (!parent.history.length) return undefined;
-        let indexed = indexes.get(parent.history);
+        const floor = floors[depth];
+        let byHistory = indexes.get(floor);
+        if (!byHistory) indexes.set(floor, byHistory = new Map());
+        let indexed = byHistory.get(parent.history);
         if (!indexed) {
-          indexed = { view: new ProcessedWindowIndex(parent.history, at, this.capacity, minPf, this.policy.autoPf, this.negative), scans: [] };
-          indexes.set(parent.history, indexed);
+          indexed = { view: new ProcessedWindowIndex(parent.history, at, this.capacity, floor, this.policy.autoPf, this.negative), scans: [] };
+          byHistory.set(parent.history, indexed);
         }
         const { view, scans } = indexed;
         let scan = scans[depth];
         if (!scan) {
           scan = { mask: 0n, missing: 0 };
-          for (const window of this.levels[depth]) {
+          for (const window of levels[depth]) {
             if (window.size > view.size) break;
             if (!view.qualifies(window.block, window.key)) continue;
             if (depth === 1 && window.opposite !== inverse) {
@@ -149,22 +176,22 @@ export class ProcessedWindowGridReplay {
         }
         result.oppositeSourceMissing += scan.missing * multiplicity;
         if (!scan.mask) return undefined;
-        if (depth === this.levels.length - 1) {
+        if (depth === levels.length - 1) {
           // Exec has no child to update. Only the qualifying receipt is needed for funding.
           if (depth > deepest) {
-            const sample = this.levels[depth].find(window => (window.bit & scan.mask) !== 0n)!;
+            const sample = levels[depth].find(window => (window.bit & scan.mask) !== 0n)!;
             deepest = depth;
             result.best = { stage: "active", validation: path[0], real: path[1], exec: view.evaluate(sample.block, sample.key) };
           }
           return undefined;
         }
         const children: Accepted[] = [];
-        for (const group of parent.children ?? this.initial[depth]) {
+        for (const group of parent.children ?? initial[depth]) {
           const mask = group.mask & scan.mask;
           if (!mask) continue;
-          const needReceipt = deepest < this.levels.length - 1;
+          const needReceipt = deepest < levels.length - 1;
           if (needReceipt) {
-            const sample = this.levels[depth].find(window => (window.bit & mask) !== 0n)!;
+            const sample = levels[depth].find(window => (window.bit & mask) !== 0n)!;
             path.push(view.evaluate(sample.block, sample.key));
           }
           if (depth > deepest) {
@@ -178,15 +205,16 @@ export class ProcessedWindowGridReplay {
         }
         return children;
       };
-      for (const group of existing ?? this.initial[0]) {
+      const lanes: Accepted[] = [];
+      for (const group of existing?.[branch] ?? initial[0]) {
         const mask = group.mask & root;
         if (!mask) continue;
         const children = decide(1, group, [], mask === group.mask ? group.count : popcount(mask));
-        if (!inverse || children?.length) result.accepted.push({ mask, children });
+        if (!inverse || children?.length) lanes.push({ mask, children });
       }
-      if (result.accepted.length) plan = result;
+      if (lanes.length) result.accepted.push({ branch, lanes });
     }
-    return plan;
+    return result.accepted.length ? result : null;
   }
 
   private prepare(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, at: number, minPf: number,
@@ -259,9 +287,9 @@ export class ProcessedWindowGridReplay {
       }
       return next;
     };
-    const apply = (groups: Group[] | undefined, accepted: Accepted[], depth: number, inverse: boolean): Group[] => {
+    const apply = (groups: Group[] | undefined, accepted: Accepted[], depth: number, inverse: boolean, initial: Group[][]): Group[] => {
       const next: Group[] = [];
-      for (const group of groups ?? this.initial[depth]) {
+      for (const group of groups ?? initial[depth]) {
         let remaining = group.mask;
         for (const lane of accepted) {
           const mask = remaining & lane.mask;
@@ -269,7 +297,7 @@ export class ProcessedWindowGridReplay {
           // The accepted Exec order is already in the funded replay ledger. No stage reads an Exec
           // history, so the final frontier never needs a second copy of those closes.
           const children = depth + 1 < ownedStage.length - 1 && lane.children
-            ? apply(group.children, lane.children, depth + 1, inverse) : group.children;
+            ? apply(group.children, lane.children, depth + 1, inverse, initial) : group.children;
           const history = depth === 0 && inverse ? group.history : append(group.history);
           next.push({ mask, count: mask === group.mask ? group.count : popcount(mask), history, children });
           remaining ^= mask;
@@ -281,68 +309,88 @@ export class ProcessedWindowGridReplay {
     };
     for (const { key, plan, inverse } of order.paths) {
       const context = this.contexts.get(key)!;
-      context.groups = apply(context.groups, plan.accepted, 0, inverse);
+      const groups = (context.groups ??= []);
+      for (const { branch, lanes } of plan.accepted)
+        groups[branch] = apply(groups[branch], lanes, 0, inverse, this.branches[branch].initial);
     }
   }
 
   *reportGen(at: number, contexts: () => Iterable<ReplayContext>): Generator<number, ProcessedReplaySummary> {
     if (at < this.clock) throw new Error("processed window grid report precedes its settlements");
     const gates = [coverage(), coverage(), coverage()];
+    const widths = stages.map(stage => this.choices[stage]);
     const byDepth = [1];
-    for (const level of this.levels) byDepth.push(byDepth.at(-1)! * level.length);
-    const byWindow = new Map<Window, ProcessedGridWindowCoverage>();
-    for (const [depth, level] of this.levels.entries())
-      for (const window of level) byWindow.set(window, {
-        block: { ...window.block }, contexts: 0, qualified: 0,
-        ...(depth > 0 && { passingGrossProfit: 0, passingGrossLoss: 0 }),
-      });
-    const countBaseWindow = (window: Window) => byWindow.get(window)!.qualified++;
+    for (const width of widths) byDepth.push(byDepth.at(-1)! * width);
+
+    // A Short/Last-only window can belong to several Base Long cohorts. A concrete Long
+    // window has only the matching Base parents, including in its reported denominator.
+    const byWindow = stages.map(() => new Map<string, ProcessedGridWindowCoverage>());
+    for (const { levels } of this.branches) {
+      let parents = 1;
+      for (const [depth, level] of levels.entries()) {
+        for (const window of level) {
+          let row = byWindow[depth].get(window.key);
+          if (!row) {
+            row = { block: { ...window.block }, contexts: 0, qualified: 0,
+              ...(depth > 0 && { passingGrossProfit: 0, passingGrossLoss: 0 }) };
+            byWindow[depth].set(window.key, row);
+          }
+          row.contexts += parents;
+        }
+        parents *= level.length;
+      }
+    }
+    const countBaseWindow = (window: Window) => byWindow[0].get(window.key)!.qualified++;
     let countContexts = 0, exactBaseContexts = 0, yieldedAt = performance.now();
     for (const { tp, symbol, side, minPf, baseAt } of contexts()) {
       countContexts++;
-      const rows = this.contexts.get(contextKey(tp, symbol, side, minPf));
-      const visit = (depth: number, groups: Group[] | undefined, multiplicity: number, eligible: bigint) => {
-        if (!groups || !eligible || depth >= gates.length) return;
-        for (const group of groups) {
-          const mask = group.mask & eligible;
-          if (!mask || !group.history.length) continue;
-          const represented = multiplicity * (mask === group.mask ? group.count : popcount(mask));
-          const view = new ProcessedWindowIndex(group.history, at, this.capacity, minPf, this.policy.autoPf, this.negative);
-          let pass = 0n;
-          let pricedOpposite = 0n;
-          if (depth === 0)
-            for (const child of group.children ?? []) if (child.history.length) pricedOpposite |= child.mask;
-          for (const window of this.levels[depth + 1]) {
-            let proof = view.evaluate(window.block, window.key);
-            if (depth === 0 && window.opposite && proof.state === "qualified" && !(window.bit & pricedOpposite))
-              proof = { ...proof, state: "unknown", pf: null, unavailable: "opposite-main-source" };
-            let economics = null;
-            if (proof.state === "qualified") {
-              pass |= window.bit;
-              economics = processedWindowEconomics(group.history, window.size, at);
-              const own = byWindow.get(window)!;
-              own.qualified += represented;
-              if (economics) {
-                own.passingGrossProfit! += represented * economics.gp;
-                own.passingGrossLoss! += represented * economics.gl;
-              }
-            }
-            count(gates[depth], proof, window.size, () => economics, represented);
-          }
-          visit(depth + 1, group.children, represented, pass);
-        }
-      };
       if (baseAt) exactBaseContexts++;
-      const eligible = baseAt ? this.baseMask(baseAt(), countBaseWindow) : this.initial[0][0].mask;
-      if (rows?.groups) {
-        if (baseAt) countBlockedParent(gates[0], (this.levels[0].length - popcount(eligible)) * this.levels[1].length);
-        visit(0, rows.groups, 1, eligible);
+      const roots = baseAt ? this.baseMasks(baseAt(), countBaseWindow) : undefined;
+      const rows = this.contexts.get(contextKey(tp, symbol, side, minPf))?.groups;
+      for (const [branch, groups] of rows?.entries() ?? []) {
+        if (!groups) continue;
+        const { levels, initial } = this.branches[branch];
+        const eligible = roots ? (roots[branch] ?? 0n) : initial[0][0].mask;
+        if (roots) countBlockedParent(gates[0], (levels[0].length - popcount(eligible)) * levels[1].length);
+        const visit = (depth: number, groups: Group[] | undefined, multiplicity: number, eligible: bigint) => {
+          if (!groups || !eligible || depth >= gates.length) return;
+          for (const group of groups) {
+            const mask = group.mask & eligible;
+            if (!mask || !group.history.length) continue;
+            const represented = multiplicity * (mask === group.mask ? group.count : popcount(mask));
+            const floor = Math.max(minPf, this.policy.stageMinPf?.[stages[depth + 1]] ?? 0);
+            const view = new ProcessedWindowIndex(group.history, at, this.capacity, floor, this.policy.autoPf, this.negative);
+            let pass = 0n;
+            let pricedOpposite = 0n;
+            if (depth === 0)
+              for (const child of group.children ?? []) if (child.history.length) pricedOpposite |= child.mask;
+            for (const window of levels[depth + 1]) {
+              let proof = view.evaluate(window.block, window.key);
+              if (depth === 0 && proof.state === "qualified" && window.opposite && !(window.bit & pricedOpposite))
+                proof = { ...proof, state: "unknown", pf: null, unavailable: "opposite-main-source" };
+              let economics = null;
+              if (proof.state === "qualified") {
+                pass |= window.bit;
+                economics = processedWindowEconomics(group.history, window.size, at);
+                const own = byWindow[depth + 1].get(window.key)!;
+                own.qualified += represented;
+                if (economics) {
+                  own.passingGrossProfit! += represented * economics.gp;
+                  own.passingGrossLoss! += represented * economics.gl;
+                }
+              }
+              count(gates[depth], proof, window.size, () => economics, represented);
+            }
+            visit(depth + 1, group.children, represented, pass);
+          }
+        };
+        visit(0, groups, 1, eligible);
       }
       if (countContexts % 32 === 0 && performance.now() - yieldedAt > 8) { yield -15; yieldedAt = performance.now(); }
     }
     for (let i = 0; i < gates.length; i++) {
       const row = gates[i], possible = countContexts * byDepth[i + 2];
-      const reachable = i === 0 ? possible : gates[i - 1].qualified * this.levels[i + 1].length;
+      const reachable = i === 0 ? possible : gates[i - 1].qualified * widths[i + 1];
       const missing = reachable - row.contexts;
       if (!Number.isSafeInteger(missing) || missing < 0) throw new RangeError("processed window grid coverage exceeds integer precision");
       row.contexts += missing;
@@ -353,20 +401,17 @@ export class ProcessedWindowGridReplay {
       countBlockedParent(row, blocked);
       finishCoverage(row);
     }
-    const windowsAt = (depth: number, contexts: number) => this.levels[depth].map(window => {
-      const row = byWindow.get(window)!;
-      return { ...row, contexts };
-    });
+    const windowsAt = (depth: number, contexts: number) =>
+      Array.from(byWindow[depth].values(), row => ({ ...row, contexts: row.contexts * contexts }));
     const windows = {
       ...(exactBaseContexts > 0 && { base: windowsAt(0, exactBaseContexts) }),
-      validation: windowsAt(1, countContexts * byDepth[1]),
-      real: windowsAt(2, countContexts * byDepth[2]),
-      exec: windowsAt(3, countContexts * byDepth[3]),
+      validation: windowsAt(1, countContexts),
+      real: windowsAt(2, countContexts),
+      exec: windowsAt(3, countContexts),
     };
     return { basis: "model", at, coverageScope: "visible-config-symbol-direction-window-path", seededFromCandidates: false,
       validation: gates[0], real: gates[1], exec: gates[2],
-      windowGrid: { choices: { base: this.levels[0].length, validation: this.levels[1].length,
-        real: this.levels[2].length, exec: this.levels[3].length }, oppositeSourceMissing: this.missing,
-          inverseEntries: this.inverseEntries, inverseExecEntries: this.inverseExecEntries, windows } };
+      windowGrid: { choices: { ...this.choices }, oppositeSourceMissing: this.missing,
+        inverseEntries: this.inverseEntries, inverseExecEntries: this.inverseExecEntries, windows } };
   }
 }

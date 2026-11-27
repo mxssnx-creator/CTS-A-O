@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import type { OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
 import { ProcessedSetBook } from "./processed-set.ts";
-import { ownedProcessedPolicy, processedLanes, ProcessedReplay } from "./processed-replay.ts";
+import { ownedProcessedPolicy, processedLanes, ProcessedReplay, type ProcessedGridWindowCoverage } from "./processed-replay.ts";
 import { defaultWalkForward, execDecision, makeTape, packTapes, walkForward,
   type WalkForwardOptions, type WalkForwardResult } from "./walkforward.ts";
 import { retireOwnedIdleWorkers, runOnWorkers } from "../server/pool.server.ts";
@@ -522,7 +522,7 @@ test("a window grid preserves the Cartesian owned path results without copying e
     assert.equal(a[stage]!.contexts * downstream, b[stage]!.contexts);
     assert.equal(a[stage]!.qualified * downstream, b[stage]!.qualified);
     assert.equal(a[stage]!.full * downstream, b[stage]!.full);
-    const windows = a.windowGrid!.windows![stage]!;
+    const windows: ProcessedGridWindowCoverage[] = a.windowGrid!.windows![stage]!;
     assert.equal(windows.reduce((sum, row) => sum + row.contexts, 0), a[stage]!.contexts);
     assert.equal(windows.reduce((sum, row) => sum + row.qualified, 0), a[stage]!.qualified);
   }
@@ -608,4 +608,48 @@ test("cutoff coverage drops a stale Base parent while retaining its earlier mode
     assert.equal(result.processedStageSummary!.validation.qualified, 0);
     assert.ok(result.processedStageSummary!.validation.parentBlocked);
   }
+});
+
+test("Main, Real and Exec inherit only their own Base Long and keep independent Short/Last siblings", () => {
+  const short = { long: 0, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const base = [1, 3].map(long => ({ ...short, long }));
+  const windowGrid = { base, validation: [short], real: [short], exec: [short] };
+  const common = { validationN: 3, realN: 4, execN: 5, baseScope: "context", reportDetail: "summary" } as const;
+  const lanes = base.flatMap(baseBlock => {
+    const variants = [short, { ...short, long: baseBlock.long }];
+    return variants.flatMap((validation, m) => variants.flatMap((real, r) =>
+      variants.map((exec, e) => ({ id: [baseBlock.long, m, r, e].join("/"),
+        baseBlock, blocks: { validation, real, exec } }))));
+  });
+  const values = Array.from({ length: 310 }, (_, i) => i % 17 === 4 ? -.009 : .02);
+  const explicit = fixture(values, { processedStages: { ...common, lanes } }).result;
+  const inherited = fixture(values, { processedStages: { ...common, windowGrid, inheritBaseLong: true } }).result;
+  assert.deepEqual(inherited.trades, explicit.trades);
+  assert.ok(inherited.trades.length > 0);
+  const actual = inherited.processedStageSummary!, expected = explicit.processedStageSummary!;
+  const grid = actual.windowGrid!;
+  assert.deepEqual(grid.choices, { base: 2, validation: 2, real: 2, exec: 2 });
+  for (const [stage, suffixes] of [["validation", 4], ["real", 2], ["exec", 1]] as const) {
+    assert.equal(actual[stage]!.qualified * suffixes, expected[stage]!.qualified);
+    const rows: ProcessedGridWindowCoverage[] = grid.windows![stage]!;
+    const byLong = new Map(rows.map(row => [row.block.long, row.contexts]));
+    assert.equal(byLong.get(1), byLong.get(3), "one matching Base Long per concrete child");
+    assert.equal(byLong.get(0), byLong.get(1)! + byLong.get(3)!, "omitted Long belongs to both Base cohorts");
+    assert.equal(rows.reduce((n, row) => n + row.contexts, 0), actual[stage]!.contexts);
+    assert.equal(rows.reduce((n, row) => n + row.qualified, 0), actual[stage]!.qualified);
+  }
+});
+
+test("an increased Exec PF floor leaves the admitted Real parent and earlier histories intact", () => {
+  const block = { long: 0, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const grid = { base: [{ ...block, long: 2 }], validation: [block], real: [block], exec: [block] };
+  const policy = { validationN: 4, realN: 4, execN: 4, reportDetail: "summary", windowGrid: grid, inheritBaseLong: true } as const;
+  const recent = Array.from({ length: 310 }, (_, i) => i % 19 === 4 ? -.005 : .02);
+  const baseline = fixture(recent, { processedStages: policy }).result;
+  const strict = fixture(recent, { processedStages: { ...policy, stageMinPf: { exec: 1e6 } } }).result;
+  assert.ok(baseline.trades.length > 0);
+  assert.equal(strict.trades.length, 0);
+  assert.deepEqual(strict.processedStageSummary!.validation, baseline.processedStageSummary!.validation);
+  assert.deepEqual(strict.processedStageSummary!.real, baseline.processedStageSummary!.real);
+  assert.equal(strict.processedStageSummary!.exec!.qualified, 0);
 });
