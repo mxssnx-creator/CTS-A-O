@@ -3650,6 +3650,7 @@ export class CoreRuntime {
         // (forceSymbols keeps them all) — the cap was s.symbols, which dropped forced symbols beyond it
         const target = ranked.length;
         const missing = ranked
+          .filter((x) => !this.unavailableHistory(x))
           .filter((x) => !this.candles.has(x) || (this.candles.get(x)!.n < want && !this.historyBackfilled.has(x)))
           .slice(0, target);
         // Connected desks progressively start realtime after each batch. A frozen offline replay loads all
@@ -3663,7 +3664,8 @@ export class CoreRuntime {
         this.prehistTotal = Math.min(target, this.candles.size + missing.length);
         for (const x of missing)
           if (!this.prehistSyms.has(x)) this.prehistSyms.set(x, { state: "queued" });
-        for (const x of syms) this.prehistSyms.set(x, { state: "loading" });
+        // the attempt count survives re-loading (a failed symbol is retried at most HISTORY_ATTEMPTS times)
+        for (const x of syms) this.prehistSyms.set(x, { ...(this.prehistSyms.get(x) ?? {}), state: "loading" });
         // batch #/# of this run (the batches done before + the ones the missing symbols still take) and the
         // symbols loaded of the universe — the line showed the loaded count over the symbol setting as "batch"
         const batchNo = ++this.prehistBatch;
@@ -3708,7 +3710,12 @@ export class CoreRuntime {
                   "warn",
                   `${sym} extended history: ${cs.length}/${want} bars available; qualification uses measured history only`,
                 );
-            } else this.prehistSyms.set(sym, { state: "skipped", bars: cs.length });
+            } else
+              this.prehistSyms.set(sym, {
+                state: "skipped",
+                bars: cs.length,
+                attempts: (this.prehistSyms.get(sym)?.attempts ?? 0) + 1,
+              });
             this.setStage(
               "backfill",
               ++done,
@@ -3720,7 +3727,15 @@ export class CoreRuntime {
         );
         if (gen !== this.gen) return false;
         if (this.replayPreloadAll) {
-          const unloaded = ranked.filter((sym) => !this.candles.has(sym));
+          // A symbol without usable history after HISTORY_ATTEMPTS tries is excluded from this replay universe (logged),
+          // never waited on: one short listing used to hold every compute in a retry loop.
+          const excluded = ranked.filter((sym) => !this.candles.has(sym) && this.unavailableHistory(sym));
+          if (excluded.length)
+            this.db.event(
+              "warn",
+              `history unavailable, excluded from the replay universe after ${CoreRuntime.HISTORY_ATTEMPTS} tries: ${excluded.join(", ")}`,
+            );
+          const unloaded = ranked.filter((sym) => !this.candles.has(sym) && !this.unavailableHistory(sym));
           if (unloaded.length) {
             // An unavailable or short history is still pending, never a smaller valid replay universe. Keep the
             // successful loads and retry only missing symbols; the cycle must not compute the partial cohort.
@@ -7210,8 +7225,14 @@ export class CoreRuntime {
   /** progressive prehistoric start: per-symbol state and batch bookkeeping */
   private prehistSyms = new Map<
     string,
-    { state: "queued" | "loading" | "computing" | "ready" | "skipped"; bars?: number }
+    { state: "queued" | "loading" | "computing" | "ready" | "skipped"; bars?: number; attempts?: number }
   >();
+  /** a symbol whose history failed or was too short this many times is unavailable for this replay (never retried forever) */
+  private static readonly HISTORY_ATTEMPTS = 3;
+  private unavailableHistory(sym: string): boolean {
+    const v = this.prehistSyms.get(sym);
+    return v?.state === "skipped" && (v.attempts ?? 0) >= CoreRuntime.HISTORY_ATTEMPTS;
+  }
   private prehistTotal = 0;
   /** backfill batches loaded in this progressive start (the backfill line's batch #/#) */
   private prehistBatch = 0;
