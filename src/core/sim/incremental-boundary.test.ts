@@ -14,8 +14,8 @@ const bars = barsFromCandles("BOUNDARY", 1, candles);
 const fromT = start + 720 * M, cut = start + 1200 * M;
 const pairs = new Set(["follow|mc-rsi2-5@m1", "revert|mc-rsi2-5@m1"]);
 const protects = [
-  { tp: .005, sl: .01, trail: 0, hold: 6 },
-  { tp: .01, sl: .02, trail: .005, hold: 12 },
+  { tag: "mc" as const, tp: .005, sl: .01, trail: 0, hold: 6 },
+  { tag: "mc" as const, tp: .01, sl: .02, trail: .005, hold: 12 },
 ];
 const universe = (end: number, boundary: number | undefined = fromT) => makeUniverse([headBars(bars, end)], boundary);
 const build = (u: ReturnType<typeof universe>) => buildTapes(u, protects, .0015, undefined, pairs,

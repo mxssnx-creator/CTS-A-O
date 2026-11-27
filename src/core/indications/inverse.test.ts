@@ -302,7 +302,14 @@ test("Real workers and serialized Normal/Trailing/Trailing-only tapes preserve I
     { tp: 0.006, sl: 0.006, trail: 0.003, hold: 30 },
     { tp: 0.006, sl: 0.006, trail: 0.003, hold: 30, trailOnly: true },
   ];
-  const local = buildTapes(makeUniverse(bars), protects, 0.002, undefined, new Set(pairs), null);
+  const microProtects = protects.map((p) => ({ ...p, tag: "mc" as const }));
+  const protectsFor = (pair: string) => isMicroInd(pair.split("|")[1]) ? microProtects : protects;
+  const universe = makeUniverse(bars);
+  const local = pairs.flatMap((pair) => {
+    const tapes = buildTapes(universe, protectsFor(pair), 0.002, undefined, new Set([pair]), null);
+    assert.equal(tapes.length, 3, pair);
+    return tapes;
+  });
   assert.equal(local.length, 21);
   assert.ok(local.some((tp) => tp.side.includes(1)));
   assert.ok(local.some((tp) => tp.side.includes(-1)));
@@ -313,7 +320,7 @@ test("Real workers and serialized Normal/Trailing/Trailing-only tapes preserve I
           type: "tapes",
           bars,
           pairs: [pair],
-          protects,
+          protects: protectsFor(pair),
           cost: 0.002,
           dcaOpt: null,
           tactics: null,
