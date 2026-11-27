@@ -264,7 +264,7 @@ export function mainnetPositionWindows(
 /** Statistics describe the independent long block; coverage describes all requested positions. */
 export function positionStageStats(values:readonly number[],requested:number,blocks?:BlockPolicy,minPf=1.05,partialFloor=0){
  if(!blocks)return {...positionStats(values,requested,partialFloor),blocksPassed:true};
- const total=blockRequired(blocks),v=evaluateBlocks(blockPrefix(values.slice(-total).reverse(),total),blocks,Math.max(1.000001,minPf));
+ const total=blockRequired(blocks),v=evaluateBlocks(blockPrefix(values.slice(-total).reverse(),total),blocks,Math.max(1.000001,minPf),true);
  const stats=positionStats(values,total);
  return {...stats,blocksPassed:v.state==="qualified"&&stats.net>0&&stats.gp>=stats.gl*minPf};
 }

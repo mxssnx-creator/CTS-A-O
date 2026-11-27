@@ -1,3 +1,4 @@
+import { fixedProtects } from "../fixed-stop-grid.ts";
 import { slRatiosOf } from "../sl-ratios.ts";
 import { slWithinBounds, type SlBounds } from "../sl-calibration.ts";
 import {partialFloorOf, positionStageStats} from "../position-windows.ts";
@@ -69,6 +70,7 @@ import {
   protectKind,
   laneProtect,
   protectCellKey,
+  protectCellRange,
   baseSetsGates,
   passesBase,
   REF_TF,
@@ -797,6 +799,7 @@ export const DEFAULT_GRID: ProtectGridSpec = {
 
 /** Upper bound on protect variants at the effective modeled cost. Dedup can only make it smaller. */
 export function gridVariants(g: ProtectGridSpec, cost?: number): number {
+  if (g.fixedSlBands) return protectGrid(REF_TF, g, cost).length;
   if (g.trailingOnly || g.priceDistances?.enabled) return protectGrid(REF_TF, g, cost).length;
   const hold = g.holdH.length || 1;
   const main = g.tp.length * slRatiosOf(g).length * g.trailOfTp.length * hold;
@@ -943,6 +946,10 @@ export function protectGrid(
         });
   }
   const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, tfMin, g.lowRange?.minSlDistancePct ?? .1, ownSlFloor(g.lowRange, cost ?? RT_COST) ?? slFloor) : []);
+  if (g.fixedSlBands) {
+    const priced = fixedProtects(applyTrailingGapBasis([...out,...lowRange], g.trailGapBasis), g, cost ?? RT_COST, GRID_VARIANTS_MAX);
+    return g.trailingOnly ? [...priced, ...trailingOnlyProtects(priced)] : priced;
+  }
   if (g.priceDistances?.enabled) {
     const priced = applyPriceDistanceGrid(applyTrailingGapBasis([...out, ...lowRange], g.trailGapBasis), g, cost ?? RT_COST, GRID_VARIANTS_MAX);
     return g.trailingOnly ? [...priced, ...trailingOnlyProtects(priced)] : priced;
@@ -1072,7 +1079,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     cost: s.cost,
     // with timeframe lanes the grid is expressed on the 15m reference and every lane scales it (laneProtect)
     protects: protectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.grid ?? DEFAULT_GRID, s.cost),
-    dcaProtects: dcaProtectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.dca, s.grid?.minSlEval),
+    dcaProtects: fixedProtects(dcaProtectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.dca, s.grid?.minSlEval), s.grid ?? DEFAULT_GRID, s.cost, GRID_VARIANTS_MAX),
   };
 }
 
@@ -2424,7 +2431,7 @@ export function* buildTapesGen(
     // grid.baseCells: the Base-passed cells of this pair, and the ranges they cover
     const cellKeys = floors?.pairCells?.[pairKey];
     const cellSet = cellKeys ? new Set(cellKeys) : null;
-    const cellTags = cellKeys ? new Set(cellKeys.map((k) => k.slice(0, k.indexOf("|")))) : null;
+    const cellTags = cellKeys ? new Set(cellKeys.map(protectCellRange)) : null;
     const noTpCells = floors?.pairTrailingOnlyCells ? new Set(floors.pairTrailingOnlyCells[pairKey] ?? []) : null;
     const microInd = isMicroInd(laneOf(c.ind).base);
     const own = floors?.pairProtects?.[`${c.bot}|${c.ind}`];
@@ -2514,7 +2521,7 @@ export function* buildTapesGen(
                   : !exitConfig && !isSignalInd(c.ind) && p0.trailOnly && !!noTpCells &&
                     !noTpCells.has(protectCellKey(p))
                     ? "baseCell"
-                  : !exitConfig && p0.priceDistance && !p0.trailOnly && !!floors?.pairTags && !cellSet?.has(protectCellKey(p))
+                  : !exitConfig && (p0.priceDistance || p0.stopBand) && !(p0.trailOnly && !!noTpCells) && !!floors?.pairTags && !cellSet?.has(protectCellKey(p))
                     ? "baseCell"
                   : !exitConfig && !!p0.tag && !!cellSet && !(p0.trailOnly && !!noTpCells) &&
                     (isLowRangeInd(c.ind) || cellTags!.has(p0.tag)) &&
@@ -3164,7 +3171,7 @@ export function tapeExecutable(
   if (tp.protect) {
     const base = laneOf(tp.ind).base, tag = tp.kind === "exit" ? "exit" : tp.protect.tag;
     if (!microIndFits(false, tag, isMicroInd(base), isMicroFamilyInd(base))) return false;
-    if (isLowRangeInd(base) && tag !== "lr") return false;
+    if (isLowRangeInd(base) && tag !== "lr" && !(tag === "sh" && tp.protect.lowRangeOnly === true)) return false;
   }
   const tg = effectiveStrategyToggles(tp, o);
   // A trailing Exit, DCA or hybrid Axis must also respect the master. Never silently change its qualified economics.
@@ -5397,7 +5404,7 @@ export interface PassedCells {
 export function passedCellsOf(pairCells: Readonly<Record<string, readonly string[]>>): Record<string, PassedCells> {
   const out: Record<string, PassedCells> = {};
   for (const [pair, ks] of Object.entries(pairCells))
-    out[pair] = { tags: new Set(ks.map((k) => k.slice(0, k.indexOf("|")))), keys: new Set(ks) };
+    out[pair] = { tags: new Set(ks.map(protectCellRange)), keys: new Set(ks) };
   return out;
 }
 /** Whether a tape's cell is one its pair's Base passed (true without cells for the pair / its range: the pair level decides). */
@@ -5411,7 +5418,7 @@ export function cellAllowed(
   if (tp.protect.trailOnly && !isSignalInd(tp.ind) && o.basePassedTrailingOnlyCells)
     return o.basePassedTrailingOnlyCells[pair]?.keys.has(protectCellKey(tp.protect)) ?? false;
   const c = o.basePassedCells?.[pair];
-  if (tp.protect.priceDistance) return c?.keys.has(protectCellKey(tp.protect)) ?? false;
+  if (tp.protect.priceDistance || tp.protect.stopBand) return c?.keys.has(protectCellKey(tp.protect)) ?? false;
   const tag = tp.protect.tag;
   if (!c) return !o.basePassedCells || !isLowRangeInd(tp.ind);
   if (!tag || !c.tags.has(tag)) return !isLowRangeInd(tp.ind);

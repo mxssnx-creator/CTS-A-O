@@ -420,7 +420,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         const x = i.sim!.trades[k];
         const blockPart = (x.mult ?? 1) / (x.coordVol ?? 1);
         const mult = Math.min(8, i.sim!.opts.block.maxMult) + 0.5;
-        return withTrade(i, k, { mult, coordVol: mult / blockPart });
+        return withTrade(i, k, { mult, coordVol: mult / blockPart, unitR: undefined });
       },
       // the recorded multiplier also normalizes the unit return (r ÷ mult)
       alsoFails: UNIT_AND_COST_MULT_FAILS,
@@ -486,6 +486,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
           entryT: s.endT - H,
           exitT: s.endT,
           mult: 0,
+          unitR: undefined,
           markedOpen: true,
         }];
         const all = [...s.trades, ...openAtEnd].sort((a, b) => a.exitT - b.exitT);
@@ -646,7 +647,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
     {
       run: "blockOff",
       what: "a modeled unit close with missing multiplier provenance",
-      corrupt: (i) => withTrade(i, plainIdx(i.sim!, true), { mult: undefined }),
+      corrupt: (i) => withTrade(i, plainIdx(i.sim!, true), { mult: undefined, unitR: undefined }),
       alsoFails: UNIT_MULT_FAILS,
     },
   ],
@@ -701,6 +702,7 @@ describe("audit: every check can fail", () => {
     const trades = [1e308, 1e308, -1].map((r, i) => ({
       ...RUNS.overall.trades[0],
       r,
+      unitR: r,
       mult: 1,
       entryT: NOW - (4 - i) * H,
       exitT: NOW - (3 - i) * H,

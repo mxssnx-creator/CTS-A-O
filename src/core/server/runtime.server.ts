@@ -170,6 +170,7 @@ import {
   type ComboRun,
   kindOfId,
   configId,
+  protectCellRange,
   isPlainKind,
   laneProtect,
   laneClosesWith,
@@ -4558,7 +4559,7 @@ export class CoreRuntime {
         s.tactics,
         baseRangeProtects(s.grid, s.cost),
         completeBaseRangeProtects(s.grid, s.cost),
-        (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true),
+        (s.grid?.baseCells === true || !!s.grid?.fixedSlBands || s.grid?.priceDistances?.enabled === true),
         rangeMinTfOf(s.grid),
         // the gates decide which cell a range keeps (rangeCellPass in the worker): a gates patch must recompute
         // every combo, not reuse cells chosen under the old gates
@@ -4598,7 +4599,7 @@ export class CoreRuntime {
               rangeMinTf: rangeMinTfOf(s.grid),
               microOwnInds: microOwnInds(s.grid),
               gates: s.gates,
-              cells: (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true),
+              cells: (s.grid?.baseCells === true || !!s.grid?.fixedSlBands || s.grid?.priceDistances?.enabled === true),
             })),
           n,
           15 * 60_000,
@@ -4875,7 +4876,7 @@ export class CoreRuntime {
     wf.basePassedTargets = qualifiedTps;
     wf.baseWideLadderPairs = wideLadderPairs;
     // Cell qualification publishes with the rest of the economic cohort below.
-    wf.basePassedCells = (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true) || s.grid?.lowRange?.enabled === true
+    wf.basePassedCells = (s.grid?.baseCells === true || !!s.grid?.fixedSlBands || s.grid?.priceDistances?.enabled === true) || s.grid?.lowRange?.enabled === true
       ? passedCellsOf(qualifiedCells) : undefined;
     wf.basePassedTrailingOnlyCells = s.grid?.trailingOnly === true
       ? passedCellsOf(pairTrailingOnlyCells) : {};
@@ -8247,7 +8248,7 @@ export class CoreRuntime {
               rangeMinTf,
               microOwnInds: micro,
               gates: s.gates,
-              cells: (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true),
+              cells: (s.grid?.baseCells === true || !!s.grid?.fixedSlBands || s.grid?.priceDistances?.enabled === true),
             })),
           n,
           15 * 60_000,
@@ -8276,7 +8277,7 @@ export class CoreRuntime {
             micro,
             s.gates,
             completeRangeProtects,
-            (s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true),
+            (s.grid?.baseCells === true || !!s.grid?.fixedSlBands || s.grid?.priceDistances?.enabled === true),
           );
           for (const x of rs) add(x);
           yield i;
@@ -8582,7 +8583,7 @@ export class CoreRuntime {
     wf.exitBasePassed = base.exitBasePassed;
     wf.basePassedRanges = base.qualifiedTags;
     wf.basePassedTargets = base.qualifiedTps;
-    wf.basePassedCells = s.grid.baseCells === true || s.grid.priceDistances?.enabled === true || s.grid.lowRange?.enabled === true
+    wf.basePassedCells = s.grid.baseCells === true || !!s.grid.fixedSlBands || s.grid.priceDistances?.enabled === true || s.grid.lowRange?.enabled === true
       ? passedCellsOf(base.qualifiedCells) : undefined;
     wf.basePassedTrailingOnlyCells = s.grid.trailingOnly === true ? passedCellsOf(pairTrailingOnlyCells) : {};
     wf.baseWideLadderPairs = base.wideLadderPairs;
@@ -12843,7 +12844,7 @@ export function basePass(
   const qualifiedTags: Record<string, string[]> = {};
   const pairCells: Record<string, readonly string[]> = {};
   const pairTrailingOnlyCells: Record<string, readonly string[]> = {};
-  const cellsOn = s.grid?.baseCells === true || s.grid?.priceDistances?.enabled === true;
+  const cellsOn = s.grid?.baseCells === true || !!s.grid?.fixedSlBands || s.grid?.priceDistances?.enabled === true;
   const exactPrice = priceDistanceBaseScope(s.grid);
   const setsGates = baseSetsGates(s.gates);
   // per pair, the range targets whose Base cells passed: the tape stage builds only those (baseTargets, on by
@@ -12857,7 +12858,7 @@ export function basePass(
     if (isSignalInd(r.ind)) return false;
     let tags = [...new Set(setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS))];
     if (s.grid?.priceDistances?.enabled) {
-      const provedTags = new Set(r.rangeCells?.filter(k => k.endsWith("|pd") || k.includes("|pd|")).map(k => k.slice(0, k.indexOf("|"))));
+      const provedTags = new Set(r.rangeCells?.filter(k => k.endsWith("|pd") || k.includes("|pd|")).map(protectCellRange));
       tags = tags.filter(tag => !exactPrice(r.ind, tag) || provedTags.has(tag));
     }
     // a family's pair builds only the sets of its own range (the other ranges of the pair are other families)
@@ -12865,10 +12866,10 @@ export function basePass(
     // No-TP cells are a separate strategy cohort. A passing cell may qualify without making ordinary or ladder
     // siblings eligible, and an ordinary range pass cannot serve as proof for a failing no-TP cell.
     let noTpTags = s.grid?.trailingOnly === true
-      ? [...new Set((r.trailingOnlyCells ?? []).map((k) => k.slice(0, k.indexOf("|"))))]
+      ? [...new Set((r.trailingOnlyCells ?? []).map(protectCellRange))]
           .filter((tag) => rangeAppliesTo(r.ind, tag, applies)) : [];
     if (evalFams) noTpTags = familyTags(evalFams, r.bot, r.ind, noTpTags);
-    const noTpProof = (r.trailingOnlyCells ?? []).filter((k) => noTpTags.includes(k.slice(0, k.indexOf("|"))));
+    const noTpProof = (r.trailingOnlyCells ?? []).filter((k) => noTpTags.includes(protectCellRange(k)));
     // Explicit empty proof survives even when the entire pair fails Base; builders must fail closed.
     if (s.grid?.trailingOnly === true) pairTrailingOnlyCells[`${r.bot}|${r.ind}`] = noTpProof;
     if (!tags.length && !noTpProof.length) return false;
@@ -12891,7 +12892,7 @@ export function basePass(
     }
     // cell level: the passed cells of the passed ranges (a range without cells keeps the target / range level)
     if ((cellsOn || isLowRangeInd(r.ind)) && r.rangeCells?.length) {
-      const keep = r.rangeCells.filter((k) => tags.includes(k.slice(0, k.indexOf("|"))));
+      const keep = r.rangeCells.filter((k) => tags.includes(protectCellRange(k)));
       if (keep.length) pairCells[`${r.bot}|${r.ind}`] = keep;
     }
     if (s.grid?.trailingOnly === true)

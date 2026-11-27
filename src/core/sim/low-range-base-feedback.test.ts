@@ -6,7 +6,7 @@ import type { Protect, StratKind } from "../domain/types.ts";
 import { lowRangeGridProtects, DEFAULT_LOW_RANGE_GRID } from "../indications/low-range.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { configId, laneProtect, makeUniverse, protectCellKey, rangeBaseStats } from "../pipeline/pipeline.ts";
-import { baseAllowsTape, buildTapes, cellAllowed, defaultWalkForward, execDecision, passedCellsOf } from "./walkforward.ts";
+import { baseAllowsTape, buildTapes, cellAllowed, defaultWalkForward, execDecision, passedCellsOf, tapeExecutable } from "./walkforward.ts";
 import { trailingOnlyProtects } from "./trailing.ts";
 
 // Pin the original four-decimal-compatible feedback grid. Arbitrary precise
@@ -84,8 +84,12 @@ for (const kind of ["normal", "trailing", "trailing-only"] as const) describe(`L
     const options = { ...defaults, ...proof([bk]), probe: { perRange: 0, perCell: 1 },
       normalBaseMinPf: 0, rangeOpts: undefined,
       toggles: { ...defaults.toggles, normal: true, trailing: true, block: false, blockActive: false } };
+    const tape = adjusted[0];
+    assert.equal(tapeExecutable({ ...tape, protect: { ...tape.protect, lowRangeOnly: false } }, options), false);
+    assert.equal(tapeExecutable({ ...tape, protect: { ...tape.protect, tag: "lg" } }, options), false);
     for (const side of [1, -1]) {
-      assert.equal(execDecision(adjusted[0], u.nowT, options, { sym: "A", side }).ok, true);
+      const decision = execDecision(adjusted[0], u.nowT, options, { sym: "A", side });
+      assert.equal(decision.ok, true, JSON.stringify(decision));
       assert.deepEqual(execDecision(adjusted[0], u.nowT, { ...options, ...proof([ak]) }, { sym: "A", side }),
         { ok: false, why: "base" }, "the downstream guard rejects the wrong proof on either side");
     }

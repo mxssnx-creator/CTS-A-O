@@ -255,7 +255,7 @@ export function processedWindowVerdict(history: readonly ProcessedHistoryRow[], 
       blockPolicyKey: indexed?.key ?? blockPolicyKey(blocks) };
     const prefix = indexed ? { ...indexed.prefix, n: length }
       : blockPrefix(history.slice(end - length, end).reverse().map(close => close.unitReturn), n);
-    const result = evaluateBlocks(prefix,blocks,minPf);
+    const result = evaluateBlocks(prefix,blocks,minPf,true);
     const decision = { n:result.count, blockPolicyKey:indexed?.key ?? result.key };
     if (result.state === "unknown" || result.state === "insufficient") return {...decision,state:result.state,pf:null};
     const aggregate = blockWindow(prefix,0,n,minPf);
@@ -409,20 +409,19 @@ export class ProcessedWindowIndex {
     if (this.negative) return this.evaluate(block, key).state === "qualified";
     const floor = this.autoThreshold(n)?.floor ?? this.minPf;
     let nearBoundary = false;
-    const passes = (offset: number, length: number, negative: boolean, signOnly = false) => {
+    const passes = (offset: number, length: number, negative: boolean) => {
       if (!length) return true;
-      const { state, gp, gl, net } = this.window(offset, length);
+      const { state, gp, gl } = this.window(offset, length);
       if (state === "unknown" || state === "insufficient") return false;
       const profit = negative ? gl : gp, loss = negative ? gp : gl;
-      const required = signOnly ? loss : loss * floor;
-      const delta = signOnly ? (negative ? -net : net) : profit - required;
+      const delta = profit - loss * floor;
       if (Math.abs(delta) <= Number.EPSILON * (gp + gl) * (this.prefixView().n + 2)) {
         nearBoundary = true;
         return true;
       }
       return delta > 0;
     };
-    if (!passes(0, block.minimal, block.minimalPolarity === "negative", true) ||
+    if (!passes(0, block.minimal, block.minimalPolarity === "negative") ||
         !passes(block.minimal, block.short, block.shortPolarity === "negative") ||
         !passes(block.minimal + block.short, block.long, false) || !passes(0, n, false)) return false;
     const full = this.window(0, n);
