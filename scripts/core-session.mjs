@@ -3923,6 +3923,14 @@ const feasText = T.feasible
 const sigOn = !!signalsOn;
 const ownedStages = raw.processedStageProgress;
 const ownedStagesEnabled = !!(ownedStages || raw.settings?.wfPatch?.processedStages || raw.settings?.effectiveWf?.processedStages);
+const ownedHistoryText = (() => {
+  const { indicatorStartT, evaluationFromT, tradeStartT } = raw.settings?.provenance ?? {};
+  const baseCutT = ownedStages?.warmup?.baseCutT ?? tradeStartT;
+  if (![indicatorStartT, evaluationFromT, baseCutT].every(Number.isFinite)) return "";
+  const warmupH = Math.max(0, evaluationFromT - indicatorStartT) / H;
+  const baseH = Math.max(0, baseCutT - Math.max(evaluationFromT, indicatorStartT)) / H;
+  return ` Recorded candle timestamps span ${+warmupH.toFixed(2)} h of indicator-only warmup and ${+baseH.toFixed(2)} h of evaluated history before the Base snapshot.`;
+})();
 const ownedGrid = ownedStages?.windowGrid;
 const ownedGridText = ownedGrid
   ? ` Each stage denominator includes its config × symbol × direction × window paths. Path choices per stage are Base ${ownedGrid.choices.base}, Main ${ownedGrid.choices.validation}, Real ${ownedGrid.choices.real} and Exec ${ownedGrid.choices.exec}. Separate opposite orders reached Main ${ownedGrid.inverseEntries} times and Exec ${ownedGrid.inverseExecEntries} times. ${ownedGrid.oppositeSourceMissing} negative Main path decisions lacked a separately priced source.`
@@ -3939,7 +3947,7 @@ const stageCoverageText = (label, c) => {
   return `${label}: ${c.qualified} / ${c.contexts} contexts qualified (${percent}); insufficient ${c.insufficient}${parent}, failed ${c.failed}, unknown ${c.unknown}${opposite}; pooled passing-window PF ${pooled}, finite passing-window mean PF ${pf}, no-loss contexts ${m?.setPf?.noLossSets ?? "unavailable"}`;
 };
 const ownedStagesText = !ownedStagesEnabled ? "" : ownedStages
-  ? `End-of-run owned modeled stages — ${stageCoverageText("Main", ownedStages.validation)}; ${stageCoverageText("Real", ownedStages.real)}${ownedStages.exec ? `; ${stageCoverageText("Exec", ownedStages.exec)}` : ""}. Funded execution and hourly results have their own cohorts.${ownedGridText}${ownedStages.warmup ? ` Modeled stage warmup ran from ${new Date(ownedStages.warmup.fromT).toISOString()} to ${new Date(ownedStages.warmup.untilT).toISOString()} against a Base snapshot cut at ${new Date(ownedStages.warmup.baseCutT).toISOString()}; historical positions do not spend the reported funded account.` : ""}${ownedStages.reportDetail === "summary-only" ? " The modeled per-set checkpoint was not retained in this summary-only run." : ""}`
+  ? `End-of-run owned modeled stages — ${stageCoverageText("Main", ownedStages.validation)}; ${stageCoverageText("Real", ownedStages.real)}${ownedStages.exec ? `; ${stageCoverageText("Exec", ownedStages.exec)}` : ""}. Funded execution and hourly results have their own cohorts.${ownedHistoryText}${ownedGridText}${ownedStages.warmup ? ` Modeled stage warmup ran from ${new Date(ownedStages.warmup.fromT).toISOString()} to ${new Date(ownedStages.warmup.untilT).toISOString()} against a Base snapshot cut at ${new Date(ownedStages.warmup.baseCutT).toISOString()}; historical positions do not spend the reported funded account.` : ""}${ownedStages.reportDetail === "summary-only" ? " The modeled per-set checkpoint was not retained in this summary-only run." : ""}`
   : "Owned modeled-stage aggregates were not retained in this archived session; do not infer them from the historical configuration checks.";
 const lines = [
   `# Simulated trading session — ${symText}, ${preH} h pre-historic + ${runH} h run (${tacticsLabel}, signals ${sigOn ? "on" : "off"})`,

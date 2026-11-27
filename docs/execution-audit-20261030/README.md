@@ -1,5 +1,45 @@
 # Eight-symbol 12h + 12h execution audit, 30 October 2026
 
+## Follow-up on the exact-context Last-N replay
+
+The October tape starvation was traced to the 24-hour cache starting at the first evaluated bar.
+The 818 archived tapes had at most four settled closes in any one configuration, symbol and direction
+before 9 October 02:00 Vienna time. The exact Base profile needs nine closes for a partial window.
+The 72-hour cache contains the same candles for all 16 series in the scored window and supplies an
+earlier 48-hour indicator prefix. With the prefix, the replay still evaluates the same 12-hour Base
+history and trades the same 12-hour window, at the same 0.15% round-trip cost and PF floors.
+Candidate entries before the evaluation boundary remain outside every tape’s evidence.
+
+| Offline profile | Built tapes | Post-Base at 9 Oct 14:00 Vienna | Real ready | Exec ready | Funded positions opened/closed/held | Funded orders opened/settled/held | Settled Exec PF | Positive hours | Equity drawdown |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Cold archive, 6/4/4 | 0 | Unavailable, 0 evaluated | 0 | 0 | 0/0/0 | 0/0/0 | Unavailable | 0/12 | 0% |
+| Warmed archive, 6/4/4 | 55 | PF 3.302, 18/880 (2.05%) | 5 | 0 | 0/0/0 | 0/0/0 | Unavailable | 0/12 | 0% |
+| Warmed archive, 4/2/2 research | 55 | PF 2.312, 21/880 (2.39%) | 12 | 2 | 6/5/1 | 6/5/1 | 21.327 | 3/12 | 0.0075% |
+| Warmed archive, 4/1/1 research | 55 | PF 2.312, 21/880 (2.39%) | 17 | 12 | 10/9/1 | 15/13/2 | 1.415 | 3/12 | 0.0347% |
+
+The 6/4/4 profile retains the original Base, Main, Real and Exec policies from the failed exact-context replay.
+The shorter profiles keep those Base and PF rules and explicitly test different counts at Main, Real and Exec.
+They are research comparisons on the same October window. The underlying archived, time-gated order results
+below remain a separate cohort. The 4/2/2 result has four wins and one small loss. The 4/1/1 result has nine
+wins and four losses. Endpoint positions and modeled equity drawdown retain their own accounting.
+
+Reproduce the corrected profile from the repository root using the checked-in desk and the overlapping cache.
+
+```bash
+CTS_CORE_VARIANTS=0 CTS_CORE_WORKERS=1 MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576 \
+node --experimental-strip-types --no-warnings --require ./scripts/lib/core-test-offline-guard.cjs \
+  scripts/core-session.mjs --symbols 8 --pre 12 --run 12 --selection-hours 12 \
+  --feed docs/main-processing-audit-20261029/feed-8-symbols-72h.json.gz \
+  --evaluation-from 2026-10-08T12:00:00Z --end-at 2026-10-09T12:00:00Z --replay-preload-all \
+  --desk docs/execution-audit-20261030/evidence/exact-lastn-desk.json \
+  --balance 10 --leverage 10 --pct .001 --tape-trades-all --chunk-allocations --no-archive \
+  --out /tmp/cts-october-lastn --dump /tmp/cts-october-lastn-raw.json
+```
+
+The 72-hour feed SHA-256 is `dd17963bcec9cf285331982250ef631c47322a4a9445a969d81be3ce5f3eab50`.
+The runtime regression compares both archives, checks the scored boundaries and reconciles funded closes
+for both shorter profiles. The report shows indicator-only warmup separately from evaluated Base history.
+
 ## Result and release status
 
 **The requested stage-processing defect is reproduced but is not fixed.** A separately verified repair prevents
