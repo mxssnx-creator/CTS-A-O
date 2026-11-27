@@ -359,7 +359,7 @@ function signedBaseWindow(values: number[], n: number, blocks: BlockPolicy, minP
     indexed.set(values, window);
   }
   const { stats, prefix } = window;
-  const verdict = evaluateBlocks(prefix, blocks, Math.max(1.000001, minPf));
+  const verdict = evaluateBlocks(prefix, blocks, Math.max(1.000001, minPf), true);
   return { ...stats, blocksPassed: verdict.state === "qualified" && stats.net > 0 && stats.gp >= stats.gl * minPf };
 }
 
