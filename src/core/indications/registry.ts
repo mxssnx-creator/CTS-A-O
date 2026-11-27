@@ -13,6 +13,7 @@ import { research3Specs } from "./research3.ts";
 import { research4Specs } from "./research4.ts";
 import { research5Specs } from "./research5.ts";
 import { microSpecs } from "./micro.ts";
+import { microAdxPullback } from "./micro-adx-pullback.ts";
 import { inverseSpecs } from "./inverse.ts";
 import { INVERSE_TIMEFRAMES, isInverseInd } from "./inverse-config.ts";
 import { microFamilySpecs, inverseMicroSpecs } from "./micro-family.ts";
@@ -1260,6 +1261,7 @@ for (const x of microSpecs()) add(x);
 for (const x of microFamilySpecs()) add(x);
 for (const x of inverseSpecs([...BASE_INDICATIONS, ...VARIANTS])) add(x);
 for (const x of inverseMicroSpecs()) add(x);
+add(microAdxPullback);
 // Low-Range uses its own Short protection cells and explicit enablement.
 for (const x of lowRangeSpecs()) add(x);
 
