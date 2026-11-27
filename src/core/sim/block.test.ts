@@ -617,11 +617,12 @@ describe("Block types, Active, steps and pause", () => {
   });
 
   it("stepFloor off: a leg is the nearest step of ratio × level, never a forced full unit", () => {
-    // the default Overall: 7 steps to 8× (a step = one unit), ratio 0.5
+    // Factory Overall uses a 0.20 ratio and seven unit-sized steps up to 8×.
     const d0 = { ...DEFAULT_BLOCK, sources: SRC };
     const lv1 = { ...L, overall: 1, symbol: 1, direction: 1, indication: 1 };
     // the default rule (stepFloor unset): a raise below one step keeps its exact ratio, never a forced full unit
-    assert.equal(blockDecide(lv1, d0, false).vol, 3);
+    assert.equal(blockDecide(lv1, d0, false).vol, 1.8);
+    assert.equal(blockDecide(lv1, { ...d0, ratio: 0.5 }, false).vol, 3);
     assert.ok(Math.abs(blockDecide(lv1, { ...d0, ratio: 0.1 }, false).vol - 1.4) < 1e-9);
     assert.equal(stepRaise(0.1, d0, 7), 0.1);
     assert.equal(stepRaise(1.6, d0, 7), 1, "a larger raise rounds down to complete steps");

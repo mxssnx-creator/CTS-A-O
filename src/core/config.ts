@@ -169,7 +169,7 @@ export const DEFAULT_BLOCK: BlockConfig = {
   historySource: "accepted-orders",
   // Each raised Block group keeps its last applied extra volume until that group's realized extra net is recovered.
   holdUntilNet: true,
-  ratio: 0.5,
+  ratio: 0.2,
   maxLevel: 8,
   minActiveLevel: 2,
   maxMult: MAX_EXTERNAL_STACK,
