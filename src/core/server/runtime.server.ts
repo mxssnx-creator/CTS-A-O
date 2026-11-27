@@ -11453,6 +11453,8 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     if (raw.reportDetail !== undefined && raw.reportDetail !== "summary")
       throw new Error("processedStages reportDetail must be summary when specified");
     const data = { ...raw, validationN, realN, execN } as ProcessedReplayPolicy;
+    if (data.directExec && !data.windowGrid)
+      throw new Error("direct Exec research mode requires an offline summary window grid");
     if (data.lanes !== undefined) processedLanes(data);
     p.processedStages = { ...checkedProcessedPolicy(data), ...(data.reportDetail && { reportDetail: data.reportDetail }),
       ...(data.lanes && { lanes: structuredClone(data.lanes) }),
@@ -12592,6 +12594,9 @@ export function computeKey(s: CoreSettings, wf: Partial<WalkForwardOptions>): st
 }
 
 function processedBaseDiscoverySettings(s: CoreSettings, policy?: ProcessedReplayPolicy): CoreSettings {
+  // Direct Base→Exec is a bounded research overlay on the tapes selected by the desk. Feeding its much larger
+  // verification grid back into raw Base discovery would starve tape construction before the actual replay starts.
+  if (policy?.directExec) return s;
   if (policy?.windowGrid) return { ...s, gates: { ...s.gates, baseContext: {
     defaultWindow: false, blocks: [...policy.windowGrid.base],
   } } };

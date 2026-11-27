@@ -1568,6 +1568,8 @@ async function runEngine() {
       ...(processedStageEvidence.exec && { exec: processedStageEvidence.exec }),
       ...(processedStageEvidence.lanes && { lanes: processedStageEvidence.lanes }),
       ...(processedStageEvidence.windowGrid && { windowGrid: processedStageEvidence.windowGrid }),
+      ...(processedStageEvidence.directBaseDetails && { directBaseDetails: processedStageEvidence.directBaseDetails }),
+      ...(processedStageEvidence.directExecDetails && { directExecDetails: processedStageEvidence.directExecDetails }),
     } : null,
     // every step per range: tapes, configs validated, candidates, orders taken (the continuity of each range)
     stepsByRange: (sim.steps ?? []).map((x) => ({ t: x.t, byRange: x.byRange ?? null })),
@@ -3933,7 +3935,9 @@ const ownedHistoryText = (() => {
 })();
 const ownedGrid = ownedStages?.windowGrid;
 const ownedGridText = ownedGrid
-  ? ` Each stage denominator includes its config × symbol × direction × window paths. Path choices per stage are Base ${ownedGrid.choices.base}, Main ${ownedGrid.choices.validation}, Real ${ownedGrid.choices.real} and Exec ${ownedGrid.choices.exec}. Separate opposite orders reached Main ${ownedGrid.inverseEntries} times and Exec ${ownedGrid.inverseExecEntries} times. ${ownedGrid.oppositeSourceMissing} negative Main path decisions lacked a separately priced source.`
+  ? ownedGrid.directExec
+    ? ` The research-only direct Base→Exec grid seeds each independent Exec lane from its qualified Base positions, then retains later fills privately per Base×Exec lane; Main and Real are bypassed. It has ${ownedGrid.choices.base} Base choices × ${ownedGrid.choices.exec} Exec choices per config, symbol and direction; Base PF floor ${ownedGrid.directBaseMinPf ?? "the configured floor"}, direct Exec PF floor ${ownedGrid.directExecMinPf ?? "the configured floor"}. Negative Short and Last windows are independent signed evaluation lanes. ${ownedGrid.oppositeSourceMissing} negative Main paths lacked a paired source.`
+    : ` Each stage denominator includes its config × symbol × direction × window paths. Path choices per stage are Base ${ownedGrid.choices.base}, Main ${ownedGrid.choices.validation}, Real ${ownedGrid.choices.real} and Exec ${ownedGrid.choices.exec}. Separate opposite orders reached Main ${ownedGrid.inverseEntries} times and Exec ${ownedGrid.inverseExecEntries} times. ${ownedGrid.oppositeSourceMissing} negative Main path decisions lacked a separately priced source.`
   : "";
 const stageCoverageText = (label, c) => {
   if (!c || !Number.isSafeInteger(c.contexts) || !Number.isSafeInteger(c.qualified)) return `${label}: unavailable`;
@@ -3947,7 +3951,9 @@ const stageCoverageText = (label, c) => {
   return `${label}: ${c.qualified} / ${c.contexts} contexts qualified (${percent}); insufficient ${c.insufficient}${parent}, failed ${c.failed}, unknown ${c.unknown}${opposite}; pooled passing-window PF ${pooled}, finite passing-window mean PF ${pf}, no-loss contexts ${m?.setPf?.noLossSets ?? "unavailable"}`;
 };
 const ownedStagesText = !ownedStagesEnabled ? "" : ownedStages
-  ? `End-of-run owned modeled stages — ${stageCoverageText("Main", ownedStages.validation)}; ${stageCoverageText("Real", ownedStages.real)}${ownedStages.exec ? `; ${stageCoverageText("Exec", ownedStages.exec)}` : ""}. Funded execution and hourly results have their own cohorts.${ownedHistoryText}${ownedGridText}${ownedStages.warmup ? ` Modeled stage warmup ran from ${new Date(ownedStages.warmup.fromT).toISOString()} to ${new Date(ownedStages.warmup.untilT).toISOString()} against a Base snapshot cut at ${new Date(ownedStages.warmup.baseCutT).toISOString()}; historical positions do not spend the reported funded account.` : ""}${ownedStages.reportDetail === "summary-only" ? " The modeled per-set checkpoint was not retained in this summary-only run." : ""}`
+  ? ownedGrid?.directExec
+    ? `End-of-run direct Base→Exec research — ${stageCoverageText("Exec", ownedStages.exec)}. Main and Real were deliberately bypassed by this offline policy. Funded execution and hourly results have their own cohorts.${ownedHistoryText}${ownedGridText}${ownedStages.warmup ? ` Modeled stage warmup ran from ${new Date(ownedStages.warmup.fromT).toISOString()} to ${new Date(ownedStages.warmup.untilT).toISOString()} against a Base snapshot cut at ${new Date(ownedStages.warmup.baseCutT).toISOString()}; historical positions do not spend the reported funded account.` : ""}${ownedStages.reportDetail === "summary-only" ? " The modeled per-set checkpoint was not retained in this summary-only run." : ""}`
+    : `End-of-run owned modeled stages — ${stageCoverageText("Main", ownedStages.validation)}; ${stageCoverageText("Real", ownedStages.real)}${ownedStages.exec ? `; ${stageCoverageText("Exec", ownedStages.exec)}` : ""}. Funded execution and hourly results have their own cohorts.${ownedHistoryText}${ownedGridText}${ownedStages.warmup ? ` Modeled stage warmup ran from ${new Date(ownedStages.warmup.fromT).toISOString()} to ${new Date(ownedStages.warmup.untilT).toISOString()} against a Base snapshot cut at ${new Date(ownedStages.warmup.baseCutT).toISOString()}; historical positions do not spend the reported funded account.` : ""}${ownedStages.reportDetail === "summary-only" ? " The modeled per-set checkpoint was not retained in this summary-only run." : ""}`
   : "Owned modeled-stage aggregates were not retained in this archived session; do not infer them from the historical configuration checks.";
 const lines = [
   `# Simulated trading session — ${symText}, ${preH} h pre-historic + ${runH} h run (${tacticsLabel}, signals ${sigOn ? "on" : "off"})`,

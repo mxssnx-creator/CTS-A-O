@@ -540,6 +540,53 @@ test("the window grid evaluates a negative Main trigger but requires independent
   assert.equal(result.processedStageSummary?.real.full, 0);
 });
 
+test("direct Base→Exec replay keeps its Base history and evaluates signed Exec lanes independently", () => {
+  const base = { long: 4, short: 0, minimal: 0, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const endPositive = { long: 0, short: 2, minimal: 0, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const endNegative = { long: 2, short: 2, minimal: 0, shortPolarity: "negative", minimalPolarity: "positive" } as const;
+  const f = fixture([.03, .03, -.01, -.01, .03, .03], { processedStages: {
+    validationN: 1, realN: 1, execN: 1, baseScope: "context", reportDetail: "summary",
+    directExec: true, directBaseMinPf: 2.5, directExecMinPf: 2,
+    windowGrid: { base: [base], validation: [endPositive], real: [endPositive], exec: [endPositive, endNegative] },
+  } });
+  const summary = f.result.processedStageSummary!;
+  assert.equal(summary.windowGrid?.directExec, true);
+  assert.equal(summary.windowGrid?.directBaseMinPf, 2.5);
+  assert.equal(summary.validation.contexts, 0, "Main is bypassed by the direct research policy");
+  assert.equal(summary.real.contexts, 0, "Real is bypassed by the direct research policy");
+  assert.equal(summary.windowGrid?.choices.base, 1);
+  assert.equal(summary.windowGrid?.choices.exec, 2);
+  assert.ok(f.result.trades.length > 0, JSON.stringify(f.result.skips));
+  assert.equal(f.result.trades[0].entryT, T + M, "Exec starts from this Base lane's validated historical positions");
+  assert.equal(summary.directExecDetails?.length, 2, "one detailed row exists for each Base×Exec pair");
+  assert.ok(summary.directExecDetails?.some(row => row.exec.shortPolarity === "positive" && row.openedOrders > 0));
+  assert.ok(summary.directExecDetails?.some(row => row.exec.shortPolarity === "negative" && row.openedOrders > 0),
+    "the negative Exec lane opens only after its own Base-derived source history qualifies");
+  assert.ok((summary.directBaseDetails?.[0]?.passed ?? 0) > 0,
+    "the requested Base floor is evaluated independently of tape selection");
+  assert.equal(summary.windowGrid?.oppositeSourceMissing, 0);
+});
+
+test("direct negative Exec evaluates its own signed lane without borrowing an opposite source", () => {
+  const base = { long: 2, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "negative" } as const;
+  const negativeEnd = { ...base, minimalPolarity: "negative" } as const;
+  const f = fixture(Array.from({ length: 310 }, (_, i) => i % 9 === 4 ? -.005 : .02), { processedStages: {
+    validationN: 1, realN: 1, execN: 1, baseScope: "context", reportDetail: "summary",
+    directExec: true, directBaseMinPf: 2, directExecMinPf: 2,
+    windowGrid: { base: [base], validation: [negativeEnd], real: [negativeEnd], exec: [negativeEnd] },
+  } });
+  const historical = Array.from({ length: 160 }, (_, i) =>
+    trade(i === 159 ? -.02 : .02, T - 11 * H + i * 2 * M));
+  const tape = makeTape(id, "follow", ind, protect, "normal", symbols, [...historical, ...f.future], [], []);
+  const result = walkForward(f.universe, [tape], f.options);
+  const grid = result.processedStageSummary!.windowGrid!;
+  assert.equal(grid.directExec, true);
+  assert.equal(grid.oppositeSourceMissing, 0);
+  assert.ok(result.processedStageSummary!.directExecDetails?.some(row =>
+    row.exec.minimalPolarity === "negative" && row.openedOrders > 0));
+  assert.ok(result.trades.some(row => row.cfg === id && row.side === 1), JSON.stringify(result.skips));
+});
+
 test("negative Main uses a priced mirror without granting that mirror its own Base qualification", () => {
   const block = { long: 2, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
   const negativeLast = { ...block, minimalPolarity: "negative" } as const;

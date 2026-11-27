@@ -1,6 +1,6 @@
 import { blockPolicyKey, blockRequired, type BlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
 import { checkedProcessedWindowGrid, count, countBlockedParent, coverage, finishCoverage, furthestProcessedDecision, type ProcessedBaseCheck,
-  type ProcessedReplayContext, type ProcessedReplayPolicy, type ProcessedReplaySummary, type ReplayContext,
+  type PreparedProcessedBaseCheck, type ProcessedReplayContext, type ProcessedReplayPolicy, type ProcessedReplaySummary, type ReplayContext,
   type ReplayEntry } from "./processed-replay.ts";
 import { appendProcessedHistory, isOppositeMainWindow, processedAdmission, PROCESSED_AUTO_PF_SAMPLES, processedWindowEconomics, ProcessedWindowIndex,
   type ProcessedHistoryRow, type ProcessedOpen, type ProcessedStageDecision, type ProcessedVerdict } from "./processed-set.ts";
@@ -28,6 +28,8 @@ interface Group {
 interface Accepted {
   mask: bigint;
   children?: Accepted[];
+  /** Direct Base×Exec Set pairs actually qualified at this candidate. */
+  directPairs?: number[];
 }
 interface EntryPlan {
   accepted: Accepted[];
@@ -47,8 +49,34 @@ interface AcceptedPath {
   plan: EntryPlan;
   inverse: boolean;
 }
+interface DirectExecStats {
+  openedOrders: number;
+  settledOrders: number;
+  wins: number;
+  losses: number;
+  unknownReturns: number;
+  grossProfit: number;
+  grossLoss: number;
+  hourly: Map<number, { orders: number; net: number }>;
+}
+interface DirectContextStats {
+  evaluatedContexts: number;
+  baseQualifiedContexts: number;
+  qualifiedContexts: number;
+  insufficientContexts: number;
+  failedContexts: number;
+  parentBlockedContexts: number;
+}
+const emptyDirectExecStats = (): DirectExecStats => ({ openedOrders: 0, settledOrders: 0,
+  wins: 0, losses: 0, unknownReturns: 0, grossProfit: 0, grossLoss: 0, hourly: new Map() });
+function bitIndex(bit: bigint): number {
+  let index = 0;
+  while (bit > 1n) { bit >>= 1n; index++; }
+  return index;
+}
 const contextKey = (tp: ProcessedReplayContext, symbol: string, side: 1 | -1, minPf: number) =>
   JSON.stringify([tp.id, tp.kind, tp.ind, symbol, side, minPf]);
+const directPathKey = (key: string, pair: number) => JSON.stringify([key, pair]);
 function popcount(mask: bigint): number {
   let count = 0;
   while (mask) { mask &= mask - 1n; count++; }
@@ -68,8 +96,16 @@ export class ProcessedWindowGridReplay {
   private readonly initial: Group[][];
   private readonly capacity: number;
   private readonly negative;
+  private readonly directExec: boolean;
   private readonly contexts = new Map<string, Context>();
-  private readonly open = new WeakMap<ProcessedStageDecision, { entryT: number; paths: AcceptedPath[] }>();
+  private readonly open = new WeakMap<ProcessedStageDecision, { entryT: number; paths: AcceptedPath[];
+    directPairs?: Array<{ key: string; pair: number }> }>();
+  private readonly directBaseBlocks: readonly BlockPolicy[];
+  private readonly directExecBlocks: readonly BlockPolicy[];
+  private readonly directBaseStats = new Map<number, { evaluated: number; passed: number; insufficient: number; failed: number }>();
+  private readonly directStats = new Map<number, DirectExecStats>();
+  /** A separate rolling history for every exact config×symbol×side×Base×Exec lane. */
+  private readonly directHistories = new Map<string, readonly ProcessedHistoryRow[]>();
   private clock = -1;
   private missing = 0;
   private inverseEntries = 0;
@@ -81,12 +117,16 @@ export class ProcessedWindowGridReplay {
 
   constructor(policy: ProcessedReplayPolicy) {
     this.policy = policy;
+    this.directExec = policy.directExec === true;
     const grid = checkedProcessedWindowGrid(policy);
     this.negative = negativeLastN(policy.negativeFilter);
     this.levels = stages.map(stage => grid[stage].map((block, i) => ({ block, key: blockPolicyKey(block),
-      size: blockRequired(block), bit: 1n << BigInt(i), opposite: stage === "validation" && isOppositeMainWindow(block),
+      size: blockRequired(block), bit: 1n << BigInt(i), opposite:
+        stage === "validation" && isOppositeMainWindow(block),
     })).sort((a, b) => a.size - b.size));
-    this.usesOppositeSource = this.levels[1].some(window => window.opposite);
+    this.directBaseBlocks = this.levels[0].map(window => window.block);
+    this.directExecBlocks = this.levels[3].map(window => window.block);
+    this.usesOppositeSource = !this.directExec && this.levels[1].some(window => window.opposite);
     this.initial = this.levels.map(level => [{ mask: (1n << BigInt(level.length)) - 1n, count: level.length, history: empty }]);
     this.capacity = Math.max(...this.levels.flatMap(level => level.map(window => window.size)), ...this.negative?.windows ?? []) +
       (policy.autoPf ? PROCESSED_AUTO_PF_SAMPLES : 0);
@@ -95,15 +135,29 @@ export class ProcessedWindowGridReplay {
   private plan(key: string, at: number, minPf: number, base: ProcessedBaseCheck | undefined,
     inverse: boolean, oppositeAvailable: boolean): EntryPlan | null {
     let root = 0n;
+    let check: PreparedProcessedBaseCheck | undefined;
     if (base) {
       const auto = this.policy.autoBase === false ? undefined : this.policy.autoPf;
       const available = base.available?.() ?? Infinity;
       const maxBase = this.levels[0].at(-1)!.size;
-      if (available >= this.levels[0][0].size) {
-        const check = base.prepare?.(maxBase + (auto ? PROCESSED_AUTO_PF_SAMPLES : 0), auto);
+      const baseMinPf = this.directExec ? this.policy.directBaseMinPf : undefined;
+      check = base.prepare?.(maxBase + (auto ? PROCESSED_AUTO_PF_SAMPLES : 0), auto, baseMinPf);
+      if (this.directExec) {
+        for (const window of this.levels[0]) {
+          const index = bitIndex(window.bit);
+          const stats = this.directBaseStats.get(index) ?? { evaluated: 0, passed: 0, insufficient: 0, failed: 0 };
+          stats.evaluated++;
+          if (window.size > available) stats.insufficient++;
+          else if (check ? check(window.block, window.key) : base(window.block, auto, "context", baseMinPf)) {
+            root |= window.bit;
+            stats.passed++;
+          } else stats.failed++;
+          this.directBaseStats.set(index, stats);
+        }
+      } else if (available >= this.levels[0][0].size) {
         for (const window of this.levels[0]) {
           if (window.size > available) break;
-          if (check ? check(window.block, window.key) : base(window.block, auto, "context")) root |= window.bit;
+          if (check ? check(window.block, window.key) : base(window.block, auto, "context", baseMinPf)) root |= window.bit;
         }
       }
     }
@@ -111,6 +165,31 @@ export class ProcessedWindowGridReplay {
     if (root) {
       const result: EntryPlan = { accepted: [], best: { stage: "postBase", validation: insufficient, real: null, exec: null },
         oppositeSourceMissing: 0 };
+      if (this.directExec) {
+        const execMinPf = this.policy.directExecMinPf ?? minPf;
+        const execAuto = this.policy.autoPf;
+        let receipt: ProcessedVerdict | undefined;
+        const directPairs: number[] = [];
+        for (const baseWindow of this.levels[0]) {
+          if (!(root & baseWindow.bit)) continue;
+          const seed = check?.history?.(baseWindow.block, baseWindow.key);
+          for (const execWindow of this.levels[3]) {
+            const pair = bitIndex(baseWindow.bit) * this.directExecBlocks.length + bitIndex(execWindow.bit);
+            const historyKey = directPathKey(key, pair);
+            const history = this.directHistories.get(historyKey) ?? seed;
+            if (!history?.length) continue;
+            const view = new ProcessedWindowIndex(history, at, this.capacity, execMinPf, execAuto, this.negative);
+            const proof = view.evaluate(execWindow.block, execWindow.key);
+            if (proof.state !== "qualified") continue;
+            if (!this.directHistories.has(historyKey)) this.directHistories.set(historyKey, history.slice());
+            directPairs.push(pair);
+            receipt ??= proof;
+          }
+          if (directPairs.length) result.accepted.push({ mask: baseWindow.bit, directPairs: directPairs.splice(0) });
+        }
+        if (receipt) result.best = { stage: "active", validation: insufficient, real: insufficient, exec: receipt };
+        if (result.accepted.length) plan = result;
+      } else {
       let deepest = 0;
       const indexes = new Map<readonly ProcessedHistoryRow[], ProcessedWindowIndex>();
       const decide = (depth: number, parent: Group, path: ProcessedVerdict[], multiplicity: number) => {
@@ -160,6 +239,7 @@ export class ProcessedWindowGridReplay {
         if (!inverse || children?.length) result.accepted.push({ mask, children });
       }
       if (result.accepted.length) plan = result;
+      }
     }
     return plan;
   }
@@ -211,7 +291,16 @@ export class ProcessedWindowGridReplay {
     }
     this.clock = at;
     const admission = processedAdmission(best, allowExec);
-    this.open.set(admission, { entryT: at, paths });
+    const directPairs = this.directExec && allowExec && best.stage === "active"
+      ? [...new Map(paths.flatMap(({ key, plan }) => plan.accepted.flatMap(lane => (lane.directPairs ?? [])
+          .map(pair => [`${key}:${pair}`, { key, pair }] as const)))).values()]
+      : [];
+    for (const { pair } of directPairs) {
+      const stats = this.directStats.get(pair) ?? emptyDirectExecStats();
+      stats.openedOrders++;
+      this.directStats.set(pair, stats);
+    }
+    this.open.set(admission, { entryT: at, paths, ...(directPairs.length && { directPairs }) });
     this.pending = undefined;
     return admission;
   }
@@ -224,6 +313,28 @@ export class ProcessedWindowGridReplay {
     this.open.delete(opened);
     this.pending = undefined;
     const row = { exitT: at, unitReturn: value !== null && Number.isFinite(value) ? value : null };
+    for (const { key, pair } of order.directPairs ?? []) {
+      const stats = this.directStats.get(pair) ?? emptyDirectExecStats();
+      stats.settledOrders++;
+      if (row.unitReturn === null) stats.unknownReturns++;
+      else {
+        if (row.unitReturn > 0) { stats.wins++; stats.grossProfit += row.unitReturn; }
+        else if (row.unitReturn < 0) { stats.losses++; stats.grossLoss -= row.unitReturn; }
+        const hour = Math.floor((at - 1) / 3_600_000) * 3_600_000;
+        const summary = stats.hourly.get(hour) ?? { orders: 0, net: 0 };
+        summary.orders++;
+        summary.net += row.unitReturn;
+        stats.hourly.set(hour, summary);
+      }
+      this.directStats.set(pair, stats);
+      const prior = this.directHistories.get(directPathKey(key, pair));
+      if (prior) {
+        const next = prior.slice();
+        appendProcessedHistory(next, row, this.capacity);
+        this.directHistories.set(directPathKey(key, pair), next);
+      }
+    }
+    if (this.directExec) return;
     const changed = new Map<readonly ProcessedHistoryRow[], ProcessedHistoryRow[]>();
     const append = (old: readonly ProcessedHistoryRow[]) => {
       let next = changed.get(old);
@@ -262,6 +373,7 @@ export class ProcessedWindowGridReplay {
 
   *reportGen(at: number, contexts: () => Iterable<ReplayContext>): Generator<number, ProcessedReplaySummary> {
     if (at < this.clock) throw new Error("processed window grid report precedes its settlements");
+    if (this.directExec) return yield* this.reportDirectExecGen(at, contexts);
     const gates = [coverage(), coverage(), coverage()];
     const byDepth = [1];
     for (const level of this.levels) byDepth.push(byDepth.at(-1)! * level.length);
@@ -308,5 +420,99 @@ export class ProcessedWindowGridReplay {
       windowGrid: { choices: { base: this.levels[0].length, validation: this.levels[1].length,
         real: this.levels[2].length, exec: this.levels[3].length }, oppositeSourceMissing: this.missing,
           inverseEntries: this.inverseEntries, inverseExecEntries: this.inverseExecEntries } };
+  }
+
+  private *reportDirectExecGen(at: number, contexts: () => Iterable<ReplayContext>): Generator<number, ProcessedReplaySummary> {
+    const exec = coverage();
+    let countContexts = 0, yieldedAt = performance.now();
+    const baseChoices = this.levels[0].length, execChoices = this.levels[3].length;
+    const baseAudit = new Map<number, { contextsEvaluated: number; contextsPassed: number;
+      contextsInsufficient: number; contextsFailed: number }>();
+    const pathAudit = new Map<number, DirectContextStats>();
+    const maxBase = this.levels[0].at(-1)!.size;
+    const autoBase = this.policy.autoBase === false ? undefined : this.policy.autoPf;
+    const baseMinPf = this.policy.directBaseMinPf;
+    const execMinPf = this.policy.directExecMinPf;
+    for (const { tp, symbol, side, minPf, base: contextBase } of contexts()) {
+      countContexts++;
+      const key = contextKey(tp, symbol, side, minPf);
+      // Report the final exact source contexts as their own Base×Exec paths. A passing Base Set
+      // seeds each child with those valid positions; its later direct fills are appended only to
+      // that child's private history.
+      const baseCheck = contextBase?.prepare?.(maxBase + (autoBase ? PROCESSED_AUTO_PF_SAMPLES : 0), autoBase, baseMinPf);
+      const available = contextBase?.available?.() ?? 0;
+      for (const baseWindow of this.levels[0]) {
+        const baseIndex = bitIndex(baseWindow.bit);
+        const baseStats = baseAudit.get(baseIndex) ?? { contextsEvaluated: 0, contextsPassed: 0,
+          contextsInsufficient: 0, contextsFailed: 0 };
+        baseStats.contextsEvaluated++;
+        const baseProof: ProcessedVerdict = baseWindow.size > available
+          ? { state: "insufficient", n: available, pf: null }
+          : baseCheck?.evaluate?.(baseWindow.block, baseWindow.key) ?? {
+            state: baseCheck?.(baseWindow.block, baseWindow.key) ? "qualified" : "failed",
+            n: baseWindow.size, pf: null,
+          };
+        if (baseProof.state === "qualified") baseStats.contextsPassed++;
+        else if (baseProof.state === "insufficient") baseStats.contextsInsufficient++;
+        else baseStats.contextsFailed++;
+        baseAudit.set(baseIndex, baseStats);
+        const seed = baseProof.state === "qualified"
+          ? baseCheck?.history?.(baseWindow.block, baseWindow.key) : undefined;
+        for (const execWindow of this.levels[3]) {
+          const pair = baseIndex * execChoices + bitIndex(execWindow.bit);
+          const stats = pathAudit.get(pair) ?? { evaluatedContexts: 0, baseQualifiedContexts: 0,
+            qualifiedContexts: 0, insufficientContexts: 0, failedContexts: 0, parentBlockedContexts: 0 };
+          stats.evaluatedContexts++;
+          if (baseProof.state !== "qualified") {
+            stats.parentBlockedContexts++;
+            countBlockedParent(exec);
+          } else {
+            stats.baseQualifiedContexts++;
+            const historyKey = directPathKey(key, pair);
+            const history = this.directHistories.get(historyKey) ?? seed ?? empty;
+            const view = new ProcessedWindowIndex(history, at, this.capacity,
+              execMinPf ?? minPf, this.policy.autoPf, this.negative);
+            const proof = view.evaluate(execWindow.block, execWindow.key);
+            count(exec, proof, execWindow.size,
+              () => processedWindowEconomics(history, execWindow.size, at));
+            if (proof.state === "qualified") stats.qualifiedContexts++;
+            else if (proof.state === "insufficient") stats.insufficientContexts++;
+            else stats.failedContexts++;
+          }
+          pathAudit.set(pair, stats);
+        }
+      }
+      if (countContexts % 32 === 0 && performance.now() - yieldedAt > 8) {
+        yield -15; yieldedAt = performance.now();
+      }
+    }
+    const expected = countContexts * baseChoices * execChoices;
+    if (exec.contexts !== expected) throw new RangeError("direct Exec coverage does not match its exact Base×Exec grid");
+    finishCoverage(exec);
+    const validation = coverage(), real = coverage();
+    const directExecDetails = this.directBaseBlocks.flatMap((base, baseIndex) => this.directExecBlocks.map((exec, execIndex) => {
+      const pair = baseIndex * execChoices + execIndex;
+      const stats = this.directStats.get(pair) ?? emptyDirectExecStats();
+      const audit = pathAudit.get(pair) ?? { evaluatedContexts: 0, baseQualifiedContexts: 0,
+        qualifiedContexts: 0, insufficientContexts: 0, failedContexts: 0, parentBlockedContexts: 0 };
+      const hourly = [...stats.hourly].sort(([a], [b]) => a - b)
+        .map(([t, value]) => ({ t, orders: value.orders, net: value.net }));
+      return { base, exec, openedOrders: stats.openedOrders, settledOrders: stats.settledOrders,
+        wins: stats.wins, losses: stats.losses, unknownReturns: stats.unknownReturns,
+        grossProfit: stats.grossProfit, grossLoss: stats.grossLoss,
+        positiveHours: hourly.filter(hour => hour.net > 0).length,
+        activeHours: hourly.filter(hour => hour.orders > 0).length, hourly, ...audit };
+    }));
+    const directBaseDetails = this.directBaseBlocks.map((base, index) => ({ base,
+      ...(this.directBaseStats.get(index) ?? { evaluated: 0, passed: 0, insufficient: 0, failed: 0 }),
+      ...(baseAudit.get(index) ?? { contextsEvaluated: 0, contextsPassed: 0, contextsInsufficient: 0, contextsFailed: 0 }) }));
+    return { basis: "model", at, coverageScope: "visible-config-symbol-direction-window-path",
+      seededFromCandidates: false, validation, real, exec, directBaseDetails,
+      directExecDetails,
+      windowGrid: { choices: { base: baseChoices, validation: this.levels[1].length,
+        real: this.levels[2].length, exec: execChoices }, oppositeSourceMissing: this.missing,
+        inverseEntries: this.inverseEntries, inverseExecEntries: this.inverseExecEntries,
+        directExec: true, directBaseMinPf: this.policy.directBaseMinPf,
+        directExecMinPf: this.policy.directExecMinPf } };
   }
 }

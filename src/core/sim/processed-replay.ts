@@ -25,6 +25,12 @@ export interface ProcessedReplayPolicy extends Omit<ProcessedPolicy, "minPf" | "
   lanes?: readonly ProcessedLaneOptions[];
   /** Separate window choices for each stage, evaluated lazily under their immediate parent during replay. */
   windowGrid?: ProcessedWindowGrid;
+  /** Research-only shortcut: evaluate the configured Exec windows on each Base set and bypass Main/Real. */
+  directExec?: true;
+  /** Optional floor for the direct Base window proof, independent of raw tape selection floors. */
+  directBaseMinPf?: number;
+  /** Optional floor for the direct Base→Exec gate; the Base floor still comes from the replay settings. */
+  directExecMinPf?: number;
 }
 export type ProcessedWindowGrid = Record<"base" | "validation" | "real" | "exec", readonly BlockPolicy[]>;
 type SinglePolicy = Omit<ProcessedReplayPolicy, "lanes" | "windowGrid" | "reportDetail">;
@@ -48,6 +54,8 @@ export function checkedProcessedWindowGrid(policy: ProcessedReplayPolicy): Proce
   if (!grid || policy.lanes || policy.baseBlock || policy.blocks || policy.execN === undefined ||
       policy.reportDetail !== "summary" || policy.autoPf?.mode === "main")
     throw new RangeError("a window grid requires summary replay, four independent stages and separate Auto PF");
+  if (policy.directExec && (!grid || policy.lanes || policy.blocks || policy.baseBlock || policy.reportDetail !== "summary"))
+    throw new RangeError("direct Exec requires an offline summary window grid");
   for (const stage of ["base", "validation", "real", "exec"] as const) {
     const windows = grid[stage];
     if (!Array.isArray(windows) || !windows.length) throw new RangeError("processed window grid is empty at " + stage);
@@ -77,6 +85,15 @@ export function checkedProcessedPolicy(policy: SinglePolicy): SinglePolicy {
   if (policy.baseBlock !== undefined) checkBlockPolicy(policy.baseBlock);
   if (policy.baseScope !== undefined && policy.baseScope !== "context") throw new RangeError("invalid processed Base scope");
   if (policy.autoBase !== undefined && policy.autoBase !== false) throw new RangeError("invalid processed Base PF selection");
+  if (policy.directExec !== undefined && policy.directExec !== true) throw new RangeError("invalid direct Exec research mode");
+  if (policy.directBaseMinPf !== undefined && (!Number.isFinite(policy.directBaseMinPf) ||
+      policy.directBaseMinPf <= 1 || policy.directBaseMinPf > 5))
+    throw new RangeError("invalid direct Base PF floor");
+  if (policy.directExecMinPf !== undefined && (!Number.isFinite(policy.directExecMinPf) ||
+      policy.directExecMinPf <= 1 || policy.directExecMinPf > 5))
+    throw new RangeError("invalid direct Exec PF floor");
+  if (!policy.directExec && (policy.directBaseMinPf !== undefined || policy.directExecMinPf !== undefined))
+    throw new RangeError("direct PF floors require direct Exec research mode");
   if (policy.autoPf !== undefined) checkProcessedAutoPf(policy.autoPf);
   const negativeFilter = negativeLastN(policy.negativeFilter);
   return { validationN: policy.validationN, realN: policy.realN,
@@ -87,6 +104,9 @@ export function checkedProcessedPolicy(policy: SinglePolicy): SinglePolicy {
     ...(policy.baseBlock && { baseBlock: structuredClone(policy.baseBlock) }),
     ...(policy.baseScope && { baseScope: policy.baseScope }),
     ...(policy.autoBase === false && { autoBase: false }),
+    ...(policy.directExec && { directExec: true }),
+    ...(policy.directBaseMinPf !== undefined && { directBaseMinPf: policy.directBaseMinPf }),
+    ...(policy.directExecMinPf !== undefined && { directExecMinPf: policy.directExecMinPf }),
   };
 }
 
@@ -118,9 +138,16 @@ export function furthestProcessedDecision<T extends ProcessedStageDecision>(lane
 
 export const processedLaneKey = (tp: ProcessedReplayContext, policy: SinglePolicy, minPf: number, id: string) =>
   JSON.stringify([tp.ind, policy.validationN, policy.realN, minPf, ...(id ? [id] : [])]);
-export type ProcessedBaseCheck = ((block?: BlockPolicy, autoPf?: SinglePolicy["autoPf"], scope?: "context") => boolean) & {
+export type ProcessedBaseCheck = ((block?: BlockPolicy, autoPf?: SinglePolicy["autoPf"], scope?: "context",
+  minPfOverride?: number) => boolean) & {
   available?: () => number;
-  prepare?: (capacity: number, autoPf?: SinglePolicy["autoPf"]) => (block: BlockPolicy, key: string) => boolean;
+  prepare?: (capacity: number, autoPf?: SinglePolicy["autoPf"], minPfOverride?: number) =>
+    PreparedProcessedBaseCheck;
+};
+export type PreparedProcessedBaseCheck = ((block: BlockPolicy, key: string) => boolean) & {
+  evaluate?: (block: BlockPolicy, key: string) => ProcessedVerdict;
+  /** Exact Base positions carried into an independently qualified child set. */
+  history?: (block: BlockPolicy, key: string) => readonly ProcessedHistoryRow[] | undefined;
 };
 export const requiresProcessedBaseCheck = (policy: SinglePolicy) => !!(policy.baseBlock || policy.baseScope);
 export const qualifiesProcessedBase = (policy: SinglePolicy, check?: ProcessedBaseCheck) =>
@@ -164,7 +191,16 @@ export interface ProcessedReplaySummary {
   real: ProcessedReplayCoverage;
   exec?: ProcessedReplayCoverage;
   windowGrid?: { choices: Record<keyof ProcessedWindowGrid, number>; oppositeSourceMissing: number;
-    inverseEntries: number; inverseExecEntries: number };
+    inverseEntries: number; inverseExecEntries: number; directExec?: true; directBaseMinPf?: number; directExecMinPf?: number };
+  /** Aggregated funded modeled-order cohorts for every direct Base×Exec policy pair. */
+  directExecDetails?: Array<{ base: BlockPolicy; exec: BlockPolicy; openedOrders: number; settledOrders: number;
+    wins: number; losses: number; unknownReturns: number; grossProfit: number; grossLoss: number;
+    positiveHours: number; activeHours: number; hourly: Array<{ t: number; orders: number; net: number }>;
+    evaluatedContexts: number; baseQualifiedContexts: number; qualifiedContexts: number;
+    insufficientContexts: number; failedContexts: number; parentBlockedContexts: number }>;
+  /** Exact Base-window decisions attempted against the desk-selected tape cohort. */
+  directBaseDetails?: Array<{ base: BlockPolicy; evaluated: number; passed: number; insufficient: number; failed: number;
+    contextsEvaluated: number; contextsPassed: number; contextsInsufficient: number; contextsFailed: number }>;
   lanes?: Array<{ id: string; policy: SinglePolicy; validation: ProcessedReplayCoverage;
     real: ProcessedReplayCoverage; exec?: ProcessedReplayCoverage }>;
 }
@@ -485,7 +521,7 @@ export class ProcessedSummaryReplay {
 }
 
 type ReplayLedger = ProcessedReplay | ProcessedSummaryReplay;
-export type ReplayContext = { tp: ProcessedReplayContext; symbol: string; side: 1 | -1; minPf: number };
+export type ReplayContext = { tp: ProcessedReplayContext; symbol: string; side: 1 | -1; minPf: number; base?: ProcessedBaseCheck };
 export type ReplayEntry = ProcessedSummaryOpen & { lanes: Array<{ index: number; open: ProcessedOpen | ProcessedSummaryOpen }> };
 
 function combineCoverage(rows: readonly ProcessedReplayCoverage[]): ProcessedReplayCoverage {

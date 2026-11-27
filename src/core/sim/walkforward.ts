@@ -2,12 +2,13 @@ import { slRatiosOf } from "../sl-ratios.ts";
 import { slWithinBounds, type SlBounds } from "../sl-calibration.ts";
 import {partialFloorOf, positionStageStats} from "../position-windows.ts";
 import { simulationClock } from "../progress.ts";
-import { blockPolicyKey, blockRequired } from "../../../shared/cts-lastn/blocks.ts";
+import { blockPolicyKey, blockRequired, type BlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
 import { positionCounts, positionStats, positionTapeValid, type PositionWindows } from "../position-windows.ts";
 import {prepareRelationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
 import { RT_COST } from "../model-cost.ts";
 import { EVALUATION_HISTORY_H, PRECALC_HISTORY_H } from "../market/history-requirements.ts";
-import { ProcessedLaneReplay, ownedProcessedPolicy, type ProcessedBaseCheck, type ProcessedReplayPolicy, type ProcessedReplayReport, type ProcessedReplaySummary } from "./processed-replay.ts";
+import { ProcessedLaneReplay, ownedProcessedPolicy, type PreparedProcessedBaseCheck, type ProcessedBaseCheck,
+  type ProcessedReplayPolicy, type ProcessedReplayReport, type ProcessedReplaySummary } from "./processed-replay.ts";
 import { ProcessedWindowGridReplay, type OppositeProcessedSource } from "./processed-window-grid.ts";
 import { PROCESSED_AUTO_PF_SAMPLES, processedGateVerdict, ProcessedWindowIndex, type ProcessedHistoryRow } from "./processed-set.ts";
 import { minimumStopFraction } from "../protection-policy.ts";
@@ -4334,8 +4335,10 @@ export function processedBaseCheck(tp: ConfigTape, o: WalkForwardOptions, sym: s
     }
     return history;
   };
-  const check: ProcessedBaseCheck = (block, configuredAuto, scope) => {
+  const check: ProcessedBaseCheck = (block, configuredAuto, scope, minPfOverride) => {
     if (!available() || !own) return false;
+    if (minPfOverride !== undefined && (!Number.isFinite(minPfOverride) || minPfOverride <= 1 || minPfOverride > 5))
+      throw new RangeError("invalid processed Base PF override");
     const tag = isSignalInd(tp.ind) ? "sig" : tp.kind === "exit" ? "exit" : tp.protect.tag ?? "wide";
     const baseGates = scope === "context" && !configuredAuto && o.gates.stepPf
       ? { ...o.gates, stepPf: { ...o.gates.stepPf, mode: "manual" as const } } : o.gates;
@@ -4345,12 +4348,12 @@ export function processedBaseCheck(tp: ConfigTape, o: WalkForwardOptions, sym: s
     if (end < Math.min(n, partial || n)) return false;
     const rules = o.gates.stepPf;
     const autoPf = rules?.enabled && (rules.mode ?? "auto") === "auto" && configuredAuto || undefined;
-    const key = `${block ? blockPolicyKey(block) : "count"}|${autoPf?.ratio ?? 0}|${scope ?? ""}|${baseGates === o.gates}`;
+    const key = `${block ? blockPolicyKey(block) : "count"}|${autoPf?.ratio ?? 0}|${scope ?? ""}|${baseGates === o.gates}|${minPfOverride ?? 0}`;
     const cached = verdicts.get(key);
     if (cached !== undefined) return cached;
     const capacity = n + (autoPf ? PROCESSED_AUTO_PF_SAMPLES : 0);
     const history = recentRows(capacity);
-    const minPf = Math.max(minPfForTape(tp, { ...o, gates: baseGates }),
+    const minPf = Math.max(minPfOverride ?? 0, minPfForTape(tp, { ...o, gates: baseGates }),
       minPfOf(gates, tag, tp.ind, protectStepPct(tp.protect), protectSlRatio(tp.protect)));
     const sampleN = Math.min(end, n);
     let passed = processedGateVerdict(history, capacity, { validationN: sampleN, realN: sampleN,
@@ -4374,14 +4377,19 @@ export function processedBaseCheck(tp: ConfigTape, o: WalkForwardOptions, sym: s
     return passed;
   };
   check.available = available;
-  check.prepare = (capacity, configuredAuto) => {
+  check.prepare = (capacity, configuredAuto, minPfOverride) => {
     if (!available() || !own) return () => false;
+    if (minPfOverride !== undefined && (!Number.isFinite(minPfOverride) || minPfOverride <= 1 || minPfOverride > 5))
+      throw new RangeError("invalid processed Base PF override");
     const tag = isSignalInd(tp.ind) ? "sig" : tp.kind === "exit" ? "exit" : tp.protect.tag ?? "wide";
     const rules = o.gates.stepPf;
     const base = !configuredAuto && rules ? { ...o.gates, stepPf: { ...rules, mode: "manual" as const } } : o.gates;
     const gates = baseSetsGates(base);
-    if (!gates.positionWindows) return block => check(block, configuredAuto, "context");
-    const minPf = Math.max(minPfForTape(tp, { ...o, gates: base }),
+    if (!gates.positionWindows) {
+      const prepared: PreparedProcessedBaseCheck = block => check(block, configuredAuto, "context", minPfOverride);
+      return prepared;
+    }
+    const minPf = Math.max(minPfOverride ?? 0, minPfForTape(tp, { ...o, gates: base }),
       minPfOf(gates, tag, tp.ind, protectStepPct(tp.protect), protectSlRatio(tp.protect)));
     const auto = rules?.enabled && (rules.mode ?? "auto") === "auto" ? configuredAuto : undefined;
     const history = recentRows(capacity);
@@ -4389,8 +4397,9 @@ export function processedBaseCheck(tp: ConfigTape, o: WalkForwardOptions, sym: s
     const windows = new Map<number, boolean>();
     const maxDdr = maxDdrForTape(tp, o);
     const stop = Math.max(0, tp.protect.sl) * 100;
-    return (block, key) => {
-      if (!index.qualifies(block, key)) return false;
+    const evaluate = (block: BlockPolicy, key: string) => {
+      const proof = index.evaluate(block, key);
+      if (proof.state !== "qualified") return proof;
       const n = blockRequired(block);
       let pass = windows.get(n);
       if (pass === undefined) {
@@ -4401,8 +4410,13 @@ export function processedBaseCheck(tp: ConfigTape, o: WalkForwardOptions, sym: s
           own.net > 0 && own.gp >= own.gl * minPf && gp >= minPf * (gl + (gates.lossPrior ? stop : 0)) && !ddrFails(own.mdd * 100, net, maxDdr);
         windows.set(n, pass);
       }
-      return pass;
+      return pass ? proof : { ...proof, state: "failed" as const };
     };
+    const prepared: PreparedProcessedBaseCheck = (block, key) => evaluate(block, key).state === "qualified";
+    prepared.evaluate = evaluate;
+    prepared.history = (block, key) => prepared(block, key)
+      ? history.slice(-blockRequired(block)) : undefined;
+    return prepared;
   };
   return check;
 }
@@ -9133,7 +9147,8 @@ export function* walkForwardGen(
         } else if (!baseAllowsTape(tp, o)) continue;
         const minPf = processedFloor(tp);
         for (const symbol of new Set(tp.syms)) for (const side of [1, -1] as const)
-          yield { tp, symbol, side, minPf };
+          yield { tp, symbol, side, minPf,
+            ...(o.processedStages?.directExec && { base: processedBaseCheck(tp, o, symbol, side, stopT) }) };
       }
     }) : undefined;
   return {
