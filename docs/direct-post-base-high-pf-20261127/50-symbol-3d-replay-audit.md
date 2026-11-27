@@ -42,7 +42,7 @@ The focused exchange and runtime safety suites run against mocks/offline fixture
 
 The change in this branch lets direct research grids specify only Base and Exec windows. It normalizes those two windows, counts only Base×Exec paths and reports zero Main/Real policy choices. Existing four-stage grids retain their four-stage shape. Regression coverage checks both positive/negative direct lanes and the omitted Main/Real choices.
 
-The focused processing and offline exchange suites passed in the earlier isolated run (58 processing checks and 64 exchange/runtime checks). In this audit, the two direct Base→Exec regression cases passed in isolation. The replay test runner was later killed with code 137 when rerun alongside an absent test-file path; the full project typecheck and targeted TypeScript check also exited with code 137. These memory failures do not establish a source defect, but typechecking this revision remains incomplete.
+The focused processing suite passed 58 checks in the earlier isolated run. In this audit, both direct Base→Exec regression cases passed, and all 80 exchange-module tests passed sequentially across nine files with isolated request-budget state. These exchange tests use mocks/offline fixtures. The replay test runner was later killed with code 137 when rerun alongside an absent test-file path; the full project typecheck and targeted TypeScript check also exited with code 137. These memory failures do not establish a source defect, but typechecking this revision remains incomplete.
 
 ## To complete the requested replay
 
