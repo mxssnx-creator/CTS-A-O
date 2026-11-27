@@ -1,4 +1,4 @@
-import { SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
+import { SL_TP_RATIOS, THIN_SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS } from "./config.ts";
@@ -45,8 +45,8 @@ test("the position-cost ranges: Minimal 4–8× step 0.5, Short 9–14×, Genera
   assert.deepEqual(mult(GENERAL_RANGE), [15, 16, 17, 18, 19, 20, 21, 22]);
   assert.deepEqual(mult(LONG_RANGE), [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
   // stops: Minimal 1.5–3, Short 1–2.5, General / Long 0.25–1.5, step 0.25
-  assert.deepEqual([...MINIMAL_RANGE.slOfTp], [...SL_TP_RATIOS]);
-  assert.deepEqual([...SHORT_RANGE.slOfTp], [...SL_TP_RATIOS]);
+  assert.deepEqual([...MINIMAL_RANGE.slOfTp], [...THIN_SL_TP_RATIOS]);
+  assert.deepEqual([...SHORT_RANGE.slOfTp], [...THIN_SL_TP_RATIOS]);
   for (const r of [GENERAL_RANGE, LONG_RANGE]) assert.deepEqual([...r.slOfTp], [...SL_TP_RATIOS]);
   // three trailing distances in every range (a whole-target trail arms only as the target fills: the plain cell)
   for (const r of [MINIMAL_RANGE, SHORT_RANGE, GENERAL_RANGE, LONG_RANGE])
@@ -73,7 +73,9 @@ test("every TP × SL × Trail × hold of every range is its own config, at the r
     assert.ok(trailingOnly.length > 0, `${tag}: separate trailing-only configs`);
     assert.ok(trailingOnly.every((p) => p.tp === 0 && p.sl <= 0.03 && p.trail > 0 && p.trail <= 0.03));
     // the full product, no cell folded into another
-    assert.equal(mine.length, r.tp.length * r.slOfTp.length * r.trailOfTp.length * g.holdH.length, tag);
+    // (the thin 0.2-1.2 ladder clamps its tightest stops onto the cost/range floor, so cells that land on the same
+    // distances are one config: the grid holds exactly the distinct hand-computed cells)
+    const expectedKeys = new Set<string>();
     const keys = new Set(mine.map((p) => `${p.tp}|${p.sl}|${p.trail}|${p.hold}`));
     for (const tp of r.tp)
       for (const k of r.slOfTp)
@@ -85,7 +87,10 @@ test("every TP × SL × Trail × hold of every range is its own config, at the r
             const trail = tr > 0 ? r4(Math.max((r.minTrail ?? 0) / (g.trailStep ?? 1), tp * tr)) : 0;
             const hold = Math.max(2, Math.round((h * 60) / 15));
             assert.ok(keys.has(`${tp}|${sl}|${trail}|${hold}`), `${tag} ${tp} × ${k} × ${tr} × ${h}h`);
+            expectedKeys.add(`${tp}|${sl}|${trail}|${hold}`);
           }
+    assert.equal(mine.length, expectedKeys.size, tag);
+    assert.ok(mine.length <= r.tp.length * r.slOfTp.length * r.trailOfTp.length * g.holdH.length, tag);
   }
   // General's tightest cell: 3.0 % target, 0.25× = 0.75 % held at its 1.0 % floor, trailing a quarter (0.75 %)
   assert.ok(cells.some((p) => p.tag === "gn" && p.tp === 0.03 && p.sl === 0.0075 && p.trail === 0.0075));
@@ -378,8 +383,8 @@ test("Base, one middle cell per range (baseBest off): each enabled range against
   const mn = ps[0];
   // the middle TP and the middle stop ratio, no trail, 16 h in 15m bars
   assert.equal(mn.tp, 0.012);
-  // middle of MINIMAL_SL 1.5 … 3 step 0.25 (index 3): 2.25× the 1.2 % target
-  assert.equal(mn.sl, 0.015);
+  // middle of MINIMAL_SL 0.2 … 1.2 step 0.1 (index 5): 0.7× the 1.2 % target
+  assert.equal(mn.sl, 0.0084);
   assert.equal(mn.trail, 0);
   assert.equal(mn.hold, 64);
   const st = (pf: number) => ({ n: 40, pf, net: 5, mdd: 1 }) as never;

@@ -99,7 +99,7 @@ function run(b, signal) {
   }
   return trades;
 }
-const pf = (xs) => { let g = 0, l = 0; for (const r of xs) r > 0 ? (g += r) : (l -= r); return l > 0 ? g / l : g > 0 ? "no loss" : "empty"; };
+const pf = (xs) => { let g = 0, l = 0; for (const r of xs) { if (r > 0) g += r; else l -= r; } return l > 0 ? g / l : g > 0 ? "no loss" : "empty"; };
 const fmt = (x) => (typeof x === "number" ? x.toFixed(3) : x);
 
 const result = { tf: TF, cost: COST, tp: TP, sl: SL, holdBars: HOLD, symbols: syms.length, candidates: {} };

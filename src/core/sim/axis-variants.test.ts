@@ -6,6 +6,9 @@ import { DEFAULT_AXIS } from "../config.ts";
 import { checkSettings } from "../settings-check.ts";
 
 describe("Axis: every configured set", () => {
+  it("does not build a wide ladder without any protection cell", () => {
+    assert.deepEqual(axisVariants({...DEFAULT_AXIS, modes: ["desk", "revert"]}, []), []);
+  });
   it("one mode as before: range types × ladder depths", () => {
     const v = axisVariants({ ...DEFAULT_AXIS }, ["p"]);
     assert.equal(v.length, DEFAULT_AXIS.ranges!.length * DEFAULT_AXIS.levelsSet!.length);

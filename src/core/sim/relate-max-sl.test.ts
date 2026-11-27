@@ -41,7 +41,8 @@ describe("Relate modeled maximum stop distance", () => {
       const barMs = H / 3;
       const rows = Array.from({ length: (warmTrades + forwardTrades) * 3 + 1 }, (_, i) => {
         const isEntry = i % 3 === 1;
-        const loss = Math.floor(i / 3) === warmTrades + 72;
+        const cycle = Math.floor(i / 3);
+        const loss = cycle >= warmTrades && (cycle - warmTrades) % 4 === 0;
         const favorable = isEntry && !loss ? 101.1 : 100.1;
         const adverse = isEntry && loss ? 98.9 : 99.9;
         return { t: dataStartT + i * barMs, o: 100,
@@ -107,13 +108,23 @@ describe("Relate modeled maximum stop distance", () => {
       const book = new RelateBook(relate);
       const identity = { cfg, sym: "AAA-USDT", side, ind, strategy: kind,
         coordination: "ordinary", range: "mc" };
-      const accepted = (r: number) => ({ ...identity, r, accepted: true, relateMeasured: true, relateBase: 1 });
-      for (let i = 0; i < 59; i++) book.add(accepted(.01));
-      book.add(accepted(-.01));
+      let clock = 0;
+      const accepted = (r: number) => ({ ...identity, r, accepted: true, relateMeasured: true, relateBase: 1, closedAt: ++clock });
+      const settle = (r: number) => {
+        const parts = book.decide(identity, 1, ++clock).parts;
+        book.add({ ...accepted(r), relateParts: parts });
+      };
+      for (let i = 0; i < 23; i++) settle(.01);
+      for (let i = 0; i < 12; i++) {
+        settle(-.001);
+        settle(-.001);
+        settle(.01);
+      }
+      settle(-.01);
       // A different config and the opposing side do not change this config's own sample or Active state.
       book.add({ ...accepted(.5), cfg: `${cfg}-sibling` });
       book.add({ ...accepted(.5), side: -side });
-      assert.equal(book.decide(identity).stats.config?.n, 60, label);
+      assert.equal(book.preview(identity).stats.config?.n, 60, label);
       const defaults = defaultWalkForward(DEFAULT_SETTINGS);
       const options = { ...defaults, lastN: 0, validLastN: 0, normalBaseMinPf: 0,
         basePassed: undefined, rangeOpts: undefined, probe: { perRange: 0, perCell: 1 }, relate,
@@ -122,15 +133,15 @@ describe("Relate modeled maximum stop distance", () => {
         coord: { enabled: false, hourLock: 0, cooldown: "off" as const, conflict: false, confirm: false } };
       const tp = makeTape(cfg, "follow", ind, p, kind, [identity.sym], [], [], []);
       const at = () => execDecision(tp, 100 * H, options, { sym: identity.sym, side, relate: book });
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < 1; i++) {
         const below = at();
         assert.equal(below.ok, true, `${label}: below the active step the base trades`);
         if (!below.ok) throw new Error("unexpected rejection");
         assert.equal(below.relateVol ?? 1, 1, `${label}: at unit volume`);
         // the accepted base close carries the relation's step (shadow part when the stop is eligible)
-        book.add({ ...identity, r: .01, accepted: true, relateMeasured: true,
+        book.add({ ...accepted(-.001),
           relateBase: below.relateBase ?? 1, relateParts: below.relateParts });
-        assert.equal(book.decide(identity).stats.config?.n, 61 + i, `${label}: the base close is accepted evidence`);
+        assert.equal(book.preview(identity).stats.config?.n, 61 + i, `${label}: the base close is accepted evidence`);
       }
       const allowed = at();
       assert.equal(allowed.ok, true, label);
@@ -139,7 +150,7 @@ describe("Relate modeled maximum stop distance", () => {
       if (!eligible) {
         assert.equal(allowed.relateParts, undefined, `${label}: no simulated raise recorded as funded`);
         book.add(accepted(.01));
-        assert.equal(book.decide(identity).stats.config?.n, 63, `${label}: actual neutral close counted once`);
+        assert.equal(book.preview(identity).stats.config?.n, 62, `${label}: actual neutral close counted once`);
         const next = at();
         assert.equal(next.ok, true, `${label}: a neutral prior close restarts the step; the base still trades`);
         assert.equal(next.ok && (next.relateVol ?? 1), 1);

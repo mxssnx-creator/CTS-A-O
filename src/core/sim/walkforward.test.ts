@@ -56,6 +56,7 @@ const burst = tape("burst", [
 ]);
 const o = {
   ...defaultWalkForward(DEFAULT_SETTINGS),
+  wideEnabled: true, // Legacy untagged tapes exercise selection/toggles, not the current Wide-off default.
   // the fixtures are laid out on the 336 h selection window (the engine default is 24 h since 19 Oct)
   longH: 336,
   preH: 20,

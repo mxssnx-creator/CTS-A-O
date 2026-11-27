@@ -26,13 +26,21 @@ import {
   HistoryStorageError,
   BoundedHistory,
   historyOf,
+  historyCacheBytes,
   transferHistoriesGen,
   readHistoryManifest,
 } from "./history-store.server.ts";
 import { runOnWorkers, retireOwnedIdleWorkers } from "./pool.server.ts";
+import { tapeOpenTimes, tapeOpenView } from "../sim/tape-open-times.ts";
 
 const end = Date.UTC(2026, 9, 17),
   H = 3_600_000;
+test("history cache accepts both configured spellings with canonical precedence", () => {
+  assert.equal(historyCacheBytes({ CTS_HISTORY_CACHE_MB: "32" }), 32 * 1024 * 1024);
+  assert.equal(historyCacheBytes({ CTS_CORE_HISTORY_CACHE_MB: "64" }), 64 * 1024 * 1024);
+  assert.equal(historyCacheBytes({ CTS_HISTORY_CACHE_MB: "", CTS_CORE_HISTORY_CACHE_MB: "64" }), 64 * 1024 * 1024);
+  assert.equal(historyCacheBytes({ CTS_HISTORY_CACHE_MB: "32", CTS_CORE_HISTORY_CACHE_MB: "64" }), 32 * 1024 * 1024);
+});
 function fixture() {
   const u = makeUniverse(
     ["A", "B"].flatMap((sym) => {
@@ -43,7 +51,7 @@ function fixture() {
     }),
   );
   const wf = {
-    ...defaultWalkForward(DEFAULT_SETTINGS),
+    ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
     longH: 100,
     simH: 12,
     mode: "fixed" as const,
@@ -67,6 +75,55 @@ function fixture() {
   assert.ok(tapes.some((t) => t.open.length || t.pending.length));
   return { u, wf, tapes };
 }
+test("spilled positions remain lazy, lossless, mutable and transferable", () => {
+  const { tapes } = fixture();
+  const original = tapes.find((t) => t.open.length > 0)!;
+  assert.ok(original);
+  const store = new TapeHistoryStore({ cacheBytes: 128 });
+  try {
+    const saved = store.append(original), owner = historyOf(saved)!;
+    assert.ok(owner.record.positions);
+    assert.equal(owner.positions, undefined);
+    assert.deepEqual(Array.from(tapeOpenTimes(saved)), original.open.map((p) => p.entryT));
+    assert.equal(owner.positions, undefined, "timestamp scheduling must not retain all open objects");
+    assert.deepEqual(tapeOpenView(saved), original.open);
+    assert.equal(owner.positions, undefined, "read-only replay marks must not retain spilled positions");
+    const clean = describeStoredTape(saved)!;
+    assert.equal(clean.meta.open, undefined, "clean manifests refer to the disk record");
+    const restored = restoreStoredTapes([clean]);
+    try { assert.deepEqual(restored.tapes[0].open, original.open); }
+    finally { restored.close(); }
+    const before = original.open[0].stop;
+    saved.open[0].stop = before + 1;
+    assert.equal(saved.open[0].stop, before + 1, "ordinary position mutation persists on the tape");
+    assert.equal(tapeOpenView(saved)[0].stop, before + 1, "a mutable override wins over the stored view");
+    saved.pending = [{ sym: "new", side: 1 }];
+    const changed = restoreStoredTapes([describeStoredTape(saved)!]);
+    try {
+      assert.equal(changed.tapes[0].open[0].stop, before + 1);
+      assert.deepEqual(changed.tapes[0].pending, saved.pending);
+    } finally { changed.close(); }
+    const corrupted = store.append(original), bytes = readFileSync(store.path);
+    bytes[historyOf(corrupted)!.record.positions!.offset] ^= 1;
+    writeFileSync(store.path, bytes);
+    assert.throws(() => tapeOpenTimes(corrupted), HistoryStorageError,
+      "corrupt positions must fail rather than silently remove or change trades");
+  } finally { store.close(); }
+});
+test("shared binary arenas still charge each tape's position metadata to the resident budget", () => {
+  const original = fixture().tapes.find((t) => t.open.length > 0)!;
+  const sibling = { ...original, id: `${original.id}-sibling`, open: original.open.map((p) => ({ ...p })) };
+  assert.equal(original.exitT.buffer, sibling.exitT.buffer);
+  const oneTapeBudget = original.exitT.buffer.byteLength + 1024 +
+    (original.open.length + original.pending.length) * 512;
+  const owner = new BoundedHistory(oneTapeBudget);
+  try {
+    const first = owner.retain(original), second = owner.retain(sibling);
+    assert.equal(historyOf(first), undefined);
+    assert.ok(historyOf(second), "the second tape's metadata exceeds the budget even though its arena is shared");
+    assert.deepEqual({ ...second }, sibling);
+  } finally { owner.close(); }
+});
 test("bounded histories preserve every binary column, metadata, prefix, open and pending position across eviction", () => {
   const directory = mkdtempSync(join(tmpdir(), "history-test-")),
     { tapes } = fixture();

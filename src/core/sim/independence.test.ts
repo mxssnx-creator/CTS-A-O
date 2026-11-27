@@ -61,7 +61,7 @@ const tape = (cfg: string, lose: number, win = 0.01, kind: StratKind = "normal")
   makeTape(cfg, "follow", IND, P, kind, ["AAA-USDT"], trades(cfg, lose, win, kind), [], []);
 
 const base: WalkForwardOptions = {
-  ...({ ...defaultWalkForward(DEFAULT_SETTINGS), onePerPairEvent: false /* these cases pin independent variants; the pair-event rule is in sim/pair-event.test.ts */ }),
+  ...({ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true, onePerPairEvent: false /* these cases pin independent variants; the pair-event rule is in sim/pair-event.test.ts */ }),
   toggles: {
     normal: true,
     trailing: true,

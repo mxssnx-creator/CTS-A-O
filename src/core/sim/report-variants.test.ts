@@ -38,7 +38,7 @@ const tr = (cfg: string, sym: string, side: 1 | -1, eH: number, xH: number, r: n
 });
 
 describe("walk-forward variants", () => {
-  const base = { ...defaultWalkForward(DEFAULT_SETTINGS), protects: [], dcaProtects: [] };
+  const base = { ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true }, protects: [], dcaProtects: [] };
   const kinds = { normal: 10, trailing: 10, exit: 0, dca: 0, "dca-active": 0, axis: 4 };
 
   it("flips every toggle once and marks the ones without tapes as recompute", () => {
@@ -50,7 +50,7 @@ describe("walk-forward variants", () => {
     const types = vs.filter((v) => /^type:[A-Za-z]+$/.test(v.id));
     assert.equal(types.length, 8);
     assert.equal(vs.find((v) => v.id === "type:dca")!.status, "recompute");
-    assert.equal(vs.find((v) => v.id === "type:exit")!.status, "na");
+    assert.equal(vs.find((v) => v.id === "type:exit")!.status, "recompute", "Historic Exit is off by default (16 Nov) and has no tapes");
     assert.equal(vs.find((v) => v.id === "type:axis")!.status, "run");
     assert.equal(vs.find((v) => v.id === "type:axis")!.opts!.toggles.axis, true);
     // no signal tapes: signals on needs a recompute, confirmation has nothing to act on

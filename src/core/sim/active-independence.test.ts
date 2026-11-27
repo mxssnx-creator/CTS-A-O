@@ -23,7 +23,7 @@ it("Relate Active never vetoes an entry of any type: below its step the base is 
     const b = new RelateBook(config);
     for (let i = 0; i < 9; i++) b.add({ ...id, r: 0.01, accepted: true, relateMeasured: true, relateBase: 1 });
     b.add({ ...id, r: -0.01, accepted: true, relateMeasured: true, relateBase: 1 });
-    const d = b.decide(id);
+    const d = b.preview(id);
     assert.equal(d.allowed, true, strategy);
     assert.equal(d.volume, 1, `${strategy}: no raise below the active step`);
   }

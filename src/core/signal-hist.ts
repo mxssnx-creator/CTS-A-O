@@ -12,6 +12,7 @@ import { positionCounts, type PositionWindows } from "./position-windows.ts";
 // on a desk) are read. The values are rounded to a 0.25 % grid, so the configs of a signal stay the same from compute
 // to compute while its history moves little (a config id is its distances).
 import type { Bars, Gates, Protect } from "./domain/types.ts";
+import { tailBars } from "./market/bars.ts";
 import { minPfOf } from "./minimal-coord.ts";
 import type { Tactics } from "./domain/types.ts";
 import type { SignalSettings } from "./signal-config.ts";
@@ -36,11 +37,13 @@ import { isSignalCoordinationInd } from "./signal-coordination.ts";
 import { capSignalProtect } from "./sim/trailing.ts";
 import { POSITION_COST_RT } from "./model-cost.ts";
 import { SIGNAL_MIN_PF, SIGNAL_VALID_LAST_N } from "./signal-policy.ts";
+import { protectSlRatio, protectStepPct, stepPfFloor } from "./step-pf.ts";
 
 export interface SignalHistValidation {
   positionWindows?: PositionWindows | null;
   cost: number;
   minPf: number;
+  stepPf?: Gates["stepPf"];
   minTrades: number;
   maxDdr?: number;
   lastN?: number;
@@ -69,17 +72,23 @@ export function signalHistPassingRanges(
 /** Signals retain the configured stage PF floor; the lower engine Wide prefilter cannot relax it. */
 export function signalHistValidationOf(
   cost: number,
-  gates: Pick<Gates, "minPf" | "rangeMinPf" | "baseSetsMinPf" | "minTrades" | "maxDdr" | "positionWindows">,
+  gates: Pick<Gates, "minPf" | "rangeMinPf" | "baseSetsMinPf" | "minTrades" | "maxDdr" | "positionWindows" | "stepPf">,
   lastN = SIGNAL_VALID_LAST_N,
 ): SignalHistValidation {
   return {
     cost,
     positionWindows:gates.positionWindows,
     minPf: Math.max(SIGNAL_MIN_PF, minPfOf(gates, undefined), gates.baseSetsMinPf ?? gates.minPf),
+    stepPf: gates.stepPf,
     lastN,
     minTrades: gates.minTrades,
     maxDdr: gates.maxDdr,
   };
+}
+
+/** Historic fitting and later admission must use the same effective protection-cell floor. */
+export function signalHistMinPf(validation: SignalHistValidation, protect: Protect): number {
+  return stepPfFloor(Math.max(SIGNAL_MIN_PF, validation.minPf), protectStepPct(protect), validation.stepPf, protectSlRatio(protect));
 }
 
 export interface SignalHistDiagnostics {
@@ -207,14 +216,21 @@ function* prepareSignalHistGen(
     // Historic targets use every complete causal excursion; replay warmup still cannot add evaluated entries.
     entryMfes(b, entries, Math.max(2, Math.round((holdH * 60) / b.tfMin)),
       maxFitN ? cutT - 1 : cutT, mfe, effectiveFromT, maxFitN ? matureTimes : undefined);
-    const clipped = barsThroughCut(b, cutT);
-    if (clipped.n < 2) continue;
-    entries = Int8Array.from(evaluationSignal(u, b, entries));
+    const throughCut = barsThroughCut(b, cutT);
+    if (throughCut.n < 2) continue;
+    // Cadence/indicators above use the full warmup, but the protection simulator needs only the evaluated tail.
+    // Keep the signal bar immediately before the first permitted entry to preserve next-open execution exactly.
+    let first = 0;
+    while (first + 1 < throughCut.n && throughCut.t[first + 1] < effectiveFromT) first++;
+    if (throughCut.n - first < 2) continue;
+    const clipped = first ? tailBars(throughCut, throughCut.n - first) : throughCut;
+    const eligible = evaluationSignal(u, b, entries);
+    entries = Int8Array.from(eligible.subarray(first, throughCut.n));
     for (let i = 0; i < entries.length; i++) {
-      const entryT = i + 1 < b.n ? b.t[i + 1] : b.t[i] + b.tfMin * 60_000;
+      const entryT = i + 1 < clipped.n ? clipped.t[i + 1] : clipped.t[i] + clipped.tfMin * 60_000;
       if (entryT < fromT || i + 1 >= clipped.n) entries[i] = 0;
     }
-    series.push({ bars: clipped, sides: splitSides(entries.subarray(0, clipped.n)) });
+    series.push({ bars: clipped, sides: splitSides(entries) });
   }
   const selected = maxFitN ? Array.from({ length: mfe.length }, (_, i) => i)
     .sort((a, b) => matureTimes[a] - matureTimes[b] || a - b).slice(-maxFitN).map(i => mfe[i]) : mfe;
@@ -262,12 +278,12 @@ function barsThroughCut(b: Bars, cutT: number): Bars {
     : {
         ...b,
         n,
-        t: b.t.slice(0, n),
-        o: b.o.slice(0, n),
-        h: b.h.slice(0, n),
-        l: b.l.slice(0, n),
-        c: b.c.slice(0, n),
-        v: b.v.slice(0, n),
+        t: b.t.subarray(0, n),
+        o: b.o.subarray(0, n),
+        h: b.h.subarray(0, n),
+        l: b.l.subarray(0, n),
+        c: b.c.subarray(0, n),
+        v: b.v.subarray(0, n),
       };
 }
 
@@ -475,7 +491,8 @@ export function* signalHistProtectsGen(
               if (diagnostics) diagnostics.insufficientTrades++;
               continue;
             }
-            const minPf = Math.max(SIGNAL_MIN_PF, validation.minPf);
+            const effective = capSignalProtect(adjustProtect(lane, { minSl: sig.minSl, minTrail: sig.minTrail }));
+            const minPf = signalHistMinPf(validation, effective);
             const profitable = sampled.filter(({ history, last }) => history.net > 0 && history.pf >= minPf && last.net > 0 && last.pf >= minPf);
             if (!profitable.length) {
               if (diagnostics) diagnostics.pfRejected++;

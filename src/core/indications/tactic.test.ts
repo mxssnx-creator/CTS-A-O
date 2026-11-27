@@ -123,6 +123,7 @@ describe("Tactic is a first-class independent indication kind", () => {
     });
     const o = {
       ...defaultWalkForward(DEFAULT_SETTINGS),
+      wideEnabled: true, // These untagged fixture tapes exercise tactic isolation, not the Wide-off policy.
       simH: 6,
       lastN: 0,
       validLastN: 0,

@@ -8,22 +8,26 @@ const identities: RelateIdentity[] = Array.from({ length: 50 }, (_, n) => ({
   cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc", sym: `S${n}-USDT`, side: 1,
   ind: "ema-9-21@m1", strategy: "normal", coordination: "ordinary", range: "mc",
 }));
-const add = (identity: RelateIdentity, n: number) => book.add({ ...identity, r: n % 5 ? 0.005 : -0.004,
-  accepted: true, relateMeasured: true, relateBase: 1 });
+let clock = 0;
+const add = (identity: RelateIdentity, n: number) => {
+  const {parts} = book.decide(identity, 1, ++clock);
+  book.add({ ...identity, r: n % 5 ? 0.005 : -0.004, closedAt: ++clock,
+    accepted: true, relateMeasured: true, relateBase: 1, relateParts: parts });
+};
 const now = () => performance.now();
 const t0 = now();
 for (let n = 0; n < 250; n++) for (const identity of identities) add(identity, n);
 const t1 = now();
-for (const identity of identities) book.decide(identity);
+for (const identity of identities) book.decide(identity, 1, clock + 1);
 const t2 = now();
-for (const identity of identities) book.decide(identity);
+for (const identity of identities) book.decide(identity, 1, clock + 1);
 const t3 = now();
 const samples: number[] = [];
 for (let n = 0; n < 500; n++) {
   const identity = identities[n % identities.length];
   const start = now();
   add(identity, n);
-  book.decide(identity);
+  book.decide(identity, 1, clock + 1);
   samples.push(now() - start);
 }
 samples.sort((a, b) => a - b);

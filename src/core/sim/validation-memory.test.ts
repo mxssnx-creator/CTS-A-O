@@ -19,7 +19,7 @@ const tapes = [0, 1, 2].map((j) => {
   }));
   return makeTape(id, "follow", ind, protect, "normal", ["A", "B"], rows, [], []);
 });
-const defaults = defaultWalkForward(DEFAULT_SETTINGS);
+const defaults = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
 const options = { ...defaults, startT: T, simH: 24, bots: [], preH: 6, longH: 24,
   preGate: false, validLastN: 15, lastN: 0, durableFrac: 0, rangeGate: undefined,
   symGate: "off" as const, coord: { ...defaults.coord!, enabled: false },

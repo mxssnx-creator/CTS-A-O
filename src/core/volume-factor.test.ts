@@ -111,7 +111,7 @@ describe("indication volume factor settings", () => {
       nowT: T0 + 12 * H,
       baseTf: 60,
     } as never;
-    const defaults = defaultWalkForward(DEFAULT_SETTINGS);
+    const defaults = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
     const sim = walkForward(universe, [tape], {
       ...defaults,
       startT: T0,

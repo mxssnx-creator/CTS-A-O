@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEFAULT_PROTECT } from "../config.ts";
-import { makeTape, signalEntryQueueGen, nextSignalEntryT, scheduledEngineEntriesGen, tradeAt, markedOpenTrade, type ConfigTape } from "../sim/walkforward.ts";
-import { TapeHistoryStore } from "./history-store.server.ts";
+import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "../config.ts";
+import { makeTape, signalEntryQueueGen, nextSignalEntryT, scheduledEngineEntriesGen, tradeAt, markedOpenTrade,
+  defaultWalkForward, walkForward, type ConfigTape } from "../sim/walkforward.ts";
+import { TapeHistoryStore, historyOf } from "./history-store.server.ts";
 
 const M = 60_000, start = 1_000_000, stop = start + 12 * 60 * M;
 function fixture(id: string): ConfigTape {
@@ -84,6 +85,52 @@ test("engine scheduler matches independent minute scans across changing selected
       }
       assert.equal(queue.size, 0);
       assert.ok(store.stats.reads < 40, `12h engine schedule: ${store.stats.reads} reads`);
+      assert.ok(tapes.every(t => historyOf(t)!.positions === undefined),
+        "reading a modeled open mark does not retain each spilled position list");
     } finally { store.close(); }
   }
+});
+
+test("a mutable stored position changed after queue creation remains authoritative", () => {
+  const store = new TapeHistoryStore({ cacheBytes: 1 });
+  try {
+    const raw = fixture("engine-mutable"), saved = store.append(raw);
+    const queue = drain(signalEntryQueueGen([saved], start, stop, true));
+    const changed = saved.open[1];
+    Object.assign(changed, { entry: 200, mtm: .03, w: 3, side: -1, sym: "B" });
+    const expected = markedOpenTrade(raw, changed, stop);
+    const rows = drain(scheduledEngineEntriesGen(queue, start + 6 * M, new Set([saved.id]), stop));
+    assert.ok(rows.some(x => JSON.stringify(x.tr) === JSON.stringify(expected)));
+  } finally { store.close(); }
+});
+
+test("a stored open outside the symbol table uses the complete original position", () => {
+  const store = new TapeHistoryStore({ cacheBytes: 1 });
+  try {
+    const raw = fixture("engine-unusual");
+    raw.open[1].sym = "EXTRA";
+    const saved = store.append(raw), queue = drain(signalEntryQueueGen([saved], start, stop, true));
+    const expected = markedOpenTrade(raw, raw.open[1], stop);
+    const rows = drain(scheduledEngineEntriesGen(queue, start + 6 * M, new Set([saved.id]), stop));
+    assert.ok(rows.some(x => JSON.stringify(x.tr) === JSON.stringify(expected)));
+    assert.equal(historyOf(saved)!.positions, undefined);
+  } finally { store.close(); }
+});
+
+test("stored Signal candidates retain the same walk-forward output without pinning open lists", () => {
+  const store = new TapeHistoryStore({ cacheBytes: 1 });
+  try {
+    const raw = fixture("follow|sig-swing-m@m5|tp1|sl1|tr0|h8"), saved = store.append(raw);
+    const base = defaultWalkForward(DEFAULT_SETTINGS);
+    const wf = { ...base, startT: start, simH: 12, preH: 1, longH: 1, stepH: 1,
+      signalRank: undefined, signalActive: new Set(["follow|sig-swing-m@m5"]), signalOwnBase: false, signalGuardN: 0,
+      signalCluster: undefined, signalAccept: undefined, signalSideAccept: undefined, signalSourceGate: undefined,
+      validLastN: 0, signalValidLastN: 0, lastN: 0, rangeGate: undefined, symGate: "off" as const,
+      gates: { ...base.gates, positionWindows: null }, coord: { ...base.coord!, enabled: false } };
+    const u = { bars: [], caches: [], startT: start - M, endT: stop, splitT: start, nowT: stop, baseTf: 1 } as never;
+    const expected = walkForward(u, [raw], wf), actual = walkForward(u, [saved], wf);
+    assert.ok((actual.signalFunnel?.candidates ?? 0) > 0);
+    assert.deepEqual(actual, expected);
+    assert.equal(historyOf(saved)!.positions, undefined);
+  } finally { store.close(); }
 });

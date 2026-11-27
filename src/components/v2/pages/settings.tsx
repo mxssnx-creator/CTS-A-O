@@ -57,7 +57,9 @@ import {
 import { RANGE_LABEL, RANGE_OWN_BASE } from "@/core/minimal-coord";
 import { DEFAULT_PRICE_DISTANCE_GRID, PRICE_DISTANCE_RANGES, type PriceDistanceGrid } from "@/core/price-distance-grid";
 import { blockRatioOf, blockStackCap, stepRaise } from "@/core/sim/block";
-import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
+import { processedLanes, requiresOppositeMainSource, type ProcessedReplayPolicy } from "@/core/sim/processed-replay";
+import { DEFAULT_AUTO_PF_RATIO } from "@/core/step-pf";
+import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES, signalSourceEnabled } from "@/core/signal-config";
 import { SIGNAL_COORDINATION_RATIOS } from "@/core/signal-coordination";
 import { Confirm, downloadFile, Empty, ErrorNote, fmt, Panel, Pill, Switch, usePoll } from "../ui";
 
@@ -375,11 +377,12 @@ export function BlockSources(props: {
         />
         <div>Auto evaluation on</div>
       </div>
-      <Field label="Newest results" hint="results each count is judged on · 5 – 200">
-        <Num value={auto.n ?? 30} min={5} max={200} step={1} onChange={(v) => props.set(["block", "auto", "n"], v)} />
+      <Field label="Newest results" hint="results each count is judged on · default 30 · 5 – 200">
+        <Num value={auto.n ?? 30} min={5} max={200} step={1} int onChange={(v) =>
+          props.set(["block", "auto"], { ...auto, n: v, min: Math.min(auto.min ?? 30, v) })} />
       </Field>
-      <Field label="Results before Auto decides" hint="below this the relation's switch holds · 1 – newest results">
-        <Num value={auto.min ?? 15} min={1} max={auto.n ?? 200} step={1} onChange={(v) => props.set(["block", "auto", "min"], v)} />
+      <Field label="Results before Auto decides" hint="default 30; below this the relation's switch holds · 1 – newest results">
+        <Num value={auto.min ?? 30} min={1} max={auto.n ?? 200} step={1} int onChange={(v) => props.set(["block", "auto", "min"], v)} />
       </Field>
       <Field label="Minimum PF per count" hint="a count raises while the PF of its newest results is at least this · 0.5 – 5">
         <Num value={auto.pf ?? 1.1} min={0.5} max={5} step={0.05} onChange={(v) => props.set(["block", "auto", "pf"], v)} />
@@ -391,7 +394,7 @@ export function BlockSources(props: {
         <select
           className="v2-select"
           aria-label="Block auto scope"
-          value={auto.scope ?? "rule"}
+          value={auto.scope ?? "key"}
           onChange={(e) => props.set(["block", "auto", "scope"], e.target.value)}
         >
           <option value="rule">Per relation × count</option>
@@ -474,6 +477,7 @@ export function SignalsSettings(props: {
   grid?: Any;
   positionMode?: boolean;
   positionMainN?: number;
+  signalMinDaily?: number;
 }) {
   const g = { ...DEFAULT_SIGNALS, ...(props.signals ?? {}) } as Any;
   const guard = { ...DEFAULT_SIGNALS.guard, ...(g.guard ?? {}) };
@@ -500,7 +504,6 @@ export function SignalsSettings(props: {
   const hist = { ...DEFAULT_SIGNALS.hist, ...(g.hist ?? {}) };
   const exits: string = g.exits ?? DEFAULT_SIGNALS.exits;
   const lanes: number[] = g.lanes?.length ? g.lanes : DEFAULT_SIGNALS.lanes;
-  const src: Record<string, boolean> = g.sources ?? {};
   const set = (path: string[], v: unknown) => props.set(["signals", ...path], v);
   const counts = signalConfigCounts(g);
   const st = props.status;
@@ -508,12 +511,14 @@ export function SignalsSettings(props: {
   return (
     <div className="v2-lines" style={{ gap: 10 }}>
       <div className="v2-muted">
-        Strategy routing: classic and coordinated Signals use the Signals range and independently
-        qualified Exit configs. The protection settings below define the Signals candidate grid;
-        historical ranking selects eligible configs using their own source, parameter range, lane,
-        type, symbol and direction. Ordinary Short / General / Long and Micro grids are not expanded
-        into Signals. Short / Medium below are Signal source parameter ranges.
+        Signals Coordination uses the selected sources as votes. Each Signals protection, timeframe,
+        symbol and direction qualifies on its own history. Short and Medium select source parameters.
       </div>
+      <Field label="Minimum Signals per day · 7-day average"
+        hint="Each source, symbol, range and lane counts its own raw onsets over the preceding seven complete days; missing history pauses new entries. 0 disables this filter.">
+        <Num min={0} max={1000} value={props.signalMinDaily ?? 2}
+          onChange={(v) => props.set(["tactics", "signalMinDaily"], v)} />
+      </Field>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <Switch
           label="Signals processing"
@@ -1239,8 +1244,9 @@ export function SignalsSettings(props: {
               ))}
             </select>
           </Field>
-          <Field label="Strategy processing" hint="independent Signal configurations and historic Exit; ordinary strategy grids are not expanded">
-            <span>Signals + Exit</span>
+          <Field label="Standalone Signal orders" hint="Uses standalone sources as well as coordination. Turn on to reproduce a legacy Signal profile.">
+            <Switch label="Standalone Signal orders" checked={coordination.strategyOnly !== true}
+              onChange={(enabled) => set(["coordination", "strategyOnly"], !enabled)} />
           </Field>
           <div className="v2-muted" style={{ gridColumn: "1 / -1", fontSize: "var(--v-fs-xs)" }}>
             Votes combine the selected source pool and Short / Medium parameter variants. A source
@@ -1279,7 +1285,7 @@ export function SignalsSettings(props: {
             <div key={x.name} style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <Switch
                 label={`Signal source ${x.label}`}
-                checked={src[x.name] !== false}
+                checked={signalSourceEnabled(g, x.name)}
                 onChange={(v) => set(["sources", x.name], v)}
               />
               <span>{x.label}</span>
@@ -1489,15 +1495,19 @@ export function List(props: {
 export function StepPfSettings(props: { value?: import("@/core/step-pf").StepPfRules; set: (path: string[], value: unknown) => void }) {
   const { value, set } = props;
   return <>
-            <Field label="PF per target step" hint="Floor = 1 + target percent × ratio on the 0.1% grid. Stricter range floors remain; Signals keep their own policy.">
+            <Field label="PF per target step" hint="The 0.1% target grid, step PF ratio and Auto PF ratio determine each config's floor. Stricter range and exact floors apply.">
               <select aria-label="PF per target step" className="v2-select" value={!value?.enabled ? "off" : value.mode ?? "auto"}
                 onChange={(e) => set(["gates", "stepPf"], { ratio: 0.2, max: 2, ...value, enabled: e.target.value !== "off", mode: e.target.value === "manual" ? "manual" : "auto" })}>
                 <option value="auto">Auto · each config on 0.1% steps</option><option value="manual">Manual · exact overrides</option><option value="off">Range floors only</option>
               </select>
             </Field>
-            <Field label="Step PF ratio" hint="0.1–1.5; 0.2% target × 0.2 gives PF 1.04 before the range floor.">
+            <Field label="Step PF ratio" hint="Base slope for the automatic increase above neutral PF.">
               <input aria-label="Step PF ratio" className="v2-input" type="number" min="0.1" max="1.5" step="0.05" value={value?.ratio ?? 0.2}
                 onChange={(e) => set(["gates", "stepPf"], { enabled: false, max: 2, ...value, ratio: Number(e.target.value) })} />
+            </Field>
+            <Field label="Auto PF ratio" hint="1–10. Default 4. A higher value increases the automatic floor above neutral PF up to the step maximum.">
+              <Num int min={1} max={10} value={value?.autoPfRatio ?? 4}
+                onChange={autoPfRatio => set(["gates", "stepPf"], { enabled: true, ratio: .2, max: 2, ...value, autoPfRatio })} />
             </Field>
             <Field label="Step PF maximum" hint="Caps the step rule only; a stricter configured range floor still applies.">
               <input aria-label="Step PF maximum" className="v2-input" type="number" min="1" max="2" step="0.05" value={value?.max ?? 2}
@@ -1662,20 +1672,26 @@ export function PositionWindowSettings(props: {
 }
 
 export function ProcessedStageSettings(props: {
-  value?: { validationN?: number; realN?: number } | null;
-  onChange: (value: { validationN: number; realN: number } | null) => void;
+  value?: ProcessedReplayPolicy | null;
+  onChange: (value: ProcessedReplayPolicy | null) => void;
 }) {
   const enabled = !!props.value;
-  const policy = {
-    validationN: Math.round(props.value?.validationN ?? 12),
-    realN: Math.round(props.value?.realN ?? 12),
+  const [laneDraft, setLaneDraft] = useState(JSON.stringify(props.value?.lanes ?? [], null, 2));
+  const [laneError, setLaneError] = useState("");
+  useEffect(() => setLaneDraft(JSON.stringify(props.value?.lanes ?? [], null, 2)), [props.value?.lanes]);
+  const policy: ProcessedReplayPolicy = props.value ?? {
+    validationN: 12, realN: 12, execN: 12, baseScope: "context",
+    autoPf: { mode: "independent", ratio: DEFAULT_AUTO_PF_RATIO },
   };
-  const put = (key: "validationN" | "realN", value: number) =>
+  const put = (key: "validationN" | "realN" | "execN", value: number) =>
     props.onChange({ ...policy, [key]: Math.round(value) });
+  const needsOppositeSource = policy.lanes?.some(lane => requiresOppositeMainSource({
+    ...policy, ...lane, execN: lane.execN ?? policy.execN ?? policy.realN, blocks: { ...policy.blocks, ...lane.blocks },
+  })) ?? requiresOppositeMainSource(policy);
   return (
     <Panel
       title="Persistent own-stage progression"
-      sub="Opt-in Base → Main → Real predecessor windows. Only accepted, settled parents feed their exact next stage; raw candidates and sibling wins never bootstrap a window."
+      sub="Each configuration uses settled paper results from its own preceding set to qualify Main, Real and Exec."
     >
       <Switch
         label="Use persistent processed stages"
@@ -1684,6 +1700,8 @@ export function ProcessedStageSettings(props: {
       />
       {enabled && (
         <div className="v2-grid v2-cols-2" style={{ marginTop: 12 }}>
+          <Switch label="Independent Base symbols and directions" checked={policy.baseScope === "context"}
+            onChange={on => props.onChange({ ...policy, baseScope: on ? "context" : undefined })} />
           <Field
             label="Main predecessor closes"
             hint="Accepted post-Base parent closes required for the independent Main decision · 1–200"
@@ -1692,16 +1710,61 @@ export function ProcessedStageSettings(props: {
           </Field>
           <Field
             label="Real predecessor closes"
-            hint="Validated Main parent closes required before the exact config becomes Active · 1–200"
+            hint="Settled Main positions required for the Real decision · 1–200"
           >
             <Num int min={1} max={200} value={policy.realN} onChange={(v) => put("realN", v)} />
           </Field>
+          {policy.execN === undefined ? (
+            <button type="button" className="v2-btn" onClick={() => put("execN", policy.realN)}>
+              Enable independent Exec gate
+            </button>
+          ) : (
+            <Field label="Exec predecessor closes" hint="Settled Real positions required for the Exec decision · 1–200">
+              <Num int min={1} max={200} value={policy.execN} onChange={(v) => put("execN", v)} />
+            </Field>
+          )}
+          <Field label="Processed-stage PF">
+            <select aria-label="Processed-stage PF" className="v2-select" value={policy.autoPf?.mode ?? "manual"}
+              onChange={(e) => {
+                const mode = e.target.value === "main" ? "main" : "independent";
+                props.onChange({ ...policy, autoPf: e.target.value === "manual" ? undefined
+                  : { mode, ratio: policy.autoPf?.ratio ?? DEFAULT_AUTO_PF_RATIO } });
+              }}>
+              <option value="manual">Configured minimum PF</option>
+              <option value="independent">Auto PF at each stage</option>
+              <option value="main">Reuse Main Auto PF</option>
+            </select>
+          </Field>
+          {policy.autoPf && (
+            <>
+              <Switch label="Apply Auto PF at Base" checked={policy.autoBase !== false}
+                onChange={on => props.onChange({ ...policy, autoBase: on ? undefined : false })} />
+              <Field label="Processed Auto PF ratio" hint="Strength of the threshold adjustment from older closes · 1–10">
+                <Num int min={1} max={10} value={policy.autoPf.ratio}
+                  onChange={(v) => props.onChange({ ...policy, autoPf: { mode: policy.autoPf!.mode, ratio: Math.round(v) } })} />
+              </Field>
+            </>
+          )}
+          <Field label="Independent lane policies" hint="Each named lane can set its own Base, Main, Real and Exec windows. Leave empty for a single lane.">
+            <textarea aria-label="Independent lane policies" aria-invalid={!!laneError}
+              className="v2-input" rows={4} value={laneDraft} onChange={e => setLaneDraft(e.target.value)}
+              onBlur={() => {
+                try {
+                  const lanes: ProcessedReplayPolicy["lanes"] = JSON.parse(laneDraft);
+                  if (!Array.isArray(lanes)) throw new TypeError("Enter a JSON array of lane policies");
+                  const changed = { ...policy, lanes: lanes.length ? lanes : undefined };
+                  processedLanes(changed);
+                  props.onChange(changed);
+                  setLaneError("");
+                } catch (error) {
+                  setLaneError(error instanceof Error ? error.message : "Invalid lane policies");
+                }
+              }} />
+            {laneError && <span role="alert" className="v2-warn">{laneError}</span>}
+            {needsOppositeSource && <span className="v2-warn">Negative Main lanes are available for replay. Native orders require an opposite-side source.</span>}
+          </Field>
         </div>
       )}
-      <div className="v2-muted" style={{ marginTop: 10, fontSize: "var(--v-fs-xs)" }}>
-        Enabling this policy does not manufacture history or waive Live proof, risk, ownership, fee or venue checks.
-        Disabling it removes the policy on Save; existing positions remain protected and reconcilable.
-      </div>
     </Panel>
   );
 }
@@ -2028,6 +2091,18 @@ export function RangeEditor(props: {
           <SlRatioEditor title={props.title} spec={s} fine={props.k === "micro"}
             set={(field,value)=>props.set(p(field),value)}/>
           <Field
+            label={`${props.title} reach gate (share of the target)`}
+            hint="Enter only while ATR(14) × √hold covers this share of the target; a target the volatility cannot plausibly reach mostly closes on time or stop and pays the round trip. 0 = off. Short ships 0.5."
+          >
+            <Num
+              step={0.05}
+              min={0}
+              max={5}
+              value={(s as { reachFrac?: number }).reachFrac ?? 0}
+              onChange={(v) => props.set(p("reachFrac"), v)}
+            />
+          </Field>
+          <Field
             label={`${props.title} own minimum stop distance (% net of cost)`}
             hint="The initial stop is never inside the round-trip cost plus this distance. Unset = the global minimum (0.1–1 %). Operator, 12 Nov: each range uses its own minimum."
           >
@@ -2104,8 +2179,8 @@ export function RangeEditor(props: {
               hint="trailing cells use at least this stop (higher stops)"
             >
               <Num
-                step={0.25}
-                min={1}
+                step={0.1}
+                min={0.2}
                 max={5}
                 value={s.trailSlOfTp ?? 2}
                 onChange={(v) => props.set(p("trailSlOfTp"), v)}
@@ -3262,7 +3337,7 @@ export function SettingsPage() {
         title="Signals"
         sub="Signals range + independent Exit · own candidate grid, historical ranking and entry gates"
       >
-        <SignalsSettings signals={s.signals} set={set} status={status?.signals} grid={s.grid} positionMode={!!s.gates.positionWindows} positionMainN={s.gates.positionWindows?.main} />
+        <SignalsSettings signals={s.signals} set={set} status={status?.signals} grid={s.grid} positionMode={!!s.gates.positionWindows} positionMainN={s.gates.positionWindows?.main} signalMinDaily={s.tactics?.signalMinDaily} />
       </Panel>
 
       <div className="v2-grid v2-cols-2">
@@ -4217,6 +4292,32 @@ export function SettingsPage() {
       <div className="v2-grid v2-cols-4">
         <Panel title="Block">
           <div className="v2-grid v2-cols-2">
+            <Field label="Automatic Block counts"
+              hint="Evaluate candidate counts from accepted, settled orders. Each source uses its own entry-time attribution.">
+              <Switch label="Automatic Block counts" checked={!!s.block.windowAuto}
+                onChange={(v) => set(["block", "windowAuto"], v)} />
+            </Field>
+            <Field label="Independent Block sources"
+              hint="Select a count separately for each config, symbol, direction, indication, type and overall source.">
+              <Switch label="Independent Block sources" checked={!!s.block.windowIndependent}
+                onChange={(v) => set(["block", "windowIndependent"], v)} />
+            </Field>
+            <Field label="Block auto minimum completed samples"
+              hint="At least 30 settled, attributed results for a candidate. Fewer results cannot select it.">
+              <Num int min={30} max={5000} value={s.block.windowMinSamples ?? 30}
+                onChange={(v) => { set(["block", "windowMinSamples"], v);
+                  if ((s.block.windowLookback ?? 300) < v) set(["block", "windowLookback"], v); }} />
+            </Field>
+            <Field label="Block auto evaluation last-N" hint="Maximum retained sample for each candidate, at least the minimum samples.">
+              <Num int min={s.block.windowMinSamples ?? 30} max={5000} value={s.block.windowLookback ?? 300}
+                onChange={(v) => set(["block", "windowLookback"], v)} />
+            </Field>
+            <Field label="Block auto candidate counts" hint="Independent candidate windows, 1–500; each needs its own evidence.">
+              <List value={s.block.windowCandidates ?? [5, 10, 15, 25, 35]}
+                onChange={(v) => set(["block", "windowCandidates"], v)} />
+            </Field>
+          </div>
+          <div className="v2-grid v2-cols-2">
             <Field
               label="Ratio per level"
               hint="common extra base volume per passing level · 0.2 = +20% with continuous steps · Shared can use its own override"
@@ -4716,26 +4817,33 @@ export function SettingsPage() {
               <Switch label="Enable Relate" checked={s.relate.enabled}
                 onChange={(v) => set(["relate", "enabled"], v)} />
             </Field>
-            <Field label="Auto Mode" hint="Scores Active thresholds using executed-close unit-return PF. Ratio and step depth do not change that score; ties favor the lowest ratio and the step count nearest your manual setting. Sized PF is hypothetical and does not select a winner.">
+            <Field label="Auto Mode" hint="Tests loss-step depth and Active thresholds independently for each relation at a 0.2 increment. Both the historical unit PF and modeled sized PF must clear the floor.">
               <Switch label="Relate Auto Mode" checked={s.relate.auto}
                 onChange={(v) => set(["relate", "auto"], v)} />
             </Field>
-            <Field label="Stack mode" hint="Additive sums qualified relation additions. Shared divides their combined additions by the number of qualified active relations and tracks each share independently.">
+            <Field label="Stack mode" hint="Shared distributes the increase across configured relation weights. Additive sums the weighted increases within the stack cap.">
               <select className="v2-select" aria-label="Relate stack mode" value={s.relate.mode}
                 onChange={(e) => set(["relate", "mode"], e.target.value)}>
                 <option value="additive">Additive</option>
                 <option value="shared">Shared</option>
               </select>
             </Field>
-            <Field label="Volume increment ratio" hint="Each positive step adds this fraction of the relation's previous recorded volume. Additive sums the portions; Shared averages them. Max stack caps the total.">
+            <Field label="Relation scope" hint="Overall evaluates all relation windows. Each entry still needs qualified evidence from its exact Set.">
+              <select className="v2-select" aria-label="Relate relation scope" value={s.relate.scope ?? "selected"}
+                onChange={(e) => set(["relate", "scope"], e.target.value)}>
+                <option value="selected">Selected relations</option>
+                <option value="overall">Overall · all relations</option>
+              </select>
+            </Field>
+            <Field label="Volume increment ratio" hint="Each settled loss adds one step. Each step increases the relation's allocation by this ratio. A win or flat close resets the step.">
               <Num step={0.2} min={0.2} max={6} value={s.relate.ratio}
                 onChange={(v) => set(["relate", "ratio"], Math.round(v * 5) / 5)} />
             </Field>
-            <Field label="Maximum positive steps" hint="Consecutive positive executed closes, capped at this many steps. Auto Mode searches 2–15; manual default is 5.">
+            <Field label="Maximum loss steps" hint="Default 12. Auto uses this value as its maximum depth.">
               <Num int min={2} max={15} value={s.relate.steps}
                 onChange={(v) => set(["relate"], { ...s.relate, steps: v, activeStep: Math.min(s.relate.activeStep, v) })} />
             </Field>
-            <Field label="Active minimum step" hint="0 disables skipping. The selected step cannot exceed the maximum steps. Once qualified, skipped simulated closes advance shadow steps without entering the accepted PF sample; base entries build the initial sample.">
+            <Field label="Relate Active positions to skip" hint="0 disables skipping. Relate allocates its portion after this many losses. Internal tracking and ordinary orders continue while the portion is inactive.">
               <Num int min={0} max={Math.min(6, s.relate.steps)} value={s.relate.activeStep}
                 onChange={(v) => set(["relate", "activeStep"], v)} />
             </Field>
@@ -4745,11 +4853,19 @@ export function SettingsPage() {
             </Field>
             <Field label="Last-N evaluation" hint="Executed-close window. The supported range is 60–250; default 250.">
               <Num int min={60} max={250} value={s.relate.lastN}
-                onChange={(v) => set(["relate"], { ...s.relate, lastN: v, minTrades: Math.min(s.relate.minTrades, v) })} />
+                onChange={(v) => set(["relate"], { ...s.relate, lastN: v, minTrades: Math.min(s.relate.minTrades, v), recoveryMinTrades: Math.min(s.relate.recoveryMinTrades ?? 12, v) })} />
             </Field>
             <Field label="Minimum sample" hint="The relation needs at least this many executed closes before PF is judged; minimum 60 and no more than Last-N.">
               <Num int min={60} max={s.relate.lastN} value={s.relate.minTrades}
                 onChange={(v) => set(["relate", "minTrades"], v)} />
+            </Field>
+            <Field label="Relate recovery closes" hint="minimum closes at the same loss step, split into earlier and later samples">
+              <Num int min={6} max={s.relate.lastN} value={s.relate.recoveryMinTrades ?? 12}
+                onChange={(v) => set(["relate"], { ...s.relate, recoveryMinTrades: v })} />
+            </Field>
+            <Field label="Relate maximum recovery drawdown" hint="fraction of gross sized profit allowed as drawdown in each sample">
+              <Num min={0} max={1} step={.05} value={s.relate.recoveryMaxDrawdown ?? .5}
+                onChange={(v) => set(["relate"], { ...s.relate, recoveryMaxDrawdown: v })} />
             </Field>
             <Field label="Max external stack × base" hint="Caps the combined Block, coordination, strategy, range, and Relate sizing groups whether Relate adjustments are on or off. The same 8× limit includes possible DCA and Axis ladder fills, which reserve a smaller external base. Venue minimums and account risk caps still apply.">
               <Num int step={1} min={1} max={MAX_EXTERNAL_STACK} value={s.relate.maxStack}
@@ -4775,8 +4891,13 @@ export function SettingsPage() {
           <div className="v2-lines" style={{ gap: 6, marginTop: 10 }}>
             {RELATE_SOURCE_HELP.map(([source, help]) => (
               <div key={source} style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <Switch label={`Relate source ${source}`} checked={s.relate.sources?.[source] !== false}
-                  onChange={(v) => set(["relate", "sources", source], v)} />
+                {s.relate.scope !== "overall" && <Switch label={`Relate source ${source}`} checked={s.relate.sources?.[source] !== false}
+                  onChange={(v) => set(["relate", "sources", source], v)} />}
+                {(s.relate.scope === "overall" || s.relate.sources?.[source] !== false) && <Field
+                  label={`${source === "overall" ? "All symbols" : source === "symbol" ? "Single symbol" : source} volume factor`}>
+                  <Num min={0} max={8} step={0.1} value={s.relate.volumeFactors?.[source] ?? 1}
+                    onChange={(v) => set(["relate", "volumeFactors", source], v)} />
+                </Field>}
                 <div>
                   <div style={{ fontWeight: 600, textTransform: "capitalize" }}>{source}</div>
                   <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>{help}</div>
@@ -4997,7 +5118,7 @@ export function SettingsPage() {
                 onChange={(v) => setW("validLastN", Math.round(v))}
               />
             </Field>
-            <Field
+            <Field hidden={!!s.gates.positionWindows}
               label="Signals range · validation N"
               hint={`Signals range only: config validation uses this many of its own closed results · 0 = off · 0 – 200 · mainnet (${MAINNET_CONN}): at least ${MAINNET_SIGNAL_VALID_LAST_N} enforced${onMainnet ? " — active now" : ""}`}
             >
@@ -5011,7 +5132,7 @@ export function SettingsPage() {
                 })}
               />
             </Field>
-            <Field
+            <Field hidden={!!s.gates.positionWindows}
               label="Signals range · entry N"
               hint={`Signals range only: skip new entries unless this config's own latest results pass · 0 = off · 0 – 200 · mainnet (${MAINNET_CONN}): at least ${MAINNET_LAST_N} enforced${onMainnet ? " — active now" : ""}`}
             >

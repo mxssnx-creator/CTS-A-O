@@ -33,7 +33,7 @@ import { runtimeFixtureGrid } from "./test-support.ts";
 
 // Preserve historical clock/Last-N compatibility cases; complete count admission is tested independently.
 const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
-import { signalRangeOf } from "./signal-config.ts";
+import { signalRangeOf, signalSourceEnabled } from "./signal-config.ts";
 import {
   capsOf,
   configEval,
@@ -63,7 +63,7 @@ const on = signalSettings({ enabled: true, trailRatios: [1] });
 const why = (d: object) => ("why" in d ? d.why : "");
 
 /** Expanded calculates every source; independent qualification still determines execution. */
-const ENABLED = SIGNAL_SOURCES.filter((x) => DEFAULT_SIGNALS.sources[x.name] !== false).length;
+const ENABLED = SIGNAL_SOURCES.filter((x) => signalSourceEnabled(DEFAULT_SIGNALS, x.name)).length;
 const runtimes: CoreRuntime[] = [];
 afterEach(() => { for (const rt of runtimes.splice(0)) rt.dispose(); });
 
@@ -140,11 +140,11 @@ describe("signals: sources and combos", () => {
     const normal = protects.filter((p) => p.trail === 0);
     const trailing = protects.filter((p) => p.trail > 0 && !p.trailOnly);
     const trailingOnly = protects.filter((p) => p.trailOnly);
-    assert.equal(trailingOnly.length, 759, "independent capped no-TP hold candidates");
+    assert.equal(trailingOnly.length, 1038, "independent capped no-TP hold candidates on the thin Short grid");
     assert.ok(trailingOnly.every((p) => p.tp === 0 && p.sl <= 0.03 && p.trail <= 0.03));
-    assert.equal(protects.length, 3360 + trailingOnly.length);
-    assert.equal(normal.length, 1200, "independent Normal target/SL/hold protections");
-    assert.equal(trailing.length, 2160, "independent Trailing target/SL/hold protections");
+    assert.equal(protects.length, 3444 + trailingOnly.length);
+    assert.equal(normal.length, 1230, "independent Normal target/SL/hold protections");
+    assert.equal(trailing.length, 2214, "independent Trailing target/SL/hold protections");
     assert.deepEqual([...new Set(normal.map((p) => p.hold))].sort((a, b) => a - b), [48, 64, 96, 128, 192]);
     assert.deepEqual([...new Set(trailing.map((p) => p.hold))].sort((a, b) => a - b), [64, 96, 192]);
   });
@@ -401,6 +401,7 @@ describe("signals trade their own base", () => {
   const o0 = defaultWalkForward(DEFAULT_SETTINGS);
   const x01 = (ownBase: boolean) => ({
     ...o0,
+    wideEnabled: true, // This fixture isolates Normal/Block toggles; Wide-off admission has its own test.
     lastN: 0,
     validLastN: 0,
     signalValidLastN: 0,
@@ -425,7 +426,8 @@ describe("signals trade their own base", () => {
       assert.equal(d.ok && d.vol, 1);
     }
     assert.notEqual(execDecision(mk("rsi-mom-14-20@m15"), NOW, x01(true), ctx).ok, true);
-    // off: signals follow the engine toggles (skipped below the Block Active level)
+    // off: signals follow the engine Normal toggle; Block Active no longer skips them (it acts only on the plain
+    // engine Normal / Trailing lanes, 16 Nov)
     assert.equal(why(execDecision(mk("sig-ema-cross-s@m15"), NOW, x01(false), ctx)), "blockActive");
     // Block off and Normal off: the signal base still trades, the engine base does not
     const noBlock = (b: boolean) => ({ ...x01(b), toggles: { ...x01(b).toggles, block: false } });

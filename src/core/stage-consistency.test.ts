@@ -59,8 +59,8 @@ describe("stage consistency: one config, the same at every stage", () => {
     const has = (p: Protect) =>
       cells.some((c) => c.tag === p.tag && close(c.tp, p.tp) && close(c.sl, p.sl) && close(c.trail, p.trail) && c.hold === p.hold);
     const hold = (16 * 60) / 15;
-    // Minimal: 4× cost = 0.8 %, stop 1.5× = 1.2 %, trail ¼ = 0.2 % under its 0.3 % trail floor
-    const mn: Protect = { tp: 0.008, sl: 0.012, trail: 0.003, hold, tag: "mn" };
+    // Minimal: 4× cost = 0.8 %, stop 1.2× = 0.96 % (thin ladder maximum), trail ¼ = 0.2 % under its 0.3 % trail floor
+    const mn: Protect = { tp: 0.008, sl: 0.0096, trail: 0.003, hold, tag: "mn" };
     // Short: 9× = 1.8 %, stop 1× = 1.8 %, trail ½ = 0.9 %
     const sh: Protect = { tp: 0.018, sl: 0.018, trail: 0.009, hold, tag: "sh" };
     // General: 15× = 3 %, stop 0.25× = 0.75 % under its 1 % floor, trail ¼ = 0.75 %
@@ -141,7 +141,7 @@ describe("stage consistency: one config, the same at every stage", () => {
   it("validation reads each direction by hand and aggregates only qualified direction samples", () => {
     const u = universe();
     const tapes = buildTapes(u, protectGrid(15, grid, RT_COST).filter((_, i) => i % 40 === 0), RT_COST, undefined, new Set(["follow|rsi-mom-14-20@m15", "follow|mc-rsi2-5@m5"]), null, undefined, { minSl: 0, minTrail: 0, rangeMinN: 0 });
-    const o = defaultWalkForward(DEFAULT_SETTINGS);
+    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
     const t = Math.floor((u.nowT - 24 * H) / H) * H;
     const look = Math.max(o.longH, o.preH) * H;
     let checked = 0;

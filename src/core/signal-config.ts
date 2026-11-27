@@ -6,6 +6,7 @@ import { SL_TP_MIN, SL_TP_MAX, minimumStopFraction } from "./protection-policy.t
 import { INDICATION_KINDS, type IndicationKind } from "./domain/types.ts";
 import { SIGNAL_HISTORY_H, SIGNAL_VALID_LAST_N } from "./signal-policy.ts";
 import { volumeRatio } from "./volume-ratio.ts";
+import { REVERSAL_SOURCES } from "../../shared/cts-reversal/reversal.ts";
 
 /**
  * Proven classic signals, each in a short and a medium parameter range (registry ids of the computations they
@@ -17,6 +18,12 @@ export const SIGNAL_SOURCES: ReadonlyArray<{
   short: string;
   medium: string;
 }> = [
+  ...REVERSAL_SOURCES.filter(source => source.period === 6 || source.period === 10).map(source => ({
+    name: source.period === 6 ? `trend-reversal-${source.tactic}` : source.id,
+    label: source.period === 6 ? source.label.replace(" · 6 bars", "") : source.label,
+    short: source.id,
+    medium: source.period === 6 ? `trend-reversal-${source.tactic}-16` : source.id,
+  })),
   ...["apz-reclaim", "frama-pullback", "st-pullback"].map((name) => ({
     name: `r-${name}`, label: `${name} (research)`, short: `r-${name}`, medium: `r-${name}-m`,
   })),
@@ -515,6 +522,8 @@ export interface SignalClusterSettings {
 /** Independent majority-vote coordinators, one ID per input-range mix and domination threshold. */
 export interface SignalCoordinationSettings {
   enabled: boolean;
+  /** Use the source pool only as votes for new Signals Coordination orders. */
+  strategyOnly?: boolean;
   /** Minimum number of active, non-conflicting source votes on a bar. */
   minSources: number;
   /** Active pair × type × symbol × direction cap, applied separately from classic signals. */
@@ -692,6 +701,13 @@ export function signalVolumeFactorsOf(settings: SignalSettings): SignalVolumeFac
     coordination: settings.coordination.volumeFactor,
     combined: settings.combinedVolumeFactors,
   };
+}
+
+/** The added reversal sources need explicit selection even under an existing deny-list. */
+export function signalSourceEnabled(s: Pick<SignalSettings, "sources" | "sourcesMode">, name: string): boolean {
+  return s.sourcesMode === "allow" || name.startsWith("trend-reversal-")
+    ? s.sources[name] === true
+    : s.sources[name] !== false;
 }
 
 /** Exact former factory deny-list; custom source selections never inherit its migration. */

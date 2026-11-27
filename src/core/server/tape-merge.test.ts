@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { makeTape, type ConfigTape } from "../sim/walkforward.ts";
-import { mergeWorkerTapesGen } from "./tape-merge.ts";
+import { createTapeInterner, mergeWorkerTapesGen } from "./tape-merge.ts";
 
 function tape(bot: "follow" | "revert", ind: string, id: string): ConfigTape {
   return makeTape(id, bot, ind, { tp: .01, sl: .01, trail: 0, hold: 12 }, "normal", [], [], [], []);
@@ -40,4 +40,18 @@ test("merge can yield inside one large tape and while flattening many tapes", ()
   assert.ok(yields >= 16, `bounded work within open, pending, tape and flatten loops: ${yields}`);
   assert.equal(value[0], large);
   assert.equal(value.at(-1), many.at(-1));
+});
+
+test("incremental reply interning preserves the final ordered tapes and their position data", () => {
+  const a = tape("follow", "a@m1", "a"), b = tape("revert", "b@m1", "b");
+  a.open = Array.from({ length: 300 }, (_, i) => ({ cfg: i % 2 ? "a" : "other", sym: `S${i % 4}` })) as ConfigTape["open"];
+  b.pending = Array.from({ length: 300 }, (_, i) => ({ sym: `S${i % 4}`, side: i % 2 ? 1 : -1 }));
+  const replies = [{ tapes: [b] }, { tapes: [a] }], reference = structuredClone(replies);
+  const interner = createTapeInterner();
+  let yields = 0;
+  for (const reply of replies) for (const t of reply.tapes) yields += drain(interner(t)).yields;
+  assert.ok(yields > 0, "large individual replies are still time-sliced");
+  const order = ["follow|a@m1", "revert|b@m1"];
+  assert.deepEqual(drain(mergeWorkerTapesGen(replies, order, true)).value,
+    drain(mergeWorkerTapesGen(reference, order)).value);
 });

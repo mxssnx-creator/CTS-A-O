@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   relationalVolumeFactor,
   relationalVolumeSettings,
+  prepareRelationalVolumeFactor,
   DEFAULT_RELATIONAL_VOLUME,
 } from "./ratios.ts";
 test("neutral defaults equalize every type/range; matching independent weights multiply once and isolate scopes", () => {
@@ -54,6 +55,22 @@ test("neutral defaults equalize every type/range; matching independent weights m
   q.ranges.micro = 0.1;
   assert.notDeepEqual(q, p);
   assert.equal(DEFAULT_RELATIONAL_VOLUME.overall, 1);
+});
+test("a replay snapshots neutral or weighted volume settings once without changing the economic factor", () => {
+  assert.equal(prepareRelationalVolumeFactor(undefined), undefined);
+  assert.equal(prepareRelationalVolumeFactor({ enabled: false, overall: 2 }), undefined);
+  assert.equal(prepareRelationalVolumeFactor(DEFAULT_RELATIONAL_VOLUME), undefined);
+  assert.equal(prepareRelationalVolumeFactor("{broken"), undefined);
+  const raw = { overall: 1.2, indicationTypes: { tactic: 2 }, strategies: { axis: .5 },
+    ranges: { micro: 1.5 }, symbols: { "SOL-USDT": .5 } };
+  const context = { indicationType: "Tactic", strategy: "axis", range: "Micro", symbol: "SOL-USDT" };
+  const prepared = prepareRelationalVolumeFactor(raw)!;
+  assert.ok(Math.abs(prepared(context) - .9) < 1e-12);
+  assert.equal(prepared({ range: ["micro", "micro"] }), 1.2 * 1.5);
+  raw.ranges.micro = 2;
+  assert.ok(Math.abs(prepared(context) - .9) < 1e-12, "an in-progress replay keeps its original policy");
+  assert.ok(Math.abs(prepareRelationalVolumeFactor(raw)!(context) - 1.2) < 1e-12,
+    "a later replay sees updated settings");
 });
 test("invalid weights and dangerous keys are rejected; optional legacy absence is neutral", () => {
   for (const raw of [

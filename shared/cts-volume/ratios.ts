@@ -101,10 +101,7 @@ export interface VolumeContext {
   range?: string | readonly string[];
   symbol?: string;
 }
-/** Apply once to entry notional. Held quantities, unit returns and qualification windows remain immutable. */
-export function relationalVolumeFactor(settings: unknown, context: VolumeContext): number {
-  if (settings === undefined || settings === null) return 1;
-  const s = relationalVolumeSettings(settings);
+function normalizedVolumeFactor(s: RelationalVolumeRatios, context: VolumeContext): number {
   if (!s.enabled) return 1;
   const bindings: Record<VolumeBucket, string | readonly string[] | undefined> = {
     indicationTypes: context.indicationType,
@@ -121,6 +118,21 @@ export function relationalVolumeFactor(settings: unknown, context: VolumeContext
         factor *= s[bucket][key] ?? 1;
   }
   return Math.min(s.maxMultiplier, Math.max(0.000001, factor));
+}
+
+/** Apply once to entry notional. Held quantities, unit returns and qualification windows remain immutable. */
+export function relationalVolumeFactor(settings: unknown, context: VolumeContext): number {
+  if (settings === undefined || settings === null) return 1;
+  return normalizedVolumeFactor(relationalVolumeSettings(settings), context);
+}
+
+/** Normalize an immutable run's settings once. Undefined denotes a neutral factor for every context. */
+export function prepareRelationalVolumeFactor(settings: unknown): ((context: VolumeContext) => number) | undefined {
+  if (settings === undefined || settings === null) return undefined;
+  const s = relationalVolumeSettings(settings);
+  if (!s.enabled || (s.overall === 1 && VOLUME_BUCKETS.every(bucket => Object.keys(s[bucket]).length === 0)))
+    return undefined;
+  return (context) => normalizedVolumeFactor(s, context);
 }
 
 /** An additional strategy leg inherits source/range sizing from its parent; only its own extra weight is new. */

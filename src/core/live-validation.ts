@@ -3,6 +3,7 @@
 // and sufficient owned execution return PF. Unknown, absent, unallocated and endpoint-mark samples cannot qualify.
 // Groups are secondary paper coordinators; a winning sibling never supplies another lane's strict proof.
 import type { ConfigTape } from "./sim/walkforward.ts";
+import type { ProcessedStage } from "./sim/processed-set.ts";
 import { profitFactor } from "./metrics/stats.ts";
 import { returnWindow } from "./metrics/return-window.ts";
 import { isSignalInd } from "./indications/registry.ts";
@@ -31,7 +32,7 @@ export interface LiveGate {
   evidenceBasis?: "settled-post-base-and-owned-execution";
   referenceIgnored?: "newer-local-owned-closes" | "local-owned-proof-preferred";
   /** Independent persistent native predecessor-stage evidence; absent when the adapter is disabled. */
-  processed?: { stage: "postBase" | "validated" | "active" | null; state: string; n: number; pf: number | null };
+  processed?: { stage: ProcessedStage | null; state: string; n: number; pf: number | null };
 }
 
 export interface PromotionWindow {

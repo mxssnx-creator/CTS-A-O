@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import type { OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
 import { ProcessedSetBook } from "./processed-set.ts";
+import { ownedProcessedPolicy, processedLanes, ProcessedReplay, type ProcessedGridWindowCoverage } from "./processed-replay.ts";
 import { defaultWalkForward, execDecision, makeTape, packTapes, walkForward,
   type WalkForwardOptions, type WalkForwardResult } from "./walkforward.ts";
 import { retireOwnedIdleWorkers, runOnWorkers } from "../server/pool.server.ts";
@@ -36,6 +37,110 @@ function fixture(values: number[], overrides: Partial<WalkForwardOptions> = {}, 
   return { result, tape, options, future, universe };
 }
 
+test("every named signed lane produces only its own immediate predecessor sets", () => {
+  const block = (shortPolarity: "positive" | "negative", minimalPolarity: "positive" | "negative") =>
+    ({ long: 2, short: 1, minimal: 1, shortPolarity, minimalPolarity });
+  const base = { validationN: 4, realN: 4, execN: 4 };
+  const profiles = (["positive", "negative"] as const).flatMap(short => (["positive", "negative"] as const).map(last => {
+    const b = block(short, last);
+    return { id: `${short}/${last}`, blocks: { validation: block("positive", "positive"), real: b, exec: b } };
+  }));
+  let seed = 73;
+  const values = Array.from({ length: 310 }, () => {
+    seed = (Math.imul(seed, 1_664_525) + 1_013_904_223) >>> 0;
+    return seed % 7 < 5 ? .022 : -.004;
+  });
+  const both = fixture(values, { processedStages: { ...base, lanes: profiles } }).result;
+  const full = both.processedStages!;
+  const observed = new Set<number>();
+  assert.equal(full.lanes?.length, 4);
+  for (const profile of profiles) {
+    const result = fixture(values, { processedStages: { ...base, blocks: profile.blocks } }).result;
+    const own = full.sets.find(x => JSON.parse(x.identity.lane).at(-1) === profile.id)!;
+    assert.deepEqual(own.stages, result.processedStages!.sets[0].stages);
+    assert.deepEqual(own.evaluations, result.processedStages!.sets[0].evaluations);
+    for (let i = 1; i < own.lineage!.length; i++) assert.equal(own.lineage![i].parentSetId, own.lineage![i - 1].setId);
+    result.trades.forEach(x => observed.add(x.entryT));
+  }
+  assert.deepEqual(new Set(both.trades.map(x => x.entryT)), observed);
+  assert.equal(both.trades.length, observed.size, "simultaneous qualifying lanes fund one market parent");
+  assert.doesNotThrow(() => ProcessedSetBook.restore(full.snapshot));
+});
+
+test("named policies inherit Base and Exec windows even when the parent profile omits execN", () => {
+  const block = { long: 2, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const replacement = { ...block, minimal: 2, minimalPolarity: "negative" } as const;
+  const profile = ownedProcessedPolicy({ validationN: 2, realN: 3, lanes: [
+    { id: "inherited" }, { id: "specific", blocks: { exec: replacement } },
+  ] }, { base: 4, main: 4, real: 4, entry: 4, maxDrawdownPositions: 4, blocks: { base: block, entry: block } });
+  const [first, second] = processedLanes(profile).map(l => l.policy);
+  assert.deepEqual(first.baseBlock, block);
+  assert.deepEqual(second.baseBlock, block);
+  assert.equal(first.execN, 3);
+  assert.deepEqual(first.blocks?.exec, block);
+  assert.deepEqual(second.blocks?.exec, replacement);
+});
+
+test("a signed Base sibling cannot fill Main or use the opposite direction's source rows", () => {
+  const positive = { long: 2, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const negativeLast = { ...positive, minimalPolarity: "negative" } as const;
+  const { result } = fixture(Array(12).fill(.02), { processedStages: {
+    validationN: 2, realN: 2, execN: 2,
+    lanes: [{ id:"positive", baseBlock:positive }, { id:"negative-last", baseBlock:negativeLast }],
+  } });
+  const sets = result.processedStages!.sets;
+  assert.deepEqual(sets.map(s => JSON.parse(s.identity.lane).at(-1)), ["positive"]);
+  assert.ok(sets[0].stages.real!.closedOrders > 0);
+  assert.ok(sets[0].stages.active.closedOrders > 0);
+  assert.equal(result.processedStages!.lanes!.find(l => l.id === "negative-last")!.validation.qualified, 0);
+});
+
+test("a filled portfolio slot leaves the other four-stage lane's own Real close intact", () => {
+  const f = fixture(Array(9).fill(.02), {
+    processedStages: { validationN: 1, realN: 1, execN: 1 },
+    maxOpen: 1, maxPerSymbol: 1, maxPerSide: 1, onePerPairEvent: true,
+  });
+  const otherProtect = { ...protect, tp: .0315 }, otherId = configId("follow", ind, otherProtect);
+  const history = [...Array.from({ length: 12 }, (_, i) => trade(.02, T - (26 - i * 2) * M, 1, symbols[0], otherId)),
+    ...f.future.map(row => ({ ...row, cfg: otherId }))];
+  const other = makeTape(otherId, "follow", ind, otherProtect, "normal", symbols, history, [], []);
+  const r = walkForward(f.universe, [f.tape, other], f.options);
+  const proof = r.processedStages!;
+  const sets = proof.sets.filter(s => s.identity.symbol === symbols[0]);
+  assert.equal(sets.length, 2);
+  assert.equal(r.trades.length, 6, "only one actual Exec parent can occupy the portfolio");
+  assert.ok(sets.every(s => s.stages.postBase.closedOrders === 9 && s.stages.real!.closedOrders === 7));
+  assert.deepEqual(sets.map(s => s.execDeferred ?? 0).sort(), [0, 6]);
+  assert.equal(r.skips["processed:portfolio:perSymbol"], 6);
+  for (const s of sets)
+    assert.equal(s.evaluations.exec!.qualified, s.stages.active.openedOrders + (s.execDeferred ?? 0));
+  assert.deepEqual(ProcessedSetBook.restore(JSON.parse(JSON.stringify(proof.snapshot))).snapshot(), proof.snapshot);
+
+  const compact = walkForward(f.universe, [f.tape, other], {
+    ...f.options, processedStages: { ...f.options.processedStages!, reportDetail: "summary" },
+  });
+  assert.deepEqual(compact.trades, r.trades);
+  assert.deepEqual(compact.processedStageSummary!.exec, proof.exec);
+});
+
+test("a current failing parent cannot certify its child's older qualifying window in the report", () => {
+  const values = [...Array(8).fill(.02), -.005];
+  const f = fixture(values, { processedStages: { validationN: 1, realN: 2, execN: 2 } });
+  const r = f.result.processedStages!;
+  assert.equal(r.validation.qualified, 0);
+  for (const stage of [r.real, r.exec!]) {
+    assert.equal(stage.qualified, 0);
+    assert.equal(stage.parentBlocked, symbols.length * 2);
+    assert.equal(stage.passingWindows.evaluated, symbols.length * 2);
+  }
+  const book = ProcessedSetBook.restore(r.snapshot);
+  const own = r.sets[0].identity;
+  const policy = { validationN: 1, realN: 2, execN: 2, minPf: 1.08 };
+  assert.equal(book.gate(own, "validated", policy, "real", r.at).state, "qualified");
+  assert.equal(book.gate(own, "real", policy, "exec", r.at).state, "qualified");
+  assert.equal(f.result.trades.at(-1)!.r, -.005, "the admitted settlement stays in measured PF");
+});
+
 test("native replay advances through two own processed windows, retains losses and recovers", () => {
   const values = [.02, .02, .02, .02, .02, -.04, -.04, -.04, .02, .02, .02, .02, .02, .02];
   const f = fixture(values), report = f.result.processedStages!;
@@ -62,9 +167,62 @@ test("native replay advances through two own processed windows, retains losses a
   assert.equal(report.validation.contexts, 16, "eight symbols × two sides, including empty siblings");
   assert.equal(report.validation.full, 1);
   assert.equal(report.validation.fullPct, 6.25);
+  assert.equal(report.validation.passingWindows.evaluated, 16);
+  assert.equal(report.validation.passingWindows.passed, 1);
+  assert.equal(report.validation.passingWindows.setPf?.noLossSets, 1, "the finite gate sentinel is not reported as PF");
   assert.equal(report.seededFromCandidates, false);
   const restored = ProcessedSetBook.restore(JSON.parse(JSON.stringify(report.snapshot)));
   assert.deepEqual(restored.snapshot(), report.snapshot, "model checkpoint survives serialization exactly");
+});
+
+test("summary-only replay retains the same decisions and coverage without copying its checkpoint", () => {
+  const values = [.02, .02, .02, .02, .02, -.04, .02, .02, .02, .02];
+  const full = fixture(values).result;
+  const lean = fixture(values, { processedStages: { validationN: 2, realN: 2, reportDetail: "summary" } }).result;
+  assert.ok(full.processedStages?.snapshot);
+  assert.equal(lean.processedStages, undefined);
+  assert.ok(lean.processedStageSummary);
+  assert.deepEqual(lean.processedStageSummary!.validation, full.processedStages!.validation);
+  assert.deepEqual(lean.processedStageSummary!.real, full.processedStages!.real);
+  for (const key of ["trades", "skips", "steps", "stats", "feed"] as const)
+    assert.deepEqual(lean[key], full[key], key);
+});
+
+test("compact modeled parent IDs remain scoped to exact config, symbol, side and onset", () => {
+  const compact = new ProcessedReplay({ validationN: 2, realN: 2, reportDetail: "summary" }, .001);
+  const full = new ProcessedReplay({ validationN: 2, realN: 2 }, .001);
+  const tp = { id, kind: "normal", ind }, other = { ...tp, id: `${id}|other` };
+  const scopes = [[tp, symbols[0], 1], [tp, symbols[0], -1], [tp, symbols[1], 1], [other, symbols[0], 1]] as const;
+  const small = scopes.map(([cfg, sym, side]) => compact.enter(cfg, sym, side, T, 1.1));
+  const normal = scopes.map(([cfg, sym, side]) => full.enter(cfg, sym, side, T, 1.1));
+  assert.equal(new Set(small.map(x => x.entryId)).size, 1, "the containing identity supplies the independent scope");
+  assert.equal(new Set(normal.map(x => x.entryId)).size, scopes.length, "full checkpoints retain their existing IDs");
+  assert.throws(() => compact.enter(tp, symbols[0], 1, T, 1.1), /duplicate processed entry/);
+  for (const x of small) compact.settle(x, T + 1, .02);
+  for (const x of normal) full.settle(x, T + 1, .02);
+  const identities = scopes.map(([cfg, sym, side]) => ({ identity: compact.identity(cfg, sym, side, 1.1), minPf: 1.1 }));
+  const run = (p: ProcessedReplay) => {
+    const g = p.reportGen(T + 2, identities, "summary");
+    for (let next = g.next(); ; next = g.next()) if (next.done) return next.value;
+  };
+  assert.deepEqual(run(compact), run(full));
+  const snapshot = compact.book.snapshot();
+  assert.deepEqual(ProcessedSetBook.restore(JSON.parse(JSON.stringify(snapshot))).snapshot(), snapshot);
+});
+
+test("large modeled coverage scans yield while retaining empty contexts", () => {
+  const p = new ProcessedReplay({ validationN: 2, realN: 2 }, .001);
+  function* contexts() {
+    for (let i = 0; i < 12_000; i++) yield { identity: p.identity({ id: `cfg-${i}`, ind, kind: "normal" },
+      symbols[0], 1, 1.1), minPf: 1.1 };
+  }
+  const gen = p.reportGen(T, contexts(), "summary");
+  let yields = 0, next = gen.next();
+  while (!next.done) { yields++; next = gen.next(); }
+  assert.ok(yields > 0, "a large coverage pass must give control back to the event loop");
+  assert.equal(next.value.validation.contexts, 12_000);
+  assert.equal(next.value.validation.insufficient, 12_000);
+  assert.equal("snapshot" in next.value, false);
 });
 
 test("a raw winning history cannot bootstrap cold or losing processed contexts", () => {
@@ -78,6 +236,103 @@ test("a raw winning history cannot bootstrap cold or losing processed contexts",
   const legacy = fixture([-.01, -.01, -.01, -.01, -.01], { processedStages: undefined });
   assert.equal(legacy.result.trades.length, 5, "explicit legacy control reproduces the old behavior");
   assert.equal(legacy.result.processedStages, undefined);
+});
+
+test("Base-approved siblings warm their own stages despite empty raw seats", () => {
+  const f = fixture([.02, .02, .02, .02, .02, -.01]);
+  const siblingProtect = { ...protect, tp: .03 };
+  const siblingId = configId("follow", ind, siblingProtect);
+  const baseHistory = [trade(-.01, T - M * 3), trade(-.01, T - M * 2)];
+  const losingShorts = f.future.map(row => trade(-.02, row.entryT, -1, symbols[0], siblingId));
+  const longTape = makeTape(id, "follow", ind, protect, "normal", symbols, [...baseHistory, ...f.future], [], []);
+  const shortTape = makeTape(siblingId, "follow", ind, siblingProtect, "normal", symbols, losingShorts, [], []);
+  const options = { ...f.options, onePerPairEvent: false, recordValidation: "summary" as const };
+  const sim = walkForward(f.universe, [longTape, shortTape], options);
+  assert.equal(sim.steps[0].validationSummary?.passed, 0);
+  const own = sim.processedStages!.sets.find(set => set.identity.baseConfigId === id)!;
+  const other = sim.processedStages!.sets.find(set => set.identity.baseConfigId === siblingId)!;
+  assert.equal(own.stages.postBase.closedOrders, 6);
+  assert.equal(other.stages.postBase.closedOrders, 6);
+  assert.equal(other.stages.validated.closedOrders, 0);
+  assert.deepEqual(sim.trades.map(row => [row.cfg, row.side, row.r]), [[id, 1, .02], [id, 1, -.01]]);
+  assert.equal(walkForward(f.universe, [longTape, shortTape], { ...options,
+    validated: new Set<string>() }).processedStages!.sets.length, 0, "explicit frozen selection remains authoritative");
+  assert.equal(walkForward(f.universe, [longTape, shortTape], { ...options,
+    basePassed: new Set<string>() }).processedStages!.sets.length, 0, "a failed Base batch never enters the book");
+});
+
+test("siblings can collect warmup at the same onset while Active still spends one pair-event slot", () => {
+  const f = fixture([.02, .02, .02, .02, .02, .02]);
+  const otherProtect = { ...protect, tp: .03 };
+  const otherId = configId("follow", ind, otherProtect);
+  const other = makeTape(otherId, "follow", ind, otherProtect, "normal", symbols,
+    f.future.map(row => ({ ...row, cfg: otherId })), [], []);
+  const simulation = walkForward(f.universe, [f.tape, other], { ...f.options, onePerPairEvent: true });
+  const sets = simulation.processedStages!.sets;
+  assert.equal(sets.length, 2);
+  assert.ok(sets.every(set => set.stages.postBase.closedOrders >= 4));
+  assert.ok(sets.every(set => set.stages.validated.closedOrders >= 2));
+  assert.equal(simulation.trades.length, 2);
+  assert.equal(simulation.skips.pairEvent, 2);
+});
+
+test("an unqualified warmup order does not consume a funded Active slot", () => {
+  const f = fixture([.02, .02, .02, .02, .02, .02]);
+  const otherProtect = { ...protect, tp: .03 };
+  const otherId = configId("follow", ind, otherProtect);
+  for (const conflict of [false, true]) {
+    const warmup = { ...trade(.02, T + 8 * M + M / 2, conflict ? -1 : 1,
+      conflict ? symbols[0] : symbols[1], otherId), exitT: T + 13 * M };
+    const other = makeTape(otherId, "follow", ind, otherProtect, "normal", symbols, [warmup], [], []);
+    const sim = walkForward(f.universe, [f.tape, other], {
+      ...f.options, onePerPairEvent: false, maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0,
+      coord: { ...f.options.coord!, enabled: conflict, conflict },
+    });
+    assert.deepEqual(sim.trades.map(row => row.entryT), [f.future[4].entryT, f.future[5].entryT]);
+    const warmupSet = sim.processedStages!.sets.find(set => set.identity.baseConfigId === otherId)!;
+    assert.equal(warmupSet.stages.postBase.closedOrders, 1);
+    assert.equal(warmupSet.stages.active.openedOrders, 0);
+  }
+});
+
+test("Active exposure does not block a modeled predecessor or bypass its own caps", () => {
+  const f = fixture([.02, .02, .02, .02, .02, .02]);
+  const otherProtect = { ...protect, tp: .03 };
+  const otherId = configId("follow", ind, otherProtect);
+  const history = Array.from({ length: 160 }, (_, i) => trade(.02, T - 11 * H + i * 2 * M));
+  const longer = f.future.map((row, i) => i === 4 ? { ...row, exitT: T + 13 * M } : row);
+  const main = makeTape(id, "follow", ind, protect, "normal", symbols,
+    [...history, ...longer].sort((a, b) => a.exitT - b.exitT), [], []);
+  const warmup = { ...trade(.02, T + 9 * M + M / 2, -1, symbols[0], otherId), exitT: T + 14 * M };
+  const other = makeTape(otherId, "follow", ind, otherProtect, "normal", symbols, [warmup], [], []);
+  const sim = walkForward(f.universe, [main, other], {
+    ...f.options, onePerPairEvent: false, maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0,
+    coord: { ...f.options.coord!, enabled: true, conflict: true },
+  });
+  assert.deepEqual(sim.trades.map(row => row.entryT), [f.future[4].entryT], "Active still honors its own duplicate guard");
+  const warmupSet = sim.processedStages!.sets.find(set => set.identity.baseConfigId === otherId)!;
+  assert.equal(warmupSet.stages.postBase.closedOrders, 1);
+  assert.equal(warmupSet.stages.active.openedOrders, 0);
+});
+
+test("two independently qualified Active sets still share the configured execution cap", () => {
+  const f = fixture([.02, .02, .02, .02, .02, .02]);
+  const otherProtect = { ...protect, tp: .03 };
+  const otherId = configId("follow", ind, otherProtect);
+  const history = Array.from({ length: 160 }, (_, i) => trade(.02, T - 11 * H + i * 2 * M));
+  const longer = f.future.map((row, i) => i === 4 ? { ...row, exitT: T + 13 * M } : row);
+  const main = makeTape(id, "follow", ind, protect, "normal", symbols,
+    [...history, ...longer].sort((a, b) => a.exitT - b.exitT), [], []);
+  const otherRows = Array.from({ length: 5 }, (_, i) => trade(.02, T + (2 * i + 2) * M, 1, symbols[1], otherId));
+  const other = makeTape(otherId, "follow", ind, otherProtect, "normal", symbols, otherRows, [], []);
+  const sim = walkForward(f.universe, [main, other], {
+    ...f.options, onePerPairEvent: false, maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0,
+  });
+  assert.equal(sim.trades.filter(row => row.cfg === id).length, 1);
+  assert.equal(sim.trades.filter(row => row.cfg === otherId).length, 0);
+  assert.equal(sim.skips.maxOpen, 1);
+  const own = sim.processedStages!.sets.find(set => set.identity.baseConfigId === otherId)!;
+  assert.equal(own.stages.validated.closedOrders, 2, "the blocked candidate had already qualified both predecessor windows");
 });
 
 test("an unknown settled return remains in the processed window and checkpoint", () => {
@@ -125,13 +380,17 @@ test("native non-replay admission fails closed until its persistent adapter exis
 
 test("worker transport preserves every processed decision, close, count and empty context", async () => {
   const f = fixture([.02, -.01, .02, .02, -.01, .02, .02, .02]);
+  const lean = fixture([.02, -.01, .02, .02, -.01, .02, .02, .02],
+    { processedStages: { validationN: 2, realN: 2, reportDetail: "summary" } });
   const owner = {};
   try {
-    const [reply] = await runOnWorkers<{ sim: WalkForwardResult }>([{ type: "research-real",
-      nowT: T + 12 * H, baseTf: 1, packed: packTapes([f.tape]), wf: f.options }],
+    const [reply, summaryReply] = await runOnWorkers<{ sim: WalkForwardResult }>([{ type: "research-real",
+      nowT: T + 12 * H, baseTf: 1, packed: packTapes([f.tape]), wf: f.options }, { type: "research-real",
+      nowT: T + 12 * H, baseTf: 1, packed: packTapes([lean.tape]), wf: lean.options }],
     1, 30_000, undefined, false, undefined, owner);
     assert.ok(f.result.trades.length > 0);
     assert.deepEqual(reply.sim, f.result);
+    assert.deepEqual(summaryReply.sim, lean.result);
   } finally { await retireOwnedIdleWorkers(owner); }
 });
 
@@ -174,4 +433,179 @@ test("native exact symbol and direction windows cannot borrow one another's wins
   assert.equal(result.processedStages!.validation.failed, 1);
   assert.equal(result.processedStages!.validation.qualified, 3);
   assert.equal(result.processedStages!.validation.insufficient, 12);
+});
+
+test("causal modeled warmup keeps pre-start positions and losses out of the funded account", () => {
+  const f = fixture([]), begin = T - H;
+  const older = Array.from({ length: 80 }, (_, i) => trade(.02, T - 11 * H + i * 2 * M));
+  const learning = Array.from({ length: 4 }, (_, i) => trade(.02, begin + (2 * i + 1) * M));
+  const ghost = { ...trade(-.10, T - 2 * M), exitT: T + 3 * M };
+  const target = [trade(.02, T + M), trade(.02, T + 4 * M)];
+  const tape = makeTape(id, 'follow', ind, protect, 'normal', symbols,
+    [...older, ...learning, ghost, ...target].sort((a, b) => a.exitT - b.exitT), [], []);
+  const options = { ...f.options, simH: 1, startT: T, causalBase: true,
+    processedWarmup: { fromT: begin, untilT: T, baseCutT: begin },
+    onePerPairEvent: false, maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0 };
+  const result = walkForward(f.universe, [tape], options);
+  assert.deepEqual(result.processedWarmup, { fromT: begin, untilT: T, baseCutT: begin });
+  assert.equal(result.startT, T); assert.equal(result.endT, T + H); assert.equal(result.steps.length, 1);
+  assert.deepEqual(result.trades.map(row => row.entryT), [T + M],
+    'the ghost does not consume the target account slot, but its later settled loss rejects subsequent entries');
+  assert.equal(result.trades[0].r, .02);
+  assert.equal(result.skips['processed:validation:failed'], 1);
+  assert.ok(result.feed.every(row => row.entryT !== undefined && row.entryT >= T), 'reported candidate feed excludes historical entries');
+  const own = result.processedStages!.sets.find(row => row.identity.baseConfigId === id)!;
+  assert.equal(own.stages.postBase.closedOrders, 7, 'modeled stage evidence includes its own warmup closes and loss');
+  assert.equal(own.stages.active.closedOrders, 2, 'modeled Active includes ghost and the target order');
+  assert.throws(() => walkForward(f.universe, [tape], { ...options, causalBase: false }), /pre-warmup causal Base/);
+  assert.throws(() => walkForward(f.universe, [tape], { ...options, processedWarmup: { fromT: begin, untilT: T, baseCutT: T } }), /pre-warmup causal Base/);
+  assert.throws(() => walkForward(f.universe, [tape], { ...options, processedStages: undefined }), /pre-warmup causal Base/);
+});
+
+test("a historical loss across the boundary cannot trip the target account hour guard", () => {
+  const f = fixture([]), begin = T - H, siblingProtect = { ...protect, tp: .03 };
+  const siblingId = configId('follow', ind, siblingProtect);
+  const older = Array.from({ length: 80 }, (_, i) => trade(.02, T - 11 * H + i * 2 * M));
+  const prior = Array.from({ length: 4 }, (_, i) => trade(.02, begin + (2 * i + 1) * M));
+  const ghost = { ...trade(-.10, T - 2 * M), exitT: T + 3 * M };
+  const main = makeTape(id, 'follow', ind, protect, 'normal', symbols,
+    [...older, ...prior, ghost].sort((a, b) => a.exitT - b.exitT), [], []);
+  const otherPrior = prior.map(row => ({ ...row, cfg: siblingId, sym: symbols[1], entryT: row.entryT + M, exitT: row.exitT + M }));
+  const target = trade(.02, T + 4 * M, 1, symbols[1], siblingId);
+  const other = makeTape(siblingId, 'follow', ind, siblingProtect, 'normal', symbols,
+    [...otherPrior, target], [], []);
+  const result = walkForward(f.universe, [main, other], { ...f.options, simH: 1, startT: T,
+    causalBase: true, processedWarmup: { fromT: begin, untilT: T, baseCutT: begin },
+    onePerPairEvent: false, maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0, guardPct: 1 });
+  assert.deepEqual(result.trades.map(row => [row.cfg, row.entryT]), [[siblingId, T + 4 * M]],
+    JSON.stringify({ skips: result.skips, sets: result.processedStages?.sets }));
+  assert.equal(result.skips.hourGuard ?? 0, 0, 'a model-only loss is not a funded loss');
+  assert.equal(result.processedStages!.sets.find(row => row.identity.baseConfigId === id)!.stages.postBase.grossLoss, .1,
+    'the same loss remains in its own modeled stage');
+});
+
+test("a pre-start modeled position cannot conflict with the opposite funded direction", () => {
+  const f = fixture([]), begin = T - H;
+  const prior = Array.from({ length: 4 }, (_, i) => [
+    trade(.02, begin + (2 * i + 1) * M, 1), trade(.02, begin + (2 * i + 2) * M, -1),
+  ]).flat();
+  const ghost = { ...trade(.02, T - 2 * M), exitT: T + 5 * M };
+  const target = trade(.02, T + M, -1);
+  const tape = makeTape(id, 'follow', ind, protect, 'normal', symbols,
+    [...prior, ghost, target].sort((a, b) => a.exitT - b.exitT), [], []);
+  const result = walkForward(f.universe, [tape], { ...f.options, simH: 1, startT: T,
+    causalBase: true, processedWarmup: { fromT: begin, untilT: T, baseCutT: begin },
+    onePerPairEvent: false, maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0,
+    coord: { ...f.options.coord!, enabled: true, conflict: true } });
+  assert.deepEqual(result.trades.map(row => [row.entryT, row.side]), [[T + M, -1]], JSON.stringify(result.skips));
+  assert.equal(result.skips.conflict ?? 0, 0);
+});
+
+test("a window grid preserves the Cartesian owned path results without copying every earlier set", () => {
+  const small = { long: 1, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const deep = { ...small, long: 2 };
+  const shorter = { ...small, long: 0 };
+  const windowGrid = { base: [small, deep], validation: [small, shorter], real: [small, deep], exec: [small, deep] };
+  const common = { validationN: 3, realN: 3, execN: 3, baseScope: "context" as const,
+    autoPf: { mode: "independent" as const, ratio: 4 }, reportDetail: "summary" as const };
+  const lanes = windowGrid.base.flatMap((baseBlock, b) => windowGrid.validation.flatMap((validation, m) =>
+    windowGrid.real.flatMap((real, r) => windowGrid.exec.map((exec, e) => ({
+      id: [b,m,r,e].join("/"), baseBlock, blocks: { validation, real, exec },
+    })))));
+  const values = Array.from({ length: 310 }, (_, i) => i % 19 === 0 ? -.006 : .02);
+  const expected = fixture(values, { processedStages: { ...common, lanes } }).result;
+  const replay = fixture(values, { processedStages: { ...common, windowGrid } }).result;
+  assert.deepEqual(replay.trades, expected.trades);
+  const a = replay.processedStageSummary!, b = expected.processedStageSummary!;
+  assert.deepEqual(a.windowGrid?.choices, { base: 2, validation: 2, real: 2, exec: 2 });
+  for (const [stage, downstream] of [["validation",4],["real",2],["exec",1]] as const) {
+    assert.equal(a[stage]!.contexts * downstream, b[stage]!.contexts);
+    assert.equal(a[stage]!.qualified * downstream, b[stage]!.qualified);
+    assert.equal(a[stage]!.full * downstream, b[stage]!.full);
+    const windows: ProcessedGridWindowCoverage[] = a.windowGrid!.windows![stage]!;
+    assert.equal(windows.reduce((sum, row) => sum + row.contexts, 0), a[stage]!.contexts);
+    assert.equal(windows.reduce((sum, row) => sum + row.qualified, 0), a[stage]!.qualified);
+  }
+  assert.equal(a.windowGrid!.windows!.base!.length, 2);
+  assert.ok(a.windowGrid!.windows!.base!.every(row => row.contexts === symbols.length * 2));
+  assert.ok(replay.trades.some(t => t.r < 0), "economic history includes every admitted loss");
+});
+
+test("the window grid evaluates a negative Main trigger but requires independently priced opposite exposure", () => {
+  const block = { long: 2, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  // Base uses the longer own count window for selection. The Main loss trigger is judged on its
+  // own processed closes and can qualify, but the supplied tape can fill only its original side.
+  const result = fixture(Array.from({ length: 310 }, (_, i) => i % 8 === 4 ? -.005 : .02), {
+    processedStages: { validationN: 4, realN: 4, execN: 4, reportDetail: "summary",
+      windowGrid: { base: [block, { ...block, minimalPolarity: "negative" }],
+        validation: [{ ...block, minimalPolarity: "negative" }], real: [block], exec: [block] } },
+  }).result;
+  assert.ok(result.processedStageSummary?.windowGrid?.oppositeSourceMissing);
+  assert.equal(result.trades.length, 0);
+  assert.equal(result.processedStageSummary?.real.full, 0);
+});
+
+test("negative Main uses a priced mirror without granting that mirror its own Base qualification", () => {
+  const block = { long: 2, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const negativeLast = { ...block, minimalPolarity: "negative" } as const;
+  const { tape, universe, options, future } = fixture(Array.from({ length: 310 }, (_, i) => i % 9 === 4 ? -.005 : .02));
+  const oppositeId = configId("revert", ind, protect);
+  const oppositePast = Array.from({ length: 160 }, (_, i) => trade(.012, T - 11 * H + i * 2 * M, -1, symbols[0], oppositeId));
+  const oppositeFuture = future.map(row => trade(.008, row.entryT, -1, row.sym, oppositeId));
+  const opposite = makeTape(oppositeId, "revert", ind, protect, "normal", symbols, [...oppositePast, ...oppositeFuture], [], []);
+  const result = walkForward(universe, [tape, opposite], { ...options,
+    basePassed: new Set([`follow|${ind}`]),
+    basePassedRanges: { [`follow|${ind}`]: ["mn"] },
+    processedStages: { validationN: 4, realN: 4, execN: 4, reportDetail: "summary",
+      windowGrid: { base: [block, negativeLast], validation: [negativeLast], real: [block], exec: [block] } },
+  });
+  const grid = result.processedStageSummary!.windowGrid!;
+  assert.ok(grid.inverseEntries > grid.inverseExecEntries);
+  assert.ok(grid.inverseExecEntries > 0);
+  assert.equal(grid.oppositeSourceMissing, 0);
+  assert.equal(result.trades.length, grid.inverseExecEntries);
+  assert.ok(result.trades.every(t => t.cfg === oppositeId && t.side === -1 && t.unitR === .008));
+  assert.equal(result.feed.filter(t => t.cfg === oppositeId).length, grid.inverseEntries,
+    "a mirror price sample feeds no strategy or shared record until the original path actually admits it");
+});
+
+test("a cold exact context learns real prehistory entries and keeps them out of the scored account", () => {
+  const block = { long: 1, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const f = fixture(Array.from({ length: 40 }, (_, i) => i < 5 ? -.006 : .02));
+  const tape = makeTape(id, "follow", ind, protect, "normal", symbols, f.future, [], []);
+  const startT = T + H;
+  const options = { ...f.options, causalBase: true, basePassed: new Set<string>(), basePassedRanges: {},
+    startT, simH: 11, processedWarmup: { fromT: T, baseCutT: T, untilT: startT } } as const;
+  const fixed = { validationN: 3, realN: 3, execN: 3, baseScope: "context", reportDetail: "summary" } as const;
+  const grid = { base: [block], validation: [block], real: [block], exec: [block] };
+  for (const policy of [{ ...fixed, baseBlock: block }, { ...fixed, windowGrid: grid }]) {
+    const frozen = walkForward(f.universe, [tape], { ...options, processedStages: policy });
+    assert.equal(frozen.processedWarmupActivity?.entries.base, 0);
+    assert.equal(frozen.trades.length, 0);
+
+    const result = walkForward(f.universe, [tape], { ...options, processedStages: { ...policy, rollingBase: true } });
+    const { entries, closedBeforeScore } = result.processedWarmupActivity!;
+    assert.ok(result.processedWarmupActivity!.pricedCandidates > entries.base);
+    assert.ok(entries.base > entries.main && entries.main > entries.real && entries.real > entries.exec);
+    assert.ok(closedBeforeScore.exec > 0);
+    assert.equal(entries.exec - closedBeforeScore.exec, 1, "the close at the score boundary is not strictly earlier");
+    assert.ok(result.trades.length > 0);
+    assert.ok(result.trades.every(row => row.entryT >= startT && row.unitR === .02));
+    assert.equal(result.processedStageSummary!.exec!.qualified, 1,
+      "the never-observed opposite direction cannot qualify");
+  }
+});
+
+test("cutoff coverage drops a stale Base parent while retaining its earlier modeled results", () => {
+  const block = { long: 1, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const fixtureReturns = [...Array(35).fill(.02), -.1];
+  for (const policy of [{ baseBlock: block, blocks: { validation: block, real: block, exec: block } },
+    { windowGrid: { base: [block], validation: [block], real: [block], exec: [block] } }]) {
+    const { result } = fixture(fixtureReturns, { processedStages: {
+      baseScope: "context", validationN: 3, realN: 3, execN: 3, reportDetail: "summary", ...policy,
+    } });
+    assert.ok(result.trades.length > 0);
+    assert.equal(result.processedStageSummary!.validation.qualified, 0);
+    assert.ok(result.processedStageSummary!.validation.parentBlocked);
+  }
 });

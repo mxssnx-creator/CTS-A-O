@@ -74,7 +74,7 @@ const u = {
 } as never;
 
 const code: WalkForwardOptions = {
-  ...defaultWalkForward(DEFAULT_SETTINGS),
+  ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
   protects: [],
   dcaProtects: [],
   simH: 6,

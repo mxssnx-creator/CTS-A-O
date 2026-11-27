@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 
 const H = 3_600_000;
 const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+export const SESSION_STUDY_SOURCE_SCOPE = "engine-shared-manifests-v1";
 export const studySha256 = (value) => createHash("sha256").update(value).digest("hex");
 export function studyCanonical(value) {
   if (value instanceof Set) return [...value].sort().map(studyCanonical);
@@ -22,20 +23,35 @@ export function studyWithRequestedWindow(wf, preH, simH) {
 
 /** Seal economic source and the common report instrumentation separately for each arm. */
 export function sessionStudySourceFiles(root = defaultRoot) {
-  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(resolve(dir, e.name)) : /\.(?:ts|tsx|mjs|cjs)$/.test(e.name) && !/\.test\.[^.]+$/.test(e.name) && e.name !== "test-support.ts" ? [resolve(dir, e.name)] : []);
-  return [...walk(resolve(root, "src/core")), ...walk(resolve(root, "scripts/lib")), resolve(root, "scripts/core-session.mjs"), resolve(root, "package.json")].sort().map((file) => ({ path: relative(root, file), sha256: studySha256(readFileSync(file)) }));
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(resolve(dir, e.name)) :
+    (/\.(?:ts|tsx|js|mjs|cjs)$/.test(e.name) || e.name === "package.json") && !/\.test\.[^.]+$/.test(e.name) && e.name !== "test-support.ts" ? [resolve(dir, e.name)] : []);
+  // The engine imports shared Last-N, volume and Relate modules; a changed dependency must invalidate the seal too.
+  return [...walk(resolve(root, "src/core")), ...walk(resolve(root, "shared")), ...walk(resolve(root, "scripts/lib")),
+    resolve(root, "scripts/core-session.mjs"), resolve(root, "package.json"), resolve(root, "package-lock.json")]
+    .sort().map((file) => ({ path: relative(root, file), sha256: studySha256(readFileSync(file)) }));
 }
 
 export function readSessionStudy(protocolPath, root = defaultRoot) {
   const bytes = readFileSync(protocolPath), p = JSON.parse(bytes);
   if (p.schema !== "cts-session-study-v1" || !p.id || !Array.isArray(p.symbols) || !p.symbols.length || new Set(p.symbols).size !== p.symbols.length)
     throw new Error("Invalid frozen session study identity/symbols");
-  if (!p.window || !Number.isFinite(p.window.evaluationFromT) || !Number.isFinite(p.window.tradeStartT) || !Number.isFinite(p.window.endT) || p.window.tradeStartT - p.window.evaluationFromT !== p.window.preH * H || p.window.endT - p.window.tradeStartT !== p.window.runH * H)
+  const stageH = p.window?.processedWarmupH ?? 0;
+  if (!p.window || !Number.isSafeInteger(stageH) || stageH < 0 || stageH > 240 ||
+      !Number.isFinite(p.window.evaluationFromT) || !Number.isFinite(p.window.tradeStartT) || !Number.isFinite(p.window.endT) || p.window.tradeStartT - p.window.evaluationFromT !== (p.window.preH + stageH) * H || p.window.endT - p.window.tradeStartT !== p.window.runH * H)
     throw new Error("Invalid frozen session study windows");
   if (!p.feed?.sha256 || !p.actualSettings || !p.actualWf || !Array.isArray(p.source?.files) || !p.source.files.length || studySha256(studyExactJson(p.source.files)) !== p.source.sha256)
     throw new Error("Missing frozen session settings/feed/source seal");
   if (p.actualWf.preH !== p.window.preH || p.actualWf.simH !== p.window.runH)
     throw new Error("Frozen session walk-forward window differs from protocol window");
+  const warmup = p.actualWf.processedWarmup;
+  if (stageH ? !warmup || warmup.fromT !== p.window.tradeStartT - stageH * H || warmup.untilT !== p.window.tradeStartT ||
+      warmup.baseCutT !== warmup.fromT || !p.actualWf.causalBase || !p.actualWf.processedStages : !!warmup)
+    throw new Error("Frozen modeled-stage warmup differs from protocol boundaries or causal Base proof");
+  if (p.source.scope === SESSION_STUDY_SOURCE_SCOPE &&
+      studyExactJson(sessionStudySourceFiles(root)) !== studyExactJson(p.source.files))
+    throw new Error("Session source changed after freeze: engine/shared inventory");
+  if (p.source.scope !== undefined && p.source.scope !== SESSION_STUDY_SOURCE_SCOPE)
+    throw new Error("Unsupported frozen session source scope");
   for (const f of p.source.files) {
     const file = resolve(root, f.path);
     if (!file.startsWith(root + sep) || studySha256(readFileSync(file)) !== f.sha256)
@@ -73,6 +89,8 @@ export function validateFrozenSessionResult(raw, protocolPath, root = defaultRoo
   if (studyExactJson([...(raw.symbols ?? [])].sort()) !== expected || studyExactJson([...(raw.engine?.universe ?? [])].sort()) !== expected)
     throw new Error("Completed study did not process the exact frozen symbol universe");
   if (raw.window?.startT !== p.window.tradeStartT || raw.window?.endT !== p.window.endT) throw new Error("Completed study execution window differs");
+  if (studyExactJson(raw.processedStageProgress?.warmup ?? null) !== studyExactJson(p.actualWf.processedWarmup ?? null))
+    throw new Error("Completed study omitted or changed its modeled-stage warmup");
   if (p.liveSinceT !== undefined && raw.settings?.live?.replaySinceT !== p.liveSinceT) throw new Error("Completed study omitted its frozen paper Live evaluation boundary");
   validateFrozenSessionBook(raw.settings?.book, p.account);
   const mem = raw.engine?.mem;

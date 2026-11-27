@@ -24,6 +24,8 @@ function parity(
 ) {
   // No sink: the unchanged bar-by-bar Trade simulator is the independent oracle.
   const expected = simulate("fixed-parity", b, sig, p, opt);
+  const fullFast = simulate("fixed-parity", b, sig, p, { ...opt, fixedPathScope: scope ?? {} });
+  assert.deepEqual(fullFast, expected, "full trades, MFE/MAE, open and pending match the scanner");
   const settled: Array<TradeLike & { mult: 1 }> = [];
   const actual = simulate("fixed-parity", b, sig, p, {
     ...opt,
@@ -40,6 +42,25 @@ function parity(
 }
 
 describe("fixed-exit sink price paths", () => {
+  it("preserves full excursion fields when a long quiet holding jumps to a simultaneous barrier", () => {
+    const rows: Array<[number, number, number, number]> = Array.from({ length: 80 }, (_, i) =>
+      i === 70 ? [100, 112, 88, 100] : [100, 100 + (i % 5) / 2, 100 - (i % 4) / 2, 100]);
+    const b = make(rows), sig = new Int8Array(rows.length); sig[0] = 1;
+    const { expected } = parity(b, sig, { tp: .1, sl: .1, trail: 0, hold: 80 }, { cost: .002 }, {});
+    assert.equal(expected.trades[0].reason, "sl");
+    assert.equal(expected.trades[0].mfe, .12);
+    assert.equal(expected.trades[0].mae, .12);
+    sig[0] = -1;
+    const short = parity(b, sig, { tp: .1, sl: .1, trail: 0, hold: 80 }, { cost: .002 }, {}).expected;
+    assert.equal(short.trades[0].reason, "sl");
+    assert.equal(short.trades[0].mfe, .12);
+    assert.equal(short.trades[0].mae, .12);
+    sig[0] = 1;
+    const capped = parity(b, sig, { tp: .1, sl: .1, trail: 0, hold: 80 },
+      { cost: .002, entryStopLimit: () => .02, admitEntry: (entry) => entry.entryT >= M }, {}).expected;
+    assert.equal(capped.trades[0].entryStopMax, .02, "entry-time stop ownership survives the jump");
+  });
+
   it("matches complete settled statistics, opens and pending across seeded prices, signals and cells", () => {
     let closes = 0;
     let opens = 0;

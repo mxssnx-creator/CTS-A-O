@@ -1,5 +1,5 @@
 import { DEFAULT_POSITION_WINDOWS } from "./position-windows.ts";
-import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL, DEFAULT_SIGNAL_AUTO_SL } from "./sl-ratios.ts";
+import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL, DEFAULT_SIGNAL_AUTO_SL, DEFAULT_THIN_AUTO_SL } from "./sl-ratios.ts";
 import { DEFAULT_MIN_SL_DISTANCE_PCT, SL_TP_RATIOS, minimumStopFraction } from "./protection-policy.ts";
 import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "./indications/micro-family.ts";
 import { DEFAULT_LOW_RANGE_GRID, LOW_RANGE_IDS } from "./indications/low-range.ts";
@@ -112,7 +112,7 @@ export const DEFAULT_GATES: Gates = {
 export const DEFAULT_TOGGLES: StrategyToggles = {
   normal: true,
   trailing: true,
-  exit: true,
+  exit: false,
   block: true,
   blockActive: false,
   dca: true,
@@ -123,6 +123,7 @@ export const DEFAULT_TOGGLES: StrategyToggles = {
 
 /** Tactics: trend strength + volatility regime on by default (docs/block-sweep.md, tactics); the others in docs/tactics.md. */
 export const DEFAULT_TACTICS: Tactics = {
+  signalMinDaily: 2,
   session: false,
   // trend strength + volatility regime (docs/block-sweep.md, tactics: 6 windows × 12 symbols): PF 1.313 → 1.859,
   // net +52 %, drawdown −47 %, positive in 6 of 6 windows (vs 3 of 6); orders −34 %
@@ -159,12 +160,16 @@ export const DEFAULT_BLOCK: BlockConfig = {
     range: true,
   },
   configScope: "config",
-  auto: { enabled: true, n: 30, min: 15, pf: 1.1, scope: "rule" },
+  auto: { enabled: true, n: 30, min: 30, pf: 1.1, scope: "key" },
+  windowAuto: true,
+  windowIndependent: true,
+  windowMinSamples: 30,
+  windowLookback: 300,
   mode: "overall",
   historySource: "accepted-orders",
   // Each raised Block group keeps its last applied extra volume until that group's realized extra net is recovered.
   holdUntilNet: true,
-  ratio: 0.5,
+  ratio: 0.2,
   maxLevel: 8,
   minActiveLevel: 2,
   maxMult: MAX_EXTERNAL_STACK,
@@ -198,12 +203,14 @@ export const DEFAULT_RELATE_ADJUSTMENT: RelateAdjustmentConfig = {
   enabled: false,
   mode: "additive",
   auto: true,
-  ratio: 2.6,
-  steps: 5,
+  ratio: 0.2,
+  steps: 12,
   activeStep: 0,
   minPf: 1.5,
   lastN: 250,
   minTrades: 60,
+  recoveryMinTrades: 12,
+  recoveryMaxDrawdown: 0.5,
   maxStack: MAX_EXTERNAL_STACK,
   maxSl: 0.0075,
   sources: {
@@ -219,6 +226,7 @@ export const DEFAULT_RELATE_ADJUSTMENT: RelateAdjustmentConfig = {
 };
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
 export const DEFAULT_AXIS: AxisConfig = {
+  perRange: true,
   volumeFactor: 1,
   levels: 3,
   spacing: 0.7,
@@ -918,9 +926,9 @@ export function newDefaultSettings(): CoreSettings {
   s.grid.slAuto = { ...DEFAULT_AUTO_SL };
   for (const key of ["minimal", "short", "general", "long"] as const) {
     const range = s.grid[key];
-    if (range) range.slAuto = { ...DEFAULT_AUTO_SL };
+    if (range) range.slAuto = { ...(key === "minimal" || key === "short" ? DEFAULT_THIN_AUTO_SL : DEFAULT_AUTO_SL) };
   }
-  if (s.grid.micro) s.grid.micro.slAuto = { ...DEFAULT_FINE_AUTO_SL };
+  if (s.grid.micro) s.grid.micro.slAuto = { ...DEFAULT_THIN_AUTO_SL };
   if (s.grid.lowRange) s.grid.lowRange.slAuto = { ...DEFAULT_FINE_AUTO_SL };
   s.signals.normal.slAuto = { ...DEFAULT_SIGNAL_AUTO_SL };
   s.signals.hist.slAuto = { ...DEFAULT_SIGNAL_AUTO_SL };

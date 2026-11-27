@@ -2,6 +2,10 @@ import { it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_STEP_PF, protectSlRatio, stepPfFloor } from "./step-pf.ts";
 import { checkSettings } from "./settings-check.ts";
+import { minPfOf } from "./minimal-coord.ts";
+import { DEFAULT_POSITION_WINDOWS, positionCounts } from "./position-windows.ts";
+import { DEFAULT_SETTINGS } from "./config.ts";
+import { signalHistMinPf, signalHistValidationOf } from "./signal-hist.ts";
 it("manual step PF matches CTS-G percent units, flooring, cap and stricter settings", () => {
   for (const [pct, expected] of [[.2,1.04],[.25,1.04],[.3,1.06],[3.2,1.64],[3.5,1.7],[9,1.7]])
     assert.equal(stepPfFloor(1,pct,DEFAULT_STEP_PF),expected);
@@ -48,4 +52,25 @@ it("auto PF covers every 0.1% step through the configured maximum and manual mod
  assert.equal(stepPfFloor(1.1,2,{...rules,mode:"manual"}),1.1);
  assert.equal(stepPfFloor(1.1,2,{...rules,mode:"manual",byStep:{20:1.6}}),1.6);
  for(const maxStepPct of [0,.15,101,NaN]) assert.throws(()=>checkSettings({gates:{stepPf:{maxStepPct}}}));
+});
+
+it("applies step and stop floors to Signals without borrowing an ordinary range floor", () => {
+ const gates={minPf:1.05,rangeMinPf:{short:2},stepPf:{...DEFAULT_STEP_PF,ratio:.4}};
+ assert.equal(minPfOf(gates,"sh","sig-test-s@m1",2),1.8);
+ assert.equal(minPfOf(gates,"sh","sig-test-s@m1",.2),1.5);
+ assert.equal(minPfOf({...gates,stepPf:{...gates.stepPf,bySlRatio:{"0.5":1.9}}},"sh","sig-test-s@m1",2,.5),1.9);
+});
+
+it("uses independent Last-15 Signals stages and disables new Historic Exit by default", () => {
+ assert.deepEqual(positionCounts(DEFAULT_POSITION_WINDOWS,"sig"),{base:15,main:15,real:15,entry:15});
+ assert.deepEqual(positionCounts(DEFAULT_POSITION_WINDOWS,"sig","custom"),{base:15,main:15,real:15,entry:15});
+ assert.equal(DEFAULT_SETTINGS.toggles.exit,false);
+ assert.equal(DEFAULT_SETTINGS.exitStrategy.enabled,false);
+});
+
+it("historic Signal fitting applies the same effective per-config step floor", () => {
+ const gates = { ...DEFAULT_SETTINGS.gates, stepPf: { ...DEFAULT_STEP_PF, ratio: .4 } };
+ const v = signalHistValidationOf(.001, gates, 15);
+ assert.equal(signalHistMinPf(v, {tp:.02,sl:.01,trail:0,hold:4}), 1.8);
+ assert.equal(signalHistMinPf(v, {tp:.005,sl:.005,trail:0,hold:4}), 1.5);
 });

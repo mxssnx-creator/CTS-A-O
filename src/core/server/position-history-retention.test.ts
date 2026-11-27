@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import { positionTapeValid } from '../position-windows.ts';
+import { TapeHistoryStore } from './history-store.server.ts';
+import { makeTape } from '../sim/walkforward.ts';
 
 test('replacement and malformed columns still invalidate cached chronology', () => {
   const tape = { n: 2, syms: ['A'], exitT: [2, 4], entryT: [1, 3],
@@ -14,6 +16,22 @@ test('replacement and malformed columns still invalidate cached chronology', () 
   const bad = {...tape, side: null} as unknown as Parameters<typeof positionTapeValid>[0];
   assert.equal(positionTapeValid(bad), false);
   assert.equal(positionTapeValid(bad), false);
+});
+
+test('validating a stored tape resolves its immutable columns once, not once per close', () => {
+  const rows = Array.from({ length: 1024 }, (_, i) => ({ cfg: 'own', sym: 'A', side: 1 as const,
+    entryT: i * 60_000, exitT: i * 60_000 + 1, entry: 100, exit: 101, r: .01, mult: 1,
+    reason: 'tp' as const, bars: 1, mfe: 0, mae: 0, kind: 'normal' as const }));
+  const store = new TapeHistoryStore({ cacheBytes: 1 });
+  try {
+    const tape = store.append(makeTape('own', 'follow', 'ema-9-21@m1',
+      { tp: .01, sl: .01, trail: 0, hold: 1 }, 'normal', ['A'], rows, [], []));
+    store.clearCache();
+    const hits = store.stats.hits, reads = store.stats.reads;
+    assert.equal(positionTapeValid(tape), true);
+    assert.equal(store.stats.reads - reads, 1, 'the full checksummed history is still read');
+    assert.ok(store.stats.hits - hits <= 10, 'column resolution must be independent of the close count');
+  } finally { store.close(); }
 });
 
 test('position validation does not pin evicted immutable history buffers', () => {
@@ -38,6 +56,11 @@ test('position validation does not pin evicted immutable history buffers', () =>
       assert.equal(buffer.deref()===undefined,true,'validation metadata must not retain the evicted history arena');
       assert.equal(positionTapeValid(tape),true,'reloaded history remains valid');
       assert.ok(store.stats.reads>=2,'released columns are reloaded and revalidated');
+      const symbols=tape.syms;
+      tape.syms=[];
+      assert.equal(positionTapeValid(tape),false,'replacing the symbol mapping invalidates the compact stored verdict');
+      tape.syms=symbols;
+      assert.equal(positionTapeValid(tape),true);
       const empty={n:0,syms:[],exitT:[],entryT:[],symI:[],side:[],r:[]};
       assert.equal(positionTapeValid(empty),true);
       empty.side=undefined;

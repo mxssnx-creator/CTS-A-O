@@ -2,6 +2,7 @@
 // (+1 bullish, -1 bearish, 0 neutral) using only bars 0..i. Bots use it as an agree-filter; the
 // "follow" bot enters on state onsets.
 import type { IndicationDef, IndicationKind } from "../domain/types.ts";
+import { REVERSAL_SOURCES, trendReversalAt, trendReversalSeries } from "../../../shared/cts-reversal/reversal.ts";
 import type { SeriesCache } from "./cache.ts";
 import * as I from "../math/indicators.ts";
 import { SIGNAL_SOURCES, signalId } from "../signal-config.ts";
@@ -12,6 +13,7 @@ import { research3Specs } from "./research3.ts";
 import { research4Specs } from "./research4.ts";
 import { research5Specs } from "./research5.ts";
 import { microSpecs } from "./micro.ts";
+import { microAdxPullback } from "./micro-adx-pullback.ts";
 import { inverseSpecs } from "./inverse.ts";
 import { INVERSE_TIMEFRAMES, isInverseInd } from "./inverse-config.ts";
 import { microFamilySpecs, inverseMicroSpecs } from "./micro-family.ts";
@@ -621,6 +623,17 @@ const BASE_INDICATIONS: readonly IndicationSpec[] = [
 // ── parameter families: every kind extended with independent variants ─────────────────────────────
 const VARIANTS: IndicationSpec[] = [];
 const add = (x: IndicationSpec) => VARIANTS.push(x);
+
+for (const source of REVERSAL_SOURCES) add(spec(source.kind, source.id, source.label, { period: source.period }, (k) => {
+  const { b } = k;
+  const interval = b.tfMin * 60_000;
+  const stream = k.streamMath;
+  return stream ? stream.run<{ value: Int8Array }, null>(
+    source.id, b.n, ["value"], () => null,
+    (i, out) => { out.value[i] = trendReversalAt(b, i, source.period, source.tactic, interval); },
+    ["value"],
+  ).value : trendReversalSeries(b, source.period, source.tactic, interval);
+}));
 
 for (const [f, sl] of [
   [5, 20],
@@ -1248,6 +1261,7 @@ for (const x of microSpecs()) add(x);
 for (const x of microFamilySpecs()) add(x);
 for (const x of inverseSpecs([...BASE_INDICATIONS, ...VARIANTS])) add(x);
 for (const x of inverseMicroSpecs()) add(x);
+add(microAdxPullback);
 // Low-Range uses its own Short protection cells and explicit enablement.
 for (const x of lowRangeSpecs()) add(x);
 

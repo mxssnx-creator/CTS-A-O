@@ -67,15 +67,23 @@ for (const auto of [false, true]) test(`Block keeps each Exit's pooled sources, 
   assert.equal(bookLevels(book, a, 1).overall, 1);
   assert.notEqual(sourceKey("overall", a), sourceKey("overall", n));
   if (book instanceof AutoBlockBook) {
-    const isolated = new AutoBlockBook({ ...DEFAULT_BLOCK, windowAuto: true, window: 1, windowCandidates: [1, 2],
-      sources: { config: false, overall: true } }, false);
-    for (let i = 0; i < 35; i++) {
-      const e = { ...a, entryT: START + i * M, exitT: START + (i + 1) * M };
-      isolated.stampEntry(e);
-      isolated.add(e);
+    for (const independent of [false, true]) {
+      const isolated = new AutoBlockBook({ ...DEFAULT_BLOCK, windowAuto: true, windowIndependent: independent,
+        window: 1, windowCandidates: [1, 2], sources: { config: false, overall: true } }, false);
+      for (let i = 0; i < 35; i++) {
+        const e = { ...a, entryT: START + i * M, exitT: START + (i + 1) * M };
+        isolated.stampEntry(e);
+        isolated.add(e);
+      }
+      if (independent) {
+        assert.ok(isolated.scoresForKey(sourceKey("overall", a)).some((x) => x.n >= 30));
+        assert.ok(isolated.scoresForKey(sourceKey("overall", n)).every((x) => x.n === 0));
+        assert.ok(isolated.scoresForKey(sourceKey("overall", b)).every((x) => x.n === 0));
+      } else {
+        assert.ok(isolated.scores(exitScopeSuffix(exitA, "exit")).some((x) => x.n > 0));
+        assert.ok(isolated.scores().every((x) => x.n === 0), "Exit closes cannot tune another strategy's auto window");
+      }
     }
-    assert.ok(isolated.scores(exitScopeSuffix(exitA, "exit")).some((x) => x.n > 0));
-    assert.ok(isolated.scores().every((x) => x.n === 0), "Exit closes cannot tune another strategy's auto window");
   }
 });
 
@@ -85,11 +93,11 @@ test("Relate and direction books do not borrow Exit, sibling Exit, or ordinary r
   const ordinary = { ...identity, cfg: normal, strategy: "normal" };
   const sibling = { ...identity, cfg: exitB };
   relate.add({ ...identity, r: .02, accepted: true, relateMeasured: true, relateBase: 1 });
-  assert.equal(relate.decide(identity).stats.overall?.n, 1);
-  assert.equal(relate.decide(ordinary).stats.overall?.n, 0);
-  assert.equal(relate.decide(sibling).stats.overall?.n, 0);
+  assert.equal(relate.preview(identity).stats.overall?.n, 1);
+  assert.equal(relate.preview(ordinary).stats.overall?.n, 0);
+  assert.equal(relate.preview(sibling).stats.overall?.n, 0);
   relate.add({ ...ordinary, r: -.01, accepted: true, relateMeasured: true, relateBase: 1 });
-  assert.equal(relate.decide(identity).stats.overall?.n, 1);
+  assert.equal(relate.preview(identity).stats.overall?.n, 1);
   const direction = new CandidateDirectionBook();
   direction.add(row(exitA, "exit", -.01));
   assert.equal(direction.tailSum(1, 1).n, 0);

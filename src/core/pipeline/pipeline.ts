@@ -1,7 +1,8 @@
 import { applyPriceDistanceGrid, type PriceDistanceGrid } from "../price-distance-grid.ts";
 import { slCalibrationOf, slRatiosOf, type AutoSlRatios } from "../sl-ratios.ts";
 import { calibrateSlBounds, slWithinBounds, type SlBounds, type SlSample } from "../sl-calibration.ts";
-import { partialFloorOf, positionCounts } from "../position-windows.ts";
+import { partialFloorOf, positionStageStats, positionStats } from "../position-windows.ts";
+import { blockPolicyKey, blockPrefix, blockRequired, evaluateBlocks, type BlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
 import { SL_TP_RATIOS, minimumStopFraction } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { profitFactorRatio } from "../metrics/profit-factor.mjs";
@@ -15,7 +16,7 @@ import { profitFactorRatio } from "../metrics/profit-factor.mjs";
 // Implemented as a generator so the runtime can time-slice it.
 import { BOTS, entrySignal } from "../bots/bots.ts";
 import { cappedExecution, clearCappedProjections, hasMinutePrices } from "../sim/capped-execution.ts";
-import { tacticCooldown } from "../indications/filters.ts";
+import { tacticCooldown, VOL_RANK_BARS } from "../indications/filters.ts";
 import { DEFAULT_PROTECT, GRID_VARIANTS_MAX, PROTECT_GRID, type CoreSettings } from "../config.ts";
 import { RT_COST } from "../model-cost.ts";
 import type {
@@ -55,6 +56,7 @@ import {
   ownSlFloor,
 } from "../minimal-coord.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
+import { microAdxPullback } from "../indications/micro-adx-pullback.ts";
 import { INVERSE_TIMEFRAMES, isInverseInd } from "../indications/inverse-config.ts";
 import {
   isMicroCalculationInd as isMicroFamilyInd,
@@ -88,7 +90,7 @@ import {
 } from "../sim/backtest.ts";
 import { buildPortfolio, type Portfolio } from "./portfolio.ts";
 import { baseWindowsPlan, judgeBaseWindows, type BaseWindowsPlan } from "./base-windows.ts";
-import { baseCellAccumulator } from "./base-cell-stats.ts";
+import { BaseCellAccumulator, baseCellAccumulator } from "./base-cell-stats.ts";
 import { baseLastNForRange, baseLastNOf, passesBaseLastN } from "./base-lastn.ts";
 import { SIGNAL_STOP_LIMIT, applyTrailingGapBasis, capTrailingOnlyProtect, trailingOnlyProtects } from "../sim/trailing.ts";
 
@@ -312,9 +314,14 @@ export interface Combo {
 function basePositionMiss(
   st: Parameters<typeof passesBase>[0],
   g: Parameters<typeof passesBase>[1],
+  indexed?: { keys: ReadonlySet<string>; windows: WeakMap<number[], IndexedBaseWindow> },
 ): BaseGate[] {
   const recent = st.baseLast;
-  const requested = positionCounts(g.positionWindows!, st.rangeTag ?? "wide", st.configId).base;
+  const scoped = st.baseContextBlock;
+  if (scoped && !(indexed ? indexed.keys.has(blockPolicyKey(scoped))
+    : g.baseContext?.blocks.some(block => blockPolicyKey(block) === blockPolicyKey(scoped)))) return ["lastN"];
+  const blocks = scoped ?? g.positionWindows?.blocks?.base;
+  const requested = scoped ? blockRequired(scoped) : baseLastNForRange(g, st.rangeTag ?? "wide", st.configId);
   if (
     !recent ||
     recent.invalid ||
@@ -330,14 +337,31 @@ function basePositionMiss(
     return ["lastN"];
   const miss: BaseGate[] = [];
   // a window shorter than requested is judged on its closes when gates.lastNFloor admits it (strict policies never)
-  const partial = partialFloorOf(g.positionWindows, g.lastNFloor);
+  const partial = blocks ? 0 : partialFloorOf(g.positionWindows, g.lastNFloor);
   if (recent.n !== requested && !(partial > 0 && recent.n >= partial && recent.n < requested)) miss.push("closes");
   const net = recent.gp - recent.gl;
   const loss = recent.gl + (g.lossPrior ? recent.stop : 0);
   if (!(net > 0)) miss.push("net");
-  if (!(recent.gp >= g.minPf * loss)) miss.push("pf");
+  const signed = blocks && recent.signedReturns?.length === recent.n
+    ? signedBaseWindow(recent.signedReturns, requested, blocks, g.minPf, indexed?.windows) : null;
+  if (blocks && (!signed || !signed.known)) miss.push("lastN");
+  if (!(recent.gp >= g.minPf * loss) || (signed?.complete && !signed.blocksPassed)) miss.push("pf");
   if (ddrFails(recent.mdd, net, g.maxDdr)) miss.push("ddr");
   return miss;
+}
+
+type IndexedBaseWindow = { stats: ReturnType<typeof positionStats>; prefix: ReturnType<typeof blockPrefix> };
+function signedBaseWindow(values: number[], n: number, blocks: BlockPolicy, minPf: number,
+  indexed?: WeakMap<number[], IndexedBaseWindow>) {
+  if (!indexed) return positionStageStats(values, n, blocks, minPf);
+  let window = indexed.get(values);
+  if (!window) {
+    window = { stats: positionStats(values, n), prefix: blockPrefix(values.slice(-n).reverse(), n) };
+    indexed.set(values, window);
+  }
+  const { stats, prefix } = window;
+  const verdict = evaluateBlocks(prefix, blocks, Math.max(1.000001, minPf));
+  return { ...stats, blocksPassed: verdict.state === "qualified" && stats.net > 0 && stats.gp >= stats.gl * minPf };
 }
 
 export function passesBase(
@@ -348,6 +372,7 @@ export function passesBase(
     mdd?: number;
     bw?: BaseWindowsResult;
     baseLast?: BaseLastNStats;
+    baseContextBlock?: BlockPolicy;
     rangeTag?: string;
     configId?: string;
   },
@@ -360,6 +385,7 @@ export function passesBase(
     lossPrior?: boolean;
     stepPf?: Gates["stepPf"];
     positionWindows?: Gates["positionWindows"];
+    baseContext?: Gates["baseContext"];
   },
 ): boolean {
   if (g.positionWindows) {
@@ -399,6 +425,10 @@ export function allCombos(
   lowRangeMinTf = 0,
 ): Combo[] {
   const off = new Set(disabledKinds ?? []);
+  const focusedReversal = new Set((focus ?? []).filter(pair => pair.startsWith("follow|trend-reversal-"))
+    .map(pair => laneOf(pair.slice("follow|".length)).base));
+  const adxFocus = `follow|${microAdxPullback.id}`;
+  const focusedAdx = focus?.includes(adxFocus) || focus?.includes(`${adxFocus}@m1`);
   const plain: Combo[] = [];
   for (const b of BOTS) {
     if (b.type !== "follow" && b.type !== "revert") plain.push({ bot: b.type, ind: "none" });
@@ -407,7 +437,9 @@ export function allCombos(
     for (const ind of INDICATIONS)
       if (!off.has(ind.kind) && !ind.id.startsWith("sig-") && !ind.id.startsWith("s2-") &&
           (!isLowRangeInd(ind.id) || (lowRangeEnabled && b.type === "follow")) &&
-          (!isInverseInd(ind.id) || b.type === "follow"))
+          (!isInverseInd(ind.id) || b.type === "follow") &&
+          (ind !== microAdxPullback || (b.type === "follow" && focusedAdx)) &&
+          (ind.kind !== "trend-reversal" || (b.type === "follow" && focusedReversal.has(ind.id))))
         plain.push({ bot: b.type, ind: ind.id });
   }
   const out = tfs?.length
@@ -753,6 +785,7 @@ export interface RangeBaseStat {
   /** the cell against Gates.baseWindows (set only while it is) */
   bw?: BaseWindowsResult;
   baseLast?: BaseLastNStats;
+  baseContextBlock?: BlockPolicy;
 }
 
 export interface TrailingOnlyBaseCount {
@@ -1110,8 +1143,8 @@ type CoordRangeLike = {
   baseBest?: boolean;
 };
 /**
- * The stops (× target) Micro's Base tries at every target: its whole default ladder, MICRO_SL (0.2–1.6 step 0.1
- * since 11 Nov 2026). Every ratio here is one MICRO_SL actually offers: a Base cell at a ratio no Micro config can
+ * The stops (× target) Micro's Base tries at every target: its whole default ladder, MICRO_SL (0.2–1.2 step 0.1).
+ * Every ratio here is one MICRO_SL actually offers: a Base cell at a ratio no Micro config can
  * trade would validate targets on a stop that never reaches the tape stage.
  */
 export const MICRO_BASE_SL: readonly number[] = MICRO_SL;
@@ -1167,7 +1200,16 @@ export function rangeCellPass(
   ind?: string,
 ): (tag: string, st: RangeBaseStat) => boolean {
   const g = baseSetsGates(gates);
-  return (tag, st) => baseSlPolicyKnown(g, st, ind) && passesBase(st, { ...g, baseLastN: baseLastNForRange(g, tag), minPf: minPfOf(g, tag, ind, st.stepPct, st.slRatio) });
+  const indexed = g.baseContext?.blocks.length ? {
+    keys: new Set(g.baseContext.blocks.map(blockPolicyKey)), windows: new WeakMap<number[], IndexedBaseWindow>(),
+  } : undefined;
+  return (tag, st) => {
+    if (!baseSlPolicyKnown(g, st, ind)) return false;
+    if (st.baseContextBlock && st.baseLast?.n !== blockRequired(st.baseContextBlock)) return false;
+    const resolved = { ...g, baseLastN: baseLastNForRange(g, tag),
+      minPf: minPfOf(g, tag, ind, st.stepPct, st.slRatio) };
+    return indexed && resolved.positionWindows ? basePositionMiss(st, resolved, indexed).length === 0 : passesBase(st, resolved);
+  };
 }
 
 /** Legacy cached proofs cannot silently waive a configured SL-specific policy. */
@@ -1815,6 +1857,7 @@ export function rangeBaseStats(
   positionWindows?: Gates["positionWindows"],
   /** filled with the calculated best minimal / maximal stop ratio of each (range tag, TP step): ComboRun.rangeSl */
   slBoundsOut?: Record<string, Record<string, SlBounds>>,
+  context?: Gates["baseContext"],
 ): Record<string, RangeBaseStat> | undefined {
   if (!protects.length) return undefined;
   // a lane-less indication (a research tool, a legacy preset) trades the base timeframe: the same expression
@@ -1898,7 +1941,8 @@ export function rangeBaseStats(
       noTpStats.evaluated++;
     }
     // the cell's whole-history stats only (cellStats = runCombo(…).full, without its per-symbol and in-sample work)
-    const cand = cellStats(u, bot, ind, p, cost, tactics, bw, baseLastNForRange({ baseLastN, baseRangeLastN, positionWindows }, p.tag ?? ""), positionWindows);
+    const cand = cellStats(u, bot, ind, p, cost, tactics, bw, baseLastNForRange({ baseLastN, baseRangeLastN, positionWindows }, p.tag ?? ""), positionWindows,
+      context && pass ? st => pass(k, st) : undefined, context);
     if (!cand) { if (noTpStats) noTpStats.unavailable++; continue; }
     if (noTpStats && (!Number.isSafeInteger(cand.n) || cand.n <= 0 ||
         !Number.isFinite(cand.net) || !Number.isFinite(cand.pf))) noTpStats.unavailable++;
@@ -1947,6 +1991,8 @@ export function rangeBaseStats(
   return out;
 }
 
+const baseContextBuffers = new WeakMap<Universe, readonly [BaseCellAccumulator, BaseCellAccumulator]>();
+
 /**
  * A Base range cell's stats over the whole history: exactly `runCombo(…).full`'s n / PF / net / max drawdown (the
  * same simulation, the same trade order, the same statsOf), without the per-symbol stats, the in-sample split and the
@@ -1963,6 +2009,8 @@ export function cellStats(
   bw?: { plan: BaseWindowsPlan; fromT: number },
   baseLastN = 0,
   positionWindows?: Gates["positionWindows"],
+  contextPass?: (stat: RangeBaseStat) => boolean,
+  context?: Gates["baseContext"],
 ): RangeBaseStat | null {
   // Historic Exit is a standalone indication source; engine Bot tactics/cooldown do not thin its entry history.
   const cooldown = bot === "exit" ? 0 : tacticCooldown(tactics);
@@ -1970,11 +2018,57 @@ export function cellStats(
   if (p.hold < 1 && !(p.maxHoldMin !== undefined && hasMinutePrices(u))) return null;
   const id = configId(bot, ind, p);
   const countRange = isSignalInd(ind) ? "sig" : bot === "exit" ? "exit" : (p.tag ?? "wide");
-  if (positionWindows) baseLastN = positionCounts(positionWindows, countRange, id).base;
+  if (positionWindows) baseLastN = baseLastNForRange({ positionWindows }, countRange, id);
   const series = seriesOf(u, ind);
   if (!series.length) return null;
   // Synchronous cells reuse one job-scoped buffer. Each series/direction supplies an already chronological run.
   const cell = baseCellAccumulator(u);
+  let contextBuffers = contextPass ? baseContextBuffers.get(u) : undefined;
+  if (contextPass && !contextBuffers) {
+    contextBuffers = [new BaseCellAccumulator(), new BaseCellAccumulator()];
+    baseContextBuffers.set(u, contextBuffers);
+  }
+  contextBuffers?.[0].reset();
+  contextBuffers?.[1].reset();
+  const ownBlocks = positionWindows ? context?.blocks ?? [] : [];
+  const maxBlock = Math.max(0, ...ownBlocks.map(blockRequired));
+  let symbol: string | undefined, best: RangeBaseStat | undefined, bestPassed = false;
+  const consider = (st: RangeBaseStat) => {
+    const betterNet = best && Number.isFinite(st.net) && (!Number.isFinite(best.net) || st.net > best.net);
+    if (bestPassed && !betterNet) return;
+    const passed = contextPass!(st);
+    if (!best || (passed !== bestPassed ? passed : betterNet)) {
+      best = st;
+      bestPassed = passed;
+    }
+  };
+  const evaluateSymbol = () => {
+    if (!contextPass || !contextBuffers || symbol === undefined) return;
+    for (const own of contextBuffers) {
+      if (context?.defaultWindow !== false || !ownBlocks.length) consider(summarize(own));
+      if (maxBlock) {
+        const all = own.stats(maxBlock, Math.max(0, p.sl) * 100, true);
+        const recent = all.baseLast;
+        if (recent && !recent.invalid && recent.signedReturns) {
+          const bySize = new Map<number, BaseLastNStats>();
+          for (const block of ownBlocks) {
+            const n = blockRequired(block);
+            let baseLast = bySize.get(n);
+            if (!baseLast) {
+              const returns = recent.signedReturns.slice(-n);
+              const w = positionStats(returns, n);
+              if (!w.known) continue;
+              baseLast = { requested: n, n: w.n, gp: w.gp * 100, gl: w.gl * 100, mdd: w.mdd * 100,
+                stop: recent.stop, signedReturns: returns };
+              bySize.set(n, baseLast);
+            }
+            consider(summarize(own, { ...all, baseContextBlock: block, baseLast }));
+          }
+        }
+      }
+      own.reset();
+    }
+  };
   // Gates.baseWindows: the same closes, kept for the windows (only while the plan is set)
   const wRr: number[] = [];
   const wEn: number[] = [];
@@ -1994,6 +2088,10 @@ export function cellStats(
       }
     : collect;
   for (const s of series) {
+    if (contextPass && symbol !== u.bars[s].sym) {
+      evaluateSymbol();
+      symbol = u.bars[s].sym;
+    }
     const rawSignal = entrySignal(bot, ind, u.caches[s], tactics);
     if (!rawSignal) return null;
     const sig = evaluationSignal(u, u.bars[s], rawSignal);
@@ -2002,35 +2100,24 @@ export function cellStats(
       // result or close callback; the exact signal index is shared with the nonempty protection cells.
       const view = cappedExecution(u, s, sg, p, cooldown);
       if (view.protect.hold < 1 || nextEntryIndex(view.signal)[0] + 1 >= view.bars.n) continue;
-      cell.beginRun();
+      const own = contextBuffers ? contextBuffers[sg[nextEntryIndex(sg)[0]] > 0 ? 0 : 1] : cell;
+      own.beginRun();
       simulate(id, view.bars, view.signal, view.protect, {
         cost,
         cooldown: view.cooldown,
         atr: p.atr ? view.series(u.caches[s].atrEma(ATR_PERIOD)) : undefined,
         fixedPathScope: u,
-        sink,
+        sink: contextBuffers ? (r, en, ex) => { if (ex < u.nowT) own.push(r, en, ex); } : sink,
       });
     }
   }
-  const st: RangeBaseStat = cell.stats(baseLastN, Math.max(0, p.sl) * 100);
-  if (positionWindows && st.baseLast) {
-    st.configId = id;
-    st.rangeTag = countRange;
-    const own = st.baseLast;
-    st.availableN = st.n;
-    st.n = own.n;
-    st.gp = own.gp;
-    st.gl = own.gl;
-    st.net = own.invalid ? NaN : own.gp - own.gl;
-    st.pf = own.invalid ? NaN : profitFactor(own.gp, own.gl);
-    st.mdd = own.mdd ?? NaN;
+  if (contextPass) {
+    evaluateSymbol();
+    // Missing scoped evidence must still replace the pooled default-cell diagnostic.
+    return best ?? { ...summarize(cell), baseLast: undefined };
   }
-  st.stepPct = protectStepPct(p);
-  const slRatio = protectSlRatio(p);
-  st.slRatioKnown = true;
-  if (slRatio !== undefined) st.slRatio = slRatio;
+  const st = summarize(cell);
   if (bw) {
-    // the closes in exit order (statsOf's order: exit, then entry; stable), for the windows
     const n = wRr.length;
     const idx = Array.from({ length: n }, (_, i) => i).sort(
       (a, b) => wEx[a] - wEx[b] || wEn[a] - wEn[b],
@@ -2044,6 +2131,27 @@ export function cellStats(
     withWindows(st, bw, protect.tag ?? "", u.nowT, n, oex, orr);
   }
   return st;
+
+  function summarize(source: BaseCellAccumulator, st: RangeBaseStat =
+    source.stats(baseLastN, Math.max(0, p.sl) * 100, !!positionWindows?.blocks?.base)): RangeBaseStat {
+    if (positionWindows && st.baseLast) {
+      st.configId = id;
+      st.rangeTag = countRange;
+      const own = st.baseLast;
+      st.availableN = st.n;
+      st.n = own.n;
+      st.gp = own.gp;
+      st.gl = own.gl;
+      st.net = own.invalid ? NaN : own.gp - own.gl;
+      st.pf = own.invalid ? NaN : profitFactor(own.gp, own.gl);
+      st.mdd = own.mdd ?? NaN;
+    }
+    st.stepPct = protectStepPct(p);
+    const slRatio = protectSlRatio(p);
+    st.slRatioKnown = true;
+    if (slRatio !== undefined) st.slRatio = slRatio;
+    return st;
+  }
 }
 
 /** Sets `st.bw` from a cell's closes in exit order (left unset when no rule judges the tag). */
@@ -2175,7 +2283,7 @@ export function* runComboSteps(
   const isTrades = trades.filter((t) => t.exitT <= u.splitT);
   const is = statsOf(isTrades, u.splitT);
   const countRange = isSignalInd(ind) ? "sig" : bot === "exit" ? "exit" : (protect.tag ?? "wide");
-  if (positionWindows) baseLastN = positionCounts(positionWindows, countRange, id).base;
+  if (positionWindows) baseLastN = baseLastNForRange({ positionWindows }, countRange, id);
   const closed = positionWindows ? trades.filter((t) => t.exitT < u.nowT) : trades;
   const full = {
     ...statsOf(positionWindows ? closed.slice(-baseLastN) : closed, u.nowT),
@@ -2184,7 +2292,7 @@ export function* runComboSteps(
     slRatio: protectSlRatio(protect),
     slRatioKnown: true as const,
   };
-  const baseLast = baseLastNOf(closed, baseLastN, Math.max(0, protect.sl) * 100);
+  const baseLast = baseLastNOf(closed, baseLastN, Math.max(0, protect.sl) * 100, !!positionWindows?.blocks?.base);
   if (baseLast) full.baseLast = baseLast;
   return {
     id,
@@ -2326,6 +2434,11 @@ export function baseRuns(
         const noTpStats: Record<string, TrailingOnlyBaseCount> | undefined = noTp.length ? {} : undefined;
         const slOut: Record<string, Record<string, SlBounds>> = {};
         const engine = !isSignalInd(c.ind) && c.bot !== "exit";
+        if (engine && gates?.baseContext && gates.positionWindows && pass) {
+          const scoped = cellStats(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, tactics, undefined,
+            0, gates.positionWindows, st => pass("", st), gates.baseContext);
+          if (scoped) Object.assign(r.full, scoped);
+        }
         const ruleTps = plan && engine ? baseRunWindows(u, r, plan) : undefined;
         const ranges = !engine
           ? undefined
@@ -2351,6 +2464,7 @@ export function baseRuns(
               noTpStats,
               gates?.positionWindows,
               slOut,
+              gates?.positionWindows ? gates.baseContext : undefined,
             );
         if (ranges) r.ranges = ranges;
         if (Object.keys(slOut).length) r.rangeSl = slOut;
@@ -2363,8 +2477,10 @@ export function baseRuns(
       done++;
       if (onStep && (done === total || done % step === 0)) onStep(done, total);
     }
-    // bot triggers are reused by every indication: kept; the indication's own series are released
-    if (release) for (const k of u.caches) k.clear(["bot:", "break:shared:"]);
+    // Bot triggers, Tactic filters and fixed-lookback DCA features are shared across variants in this worker batch.
+    // Each indication's output is still released here; all shared features are released at the end of the batch.
+    if (release) for (const k of u.caches) k.clear(["bot:", "break:shared:", "tactic-dca:features:",
+      "natr14", `rank:natr:${VOL_RANK_BARS}`, "dmi14", "chop14"]);
     else for (const c of g) forgetCombo(u, c.bot, c.ind);
   }
   if (release) for (const k of u.caches) k.clear(["bot:"]);
@@ -2425,6 +2541,12 @@ export function* runPipeline(
       const noTpCells: string[] | undefined = noTp.length ? [] : undefined;
       const noTpStats: Record<string, TrailingOnlyBaseCount> | undefined = noTp.length ? {} : undefined;
       const slOut: Record<string, Record<string, SlBounds>> = {};
+      const pass = rangeCellPass(s.gates, c.ind);
+      if (s.gates.baseContext && s.gates.positionWindows) {
+        const scoped = cellStats(u, c.bot, c.ind, DEFAULT_PROTECT, cost, s.tactics, undefined,
+          0, s.gates.positionWindows, st => pass("", st), s.gates.baseContext);
+        if (scoped) Object.assign(r.full, scoped);
+      }
       const ranges = rangeBaseStats(
         u,
         c.bot,
@@ -2436,7 +2558,7 @@ export function* runPipeline(
         s.tactics,
         rangeMinTfOf(g),
         microOwn,
-        s.gates ? rangeCellPass(s.gates, c.ind) : undefined,
+        pass,
         u.baseTf,
         tps,
         plan ? { plan, ruleTpsOut: ruleTps } : undefined,
@@ -2447,6 +2569,7 @@ export function* runPipeline(
         noTpStats,
         s.gates.positionWindows,
         slOut,
+        s.gates.positionWindows ? s.gates.baseContext : undefined,
       );
       if (ranges) r.ranges = ranges;
       if (Object.keys(slOut).length) r.rangeSl = slOut;

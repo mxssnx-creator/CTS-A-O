@@ -41,7 +41,7 @@ for (const stamped of [false, true])
   test(`automatic windows score actual raises only; stamped=${stamped}`, () => {
     const b = { ...base, ratio: .1, sharedRatio: .1, maxMult: 2, steps: 1, stepFloor: false,
       maxLevel: 1, minActiveLevel: 1, sources: { config: true }, historySource: "accepted-orders" as const,
-      window: 1, windowAuto: true, windowCandidates: [1] };
+      window: 1, windowAuto: true, windowIndependent: false, windowCandidates: [1] };
     const run = (ratio: number) => {
       const book = blockBookOf({ ...b, ratio, sharedRatio: ratio }, true);
       assert.ok(book instanceof AutoBlockBook);

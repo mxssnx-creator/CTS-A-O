@@ -13,14 +13,14 @@ const H = 3_600_000;
 const T0 = Date.UTC(2026, 9, 1);
 const cfgA = "follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32";
 const cfgB = "revert|ema-21-55@m15|tp2|sl1|tr0|h32";
-const policy = (auto: BlockConfig["auto"] = { enabled: true, n: 10, min: 4, pf: 1.1 }): BlockConfig =>
-  ({ ...DEFAULT_BLOCK, auto, historySource: "accepted-orders" });
+const policy = (auto: BlockConfig["auto"] = { enabled: true, n: 10, min: 4, pf: 1.1, scope: "rule" }): BlockConfig =>
+  ({ ...DEFAULT_BLOCK, auto, historySource: "accepted-orders", windowAuto: false });
 const row = (cfg: string, sym: string, side: number, entryT: number, exitT: number, r: number): BlockBookEntry =>
   ({ cfg, sym, side, kind: "osc", ind: cfg.split("|")[1], type: "normal", r, entryT, exitT, accepted: true });
 
 describe("Block auto evaluation per relation × count", () => {
   it("ships on, every relation observed, both own-config records and the pooled relations switched on", () => {
-    assert.deepEqual(DEFAULT_BLOCK.auto, { enabled: true, n: 30, min: 15, pf: 1.1, scope: "rule" });
+    assert.deepEqual(DEFAULT_BLOCK.auto, { enabled: true, n: 30, min: 30, pf: 1.1, scope: "key" });
     for (const s of BLOCK_SOURCES) assert.equal((DEFAULT_BLOCK.sources as Record<string, boolean>)[s], true, s);
     assert.equal(DEFAULT_BLOCK_AUTO.pf, 1.1);
     assert.equal(blockBookOf(DEFAULT_BLOCK).auto?.n, 30);
@@ -30,7 +30,7 @@ describe("Block auto evaluation per relation × count", () => {
   it("every count's record equals a plain reading: the levels at entry from the closes before it, then PF of the newest n", () => {
     let seed = 5;
     const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
-    const b = policy({ enabled: true, n: 12, min: 3, pf: 1.1 });
+    const b = policy({ enabled: true, n: 12, min: 3, pf: 1.1, scope: "rule" });
     const book = blockBookOf(b);
     // closes in exit order; each entered some hours before it closed
     const rows: BlockBookEntry[] = [];
@@ -69,6 +69,7 @@ describe("Block auto evaluation per relation × count", () => {
       const pf = gl > 0 ? gp / gl : gp > 0 ? Infinity : 0;
       const v = auto.verdict(s, "", Number(lv));
       assert.equal(v.n, last.length, pk);
+      if (v.pf === null) throw new Error(`${pk}: finite sample unexpectedly has no PF`);
       assert.ok(Math.abs(v.pf - pf) < 1e-9 || v.pf === pf, `${pk}: ${v.pf} vs ${pf}`);
       assert.equal(v.raise, last.length < 3 ? null : pf >= 1.1, pk);
       compared++;
@@ -77,7 +78,7 @@ describe("Block auto evaluation per relation × count", () => {
   });
 
   it("is causal: a close after the entry never changes that entry's level or the count it is recorded under", () => {
-    const b = policy({ enabled: true, n: 10, min: 1, pf: 1.1 });
+    const b = policy({ enabled: true, n: 10, min: 1, pf: 1.1, scope: "rule" });
     const book = blockBookOf(b);
     // config A: two winners closing before the entry at t = 10 h (level 2 config-wide at entry)
     book.add(row(cfgA, "A", 1, T0, T0 + 1 * H, 0.01));
@@ -93,7 +94,7 @@ describe("Block auto evaluation per relation × count", () => {
   });
 
   it("one count's results never move another count's verdict; an observed count is recorded like a raising one", () => {
-    const auto = new BlockAutoEval({ n: 10, min: 3, pf: 1.1 }, 8);
+    const auto = new BlockAutoEval({ n: 10, min: 3, pf: 1.1, scope: "rule" }, 8);
     for (let i = 0; i < 5; i++) auto.record("symbol", "s:A|1", 1, 0.01);
     const before = auto.verdict("symbol", "s:A|1", 1);
     for (let i = 0; i < 50; i++) {
@@ -128,7 +129,7 @@ describe("Block auto evaluation per relation × count", () => {
     }) as never[];
     const tp = makeTape(cfgA, "follow", "rsi-mom-14-20@m15", P, "normal", ["A"], trades, [], []);
     const settings = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, positionWindows: null } };
-    const base = defaultWalkForward(settings);
+    const base = { ...defaultWalkForward(settings), wideEnabled: true };
     const o = {
       ...base,
       toggles: { normal: true, trailing: true, block: true, blockActive: false, dca: true, dcaActive: false, axis: true },
@@ -139,7 +140,7 @@ describe("Block auto evaluation per relation × count", () => {
       longH: 336,
       seatPer: "config" as const,
       // only the overall relation switched on manually; Auto decides each count once it has 4 results
-      block: { ...base.block, sources: { config: false, overall: true }, auto: { enabled: true, n: 10, min: 4, pf: 1.1 } },
+      block: { ...base.block, windowAuto: false, sources: { config: false, overall: true }, auto: { enabled: true, n: 10, min: 4, pf: 1.1 } },
       blockTrace: true,
     };
     const at = NOW - 2 * H + 10 * 60_000;
@@ -159,6 +160,11 @@ describe("Block auto evaluation per relation × count", () => {
     assert.equal((d as { blockLevels?: Record<string, number> }).blockLevels?.overall, 3);
     assert.equal((d as { blockDecidedBy?: Record<string, string> }).blockDecidedBy?.overall, "auto");
     assert.ok(d.ok && (d.vol ?? 1) === 1, `Auto switched the losing count off: ${JSON.stringify(d)}`);
+    book.auto!.record("overall", "all", 3, NaN);
+    const unknown = execDecision(tp, at, o, { sym: "A", side: 1, book });
+    assert.equal(book.auto!.verdict("overall", "all", 3).state, "unknown");
+    assert.equal((unknown as { blockDecidedBy?: Record<string, string> }).blockDecidedBy?.overall, "auto");
+    assert.ok(unknown.ok && (unknown.vol ?? 1) === 1, "unknown evidence must not fall back to the enabled manual raise");
     // the same count winning instead: Auto raises it even with the relation switched off manually
     const offBlock = { ...o.block, sources: { config: false, overall: false } };
     const win = blockBookOf(offBlock);

@@ -1,4 +1,4 @@
-import {blockPrefix,blockRequired,blockPolicyKey,checkBlockPolicy,evaluateBlocks,type BlockPolicy} from "../../../shared/cts-lastn/blocks.ts";
+import {blockPrefix,blockRequired,blockPolicyKey,checkBlockPolicy,evaluateBlocks,blockWindow,type BlockPrefix,type BlockPolicy} from "../../../shared/cts-lastn/blocks.ts";
 import { profitFactor } from "../metrics/stats.ts";
 import { negativeLastN, negativeLastNDecision, type NegativeLastN } from "../negative-last-n.ts";
 
@@ -12,21 +12,48 @@ export interface ProcessedSetIdentity {
   economicRevision: string;
 }
 
-export type ProcessedStage = "postBase" | "validated" | "active";
+export type ProcessedStage = "postBase" | "validated" | "real" | "active";
+type LegacyStage = Exclude<ProcessedStage, "real">;
+export type ProcessedGate = "validation" | "real" | "exec";
+export interface ProcessedAutoPf {
+  mode: "independent" | "main";
+  ratio: number;
+}
+export const PROCESSED_AUTO_PF_SAMPLES = 24;
+const MAX_AUTO_PF_INCREASE = 0.5;
 export type ProcessedBasis = "model" | "paper" | "venue";
 export type ProcessedVerdict = {
   state: "insufficient" | "unknown" | "failed" | "qualified";
   n: number;
   pf: number | null;
   blockedBy?: "negative-filter" | "signed-block";
+  unavailable?: "opposite-main-source";
   blockPolicyKey?: string;
+  autoPf?: { floor: number; source: "own" | "fallback" | "main" };
 };
 export interface ProcessedPolicy {
-  blocks?: {validation?:BlockPolicy;real?:BlockPolicy};
+  blocks?: Partial<Record<ProcessedGate, BlockPolicy>>;
   validationN: number;
   realN: number;
+  /** When configured, active/Exec can only use settled orders in the separate Real set. */
+  execN?: number;
+  autoPf?: ProcessedAutoPf;
   minPf: number;
   negativeFilter?: NegativeLastN;
+}
+/** In four-stage progression these Main trigger windows require an independently priced opposite fill. */
+export function requiresOppositeMainSource(policy: Omit<ProcessedPolicy, "minPf">): boolean {
+  return policy.execN !== undefined && isOppositeMainWindow(policy.blocks?.validation);
+}
+export function isOppositeMainWindow(block: BlockPolicy | undefined): boolean {
+  return !!block &&
+    ((block.short > 0 && block.shortPolarity === "negative") ||
+     (block.minimal > 0 && block.minimalPolarity === "negative"));
+}
+interface StageOrderRef {
+  /** Unique within this stage Set. The Set owns the config, symbol, side and full lane policy. */
+  orderId: string;
+  parentOrderId: string;
 }
 interface Close {
   entryId: string;
@@ -35,14 +62,57 @@ interface Close {
   exitT: number;
   /** Complete parent net unit return, summed from its own settled contributions. */
   unitReturn: number | null;
+  /** Absent in legacy checkpoints written before stage-specific ownership. */
+  order?: StageOrderRef;
+}
+/** The fields needed for a chronological, bounded Last-N calculation. */
+export type ProcessedHistoryRow = Pick<Close, "exitT" | "unitReturn">;
+
+export function processedHistoryEnd(history: readonly ProcessedHistoryRow[], beforeT?: number): number {
+  let end = history.length;
+  if (beforeT !== undefined) {
+    let start = 0;
+    while (start < end) {
+      const mid = (start + end) >>> 1;
+      if (history[mid].exitT < beforeT) start = mid + 1; else end = mid;
+    }
+  }
+  return end;
+}
+
+/** Retain a full strictly prior window in addition to the current same-time batch. */
+export function appendProcessedHistory<T extends ProcessedHistoryRow>(history: T[], row: T, capacity: number): void {
+  history.push(row);
+  let currentStart = processedHistoryEnd(history, row.exitT);
+  if (currentStart > capacity) {
+    const remove = currentStart - capacity;
+    history.splice(0, remove);
+    currentStart -= remove;
+  }
+  const currentCount = history.length - currentStart;
+  if (currentCount > capacity) history.splice(currentStart, currentCount - capacity);
+}
+
+export function processedWindowEconomics(history: readonly ProcessedHistoryRow[], n: number, at: number) {
+  const end = processedHistoryEnd(history, at);
+  if (end < n) return null;
+  let gp = 0, gl = 0;
+  for (let i = end - n; i < end; i++) {
+    const r = history[i].unitReturn;
+    if (r === null || !Number.isFinite(r)) return null;
+    if (r > 0) gp += r; else gl -= r;
+  }
+  return Number.isFinite(gp) && Number.isFinite(gl) ? { gp, gl } : null;
 }
 interface SetRows {
   identity: ProcessedSetIdentity;
   postBase: Close[];
   validated: Close[];
+  real?: Close[];
   active: Close[];
-  counts: Record<ProcessedStage, StageCounts>;
-  evaluations: { validation: VerdictCounts; real: VerdictCounts };
+  counts: Record<LegacyStage, StageCounts> & { real?: StageCounts };
+  evaluations: { validation: VerdictCounts; real: VerdictCounts; exec?: VerdictCounts };
+  execDeferred?: number;
 }
 interface StageCounts {
   openedOrders: number;
@@ -57,9 +127,12 @@ type VerdictCounts = Record<ProcessedVerdict["state"], number>;
 export interface ProcessedSetSummary {
   identity: ProcessedSetIdentity;
   basis: ProcessedBasis;
-  stages: Record<ProcessedStage, StageCounts & { heldOrders: number; returnPf: number | null }>;
-  evaluations: { validation: VerdictCounts; real: VerdictCounts };
+  stages: Record<LegacyStage, StageSummary> & { real?: StageSummary };
+  evaluations: SetRows["evaluations"];
+  execDeferred?: number;
+  lineage?: Array<{ stage: ProcessedStage; setId: string; parentSetId: string }>;
 }
+type StageSummary = StageCounts & { heldOrders: number; returnPf: number | null };
 export interface ProcessedOpen {
   identity: ProcessedSetIdentity;
   entryId: string;
@@ -68,12 +141,18 @@ export interface ProcessedOpen {
   policy: ProcessedPolicy;
   validation: ProcessedVerdict;
   real: ProcessedVerdict | null;
+  exec?: ProcessedVerdict | null;
   stage: ProcessedStage;
+  /** The Exec gate passed. Portfolio admission left this order in the Real simulation. */
+  execDeferred?: true;
+  /** One receipt per opened stage, ordered from the first Base-derived Set toward execution. */
+  orderPath?: StageOrderRef[];
   /** Already settled slices for this still-open order, preventing repeated cumulative updates. */
   slices: string[];
   /** Sum of settled net contributions on the original parent notional. Null retains any unknown slice. */
   settledUnitReturn: number | null;
 }
+export type ProcessedStageDecision = Pick<ProcessedOpen, "stage" | "validation" | "real" | "exec" | "execDeferred">;
 export interface ProcessedSetSnapshot {
   version: 3;
   basis: ProcessedBasis;
@@ -84,29 +163,66 @@ export interface ProcessedSetSnapshot {
   seenAtClock: string[];
 }
 
-const stages: ProcessedStage[] = ["postBase", "validated", "active"];
+const legacyStages = ["postBase", "validated", "active"] as const;
+const execStages = ["postBase", "validated", "real", "active"] as const;
+const stagesFor = (exec: boolean): readonly ProcessedStage[] => exec ? execStages : legacyStages;
+const stageOrderId = (stage: ProcessedStage, entryId: string, entryT: number) => JSON.stringify([stage, entryT, entryId]);
+function stageOrderRef(entryId: string, entryT: number, index: number): StageOrderRef {
+  const stage = execStages[index];
+  return { orderId: stageOrderId(stage, entryId, entryT),
+    parentOrderId: index ? stageOrderId(execStages[index - 1], entryId, entryT) : entryId };
+}
+const sameStageOrder = (actual: StageOrderRef | undefined, expected: StageOrderRef) =>
+  actual?.orderId === expected.orderId && actual.parentOrderId === expected.parentOrderId;
+const stageSetId = (stage: ProcessedStage | "base", identity: string) => JSON.stringify([stage, identity]);
 const counts = (): StageCounts => ({ openedOrders: 0, closedOrders: 0, settledSlices: 0,
   grossProfit: 0, grossLoss: 0, unknownReturns: 0, aggregateUnknown: false });
 const verdictCounts = (): VerdictCounts => ({ insufficient: 0, unknown: 0, failed: 0, qualified: 0 });
+// Most modeled contexts remain cold in later stages. Immutable empty state is shared until the first write.
+const EMPTY_HISTORY = Object.freeze([]) as unknown as Close[];
+const EMPTY_COUNTS = Object.freeze(counts()) as StageCounts;
+const EMPTY_VERDICTS = Object.freeze(verdictCounts()) as VerdictCounts;
+const zeroCounts = (c: StageCounts) => c.openedOrders === 0 && c.closedOrders === 0 && c.settledSlices === 0 &&
+  c.grossProfit === 0 && c.grossLoss === 0 && c.unknownReturns === 0 && !c.aggregateUnknown;
+const zeroVerdicts = (v: VerdictCounts) => v.insufficient === 0 && v.unknown === 0 && v.failed === 0 && v.qualified === 0;
 const nonempty = (s: unknown): s is string => typeof s === "string" && s.trim().length > 0;
 function identityValid(i: ProcessedSetIdentity): boolean {
   return !!i && nonempty(i.baseConfigId) && nonempty(i.symbol) && (i.side === 1 || i.side === -1) &&
     nonempty(i.kind) && nonempty(i.lane) && nonempty(i.economicRevision);
 }
 /** JSON encoding avoids collisions when config or lane IDs themselves contain separators. */
-export function processedSetKey(i: ProcessedSetIdentity): string {
+export function assertProcessedSetIdentity(i: ProcessedSetIdentity): void {
   if (!identityValid(i)) throw new TypeError("invalid processed-set identity");
+}
+export function processedSetKey(i: ProcessedSetIdentity): string {
+  assertProcessedSetIdentity(i);
   return JSON.stringify([i.baseConfigId, i.symbol, i.side, i.kind, i.lane, i.economicRevision]);
 }
 const entryKey = (i: ProcessedSetIdentity, id: string, entryT: number) =>
   JSON.stringify([processedSetKey(i), id, entryT]);
+export function checkProcessedAutoPf(p: ProcessedAutoPf): void {
+  if (!p || !["independent", "main"].includes(p.mode) ||
+    !Number.isSafeInteger(p.ratio) || p.ratio < 1 || p.ratio > 10)
+    throw new RangeError("invalid processed Auto PF policy");
+}
+
+export function processedPolicyCapacity(p: Omit<ProcessedPolicy, "minPf">): number {
+  return Math.max(p.validationN, p.realN, p.execN ?? 0,
+    ...Object.values(p.blocks ?? {}).map(blockRequired), ...negativeLastN(p.negativeFilter)?.windows ?? []) +
+    (p.autoPf ? PROCESSED_AUTO_PF_SAMPLES : 0);
+}
+
 function validPolicy(p: ProcessedPolicy | undefined, capacity: number): p is ProcessedPolicy {
-  try { if(p?.blocks)for(const [stage,b] of Object.entries(p.blocks)){if(!["validation","real"].includes(stage))return false;checkBlockPolicy(b);if(blockRequired(b)>capacity)return false;}
-    if (p?.negativeFilter && negativeLastN(p.negativeFilter)!.windows.some(n=>n>capacity)) return false; }
-  catch { return false; }
-  return !!p && Number.isSafeInteger(p.validationN) && p.validationN >= 1 && p.validationN <= capacity &&
-    Number.isSafeInteger(p.realN) && p.realN >= 1 && p.realN <= capacity &&
-    Number.isFinite(p.minPf) && p.minPf > 1;
+  if (!p || ![p.validationN, p.realN, p.execN ?? 1].every(n => Number.isSafeInteger(n) && n >= 1) ||
+    !Number.isFinite(p.minPf) || p.minPf <= 1) return false;
+  try {
+    if (p.autoPf !== undefined) checkProcessedAutoPf(p.autoPf);
+    for (const [stage, block] of Object.entries(p.blocks ?? {})) {
+      if (!(stage === "validation" || stage === "real" || (stage === "exec" && p.execN !== undefined))) return false;
+      checkBlockPolicy(block);
+    }
+    return processedPolicyCapacity(p) <= capacity;
+  } catch { return false; }
 }
 function validVerdict(v: ProcessedVerdict | null | undefined, n: number, minPf: number, negative?: NegativeLastN,blocks?:BlockPolicy): v is ProcessedVerdict {
   if(blocks)n=blockRequired(blocks);
@@ -118,6 +234,253 @@ function validVerdict(v: ProcessedVerdict | null | undefined, n: number, minPf: 
   if (v.state === "failed") return v.n === n && typeof v.pf === "number" && Number.isFinite(v.pf) && v.pf >= 0 && (v.pf < minPf || Boolean(v.blockedBy));
   if (v.state === "qualified") return v.n === n && typeof v.pf === "number" && Number.isFinite(v.pf) && v.pf >= minPf;
   return false;
+}
+
+/** The same owned-stage gate is used by full checkpoints and summary-only replays. */
+export function processedWindowVerdict(history: readonly ProcessedHistoryRow[], capacity: number,
+  n: number, minPf: number, beforeT?: number, negative?: NegativeLastN, blocks?: BlockPolicy,
+  indexed?: { end: number; prefix: BlockPrefix; key: string }): ProcessedVerdict {
+  if (blocks) { if (!indexed) checkBlockPolicy(blocks); n = blockRequired(blocks); }
+  const filter = negativeLastN(negative);
+  if (filter?.windows.some(w => w > capacity)) throw new RangeError("negative window exceeds capacity");
+  if (!Number.isSafeInteger(n) || n < 1 || n > capacity || !Number.isFinite(minPf) || minPf <= 1 ||
+    (beforeT !== undefined && (!Number.isFinite(beforeT) || beforeT < 0)))
+    throw new RangeError("invalid processed-set policy or decision time");
+  const end = indexed?.end ?? processedHistoryEnd(history, beforeT);
+  const recentLoss = () => negativeLastNDecision(history.slice(Math.max(0,end-Math.max(0,...filter?.windows ?? [])),end)
+    .reverse().map(x=>x.unitReturn), filter);
+  if (blocks) {
+    const length = Math.min(end, n);
+    if (length === 0) return { state: "insufficient", n: 0, pf: null,
+      blockPolicyKey: indexed?.key ?? blockPolicyKey(blocks) };
+    const prefix = indexed ? { ...indexed.prefix, n: length }
+      : blockPrefix(history.slice(end - length, end).reverse().map(close => close.unitReturn), n);
+    const result = evaluateBlocks(prefix,blocks,minPf);
+    const decision = { n:result.count, blockPolicyKey:indexed?.key ?? result.key };
+    if (result.state === "unknown" || result.state === "insufficient") return {...decision,state:result.state,pf:null};
+    const aggregate = blockWindow(prefix,0,n,minPf);
+    const pf = profitFactor(aggregate.gp,aggregate.gl);
+    if (!Number.isFinite(pf)) return {...decision,state:"unknown",pf:null};
+    if (result.state === "failed" || aggregate.state !== "qualified") return {...decision,state:"failed",pf,blockedBy:"signed-block"};
+    if (filter) {
+      const loss = recentLoss();
+      if (loss.state === "unknown" || loss.state === "insufficient") return {...decision,state:"unknown",pf:null};
+      if (!loss.pass) return {...decision,state:"failed",pf,blockedBy:"negative-filter"};
+    }
+    return {...decision,state:"qualified",pf};
+  }
+  // Coverage scans visit millions of empty or short contexts. Read the existing bounded window directly
+  // instead of allocating a sliced array for every verdict, including contexts without a set.
+  const start = Math.max(0, end - n), length = end - start;
+  for (let i = start; i < end; i++)
+    if (history[i].unitReturn === null || !Number.isFinite(history[i].unitReturn))
+      return { state: "unknown", n: length, pf: null };
+  if (length < n) return { state: "insufficient", n: length, pf: null };
+  let gp = 0, gl = 0;
+  for (let i = start; i < end; i++) {
+    const r = history[i].unitReturn!;
+    if (r > 0) gp += r; else gl -= r;
+  }
+  if (!Number.isFinite(gp) || !Number.isFinite(gl)) return { state: "unknown", n: length, pf: null };
+  const pf = profitFactor(gp, gl);
+  if (!Number.isFinite(pf)) return { state: "unknown", n: length, pf: null };
+  if (filter) {
+    const loss = recentLoss();
+    if (loss.state === "unknown" || loss.state === "insufficient") return {state:"unknown", n:length,pf:null};
+    if (!loss.pass) return {state:"failed",n:length,pf,blockedBy:"negative-filter"};
+  }
+  return { state: gp > gl && pf >= minPf ? "qualified" : "failed", n: length, pf };
+}
+
+export const processedGateSize = (p: ProcessedPolicy, gate: ProcessedGate): number => {
+  const block = p.blocks?.[gate];
+  return block ? blockRequired(block) : (gate === "validation" ? p.validationN : gate === "real" ? p.realN : p.execN!);
+};
+
+/** Fit on two older disjoint halves. No winning or losing row in the decision window trains its own floor. */
+function autoFloor(history: readonly ProcessedHistoryRow[], offset: number, historyEnd: number, minPf: number,
+  ratio: number): NonNullable<ProcessedVerdict["autoPf"]> {
+  const end = historyEnd - offset;
+  if (end < PROCESSED_AUTO_PF_SAMPLES) return { floor: minPf, source: "fallback" };
+  const half = PROCESSED_AUTO_PF_SAMPLES / 2;
+  const halfPf = (start: number) => {
+    let gp = 0, gl = 0;
+    for (let i = start; i < start + half; i++) {
+      const r = history[i].unitReturn;
+      if (r === null || !Number.isFinite(r)) return NaN;
+      if (r > 0) gp += r; else gl -= r;
+    }
+    return gl > 0 ? gp / gl : NaN;
+  };
+  const earlier = halfPf(end - 2 * half), later = halfPf(end - half);
+  if (!Number.isFinite(earlier) || !Number.isFinite(later)) return { floor: minPf, source: "fallback" };
+  const pf = Math.min(earlier, later);
+  const increase = Math.min(MAX_AUTO_PF_INCREASE, Math.max(0, pf - minPf) * (ratio / 6));
+  return { floor: minPf + increase, source: "own" };
+}
+
+export function processedGateVerdict(history: readonly ProcessedHistoryRow[], capacity: number,
+  p: ProcessedPolicy, gate: ProcessedGate, at: number, main?: ProcessedVerdict): ProcessedVerdict {
+  const n = processedGateSize(p, gate);
+  const trainingOffset = Math.max(n, ...p.negativeFilter?.windows ?? []);
+  const autoPf = p.autoPf && (p.autoPf.mode === "main" && gate !== "validation"
+    ? { floor: main?.autoPf?.floor ?? p.minPf, source: "main" as const }
+    : autoFloor(history, trainingOffset, processedHistoryEnd(history, at), p.minPf, p.autoPf.ratio));
+  const verdict = processedWindowVerdict(history, capacity, n, autoPf?.floor ?? p.minPf, at, p.negativeFilter, p.blocks?.[gate]);
+  if (gate === "validation" && verdict.state === "qualified" && requiresOppositeMainSource(p)) {
+    return { ...verdict, state: "unknown", pf: null, unavailable: "opposite-main-source", ...(autoPf && { autoPf }) };
+  }
+  return autoPf ? { ...verdict, autoPf } : verdict;
+}
+
+/**
+ * Index the strictly prior history of one parent once per decision. The gate uses the
+ * same chronological rows, PF tolerance and negative-filter scope as the single-window policy.
+ */
+export class ProcessedWindowIndex {
+  readonly size: number;
+  private prefix?: BlockPrefix;
+  private readonly floors = new Map<number, NonNullable<ProcessedVerdict["autoPf"]>>();
+
+  private readonly history: readonly ProcessedHistoryRow[];
+  private readonly at: number;
+  private readonly capacity: number;
+  private readonly minPf: number;
+  private readonly autoPf?: ProcessedAutoPf;
+  private readonly negative?: NegativeLastN;
+
+  constructor(history: readonly ProcessedHistoryRow[], at: number, capacity: number, minPf: number,
+    autoPf?: ProcessedAutoPf, negative?: NegativeLastN) {
+    this.history = history;
+    this.at = at;
+    this.capacity = capacity;
+    this.minPf = minPf;
+    this.autoPf = autoPf;
+    this.negative = negative;
+    this.size = processedHistoryEnd(history, at);
+  }
+
+  private autoThreshold(n: number, sharedMain?: ProcessedVerdict): ProcessedVerdict["autoPf"] {
+    if (!this.autoPf) return undefined;
+    if (sharedMain && this.autoPf.mode === "main")
+      return { floor: sharedMain.autoPf?.floor ?? this.minPf, source: "main" };
+    const offset = Math.max(n, ...this.negative?.windows ?? []);
+    let floor = this.floors.get(offset);
+    if (!floor) {
+      floor = autoFloor(this.history, offset, this.size, this.minPf, this.autoPf.ratio);
+      this.floors.set(offset, floor);
+    }
+    return floor;
+  }
+
+  private prefixView(): BlockPrefix {
+    if (!this.prefix) {
+      const length = Math.min(this.capacity, this.size);
+      const sample = Array.from({ length }, (_, i) => this.history[this.size - i - 1].unitReturn);
+      this.prefix = blockPrefix(sample, length);
+    }
+    return this.prefix;
+  }
+
+  evaluate(block: BlockPolicy, key: string, sharedMain?: ProcessedVerdict): ProcessedVerdict {
+    const n = blockRequired(block);
+    const auto = this.autoThreshold(n, sharedMain);
+    const verdict = processedWindowVerdict(this.history, this.capacity, n, auto?.floor ?? this.minPf,
+      this.at, this.negative, block, { end: this.size, prefix: this.prefixView(), key });
+    return auto ? { ...verdict, autoPf: auto } : verdict;
+  }
+
+  // Screen with the same prefix, then use the exact bounded scalar verdict near
+  // cancellation and whenever a separate recent-loss policy needs its receipt.
+  private readonly slices = new Map<number, ReturnType<typeof blockWindow>>();
+  private window(offset: number, n: number) {
+    const index = offset * 1024 + n;
+    let stats = this.slices.get(index);
+    if (!stats) {
+      stats = blockWindow(this.prefixView(), offset, n, this.minPf);
+      this.slices.set(index, stats);
+    }
+    return stats;
+  }
+
+  qualifies(block: BlockPolicy, key: string): boolean {
+    const n = blockRequired(block);
+    if (this.size < n) return false;
+    if (this.negative) return this.evaluate(block, key).state === "qualified";
+    const floor = this.autoThreshold(n)?.floor ?? this.minPf;
+    let nearBoundary = false;
+    const passes = (offset: number, length: number, negative: boolean, signOnly = false) => {
+      if (!length) return true;
+      const { state, gp, gl, net } = this.window(offset, length);
+      if (state === "unknown" || state === "insufficient") return false;
+      const profit = negative ? gl : gp, loss = negative ? gp : gl;
+      const required = signOnly ? loss : loss * floor;
+      const delta = signOnly ? (negative ? -net : net) : profit - required;
+      if (Math.abs(delta) <= Number.EPSILON * (gp + gl) * (this.prefixView().n + 2)) {
+        nearBoundary = true;
+        return true;
+      }
+      return delta > 0;
+    };
+    if (!passes(0, block.minimal, block.minimalPolarity === "negative", true) ||
+        !passes(block.minimal, block.short, block.shortPolarity === "negative") ||
+        !passes(block.minimal + block.short, block.long, false) || !passes(0, n, false)) return false;
+    const full = this.window(0, n);
+    if (!Number.isFinite(profitFactor(full.gp, full.gl))) return false;
+    return !nearBoundary || this.evaluate(block, key).state === "qualified";
+  }
+}
+
+/** Main sees only post-Base closes, Real sees Main closes, and Exec sees only this lane's Real closes. */
+export function processedStageDecision(history: (stage: ProcessedStage) => readonly ProcessedHistoryRow[],
+  capacity: number, policy: ProcessedPolicy, at: number): ProcessedStageDecision {
+  const validation = processedGateVerdict(history("postBase"), capacity, policy, "validation", at);
+  const real = validation.state === "qualified"
+    ? processedGateVerdict(history("validated"), capacity, policy, "real", at, validation) : null;
+  if (policy.execN === undefined) {
+    const stage = validation.state !== "qualified" ? "postBase" : real?.state === "qualified" ? "active" : "validated";
+    return { stage, validation, real };
+  }
+  const exec = real?.state === "qualified"
+    ? processedGateVerdict(history("real"), capacity, policy, "exec", at, validation) : null;
+  const stage = !real ? "postBase" : !exec ? "validated" : exec.state === "qualified" ? "active" : "real";
+  return { stage, validation, real, exec };
+}
+
+export function processedAdmission(decision: ProcessedStageDecision, allowExec: boolean): ProcessedStageDecision {
+  if (allowExec || decision.stage !== "active" || decision.exec?.state !== "qualified") return decision;
+  return { ...decision, stage: "real", execDeferred: true };
+}
+
+function validGateReceipt(v: ProcessedVerdict | null | undefined, p: ProcessedPolicy, gate: ProcessedGate,
+  main?: ProcessedVerdict): v is ProcessedVerdict {
+  if (v?.unavailable !== undefined && (v.unavailable !== "opposite-main-source" || gate !== "validation" ||
+    !requiresOppositeMainSource(p) || v.state !== "unknown" || v.n !== processedGateSize(p, gate))) return false;
+  const floor = v?.autoPf?.floor ?? p.minPf;
+  if (p.autoPf) {
+    const a = v?.autoPf;
+    if (!a || !Number.isFinite(a.floor) || a.floor < p.minPf || a.floor > p.minPf + MAX_AUTO_PF_INCREASE) return false;
+    if (gate !== "validation" && p.autoPf.mode === "main") {
+      if (a.source !== "main" || a.floor !== main?.autoPf?.floor) return false;
+    } else if (a.source !== "own" && (a.source !== "fallback" || a.floor !== p.minPf)) return false;
+  } else if (v?.autoPf !== undefined) return false;
+  return validVerdict(v, processedGateSize(p, gate), floor, p.negativeFilter, p.blocks?.[gate]);
+}
+
+function validStageReceipt(item: ProcessedOpen, p: ProcessedPolicy): boolean {
+  if (item.orderPath !== undefined &&
+    (p.execN === undefined || !Array.isArray(item.orderPath) || item.orderPath.length !== execStages.indexOf(item.stage) + 1 ||
+      !Array.from(item.orderPath).every((order, i) => sameStageOrder(order, stageOrderRef(item.entryId, item.entryT, i))))) return false;
+  if (item.execDeferred !== undefined &&
+    (item.execDeferred !== true || item.stage !== "real" || p.execN === undefined || item.exec?.state !== "qualified")) return false;
+  if (!validGateReceipt(item.validation, p, "validation") ||
+    (p.execN !== undefined ? item.exec === undefined : item.exec !== undefined)) return false;
+  if (item.validation.state !== "qualified") return item.real === null && item.exec == null && item.stage === "postBase";
+  if (!validGateReceipt(item.real, p, "real", item.validation)) return false;
+  if (item.real.state !== "qualified") return item.exec == null && item.stage === "validated";
+  if (p.execN === undefined) return item.stage === "active";
+  return validGateReceipt(item.exec, p, "exec", item.validation) &&
+    item.stage === (item.exec.state === "qualified" && !item.execDeferred ? "active" : "real");
 }
 
 /**
@@ -151,73 +514,31 @@ export class ProcessedSetBook {
     this.clock = t;
   }
 
-  private rows(identity: ProcessedSetIdentity): SetRows {
+  private rows(identity: ProcessedSetIdentity, exec: boolean): SetRows {
     const key = processedSetKey(identity);
     let rows = this.sets.get(key);
     if (!rows) {
-      rows = { identity: { ...identity }, postBase: [], validated: [], active: [],
-        counts: { postBase: counts(), validated: counts(), active: counts() },
-        evaluations: { validation: verdictCounts(), real: verdictCounts() } };
+      rows = { identity: { ...identity }, postBase: EMPTY_HISTORY, validated: EMPTY_HISTORY, active: EMPTY_HISTORY,
+        ...(exec && { real: EMPTY_HISTORY }),
+        counts: { postBase: EMPTY_COUNTS, validated: EMPTY_COUNTS, active: EMPTY_COUNTS, ...(exec && { real: EMPTY_COUNTS }) },
+        evaluations: { validation: verdictCounts(), real: EMPTY_VERDICTS, ...(exec && { exec: EMPTY_VERDICTS }) } };
       this.sets.set(key, rows);
-    }
+    } else if ((rows.real !== undefined) !== exec) throw new Error("processed stage topology changed for the same set");
     return rows;
   }
 
-  /**
-   * No empty, partial, or unknown window is promoted to a passing PF. A decision at beforeT can
-   * use only closes strictly earlier than that time, including when same-time closes arrived first.
-   * Without beforeT this reports the latest completed record, including closes at the book's clock.
-   */
+  windowEconomics(identity: ProcessedSetIdentity, source: ProcessedStage, n: number, at: number) {
+    const history = this.sets.get(processedSetKey(identity))?.[source] ?? EMPTY_HISTORY;
+    return processedWindowEconomics(history, n, at);
+  }
+
+  /** A decision reads only the strictly earlier completed closes of its own predecessor. */
   verdict(identity: ProcessedSetIdentity, source: ProcessedStage, n: number, minPf: number,
-    beforeT?: number, negative?: NegativeLastN,blocks?:BlockPolicy): ProcessedVerdict {
-    if(blocks){checkBlockPolicy(blocks);n=blockRequired(blocks);}
-    const filter = negativeLastN(negative);
-    if (filter?.windows.some(w=>w>this.capacity)) throw new RangeError("negative window exceeds capacity");
-    if (!stages.includes(source) || !Number.isSafeInteger(n) || n < 1 || n > this.capacity ||
-      !Number.isFinite(minPf) || minPf <= 1 ||
-      (beforeT !== undefined && (!Number.isFinite(beforeT) || beforeT < 0 || beforeT < this.clock)))
+    beforeT?: number, negative?: NegativeLastN, blocks?: BlockPolicy): ProcessedVerdict {
+    if (!execStages.includes(source) || (beforeT !== undefined && beforeT < this.clock))
       throw new RangeError("invalid processed-set policy or decision time");
-    const history = this.sets.get(processedSetKey(identity))?.[source] ?? [];
-    let end = history.length;
-    if (beforeT !== undefined) {
-      let lo = 0, hi = end;
-      while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        if (history[mid].exitT < beforeT) lo = mid + 1; else hi = mid;
-      }
-      end = lo;
-    }
-    const recentLoss = () => negativeLastNDecision(history.slice(Math.max(0,end-Math.max(0,...filter?.windows ?? [])),end)
-      .reverse().map(x=>x.unitReturn), filter);
-    if (blocks) {
-      const sample = history.slice(Math.max(0,end-n),end).reverse().map(close=>close.unitReturn);
-      const result = evaluateBlocks(blockPrefix(sample,n),blocks,minPf);
-      const decision = { n:result.count, blockPolicyKey:result.key };
-      if (result.state === "unknown" || result.state === "insufficient") return {...decision,state:result.state,pf:null};
-      const pf = profitFactor(result.long.gp,result.long.gl);
-      if (!Number.isFinite(pf)) return {...decision,state:"unknown",pf:null};
-      if (result.state === "failed" || pf < minPf) return {...decision,state:"failed",pf,blockedBy:"signed-block"};
-      const loss = recentLoss();
-      if (loss.state === "unknown" || loss.state === "insufficient") return {...decision,state:"unknown",pf:null};
-      if (!loss.pass) return {...decision,state:"failed",pf,blockedBy:"negative-filter"};
-      return {...decision,state:"qualified",pf};
-    }
-    const values = history.slice(Math.max(0, end - n), end);
-    if (values.some((x) => x.unitReturn === null || !Number.isFinite(x.unitReturn)))
-      return { state: "unknown", n: values.length, pf: null };
-    if (values.length < n) return { state: "insufficient", n: values.length, pf: null };
-    let gp = 0, gl = 0;
-    for (const row of values) {
-      const r = row.unitReturn!;
-      if (r > 0) gp += r; else gl -= r;
-    }
-    if (!Number.isFinite(gp) || !Number.isFinite(gl)) return { state: "unknown", n: values.length, pf: null };
-    const pf = profitFactor(gp, gl);
-    if (!Number.isFinite(pf)) return { state: "unknown", n: values.length, pf: null };
-    const loss = recentLoss();
-    if (loss.state === "unknown" || loss.state === "insufficient") return {state:"unknown", n:values.length,pf:null};
-    if (!loss.pass) return {state:"failed",n:values.length,pf,blockedBy:"negative-filter"};
-    return { state: gp > gl && pf >= minPf ? "qualified" : "failed", n: values.length, pf };
+    const history = this.sets.get(processedSetKey(identity))?.[source] ?? EMPTY_HISTORY;
+    return processedWindowVerdict(history, this.capacity, n, minPf, beforeT, negative, blocks);
   }
 
   /** Separate policy histories, including after restart. No lane inherits another lane's later-stage passes. */
@@ -229,11 +550,15 @@ export class ProcessedSetBook {
       if (!nonempty(p.id) || ids.has(p.id) || !["major", "minor", "independent", "additional"].includes(p.role) || !validPolicy(p, this.capacity))
         throw new RangeError("invalid processed lane policy");
       ids.add(p.id);
-      const own = { ...identity, lane: JSON.stringify([identity.lane, p.id, p.role, p.validationN, p.realN, p.minPf, negativeLastN(p.negativeFilter),...(p.blocks?[p.blocks]:[])]) };
-      this.verdict(own, "postBase", p.validationN, p.minPf, entryT, p.negativeFilter,p.blocks?.validation);
+      const own = { ...identity, lane: JSON.stringify([identity.lane, p.id, p.role, p.validationN, p.realN, p.minPf,
+        negativeLastN(p.negativeFilter), ...(p.blocks ? [p.blocks] : []),
+        ...(p.execN !== undefined || p.autoPf ? [p.execN ?? null, p.autoPf ?? null] : [])]) };
+      this.preview(own, entryT, p);
       const key = entryKey(own, entryId, entryT);
       if (this.open.has(key) || (entryT === this.clock && this.seenAtClock.has(key))) throw new Error("duplicate processed entry");
       return { own, policy: { validationN: p.validationN, realN: p.realN, minPf: p.minPf,
+        ...(p.execN !== undefined && { execN: p.execN }),
+        ...(p.autoPf && { autoPf: p.autoPf }),
         ...(p.blocks?{blocks:structuredClone(p.blocks)}:{}),
         ...(p.negativeFilter ? {negativeFilter:negativeLastN(p.negativeFilter)} : {}) } };
     });
@@ -241,25 +566,57 @@ export class ProcessedSetBook {
     return prepared.map(p => this.acceptPostBase(p.own, entryId, entryT, p.policy));
   }
 
+  /** Inspect the strictly prior owned windows without opening an order or retiring an observation. */
+  preview(identity: ProcessedSetIdentity, entryT: number, policy: ProcessedPolicy): ProcessedStageDecision {
+    if (!validPolicy(policy,this.capacity)) throw new RangeError("invalid processed-set policy");
+    if (!Number.isFinite(entryT) || entryT < 0 || entryT < this.clock)
+      throw new RangeError("invalid processed-set policy or decision time");
+    const rows = this.sets.get(processedSetKey(identity));
+    if (rows && (rows.real !== undefined) !== (policy.execN !== undefined))
+      throw new Error("processed stage topology changed for the same set");
+    return processedStageDecision(stage => rows?.[stage] ?? EMPTY_HISTORY, this.capacity, policy, entryT);
+  }
+
+  /** Independent readiness snapshots use the same per-stage floor rules as the actual entry decision. */
+  gate(identity: ProcessedSetIdentity, source: ProcessedStage, p: ProcessedPolicy, gate: ProcessedGate,
+    at: number, main?: ProcessedVerdict): ProcessedVerdict {
+    if (!Number.isFinite(at) || at < this.clock) throw new RangeError("invalid processed-set gate time");
+    return processedGateVerdict(this.sets.get(processedSetKey(identity))?.[source] ?? EMPTY_HISTORY,
+      this.capacity, p, gate, at, main);
+  }
+
   /** Record one actually processed, Base-qualified entry and freeze its stage at admission. */
-  acceptPostBase(identity: ProcessedSetIdentity, entryId: string, entryT: number, policy: ProcessedPolicy): ProcessedOpen {
+  acceptPostBase(identity: ProcessedSetIdentity, entryId: string, entryT: number, policy: ProcessedPolicy,
+    allowExec = true): ProcessedOpen {
     if (!identityValid(identity) || !nonempty(entryId)) throw new TypeError("invalid processed entry");
     if (!Number.isFinite(entryT) || entryT < 0 || entryT < this.clock) throw new RangeError("processed events must be chronological");
-    // Validate both windows before mutating the clock or records.
-    if (!validPolicy(policy,this.capacity)) throw new RangeError("invalid processed-set policy");
-    const validation = this.verdict(identity, "postBase", policy.validationN, policy.minPf, entryT, policy.negativeFilter,policy.blocks?.validation);
-    const real = validation.state === "qualified" ? this.verdict(identity, "validated", policy.realN, policy.minPf, entryT, policy.negativeFilter,policy.blocks?.real) : null;
-    if (real === null && (!Number.isSafeInteger(policy.realN) || policy.realN < 1 || policy.realN > this.capacity))
-      throw new RangeError("invalid processed-set policy");
+    const decision = processedAdmission(this.preview(identity, entryT, policy), allowExec);
+    const { stage, validation, real, exec } = decision;
     const key = entryKey(identity, entryId, entryT);
     if (this.open.has(key) || (entryT === this.clock && this.seenAtClock.has(key))) throw new Error("duplicate processed entry");
     this.advance(entryT);
-    const stage = validation.state !== "qualified" ? "postBase" : real?.state === "qualified" ? "active" : "validated";
-    const rows = this.rows(identity);
+    const hasExec = policy.execN !== undefined;
+    const rows = this.rows(identity, hasExec);
     rows.evaluations.validation[validation.state]++;
-    if (real) rows.evaluations.real[real.state]++;
-    for (let i = 0; i <= stages.indexOf(stage); i++) rows.counts[stages[i]].openedOrders++;
-    const opened: ProcessedOpen = { identity: { ...identity }, entryId, entryT, policy: structuredClone(policy), validation, real, stage, slices: [], settledUnitReturn: 0 };
+    if (real) {
+      if (rows.evaluations.real === EMPTY_VERDICTS) rows.evaluations.real = verdictCounts();
+      rows.evaluations.real[real.state]++;
+    }
+    if (exec) {
+      if (rows.evaluations.exec === EMPTY_VERDICTS) rows.evaluations.exec = verdictCounts();
+      rows.evaluations.exec![exec.state]++;
+    }
+    if (decision.execDeferred) rows.execDeferred = (rows.execDeferred ?? 0) + 1;
+    const stages = stagesFor(hasExec);
+    const depth = stages.indexOf(stage) + 1;
+    for (let i = 0; i < depth; i++) {
+      const key = stages[i];
+      if (rows.counts[key] === EMPTY_COUNTS) rows.counts[key] = counts();
+      rows.counts[key]!.openedOrders++;
+    }
+    const opened: ProcessedOpen = { identity: { ...identity }, entryId, entryT, policy: structuredClone(policy),
+      ...decision, ...(hasExec && { orderPath: Array.from({ length: depth }, (_, i) => stageOrderRef(entryId, entryT, i)) }),
+      slices: [], settledUnitReturn: 0 };
     this.open.set(key, opened);
     this.seenAtClock.add(key);
     return structuredClone(opened);
@@ -281,30 +638,22 @@ export class ProcessedSetBook {
     const sum = held.settledUnitReturn === null || unitReturn === null ? null : held.settledUnitReturn + unitReturn;
     held.settledUnitReturn = sum !== null && Number.isFinite(sum) ? sum : null;
     const row: Close = { entryId, sliceId, entryT, exitT, unitReturn: held.settledUnitReturn };
-    const rows = this.rows(identity);
+    const hasExec = held.policy.execN !== undefined;
+    const rows = this.rows(identity, hasExec);
+    const stages = stagesFor(hasExec);
     const lastStage = stages.indexOf(held.stage);
     for (let i = 0; i <= lastStage; i++) {
-      const stats = rows.counts[stages[i]];
+      const stats = rows.counts[stages[i]]!;
       stats.settledSlices++;
       if (!final) continue;
       stats.closedOrders++;
-      const history = rows[stages[i]];
-      history.push(row);
-      // Preserve the latest full prior window separately from this timestamp's closes. A batch of
-      // same-time closes may arrive before an entry, but must not evict the entry's prior evidence.
-      let lo = 0, hi = history.length;
-      while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        if (history[mid].exitT < exitT) lo = mid + 1; else hi = mid;
-      }
-      let currentStart = lo;
-      if (currentStart > this.capacity) {
-        const remove = currentStart - this.capacity;
-        history.splice(0, remove);
-        currentStart -= remove;
-      }
-      const currentCount = history.length - currentStart;
-      if (currentCount > this.capacity) history.splice(currentStart, currentCount - this.capacity);
+      const key = stages[i];
+      if (rows[key] === EMPTY_HISTORY) rows[key] = [];
+      const history = rows[key]!;
+      // Each stage owns its own immutable settlement. A shared market event supplies the realized
+      // economics without sharing a mutable record or inheriting a different lane's admission.
+      appendProcessedHistory(history, hasExec
+        ? { ...row, order: held.orderPath?.[i] ?? stageOrderRef(entryId, entryT, i) } : row, this.capacity);
       if (row.unitReturn === null) stats.unknownReturns++;
       else if (row.unitReturn > 0) stats.grossProfit += row.unitReturn;
       else stats.grossLoss -= row.unitReturn;
@@ -326,23 +675,42 @@ export class ProcessedSetBook {
 
   /** Whole-book return PF and order counts; rolling gate windows remain separate in verdict(). */
   summary(identity: ProcessedSetIdentity): ProcessedSetSummary | undefined {
-    const rows = this.sets.get(processedSetKey(identity));
+    const identityKey = processedSetKey(identity);
+    const rows = this.sets.get(identityKey);
     if (!rows) return undefined;
     const byStage = {} as ProcessedSetSummary["stages"];
-    for (const stage of stages) {
-      const c = rows.counts[stage];
+    const lineage: NonNullable<ProcessedSetSummary["lineage"]> = [];
+    let parentSetId = stageSetId("base", identityKey);
+    for (const stage of stagesFor(rows.real !== undefined)) {
+      const c = rows.counts[stage]!;
       const pf = c.closedOrders && !c.unknownReturns && !c.aggregateUnknown
         ? profitFactor(c.grossProfit, c.grossLoss) : null;
       byStage[stage] = { ...c, heldOrders: c.openedOrders - c.closedOrders,
         returnPf: pf !== null && Number.isFinite(pf) ? pf : null };
+      if (rows.real !== undefined && c.openedOrders) {
+        const setId = stageSetId(stage, identityKey);
+        lineage.push({ stage, setId, parentSetId });
+        parentSetId = setId;
+      }
     }
     return { identity: { ...rows.identity }, basis: this.basis, stages: byStage,
-      evaluations: structuredClone(rows.evaluations) };
+      evaluations: structuredClone(rows.evaluations), ...(rows.execDeferred && { execDeferred: rows.execDeferred }),
+      ...(lineage.length && { lineage }) };
   }
 
   snapshot(): ProcessedSetSnapshot {
-    return structuredClone({ version: 3 as const, basis: this.basis, capacity: this.capacity, clock: this.clock,
+    const result = structuredClone({ version: 3 as const, basis: this.basis, capacity: this.capacity, clock: this.clock,
       sets: [...this.sets.values()], open: [...this.open.values()], seenAtClock: [...this.seenAtClock] });
+    // A checkpoint is mutable public data: shared internal zero objects must not alias across its sets/stages.
+    for (const set of result.sets) {
+      for (const stage of stagesFor(set.real !== undefined)) {
+        if (!set[stage]!.length) set[stage] = [];
+        if (zeroCounts(set.counts[stage]!)) set.counts[stage] = counts();
+      }
+      if (zeroVerdicts(set.evaluations.real)) set.evaluations.real = verdictCounts();
+      if (set.evaluations.exec && zeroVerdicts(set.evaluations.exec)) set.evaluations.exec = verdictCounts();
+    }
+    return result;
   }
 
   /** Restore only structurally consistent books; corrupted state is not turned into qualification evidence. */
@@ -355,7 +723,13 @@ export class ProcessedSetBook {
     for (const set of snapshot.sets) {
       const key = processedSetKey(set.identity);
       if (book.sets.has(key)) throw new Error("duplicate processed set");
-      for (const stage of stages) {
+      const hasExec = set.real !== undefined;
+      const stages = stagesFor(hasExec);
+      if ((set.counts?.real !== undefined) !== hasExec || (set.evaluations?.exec !== undefined) !== hasExec)
+        throw new TypeError("invalid processed-stage topology");
+      let retainedParent: Map<string, Close> | undefined;
+      let fullParent = false;
+      for (const [depth, stage] of stages.entries()) {
         const rows = set[stage];
         if (!Array.isArray(rows) || rows.length > 2 * snapshot.capacity) throw new TypeError("invalid processed history");
         const c = set.counts?.[stage];
@@ -366,15 +740,24 @@ export class ProcessedSetBook {
           !Number.isFinite(c.grossLoss) || c.grossLoss < 0 || typeof c.aggregateUnknown !== "boolean")
           throw new TypeError("invalid processed totals");
         let prior = -1;
-        const seenSlices = new Set<string>();
+        const own = new Map<string, Close>();
         for (const row of rows) {
           if (!nonempty(row.entryId) || !nonempty(row.sliceId) || !Number.isFinite(row.entryT) ||
             !Number.isFinite(row.exitT) || row.entryT < 0 || row.exitT < row.entryT || row.exitT < prior ||
             row.exitT > snapshot.clock || (row.unitReturn !== null && !Number.isFinite(row.unitReturn)))
             throw new TypeError("invalid processed close history");
-          const slice = JSON.stringify([row.entryId, row.entryT, row.sliceId]);
-          if (seenSlices.has(slice)) throw new TypeError("duplicate processed close history");
-          seenSlices.add(slice);
+          if (row.order !== undefined &&
+            (!hasExec || !sameStageOrder(row.order, stageOrderRef(row.entryId, row.entryT, depth))))
+            throw new TypeError("invalid processed close ownership");
+          const entry = JSON.stringify([row.entryId, row.entryT]);
+          if (own.has(entry)) throw new TypeError("duplicate processed close history");
+          const parent = retainedParent?.get(entry);
+          // A more active parent can evict a row sooner, including in a large same-clock batch.
+          // When it still retains the exact receipt, both records must agree.
+          if (hasExec && ((parent && (parent.exitT !== row.exitT || parent.sliceId !== row.sliceId ||
+            parent.unitReturn !== row.unitReturn)) || (!parent && fullParent)))
+            throw new TypeError("invalid processed close parent");
+          own.set(entry, row);
           prior = row.exitT;
         }
         const latestT = rows.at(-1)?.exitT;
@@ -383,48 +766,66 @@ export class ProcessedSetBook {
           throw new TypeError("invalid processed history boundary");
         if (rows.filter((row) => row.unitReturn === null).length > c.unknownReturns)
           throw new TypeError("invalid unknown-return total");
+        retainedParent = own;
+        fullParent = c.closedOrders === rows.length;
       }
       const validCounts = (v: VerdictCounts | undefined) => !!v &&
         (["insufficient", "unknown", "failed", "qualified"] as const).every((k) => Number.isSafeInteger(v[k]) && v[k] >= 0);
-      const v = set.evaluations?.validation, r = set.evaluations?.real;
+      const v = set.evaluations?.validation, r = set.evaluations?.real, e = set.evaluations?.exec;
+      const deferred = set.execDeferred ?? 0;
       const total = (x: VerdictCounts) => x.insufficient + x.unknown + x.failed + x.qualified;
       if (!validCounts(v) || !validCounts(r) || total(v) !== set.counts.postBase.openedOrders ||
         v.qualified !== set.counts.validated.openedOrders || total(r) !== set.counts.validated.openedOrders ||
-        r.qualified !== set.counts.active.openedOrders ||
-        set.counts.validated.closedOrders > set.counts.postBase.closedOrders ||
-        set.counts.active.closedOrders > set.counts.validated.closedOrders ||
-        set.counts.validated.settledSlices > set.counts.postBase.settledSlices ||
-        set.counts.active.settledSlices > set.counts.validated.settledSlices)
+        r.qualified !== (set.counts.real ?? set.counts.active).openedOrders ||
+        !Number.isSafeInteger(deferred) || deferred < 0 || (!hasExec && set.execDeferred !== undefined) ||
+        (hasExec && (!e || !validCounts(e) || total(e) !== set.counts.real!.openedOrders ||
+          e.qualified !== set.counts.active.openedOrders + deferred)) ||
+        stages.slice(1).some((stage, i) => {
+          const child = set.counts[stage]!, parent = set.counts[stages[i]]!;
+          return child.closedOrders > parent.closedOrders || child.settledSlices > parent.settledSlices;
+        }))
         throw new TypeError("invalid processed-stage progression");
-      book.sets.set(key, structuredClone(set));
+      const copy = structuredClone(set);
+      for (const stage of stages) {
+        if (!copy[stage]!.length) copy[stage] = EMPTY_HISTORY;
+        if (zeroCounts(copy.counts[stage]!)) copy.counts[stage] = EMPTY_COUNTS;
+      }
+      if (zeroVerdicts(copy.evaluations.real)) copy.evaluations.real = EMPTY_VERDICTS;
+      if (copy.evaluations.exec && zeroVerdicts(copy.evaluations.exec)) copy.evaluations.exec = EMPTY_VERDICTS;
+      book.sets.set(key, copy);
     }
     for (const item of snapshot.open) {
       const key = entryKey(item.identity, item.entryId, item.entryT);
       const p = item.policy;
-      const decisionValid = validPolicy(p, snapshot.capacity) && validVerdict(item.validation, p.validationN, p.minPf, p.negativeFilter,p.blocks?.validation) &&
-        (item.validation.state === "qualified"
-          ? validVerdict(item.real, p.realN, p.minPf, p.negativeFilter,p.blocks?.real) &&
-            (item.real.state === "qualified" ? item.stage === "active" : item.stage === "validated")
-          : item.real === null && item.stage === "postBase");
+      const stored = book.sets.get(processedSetKey(item.identity));
+      const decisionValid = validPolicy(p, snapshot.capacity) && validStageReceipt(item, p) &&
+        (p.execN !== undefined) === (stored?.real !== undefined);
       if (!nonempty(item.entryId) || !Number.isFinite(item.entryT) || item.entryT < 0 || item.entryT > snapshot.clock ||
-        !stages.includes(item.stage) || !Array.isArray(item.slices) || item.slices.some((s) => !nonempty(s)) ||
+        !Array.isArray(item.slices) || item.slices.some((s) => !nonempty(s)) ||
         new Set(item.slices).size !== item.slices.length ||
         (item.settledUnitReturn !== null && !Number.isFinite(item.settledUnitReturn)) ||
-        (!item.slices.length && item.settledUnitReturn !== 0) || !book.sets.has(processedSetKey(item.identity)) ||
+        (!item.slices.length && item.settledUnitReturn !== 0) || !stored ||
         book.open.has(key) || !decisionValid)
         throw new TypeError("invalid processed open entry");
       book.open.set(key, structuredClone(item));
     }
-    const heldCounts = new Map<string, number[]>();
+    const heldCounts = new Map<string, Partial<Record<ProcessedStage, number>>>();
+    const heldDeferred = new Map<string, number>();
     for (const entry of book.open.values()) {
-      const key = processedSetKey(entry.identity), count = heldCounts.get(key) ?? [0, 0, 0];
-      for (let i = 0; i <= stages.indexOf(entry.stage); i++) count[i]++;
+      const key = processedSetKey(entry.identity), count = heldCounts.get(key) ?? {};
+      if (entry.execDeferred) heldDeferred.set(key, 1 + (heldDeferred.get(key) ?? 0));
+      const stages = stagesFor(entry.policy.execN !== undefined);
+      for (let i = 0; i <= stages.indexOf(entry.stage); i++) {
+        const stage = stages[i];
+        count[stage] = (count[stage] ?? 0) + 1;
+      }
       heldCounts.set(key, count);
     }
     for (const [key, set] of book.sets) {
-      for (let i = 0; i < stages.length; i++) {
-        const stage = stages[i];
-        if (set.counts[stage].openedOrders - set.counts[stage].closedOrders !== (heldCounts.get(key)?.[i] ?? 0))
+      if ((heldDeferred.get(key) ?? 0) > (set.execDeferred ?? 0)) throw new TypeError("invalid deferred Exec receipt count");
+      for (const stage of stagesFor(set.real !== undefined)) {
+        const stats = set.counts[stage]!;
+        if (stats.openedOrders - stats.closedOrders !== (heldCounts.get(key)?.[stage] ?? 0))
           throw new TypeError("invalid processed held-order count");
       }
     }

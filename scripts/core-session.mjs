@@ -50,6 +50,7 @@ import { dirname, join } from "node:path";
 import { columnarStore, pruneFeed, RANK_TF, readStored, boundedReplayFeed, readSessionFeed } from "./lib/session-feed.mjs";
 import { closesIn } from "./lib/candles.mjs";
 import { captureSignalProgress } from "./lib/signal-progress.mjs";
+import { mappedRows } from "./lib/lazy-rows.mjs";
 import {
   iterateSessionTapeTrades,
   iterateSessionArray,
@@ -503,7 +504,7 @@ async function runVariants(rt, sim) {
     // block.auto: each relation × count's record at the end (results@PF, + raises / - does not / ? undecided)
     if (extra && res.blockAuto?.length)
       process.stderr.write(`    block auto: ${res.blockAuto.filter((x) => x.n > 0).map((x) =>
-        `${x.key} ${x.n}@${Number.isFinite(x.pf) ? x.pf.toFixed(2) : "inf"}${x.raise === null ? "?" : x.raise ? "+" : "-"}`).join(" · ")}\n`);
+        `${x.key} ${x.n}@${x.state === "no-loss" ? "no loss" : Number.isFinite(x.pf) ? x.pf.toFixed(2) : "unavailable"}${x.raise === null ? "?" : x.raise ? "+" : "-"}`).join(" · ")}\n`);
     const summary = summarizeRun(res, sim.startT, sim.endT);
     res = null;
     return { summary, ms: Date.now() - ts };
@@ -927,6 +928,11 @@ async function runEngine() {
     if (Date.now() - lastLog > 30_000) {
       lastLog = Date.now();
       process.stderr.write(`  [${Math.round((Date.now() - t0) / 1000)} s] ${progressLine()}\n`);
+      if (process.env.CTS_CORE_TAPE_MEMORY_TRACE === "1") {
+        const m = process.memoryUsage(), mb = (n) => Math.round(n / 1048576);
+        process.stderr.write(`[session-memory] ${JSON.stringify({ rssMb: mb(m.rss), heapMb: mb(m.heapUsed),
+          externalMb: mb(m.external), buffersMb: mb(m.arrayBuffers), stage: rt.status.stage })}\n`);
+      }
     }
   }
   // the dump reads the paper step's seats (rt.paper.selected), and that step runs after the compute in the same
@@ -973,6 +979,7 @@ async function runEngine() {
   clearInterval(rssT);
   const sim = rt.sim;
   if (!sim) throw new Error("no simulated run");
+  const processedStageEvidence = sim.processedStages ?? sim.processedStageSummary;
   // the symbols the reported compute covered (every tape carries its universe)
   const uni = new Set();
   const seenSyms = new Set();
@@ -1549,6 +1556,20 @@ async function runEngine() {
       .filter((x) => x.checks)
       .map((x) => ({ t: x.t, real: x.real, checks: x.checks })),
     validationSummary: (sim.steps ?? []).map((x) => ({ t: x.t, summary: x.validationSummary ?? null })),
+    // The modeled owned-stage result is a different cohort from the raw tape-history checks above.
+    // Persist its bounded aggregate, not the potentially very large per-set snapshot, in the report.
+    processedStageProgress: processedStageEvidence ? {
+      basis: processedStageEvidence.basis, at: processedStageEvidence.at,
+      coverageScope: processedStageEvidence.coverageScope,
+      warmup: sim.processedWarmup ?? null,
+      ...(sim.processedWarmupActivity && { warmupActivity: sim.processedWarmupActivity }),
+      reportDetail: sim.processedStageSummary ? "summary-only" : "full-result-aggregate",
+      seededFromCandidates: processedStageEvidence.seededFromCandidates,
+      validation: processedStageEvidence.validation, real: processedStageEvidence.real,
+      ...(processedStageEvidence.exec && { exec: processedStageEvidence.exec }),
+      ...(processedStageEvidence.lanes && { lanes: processedStageEvidence.lanes }),
+      ...(processedStageEvidence.windowGrid && { windowGrid: processedStageEvidence.windowGrid }),
+    } : null,
     // every step per range: tapes, configs validated, candidates, orders taken (the continuity of each range)
     stepsByRange: (sim.steps ?? []).map((x) => ({ t: x.t, byRange: x.byRange ?? null })),
     // the tape trades of every config that was validated at a step or executed (measurement: the lookback and the
@@ -3725,6 +3746,7 @@ const ENABLED_RANGES = [
   .filter(([k]) => raw.settings.ranges?.[k])
   .map(([, l]) => l);
 const report = {
+  processedStageProgress: raw.processedStageProgress ?? null,
   evidence: {
     kind: "simulated",
     pfBasis: "net-returns",
@@ -3900,6 +3922,36 @@ const feasText = T.feasible
   ? ""
   : ` · **infeasible: margin exceeded equity** (${T.marginOver.minutes} min, first ${hm(T.marginOver.firstT)} UTC, max margin ÷ equity ${f2(T.marginOver.maxRatio)}×)`;
 const sigOn = !!signalsOn;
+const ownedStages = raw.processedStageProgress;
+const ownedStagesEnabled = !!(ownedStages || raw.settings?.wfPatch?.processedStages || raw.settings?.effectiveWf?.processedStages);
+const ownedHistoryText = (() => {
+  const { indicatorStartT, evaluationFromT, tradeStartT } = raw.settings?.provenance ?? {};
+  const baseCutT = ownedStages?.warmup?.baseCutT ?? tradeStartT;
+  if (![indicatorStartT, evaluationFromT, baseCutT].every(Number.isFinite)) return "";
+  const warmupH = Math.max(0, evaluationFromT - indicatorStartT) / H;
+  const baseH = Math.max(0, baseCutT - Math.max(evaluationFromT, indicatorStartT)) / H;
+  return ` Recorded candle timestamps span ${+warmupH.toFixed(2)} h of indicator-only warmup and ${+baseH.toFixed(2)} h of evaluated history before the Base snapshot.`;
+})();
+const ownedWarmup = ownedStages?.warmupActivity;
+const ownedWarmupText = ownedWarmup ? ` Its ${ownedWarmup.pricedCandidates} priced candidates produced ${ownedWarmup.entries.base} modeled entries. Of these, ${ownedWarmup.closedBeforeScore.base} reaching Base, ${ownedWarmup.closedBeforeScore.main} reaching Main, ${ownedWarmup.closedBeforeScore.real} reaching Real and ${ownedWarmup.closedBeforeScore.exec} reaching Exec closed before scoring.` : "";
+const ownedGrid = ownedStages?.windowGrid;
+const ownedGridText = ownedGrid
+  ? ` Each stage denominator includes its config × symbol × direction × window paths. Path choices per stage are Base ${ownedGrid.choices.base}, Main ${ownedGrid.choices.validation}, Real ${ownedGrid.choices.real} and Exec ${ownedGrid.choices.exec}. Separate opposite orders reached Main ${ownedGrid.inverseEntries} times and Exec ${ownedGrid.inverseExecEntries} times. ${ownedGrid.oppositeSourceMissing} negative Main path decisions lacked a separately priced source.`
+  : "";
+const stageCoverageText = (label, c) => {
+  if (!c || !Number.isSafeInteger(c.contexts) || !Number.isSafeInteger(c.qualified)) return `${label}: unavailable`;
+  const percent = c.contexts ? `${(100 * c.qualified / c.contexts).toFixed(2)}%` : "unavailable";
+  const m = validationProgressOf(c.passingWindows, ownedStages.at, "modeled-processed-context");
+  const pf = Number.isFinite(m?.setPf?.finiteMean) ? m.setPf.finiteMean.toFixed(4) : "unavailable";
+  const windows = c.passingWindows;
+  const pooled = windows?.closes ? pfStr(windows.gp, windows.gl, windows.closes) : "unavailable";
+  const parent = c.parentBlocked ? ` (${c.parentBlocked} with a non-qualifying predecessor)` : "";
+  const opposite = c.oppositeSourceUnavailable ? ` (${c.oppositeSourceUnavailable} with no opposite Main source)` : "";
+  return `${label}: ${c.qualified} / ${c.contexts} contexts qualified (${percent}); insufficient ${c.insufficient}${parent}, failed ${c.failed}, unknown ${c.unknown}${opposite}; pooled passing-window PF ${pooled}, finite passing-window mean PF ${pf}, no-loss contexts ${m?.setPf?.noLossSets ?? "unavailable"}`;
+};
+const ownedStagesText = !ownedStagesEnabled ? "" : ownedStages
+  ? `End-of-run owned modeled stages — ${stageCoverageText("Main", ownedStages.validation)}; ${stageCoverageText("Real", ownedStages.real)}${ownedStages.exec ? `; ${stageCoverageText("Exec", ownedStages.exec)}` : ""}. Funded execution and hourly results have their own cohorts.${ownedHistoryText}${ownedGridText}${ownedStages.warmup ? ` Modeled stage warmup ran from ${new Date(ownedStages.warmup.fromT).toISOString()} to ${new Date(ownedStages.warmup.untilT).toISOString()} against a Base snapshot cut at ${new Date(ownedStages.warmup.baseCutT).toISOString()}; historical positions do not spend the reported funded account.` : ""}${ownedWarmupText}${ownedStages.reportDetail === "summary-only" ? " The modeled per-set checkpoint was not retained in this summary-only run." : ""}`
+  : "Owned modeled-stage aggregates were not retained in this archived session; do not infer them from the historical configuration checks.";
 const lines = [
   `# Simulated trading session — ${symText}, ${preH} h pre-historic + ${runH} h run (${tacticsLabel}, signals ${sigOn ? "on" : "off"})`,
   ``,
@@ -3918,7 +3970,13 @@ const lines = [
   `**Virtual diagnostic:** ${T.virtual.n} closes · Return PF ${pfStr(T.virtual.gpR, T.virtual.glR, T.virtual.n)} before funding allocation; ${T.zeroAllocatedOrders} zero allocations and ${T.unknownAllocations} unknown allocations. Position episodes and explicitly virtual counts describe the native virtual book. Funded opening/settlement totals and headline occupancy use verified allocations; PF uses funded settled orders.`,
   baseGateMd(E),
   baseWhyMd(E),
-  afterBaseMd(E, raw.tapeAgg, trades),
+  ...(ownedStagesEnabled ? [`**Owned modeled stages:** ${ownedStagesText} Hourly configuration checks below use raw historical tapes, not the owned processed-stage book.`, ``] : []),
+  ownedStagesEnabled ? afterBaseMd(E, raw.tapeAgg, trades)
+    .replace("After each evaluation: PF and sets validated", "Historical config checks and funded execution")
+    .replace("Validation: the sets validated at the run start", "Historical checks: the configs passing their raw-history gates at the run start")
+    .replace("Validation percentages use", "Historical config percentages use")
+    .replace("post-Base validation PF", "historical config-validation PF")
+    .replace("sets validated (%)", "historical configs passed (%)") : afterBaseMd(E, raw.tapeAgg, trades),
   stepsRangeMd(raw.stepsByRange),
   `## Hour by hour`,
   ``,
@@ -4332,6 +4390,9 @@ const data = clean({
   settings: report.settings,
   engine: minuteSelection ? { ...raw.engine, signalSteps: [] } : raw.engine,
   evalStats: raw.tapeAgg?.evalStats ?? null,
+  processedStageProgress: raw.processedStageProgress ?? null,
+  ownedStagesEnabled,
+  ownedStagesText,
   validationProgress: (raw.validationSummary ?? []).map((x) => ({
     t: x.t, progress: validationProgressOf(x.summary, x.t), failures: x.summary?.failures ?? null,
   })),
@@ -4492,8 +4553,9 @@ if (raw.frozenBlockComparison)
   };
 // Exact allocations from this report's shared capped book, without rounding individual small P&L slices.
 // A Signal contribution uses these same allocations; it never invents a second independently sized balance.
+const allocationRows = (rows, project) => flag("chunk-allocations") ? mappedRows(rows, project) : rows.map(project);
 if (flag("signal-progress") || flag("chunk-allocations"))
-  data.sizedOrders = trades.map((x, closeIndex) => {
+  data.sizedOrders = allocationRows(trades, (x, closeIndex) => {
     const key = orderKey(x),
       known = sized.units.has(key),
       unitNotional = known ? sized.units.get(key) : null;
@@ -4519,7 +4581,7 @@ if (flag("signal-progress") || flag("chunk-allocations"))
     };
   });
 if (flag("signal-progress") || flag("chunk-allocations"))
-  data.sizedOpenOrders = openEnd.map((x, openIndex) => {
+  data.sizedOpenOrders = allocationRows(openEnd, (x, openIndex) => {
     const key = orderKey(x),
       known = sized.units.has(key),
       unitNotional = known ? sized.units.get(key) : null;
@@ -4676,6 +4738,7 @@ function renderWriteup(d, dir) {
     sessionQualificationEvidence(d.evidence?.qualification).note,
     d.evidence?.returns?.note ?? sessionReturnEvidence({}).note,
     `The combined account PF includes all funded settled orders, including Signals. The Base-to-execution benchmark below isolates engine orders from Base-qualified pairs whose configs passed post-Base validation; Signal orders use their own activation and qualification and remain separate. Pre-validation/unfiltered candidate PF is diagnostic only.`,
+    ...(ownedStagesEnabled ? [ownedStagesText, `Hourly configuration checks describe raw historical tapes, not the owned modeled-stage book.`] : []),
     ``,
     `Settings (desk, ${s.desk ?? "flags"}): stage gate min PF ${s.gates.minPf}, focus ${s.focus === 0 ? "every combo" : s.focus + " pairs"}, disabled kinds ${s.disabledKinds.length ? s.disabledKinds.join(", ") : "none"}, ` +
       `toggles ${Object.entries(s.toggles)
@@ -5413,7 +5476,7 @@ ${sec(
 <div class="card" style="margin-top:14px"><h3>Cumulative net per strategy type</h3><div class="cap">Closed orders, $, at every hour end</div><div class="chart" id="cTy"></div></div>
 `,
 )}
-${sec("hourly", "Hour by hour", `<p class="note">One row per hour (UTC). Settled orders and PF / net use the owned cohort <i>closed</i> in the hour; positions are native virtual symbol × direction episodes (opened / closed in the hour / open at its end). Entry requests and open-order counts are virtual diagnostics. DD % and DDT now are on the minute equity; DDR (hour) is the hour's own closed curve, cum columns add every hour so far. Click a header to sort.</p><div class="tw tall" id="tHours"></div><h3>Post-Base validation at each decision clock</h3><p class="note">All eligible configs, including failed evaluations, are counted at their actual decision time using only their own settled history. These repeated hourly cohorts are not unique-set totals. Passing-set mean PF, no-loss sets and pooled-window PF are separate from subsequent execution PF. Missing archived evidence remains unavailable.</p><div class="tw tall" id="tValidationHours"></div>`)}
+${sec("hourly", "Hour by hour", `<p class="note">One row per hour (UTC). Settled orders and PF / net use the owned cohort <i>closed</i> in the hour; positions are native virtual symbol × direction episodes (opened / closed in the hour / open at its end). Entry requests and open-order counts are virtual diagnostics. DD % and DDT now are on the minute equity; DDR (hour) is the hour's own closed curve, cum columns add every hour so far. Click a header to sort.</p><div class="tw tall" id="tHours"></div><h3>${D.ownedStagesEnabled ? "Historical configuration checks at each decision clock" : "Post-Base validation at each decision clock"}</h3><p class="note">${D.ownedStagesEnabled ? esc(D.ownedStagesText + " The hourly rows below evaluate raw hypothetical configuration history; they are not owned-stage validation results.") : "All eligible configs, including failed evaluations, are counted at their actual decision time using only their own settled history."} These repeated hourly cohorts are not unique-set totals. Passing-set mean PF, no-loss sets and pooled-window PF are separate from subsequent execution PF. Missing archived evidence remains unavailable.</p><div class="tw tall" id="tValidationHours"></div>`)}
 ${sec(
   "types",
   "Strategy types",

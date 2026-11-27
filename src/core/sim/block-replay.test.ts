@@ -68,7 +68,7 @@ function tapesOf(seed: number): ConfigTape[] {
   return out;
 }
 
-const base = defaultWalkForward(DEFAULT_SETTINGS);
+const base = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
 /** x01: Block overall over the pooled sources, ratio 0.5, 7 steps, max 4×, Block Active from level 5, auto window. */
 const x01Block: BlockConfig = {
   ...base.block,
@@ -83,6 +83,7 @@ const x01Block: BlockConfig = {
   steps: 7,
   window: 5,
   windowAuto: true,
+  windowIndependent: false, // the recorded x01 fixture used the shared legacy selection
   windowCandidates: [5, 10, 15, 25, 35],
   excludeKinds: ["axis"],
 };

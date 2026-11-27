@@ -53,7 +53,7 @@ const tape = (tag: "gn" | "lg" | "mn" | null, lose: number, tp = 1) => {
 };
 
 const opts = (rangeMinPf?: WalkForwardOptions["gates"]["rangeMinPf"]): WalkForwardOptions => {
-  const o = defaultWalkForward(DEFAULT_SETTINGS);
+  const o = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
   return {
     ...o,
     gates: { ...o.gates, minPf: 1.05, minGreen: 0, rangeMinPf, stepPf: { enabled: false, ratio: .2, max: 2 } },

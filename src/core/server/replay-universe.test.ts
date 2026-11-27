@@ -68,3 +68,36 @@ describe("complete frozen replay universe", () => {
     }), /unconnected replays only/);
   });
 });
+
+describe("unavailable replay history is excluded after a bounded number of tries", () => {
+  it("a symbol whose history stays too short stops blocking the complete replay universe", async () => {
+    const SHORT = SYMBOLS[3];
+    const requested: string[] = [];
+    const feed: Partial<MarketFeed> = {
+      tickers: async () => SYMBOLS.map((sym, i) => ({ sym, last: 1, quoteVol: 1e9 - i, changePct: 0 })),
+      history: async (sym, tf, bars) => {
+        requested.push(sym);
+        return sym === SHORT ? syntheticCandles(sym, tf, 3, END) : syntheticCandles(sym, tf, bars, END);
+      },
+      klines: async () => [],
+    };
+    const runtime = new CoreRuntime(new CoreDb(":memory:"), settings, {
+      market: "bingx", priceStream: null, feed, replay: true, completeReplayUniverse: true,
+    });
+    const internals = runtime as unknown as { gen: number; syncMarket(gen: number): Promise<boolean> };
+    try {
+      let done = false;
+      for (let i = 0; i < 6 && !done; i++) {
+        try { done = await internals.syncMarket(internals.gen); } catch { /* retry until the bounded tries run out */ }
+      }
+      assert.equal(done, true, "the replay universe completes instead of retrying the short symbol forever");
+      assert.equal(runtime.candles.has(SHORT), false);
+      assert.equal(runtime.candles.size, SYMBOLS.length - 1);
+      assert.equal(runtime.status.computes, 0);
+      const attempts = requested.filter((s) => s === SHORT).length;
+      assert.ok(attempts <= 3, `the short symbol is tried at most three times (tried ${attempts})`);
+    } finally {
+      runtime.dispose();
+    }
+  });
+});

@@ -1,3 +1,4 @@
+import { DEFAULT_RELATE_RECOVERY_TRADES, DEFAULT_RELATE_RECOVERY_DRAWDOWN, recoveryQualified, type RelateTrial } from "../../../shared/cts-relate/recovery.ts";
 import type { Protect, RelateAdjustmentConfig, RelateParts, RelateSource, StratKind } from "../domain/types.ts";
 import { MAX_EXTERNAL_STACK } from "../config.ts";
 import { exitScopeSuffix } from "../exit-scope.ts";
@@ -66,6 +67,10 @@ export const RELATE_SOURCES: readonly RelateSource[] = [
   "config", "overall", "symbol", "direction", "indication", "strategy", "coordination", "range",
 ];
 
+function activeRelateSources(config: RelateAdjustmentConfig): readonly RelateSource[] {
+  return config.scope === "overall" ? RELATE_SOURCES : RELATE_SOURCES.filter(source => config.sources[source] !== false);
+}
+
 export interface RelateIdentity {
   cfg: string;
   sym: string;
@@ -78,6 +83,7 @@ export interface RelateIdentity {
 
 export interface RelateBookEntry extends RelateIdentity {
   r: number;
+  closedAt?: number;
   accepted?: boolean;
   /** True only when the entry's relation parts were captured, including an explicitly neutral entry. */
   relateMeasured?: boolean;
@@ -192,26 +198,27 @@ export function capRelateParts(parts: RelateParts, total: number, shadowCap = MA
   const out: RelateParts = {};
   for (const { source, part } of entries) {
     const extra = Math.min(left, Math.round(Math.max(0, part.volume - base) * scale * 1e12) / 1e12);
-    out[source] = { volume: Math.min(totalUnits, Math.round((baseUnits + extra) * 1e12) / 1e12), level: part.level };
+    out[source] = { volume: Math.min(totalUnits, Math.round((baseUnits + extra) * 1e12) / 1e12), level: part.level, ...(part.trialSize !== undefined && { trialSize: part.trialSize }) };
     left = Math.max(0, left - extra);
   }
   for (const source of RELATE_SOURCES) {
     const part = parts[source];
     if (part?.shadow && Number.isFinite(part.volume) && part.volume > 0 &&
         Number.isInteger(part.level) && part.level >= 0 && part.level <= 15)
-      out[source] = { volume: Math.max(baseUnits, Math.min(cap, part.volume)), level: part.level, shadow: true };
+      out[source] = { volume: Math.max(baseUnits, Math.min(cap, part.volume)), level: part.level, shadow: true, ...(part.trialSize !== undefined && { trialSize: part.trialSize }) };
   }
   return out;
 }
 
 /**
- * Per-relation auto search over 30 ratios × 14 step depths × 7 Active thresholds. The scoring pass groups
+ * Per-relation Auto search over configured depths and Active thresholds at the smallest increment. The scoring pass groups
  * historical positive/negative returns by their causal preceding win streak, so candidate scoring is bounded and
  * does not replay every candidate against every order. A candidate must clear the configured PF and sample floor.
  */
-function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig): RelateAutoChoice | null {
-  const tail = rows.slice(-Math.min(c.lastN, rows.length));
-  if (tail.length < c.minTrades || !(relateStats(tail).pf >= c.minPf)) return null;
+function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig, stats: RelateSourceStats): RelateAutoChoice | null {
+  const tail = rows;
+  const floor = Math.max(c.minPf, 1.000001);
+  if (tail.length < c.minTrades || !(stats.pf >= floor)) return null;
 
   const gpByStage = Array<number>(16).fill(0);
   const glByStage = Array<number>(16).fill(0);
@@ -223,7 +230,7 @@ function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig): RelateA
     nByStage[stage]++;
     if (r > 0) { gpByStage[stage] += r; winByStage[stage]++; }
     else if (r < 0) glByStage[stage] -= r;
-    priorStreak = r > 0 ? Math.min(15, priorStreak + 1) : 0;
+    priorStreak = r < 0 ? Math.min(15, priorStreak + 1) : 0;
   }
 
   const gpSuffix = Array<number>(17).fill(0);
@@ -239,16 +246,12 @@ function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig): RelateA
 
   let best: RelateAutoChoice | null = null;
   const stackCap = boundedStack(c.maxStack);
-  // For this existing unit-return scoring rule, ratio never changes PF, positive rate or sample size. The tie
-  // break always prefers 0.2, and all weighted sums are nonnegative and monotone in ratio: if the 0.2 candidate
-  // overflows, a larger ratio cannot make that same candidate finite. Fold those dominated ratio iterations while
-  // retaining the exact same winner and its separate hypothetical sized-PF diagnostic. This is not a causal
-  // funded-feedback search; a future causal scorer must evaluate each ratio independently.
+  // Auto uses the smallest supported increment and calibrates depth and Active per relation.
   const ratio = 0.2;
   const ladder = Array<number>(16).fill(1);
   for (let stage = 1; stage <= 15; stage++)
     ladder[stage] = Math.min(stackCap, ladder[stage - 1] * (1 + ratio));
-  for (let steps = 2; steps <= 15; steps++) {
+  for (let steps = 2; steps <= c.steps; steps++) {
     const sizedGp = Array<number>(17).fill(0);
     const sizedGl = Array<number>(17).fill(0);
     for (let stage = 15; stage >= 0; stage--) {
@@ -256,7 +259,7 @@ function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig): RelateA
       sizedGp[stage] = sizedGp[stage + 1] + gpByStage[stage] * volume;
       sizedGl[stage] = sizedGl[stage + 1] + glByStage[stage] * volume;
     }
-    for (let activeStep = 0; activeStep <= Math.min(6, steps); activeStep++) {
+    for (let activeStep = c.activeStep; activeStep <= Math.min(6, steps); activeStep++) {
       const n = nSuffix[activeStep];
       const gp = gpSuffix[activeStep];
       const gl = glSuffix[activeStep];
@@ -266,8 +269,9 @@ function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig): RelateA
           !Number.isFinite(weightedGp) || !Number.isFinite(weightedGl)) continue;
       const pf = gl > 0 ? gp / gl : gp > 0 ? Infinity : 0;
       const positiveRate = winSuffix[activeStep] / n;
-      if (!(pf >= c.minPf) || !(gp - gl > 0)) continue;
+      if (!(pf >= floor) || !(gp > gl)) continue;
       const sizedPf = weightedGl > 0 ? weightedGp / weightedGl : weightedGp > 0 ? Infinity : 0;
+      if (!(sizedPf >= floor) || !(weightedGp > weightedGl)) continue;
       const candidate = { ratio, steps, activeStep, pf, sizedPf, positiveRate, n };
       const stepDistance = Math.abs(steps - c.steps);
       const bestDistance = best ? Math.abs(best.steps - c.steps) : Infinity;
@@ -284,10 +288,22 @@ function chooseAuto(rows: readonly number[], c: RelateAdjustmentConfig): RelateA
   return best;
 }
 
+interface RelateTrialWindow {
+  latestAt: number;
+  revision: number;
+  rows: RelateTrial[];
+  revisions: number[];
+}
+
 /** Causal settled-order history for the Relate volume adjustment. Only accepted, closed entries are admitted. */
 export class RelateBook {
   private readonly histories = new Map<string, number[]>();
-  private readonly previous = new Map<string, { volume: number; level: number; positive: boolean }>();
+  private readonly trials = new Map<string, RelateTrialWindow>();
+  private readonly cachedStats = new Map<string, RelateSourceStats>();
+  private readonly selected: readonly RelateSource[];
+  private readonly tracked: readonly RelateSource[];
+  private readonly totalWeight: number;
+  private readonly previous = new Map<string, { volume: number; level: number; loss: boolean }>();
   private readonly autoCache = new Map<string, { revision: number; choice: RelateAutoChoice | null }>();
   private readonly keyRevisions = new Map<string, number>();
   private shadowCloses = 0;
@@ -295,11 +311,27 @@ export class RelateBook {
 
   constructor(config: RelateAdjustmentConfig) {
     this.config = config;
+    this.selected = activeRelateSources(config);
+    this.tracked = RELATE_SOURCES.filter(source => source === "config" || this.selected.includes(source));
+    this.totalWeight = this.selected.reduce((sum, source) => sum + this.weight(source), 0);
+  }
+
+  private weight(source: RelateSource): number {
+    const value = this.config.volumeFactors?.[source] ?? 1;
+    return Number.isFinite(value) ? Math.min(8, Math.max(0, value)) : 0;
+  }
+
+  private recent(key: string, rows: readonly number[]): RelateSourceStats {
+    const cached = this.cachedStats.get(key);
+    if (cached) return cached;
+    const stats = relateStats(rows);
+    if (rows.length >= this.config.minTrades) this.cachedStats.set(key, Object.freeze(stats));
+    return stats;
   }
 
   private recordPrevious(key: string, r: number, part: RelateParts[RelateSource], measured: boolean, base: number | undefined): void {
     if (!Number.isFinite(r)) this.previous.delete(key);
-    else if (r <= 0) this.previous.set(key, { volume: 1, level: 0, positive: false });
+    else if (r >= 0) this.previous.set(key, { volume: 1, level: 0, loss: false });
     else {
       const recorded = part ?? { volume: base ?? NaN, level: 0 };
       const tolerance = Number.isFinite(base) ? Math.max(1, Math.abs(base!)) * 1e-10 : 0;
@@ -308,26 +340,50 @@ export class RelateBook {
           recorded.volume <= MAX_EXTERNAL_STACK && Number.isInteger(recorded.level) && recorded.level >= 0 && recorded.level <= 15 &&
           recorded.volume + tolerance >= (base ?? Infinity) &&
           (recorded.level > 0 || Math.abs(recorded.volume - base!) <= tolerance))
-        this.previous.set(key, { volume: recorded.volume, level: recorded.level, positive: true });
+        this.previous.set(key, { volume: recorded.volume, level: recorded.level, loss: true });
       else this.previous.delete(key);
+    }
+  }
+
+  private recordTrial(key: string, e: RelateBookEntry, source: RelateSource): void {
+    let window = this.trials.get(key);
+    if (!window && e.closedAt !== undefined && Number.isFinite(e.closedAt)) {
+      window = { latestAt: 0, revision: 0, rows: [], revisions: [] };
+      this.trials.set(key, window);
+    }
+    if (!window) return;
+    const revision = ++window.revision;
+    const part = e.relateParts?.[source];
+    if (e.closedAt !== undefined && Number.isFinite(e.closedAt) && e.closedAt >= window.latestAt) {
+      window.latestAt = e.closedAt;
+      if (e.relateMeasured === true && part && part.level > 0 &&
+          part.trialSize !== undefined && Number.isFinite(part.trialSize) && part.trialSize >= 1) {
+        window.rows.unshift([e.closedAt, part.level, Number.isFinite(e.r) ? e.r : null, part.trialSize]);
+        window.revisions.unshift(revision);
+      }
+    }
+    while (window.revisions.length && window.revisions.at(-1)! <= revision - this.config.lastN) {
+      window.rows.pop();
+      window.revisions.pop();
     }
   }
 
   add(e: RelateBookEntry): void {
     if (e.accepted !== true) return;
     const keys = sourceKeys(e);
-    for (const source of RELATE_SOURCES) {
-      if (this.config.sources[source] === false) continue;
+    for (const source of this.tracked) {
       const key = keys[source];
       if (!key) continue;
       let rows = this.histories.get(key);
       if (!rows) this.histories.set(key, (rows = []));
       rows.push(Number.isFinite(e.r) ? e.r : NaN);
+      this.recordTrial(key, e, source);
       if (rows.length > this.config.lastN) rows.splice(0, rows.length - this.config.lastN);
       this.recordPrevious(key, e.r, e.relateParts?.[source], e.relateMeasured === true, e.relateBase);
       const revision = (this.keyRevisions.get(key) ?? 0) + 1;
       this.keyRevisions.set(key, revision);
       this.autoCache.delete(key);
+      this.cachedStats.delete(key);
     }
   }
 
@@ -336,26 +392,35 @@ export class RelateBook {
     if (e.accepted === true || e.relateMeasured !== true) return;
     const keys = sourceKeys(e);
     let observed = false;
-    for (const source of RELATE_SOURCES) {
+    for (const source of this.selected) {
       const key = keys[source];
       const part = e.relateParts?.[source];
-      if (this.config.sources[source] === false || !key || !part?.shadow) continue;
+      if (!key || !part?.shadow) continue;
       this.recordPrevious(key, e.r, part, true, e.relateBase);
       observed = true;
     }
     if (observed) this.shadowCloses++;
   }
 
-  private auto(key: string, rows: readonly number[]): RelateAutoChoice | null {
+  private auto(key: string, rows: readonly number[], stats: RelateSourceStats): RelateAutoChoice | null {
     const cached = this.autoCache.get(key);
     const revision = this.keyRevisions.get(key) ?? 0;
     if (cached?.revision === revision) return cached.choice;
-    const choice = chooseAuto(rows, this.config);
+    const choice = chooseAuto(rows, this.config, stats);
     this.autoCache.set(key, { revision, choice });
     return choice;
   }
 
-  decide(x: RelateIdentity, base = 1): RelateDecision {
+  /** Preview the uncensored volume calculation for diagnostics. */
+  preview(x: RelateIdentity, base = 1): RelateDecision {
+    return this.plan(x, base);
+  }
+
+  decide(x: RelateIdentity, base: number, before: number): RelateDecision {
+    return this.plan(x, base, Number.isFinite(before) ? before : 0);
+  }
+
+  private plan(x: RelateIdentity, base: number, before?: number): RelateDecision {
     const levels: Partial<Record<RelateSource, number>> = {};
     const stats: Partial<Record<RelateSource, RelateSourceStats>> = {};
     const choices: Partial<Record<RelateSource, RelateAutoChoice>> = {};
@@ -364,31 +429,48 @@ export class RelateBook {
       return { volume: 1, allowed: false, level: 0, levels, stats, choices, parts: {}, maxStack: cap };
     const baseUnits = Math.min(base, cap);
     const extras: Array<{ source: RelateSource; level: number; volume: number; activeStep: number;
-      qualified: boolean; previousKnown: boolean }> = [];
+      qualified: boolean; previousKnown: boolean; trialSize?: number }> = [];
     const keys = sourceKeys(x);
-    for (const source of RELATE_SOURCES) {
-      if (this.config.sources[source] === false) continue;
+    const divisor = this.config.mode === "shared" ? this.totalWeight : 1;
+    const minTrials = this.config.recoveryMinTrades ?? DEFAULT_RELATE_RECOVERY_TRADES;
+    const maxDrawdown = this.config.recoveryMaxDrawdown ?? DEFAULT_RELATE_RECOVERY_DRAWDOWN;
+    const timed = before !== undefined;
+    let exactRecovery = false;
+    const floor = Math.max(this.config.minPf, 1.000001);
+    const exactKey = keys.config!;
+    const own = this.recent(exactKey, this.histories.get(exactKey) ?? []);
+    const exactQualified = own.n >= this.config.minTrades && own.pf >= floor;
+    for (const source of this.tracked) {
       const key = keys[source];
       if (!key) continue;
       const rows = this.histories.get(key) ?? [];
-      const tail = rows.slice(-Math.min(rows.length, this.config.lastN));
-      const recent = relateStats(tail);
+      const recent = source === "config" ? own : this.recent(key, rows);
       stats[source] = recent;
-      const choice = this.config.auto ? this.auto(key, rows) : null;
+      const selected = this.selected.includes(source);
+      const choice = selected && exactQualified && this.config.auto ? this.auto(key, rows, recent) : null;
       if (choice) choices[source] = choice;
       const ratio = choice?.ratio ?? this.config.ratio;
       const steps = choice?.steps ?? this.config.steps;
-      const activeStep = choice?.activeStep ?? (this.config.auto ? 0 : this.config.activeStep);
-      const qualified = this.config.auto
+      const activeStep = choice?.activeStep ?? this.config.activeStep;
+      const eligible = selected && this.weight(source) > 0 && exactQualified && (this.config.auto
         ? choice !== null
-        : recent.n >= this.config.minTrades && recent.pf >= this.config.minPf;
-      const prior = this.previous.get(key);
-      const level = qualified && prior?.positive ? Math.min(steps, prior.level + 1) : 0;
-      const volume = qualified && prior?.positive
+        : recent.n >= this.config.minTrades && recent.pf >= floor);
+      const evidence = this.trials.get(key);
+      const prior = !timed || (evidence?.latestAt ?? 0) < before ? this.previous.get(key) : undefined;
+      const progress = (timed || eligible) && prior?.loss;
+      const level = progress ? Math.min(steps, prior.level + 1) : 0;
+      const volume = progress
         ? Math.max(baseUnits, Math.min(cap, prior.level < steps ? prior.volume * (1 + ratio) : prior.volume))
         : baseUnits;
+      const share = selected && this.weight(source) > 0 && divisor > 0 ? this.weight(source) / divisor : 1;
+      const trialSize = timed && level > 0
+        ? Math.min(cap, baseUnits + (volume - baseUnits) * share) / baseUnits : undefined;
+      const proved = timed && exactQualified && recent.pf >= floor && level >= Math.max(1, activeStep) &&
+        !!evidence && recoveryQualified(evidence.rows, level, before, 0, minTrials, floor, maxDrawdown);
+      if (source === "config") exactRecovery = proved && level >= activeStep;
+      const qualified = eligible && (!timed || exactRecovery && proved);
       levels[source] = level;
-      extras.push({ source, level, volume, activeStep, qualified, previousKnown: !!prior });
+      extras.push({ source, level, volume, activeStep, qualified, previousKnown: !!prior, trialSize });
     }
 
     // Before a relation has qualified evidence and a known previous entry, base orders can build that evidence.
@@ -398,16 +480,23 @@ export class RelateBook {
     // recorded as shadow below, so its evidence keeps building), but it never vetoes the entry's own base volume —
     // Normal / Trailing / DCA / Axis keep trading their unit. Only an unknown base volume rejects (above).
     const allowed = true;
-    // Shared divides the combined requested additions by the number of independently ready relations. Keep
-    // every source's allocated portion, so the next step compounds from its own recorded effective volume.
-    const divisor = this.config.mode === "shared" ? Math.max(1, admitted.length) : 1;
     const requested: RelateParts = {};
-    for (const x of admitted) if (x.level > 0)
-      requested[x.source] = { volume: baseUnits + Math.max(0, x.volume - baseUnits) / divisor, level: x.level };
+    let chosen = 0;
+    for (const x of admitted) if (x.level > 0 && divisor > 0) {
+      const extra = Math.max(0, x.volume - baseUnits) * this.weight(x.source) / divisor;
+      requested[x.source] = { volume: baseUnits + extra, level: x.level,
+        ...(x.trialSize !== undefined && { trialSize: x.trialSize }) };
+      chosen += extra;
+    }
     for (const x of ready)
       if (x.activeStep > 0 && x.level < x.activeStep)
         requested[x.source] = { volume: x.volume, level: x.level, shadow: true };
-    const chosen = admitted.reduce((sum, x) => sum + Math.max(0, x.volume - baseUnits) / divisor, 0);
+    if (timed) for (const x of extras) {
+      if (!requested[x.source] && x.trialSize !== undefined)
+        requested[x.source] = { volume: baseUnits * x.trialSize, level: x.level, shadow: true, trialSize: x.trialSize };
+      else if (requested[x.source]?.shadow && x.trialSize !== undefined)
+        requested[x.source]!.trialSize = x.trialSize;
+    }
     const total = Math.min(cap, Math.round((baseUnits + chosen) * 1e12) / 1e12);
     const multiplier = total / base;
     return {

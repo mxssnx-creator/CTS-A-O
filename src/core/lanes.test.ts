@@ -241,7 +241,7 @@ describe("short-history lanes are judged on the history they have", () => {
       [],
     );
     // Frozen historical clock-window contract; new count windows never clip by this horizon.
-    const o = { ...defaultWalkForward({...DEFAULT_SETTINGS,gates:{...DEFAULT_SETTINGS.gates,positionWindows:null}}), longH: 336, preGate: false, validLastN: 0 };
+    const o = { ...defaultWalkForward({...DEFAULT_SETTINGS,gates:{...DEFAULT_SETTINGS.gates,positionWindows:null}}), wideEnabled: true, longH: 336, preGate: false, validLastN: 0 };
     // without the history start: three of four sub-windows of the 14-day window are empty → rejected
     assert.equal(selectDurable([tape], now, o, new Set()).picks.length, 0);
     tape.fromT = 264 * H;
@@ -287,7 +287,7 @@ describe("Real seats per lane", () => {
     const strong = [mk("a@m30", 0.02, 0, 4), mk("b@m30", 0.02, 0, 5), mk("c@m30", 0.02, 0, 6)];
     const fast = mk("d@m1", 0.004, 264, 1);
     const o = {
-      ...defaultWalkForward(DEFAULT_SETTINGS),
+      ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true },
       preGate: false,
       portfolio: 2,
       laneSeats: 0,

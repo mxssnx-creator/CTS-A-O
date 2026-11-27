@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import type { Protect, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
 import { ProcessedSetBook, type ProcessedSetIdentity } from "./processed-set.ts";
-import { configDirectionEval, defaultWalkForward, lastNSideOk, makeTape, walkForward } from "./walkforward.ts";
+import { configDirectionEval, defaultWalkForward, execDecision, lastNSideOk, makeTape, processedMinPfForTape, walkForward } from "./walkforward.ts";
 import { NativeProcessedStageAdapter } from "../server/processed-stage-adapter.ts";
 
 // Reproduces the actual walk-forward controls on an artificial 8-symbol, 12h + 12h tape.
@@ -86,6 +86,24 @@ test("native processed replay excludes conflict-rejected wins from Main and Real
   assert.equal(native.skips.conflict, 14, "rejected winning siblings never enter a processed set");
 });
 
+test("processed admission learns from its Base-qualified entries while the raw Last-N sample is cold", () => {
+  const f = fixture(), { tape, decisionTime } = f;
+  const base = { ...f.options, normalBaseMinPf: 1.35,
+    gates: { ...f.options.gates, positionWindows: {base:40, main:40, real:12, entry:12,
+      scope:"context" as const, strictCounts:true, maxDrawdownPositions:40} } };
+  const context = {sym: f.identity.symbol, side: f.identity.side};
+  const legacy = execDecision(tape, decisionTime, base, context);
+  assert.deepEqual(legacy, {ok:false,why:"configValidation"});
+  const opts = { ...base, processedStages: { validationN: 12, realN: 12 } };
+  assert.deepEqual(execDecision(tape, decisionTime, opts, context), {ok:false,why:"processedUnavailable"});
+  const decision = execDecision(tape, decisionTime, opts, {...context,processedBase:true});
+  assert.equal(decision.ok,true,JSON.stringify(decision));
+  assert.ok(processedMinPfForTape(tape, opts)>=1.35);
+  const owned = new NativeProcessedStageAdapter(opts.processedStages, opts.cost);
+  assert.equal(owned.enter(tape,context.sym,context.side,decisionTime,processedMinPfForTape(tape,opts)).stage,"postBase",
+    "a cold owned Set learns while the order remains excluded from Active");
+});
+
 test("persistent owned paper Main → Real freezes entry stage and survives restart", () => {
   const tp = { id: "follow|ema-9-21@m1|native", kind: "normal", ind: "ema-9-21@m1" };
   const sym = "OWN-USDT", policy = { validationN: 1, realN: 1 }, minPf = 1.05;
@@ -104,6 +122,6 @@ test("persistent owned paper Main → Real freezes entry stage and survives rest
   assert.equal(native.settle(active.entryId, 15, -.03), "already-settled", "checkpoint replay is idempotent");
   const afterLoss = native.enter(tp, sym, 1, 16, minPf);
   assert.equal(afterLoss.stage, "postBase", "the settled loss blocks only later admission");
-  assert.equal(native.preview(tp, "SIBLING-USDT", 1, 16, minPf).stage, "postBase",
+  assert.equal(native.preview(tp, "SIBLING-USDT", 1, 16, minPf)!.stage, "postBase",
     "another symbol cannot borrow the owned parent window");
 });

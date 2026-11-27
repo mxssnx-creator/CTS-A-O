@@ -31,6 +31,7 @@ export interface Candle {
 
 export const INDICATION_KINDS = [
   "trend",
+  "trend-reversal",
   "break",
   "active",
   "direction",
@@ -173,6 +174,12 @@ export interface RangeGrid {
   trailOfTp: readonly number[];
   /** trailing variants use at least this stop ÷ target (a higher stop than the trail) */
   trailSlOfTp?: number;
+  /**
+   * Reach gate (0 / unset = off): a cell of this range enters only while the causal volatility can plausibly cover its
+   * target within its hold - ATR(14)/close x sqrt(hold bars) >= reachFrac x target. A target far beyond that range
+   * mostly closes on time or stop and pays the round-trip cost for nothing (research: short horizons are cost-bound).
+   */
+  reachFrac?: number;
   /** minimum absolute stop distance (fraction of price) */
   minSl?: number;
   /** minimum absolute trailing distance (fraction of price) */
@@ -297,20 +304,22 @@ export type RelateSource =
   | "range";
 
 /** Entry-time logical volume of one relation in original-base units. Shadow portions do not claim an execution. */
-export type RelateParts = Partial<Record<RelateSource, { volume: number; level: number; shadow?: true }>>;
+export type RelateParts = Partial<Record<RelateSource, { volume: number; level: number; shadow?: true; trialSize?: number }>>;
 
 /** Settled-order volume adjustment. It is deliberately disabled until a desk opts in. */
 export interface RelateAdjustmentConfig {
   enabled: boolean;
-  /** Average qualified relation additions, or sum independent additions. */
+  /** Normalize relation shares in Shared mode, or sum them in Additive mode. */
   mode: "shared" | "additive";
+  scope?: "selected" | "overall";
+  volumeFactors?: Partial<Record<RelateSource, number>>;
   /** Auto mode searches the supported ratio, depth and Active grids per relation. */
   auto: boolean;
   /** Each qualified step adds this fraction of the relation's last recorded volume (0.2–6, by 0.2). */
   ratio: number;
-  /** Maximum positive-result run used for the manual/automatic level (2–15). */
+  /** Maximum consecutive settled losses used for the manual/automatic level (2–15). */
   steps: number;
-  /** Skip entries below this positive-result step; 0 keeps the entry at base volume. */
+  /** Skip entries below this loss step; 0 keeps the entry at base volume. */
   activeStep: number;
   /** Minimum settled-order unit PF required before a relation can adjust size. */
   minPf: number;
@@ -318,6 +327,10 @@ export interface RelateAdjustmentConfig {
   lastN: number;
   /** Minimum sample before the PF window is judged; 60–lastN. */
   minTrades: number;
+  /** Minimum timed outcomes at the same loss step, shared between two chronological cohorts. */
+  recoveryMinTrades?: number;
+  /** Maximum drawdown as a fraction of gross sized profit in either recovery cohort. */
+  recoveryMaxDrawdown?: number;
   /** Modeled total multiplier ceiling, reserving capacity for intrinsic ladder fills as well as external factors. */
   maxStack: number;
   /** Maximum original-entry stop distance for a modeled Relate raise, as a fraction of entry. */
@@ -393,6 +406,8 @@ export type AxisRange = "atr" | "linear" | "geo" | "fib" | "volume";
 /** Tactics: causal entry filters and pacing applied to every combo's signal (Base, Main, Real, Live alike).
  *  Each one only removes entries; with all off the engine computes the plain signals. */
 export interface Tactics {
+  /** Minimum raw Signal onsets per day, averaged over seven complete preceding days (0 disables). */
+  signalMinDaily?: number;
   /** EU/US session only: signal bar opens 07:00–20:59 UTC */
   session: boolean;
   /** volatility regime: ATR% in the upper half of its last ~2 weeks of bars */
@@ -475,9 +490,13 @@ export interface BlockConfig {
    * choose the window by results: one book per candidate window, fed the same closes; each close counts for a window
    * when that window's level (from the closes before it) would have raised it. The window whose raised closes had the
    * best PF over its last `windowLookback` raised closes is the one in use (causal; `window` until every candidate has
-   * 30). Default off.
+   * the configured minimum). Enabled by default for independently evaluated source keys.
    */
   windowAuto?: boolean;
+  /** Evaluate each source key independently rather than using one shared auto-window winner. */
+  windowIndependent?: boolean;
+  /** Minimum settled, attributed observations needed for each candidate (30–5000). */
+  windowMinSamples?: number;
   /** candidate windows for windowAuto (1–500). Default 5, 10, 15, 25, 35. */
   windowCandidates?: number[];
   /** raised closes per candidate window that windowAuto judges on. Default 300. */
@@ -601,6 +620,8 @@ export interface Trade {
   vol?: number;
   /** Block level at execution (broker) or DCA legs added (sim) */
   level?: number;
+  /** Net unit return on the exact source tape before external execution sizing. */
+  unitR?: number | null;
   /** External execution multiplier (Block × relation × type factor); r / mult is the underlying strategy return. */
   mult?: number;
   /** Exact Block multiplier before coordination, strategy, range and Relate sizing. */
@@ -702,6 +723,8 @@ export interface BaseLastNStats {
   stop: number;
   invalid?: true;
   mdd?: number;
+  /** Exact chronological unit returns retained only when a signed Base policy needs them. */
+  signedReturns?: number[];
 }
 
 export interface Stats {
@@ -790,6 +813,8 @@ export interface EvalResult {
 }
 
 export interface Gates {
+  /** Base tape discovery keeps a cell when at least one exact symbol and side qualifies. */
+  baseContext?: { defaultWindow: boolean; blocks: readonly import("../../../shared/cts-lastn/blocks.ts").BlockPolicy[] };
   /** Primary samples are complete positions per exact configuration. Null is retained for historical reproductions. */
   positionWindows?: import("../position-windows.ts").PositionWindows | null;
   /** Optional manual step floor, shared across Base and downstream windows; stricter range floors remain. */

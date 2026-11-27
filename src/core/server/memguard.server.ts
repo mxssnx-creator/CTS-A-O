@@ -8,6 +8,8 @@
 //   CTS_CORE_MEM_HARD_MB (default 1200): below this — abort the running compute (its workers are terminated; the
 //                        compute is never continued in-process), and never start one: one level lighter, or at the
 //                        lightest level wait 15 s doubling up to 10 min (memRetryDelayMs)
+//   CTS_CORE_MEM_RSS_HARD_MB: optional process RSS ceiling for environments whose container limit is not visible.
+//                        CTS_CORE_MEM_RSS_SOFT_MB defaults to 85% of that ceiling when it is set.
 import { freemem } from "node:os";
 import { readFileSync } from "node:fs";
 import { getHeapStatistics } from "node:v8";
@@ -16,6 +18,8 @@ export type MemLevel = "ok" | "soft" | "hard";
 export interface CgroupMemoryEstimate {
   version: 1 | 2;
   basis: "clean-file-estimate" | "inactive-file";
+  /** The limiting cgroup in the process's visible hierarchy. */
+  scope: string;
   limitMb: number;
   usedMb: number;
   /** Headroom before cache credit, clamped at zero; an over-limit debt still reduces availMb. */
@@ -30,6 +34,8 @@ export interface MemInfo {
   cgroup?: CgroupMemoryEstimate;
   /** this process, MB (its workers included: they are threads) */
   rssMb: number;
+  rssSoftMb?: number;
+  rssHardMb?: number;
   heapMb: number;
   heapLimitMb?: number;
   heapAvailMb?: number;
@@ -46,6 +52,23 @@ export interface MemInfo {
 export const memSoftMb = () => Number(process.env.CTS_CORE_MEM_SOFT_MB) || 2500;
 export const memHardMb = () => Number(process.env.CTS_CORE_MEM_HARD_MB) || 1200;
 
+function rssLimit(name: string): number | undefined {
+  const value = process.env[name];
+  if (value === undefined || value === "") return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) throw new Error(`${name} must be a positive number of MiB`);
+  return n;
+}
+export const memRssHardMb = () => rssLimit("CTS_CORE_MEM_RSS_HARD_MB");
+export const memRssSoftMb = (hard = memRssHardMb()) =>
+  rssLimit("CTS_CORE_MEM_RSS_SOFT_MB") ?? (hard === undefined ? undefined : hard * .85);
+
+/** RSS includes worker threads and native buffers that the main V8 heap limit cannot see. */
+export function rssMemLevel(rssMb: number, soft?: number, hard?: number): MemLevel {
+  if (!Number.isFinite(rssMb) || rssMb < 0) return "ok";
+  return hard !== undefined && rssMb >= hard ? "hard" : soft !== undefined && rssMb >= soft ? "soft" : "ok";
+}
+
 /** "MemAvailable:   1234567 kB" → MB; null when the line is missing */
 export function parseMemAvailable(meminfo: string): number | null {
   const m = /^MemAvailable:\s+(\d+)\s*kB/m.exec(meminfo);
@@ -60,7 +83,10 @@ export function memLevel(availMb: number, soft = memSoftMb(), hard = memHardMb()
 export function heapMemLevel(usedMb: number, limitMb: number): MemLevel {
   if (!(limitMb > 0) || !Number.isFinite(limitMb) || !Number.isFinite(usedMb)) return "ok";
   const free = limitMb - usedMb;
-  return free < Math.min(128, limitMb * .04) ? "hard"
+  // Large histories can allocate a whole worker reply between samples. Preserve enough space to abort cleanly
+  // before V8 enters a fatal collection loop; keep the existing smaller-heap proportion for constrained tests.
+  const hardReserve = limitMb >= 1024 ? Math.min(256, limitMb * .08) : Math.min(128, limitMb * .04);
+  return free < hardReserve ? "hard"
     : free < Math.min(512, limitMb * .15) ? "soft" : "ok";
 }
 
@@ -71,7 +97,7 @@ export function heapPressure(): MemLevel {
 }
 
 /**
- * Available-memory estimate for the process's own cgroup: its limit minus what it uses, with eligible file cache
+ * Available-memory estimate for the tightest visible cgroup ancestor: its limit minus what it uses, with eligible file cache
  * credited. Complete v2 counters exclude mapped, dirty, writeback, shmem and unevictable memory; missing or invalid
  * counters retain the inactive-file estimate. These counters do not prove immediate reclaimability: extra folio
  * references or pins can delay removal even for clean, unmapped files. The host's MemAvailable is not the binding
@@ -82,14 +108,6 @@ export function heapPressure(): MemLevel {
 export function cgroupMemoryEstimate(read: (path: string) => string | null = readOr): CgroupMemoryEstimate | null {
   const cg = read("/proc/self/cgroup");
   if (!cg) return null;
-  const num = (x: string | null) => {
-    const v = x == null ? NaN : Number(x.trim());
-    return Number.isFinite(v) ? v : NaN;
-  };
-  const statOf = (txt: string | null, key: string) => {
-    const m = txt ? new RegExp(`^${key} (\\d+)$`, "m").exec(txt) : null;
-    return m ? Number(m[1]) : 0;
-  };
   const safeBytes = (txt: string | null): number | null => {
     if (txt == null || !/^\d+$/.test(txt.trim())) return null;
     const n = Number(txt.trim());
@@ -101,45 +119,50 @@ export function cgroupMemoryEstimate(read: (path: string) => string | null = rea
   };
   const v1 = /^\d+:(?:[^:]*,)?memory(?:,[^:]*)?:(.*)$/m.exec(cg);
   const v2 = /^0::(.*)$/m.exec(cg);
-  let limit = NaN;
-  let used = NaN;
-  let credit = 0;
-  let version: 1 | 2 = 1;
-  let basis: CgroupMemoryEstimate["basis"] = "inactive-file";
-  if (v1) {
-    const d = `/sys/fs/cgroup/memory${v1[1] === "/" ? "" : v1[1]}`;
-    limit = num(read(`${d}/memory.limit_in_bytes`));
-    used = num(read(`${d}/memory.usage_in_bytes`));
-    const st = read(`${d}/memory.stat`);
-    credit = statOf(st, "total_inactive_file") || statOf(st, "inactive_file");
-  }
-  if (!(limit > 0) && v2) {
-    version = 2;
-    const d = `/sys/fs/cgroup${v2[1] === "/" ? "" : v2[1]}`;
-    const max = read(`${d}/memory.max`);
-    limit = safeBytes(max) ?? NaN;
-    used = safeBytes(read(`${d}/memory.current`)) ?? NaN;
-    const st = read(`${d}/memory.stat`);
-    const keys = ["file", "shmem", "active_file", "inactive_file", "file_mapped", "file_dirty", "file_writeback", "unevictable"] as const;
-    const values = keys.map((key) => safeStat(st, key));
-    credit = safeStat(st, "inactive_file") ?? 0;
-    if (values.every((value) => value !== null)) {
-      const [file, shmem, active, inactive, mapped, dirty, writeback, unevictable] = values as number[];
-      const regular = Math.max(0, file - shmem);
-      // min(regular, active + inactive), without overflowing even when each counter is a valid safe integer.
-      credit = Math.min(regular, inactive);
-      credit += Math.min(regular - credit, active);
-      // Subtracting overlapping exclusions again under-credits cache, which is intentional.
-      for (const excluded of [mapped, dirty, writeback, unevictable]) credit = Math.max(0, credit - excluded);
-      basis = "clean-file-estimate";
+  let best: CgroupMemoryEstimate | null = null;
+  let bestBytes = Infinity;
+  const scan = (version: 1 | 2, root: string, membership: string) => {
+    if (!membership.startsWith("/")) return;
+    const parts = membership.split("/").filter(Boolean);
+    if (parts.some((part) => part === "." || part === "..")) return;
+    // A parent accounts for its descendants and siblings. Its remaining budget can be smaller than the child's,
+    // even when the child is unlimited, so inspect every visible ancestor, including the controller root.
+    for (let depth = parts.length; depth >= 0; depth--) {
+      const d = root + (depth ? `/${parts.slice(0, depth).join("/")}` : "");
+      const limit = safeBytes(read(`${d}/${version === 1 ? "memory.limit_in_bytes" : "memory.max"}`));
+      if (limit === null || limit >= 2 ** 60) continue; // "max" or the v1 unlimited sentinel
+      const used = safeBytes(read(`${d}/${version === 1 ? "memory.usage_in_bytes" : "memory.current"}`));
+      if (used === null) continue;
+      const st = read(`${d}/memory.stat`);
+      let credit = version === 1
+        ? (safeStat(st, "total_inactive_file") || safeStat(st, "inactive_file") || 0)
+        : (safeStat(st, "inactive_file") ?? 0);
+      let basis: CgroupMemoryEstimate["basis"] = "inactive-file";
+      if (version === 2) {
+        const keys = ["file", "shmem", "active_file", "inactive_file", "file_mapped", "file_dirty", "file_writeback", "unevictable"] as const;
+        const values = keys.map((key) => safeStat(st, key));
+        if (values.every((value) => value !== null)) {
+          const [file, shmem, active, inactive, mapped, dirty, writeback, unevictable] = values as number[];
+          const regular = Math.max(0, file - shmem);
+          // min(regular, active + inactive), without overflowing valid safe integer counters.
+          credit = Math.min(regular, inactive);
+          credit += Math.min(regular - credit, active);
+          for (const excluded of [mapped, dirty, writeback, unevictable]) credit = Math.max(0, credit - excluded);
+          basis = "clean-file-estimate";
+        }
+      }
+      credit = Math.min(used, Math.max(0, credit));
+      const avail = Math.max(0, limit - (used - credit));
+      if (avail >= bestBytes) continue;
+      bestBytes = avail;
+      best = { version, basis, scope: d, limitMb: Math.round(limit / 1048576), usedMb: Math.round(used / 1048576),
+        rawAvailMb: Math.max(0, Math.round((limit - used) / 1048576)), cacheCreditMb: Math.round(credit / 1048576),
+        availMb: Math.round(avail / 1048576) };
     }
-  }
-  // no limit (or the kernel's "unlimited" sentinel, ~2^63)
-  if (!(limit > 0) || !(used >= 0) || limit >= 2 ** 60) return null;
-  credit = Math.min(used, Math.max(0, credit));
-  return { version, basis, limitMb: Math.round(limit / 1048576), usedMb: Math.round(used / 1048576),
-    rawAvailMb: Math.max(0, Math.round((limit - used) / 1048576)), cacheCreditMb: Math.round(credit / 1048576),
-    availMb: Math.max(0, Math.round((limit - (used - credit)) / 1048576)) };
+  };
+  if (v1) scan(1, "/sys/fs/cgroup/memory", v1[1]);
+  if (v2) scan(2, "/sys/fs/cgroup", v2[1]);
+  return best;
 }
 
 /** Backward-compatible scalar estimate; memInfo also records its basis and cache credit. */
@@ -175,19 +198,23 @@ export function memInfo(now = Date.now(), force = false): MemInfo {
   const heapLimitMb = getHeapStatistics().heap_size_limit / 1048576;
   const heapLevel = heapMemLevel(mu.heapUsed / 1048576, heapLimitMb);
   const ramLevel = memLevel(availMb);
+  const rssHardMb = memRssHardMb(), rssSoftMb = memRssSoftMb(rssHardMb);
+  const rssLevel = rssMemLevel(mu.rss / 1048576, rssSoftMb, rssHardMb);
   cached = {
     availMb,
     hostAvailMb: host,
     ...(cgroup ? { cgroup } : {}),
     rssMb: Math.round(mu.rss / 1048576),
+    ...(rssSoftMb === undefined ? {} : { rssSoftMb }),
+    ...(rssHardMb === undefined ? {} : { rssHardMb }),
     heapMb: Math.round(mu.heapUsed / 1048576),
     heapLimitMb: Math.round(heapLimitMb),
     heapAvailMb: Math.max(0, Math.round(heapLimitMb - mu.heapUsed / 1048576)),
     heapTotalMb: Math.round(mu.heapTotal / 1048576),
     arrayBuffersMb: Math.round(mu.arrayBuffers / 1048576),
     nativeMb: Math.max(0, Math.round((mu.rss - mu.heapTotal - mu.arrayBuffers) / 1048576)),
-    level: ramLevel === "hard" || heapLevel === "hard" ? "hard"
-      : ramLevel === "soft" || heapLevel === "soft" ? "soft" : "ok",
+    level: ramLevel === "hard" || heapLevel === "hard" || rssLevel === "hard" ? "hard"
+      : ramLevel === "soft" || heapLevel === "soft" || rssLevel === "soft" ? "soft" : "ok",
     at: now,
   };
   return cached;

@@ -12,7 +12,7 @@ import {
   selectFixed,
   type ConfigTape,
 } from "./sim/walkforward.ts";
-import { SL_TP_RATIOS } from "./protection-policy.ts";
+import { SL_TP_RATIOS, THIN_SL_TP_RATIOS } from "./protection-policy.ts";
 import { DEFAULT_SIGNALS } from "./signal-config.ts";
 import { auditState } from "./audit.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
@@ -65,7 +65,7 @@ function tape(
 }
 // These seat tests deliberately use the complete 14-day fixture; production's
 // shorter engine window is verified independently in the history matrix.
-const o0 = { ...defaultWalkForward(DEFAULT_SETTINGS), longH: 336, preGate: false };
+const o0 = { ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true }, longH: 336, preGate: false };
 /** family seats switched on (off by default) */
 const of = { ...o0, familySeats: true };
 
@@ -469,8 +469,8 @@ describe("bug-hunt regressions", () => {
     const mult = (xs: readonly number[] | undefined) => (xs ?? []).map((x) => +(x / 0.002).toFixed(6));
     assert.ok(ga.minimal && ga.short && ga.general && ga.long);
     assert.deepEqual(mult(ga.minimal.tp), [4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8]);
-    assert.deepEqual([...ga.minimal.slOfTp], [...SL_TP_RATIOS]);
-    assert.deepEqual([...ga.short.slOfTp], [...SL_TP_RATIOS]);
+    assert.deepEqual([...ga.minimal.slOfTp], [...THIN_SL_TP_RATIOS]);
+    assert.deepEqual([...ga.short.slOfTp], [...THIN_SL_TP_RATIOS]);
     assert.deepEqual(mult(ga.general.tp), [15, 16, 17, 18, 19, 20, 21, 22]);
     assert.deepEqual(mult(ga.long.tp), [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
     for (const r of [ga.minimal, ga.short, ga.general, ga.long]) assert.deepEqual([...r.trailOfTp], [0, 0.25, 0.5, 0.75]);
@@ -716,7 +716,8 @@ describe("bug-hunt regressions", () => {
       block: { mode: "additive", ratio: 0.3, maxLevel: 5, minActiveLevel: 1, maxMult: 2 },
     });
     const r2 = new CoreRuntime(mine, undefined, { market: "synthetic" });
-    assert.deepEqual(r2.settings.grid.tp, [0.04]);
+    // the one-time 16 Nov migration disables the Wide grid on saved desks (backup kept); ranges the user changed stay
+    assert.deepEqual(r2.settings.grid.tp, []);
     assert.deepEqual(r2.settings.grid.short && r2.settings.grid.short.tp, [0.007]);
     assert.equal(r2.settings.block.mode, "additive");
     assert.equal(r2.settings.block.maxLevel, 5);

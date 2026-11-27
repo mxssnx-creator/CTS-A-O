@@ -27,7 +27,7 @@ export interface SimOptions {
    * the record (Base's range cells) allocates no object per trade
    */
   sink?: (r: number, entryT: number, exitT: number) => void;
-  /** Immutable compute/job identity: permits sink-only fixed-exit price indexing within this snapshot. */
+  /** Immutable compute/job identity: permits fixed-exit price indexing within this snapshot. */
   fixedPathScope?: object;
   /** Realtime only: continue a private append-only simulation, emitting only newly settled closes. */
   cursor?: SimulationCursor;
@@ -204,6 +204,18 @@ function firstFixedTouch(
   return first >= 0
     ? first
     : firstFixedTouch(path, from, to, low, high, node * 2 + 1, mid + 1, right);
+}
+
+/** Inclusive extrema of a fixed-price interval; preserves the full Trade MFE/MAE when a scan skips quiet bars. */
+function fixedRangeExtrema(path: FixedPricePath, from: number, to: number, out: { low: number; high: number }): void {
+  let left = from + path.size, right = to + path.size, low = Infinity, high = -Infinity;
+  while (left <= right) {
+    if (left % 2 === 1) { low = Math.min(low, path.low[left]); high = Math.max(high, path.high[left]); left++; }
+    if (right % 2 === 0) { low = Math.min(low, path.low[right]); high = Math.max(high, path.high[right]); right--; }
+    left = Math.floor(left / 2); right = Math.floor(right / 2);
+  }
+  out.low = low;
+  out.high = high;
 }
 
 /**
@@ -411,8 +423,8 @@ function simCore(
   const nx = nextEntryIndex(sig);
 
   const sink = opt.sink;
-  const fixedPath =
-    sink &&
+  const fixedEligible =
+    (sink || (!cursor && !from && !wantState && p.hold > 32)) &&
     opt.fixedPathScope &&
     !p.atr &&
     p.exitType !== "historic" &&
@@ -424,10 +436,11 @@ function simCore(
     Number.isFinite(p.sl) &&
     p.sl >= 0 &&
     Number.isFinite(cost) &&
-    Number.isInteger(cooldown) &&
-    cooldown >= 0
-      ? fixedPricePath(opt.fixedPathScope, bars)
-      : null;
+    Number.isInteger(cooldown) && cooldown >= 0;
+  // Short trades usually touch a barrier within a few bars. Index only after a sufficiently long quiet span;
+  // Base sink runs keep their existing eager behavior. A scope retains one price index across all its cells.
+  let fixedPath = fixedEligible && sink ? fixedPricePath(opt.fixedPathScope!, bars) : undefined;
+  let skippedExtrema: { low: number; high: number } | undefined;
   const close = (i: number, exit: number, reason: Trade["reason"], exitT: number) => {
     const r = modeledPriceReturn(side, entry, exit, cost);
     if (sink) {
@@ -459,20 +472,34 @@ function simCore(
   for (; i < n; i++) {
     cursor?.checkpoint(i, n, checkpoint);
     if (inPos && i >= entryI) {
-      if (fixedPath && Number.isFinite(stop) && Number.isFinite(target)) {
+      if (fixedEligible && (sink || i - entryI >= 16) && Number.isFinite(stop) && Number.isFinite(target)) {
         const end = Math.min(n - 1, entryI + p.hold - 1);
-        const touched =
-          side === 1
-            ? l[i] <= stop || (target > 0 && h[i] >= target)
-            : h[i] >= stop || (target > 0 && l[i] <= target);
-        // Immediate exits and one-bar holds need no tree search.
-        if (!touched && i < end) {
-          const low = side === 1 ? stop : target > 0 ? target : -Infinity;
-          const high = side === -1 ? stop : target > 0 ? target : Infinity;
-          const first = firstFixedTouch(fixedPath, i + 1, end, low, high);
-          // Sink callers cannot observe the skipped MFE/MAE. Keep the exit/cooldown/open lifecycle below shared
-          // with the scanner: on the chosen bar stop still precedes target, and barriers precede the hold exit.
-          i = first >= 0 ? first : end;
+        const canSkip = !sink && i - entryI >= 16 && end - i >= 16;
+        if (canSkip && fixedPath === undefined) {
+          fixedPath = fixedPricePath(opt.fixedPathScope!, bars);
+          if (fixedPath) skippedExtrema = { low: 0, high: 0 };
+        }
+        if (fixedPath && (sink || canSkip)) {
+          const touched =
+            side === 1
+              ? l[i] <= stop || (target > 0 && h[i] >= target)
+              : h[i] >= stop || (target > 0 && l[i] <= target);
+          // Immediate exits and one-bar holds need no tree search.
+          if (!touched && i < end) {
+            const low = side === 1 ? stop : target > 0 ? target : -Infinity;
+            const high = side === -1 ? stop : target > 0 ? target : Infinity;
+            const first = firstFixedTouch(fixedPath, i + 1, end, low, high);
+            const next = first >= 0 ? first : end;
+            if (skippedExtrema) {
+              fixedRangeExtrema(fixedPath, i, next - 1, skippedExtrema);
+              const up = side === 1 ? (skippedExtrema.high - entry) / entry : (entry - skippedExtrema.low) / entry;
+              const dn = side === 1 ? (entry - skippedExtrema.low) / entry : (skippedExtrema.high - entry) / entry;
+              if (up > mfe) mfe = up;
+              if (dn > mae) mae = dn;
+            }
+            // On the chosen bar stop still precedes target, and barriers precede the hold exit.
+            i = next;
+          }
         }
       }
       const gap = i > entryI;

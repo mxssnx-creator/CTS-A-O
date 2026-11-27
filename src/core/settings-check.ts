@@ -389,6 +389,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       if (s.tactics[k] !== undefined && typeof s.tactics[k] !== "boolean")
         throw new Error(`tactic ${k} must be boolean`);
     num(s.tactics.cooldownBars, 0, 96, "cooldown bars");
+    num(s.tactics.signalMinDaily, 0, 1000, "Signal minimum daily onsets");
   }
   if (s.disabledKinds !== undefined) {
     if (
@@ -456,6 +457,14 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       num(s.block.window, 1, 500, "block pooled-source window (closes per level)");
     if (s.block.windowAuto !== undefined && typeof s.block.windowAuto !== "boolean")
       throw new Error("block window auto: on / off");
+    if (s.block.windowIndependent !== undefined && typeof s.block.windowIndependent !== "boolean")
+      throw new Error("block window independence: on / off");
+    if (s.block.windowMinSamples !== undefined) {
+      num(s.block.windowMinSamples, 30, 5000, "block auto minimum samples");
+      int(s.block.windowMinSamples, "block auto minimum samples");
+      if (s.block.windowLookback !== undefined && s.block.windowLookback < s.block.windowMinSamples)
+        throw new Error("block window lookback must cover the minimum samples");
+    }
     if (s.block.windowCandidates !== undefined) {
       if (
         !Array.isArray(s.block.windowCandidates) ||
@@ -463,9 +472,15 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
         s.block.windowCandidates.length > 12
       )
         throw new Error("block window candidates: 1–12 windows");
-      for (const w of s.block.windowCandidates) num(w, 1, 500, "block window candidate");
+      for (const w of s.block.windowCandidates) {
+        num(w, 1, 500, "block window candidate");
+        int(w, "block window candidate");
+      }
     }
-    if (s.block.windowLookback !== undefined) num(s.block.windowLookback, 30, 5000, "block window lookback");
+    if (s.block.windowLookback !== undefined) {
+      num(s.block.windowLookback, 30, 5000, "block window lookback");
+      int(s.block.windowLookback, "block window lookback");
+    }
     if (s.block.stepFloor !== undefined && typeof s.block.stepFloor !== "boolean")
       throw new Error("block step floor: on / off");
     if (s.block.windowHours !== undefined) num(s.block.windowHours, 0, 168, "block activity window (hours, 0 = off)");
@@ -638,6 +653,17 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       throw new Error("Relate Auto mode: on / off");
     if (s.relate.mode !== undefined && s.relate.mode !== "shared" && s.relate.mode !== "additive")
       throw new Error("Relate mode must be shared or additive");
+    if (s.relate.scope !== undefined && s.relate.scope !== "selected" && s.relate.scope !== "overall")
+      throw new Error("Invalid Relate scope");
+    if (s.relate.volumeFactors !== undefined) {
+      const factors = s.relate.volumeFactors;
+      if (!factors || typeof factors !== "object" || Array.isArray(factors)) throw new Error("Invalid Relate volume factors");
+      const sources = ["config", "overall", "symbol", "direction", "indication", "strategy", "coordination", "range"];
+      for (const [source, value] of Object.entries(factors)) {
+        if (!sources.includes(source)) throw new Error("Invalid Relate volume factor source");
+        num(value, 0, 8, "Relate volume factor");
+      }
+    }
     if (s.relate.ratio !== undefined) num(s.relate.ratio, 0.2, 6, "Relate ratio");
     if (s.relate.ratio !== undefined && Math.abs(s.relate.ratio * 5 - Math.round(s.relate.ratio * 5)) > 1e-8)
       throw new Error("Relate ratio must use 0.2 increments");
@@ -660,6 +686,12 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       int(s.relate.minTrades, "Relate minimum trades");
       num(s.relate.minTrades, 60, 250, "Relate minimum trades");
     }
+    if (s.relate.recoveryMinTrades !== undefined) {
+      int(s.relate.recoveryMinTrades, "Relate recovery trades");
+      num(s.relate.recoveryMinTrades, 6, s.relate.lastN ?? 250, "Relate recovery trades");
+    }
+    if (s.relate.recoveryMaxDrawdown !== undefined)
+      num(s.relate.recoveryMaxDrawdown, 0, 1, "Relate maximum recovery drawdown");
     if (s.relate.minTrades !== undefined && s.relate.lastN !== undefined && s.relate.minTrades > s.relate.lastN)
       throw new Error("Relate minimum trades must not exceed last-N");
     if (s.relate.maxStack !== undefined) {
@@ -741,6 +773,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       // 0.2 like the stop ratios: General / Long trail at every stop of their 0.25–1.5 ladder (13 Oct)
       num(g.trailSlOfTp, 0.2, 5, `${name} trailing stop ×TP`);
       num(g.minSl, 0, 0.2, `${name} min SL`);
+      if ((g as { reachFrac?: unknown }).reachFrac !== undefined)
+        num((g as { reachFrac?: unknown }).reachFrac, 0, 5, `${name} reach gate (share of the target the volatility must cover)`);
       num(g.minTrail, 0, 0.1, `${name} min trail`);
       num(g.minTf, 0, 240, `${name} shortest lane (minutes)`);
       if ((g as { maxHoldMin?: unknown }).maxHoldMin !== undefined)
@@ -777,7 +811,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
       if (!r || typeof r !== "object") return;
       const g = r as { tp?: unknown; slOfTp?: unknown; trailOfTp?: unknown };
       list(g.tp, 0.002, 0.2, `${name} TP`);
-      list(g.slOfTp, SL_TP_MIN, SL_TP_MAX, `${name} SL×TP`);
+      list(g.slOfTp, name === "short" || name === "minimal" ? FINE_SL_TP_MIN : SL_TP_MIN, SL_TP_MAX, `${name} SL×TP`);
       list(g.trailOfTp, 0, 1, `${name} trail share`);
       rangeShared(r, name);
       microOnly(r, name);
@@ -1089,6 +1123,7 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     if (g.coordination) {
       const c = g.coordination;
       bool(c.enabled, "signals coordination");
+      bool(c.strategyOnly, "signals coordination strategy-only routing");
       num(c.minSources, 2, 100, "signals coordination minimum sources");
       int(c.minSources, "signals coordination minimum sources");
       volumeFactor(c.volumeFactor, "signals coordination volume factor");
@@ -1242,6 +1277,7 @@ export function checkMerged(cur: CoreSettings, patch: Partial<CoreSettings> | Se
   if (patch.relate) merged.relate = {
     ...cur.relate,
     ...patch.relate,
+    volumeFactors: { ...cur.relate.volumeFactors, ...patch.relate.volumeFactors },
     sources: { ...cur.relate.sources, ...(patch.relate.sources ?? {}) },
   } as CoreSettings["relate"];
   if (patch.signals?.ranges)

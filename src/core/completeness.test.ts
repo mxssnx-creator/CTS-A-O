@@ -114,7 +114,7 @@ const volumeFactor: Case = {
 const rangeKeys = (r: string): Record<string, Case> => ({
   [`grid.${r}.volumeFactor`]: volumeFactor,
   [`grid.${r}.tp`]: list(0.002, 0.2, { max: 64 }),
-  [`grid.${r}.slOfTp`]: list(0.25, 2.5, { max: 64 }),
+  [`grid.${r}.slOfTp`]: list(r === "minimal" || r === "short" ? 0.2 : 0.25, 2.5, { max: 64 }),
   [`grid.${r}.trailOfTp`]: list(0, 1, { max: 64 }),
   [`grid.${r}.trailSlOfTp`]: num(0.2, 5),
   [`grid.${r}.minSl`]: num(0, 0.2),
@@ -127,6 +127,7 @@ const CASES: Record<string, Case> = {
   "gates.positionWindows.scope": oneOf(["config", "context", "auto", "both"], ["invalid", 1]),
   "gates.positionWindows.byRange.mc.scope": oneOf(["config", "context", "auto", "both"], ["invalid", 1]),
   "gates.positionWindows.byRange.mn.base":num(1,500,{int:true}),
+  ...Object.fromEntries(["base","main","real","entry"].map(k=>[`gates.positionWindows.byRange.sig.${k}`,num(1,500,{int:true})])),
   tfMin: oneOf([1, 5, 15, 30, 60], [0, 2, 240]),
   tfs: oneOf([[1], [1, 5, 15, 30]], [[5], [1, 2], [1, 60]]),
   "tfDays.1": num(1, 45),
@@ -148,6 +149,7 @@ const CASES: Record<string, Case> = {
   "fees.slippageRatio": num(0, 10),
   "gates.stepPf.mode": oneOf(["auto", "manual"], ["invalid", null]),
   "gates.stepPf.maxStepPct": {ok:[.1,3.5,100],bad:[0,.15,100.1,"1",NaN]},
+  "gates.stepPf.autoPfRatio": num(1, 10, { int: true }),
   "gates.stepPf.ratio": num(0.1, 1.5),
   "gates.stepPf.max": num(1, 2),
   "adjust.window": num(5, 100, { int: true }),
@@ -206,6 +208,7 @@ const CASES: Record<string, Case> = {
   "sizing.mode": oneOf(["equityPct"]),
   "sizing.pct": num(0.001, 0.25),
   "tactics.cooldownBars": num(0, 96),
+  "tactics.signalMinDaily": num(0, 1000),
   focus: oneOf(
     [[], ["follow|rsi-mom-14-20@x4"]],
     [["Follow|X"], ["follow"], Array.from({ length: MAX_FOCUS_PAIRS + 1 }, () => "a|b")],
@@ -219,8 +222,8 @@ const CASES: Record<string, Case> = {
   "block.ratio": num(0, 2),
   "block.historySource": oneOf(["accepted-orders", "real-candidates"]),
   "block.configScope": oneOf(["config", "context"]),
-  "block.auto.n": { ...num(15, 200, { int: true }), with: [["block.auto.min", 15]] },
-  "block.auto.min": { ...num(1, 30, { int: true }), with: [["block.auto.n", 30]] },
+  "block.auto.n": { ...num(5, 200, { int: true }), with: [["block.auto.min", 1]] },
+  "block.auto.min": { ...num(1, 200, { int: true }), with: [["block.auto.n", 200]] },
   "block.auto.pf": num(0.5, 5),
   "block.auto.scope": oneOf(["rule", "key"]),
   "block.maxLevel": { ...num(1, 12), with: [["block.minActiveLevel", 1]] },
@@ -229,6 +232,8 @@ const CASES: Record<string, Case> = {
   "block.pause": num(0, 12),
   "block.steps": num(0, 12),
   "block.increase": num(0.05, 1),
+  "block.windowMinSamples": { ...num(30, 5000, { int: true }), with: [["block.windowLookback", 5000]] },
+  "block.windowLookback": { ...num(30, 5000, { int: true }), with: [["block.windowMinSamples", 30]] },
   "block.ranges.levels": span(1, 12),
   "block.ranges.volRatio": span(0.05, 2),
   "block.ranges.steps": span(0, 12),
@@ -269,6 +274,7 @@ const CASES: Record<string, Case> = {
   "grid.holdH": list(0.25, 72, { max: 64 }),
   "grid.minTrail": num(0, 0.1),
   "grid.minSl": num(0, 0.2),
+  "grid.short.reachFrac": num(0, 5),
   "grid.trailStep": num(0.1, 1),
   "grid.trailingOnly": oneOf([true, false], [0, 1, "true", null]),
   ...rangeKeys("minimal"),
@@ -412,6 +418,8 @@ const CASES: Record<string, Case> = {
   "relate.minPf": num(0, 100),
   "relate.lastN": num(60, 250, { int: true }),
   "relate.minTrades": num(60, 250, { int: true }),
+  "relate.recoveryMinTrades": { ...num(6, 250, { int: true }), with: [["relate.lastN", 250]] },
+  "relate.recoveryMaxDrawdown": num(0, 1),
   "relate.maxStack": num(1, 8, { int: true }),
   "relate.maxSl": num(0.0025, 0.015, { also: [0.005, 0.0075, 0.01, 0.0125], bad: [0.003, 0.008] }),
 };
@@ -491,6 +499,20 @@ describe("settings completeness: every leaf of DEFAULT_SETTINGS is range-checked
         if (!rejects(withLeaves([[k, bad]]))) loose.push(`${k} = ${JSON.stringify(bad)}`);
     }
     assert.deepEqual(loose, []);
+  });
+
+  it("Relate recovery requires no more samples than its configured last-N window", () => {
+    assert.doesNotThrow(() => checkSettings(withLeaves([
+      ["relate.lastN", 60],
+      ["relate.recoveryMinTrades", 60],
+    ])));
+    assert.equal(rejects(withLeaves([
+      ["relate.lastN", 60],
+      ["relate.recoveryMinTrades", 61],
+    ])), true);
+    assert.throws(() => checkMerged(DEFAULT_SETTINGS, {
+      relate: { lastN: 60, recoveryMinTrades: 61 },
+    }));
   });
 
   it("Trailing only permits the complete 16 × 16 protection grid and refuses either oversized range", () => {
@@ -776,7 +798,9 @@ const UNDOCUMENTED: Record<string, string[]> = {};
  * already raise (signal direction acceptance and Axis are x01 desk settings, code default off — the doc's table rows
  * for x01) are subtracted: a preset is judged on what IT changes.
  */
-const BASELINE = new Set(positiveCoordWarnings(DEFAULT_SETTINGS, wfOf({})));
+// Historical strategy-isolation presets intentionally retain their explicit Axis switch.
+const BASELINE = new Set(positiveCoordWarnings({ ...DEFAULT_SETTINGS,
+  toggles: { ...DEFAULT_SETTINGS.toggles, axis: false } }, wfOf({})));
 function offBy(p: (typeof PRESETS)[number]): string[] {
   const s = applied(p.settings);
   const found = positiveCoordWarnings(s, wfOf(p)).filter((w) => !BASELINE.has(w));

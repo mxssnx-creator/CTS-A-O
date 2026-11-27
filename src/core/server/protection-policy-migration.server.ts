@@ -1,9 +1,11 @@
-import { DEFAULT_MIN_SL_DISTANCE_PCT, SL_TP_MAX, SL_TP_MIN, SL_TP_RATIOS, SL_TP_STEP } from "../protection-policy.ts";
+import { DEFAULT_MIN_SL_DISTANCE_PCT, FINE_SL_TP_RATIOS, SL_TP_MAX, SL_TP_MIN, SL_TP_RATIOS, SL_TP_STEP, THIN_SL_TP_RATIOS } from "../protection-policy.ts";
 import type { CoreDb } from "./db.server.ts";
 import { DEFAULT_SIGNALS } from "../signal-config.ts";
 
 const FLAG = "minimumProtectionPolicy20261108";
 const ratio = (n: number) => Math.max(SL_TP_MIN, Math.min(SL_TP_MAX, Math.round(n / SL_TP_STEP) * SL_TP_STEP));
+const same = (v: unknown, grid: readonly number[]) => Array.isArray(v) && v.length === grid.length &&
+  v.every((x, i) => typeof x === "number" && Math.abs(x - grid[i]) < 1e-9);
 
 /** Migrate future candidates only. Owned orders, positions, fills and historical evidence are never rewritten. */
 export function migrateMinimumProtectionPolicy(db: CoreDb): void {
@@ -28,10 +30,15 @@ export function migrateMinimumProtectionPolicy(db: CoreDb): void {
       delete g.minSl; delete g.minSlEval;
       for (const name of ["micro", "minimal", "short", "general", "long"]) {
         const r = g[name]; if (!r || typeof r !== "object") continue;
-        arrays(r, "slOfTp"); delete r.minSl; delete r.minSlEval; delete r.minSlNet;
-        if (Number.isFinite(r.trailSlOfTp)) r.trailSlOfTp = ratio(r.trailSlOfTp);
+        // Older migrations can run before the thin-grid migration. Do not round a current fine factory grid
+        // onto the old 0.25 increments and make it impossible for the later migration to recognize it.
+        const fine = ["micro", "minimal", "short"].includes(name) &&
+          (same(r.slOfTp, THIN_SL_TP_RATIOS) || name === "micro" && same(r.slOfTp, FINE_SL_TP_RATIOS));
+        if (!fine) arrays(r, "slOfTp");
+        delete r.minSl; delete r.minSlEval; delete r.minSlNet;
+        if (Number.isFinite(r.trailSlOfTp) && !(fine && r.trailSlOfTp === 0.2)) r.trailSlOfTp = ratio(r.trailSlOfTp);
       }
-      arrays(g.lowRange, "slRatios");
+      if (!same(g.lowRange?.slRatios, FINE_SL_TP_RATIOS)) arrays(g.lowRange, "slRatios");
     }
     arrays(s.signals?.normal, "slOfTp"); arrays(s.signals?.hist, "slOfTp");
     const trailing = s.signals?.trailing;

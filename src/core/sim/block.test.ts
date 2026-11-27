@@ -70,7 +70,7 @@ describe("Block sources", () => {
   });
 
   // the pooled-feed options judge the legacy candidate feed (an accepted-orders book takes accepted orders only)
-  const LEGACY_BLOCK: BlockConfig = { ...DEFAULT_BLOCK, historySource: "real-candidates" };
+  const LEGACY_BLOCK: BlockConfig = { ...DEFAULT_BLOCK, historySource: "real-candidates", windowAuto: false };
 
   it("levelMinWin: seven losses and one big win are level 8 on the sum, no level with a win share", () => {
     const xs = [-0.01, -0.01, -0.01, -0.01, -0.01, -0.01, -0.01, 0.2];
@@ -308,7 +308,7 @@ describe("Block sources", () => {
     const book = new BlockBook();
     for (let i = 0; i < 3; i++) book.add({ sym: "A", side: 1, kind: ind.kind, ind: ind.id, r: 0.01 });
     const base = {
-      ...defaultWalkForward(DEFAULT_SETTINGS),
+      ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true,
       longH: 96,
       preGate: false,
       validLastN: 0,
@@ -617,11 +617,12 @@ describe("Block types, Active, steps and pause", () => {
   });
 
   it("stepFloor off: a leg is the nearest step of ratio × level, never a forced full unit", () => {
-    // the default Overall: 7 steps to 8× (a step = one unit), ratio 0.5
+    // Factory Overall uses a 0.20 ratio and seven unit-sized steps up to 8×.
     const d0 = { ...DEFAULT_BLOCK, sources: SRC };
     const lv1 = { ...L, overall: 1, symbol: 1, direction: 1, indication: 1 };
     // the default rule (stepFloor unset): a raise below one step keeps its exact ratio, never a forced full unit
-    assert.equal(blockDecide(lv1, d0, false).vol, 3);
+    assert.equal(blockDecide(lv1, d0, false).vol, 1.8);
+    assert.equal(blockDecide(lv1, { ...d0, ratio: 0.5 }, false).vol, 3);
     assert.ok(Math.abs(blockDecide(lv1, { ...d0, ratio: 0.1 }, false).vol - 1.4) < 1e-9);
     assert.equal(stepRaise(0.1, d0, 7), 0.1);
     assert.equal(stepRaise(1.6, d0, 7), 1, "a larger raise rounds down to complete steps");
@@ -742,7 +743,7 @@ describe("Block types, Active, steps and pause", () => {
     for (let i = 0; i < 3; i++) book.add({ sym: "A", side: 1, kind: ind.kind, ind: ind.id, r: 0.01 });
     for (let i = 0; i < 2; i++) book.add({ sym: "B", side: -1, kind: "zz", r: -0.01 });
     const o = {
-      ...defaultWalkForward(DEFAULT_SETTINGS),
+      ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true,
       longH: 96,
       preGate: false,
       validLastN: 0,
@@ -787,7 +788,7 @@ describe("Block accepted Real order evidence", () => {
   const tp = makeTape(cfg, "magnet", ind.id, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"],
     [...qualifiedRows(cfg), ...Array.from({ length: 30 }, (_, i) => i + 1).map((h) => ({ cfg, sym: "A", side: 1 as const, r: .1, entryT: (h - 1) * H, exitT: h * H,
       entry: 100, exit: 110, reason: "tp" as const, bars: 1, mfe: 0, mae: 0 }))], [], []);
-  const o = { ...defaultWalkForward(DEFAULT_SETTINGS), longH: 96, block: b, lastN: 0, symGate: undefined,
+  const o = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true, longH: 96, block: b, lastN: 0, symGate: undefined,
     toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: false } };
 
   it("skipped profitable candidates never become accepted config or pooled evidence; accepted losses remain", () => {
@@ -847,6 +848,7 @@ describe("AutoBlockBook (windowAuto)", () => {
     minActiveLevel: 2,
     window: 50,
     windowAuto: true,
+    windowIndependent: false, // this suite verifies the legacy shared-window policy
     windowCandidates: [1, 50],
   };
   const entry = (r: number) => ({ sym: "AAA-USDT", side: 1, kind: "trend", r });
@@ -862,14 +864,14 @@ describe("AutoBlockBook (windowAuto)", () => {
     }
   });
 
-  it("the production and audit book factory passes the actual Block Active toggle", () => {
+  it("the production and audit book factory calculates identically with and without Block Active (Active only coordinates execution)", () => {
     const b = { ...cfg, window: 1, windowCandidates: [1], maxLevel: 3, minActiveLevel: 3 };
     for (const blockActive of [false, true]) {
       const book = bookFor({ block: b, toggles: { block: true, blockActive } })!;
       book.add(entry(.01));
       const e = { ...entry(.01), autoRaise: undefined as number | undefined };
       book.stampEntry(e);
-      assert.equal(e.autoRaise, blockActive ? 0 : 1);
+      assert.equal(e.autoRaise, 1, `blockActive ${blockActive}`);
     }
   });
 
@@ -992,6 +994,12 @@ describe("AutoBlockBook (windowAuto)", () => {
     for (let i = 0; i < 30; i++) b.add({ ...entry(Number.MAX_VALUE), autoRaise: 1 });
     assert.deepEqual(b.scores(), [{ window: 1, n: 30, pf: null }]);
   });
+  it("a nonzero loss whose PF ratio overflows is unavailable rather than a no-loss win", () => {
+    const b = new AutoBlockBook(alt);
+    for (let i = 0; i < 29; i++) b.add({ ...entry(1), autoRaise: 1 });
+    b.add({ ...entry(-Number.MIN_VALUE), autoRaise: 1 });
+    assert.deepEqual(b.scores(), [{ window: 1, n: 30, pf: null }]);
+  });
   it("scores each window on its level at the candidate's entry, not at its exit", () => {
     const b = new AutoBlockBook(alt);
     for (let k = 0; k < 100; k++) {
@@ -1024,7 +1032,7 @@ describe("AutoBlockBook (windowAuto)", () => {
       { bars: [], caches: [], startT: T0, endT: NOW, splitT: T0, nowT: NOW, baseTf: 60 } as never,
       [tape(1, 2), tape(1.2, 8)],
       {
-        ...defaultWalkForward(DEFAULT_SETTINGS),
+        ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true,
         toggles: { ...DEFAULT_TOGGLES, block: true, blockActive: false },
         block: alt,
         // This replay-stamp fixture's PF is1.2; keep its original qualification policy explicit.
@@ -1069,7 +1077,7 @@ describe("Direction gate (sideGateN)", () => {
   const t = makeTape("x", "magnet", ind.id, { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"],
     [...qualifiedRows("x"), ...qualifiedRows("x", -1)], [], []);
   const o = {
-    ...defaultWalkForward(DEFAULT_SETTINGS),
+    ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true,
     longH: 96,
     preGate: false,
     validLastN: 0,
@@ -1125,7 +1133,7 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
   }))));
   const sig = makeTape("s", "follow", "sig-ema-trend-s", { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A","Z"], own, [], []);
   const o = {
-    ...defaultWalkForward(DEFAULT_SETTINGS),
+    ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true,
     lastN: 0,
     validLastN: 0,
     signalValidLastN: 0,

@@ -1,0 +1,9 @@
+// node --experimental-strip-types --no-warnings scripts/perf/walk-forward-index-bench.mjs ROOT
+import {createHash} from 'node:crypto';import {resolve} from 'node:path';import {pathToFileURL} from 'node:url';
+const root=resolve(process.argv[2]??process.cwd());const load=p=>import(pathToFileURL(root+'/src/core/'+p).href);const [{defaultWalkForward,makeTape,walkForward},{DEFAULT_SETTINGS}]=await Promise.all([load('sim/walkforward.ts'),load('config.ts')]);
+const H=3600000,M=60000,T=Date.UTC(2026,9,16,0), syms=['A','B'];let tapes=[];
+for(let k=0;k<80;k++){const ind=k%10===0?'sig-ema-cross-s@m1':'rsi-mom-14-20@m1',kind=['normal','trailing','dca','axis'][k%4],id=`follow|${ind}|tp${k}|sl1|tr0|h1|${kind}`;
+ let rows=Array.from({length:60},(_,i)=>({cfg:id,sym:syms[i%2],side:i%4<2?1:-1,entryT:T+(i-30)*10*M,exitT:T+(i-29)*10*M,entry:100,exit:101,r:(i+k)%7?0.01:-.003,reason:'tp',bars:1,mfe:0,mae:0,kind}));
+ tapes.push(makeTape(id,'follow',ind,{tp:.01,sl:.01,trail:kind==='trailing'?.003:0,hold:10,tag:['mc','mn','sh'][k%3]},kind,syms,rows,[],[]));}
+const d=defaultWalkForward(DEFAULT_SETTINGS),o={...d,startT:T,preH:12,longH:24,simH:4,stepH:1,rangeGate:undefined,signalRank:undefined,signalActive:new Set(['follow|sig-ema-cross-s@m1']),recordValidation:true,wideEnabled:true,symGate:'off',onePerPairEvent:false,coord:{...d.coord,enabled:false},gates:{...d.gates,minTrades:3,lastNFloor:0,positionWindows:{base:12,main:12,real:12,entry:12,maxDrawdownPositions:12,scope:'config'}}};
+const u={bars:[],caches:[],startT:T-24*H,endT:T+4*H,splitT:T,nowT:T+4*H,baseTf:1};const t=performance.now(),r=walkForward(u,tapes,o);console.log(JSON.stringify({ms:Math.round(performance.now()-t),steps:r.steps.length,trades:r.trades.length,checks:r.steps.map(s=>s.checks?.length),hash:createHash('sha256').update(JSON.stringify(r)).digest('hex')}));

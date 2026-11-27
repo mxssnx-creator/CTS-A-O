@@ -57,6 +57,7 @@ const tape = (id: string, ind: string, lose: number) =>
 // (the defaults before 6 Oct); they are pinned here so a change of the defaults does not change what they test
 const base: WalkForwardOptions = {
   ...defaultWalkForward(DEFAULT_SETTINGS),
+  wideEnabled: true, // These untagged fixtures isolate admission gates; Wide-off behavior is tested separately.
   // Keep these mechanism tests on their original broad fixture window; defaults are asserted separately below.
   preH: 20,
   longH: 336,
@@ -118,9 +119,8 @@ describe("gating: nothing unvalidated executes", () => {
   });
 
   it("a signal validates on its own last N: a 12-close signal config can trade, a losing one cannot", () => {
-    // the default runs no extra signal validation (the acceptance gate judges signals); a set last N still applies
-    // the code default since 6 Oct: signals validate on their own last 25 (the best window on the same tapes)
-    assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 12, "default");
+    // The current default is 15; this test explicitly chooses 10 to exercise an independent Signal window.
+    assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 15, "default");
     const o = {
       ...base,
       signalValidLastN: 10,
@@ -451,6 +451,7 @@ describe("sample warm-up (gates.warmup): a check that cannot be computed yet is 
     const at = H0 + 40 * 3_600_000;
     const o = {
       ...defaultWalkForward(DEFAULT_SETTINGS),
+      wideEnabled: true, // The synthetic untagged tape isolates the symbol gate from the Wide switch.
       symGate: "proven" as const,
       symMinN: 2,
       lastN: 0,

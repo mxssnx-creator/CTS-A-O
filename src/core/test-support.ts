@@ -6,6 +6,7 @@ import type { ExchangeClient } from "./server/live.server.ts";
 import { DEFAULT_SETTINGS, type CoreSettings } from "./config.ts";
 import { ExchangeRejected, type AccountSnapshot } from "./exchange/bingx.server.ts";
 import type { Trade } from "./domain/types.ts";
+import type { ProcessedStage } from "./sim/processed-set.ts";
 import { unitStatsOf } from "./metrics/stats.ts";
 import { minPfOf, rangeOfId } from "./minimal-coord.ts";
 import { isSignalInd } from "./indications/registry.ts";
@@ -18,6 +19,8 @@ export const H = 3_600_000;
 export function runtimeFixtureGrid(): CoreSettings["grid"] {
   const grid = structuredClone(DEFAULT_SETTINGS.grid);
   grid.holdH = [4];
+  // Wide is off by default since Stable-04; lifecycle fixtures that cover untagged Wide books opt in with two targets.
+  grid.tp = [0.018, 0.035];
   for (const key of ["micro", "minimal", "short", "general", "long"] as const) {
     const range = grid[key];
     if (range) grid[key] = { ...range, tp: [range.tp[0], range.tp.at(-1)!],
@@ -491,7 +494,7 @@ export type FakePaperPosition = {
   level?: number;
   legs?: Partial<Record<"config" | "overall" | "symbol" | "direction" | "indication" | "type", number>>;
   entryT?: number;
-  processedStage?: "postBase" | "validated" | "active";
+  processedStage?: ProcessedStage;
   processedPolicy?: string;
   /** the lane's target price (unset: none) */
   target?: number;

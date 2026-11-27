@@ -81,7 +81,7 @@ const ACTIVE = new Set(
     SYMS.flatMap((sym) => [1, -1].map((side) => sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind, tp.id))),
   ),
 );
-const base = defaultWalkForward(DEFAULT_SETTINGS);
+const base = { ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true };
 const toggles = (x: Partial<StrategyToggles> = {}): StrategyToggles => ({
   normal: true,
   trailing: true,

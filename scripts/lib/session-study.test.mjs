@@ -1,9 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { studySha256, studyExactJson, studyWithRequestedWindow, validateFrozenSessionRuntime, validateFrozenSessionResult, validateFrozenSessionBook } from "./session-study.mjs";
+import { SESSION_STUDY_SOURCE_SCOPE, readSessionStudy, sessionStudySourceFiles, studySha256, studyExactJson, studyWithRequestedWindow, validateFrozenSessionRuntime, validateFrozenSessionResult, validateFrozenSessionBook } from "./session-study.mjs";
 
 function fixture(fn) {
   const root = mkdtempSync(join(tmpdir(), "cts-frozen-session-"));
@@ -20,6 +20,27 @@ function fixture(fn) {
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 describe("frozen full-engine session study", () => {
+  it("seals shared trading modules and dependency manifests, and rejects later shared changes", () => fixture(({root,file,p}) => {
+    for (const dir of ["src/core", "scripts/lib", "shared/cts-relate"]) mkdirSync(join(root,dir), {recursive:true});
+    for (const [path, contents] of [["src/core/engine.ts", "engine"], ["scripts/lib/helper.mjs", "helper"],
+      ["scripts/core-session.mjs", "report"], ["shared/cts-relate/recovery.ts", "recovery"],
+      ["shared/cts-relate/package.json", "{}"], ["package.json", "{}"], ["package-lock.json", "{}"]])
+      writeFileSync(join(root,path), contents);
+    writeFileSync(join(root,"shared/cts-relate/recovery.test.ts"), "test-only");
+    const files = sessionStudySourceFiles(root), names = files.map((x) => x.path);
+    assert.ok(names.includes("shared/cts-relate/recovery.ts"));
+    assert.ok(names.includes("shared/cts-relate/package.json"));
+    assert.ok(names.includes("package-lock.json"));
+    assert.ok(!names.includes("shared/cts-relate/recovery.test.ts"));
+    p.source = {files, sha256:studySha256(studyExactJson(files)), scope:SESSION_STUDY_SOURCE_SCOPE, checkpoint:"verified-source"};
+    writeFileSync(file,JSON.stringify(p));
+    assert.doesNotThrow(() => readSessionStudy(file,root));
+    writeFileSync(join(root,"shared/cts-relate/recovery.ts"), "changed");
+    assert.throws(() => readSessionStudy(file,root), /source changed/);
+    writeFileSync(join(root,"shared/cts-relate/recovery.ts"), "recovery");
+    writeFileSync(join(root,"shared/cts-relate/new-policy.ts"), "new module");
+    assert.throws(() => readSessionStudy(file,root), /source changed/);
+  }));
   it("keeps requested replay hours when desk snapshots contain stale windows", () => {
     const wf = studyWithRequestedWindow({ preH: 24, simH: 12, longH: 100, causalBase: true }, 150, 24);
     assert.deepEqual(wf, { preH: 150, simH: 24, longH: 100, causalBase: true });
@@ -52,6 +73,25 @@ describe("frozen full-engine session study", () => {
     assert.throws(() => validateFrozenSessionRuntime(rt,file,feed,p.window.evaluationFromT,p.window.endT,root), /walk-forward window differs/);
     p.actualWf.simH = p.window.runH; p.actualWf.preH = 5; writeFileSync(file, JSON.stringify(p));
     assert.throws(() => validateFrozenSessionRuntime(rt,file,feed,p.window.evaluationFromT,p.window.endT,root), /walk-forward window differs/);
+  }));
+  it("seals a separate modeled warmup and rejects Base proof from its future", () => fixture(({root,file,p,raw}) => {
+    const H = 3_600_000;
+    p.window = { evaluationFromT: 0, tradeStartT: 8 * H, endT: 32 * H, preH: 6, runH: 24, processedWarmupH: 2 };
+    p.actualWf = { ...p.actualWf, causalBase: true, processedStages: { validationN: 2, realN: 2 },
+      processedWarmup: { fromT: 6 * H, untilT: 8 * H, baseCutT: 6 * H } };
+    writeFileSync(file, JSON.stringify(p));
+    assert.doesNotThrow(() => readSessionStudy(file, root));
+    raw.window = { startT: 8 * H, endT: 32 * H };
+    assert.throws(() => validateFrozenSessionResult(raw, file, root), /omitted or changed/);
+    raw.processedStageProgress = { warmup: { ...p.actualWf.processedWarmup } };
+    assert.doesNotThrow(() => validateFrozenSessionResult(raw, file, root));
+    p.actualWf.processedWarmup.baseCutT = 8 * H;
+    writeFileSync(file, JSON.stringify(p));
+    assert.throws(() => readSessionStudy(file, root), /modeled-stage warmup/);
+    p.actualWf.processedWarmup.baseCutT = 6 * H;
+    p.actualWf.processedStages = undefined;
+    writeFileSync(file, JSON.stringify(p));
+    assert.throws(() => readSessionStudy(file, root), /modeled-stage warmup/);
   }));
   it("rejects an incomplete symbol universe and memory fallback rather than calling them a full test", () => fixture(({root,file,raw}) => {
     raw.engine.universe.pop(); assert.throws(()=>validateFrozenSessionResult(raw,file,root),/exact frozen symbol/); raw.engine.universe=["A-USDT","B-USDT"];

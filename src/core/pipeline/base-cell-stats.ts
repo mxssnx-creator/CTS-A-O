@@ -71,12 +71,14 @@ export class BaseCellAccumulator {
     this.n++;
   };
 
-  stats(lastN = 0, stop = 0): BaseCellStat {
+  stats(lastN = 0, stop = 0, signed = false): BaseCellStat {
     if (!Number.isSafeInteger(lastN) || lastN < 0) throw new RangeError("invalid Base last-N");
     const n = this.n;
     const lastCount = Math.min(n, lastN);
+    const signedReturns: number[] | undefined = signed ? [] : undefined;
     if (!n) return { n: 0, pf: 0, net: 0, mdd: 0,
-      ...(lastN ? { baseLast: { requested: lastN, n: 0, gp: 0, gl: 0, stop, mdd:0 } } : {}) };
+      ...(lastN ? { baseLast: { requested: lastN, n: 0, gp: 0, gl: 0, stop, mdd: 0,
+        ...(signedReturns ? { signedReturns } : {}) } } : {}) };
     if (n > this.runStart) {
       this.ends.push(n);
       this.runStart = n;
@@ -130,6 +132,7 @@ export class BaseCellAccumulator {
     for (let j = 0; j < n; j++) {
       const r = this.rr[indices ? indices[j] : j];
       if (lastN && j >= n - lastCount) {
+        signedReturns?.push(r);
         lastEquity += r; lastPeak=Math.max(lastPeak,lastEquity);lastMdd=Math.max(lastMdd,lastPeak-lastEquity);
         if (r > 0) lastGp += r;
         else lastGl -= r;
@@ -151,12 +154,14 @@ export class BaseCellAccumulator {
       Number.isFinite(gp * 100) && Number.isFinite(gl * 100)))
       return { n, pf: 0, net: 0, mdd: 0, gp: 0, gl: 0, invalid: true,
         ...(lastN ? { baseLast: this.validTimes && [lastGp,lastGl,lastMdd,stop].every(Number.isFinite) ?
-          { requested:lastN,n:lastCount,gp:lastGp*100,gl:lastGl*100,stop,mdd:lastMdd*100 } :
+          { requested:lastN,n:lastCount,gp:lastGp*100,gl:lastGl*100,stop,mdd:lastMdd*100,
+            ...(signedReturns ? { signedReturns } : {}) } :
           { requested: lastN, n: lastCount, gp: 0, gl: 0, stop: 0, invalid: true } } : {}) };
     const validLast = this.validTimes && Number.isFinite(lastGp * 100) && Number.isFinite(lastGl * 100) && Number.isFinite(stop) && stop >= 0;
     return { n, pf, net: sum * 100, mdd: mdd * 100, gp: gp * 100, gl: gl * 100,
       ...(lastN ? { baseLast: validLast
-        ? { requested: lastN, n: lastCount, gp: lastGp * 100, gl: lastGl * 100, stop, mdd:lastMdd*100 }
+        ? { requested: lastN, n: lastCount, gp: lastGp * 100, gl: lastGl * 100, stop, mdd:lastMdd*100,
+          ...(signedReturns ? { signedReturns } : {}) }
         : { requested: lastN, n: lastCount, gp: 0, gl: 0, stop: 0, invalid: true as const } } : {}) };
   }
 }

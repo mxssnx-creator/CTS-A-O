@@ -27,8 +27,8 @@ test("native live floors preserve each configured step and SL ratio without borr
   assert.equal(liveMinPfOf(settings,"mc","ema-9-21@m1","normal",.2,.5),1.6);
   assert.equal(liveMinPfOf(settings,"mc","ema-9-21@m1","normal",.2,1),1.3);
   assert.equal(liveMinPfOf({ ...settings,live:{...settings.live,liveMinPf:1.8} },"mc","ema-9-21@m1","normal",.2,.5),1.8);
-  assert.equal(liveMinPfOf(settings,"sh","sig-ema-cross-s@m1","normal",.2,.5),1.5,
-    "Signals retain independently defined economic floors");
+  assert.equal(liveMinPfOf(settings,"sh","sig-ema-cross-s@m1","normal",.2,.5),1.6,
+    "Signals honor the configured step-PF thresholds on their own protections (Stable-04)");
 });
 
 test("full configured-cell statistics count qualifying Micro/Minimal cells below the former hidden 1.1", () => {

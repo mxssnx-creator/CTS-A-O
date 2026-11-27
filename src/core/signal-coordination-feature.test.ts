@@ -109,11 +109,12 @@ test("signal combos add independent ratio × input-range pairs and honor source 
     ...DEFAULT_SIGNALS,
     sourcesMode: "allow" as const,
     sources: { "ema-cross": true, "macd-cross": true },
-    coordination: { ...DEFAULT_SIGNALS.coordination, minSources: 2 },
+    coordination: { ...DEFAULT_SIGNALS.coordination, strategyOnly: true, minSources: 2 },
   };
   const allInputs = signalCombos(twoSources, [15]);
   const coordinated = allInputs.filter((x) => isSignalCoordinationInd(x.ind));
-  assert.equal(allInputs.length, 4 + 15);
+  assert.equal(allInputs.length, 15);
+  assert.equal(signalCombos({ ...twoSources, coordination: { ...twoSources.coordination, strategyOnly: false } }, [15]).length, 4 + 15);
   assert.equal(coordinated.length, 15, "short-only, medium-only and combined each run all five bands");
   assert.equal(new Set(coordinated.map((x) => x.ind)).size, 15);
   assert.equal(

@@ -8,6 +8,7 @@
 //     included; fixed notional per entry
 import { exchangePositionLimit, type LiveSettings } from "../config.ts";
 import { sigCfg } from "../sim/walkforward.ts";
+import type { ProcessedStage } from "../sim/processed-set.ts";
 import { rangeOfId } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
 import { isSignalCoordinationInd } from "../signal-coordination.ts";
@@ -294,7 +295,7 @@ export interface ControlContribution {
   sym: string;
   side: 1 | -1;
   /** Frozen paper admission stage; a new venue parent is allowed only from active when processed stages are on. */
-  processedStage?: "postBase" | "validated" | "active";
+  processedStage?: ProcessedStage;
   /** Exact processed-stage policy/economic revision captured with processedStage. */
   processedPolicy?: string;
   /** Block volume multiple of this lane's position (1 = plain) */

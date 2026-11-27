@@ -1,3 +1,188 @@
+## 2026-11-27 — Micro 50-symbol, ten-day replay
+
+Applied Micro source commit `b9de779e3fbb2c54b074a91d7720a1f879a907a4`. The selectable 1m ADX pullback and the immutable
+completed-bar minute clock were checked with 59 focused tests. A separate 1,440-projection benchmark
+moved median time from 219.4 ms to 10.2 ms with all 108 parity checks passing.
+
+The 50-symbol model used four evaluated prehistory days and ten scored days, ending 27 November
+01:00 Vienna time. The selective ADX 30m hold and 4/2/2 policy recorded post-Base PF 5.392 with
+3/2,400 contexts passing (0.125%). It opened and closed 11 modeled positions and settled all 56
+funded modeled orders at PF 1.648, with 4/240 positive hours and 0.000973% marked equity drawdown.
+The first five days settled two losing orders. The second settled 54 at PF 2.182. The full market
+matrix measured 206 profiles against the same 0.176% round-trip cost. Zero candidates met the
+chronological default-selection rule. This research lane is enabled through an explicit focus.
+
+The Stable-04 candidate reproduced the study’s 56 funded orders, gates and 240 hourly rows with the
+opt-in offline rolling Base path. Native accounting reconciliation passed 59 checks. With fixed Base,
+0/1 pooled pairs passed, no exact contexts qualified and no orders opened. Exchange fills were outside
+the replay. See the [study notes](micro-10d-study-20261127.md).
+
+## 2026-11-27 — October Last-N archive restored
+
+The exact October replay ran at the original eight symbols and 9 October 02:00–14:00 Vienna trading
+window. The 24-hour cache had zero indicator-only candles and built zero tapes. The longer archived
+feed has identical candles in the scored window across all 16 series. Its 48-hour indicator-only prefix
+restored 55 tapes while preserving 12 hours of evaluated prehistory and the 0.15% round-trip cost.
+The runtime regression checks every built tape for entries before the evaluation boundary.
+
+At 9 October 14:00 Vienna time, the warmed 6/4/4 profile had post-Base PF 3.302 with 18 of 880 exact
+contexts passing (2.05%) and Real PF 1.961 with 5 of 880 passing (0.57%). Exec qualified 0 of 880 at
+cutoff and had no funded opens or settlements. The separate 4/2/2 and 4/1/1 studies each qualified
+21 of 880 (2.39%) at post-Base PF 2.312. They settled 5 and 13 modeled orders at PF 21.327 and 1.415
+respectively. Each had 3 of 12 positive hours. Both used the same Base protection, scope and PF floors.
+
+The verified profile, command, order/position counts and drawdown are in
+`docs/execution-audit-20261030/README.md`. Tested code is `ddb02f48c8de144949c14092f659cdf00f63e38a`
+with tree `0cfca918fd50a26062bca9096d2848a29133dedc`. All 131 focused tests and type checking passed.
+The work is an offline replay correction. The shorter windows remain research profiles.
+
+## 2026-11-27 — Exact Last-N handoffs and 50-symbol replay
+
+Tested code is `780b9f8f1c0710c2fee4d3f79b0b8d8b9c17a6f2` with tree
+`0b096f378bd3f1076cbfc3ff3264f4c41862aa81`. Each configured stage has its own Set and
+order receipt linked to the immediate parent. Paper restoration checks that retained child receipts
+match the exact parent settlement. Shared portfolio caps, the account hour guard and exposure conflicts
+can defer Exec while retaining the otherwise eligible Real model settlement. Stage reports require a
+currently qualifying parent to count a child window. A loss after admission stays in the funded cohort.
+
+The offline grid evaluates every configured Cartesian path lazily from the actual history of its parent.
+The 50-symbol grid used 400 Base windows, 80 Main windows and 160 windows each at Real and Exec.
+A separately priced mirror uses the original Base configuration's proof and supplies its own price and
+settlement on the same onset. An unfunded mirror source needs a valid admission before it can enter
+shared histories. The native Paper adapter still withholds negative Main when its opposite path is unavailable.
+
+All times below are Europe/Vienna. Readiness PF pools the returns from historical passing windows.
+Settled PF follows the subsequent funded model orders after costs. Counts show opened, settled or closed,
+and held.
+
+| Study | Post-Base passed and PF | Later funded PF | Positions | Orders | Positive hours | Equity drawdown |
+|---|---:|---:|---:|---:|---:|---:|
+| 50 symbols, full grid, 26 Nov 01:00–27 Nov 01:00 | 12,774/1,603,200,000 (0.000797%), PF 1.991 | 0.000 | 4/4/0 | 4/4/0 | 0/24 | 0.0054% |
+| 50 symbols, fixed Main/Real/Exec 6/4/4, same window | 19/11,000 (0.173%), PF 3.186 | 1.234 | 12/11/1 | 13/12/1 | 9/24 | 0.0702% |
+| 50 symbols, fixed 6/4/4, 22 Nov 01:00–23 Nov 01:00 | 13/12,900 (0.101%), PF 3.995 | Six wins, zero losses | 8/6/2 | 8/6/2 | 6/24 | 0.0150% |
+| 32 symbols, 25 Nov 13:00–26 Nov 01:00, all five Auto PF variants | 136/9,728 (1.40%), PF 3.837 | 0.372 | 36/32/4 | 48/43/5 | 4/12 | 0.2017% |
+| 32 symbols, 22 Nov 13:00–23 Nov 01:00, all five Auto PF variants | 8/13,632 (0.059%), PF 1.690 | 0.000 | 1/1/0 | 1/1/0 | 0/12 | 0.0053% |
+| Archived source families with time gates, 9 Oct 02:00–14:00, 8 symbols | 8/46 (17.39%), PF 5.637 at start | 3.273 | 21/13/8 | 400/382/18 | 9/12 | 0.6026% |
+
+Each 50-symbol study used 12 hours of indicator warmup, 12 hours of initial evaluation, 24 hours of stage
+warmup and 24 hours of trading. The mirror sources yielded 1,179 opposite Main admissions.
+No opposite entry reached Exec in the full-grid market sample. Missing opposite-source paths declined
+from 20,036 to 8,551. The four funded closes matched their previous exact identifiers and unit returns.
+The 32-symbol Auto PF variants produced identical funded close identifiers and returns within each window.
+
+The original October benchmark settled 294 long orders at PF 3.596 using time-based gates. The current
+focused time-gate replay preserved all 382 close identifiers from its own earlier repeat and matched
+unit returns to within 7e-18. The exact-context Last-N version built zero eligible tapes at the same
+October entry boundary. The archive and current executions therefore provide distinct cohort evidence.
+The two historic source families yielded three losses on one November window and two wins without a
+settled loss on the other. This evidence covers finite samples and leaves stable high PF and high order
+volume open.
+
+The focused verification ran 235 passing tests plus one matching CTS-X opposite-price test. TypeScript
+and the production build with its packaged core worker passed. The paired 50-symbol grid runs each
+passed 65 session checks, and both fixed 50-symbol runs passed 76. The indexed benchmark reproduced
+120,000 gate decisions per iteration. Median time was 20.3 ms indexed and 1,515.7 ms direct. Cold model
+compute was 47.4 seconds for the full mirror grid and 7.1–7.7 seconds for the fixed profile. Representative
+warmed foreground latency, native opposite-source admission, x02 verification and venue PF remain open.
+This checkpoint keeps the full grid and mirror pricing offline. No hosted service was changed.
+
+## 2026-11-27 — Trend-Reversal and independent Signals
+
+Trend-Reversal adds failed-break reclaim, swing break, relative volume impulse, reversal into trend, RSI recovery, PSAR, and trend/RSI confluence. Lookbacks of 6, 10 and 16 closed bars remain independent within each timeframe. Ordinary sources run through explicit Follow focus. The new Signal sources need their own toggle and keep their Signal-specific validation, protection and cost settings.
+
+The 12-symbol BingX study used 24 hours of prehistory and 48 hours of trading from 24 November 01:00 until 26 November 01:00 Vienna time. Ordinary Base passed 2 of 108 protection cells. At cutoff, 13 of 48 Main contexts passed (27.08%) at passing-window mean return PF 2.602. Real passed 1 of 48 (2.08%, PF 1.910). The full later Exec cohort opened 20 positions and 20 orders. It settled 19 of each at after-cost PF 0.534 and held one of each. The separately tested Signals grid passed 0 of 108 Base cells, leaving post-Base validation and PF unavailable and all execution counts zero.
+
+Engineering checks covered causal closed-bar evaluation, gap handling and independent source and Signal IDs. Shared research compared 28,224 parameter combinations with the two-day forward cohort frozen separately. The sample did not justify enabling a default or establishing high Exec throughput. No venue orders were placed.
+
+## 2026-11-26 — Signed Last-N and Auto PF strength
+
+Strategy Settings accept an integer Auto PF strength from 1 to 10, with default 4. Negative Short requires a loss-to-gain ratio at the applicable threshold. Last remains a signed trigger. Axis omits a Wide ladder when it has no protection cell.
+
+The eight-symbol cached replay ending 17 October 2026 at 23:00 Vienna used 48 hours of indicator warmup, 12 hours of evaluated history and 12 hours of trading. Tactics and Signals were off. Base passed 83 of 384 evaluations. Post-Base passed 279 of 22,260 configurations (1.25%) with pooled historical return PF 5.618. The funded model opened 36 positions and 358 orders. It settled 27 positions and 269 orders at return PF 0.197, leaving 9 positions and 89 orders open. Maximum modeled equity drawdown was 0.97%, and zero of 12 hours were positive. The complete isolated replay finished in 83.6 seconds of computation with 74 passing session checks. Earlier resource-constrained attempts are excluded.
+
+The change is contained in `c4e5e3d90c50e3451569ac1bf41be2d2d2677895`. The focused CTS-A-O suite passed 97 tests and type checking completed. Positive funded execution, CTS-A-O venue PF, and the warmed foreground cycle target remain to be demonstrated.
+
+## Independent CTS-A-O stage replay · 26 November 2026
+
+With persistent stage progression enabled, each eligible Base configuration can start its own paper history when its raw selector is cold. Signed Base blocks use the complete after-cost window and the configured signs. Main and Real consume strictly prior settled results of their own predecessor. Siblings can warm up at the same onset and the configured pair-event cap still limits Active entries. Native order allocation checks the same signed policy as the paper owner. Post-Base validation displays modeled config, symbol and side contexts and their passing historical windows.
+
+The eight BingX USDT pairs were BTC, ETH, SOL, XRP, BCH, LTC, ADA and AVAX. Prehistory was 25 November 00:00–12:00 UTC and trading was 12:00–24:00 UTC. The original 144-cell grid still passed 0 at Base. Its sole cell above the configured PF floor measured PF 1.235 and drawdown/net 1.976 against a limit of 1.00. No post-Base context could be evaluated in that original grid, so post-Base PF and validation percentage are unavailable. It opened, closed and held zero positions and orders.
+
+An expanded research grid on the same data passed 9 of 10,080 Base configurations (0.089%) under the same fee, PF, sample and drawdown policies. With 12 closes required on each owned predecessor, the original raw-seat selection started no processed orders on this expanded cohort. After the changes the model recorded 658 independent post-Base warmup closes at after-cost return PF 0.710. At 26 November 00:00 UTC, Main qualified 0 of 144 exact contexts (0%) and Real qualified 0 of 144 (0%). Both passing-window PFs are unavailable. Modeled Exec opened, closed and held zero positions and orders. Venue PF is unavailable.
+
+Five additional 12h + 12h comparisons on 19, 21, 22, 23 and 24 November used the same eight pairs and expanded grid. They yielded Base passes of 0, 297, 159, 175 and 67 respectively. All five completed with zero modeled Exec orders on the 12-close processed policy. An exploratory four-close comparison did not produce Exec entries either. The 12-close configuration and PF/DDR floors were retained.
+
+Source revision `2e8e7b3f97da14ff448381f1ad5b87602e909f26` passed 241 focused regressions, two incremental parity checks when run separately, and TypeScript. Controlled tests exercised signed gates and all modeled stages with independent siblings, concurrent onsets, mixed returns, and persistent paper/venue-parent ownership. The market replays establish coverage and identify the remaining sample and return limits for these profiles. They did not establish a profitable simulated or venue setting.
+
+## 2026-11-26 — Same-step Relate recovery qualification
+
+Relate now stamps the proposed loss step and size before entry. Each exact Set and contributing Overall relation qualifies from its own bounded, after-cost history. Two chronological groups at the same loss step must pass the configured return PF, size-weighted PF and drawdown limits. Relate Active advances its internal loss steps while withholding its volume addition. The existing modeled and paper orders retain their own captured allocation when they settle.
+
+A bounded eight-symbol, 1-minute Normal and Trailing replay used 25 November 2026 00:00–12:00 UTC for prehistory and 12:00–24:00 UTC for trading. Base passed 0 of 144 tested EMA, RSI and MACD protection cells (0%). Post-Base PF and the validation percentage were unavailable because no post-Base configs were evaluated. All three arms opened zero modeled positions and orders. There were no exchange fills. The synthetic 50-symbol close-and-sizing benchmark measured 0.251 ms at p95 with 250 closes retained per relation. The benchmark measures calculation cost.
+
+## 2026-11-26 — Relate loss progression, Overall and Active
+
+Relate now progresses on settled losses with a fresh default of 12 steps. A win or flat close resets its relation. Overall evaluates all relation windows and each entry needs its own qualified exact Set. Shared mode allocates the increase using configured relation weights. Relate Active suppresses its sizing portion until the required loss count while the base trade and internal close tracking continue. Auto requires the historical unit PF and hypothetical sized PF to clear the configured floor.
+
+The targeted modeled, realtime, stop and relation isolation suites passed 61 checks. The synthetic 50-symbol benchmark measured 0.394 ms p95 for a close and sizing decision, compared with 0.460 ms on the preceding source. Post-Base return PF, validated Sets and validation percentage are unavailable for CTS-A-O on a new market replay. No venue test was run for this revision.
+
+## 2026-11-26 — Tactic Base feature reuse
+
+The full-focus settings-storm test timed out after 900 seconds. A bounded diagnostic showed Base was progressing
+through 190,378 combinations; its Tactic variants repeatedly rebuilt identical lookback features. Worker batches
+now reuse those arrays and release them after the batch. The first cache alone was still at 46.7% of Base after
+roughly 780 seconds, so the repeated volatility and trend filters are now also shared for the same bounded lifetime.
+Focused parity tests and synthetic comparisons are in `docs/verification/tactic-base-cache-20261126.md`. The slow
+test and complete 12-symbol replay still need fresh results; neither timeout nor profit factor is certified.
+
+The immutable volatility percentile now uses a bounded causal sorted window, preserving exact scalar results while
+reducing repeated rank work. Synthetic timing and worker parity are in the same verification file. The frozen
+session source seal now includes shared Last-N, volume and Relate modules and dependency manifests; a marked seal
+also rejects added or removed engine/shared source files. Older unmarked protocols remain readable.
+
+## 2026-11-26 — Block Auto integrity and bounded windows
+
+The automatic Block count selector now actually evaluates each relation key independently, enforces the
+configured minimum of at least 30 observations, and retains bounded entry-stamped samples. Fresh settings
+enable it; explicit shared and fixed choices remain supported. Accepted-order feed replay preserves the
+entry-time attribution. See `docs/verification/block-auto-integrity-20261126.md` for tests and limitations.
+The earlier isolated replays used the previous selector and cannot certify this repair. A replay of the new
+source is required before reporting post-Base PF, validated percentage or settled execution PF.
+
+The first isolated replay (`45816167296`) stopped at the 7,500 MiB process RSS guard during Real setup
+after 2,680.86 seconds. Its requested 32 MiB history cache was ignored because the launcher used a different
+environment variable name. The store now accepts both spellings, the launcher uses the canonical one, and
+immutable-history validation retains less per-tape metadata. The Real close-time index now rearranges its
+sorted columns in place, avoiding a second full pair of event arrays. Synthetic measurements and regression coverage
+are documented in the verification file; the effect on the complete replay remains unmeasured.
+
+Independent Block window scores now retain exact cached results until the underlying ring changes. Focused
+before/after traces and synthetic CPU/heap measurements are in the verification file. The updated 12-symbol
+replay runs independently of the previous compact-index replay, which is retained as a baseline.
+
+The one-worker replay of `9a97149e4bee2dd69614340dce1637fce158b7b0` with the same 12-symbol feed stopped
+at Base 13% when host available memory fell to 1,133 MiB; peak child RSS was 698,500 KiB. It produced no
+post-Base PF, passing/evaluated percentage or settled PF. A portable offline replay and a Stable-04-only
+GitHub workflow now retain the protocol, resource log, and completed or failed evidence. The workflow's
+existence is not proof it has run or passed. Its 24h signal history and 12-position processed-stage windows
+are explicitly recorded; neither changes the independent Signals Last-15 setting.
+
+On Stable-04 baseline `8c0823eb68ca64a0d9090ffa79faf395b1a8ce20`, Block Auto could classify a window with
+an unknown return as an infinite no-loss PF, and its fresh defaults used 15 closes and relation-wide scope.
+The update uses a 30-close minimum and per-relation-key/count defaults, rejects unknown and overflow outcomes,
+and bounds each candidate's chronological window to its newest N returns. Explicit saved/custom policies remain
+unchanged. See `docs/verification/block-auto-integrity-20261126.md` for scope and test evidence.
+
+No new 12-symbol execution result is available at this checkpoint: post-Base return PF, passing/evaluated and
+validation percentage, and settled execution PF remain unavailable. The prior full replay was interrupted.
+No exchange connection, deployment, account action or live-readiness claim is made.
+
+Further follow-up: accepted unknown closes now remain in their Auto windows, automatic counts continue learning
+with recovery holding off, and duplicate candidate close histories are shared without sharing their pauses. A
+16-scenario trace and the bounded synthetic memory comparison are recorded in the verification file. The
+`aa1ee32` 12-symbol retry was stopped by the host reserve at 24% of strategy tapes; it has no PF, validation
+percentage or settled results. No incomplete fallback was accepted.
+
 ## 2026-11-18 — exact stop and trailing distances
 
 The opt-in price-distance grid uses SL 0.2%–2.2% and trailing 0.2%–2.6% at

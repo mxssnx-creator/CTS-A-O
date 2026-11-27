@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {it} from 'node:test';
-import {DerivedCache} from './derived-cache.ts';
+import {DerivedCache, derivedCacheBytes} from './derived-cache.ts';
 import {makeTape,signalConfigEval,defaultWalkForward} from './walkforward.ts';
 import {DEFAULT_SETTINGS as FACTORY_SETTINGS} from '../config.ts';
 // Freeze this historical window-policy contract; current count admission has independent scope tests.
@@ -13,6 +13,24 @@ it('bounds derived keys, retains replacements and recomputes evicted generations
  assert.equal(c.get(a),undefined);assert.equal(c.get(b),2);assert.equal(c.get(d),4);
  c.set(a,5);assert.equal(c.get(b),undefined);assert.equal(c.get(a),5);
  assert.throws(()=>new DerivedCache(0),/capacity/);
+});
+it('bounds retained bytes, accounts for growing values, and never caches an oversized value',()=>{
+ const c=new DerivedCache<object,string>(3,10),a={},b={},d={};
+ c.set(a,'a',4);c.set(b,'b',4);assert.equal(c.retainedBytes,8);
+ c.set(b,'b-expanded',7);assert.equal(c.get(a),undefined);assert.equal(c.get(b),'b-expanded');
+ assert.equal(c.retainedBytes,7);
+ c.set(d,'too-large',11);assert.equal(c.get(d),undefined);assert.equal(c.retainedBytes,7);
+ c.set(d,'d',3);assert.equal(c.retainedBytes,10);
+ c.set(b,'replacement-too-large',11);assert.equal(c.get(b),undefined);assert.equal(c.get(d),'d');
+ assert.equal(c.retainedBytes,3);c.delete(d);c.delete(d);assert.equal(c.retainedBytes,0);
+ assert.throws(()=>c.set(a,'bad',NaN),/size/);assert.throws(()=>new DerivedCache(3,0),/capacity/);
+ for(let i=0;i<20;i++){c.set(a,'a',4);c.delete(a);}c.set(b,'b',9);
+ assert.equal(c.get(b),'b');assert.equal(c.retainedBytes,9);
+});
+it('validates the configurable derived-index budget',()=>{
+ assert.equal(derivedCacheBytes(''),128*1048576);assert.equal(derivedCacheBytes('1'),1048576);
+ assert.equal(derivedCacheBytes('1024'),1024*1048576);
+ for(const n of ['0','-1','1.5','1025','NaN']) assert.throws(()=>derivedCacheBytes(n),/budget/);
 });
 it('eviction preserves exact independent Signal decisions across times, sides and setting changes',()=>{
  const H=3600000,t=120*H,base=defaultWalkForward(DEFAULT_SETTINGS);

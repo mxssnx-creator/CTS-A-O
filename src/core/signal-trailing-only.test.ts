@@ -158,6 +158,7 @@ describe("Signals: additional independent Trailing only sets", () => {
     const old: Protect = { tp: 0.03, sl: 0.09, trail: 0.012, hold: 192 };
     assert.equal(configId("follow", IND, old), `follow|${IND}|tp3|sl9|tr1.2|h192`);
     const ids = new Set<string>();
+    const sets = new Set<string>();
     for (const tf of [1, 5, 15, 30])
       for (const step of [0.5, 1, 1.5]) {
         const ind = `sig-ema-cross-s@m${tf}`;
@@ -168,11 +169,16 @@ describe("Signals: additional independent Trailing only sets", () => {
         assert.equal(parseConfigId(id)?.protect.trailOnly, true);
         assert.equal(parseConfigId(id)?.protect.trailStep, step);
         assert.equal(configId("follow", ind, parseConfigId(id)!.protect), id);
-        assert.equal(setKeyOf(id), `follow|${ind}|trailing-only`);
+        const set = setKeyOf(id);
+        assert.ok(set.startsWith("trailing-only#"));
+        assert.equal(setKeyOf(configId("follow", ind, { ...p, sl: p.sl * 1.1, trail: p.trail * 1.1 })), set,
+          "adjusting the protection distances retains this config's own feedback record");
         assert.notEqual(id, configId("follow", ind, { ...p, trailOnly: false }));
         ids.add(id);
+        sets.add(set);
       }
     assert.equal(ids.size, 12);
+    assert.equal(sets.size, 12, "timeframe and trailing step remain independent config sets");
     assert.equal(parseConfigId(`follow|${IND}|tp3|sl9|tr1.2|h192|to`), null);
     assert.equal(parseConfigId(`follow|${IND}|tp0|sl9|tr0|h192|to`), null);
     assert.equal(parseConfigId(`follow|${IND}|tp0|sl9|tr1.2|h192|to|ts0`), null);

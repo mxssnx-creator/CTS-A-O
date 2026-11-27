@@ -19,6 +19,7 @@ import { profitFactorRatio } from "./metrics/profit-factor.mjs";
 import { imprecisePrefix, returnWindow } from "./metrics/return-window.ts";
 import {
   SIGNAL_SOURCES,
+  signalSourceEnabled,
   signalId,
   type SignalAccept,
   type SignalClusterSettings,
@@ -46,20 +47,19 @@ export function signalCombos(
   if (!sig.enabled) return [];
   const lanes = sig.lanes.filter((tf) => engineTfs.includes(tf));
   const out: Array<{ bot: "follow"; ind: string }> = [];
-  // "deny" (default): a source runs unless it is set false; "allow": only the sources set true run
-  const allow = sig.sourcesMode === "allow";
-  for (const src of SIGNAL_SOURCES) {
-    if (allow ? sig.sources[src.name] !== true : sig.sources[src.name] === false) continue;
+  const coord = sig.coordination;
+  // The selected sources still vote when their standalone order paths are disabled.
+  if (!coord.strategyOnly) for (const src of SIGNAL_SOURCES) {
+    if (!signalSourceEnabled(sig, src.name)) continue;
     for (const range of ["short", "medium"] as const) {
       if (!sig.ranges[range]) continue;
       for (const tf of lanes)
         out.push({ bot: "follow", ind: laneInd(signalId(src.name, range), tf) });
     }
   }
-  const coord = sig.coordination;
   if (coord.enabled) {
     const sources = SIGNAL_SOURCES.filter((src) =>
-      allow ? sig.sources[src.name] === true : sig.sources[src.name] !== false,
+      signalSourceEnabled(sig, src.name),
     ).map((src) => src.name);
     if (sources.length >= coord.minSources) {
       const inputs: Array<{ mask: 1 | 2 | 3; short: boolean; medium: boolean }> = [];

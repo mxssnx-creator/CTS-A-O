@@ -1,4 +1,6 @@
 import {blockPrefix,blockRequired,checkBlockPolicy,evaluateBlocks,type BlockPolicy} from "../../shared/cts-lastn/blocks.ts";
+import { SIGNAL_EVALUATION_LAST_N } from "./signal-policy.ts";
+import { immutableHistoryGeneration } from "./sim/immutable-history-generation.ts";
 /** Position-count evaluation policy. Time controls data availability, never membership of these samples. */
 export interface PositionCounts {
   base: number;
@@ -38,7 +40,11 @@ export const DEFAULT_POSITION_WINDOWS: PositionWindows = {
   maxDrawdownPositions: 40,
   // Micro judges each lane on both its own symbol × side window and its config's record (operator, 17 Nov: Micro
   // performed per context, PF 1.43, and not config-wide, 0.21, on the same replay)
-  byRange: { mc: { base: 30, scope: "both" }, mn: { base: 30 } },
+  // Signals keep their own independent count windows (operator: independent configs and counts, positive-coordinations.md)
+  byRange: { mc: { base: 30, scope: "both" }, mn: { base: 30 }, sig: {
+    base: SIGNAL_EVALUATION_LAST_N, main: SIGNAL_EVALUATION_LAST_N,
+    real: SIGNAL_EVALUATION_LAST_N, entry: SIGNAL_EVALUATION_LAST_N,
+  } },
   // operator, 17 Nov 2026: config-wide windows are the systemwide default (docs/positive-coordinations.md, "Config-wide
   // own-close windows"): per context, long-hold ranges starved (PF 0.56 → 1.33 on the same replay)
   scope: "config",
@@ -57,33 +63,50 @@ interface PositionTapeColumns {
 // A live stored-tape wrapper must not pin an evicted decompressed arena through
 // validation metadata. Weak column identities still invalidate on replacement
 // or reloading, and the ordinary in-memory owner retains its own columns.
-const sourceChecks = new WeakMap<object, { n: number; columns: WeakRef<object>[]; valid: boolean }>();
+type SourceCheck = { n: number; valid: boolean } & (
+  | { kind: "stored"; generation: object; symbols: WeakRef<object>; buffer: WeakRef<object> }
+  | { kind: "ordinary"; columns: WeakRef<object>[] }
+);
+const sourceChecks = new WeakMap<object, SourceCheck>();
 /** Published columns are immutable. Unknown ownership or chronology anywhere makes the last N unknowable. */
 export function positionTapeValid(tp: PositionTapeColumns): boolean {
-  const columns = [tp.syms, tp.exitT, tp.entryT, tp.symI, tp.side, tp.r];
+  const generation = immutableHistoryGeneration(tp);
   const cached = sourceChecks.get(tp);
-  if (cached?.n === tp.n && columns.every((v, i) => v !== undefined && v === cached.columns[i].deref())) return cached.valid;
+  if (generation && cached?.kind === "stored" && cached.n === tp.n && cached.generation === generation &&
+      cached.symbols.deref() === tp.syms) {
+    // A stored tape's non-configurable column getters all view one checksummed immutable arena. Reading one
+    // still verifies an evicted/corrupted disk record, without retaining six separate column WeakRefs per tape.
+    const exit = tp.exitT;
+    if (ArrayBuffer.isView(exit) && cached.buffer.deref() === exit.buffer) return cached.valid;
+  }
+  // A stored tape exposes columns through getters. Resolve each immutable column once: repeatedly calling
+  // those getters for every cell needlessly visits the storage cache hundreds of thousands of times.
+  const symbols = tp.syms, exits = tp.exitT, entries = tp.entryT,
+    symbolSlots = tp.symI, sides = tp.side, returns = tp.r;
+  const columns = [symbols, exits, entries, symbolSlots, sides, returns];
+  if (!generation && cached?.kind === "ordinary" && cached.n === tp.n &&
+      columns.every((v, i) => v !== undefined && v === cached.columns[i].deref())) return cached.valid;
   let valid =
     Number.isSafeInteger(tp.n) &&
     tp.n >= 0 &&
-    Array.isArray(tp.syms) &&
-    [tp.exitT, tp.entryT, tp.symI, tp.side, tp.r].every((a) => a && a.length >= tp.n);
+    Array.isArray(symbols) &&
+    [exits, entries, symbolSlots, sides, returns].every((a) => a && a.length >= tp.n);
   if (valid)
     for (let i = 0; i < tp.n; i++) {
-      const symbol = tp.symI[i],
-        exit = tp.exitT[i],
-        entry = tp.entryT[i];
+      const symbol = symbolSlots[i],
+        exit = exits[i],
+        entry = entries[i];
       if (
         !Number.isInteger(symbol) ||
         symbol < 0 ||
-        symbol >= tp.syms.length ||
-        !tp.syms[symbol] ||
-        ![1, -1].includes(tp.side[i]) ||
+        symbol >= symbols.length ||
+        !symbols[symbol] ||
+        ![1, -1].includes(sides[i]) ||
         !Number.isFinite(exit) ||
         !Number.isFinite(entry) ||
         exit < entry ||
         (i > 0 &&
-          (exit < tp.exitT[i - 1] || (exit === tp.exitT[i - 1] && entry < tp.entryT[i - 1])))
+          (exit < exits[i - 1] || (exit === exits[i - 1] && entry < entries[i - 1])))
       ) {
         valid = false;
         break;
@@ -91,8 +114,11 @@ export function positionTapeValid(tp: PositionTapeColumns): boolean {
     }
   // Malformed/null columns are not cacheable WeakRef targets. Keep their
   // fail-closed verdict, without retaining them or changing the next check.
-  if (columns.every((v) => v !== null && (typeof v === 'object' || typeof v === 'function')))
-    sourceChecks.set(tp, { n: tp.n, columns: columns.map((v) => new WeakRef(v as object)), valid });
+  if (generation && Array.isArray(symbols) && ArrayBuffer.isView(exits))
+    sourceChecks.set(tp, { n: tp.n, kind: "stored", generation, symbols: new WeakRef(symbols),
+      buffer: new WeakRef(exits.buffer), valid });
+  else if (!generation && columns.every((v) => v !== null && (typeof v === 'object' || typeof v === 'function')))
+    sourceChecks.set(tp, { n: tp.n, kind: "ordinary", columns: columns.map((v) => new WeakRef(v as object)), valid });
   else sourceChecks.delete(tp);
   return valid;
 }
@@ -239,6 +265,6 @@ export function mainnetPositionWindows(
 export function positionStageStats(values:readonly number[],requested:number,blocks?:BlockPolicy,minPf=1.05,partialFloor=0){
  if(!blocks)return {...positionStats(values,requested,partialFloor),blocksPassed:true};
  const total=blockRequired(blocks),v=evaluateBlocks(blockPrefix(values.slice(-total).reverse(),total),blocks,Math.max(1.000001,minPf));
- const end=Math.max(0,values.length-blocks.short-blocks.minimal),stats=positionStats(values.slice(Math.max(0,end-blocks.long),end),blocks.long);
- return {...stats,n:v.count,requested:total,complete:v.count===total,known:v.state!=="unknown",blocksPassed:v.state==="qualified"};
+ const stats=positionStats(values,total);
+ return {...stats,blocksPassed:v.state==="qualified"&&stats.net>0&&stats.gp>=stats.gl*minPf};
 }

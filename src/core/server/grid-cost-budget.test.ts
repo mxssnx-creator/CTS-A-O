@@ -18,10 +18,10 @@ test("variant budget counts the actual modeled cost including fractional Low-Ran
   assert.equal(gridVariants(g), gridVariants(g, DEFAULT_SETTINGS.cost));
   // Micro / Low-Range ladders of 11 Nov 2026 (stops 0.2 to 1.6 step 0.1, trailing 0.1 to 0.6 step 0.1): the count
   // still follows the modeled cost, since the cost moves which requested cells collapse on a floor
-  assert.equal(gridVariants(g, .0015), 5928);
-  assert.equal(gridVariants(g, .0001), 5942);
-  assert.equal(checkGridVariantBudget(g, .0015, 5935), 5928);
-  assert.throws(() => checkGridVariantBudget(g, .0001, 5935), /5942 variants, max 5935/);
+  assert.equal(gridVariants(g, .0015), 5592);
+  assert.equal(gridVariants(g, .0001), 5654);
+  assert.equal(checkGridVariantBudget(g, .0015, 5935), 5592);
+  assert.throws(() => checkGridVariantBudget(g, .0001, 5653), /5654 variants, max 5653/);
   assert.throws(() => checkGridVariantBudget(g, NaN), /finite nonnegative/);
   const ordinary = { ...g, trailingOnly: false };
   for (const cost of [.0001, .0015])
@@ -39,8 +39,8 @@ test("merged settings, fee-only changes and preset application retain effective 
     assert.doesNotThrow(() => checkMerged(first.settings, { fees }));
     first.updateSettings({ fees });
     assert.equal(first.settings.cost, .0001, "fee-only patch derives and validates merged effective cost");
-    assert.equal(gridVariants(first.settings.grid, first.settings.cost), 6240, "the independent Micro floor preserves 292 additional distinct cells");
-    assert.equal(first.wf.protects.length, 6240);
+    assert.equal(gridVariants(first.settings.grid, first.settings.cost), 5900, "the independent Micro floor preserves 292 additional distinct cells");
+    assert.equal(first.wf.protects.length, 5900);
     const source = first.findPreset("live-all-independent"); assert.ok(source);
     const saved = { ...structuredClone(source), id: "grid-cost-budget-preset", kind: "saved" as const,
       settings: { grid: { lowRange: { ...grid().lowRange } } } };

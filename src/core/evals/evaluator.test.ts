@@ -35,14 +35,16 @@ test('unrelated config symbols cannot dilute own evaluation progress',()=>{
  const expected=evaluateConfig('fixture',rows,countOptions());
  assert.deepEqual(evaluateConfig('fixture',[...rows,{...trade(NOW-1,-.9),cfg:'sibling',sym:'OTHER'}],countOptions()),expected);
 });
-test('disjoint evaluation PF and count describe the actual long block and complete requested sample',()=>{
- const rows=[.02,-.005,.02,.02,-.10,-.10,-.01].map((r,i)=>trade(NOW-(8-i)*60000,r));
+test('disjoint evaluation requires the signed blocks and a positive complete-window PF',()=>{
+ const rows=[1,-.005,1,1,-.10,-.10,-.01].map((r,i)=>trade(NOW-(8-i)*60000,r));
  const o=countOptions(),block={long:4,short:2,minimal:1,shortPolarity:'negative' as const,minimalPolarity:'negative' as const};
  o.gates.positionWindows={...o.gates.positionWindows,blocks:{base:block,main:block,real:block,entry:block}} as typeof o.gates.positionWindows;
  const result=evaluateConfig('fixture',rows,o),main=result.windows.find(w=>w.key.startsWith('A/1/main/'))!;
  assert.equal(result.success,true);
- assert.equal(main.pf,12,'PF uses the independent long block, not the negative tail');
+ assert.ok(Math.abs(main.pf-3/.215)<1e-12,'PF uses every close in the signed window');
  assert.equal(main.span,7);assert.equal(main.n,7);assert.equal(main.key,'A/1/main/N7');
+ const losing=[.02,-.005,.02,.02,-.10,-.10,-.01].map((r,i)=>trade(NOW-(8-i)*60000,r));
+ assert.equal(evaluateConfig('fixture',losing,o).success,false,'a passing Long cannot hide a losing complete window');
 });
 
 test('a failed sibling context cannot supply the successful config ranking score',()=>{

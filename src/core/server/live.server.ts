@@ -50,6 +50,8 @@ import { promoteLaneKey, validPromotedLaneProof } from "../live-promote.ts";
 import { promotionStatus, type LiveGate } from "../live-validation.ts";
 import { isolateNewParents } from "./live-parent-isolation.ts";
 import { nativeProcessedRevision } from "./processed-stage-adapter.ts";
+import { ownedProcessedPolicy } from "../sim/processed-replay.ts";
+import type { ProcessedStage } from "../sim/processed-set.ts";
 import { observedUnlinkedExits, orphanCancelledZero, orphanFilled, orphanFenceId, orphanFenceKeys, orphanObservationId,
   type OrphanExitFence } from "./orphan-exit-fence.ts";
 import {
@@ -113,7 +115,7 @@ type LiveEntryParent = {
   cfg: string;
   sym: string;
   side: 1 | -1;
-  processedStage?: "postBase" | "validated" | "active";
+  processedStage?: ProcessedStage;
   processedPolicy?: string;
 };
 type LiveEntryAllocation = { key: string; at: number; parents: LiveEntryParent[] };
@@ -3438,7 +3440,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (rt.wf?.processedStages) {
         const already = liveKvView<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {};
         const evidence = [...parents.values()].map((parent) => already[parent.lk] ?? parent);
-        const revision = nativeProcessedRevision(rt.wf.processedStages, rt.settings.cost);
+        const policy = ownedProcessedPolicy(rt.wf.processedStages, rt.wf.gates?.positionWindows);
+        const revision = nativeProcessedRevision(policy, rt.settings.cost);
         if (evidence.some((parent) =>
           parent.processedStage !== "active" || parent.processedPolicy !== revision))
           throw holdOn("processed-stage identity is missing, stale or not active — not opening");

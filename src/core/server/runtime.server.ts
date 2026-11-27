@@ -1,6 +1,8 @@
 import { slRatiosOf } from "../sl-ratios.ts";
 import type { SlBounds } from "../sl-calibration.ts";
-import { migratePositionWindows } from "./position-windows-migration.server.ts";
+import { migrateAxisPerRange, migratePositionWindows, migrateSignalEvaluation15 } from "./position-windows-migration.server.ts";
+import { SIGNAL_CADENCE_DAYS } from "../signal-cadence.ts";
+import { migrateThinRanges } from "./thin-ranges-migration.server.ts";
 import { migrateBlockOwnConfig, migrateX01BlockAuto } from "./block-own-config-migration.server.ts";
 import { mainnetPositionWindows } from "../position-windows.ts";
 import {relationalVolumeFactor,relationalVolumeSettings} from "../../../shared/cts-volume/ratios.ts";
@@ -14,7 +16,7 @@ import { migrateFineLadders } from "./fine-ladder-migration.server.ts";
 import { publishMinimalPlus } from "./minimal-plus-publication.ts";
 import { isHistoricExitConfig } from "../exit-scope.ts";
 import { lstatSync } from "node:fs";
-import { mergeWorkerTapesGen } from "./tape-merge.ts";
+import { createTapeInterner, mergeWorkerTapesGen } from "./tape-merge.ts";
 import { strategyCoverageGen, type StrategyCoverage } from "./strategy-coverage.ts";
 import { lastNSamplesGen } from "./last-n-samples.ts";
 import { validationProgressOf, type ValidationProgress } from "../validation-progress.ts";
@@ -68,6 +70,7 @@ import {
   WIDE_TARGET_SL,
 } from "../minimal-coord.ts";
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
+import { isInverseInd } from "../indications/inverse-config.ts";
 import { isLowRangeInd, lowRangeEnabled, lowRangeTag } from "../indications/low-range.ts";
 import { PRE_CONTEXT_FOCUS_21OCT } from "../indications/context-default-focus.ts";
 import { isBreakRelInd } from "../indications/break-config.ts";
@@ -232,6 +235,7 @@ import {
   passedCellsOf,
   validatedSetGen,
   validatedTapes,
+  processedBaseTapeEligible,
   cellAllowed,
   walkForwardSteps,
   feedBooks,
@@ -273,7 +277,8 @@ import {
   positionVolume,
   rangeVolumeFactorFor,
   kindOfInd,
-  minPfForTape,
+  processedMinPfForTape,
+  processedBaseCheck,
   freshEntry,
   seatedForEntry,
   stepSeats,
@@ -286,6 +291,9 @@ import {
   mirrorId,
 } from "../sim/walkforward.ts";
 import { NativeProcessedStageAdapter, type NativeProcessedSnapshot } from "./processed-stage-adapter.ts";
+import { blockPolicyKey, blockRequired } from "../../../shared/cts-lastn/blocks.ts";
+import { checkedProcessedPolicy, checkedProcessedWindowGrid, defaultProcessedWindowGrid, ownedProcessedPolicy, processedLanes, type ProcessedReplayPolicy } from "../sim/processed-replay.ts";
+import { isOppositeMainWindow, type ProcessedStage } from "../sim/processed-set.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
   ENGINE_PROOF_PF,
@@ -595,6 +603,8 @@ export interface RuntimeStatus {
     hostAvailMb?: number;
     cgroup?: MemInfo["cgroup"];
     rssMb: number;
+    rssSoftMb?: number;
+    rssHardMb?: number;
     level: MemLevel;
     fallback: number;
     fallbackLabel: string;
@@ -897,7 +907,7 @@ export interface PaperBook {
       /** when the paper book first held this position (its entry delay is heldAt − entryT) */
       heldAt?: number;
       /** Entry-time native Base -> Main -> Real result. It stays frozen while this parent remains held. */
-      processedStage?: "postBase" | "validated" | "active";
+      processedStage?: ProcessedStage;
       /** Exact processed-stage windows and modeled-cost revision frozen with processedStage. */
       processedPolicy?: string;
       /**
@@ -1280,7 +1290,10 @@ export class CoreRuntime {
     migrateHistoricExitOptIn(db);
     migrateMinimumProtectionPolicy(db);
     migratePositionWindows(db);
+    migrateSignalEvaluation15(db);
+    migrateAxisPerRange(db);
     migrateFineLadders(db);
+    migrateThinRanges(db);
     migrateBlockOwnConfig(db);
     migrateX01BlockAuto(db, this.conn);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
@@ -1429,8 +1442,8 @@ export class CoreRuntime {
 
   /** Restore the opt-in native stage book once. Invalid durable evidence fails closed instead of starting empty. */
   private nativeProcessedStages(): NativeProcessedStageAdapter | null {
-    const policy = this.wf.processedStages;
-    if (!policy) return null;
+    if (!this.wf.processedStages || this.wf.processedStages.windowGrid || this.wf.processedStages.rollingBase) return null;
+    const policy = ownedProcessedPolicy(this.wf.processedStages, this.wf.gates.positionWindows);
     const key = JSON.stringify([policy, this.settings.cost]);
     if (this.processedNativeError && this.processedNativeKey === key) return null;
     if (this.processedNative && this.processedNativeKey === key) return this.processedNative;
@@ -2911,12 +2924,17 @@ export class CoreRuntime {
   }
 
   updateSettings(patch: SettingsPatch, wfPatch?: Partial<WalkForwardOptions>) {
+    if ((wfPatch?.processedStages?.windowGrid || wfPatch?.processedStages?.rollingBase) && (!this.replay || this.conn))
+      throw new Error("automatic Last-N grids and rolling Base require offline replay");
+    if (wfPatch?.processedWarmup && (!this.replay || this.conn))
+      throw new Error("processed warmup is available only in an unconnected replay");
     if(patch.relationalVolumeRatios!==undefined)relationalVolumeSettings(patch.relationalVolumeRatios,true);
     this.tickMemo=null;this.tickSentBook=null;
     const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${evaluationHistorySettings(this.settings, this.wf).historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`;
     const prevCompute = computeKey(this.settings, this.wf);
     const next = mergeSettings(this.settings, patch);
     if(patch.gates) checkSettings({gates:next.gates});
+    if (patch.block) checkSettings({ block: next.block });
     if (patch.grid) {
       checkLowRangeComplete(next.grid);
       checkRangeReplacementsComplete(next.grid);
@@ -2984,6 +3002,7 @@ export class CoreRuntime {
       gates: this.settings.gates,
       cost: this.settings.cost,
       toggles: this.settings.toggles,
+      wideEnabled: this.settings.grid.tp.length > 0,
       block: this.settings.block,
       dca: this.settings.dca,
       relate: { ...this.settings.relate, maxStack: Math.floor(Math.min(MAX_EXTERNAL_STACK, Math.max(1, this.settings.relate.maxStack))) },
@@ -3631,6 +3650,7 @@ export class CoreRuntime {
         // (forceSymbols keeps them all) — the cap was s.symbols, which dropped forced symbols beyond it
         const target = ranked.length;
         const missing = ranked
+          .filter((x) => !this.unavailableHistory(x))
           .filter((x) => !this.candles.has(x) || (this.candles.get(x)!.n < want && !this.historyBackfilled.has(x)))
           .slice(0, target);
         // Connected desks progressively start realtime after each batch. A frozen offline replay loads all
@@ -3644,7 +3664,8 @@ export class CoreRuntime {
         this.prehistTotal = Math.min(target, this.candles.size + missing.length);
         for (const x of missing)
           if (!this.prehistSyms.has(x)) this.prehistSyms.set(x, { state: "queued" });
-        for (const x of syms) this.prehistSyms.set(x, { state: "loading" });
+        // the attempt count survives re-loading (a failed symbol is retried at most HISTORY_ATTEMPTS times)
+        for (const x of syms) this.prehistSyms.set(x, { ...(this.prehistSyms.get(x) ?? {}), state: "loading" });
         // batch #/# of this run (the batches done before + the ones the missing symbols still take) and the
         // symbols loaded of the universe — the line showed the loaded count over the symbol setting as "batch"
         const batchNo = ++this.prehistBatch;
@@ -3689,7 +3710,12 @@ export class CoreRuntime {
                   "warn",
                   `${sym} extended history: ${cs.length}/${want} bars available; qualification uses measured history only`,
                 );
-            } else this.prehistSyms.set(sym, { state: "skipped", bars: cs.length });
+            } else
+              this.prehistSyms.set(sym, {
+                state: "skipped",
+                bars: cs.length,
+                attempts: (this.prehistSyms.get(sym)?.attempts ?? 0) + 1,
+              });
             this.setStage(
               "backfill",
               ++done,
@@ -3701,7 +3727,15 @@ export class CoreRuntime {
         );
         if (gen !== this.gen) return false;
         if (this.replayPreloadAll) {
-          const unloaded = ranked.filter((sym) => !this.candles.has(sym));
+          // A symbol without usable history after HISTORY_ATTEMPTS tries is excluded from this replay universe (logged),
+          // never waited on: one short listing used to hold every compute in a retry loop.
+          const excluded = ranked.filter((sym) => !this.candles.has(sym) && this.unavailableHistory(sym));
+          if (excluded.length)
+            this.db.event(
+              "warn",
+              `history unavailable, excluded from the replay universe after ${CoreRuntime.HISTORY_ATTEMPTS} tries: ${excluded.join(", ")}`,
+            );
+          const unloaded = ranked.filter((sym) => !this.candles.has(sym) && !this.unavailableHistory(sym));
           if (unloaded.length) {
             // An unavailable or short history is still pending, never a smaller valid replay universe. Keep the
             // successful loads and retry only missing symbols; the cycle must not compute the partial cohort.
@@ -4049,7 +4083,7 @@ export class CoreRuntime {
         this.memSoftNoted = true;
         this.db.event(
           "warn",
-          `memory low: ${m.availMb} MB available (soft ${memSoftMb()} MB), heap headroom ${m.heapAvailMb ?? "unknown"} MB, this process ${m.rssMb} MB${gc ? " — garbage collected" : ""}`,
+          `memory low: ${m.availMb} MB available (soft ${memSoftMb()} MB), heap headroom ${m.heapAvailMb ?? "unknown"} MB, this process ${m.rssMb} MB${m.rssSoftMb === undefined ? "" : ` (RSS soft ${m.rssSoftMb} MB)`}${gc ? " — garbage collected" : ""}`,
         );
       }
     }
@@ -4058,7 +4092,7 @@ export class CoreRuntime {
     if (m.level === "hard" && (!this.memPressured || workerActivity().inFlight > 0)) {
       const first = !this.memPressured;
       this.memPressured = true;
-      const reason = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), heap headroom ${m.heapAvailMb ?? "unknown"} MB, this process ${m.rssMb} MB — compute aborted`;
+      const reason = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), heap headroom ${m.heapAvailMb ?? "unknown"} MB, this process ${m.rssMb} MB${m.rssHardMb === undefined ? "" : ` (RSS hard ${m.rssHardMb} MB)`} — compute aborted`;
       const busy = abortWorkers(reason);
       if (first) {
         this.memLastAbort = reason;
@@ -4092,7 +4126,7 @@ export class CoreRuntime {
       this.memFreshAt = m.at + MEM_READ_MS;
       this.db.event(
         "warn",
-        `memory fallback ${fallbackLabel(before)} → ${fallbackLabel(this.memFallback)} (pressure before the compute: ${m.availMb} MB available)`,
+        `memory fallback ${fallbackLabel(before)} → ${fallbackLabel(this.memFallback)} (pressure before the compute: ${m.availMb} MB available, RSS ${m.rssMb} MB${m.rssHardMb === undefined ? "" : ` / ${m.rssHardMb} MB`})`,
       );
       this.memStatus(m);
       return true;
@@ -4100,7 +4134,7 @@ export class CoreRuntime {
     this.memMaxAborts++;
     const wait = memRetryDelayMs(MEM_FALLBACK_MAX, this.memMaxAborts);
     this.memRetryAt = Date.now() + wait;
-    this.memLastAbort = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB — compute not started`;
+    this.memLastAbort = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB${m.rssHardMb === undefined ? "" : ` (RSS hard ${m.rssHardMb} MB)`} — compute not started`;
     this.db.event(
       "warn",
       `${this.memLastAbort}; ${this.memMaxAborts} time(s) in a row at the lightest level — next try in ${Math.round(wait / 1000)} s`,
@@ -4157,6 +4191,8 @@ export class CoreRuntime {
       hostAvailMb: m.hostAvailMb,
       cgroup: m.cgroup,
       rssMb: m.rssMb,
+      rssSoftMb: m.rssSoftMb,
+      rssHardMb: m.rssHardMb,
       level: m.level,
       fallback: this.memFallback,
       fallbackLabel: fallbackLabel(this.memFallback),
@@ -4386,8 +4422,8 @@ export class CoreRuntime {
     this.touchPrehist();
     this.loop.reset();
     // Snapshot: a material settings change cancels this attempt and schedules its own revision.
-    const s = this.settings;
-    const computeRevision = computeKey(s, this.wf);
+    const s = processedBaseDiscoverySettings(this.settings, this.wf.processedStages);
+    const computeRevision = computeKey(this.settings, this.wf);
     // Result counters describe the last published cohort, not an unfinished attempt. Progress has its own stage.
     const nextStatus: Pick<
       RuntimeStatus,
@@ -4444,9 +4480,20 @@ export class CoreRuntime {
     const u = makeUniverse(allBars, this.evaluationFromT);
     if (!u.bars.length) return;
     // causal evaluation: the stages see only the history before the simulated run (its start, as walkForward sets it)
-    const runStartT = Math.floor((u.nowT - wf.simH * H) / H) * H;
+    const defaultStartT = Math.floor((u.nowT - wf.simH * H) / H) * H;
+    const rollingBase = wf.processedStages?.rollingBase === true;
+    if (rollingBase && (!this.replay || this.conn)) throw new Error("rolling Base requires offline replay");
+    const targetStartT = wf.processedWarmup || rollingBase ? (wf.startT ?? defaultStartT) : defaultStartT;
+    if (rollingBase && !wf.processedWarmup)
+      wf.processedWarmup = defaultProcessedWarmup(wf, u, targetStartT);
+    if (wf.processedWarmup && (!this.replay || this.conn || !wf.processedStages || !wf.causalBase ||
+        wf.processedWarmup.untilT !== targetStartT || wf.processedWarmup.baseCutT !== wf.processedWarmup.fromT))
+      throw new Error("processed warmup requires an unconnected replay and a causal Base snapshot at warmup start");
+    const runStartT = wf.processedWarmup?.fromT ?? targetStartT;
     const rangeFitCutT = wf.causalBase ? runStartT : undefined;
-    if (this.evaluationFromT !== undefined && (!wf.causalBase || this.evaluationFromT >= runStartT))
+    const startsWithDiscovery = rollingBase && !!wf.processedWarmup &&
+      this.evaluationFromT === runStartT;
+    if (this.evaluationFromT !== undefined && (!wf.causalBase || (!startsWithDiscovery && this.evaluationFromT >= runStartT)))
       throw new Error(
         "Replay evaluationFromT requires a causal Base window before the trading start",
       );
@@ -4456,7 +4503,7 @@ export class CoreRuntime {
           this.evaluationFromT,
         )
       : u;
-    if (!uStage.bars.length) return;
+    if (!uStage.bars.length && !rollingBase) return;
     const signalU = sigEnabled(s) ? makeUniverse(signalBars, this.evaluationFromT) : u;
     const signalStageU = wf.causalBase && sigEnabled(s)
       ? makeUniverse(signalBars.map((b) => headBars(b, runStartT)), this.evaluationFromT)
@@ -4805,15 +4852,23 @@ export class CoreRuntime {
     }
     const normalBasePassedKeys = new Set([...passedKeys, ...exitBase.passed]);
     for (const k of s.pinned ?? []) if (passedKeys.has(k)) main.add(k);
-    // contrarian execution (wf.invertSeats, an evaluation knob): each engine pair's mirror (follow ↔ revert, the same
-    // entries on the other side) computes the same cells, so a seat's entries can execute on its mirror's tape; a
-    // mirror that did not pass Base itself never takes a seat (wf.basePassed)
-    if (wf.invertSeats)
+    // Price the opposite side of the eligible cells for both inversion studies. Only the already
+    // qualified source can authorize a modeled handoff. The mirror gets no additional Base proof.
+    const gridNeedsOpposite = wf.processedStages?.windowGrid?.validation.some(isOppositeMainWindow);
+    const oppositePairs = new Set<string>();
+    const buildTrailingOnlyCells = gridNeedsOpposite ? { ...pairTrailingOnlyCells } : pairTrailingOnlyCells;
+    if (wf.invertSeats || gridNeedsOpposite)
       for (const k of [...main]) {
+        if (!wf.invertSeats && !passedKeys.has(k)) continue;
         if (isLowRangeInd(k.split("|")[1] ?? "")) continue;
         const m = mirrorId(k);
         if (!m || isSignalInd(k.split("|")[1] ?? "")) continue;
         main.add(m);
+        if (gridNeedsOpposite && passedKeys.has(k)) {
+          oppositePairs.add(m);
+          if (pairTrailingOnlyCells[k]?.length)
+            buildTrailingOnlyCells[m] = [...new Set([...(buildTrailingOnlyCells[m] ?? []), ...pairTrailingOnlyCells[k]])];
+        }
         if (pairTags[k]) pairTags[m] = [...new Set([...(pairTags[m] ?? []), ...pairTags[k]])];
         if (pairTps[k]) {
           const t = (pairTps[m] ??= {});
@@ -4835,7 +4890,36 @@ export class CoreRuntime {
         }
         if (pairCells[k]) pairCells[m] = [...new Set([...(pairCells[m] ?? []), ...pairCells[k]])];
       }
-    // only pairs that passed Base take a seat; held pairs stay in Main to manage their open positions
+    // Rolling discovery builds the configured universe even when the initial Base sample is empty.
+    // Every entry still needs an exact symbol/side/config proof from closes before its own clock.
+    const rollingBasePairs = rollingBase ? new Set<string>() : undefined;
+    if (rollingBasePairs) {
+      for (const { bot, ind } of computeCombos) {
+        const eligibleTags = ["", ...ALL_RANGE_TAGS].filter(tag => rangeAppliesTo(ind, tag, applies));
+        const tags = famNarrow ? familyTags(evalFams!, bot, ind, eligibleTags) : eligibleTags;
+        if (!tags.length) continue;
+        const pair = `${bot}|${ind}`;
+        rollingBasePairs.add(pair);
+        main.add(pair);
+        pairTags[pair] = tags;
+        delete pairTps[pair];
+        delete pairSl[pair];
+        delete pairCells[pair];
+        if (gridNeedsOpposite && !isInverseInd(laneOf(ind).base)) {
+          const mirror = mirrorId(pair);
+          if (mirror) {
+            main.add(mirror);
+            oppositePairs.add(mirror);
+            pairTags[mirror] = [...new Set([...(pairTags[mirror] ?? []), ...tags])];
+            delete pairTps[mirror];
+            delete pairSl[mirror];
+            delete pairCells[mirror];
+          }
+        }
+      }
+      wf.rollingBasePairs = rollingBasePairs;
+    }
+    // Frozen Base proof still governs legacy admission and Signals/Exit.
     wf.basePassed = normalBasePassedKeys;
     wf.exitBasePassed = exitBase.passed;
     wf.basePassedRanges = qualifiedTags;
@@ -5505,6 +5589,9 @@ export class CoreRuntime {
         const eluT = nodePerf.eventLoopUtilization();
         let maxRetainMs = 0;
         let maxConsumeSliceMs = 0;
+        const internTape = createTapeInterner();
+        const traceTapeMemory = process.env.CTS_CORE_TAPE_MEMORY_TRACE === "1";
+        let traceAt = performance.now(), traceTapes = 0, traceOpen = 0, tracePending = 0, traceCloses = 0;
         try {
           const res = await runOnWorkers<{ tapes: ConfigTape[]; buildStats?: TapeBuildStat[] }>(
             parts
@@ -5531,9 +5618,36 @@ export class CoreRuntime {
             computeWorkerOwner,
             async (reply, _index, signal) => {
               let slice = performance.now();
+              const checkRetainMemory = () => {
+                if (heapPressure() !== "ok") this.memGuardTick(true);
+                if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
+              };
               for (let i = 0; i < reply.tapes.length; i++) {
                 signal.throwIfAborted();
                 if (gen !== this.gen) throw new Error("history superseded by a newer generation");
+                if (traceTapeMemory) {
+                  const tape = reply.tapes[i];
+                  traceTapes++; traceOpen += tape.open.length; tracePending += tape.pending.length; traceCloses += tape.n;
+                  const at = performance.now();
+                  if (at - traceAt >= 30_000) {
+                    const m = process.memoryUsage();
+                    process.stderr.write(`[tape-memory] ${JSON.stringify({ stage: what, tapes: traceTapes, open: traceOpen,
+                      pending: tracePending, closes: traceCloses, rssMb: Math.round(m.rss / 1048576),
+                      heapMb: Math.round(m.heapUsed / 1048576), buffersMb: Math.round(m.arrayBuffers / 1048576) })}\n`);
+                    traceAt = at;
+                  }
+                }
+                for (const _ of internTape(reply.tapes[i])) {
+                  signal.throwIfAborted();
+                  if (gen !== this.gen) throw new Error("history superseded by a newer generation");
+                  const now = performance.now();
+                  if (now - slice > SLICE_MS) {
+                    maxConsumeSliceMs = Math.max(maxConsumeSliceMs, now - slice);
+                    await yieldNow();
+                    checkRetainMemory();
+                    slice = performance.now();
+                  }
+                }
                 const retainStarted = performance.now();
                 reply.tapes[i] = history.retain(reply.tapes[i]);
                 const now = performance.now();
@@ -5541,6 +5655,7 @@ export class CoreRuntime {
                 if (now - slice > SLICE_MS) {
                   maxConsumeSliceMs = Math.max(maxConsumeSliceMs, now - slice);
                   await yieldNow();
+                  checkRetainMemory();
                   slice = performance.now();
                 }
               }
@@ -5552,7 +5667,7 @@ export class CoreRuntime {
           if (gen !== this.gen) return null;
           // A reply can contain hundreds of thousands of opens. Yield during interning and bucket flattening so
           // execution and protection checks can run, while preserving exactly the former pair/reply order.
-          const merged = await drive("Tape merge", mergeWorkerTapesGen(res, order), () => undefined, gen);
+          const merged = await drive("Tape merge", mergeWorkerTapesGen(res, order, true), () => undefined, gen);
           if (floors.buildStats)
             for (const r of res) mergeBuildStats(floors.buildStats, r.buildStats ?? []);
           workerTapes = merged;
@@ -5614,7 +5729,8 @@ export class CoreRuntime {
     // built for comparison even though validated-seat admission deliberately removes them from passedKeys.
     const heldUnpassedPairs = new Set(
       [...main].filter((pair) =>
-        !passedKeys.has(pair) && !addedKeys.has(pair) && !isSignalInd(pair.split("|")[1] ?? ""),
+        !passedKeys.has(pair) && !oppositePairs.has(pair) && !addedKeys.has(pair) &&
+        !rollingBasePairs?.has(pair) && !isSignalInd(pair.split("|")[1] ?? ""),
       ),
     );
     const built = await tapesFor(engineMain, wf.protects, dcaOpt, "strategy tapes", {
@@ -5623,7 +5739,8 @@ export class CoreRuntime {
       pairTps,
       pairSl,
       pairCells,
-      ...(s.grid?.trailingOnly === true ? { pairTrailingOnlyCells } : {}),
+      ...(rollingBasePairs && { rollingBasePairs: new Set([...rollingBasePairs, ...oppositePairs]) }),
+      ...(s.grid?.trailingOnly === true ? { pairTrailingOnlyCells: buildTrailingOnlyCells } : {}),
       ...(wf.seatSet === "validated"
         ? { heldPairsOnly: heldUnpassedPairs }
         : {}),
@@ -5876,7 +5993,7 @@ export class CoreRuntime {
     const rangePublication = publishMinimalPlus(
       [...strategyTapes, ...sigTapes], newBuildStats, s.grid.minimalPlus,
       // Strictly before the run, never fitted on its future closes.
-      wf.startT ?? Math.floor((wu.nowT - wf.simH * H) / H) * H,
+      wf.processedWarmup?.baseCutT ?? wf.startT ?? Math.floor((wu.nowT - wf.simH * H) / H) * H,
       heldIds, !!(wf.probe?.perRange || wf.probe?.perCell),
     );
     const tapes = rangePublication.tapes;
@@ -5898,11 +6015,23 @@ export class CoreRuntime {
     // simH / stepH, which ran the bar past 100 %)
     const steps = Math.max(1, walkForwardSteps(wu, wf));
     const positionPolicy = wf.gates?.positionWindows;
-    const validationProgress = positionPolicy
+    const stagePolicies = wf.processedStages && processedLanes(ownedProcessedPolicy(wf.processedStages, positionPolicy));
+    const stages = stagePolicies?.[0].policy;
+    const windowGrid = wf.processedStages?.windowGrid;
+    const validationDetail = windowGrid
+      ? `Last-N windows · Base ${windowGrid.base.length} / Main ${windowGrid.validation.length} / Real ${windowGrid.real.length} / Exec ${windowGrid.exec.length}`
+      : stages
+      ? stagePolicies.length > 1 ? `${stagePolicies.length} independent Last-N stage policies`
+        : `predecessor closes Main ${stages.blocks?.validation ? blockRequired(stages.blocks.validation) : stages.validationN}` +
+          ` / Real ${stages.blocks?.real ? blockRequired(stages.blocks.real) : stages.realN}` +
+          (stages.execN === undefined ? "" : ` / Exec ${stages.blocks?.exec ? blockRequired(stages.blocks.exec) : stages.execN}`)
+      : positionPolicy
       ? `positions Main / Real / Entry ${positionPolicy.main} / ${positionPolicy.real} / ${positionPolicy.entry} · own range/config overrides apply`
       : `engine ${wf.preH}h pre / Last-${wf.validLastN ?? 0}${sig.enabled ? ` · Signals ${signalHistoryHours(wf)}h / Last-${wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN ?? 0}` : ""} · entry Last-${wf.lastN}`;
+    const validationProgress = validationDetail + (wf.processedWarmup
+      ? ` · ${processedWarmupHours(wf)}h modeled warmup + ${wf.simH}h target` : "");
     this.setStage("Real", 0, steps, `${wf.simH}h sim · step 0/${steps}`);
-    const reportSimulation = simulationProgress(steps, wf.simH, validationProgress,
+    const reportSimulation = simulationProgress(steps, wf.simH + processedWarmupHours(wf), validationProgress,
       (completed, label) => this.setStage("Real", completed, steps, label));
     const sim = await this.researchSimulation(wu, tapes, wf, gen, reportSimulation, signal);
     signal.throwIfAborted();
@@ -7096,8 +7225,14 @@ export class CoreRuntime {
   /** progressive prehistoric start: per-symbol state and batch bookkeeping */
   private prehistSyms = new Map<
     string,
-    { state: "queued" | "loading" | "computing" | "ready" | "skipped"; bars?: number }
+    { state: "queued" | "loading" | "computing" | "ready" | "skipped"; bars?: number; attempts?: number }
   >();
+  /** a symbol whose history failed or was too short this many times is unavailable for this replay (never retried forever) */
+  private static readonly HISTORY_ATTEMPTS = 3;
+  private unavailableHistory(sym: string): boolean {
+    const v = this.prehistSyms.get(sym);
+    return v?.state === "skipped" && (v.attempts ?? 0) >= CoreRuntime.HISTORY_ATTEMPTS;
+  }
   private prehistTotal = 0;
   /** backfill batches loaded in this progressive start (the backfill line's batch #/#) */
   private prehistBatch = 0;
@@ -7746,6 +7881,7 @@ export class CoreRuntime {
     const selected = this.paper.selected;
     if (selected && this.promotionSelectedMemo?.selected !== selected)
       this.promotionSelectedMemo = { selected, ids: new Set(selected) };
+    const processed = !!this.wf.processedStages;
     const eligible =
       selected &&
       this.promotionSelectedMemo?.ids.has(lane.cfg) &&
@@ -7753,11 +7889,11 @@ export class CoreRuntime {
       !tp.heldOnly &&
       (isSignalInd(ind) ||
         (baseAllowsTape(tp, this.wf) &&
-          (!this.wf.basePassed || configEval(tp, now, this.liveContextWf()).ok) &&
-          configDirectionEval(tp, now, this.liveContextWf(), lane.side).ok &&
-          engineContextValid(tp, now, this.liveContextWf(), lane.sym, lane.side))) &&
+          (processed || ((!this.wf.basePassed || configEval(tp, now, this.liveContextWf()).ok) &&
+            configDirectionEval(tp, now, this.liveContextWf(), lane.side).ok &&
+            engineContextValid(tp, now, this.liveContextWf(), lane.sym, lane.side))))) &&
       (!isSignalInd(ind) ||
-        (signalValidationOk(tp, now, this.wf, lane.sym, lane.side) &&
+        ((processed || signalValidationOk(tp, now, this.wf, lane.sym, lane.side)) &&
           (!this.wf.signalBasePassed || this.wf.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) &&
           (!this.wf.signalActive ||
             signalActiveHas(
@@ -7778,9 +7914,11 @@ export class CoreRuntime {
     if (!decision)
       return { ...gate, ok: false, state: "unknown", unknown: Math.max(1, gate.unknown ?? 0),
         processed: { stage: null, state: "unknown", n: 0, pf: null } };
-    if (decision.stage === "active") return { ...gate,
-      processed: { stage: "active", state: "qualified", n: decision.real?.n ?? 0, pf: decision.real?.pf ?? null } };
-    const verdict = decision.stage === "postBase" ? decision.validation : decision.real;
+    if (decision.stage === "active") {
+      const proof = decision.exec ?? decision.real;
+      return { ...gate, processed: { stage: "active", state: "qualified", n: proof?.n ?? 0, pf: proof?.pf ?? null } };
+    }
+    const verdict = decision.stage === "postBase" ? decision.validation : decision.stage === "real" ? decision.exec : decision.real;
     const state = verdict?.state ?? "unknown";
     return { ...gate, ok: false,
       state: state === "failed" ? "model-failed" : state === "unknown" ? "unknown" : "model-insufficient",
@@ -8248,16 +8386,18 @@ export class CoreRuntime {
   ) {
     this.checkBacktest(job);
     const patch = presetSettings(p.settings);
-    const s = mergeSettings(this.settings, {
+    const settings = mergeSettings(this.settings, {
       ...patch,
       tactics: { ...DEFAULT_SETTINGS.tactics, ...(patch.tactics ?? {}) },
       focus: patch.focus ?? [],
     });
+    const policy = sanitizeWf(p.wf as never);
+    const s = processedBaseDiscoverySettings(settings, policy.processedStages);
     checkGridVariantBudget(s.grid, s.cost);
     const wf: WalkForwardOptions = {
       ...defaultWalkForward(s),
-      ...sanitizeWf(p.wf as never),
-      gates: s.gates,
+      ...policy,
+      gates: settings.gates,
       cost: s.cost,
       toggles: s.toggles,
       block: s.block,
@@ -9526,25 +9666,32 @@ export class CoreRuntime {
       }
     }
     // the engine candidates of the run (the feed holds every candidate, executed or not, with its entry and exit)
-    const iv = new Map<string, Array<[number, number]>>();
+    // Keep paired numeric columns rather than one short-lived object for every candidate interval.
+    const iv = new Map<string, { entry: number[]; exit: number[] }>();
     for (const f of sim.feed ?? []) {
       if (f.entryT === undefined || !f.cfg || sigCfg(f.cfg) || isHistoricExitConfig(f.cfg, f.type)) continue;
       const k = `${f.sym}|${f.side > 0 ? 1 : -1}`;
       let l = iv.get(k);
-      if (!l) iv.set(k, (l = []));
-      l.push([f.entryT, f.exitT]);
+      if (!l) iv.set(k, (l = { entry: [], exit: [] }));
+      l.entry.push(f.entryT);
+      l.exit.push(f.exitT);
     }
     const engineIv = new Map<string, { e: Float64Array; mx: Float64Array }>();
     for (const [k, l] of iv) {
-      l.sort((a, b) => a[0] - b[0]);
-      const e = new Float64Array(l.length);
-      const mx = new Float64Array(l.length);
+      // Stable index sorting preserves equal-entry order and therefore the exact running exit maximum.
+      const order = Uint32Array.from({ length: l.entry.length }, (_, i) => i);
+      order.sort((a, b) => l.entry[a] - l.entry[b]);
+      const e = new Float64Array(order.length);
+      const mx = new Float64Array(order.length);
       let m = -Infinity;
-      l.forEach(([en, ex], j) => {
-        e[j] = en;
-        mx[j] = m = Math.max(m, ex);
-      });
+      for (let j = 0; j < order.length; j++) {
+        const i = order[j];
+        e[j] = l.entry[i];
+        mx[j] = m = Math.max(m, l.exit[i]);
+      }
       engineIv.set(k, { e, mx });
+      // Earlier source columns need not coexist with the rest of the completed output.
+      iv.delete(k);
     }
     this.coordCache = { sim, closedBy, hourNet, exitHourNet, srcClosed, engineIv };
     return this.coordCache;
@@ -9627,25 +9774,31 @@ export class CoreRuntime {
       entryT: number;
       stopHit?: number;
       kind?: string;
+      processedStage?: ProcessedStage;
     }>,
     srcClosed: ReadonlyMap<string, Array<{ exitT: number; r: number }>>,
     confirmPool?: ConfirmPool | null,
     /** entries that hold a crowd seat without a position (refused by the live validation after the simulation's rules) */
     crowdSeats?: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; kind?: string }>,
+    wouldFundPairEvent?: () => boolean,
+    portfolio?: { applies: boolean; counts: (row: { processedStage?: ProcessedStage }) => boolean },
   ): string | null {
     const hk = Math.floor(op.entryT / H);
-    if (this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
+    const accountCheck = portfolio?.applies !== false;
+    if (accountCheck && this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
     // (coordination reads only the entry's own symbol: the whole book filtered per candidate was ~340 MB of garbage in
     // 5 min on x02, 8 Oct allocation profile)
-    const at = open.filter((x) => x.sym === op.sym && x.entryT <= op.entryT && !x.stopHit);
+    const at = open.filter((x) => x.sym === op.sym && x.entryT <= op.entryT && !x.stopHit &&
+      (!portfolio || (portfolio.applies ? portfolio.counts(x) : !portfolio.counts(x) && x.side === op.side)));
     // entry crowding: at most entryCrowd[range] configs of a range on one symbol × side × entry time (as simulated)
-    if (this.wf.entryCrowd) {
+    if (accountCheck && this.wf.entryCrowd) {
       const cap = crowdCapOf(this.wf, op.cfg);
       if (cap < Infinity) {
         const k = crowdKey(op.cfg, op.sym, op.side, op.entryT);
         let n = 0;
         for (const x of open)
-          if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
+          if ((!portfolio || portfolio.counts(x)) && x.entryT === op.entryT &&
+            crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
         if (crowdSeats)
           for (const x of crowdSeats)
             if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
@@ -9653,13 +9806,14 @@ export class CoreRuntime {
       }
     }
     // one order per pair event (as simulated): another config of this pair, type, symbol and side already entered this minute
-    if (this.wf.onePerPairEvent) {
+    if (accountCheck && this.wf.onePerPairEvent) {
       const axisOwn = this.wf.pairEventAxisOwn !== false;
       const k = pairEventKey(op.cfg, op.sym, op.side, op.kind, op.entryT, axisOwn);
       const same = (x: { cfg: string; sym: string; side: number; entryT: number; kind?: string }) =>
         Math.floor(x.entryT / 60_000) === Math.floor(op.entryT / 60_000) && x.cfg !== op.cfg &&
         pairEventKey(x.cfg, x.sym, x.side, x.kind ?? op.kind, x.entryT, axisOwn) === k;
-      if (open.some(same) || crowdSeats?.some(same)) return "pairEvent";
+      if ((open.some((x) => (portfolio ? portfolio.counts(x) : !wouldFundPairEvent || x.processedStage === "active") && same(x)) ||
+          crowdSeats?.some(same)) && (!wouldFundPairEvent || wouldFundPairEvent())) return "pairEvent";
     }
     // confirmation as in the simulation: an engine candidate (taken or not) open at the entry, not only a position
     const coordWhy = coordBlock(this.wf.coord, op, hourNet, at, confirmPool);
@@ -9734,6 +9888,9 @@ export class CoreRuntime {
     if (!this.tapes.length || !this.sim) return;
     if (fast && !this.lastSelection) return;
     const nativeStages = this.wf.processedStages ? this.nativeProcessedStages() : null;
+    const separatePortfolio = nativeStages?.separatesPortfolio === true;
+    const ownsPortfolioSlot = (p: { processedStage?: ProcessedStage }) =>
+      !separatePortfolio || p.processedStage === undefined || p.processedStage === "active";
     // sub-timings (the Paper phase is one synchronous slice: its slowest part is named in the phase record)
     const tp0 = performance.now();
     const nowT = Math.floor(Date.now() / H) * H;
@@ -9797,14 +9954,27 @@ export class CoreRuntime {
           wfSel,
         );
     const { picks, eligible } = selection;
-    const postBaseValidation = captureValidation
-      ? validationProgressOf((selection as { validationSummary?: ValidationSummary }).validationSummary, t) : null;
+    const processedProof = this.sim.processedStages ?? this.sim.processedStageSummary;
+    const postBaseValidation = this.wf.processedStages
+      ? processedProof ? validationProgressOf(processedProof.validation.passingWindows, processedProof.at, "modeled-processed-context") : null
+      : captureValidation ? validationProgressOf((selection as { validationSummary?: ValidationSummary }).validationSummary, t) : null;
     if (!fast && !reuse) {
       this.lastSelection = { picks, eligible };
       this.lastSelectionAt = t;
     }
     const tSelect = performance.now() - tp0;
     const sel = new Set([...picks.map((p) => p.id), ...sigTapes.map((tp) => tp.id)]);
+    const processedEntries = new Set<string>();
+    if (nativeStages && this.wf.validated === undefined) {
+      for (let i = 0; i < engineTapes.length; i++) {
+        const tp = engineTapes[i];
+        if (processedBaseTapeEligible(tp, this.wf)) {
+          processedEntries.add(tp.id);
+          sel.add(tp.id);
+        }
+        if ((i + 1) % 512 === 0) yield 0;
+      }
+    }
     // sets that still hold an open position stay processed until that position is closed (even when no longer
     // selected): their tape carries the open position forward until its exit
     const holding = new Set(this.paper.positions.map((p) => p.cfg));
@@ -9826,7 +9996,7 @@ export class CoreRuntime {
         legs?: Partial<Record<string, number>>;
         heldAt?: number;
         heldPx?: number;
-        processedStage?: "postBase" | "validated" | "active";
+        processedStage?: ProcessedStage;
         processedPolicy?: string;
       }
     > = [];
@@ -9881,7 +10051,7 @@ export class CoreRuntime {
         const isSig = isSignalInd(tp.ind);
         for (const op of ops) {
           if (prevByKey.has(posId(op))) continue;
-          if (!isSig && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
+          if (!isSig && !processedEntries.has(id) && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
             pSkip("notSelected");
             continue;
           }
@@ -9908,7 +10078,7 @@ export class CoreRuntime {
         // held = this exact position was already in the paper book; a set that is no longer selected keeps
         // only those (its other tape positions were never taken and must not bypass the caps)
         const held = prevByKey.has(posId(op));
-        if (!held && !isSig && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
+        if (!held && !isSig && !processedEntries.has(id) && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
           pSkip("notSelected");
           continue;
         }
@@ -10013,6 +10183,7 @@ export class CoreRuntime {
       if (representedHeld.has(k)) continue;
       provisionalHeld.add(k);
       positions.push({ ...p, vol: p.vol ?? 1, level: p.level ?? 0 });
+      if (!ownsPortfolioSlot(p)) continue;
       const cls = orderCapScope(p.cfg);
       perSym.set(`${cls}|${p.sym}`, (perSym.get(`${cls}|${p.sym}`) ?? 0) + 1);
       perSide.set(`${cls}|${p.side}`, (perSide.get(`${cls}|${p.side}`) ?? 0) + 1);
@@ -10130,8 +10301,9 @@ export class CoreRuntime {
     let slice = 0;
     // Only retries of an identical config and open event deduplicate; sibling sources and strategy cells stay separate.
     const openKeys = new Set<string>();
-    for (const { op, held } of cands) if (held) openKeys.add(openDupKey(op));
-    for (const p of positions) if (provisionalHeld.has(orderKey(p))) openKeys.add(openDupKey(p));
+    const admissionKey = separatePortfolio ? orderKey : openDupKey;
+    for (const { op, held } of cands) if (held) openKeys.add(admissionKey(op));
+    for (const p of positions) if (provisionalHeld.has(orderKey(p))) openKeys.add(admissionKey(p));
     let releaseIndex = 0;
     const releaseDue = (at: number) => {
       const due: Array<(typeof releases)[number]> = [];
@@ -10142,13 +10314,14 @@ export class CoreRuntime {
       for (const p of positions) if (!keys.has(orderKey(p))) positions[write++] = p;
       positions.length = write;
       for (const { p } of due) {
+        openKeys.delete(admissionKey(p));
+        if (!ownsPortfolioSlot(p)) continue;
         const cls = orderCapScope(p.cfg);
         const sym = `${cls}|${p.sym}`, side = `${cls}|${p.side}`, pos = `${cls}|${p.sym}|${p.side}`;
         perSym.set(sym, (perSym.get(sym) ?? 1) - 1);
         perSide.set(side, (perSide.get(side) ?? 1) - 1);
         openBy.set(cls, (openBy.get(cls) ?? 1) - 1);
-        if (!positions.some((x) => `${orderCapScope(x.cfg)}|${x.sym}|${x.side}` === pos)) openPos.delete(pos);
-        openKeys.delete(openDupKey(p));
+        if (!positions.some((x) => ownsPortfolioSlot(x) && `${orderCapScope(x.cfg)}|${x.sym}|${x.side}` === pos)) openPos.delete(pos);
       }
       if (nativeStages) {
         for (const { p, at: exitT } of due) {
@@ -10179,9 +10352,25 @@ export class CoreRuntime {
         pSkip("stale");
         continue;
       }
-      if (!held && openKeys.has(openDupKey(op))) {
+      if (!held && openKeys.has(admissionKey(op))) {
         pSkip("duplicate");
         continue;
+      }
+      const side = op.side > 0 ? 1 : -1;
+      let baseCheck: ReturnType<typeof processedBaseCheck> | undefined;
+      let portfolioBlocked = "";
+      let wantsExec = !separatePortfolio;
+      if (!held && separatePortfolio && nativeStages) {
+        try {
+          baseCheck = nativeStages.checksBase ? processedBaseCheck(tp, this.wf, op.sym, side, op.entryT) : undefined;
+          const proof = nativeStages.preview(tp, op.sym, side, op.entryT, processedMinPfForTape(tp, this.wf), baseCheck);
+          if (!proof) { pSkip("exec:processedBase"); continue; }
+          wantsExec = proof.stage === "active";
+        } catch (err) {
+          this.db.event("error", `native processed-stage preview failed: ${err instanceof Error ? err.message : err}`);
+          pSkip("exec:processedUnavailable");
+          continue;
+        }
       }
       if (!held) {
         while (ci < closedBy.length && closedBy[ci].exitT <= op.entryT) {
@@ -10194,14 +10383,30 @@ export class CoreRuntime {
           }
           hours.set(k, (hours.get(k) ?? 0) + x.r * 100);
         }
-        const back = this.entryHeldBack(
+        const heldBack = (applies: boolean) => this.entryHeldBack(
           { cfg: op.cfg, sym: op.sym, side: op.side, entryT: op.entryT },
           isHistoricExitConfig(op.cfg) ? (exitHourNet.get(op.cfg) ?? new Map()) : hourNet,
           positions,
           srcClosed,
           confirmPool,
           crowdSeats,
+          nativeStages && !separatePortfolio ? () => {
+            try {
+              return nativeStages.preview(tp, op.sym, side, op.entryT,
+                processedMinPfForTape(tp, this.wf), nativeStages.checksBase
+                  ? processedBaseCheck(tp, this.wf, op.sym, op.side, op.entryT) : undefined)?.stage === "active";
+            } catch {
+              return true;
+            }
+          } : undefined,
+          separatePortfolio ? { applies, counts: ownsPortfolioSlot } : undefined,
         );
+        let back = heldBack(wantsExec);
+        if (separatePortfolio && wantsExec &&
+            (back === "hourGuard" || back === "crowd" || back === "pairEvent" || back === "conflict")) {
+          portfolioBlocked = back;
+          back = heldBack(false);
+        }
         if (back) {
           pSkip(`${sigCfg(op.cfg) ? "sig:" : ""}heldBack:${back}`);
           continue;
@@ -10211,13 +10416,16 @@ export class CoreRuntime {
         // the live validation after the simulation's own rules: a config it pauses keeps the crowd seat the
         // simulation gave it (judged first, its seat went to a config the simulation had crowded out)
         if (
-          lvN > 0 &&
+          lvN > 0 && wantsExec && !portfolioBlocked &&
           !liveEntryOk(lvOf(tp, op.entryT, lvSide, op.sym))
         ) {
           lvSkipped++;
           pSkip("liveValidation");
           crowdSeats.push(op);
-          continue;
+          if (!separatePortfolio) continue;
+          const modelBack = heldBack(false);
+          if (modelBack) { pSkip(`heldBack:${modelBack}`); continue; }
+          portfolioBlocked = "liveValidation";
         }
       }
       // a held position continues regardless of the entry rules (they decided at its entry) and keeps its execution
@@ -10255,7 +10463,7 @@ export class CoreRuntime {
       const c = perSym.get(`${cls}|${op.sym}`) ?? 0;
       const sd = perSide.get(`${cls}|${op.side}`) ?? 0;
       const posKey = `${op.sym}|${op.side}`;
-      const capWhy = held
+      const capWhy = held || !wantsExec || !!portfolioBlocked
         ? null
         : c >= caps.perSymbol
           ? "perSymbol"
@@ -10296,7 +10504,8 @@ export class CoreRuntime {
       if (!held) this.relateShadowPending.delete(orderKey(op));
       if (capWhy) {
         pSkip(`${pre}cap:${capWhy}`);
-        continue;
+        if (!separatePortfolio) continue;
+        portfolioBlocked = capWhy;
       }
       let processedStage = prev?.processedStage;
       let processedPolicy = prev?.processedPolicy;
@@ -10305,9 +10514,21 @@ export class CoreRuntime {
           pSkip(`${pre}exec:processedUnavailable`);
           continue;
         }
+        if (!nativeStages.hasNativeSource) {
+          pSkip(`${pre}exec:oppositeMainSourceUnavailable`);
+          continue;
+        }
         try {
-          const minProcessedPf = Math.max(this.wf.lastNMinPf, minPfForTape(tp, this.wf));
-          processedStage = nativeStages.enter(tp, op.sym, op.side > 0 ? 1 : -1, op.entryT, minProcessedPf).stage;
+          const minProcessedPf = processedMinPfForTape(tp, this.wf);
+          if (!separatePortfolio && nativeStages.checksBase) {
+            baseCheck = processedBaseCheck(tp, this.wf, op.sym, side, op.entryT);
+            if (!nativeStages.preview(tp, op.sym, side, op.entryT, minProcessedPf, baseCheck)) {
+              pSkip(`${pre}exec:processedBase`);
+              continue;
+            }
+          }
+          processedStage = nativeStages.enter(tp, op.sym, side, op.entryT, minProcessedPf, baseCheck, !portfolioBlocked).stage;
+          if (portfolioBlocked) pSkip(`${pre}exec:portfolio:${portfolioBlocked}`);
           processedPolicy = nativeStages.revision;
           if (!this.persistNativeProcessedStages()) {
             pSkip(`${pre}exec:processedUnavailable`);
@@ -10319,10 +10540,12 @@ export class CoreRuntime {
           continue;
         }
       }
-      openPos.add(`${cls}|${posKey}`);
-      perSym.set(`${cls}|${op.sym}`, c + 1);
-      perSide.set(`${cls}|${op.side}`, sd + 1);
-      openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
+      if (ownsPortfolioSlot({ processedStage })) {
+        openPos.add(`${cls}|${posKey}`);
+        perSym.set(`${cls}|${op.sym}`, c + 1);
+        perSide.set(`${cls}|${op.side}`, sd + 1);
+        openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
+      }
       // new entries take the relation volume the simulation ended with (within the Block maximum)
       const vf = held ? 1 : volumeFactorForStrategy(tp, this.wf)*relationalVolumeFactor(this.wf.relationalVolumeRatios,{indicationType:kindOfInd(tp.ind),indication:laneOf(tp.ind).base,strategy:tp.kind,range:tp.kind==="exit"?"exit":isSignalInd(tp.ind)?"sig":tp.protect.tag??"wide",symbol:op.sym});
       const positionVf = held ? (prev?.volFactor ?? 1) : vf;
@@ -10352,7 +10575,7 @@ export class CoreRuntime {
         : this.wf.relate?.enabled
           ? capRelateParts(d.relateParts ?? {}, relateVol, relationCap, 1)
           : undefined;
-      openKeys.add(openDupKey(op));
+      openKeys.add(admissionKey(op));
       // the price at adoption, set once (a position held from before keeps its own, or none)
       const heldPx = prev ? prev.heldPx : this.heldPxOf(op.sym);
       positions.push({
@@ -10803,7 +11026,7 @@ export class CoreRuntime {
     const feed =
       this.realtimeLearning?.sim === this.sim ? this.realtimeLearning.feed : (this.sim?.feed ?? []);
     // (fed only when read: an unread book cost the tick seconds after each new run)
-    const book = wantBook ? blockBookOf(this.wf.block, !!this.wf.toggles.blockActive) : null;
+    const book = wantBook ? blockBookOf(this.wf.block, false) : null;
     const relate = wantRelate ? relateBookFor(this.wf) : null;
     // acceptance on the same tape record the simulation judged on
     const guard = signalGuardFor(this.tapes, this.wf);
@@ -11159,6 +11382,7 @@ export interface SetListings {
 /** The walk-forward knobs that are user settings (grids, toggles and gates come from CoreSettings). */
 export const WF_KEYS = [
   "processedStages",
+  "processedWarmup",
   "preH",
   "simH",
   "stepH",
@@ -11192,6 +11416,7 @@ export const WF_KEYS = [
   "seatPer",
   "seatSet",
   "bestFirst",
+  "onePerPairEvent",
   "laneSeats",
   "microSeats",
   "mode",
@@ -11281,11 +11506,33 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     p.processedStages = undefined;
   } else if (p.processedStages !== undefined) {
     const raw = p.processedStages as Record<string, unknown>;
-    const validationN = Number(raw?.validationN), realN = Number(raw?.realN);
-    if (!raw || !Number.isSafeInteger(validationN) || validationN < 1 || validationN > 200 ||
-      !Number.isSafeInteger(realN) || realN < 1 || realN > 200)
-      throw new Error("processedStages requires validationN and realN in 1–200");
-    p.processedStages = { ...raw, validationN, realN };
+    if (!raw || typeof raw !== "object") throw new Error("processedStages requires a policy object");
+    const validationN = Number(raw.validationN), realN = Number(raw.realN);
+    const automatic = raw.windowGrid === "auto";
+    const execN = raw.execN === undefined ? (automatic ? realN : undefined) : Number(raw.execN);
+    if (raw.reportDetail !== undefined && raw.reportDetail !== "summary")
+      throw new Error("processedStages reportDetail must be summary when specified");
+    if (raw.rollingBase !== undefined && raw.rollingBase !== true)
+      throw new Error("rolling Base must be enabled explicitly");
+    const data = { ...raw, validationN, realN, execN, ...(automatic && {
+      windowGrid: defaultProcessedWindowGrid(), reportDetail: "summary", rollingBase: true,
+    }) } as ProcessedReplayPolicy;
+    ownedProcessedPolicy(data);
+    if (data.rollingBase) {
+      if (p.causalBase === false) throw new Error("rolling Base requires causal replay");
+      p.causalBase = true;
+    }
+    if (data.lanes !== undefined) processedLanes(data);
+    p.processedStages = { ...checkedProcessedPolicy(data), ...(data.reportDetail && { reportDetail: data.reportDetail }),
+      ...(data.lanes && { lanes: structuredClone(data.lanes) }),
+      ...(data.windowGrid && { windowGrid: checkedProcessedWindowGrid(data) }),
+      ...(data.rollingBase && { rollingBase: true }) };
+  }
+  if (p.processedWarmup === null || p.processedWarmup === false) p.processedWarmup = undefined;
+  else if (p.processedWarmup !== undefined) {
+    const w = p.processedWarmup as WalkForwardOptions["processedWarmup"];
+    processedWarmupHours({ processedWarmup: w });
+    p.processedWarmup = { fromT: w!.fromT, untilT: w!.untilT, baseCutT: w!.baseCutT };
   }
   const num = (k: string, lo: number, hi: number, int = false) => {
     if (p[k] === undefined) return;
@@ -12414,6 +12661,21 @@ export function computeKey(s: CoreSettings, wf: Partial<WalkForwardOptions>): st
   return JSON.stringify([rest, pickWf(wf)]);
 }
 
+function processedBaseDiscoverySettings(s: CoreSettings, policy?: ProcessedReplayPolicy): CoreSettings {
+  if (policy?.windowGrid) return { ...s, gates: { ...s.gates, baseContext: {
+    defaultWindow: false, blocks: [...policy.windowGrid.base],
+  } } };
+  if (policy?.baseScope !== "context") return s;
+  const lanes = processedLanes(ownedProcessedPolicy(policy, s.gates.positionWindows));
+  const everyLaneUsesAuto = policy.autoBase !== false && lanes.every(lane => lane.policy.autoPf);
+  const stepPf = !everyLaneUsesAuto && s.gates.stepPf ? { ...s.gates.stepPf, mode: "manual" as const } : s.gates.stepPf;
+  const byWindow = new Map(lanes.flatMap(({ policy }) => policy.baseBlock
+    ? [[blockPolicyKey(policy.baseBlock), policy.baseBlock] as const] : []));
+  return { ...s, gates: { ...s.gates, stepPf, baseContext: {
+    defaultWindow: lanes.some(lane => !lane.policy.baseBlock), blocks: [...byWindow.values()],
+  } } };
+}
+
 export interface MarketFeed {
   /** Frozen symbol-selection time; live feeds use the wall clock. Unconnected replay only. */
   rankingAt?: number;
@@ -12715,7 +12977,7 @@ export function basePass(
     ]),
   );
   const wideLadderPairs = new Set(
-    qualified
+    (s.grid.tp.length ? qualified : [])
       .map((r) => `${r.bot}|${r.ind}`)
       .filter((pair) => qualifiedTags[pair].length > 0 && (!s.axis.perRange || qualifiedTags[pair].includes(""))),
   );
@@ -12774,13 +13036,22 @@ export function restrictHeldBasePairs(
   for (const pair of heldPairs) if (!Object.hasOwn(pairTags, pair)) pairTags[pair] = [];
 }
 
+/** The reach gate of each enabled range (RangeGrid.reachFrac), by range tag. */
+function rangeReachOf(g: CoreSettings["grid"]): Partial<Record<string, number>> | undefined {
+  const out: Partial<Record<string, number>> = {};
+  for (const [tag, r] of [["mc", g.micro], ["mn", g.minimal], ["sh", g.short], ["gn", g.general], ["lg", g.long]] as const)
+    if (r && typeof r.reachFrac === "number" && r.reachFrac > 0) out[tag] = r.reachFrac;
+  return Object.keys(out).length ? out : undefined;
+}
 function protectFloors(s: CoreSettings, rangeFitCutT?: number): EntryFloors {
   const fit = s.grid?.rangeFit;
   return {
     minSl: minimumStopFraction(s.cost, s.minSlDistancePct),
     minTrail: s.protectFloor?.minTrail ?? DEFAULT_SETTINGS.protectFloor.minTrail,
+    wideEnabled: s.grid.tp.length > 0,
     // range cells fitted to the indication's horizon only when the fit is on; every computed tape is kept (the
     // gates decide the seats; a tape that cannot seat yet still shows in the evaluation and statistics)
+    rangeReach: rangeReachOf(s.grid),
     rangeFit: fit && fit.enabled !== false ? { ...DEFAULT_RANGE_FIT, ...fit } : null,
     ...(rangeFitCutT === undefined ? {} : { rangeFitCutT }),
     rangeMinN: 0,
@@ -12856,6 +13127,7 @@ function mergeSettings(
     protectFloor: { ...DEFAULT_SETTINGS.protectFloor, ...(base.protectFloor ?? {}) },
     dca: { ...base.dca },
     relate: { ...DEFAULT_SETTINGS.relate, ...(base.relate ?? {}),
+      volumeFactors: { ...DEFAULT_SETTINGS.relate.volumeFactors, ...base.relate?.volumeFactors },
       sources: { ...DEFAULT_SETTINGS.relate.sources, ...(base.relate?.sources ?? {}) } },
     axis: { ...base.axis },
     grid: { ...base.grid },
@@ -12881,6 +13153,7 @@ function mergeSettings(
       block: { ...out.block, ...(p.block ?? {}) },
       dca: { ...out.dca, ...(p.dca ?? {}) },
       relate: { ...out.relate, ...(p.relate ?? {}),
+        volumeFactors: { ...out.relate.volumeFactors, ...p.relate?.volumeFactors },
         sources: { ...out.relate.sources, ...(p.relate?.sources ?? {}) } },
       axis: { ...out.axis, ...(p.axis ?? {}) },
       grid: mergeGridSettings(out.grid, p.grid),
@@ -12955,7 +13228,8 @@ export function signalDataHours(s: CoreSettings, wf: WalkForwardOptions): number
  * shortening it changed recursive/cross-lane source decisions at the evaluation boundary. */
 export function signalLaneDataHours(s: CoreSettings, wf: WalkForwardOptions, tf: number): number {
   const warmupTf = tf === s.tfMin ? tf : Math.max(tf, ...s.signals.lanes.filter((lane) => s.tfs.includes(lane)));
-  return 24 + signalHistoryHours(wf) + wf.simH + tacticWarmupBars(s.tactics) * warmupTf / 60;
+  const cadenceWarmup = (s.tactics.signalMinDaily ?? 0) > 0 ? SIGNAL_CADENCE_DAYS * 24 : 0;
+  return 24 + cadenceWarmup + signalHistoryHours(wf) + wf.simH + processedWarmupHours(wf) + tacticWarmupBars(s.tactics) * warmupTf / 60;
 }
 function signalLaneSeriesOf(sym: string, cs: CandleSeries, s: CoreSettings, wf: WalkForwardOptions): Bars[] {
   const lanes = Object.freeze([...s.tfs]);
@@ -12976,7 +13250,29 @@ export function signalLaneSeriesFrom(candles: ReadonlyMap<string, CandleSeries>,
 /** General configs need their whole own evaluation window on every lane, plus replay and indicator warmup. */
 export function strategyDataHours(s: CoreSettings, wf: WalkForwardOptions): number {
   const slowest = Math.max(1, ...s.tfs);
-  return 24 + Math.max(wf.longH, wf.preH, wf.symH ?? 0) + wf.simH + tacticWarmupBars(s.tactics) * slowest / 60;
+  return 24 + Math.max(wf.longH, wf.preH, wf.symH ?? 0) + wf.simH + processedWarmupHours(wf) + tacticWarmupBars(s.tactics) * slowest / 60;
+}
+
+/** Additional physical history required for an explicitly bounded, offline modeled warmup. */
+/** Start the owned prehistory at the requested evaluation boundary, counting only complete modeled steps. */
+export function defaultProcessedWarmup(wf: Pick<WalkForwardOptions, "preH" | "stepH">,
+  u: Pick<ReturnType<typeof makeUniverse>, "startT" | "baseTf">, untilT: number): WalkForwardOptions["processedWarmup"] {
+  const stepMs = Math.max(wf.stepH * H, (u.baseTf ?? 60) * 60_000);
+  const availableFromT = Math.max(u.startT, untilT - wf.preH * H);
+  const steps = Math.floor((untilT - availableFromT) / stepMs);
+  if (steps < 1) return undefined;
+  const fromT = untilT - steps * stepMs;
+  return { fromT, baseCutT: fromT, untilT };
+}
+
+export function processedWarmupHours(wf: Pick<WalkForwardOptions, "processedWarmup">): number {
+  const w = wf.processedWarmup;
+  if (!w) return 0;
+  if (typeof w !== "object" || !Number.isFinite(w.fromT) || !Number.isFinite(w.untilT) ||
+      !Number.isFinite(w.baseCutT) || w.fromT < 0 || w.untilT <= w.fromT || w.baseCutT !== w.fromT ||
+      (w.untilT - w.fromT) > 240 * H)
+    throw new Error("invalid processed warmup boundaries");
+  return (w.untilT - w.fromT) / H;
 }
 export function marketHistoryBars(s: CoreSettings, wf: WalkForwardOptions): number {
   return Math.ceil(Math.max(s.historyDays * 24, strategyDataHours(s, wf), signalDataHours(s, wf)) * 60 / s.tfMin);

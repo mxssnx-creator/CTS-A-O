@@ -10,6 +10,7 @@ import { profitFactorRatio } from "./metrics/profit-factor.mjs";
 // This attribution remains a useful diagnostic and feedback input. Strict admission separately requires settled
 // post-Base accepted returns and independently measured owned-paper or verified-venue execution evidence.
 import type { LiveGate } from "./live-validation.ts";
+import type { ProcessedStage } from "./sim/processed-set.ts";
 import { acceptKey, engineSideKey, sideAcceptKey, type ExchangeAccept } from "./signals.ts";
 import { isSignalInd } from "./indications/registry.ts";
 import { isSignalCoordinationInd } from "./signal-coordination.ts";
@@ -119,7 +120,7 @@ export interface LaneOpen {
   t: number;
   px: number;
   /** Frozen processed-stage evidence from the paper parent that caused venue ownership. */
-  processedStage?: "postBase" | "validated" | "active";
+  processedStage?: ProcessedStage;
   processedPolicy?: string;
 }
 
@@ -136,7 +137,7 @@ export interface LaneTrade {
   /** side × exit / entry − 1, minus the round-trip cost */
   r: number;
   /** Venue-lane stage evidence retained through the terminal close. */
-  processedStage?: "postBase" | "validated" | "active";
+  processedStage?: ProcessedStage;
   processedPolicy?: string;
   /**
    * how the lane left: "exit" (the desk moved the position), "stop" (the exchange closed it at its stop), "target"
@@ -168,7 +169,7 @@ export interface LaneStepInput {
     side: 1 | -1;
     key?: string;
     lk?: string;
-    processedStage?: "postBase" | "validated" | "active";
+    processedStage?: ProcessedStage;
     processedPolicy?: string;
   }>;
   /** control keys (`sym|side`) held on the exchange after this step's orders */

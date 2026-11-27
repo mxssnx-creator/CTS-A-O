@@ -62,7 +62,7 @@ describe("background Real worker", () => {
           }
       return makeTape(tp.id, tp.bot, tp.ind, tp.protect, tp.kind, tp.syms, trades, [], []);
     });
-    const wf = { ...defaultWalkForward(DEFAULT_SETTINGS), preH: 6, longH: 72, simH: 6, validLastN: 0, rangeGate: undefined };
+    const wf = { ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true }, preH: 6, longH: 72, simH: 6, validLastN: 0, rangeGate: undefined };
     const expected = walkForward(u, tapes, wf);
     const owner = {};
     try {
@@ -89,7 +89,7 @@ describe("background Real worker", () => {
     const u = makeUniverse([
       barsFromCandles("A", 1, syntheticCandles("A", 1, 1200, 1200 * 60_000)),
     ]);
-    const wf = { ...defaultWalkForward(DEFAULT_SETTINGS), preH: 6, simH: 6 };
+    const wf = { ...{ ...defaultWalkForward(DEFAULT_SETTINGS), wideEnabled: true }, preH: 6, simH: 6 };
     const rt = new CoreRuntime(new CoreDb(":memory:"), {}, { market: "bingx", priceStream: null });
     try {
       const hooks = rt as unknown as {

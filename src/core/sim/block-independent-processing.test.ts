@@ -13,7 +13,7 @@ function tape(sym="A",side:1|-1=1,kind:"normal"|"axis"="normal",loss=false) {
   return makeTape(id,"follow",ind,{tp:.01,sl:.01,trail:0,hold:32},kind,[sym],rows,[],[]);
 }
 function opts(mode:"shared"|"additive"|"overall"):WalkForwardOptions {
-  const d=defaultWalkForward({...DEFAULT_SETTINGS,gates:{...DEFAULT_SETTINGS.gates,positionWindows:null}});
+  const d={...defaultWalkForward({...DEFAULT_SETTINGS,gates:{...DEFAULT_SETTINGS.gates,positionWindows:null}}),wideEnabled:true};
   return {...d,mode:"fixed" as const,seatSet:"validated" as const,preH:60,longH:60,simH:6,seatPer:"config" as const,
     validLastN:0,lastN:0,normalBaseMinPf:0,robustFrac:0,symGate:"off" as const,blockTrace:true,
     coord:{enabled:false,hourLock:0,cooldown:"off" as const,conflict:false,confirm:false},

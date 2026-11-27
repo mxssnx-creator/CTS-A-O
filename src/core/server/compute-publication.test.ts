@@ -55,6 +55,7 @@ function fixture() {
     new CoreDb(":memory:"),
     {
       symbols: 1,
+      axis: { perRange: false },
       historyDays: 1,
       tfs: [1],
       tfDays: { "1": 1 },
