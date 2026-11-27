@@ -70,6 +70,7 @@ import {
   WIDE_TARGET_SL,
 } from "../minimal-coord.ts";
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
+import { isInverseInd } from "../indications/inverse-config.ts";
 import { isLowRangeInd, lowRangeEnabled, lowRangeTag } from "../indications/low-range.ts";
 import { PRE_CONTEXT_FOCUS_21OCT } from "../indications/context-default-focus.ts";
 import { isBreakRelInd } from "../indications/break-config.ts";
@@ -291,7 +292,7 @@ import {
 } from "../sim/walkforward.ts";
 import { NativeProcessedStageAdapter, type NativeProcessedSnapshot } from "./processed-stage-adapter.ts";
 import { blockPolicyKey, blockRequired } from "../../../shared/cts-lastn/blocks.ts";
-import { checkedProcessedPolicy, checkedProcessedWindowGrid, ownedProcessedPolicy, processedLanes, type ProcessedReplayPolicy } from "../sim/processed-replay.ts";
+import { checkedProcessedPolicy, checkedProcessedWindowGrid, defaultProcessedWindowGrid, ownedProcessedPolicy, processedLanes, type ProcessedReplayPolicy } from "../sim/processed-replay.ts";
 import { isOppositeMainWindow, type ProcessedStage } from "../sim/processed-set.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
@@ -1441,7 +1442,7 @@ export class CoreRuntime {
 
   /** Restore the opt-in native stage book once. Invalid durable evidence fails closed instead of starting empty. */
   private nativeProcessedStages(): NativeProcessedStageAdapter | null {
-    if (!this.wf.processedStages || this.wf.processedStages.windowGrid) return null;
+    if (!this.wf.processedStages || this.wf.processedStages.windowGrid || this.wf.processedStages.rollingBase) return null;
     const policy = ownedProcessedPolicy(this.wf.processedStages, this.wf.gates.positionWindows);
     const key = JSON.stringify([policy, this.settings.cost]);
     if (this.processedNativeError && this.processedNativeKey === key) return null;
@@ -2923,8 +2924,8 @@ export class CoreRuntime {
   }
 
   updateSettings(patch: SettingsPatch, wfPatch?: Partial<WalkForwardOptions>) {
-    if (wfPatch?.processedStages?.windowGrid && (!this.replay || this.conn))
-      throw new Error("processed window grids require offline replay");
+    if ((wfPatch?.processedStages?.windowGrid || wfPatch?.processedStages?.rollingBase) && (!this.replay || this.conn))
+      throw new Error("automatic Last-N grids and rolling Base require offline replay");
     if (wfPatch?.processedWarmup && (!this.replay || this.conn))
       throw new Error("processed warmup is available only in an unconnected replay");
     if(patch.relationalVolumeRatios!==undefined)relationalVolumeSettings(patch.relationalVolumeRatios,true);
@@ -4465,13 +4466,19 @@ export class CoreRuntime {
     if (!u.bars.length) return;
     // causal evaluation: the stages see only the history before the simulated run (its start, as walkForward sets it)
     const defaultStartT = Math.floor((u.nowT - wf.simH * H) / H) * H;
-    const targetStartT = wf.processedWarmup ? (wf.startT ?? defaultStartT) : defaultStartT;
+    const rollingBase = wf.processedStages?.rollingBase === true;
+    if (rollingBase && (!this.replay || this.conn)) throw new Error("rolling Base requires offline replay");
+    const targetStartT = wf.processedWarmup || rollingBase ? (wf.startT ?? defaultStartT) : defaultStartT;
+    if (rollingBase && !wf.processedWarmup)
+      wf.processedWarmup = defaultProcessedWarmup(wf, u, targetStartT);
     if (wf.processedWarmup && (!this.replay || this.conn || !wf.processedStages || !wf.causalBase ||
         wf.processedWarmup.untilT !== targetStartT || wf.processedWarmup.baseCutT !== wf.processedWarmup.fromT))
       throw new Error("processed warmup requires an unconnected replay and a causal Base snapshot at warmup start");
     const runStartT = wf.processedWarmup?.fromT ?? targetStartT;
     const rangeFitCutT = wf.causalBase ? runStartT : undefined;
-    if (this.evaluationFromT !== undefined && (!wf.causalBase || this.evaluationFromT >= runStartT))
+    const startsWithDiscovery = rollingBase && !!wf.processedWarmup &&
+      this.evaluationFromT === runStartT;
+    if (this.evaluationFromT !== undefined && (!wf.causalBase || (!startsWithDiscovery && this.evaluationFromT >= runStartT)))
       throw new Error(
         "Replay evaluationFromT requires a causal Base window before the trading start",
       );
@@ -4481,7 +4488,7 @@ export class CoreRuntime {
           this.evaluationFromT,
         )
       : u;
-    if (!uStage.bars.length) return;
+    if (!uStage.bars.length && !rollingBase) return;
     const signalU = sigEnabled(s) ? makeUniverse(signalBars, this.evaluationFromT) : u;
     const signalStageU = wf.causalBase && sigEnabled(s)
       ? makeUniverse(signalBars.map((b) => headBars(b, runStartT)), this.evaluationFromT)
@@ -4868,7 +4875,36 @@ export class CoreRuntime {
         }
         if (pairCells[k]) pairCells[m] = [...new Set([...(pairCells[m] ?? []), ...pairCells[k]])];
       }
-    // only pairs that passed Base take a seat; held pairs stay in Main to manage their open positions
+    // Rolling discovery builds the configured universe even when the initial Base sample is empty.
+    // Every entry still needs an exact symbol/side/config proof from closes before its own clock.
+    const rollingBasePairs = rollingBase ? new Set<string>() : undefined;
+    if (rollingBasePairs) {
+      for (const { bot, ind } of computeCombos) {
+        const eligibleTags = ["", ...ALL_RANGE_TAGS].filter(tag => rangeAppliesTo(ind, tag, applies));
+        const tags = famNarrow ? familyTags(evalFams!, bot, ind, eligibleTags) : eligibleTags;
+        if (!tags.length) continue;
+        const pair = `${bot}|${ind}`;
+        rollingBasePairs.add(pair);
+        main.add(pair);
+        pairTags[pair] = tags;
+        delete pairTps[pair];
+        delete pairSl[pair];
+        delete pairCells[pair];
+        if (gridNeedsOpposite && !isInverseInd(laneOf(ind).base)) {
+          const mirror = mirrorId(pair);
+          if (mirror) {
+            main.add(mirror);
+            oppositePairs.add(mirror);
+            pairTags[mirror] = [...new Set([...(pairTags[mirror] ?? []), ...tags])];
+            delete pairTps[mirror];
+            delete pairSl[mirror];
+            delete pairCells[mirror];
+          }
+        }
+      }
+      wf.rollingBasePairs = rollingBasePairs;
+    }
+    // Frozen Base proof still governs legacy admission and Signals/Exit.
     wf.basePassed = normalBasePassedKeys;
     wf.exitBasePassed = exitBase.passed;
     wf.basePassedRanges = qualifiedTags;
@@ -5678,7 +5714,8 @@ export class CoreRuntime {
     // built for comparison even though validated-seat admission deliberately removes them from passedKeys.
     const heldUnpassedPairs = new Set(
       [...main].filter((pair) =>
-        !passedKeys.has(pair) && !oppositePairs.has(pair) && !addedKeys.has(pair) && !isSignalInd(pair.split("|")[1] ?? ""),
+        !passedKeys.has(pair) && !oppositePairs.has(pair) && !addedKeys.has(pair) &&
+        !rollingBasePairs?.has(pair) && !isSignalInd(pair.split("|")[1] ?? ""),
       ),
     );
     const built = await tapesFor(engineMain, wf.protects, dcaOpt, "strategy tapes", {
@@ -5687,6 +5724,7 @@ export class CoreRuntime {
       pairTps,
       pairSl,
       pairCells,
+      ...(rollingBasePairs && { rollingBasePairs: new Set([...rollingBasePairs, ...oppositePairs]) }),
       ...(s.grid?.trailingOnly === true ? { pairTrailingOnlyCells: buildTrailingOnlyCells } : {}),
       ...(wf.seatSet === "validated"
         ? { heldPairsOnly: heldUnpassedPairs }
@@ -11449,14 +11487,25 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     const raw = p.processedStages as Record<string, unknown>;
     if (!raw || typeof raw !== "object") throw new Error("processedStages requires a policy object");
     const validationN = Number(raw.validationN), realN = Number(raw.realN);
-    const execN = raw.execN === undefined ? undefined : Number(raw.execN);
+    const automatic = raw.windowGrid === "auto";
+    const execN = raw.execN === undefined ? (automatic ? realN : undefined) : Number(raw.execN);
     if (raw.reportDetail !== undefined && raw.reportDetail !== "summary")
       throw new Error("processedStages reportDetail must be summary when specified");
-    const data = { ...raw, validationN, realN, execN } as ProcessedReplayPolicy;
+    if (raw.rollingBase !== undefined && raw.rollingBase !== true)
+      throw new Error("rolling Base must be enabled explicitly");
+    const data = { ...raw, validationN, realN, execN, ...(automatic && {
+      windowGrid: defaultProcessedWindowGrid(), reportDetail: "summary", rollingBase: true,
+    }) } as ProcessedReplayPolicy;
+    ownedProcessedPolicy(data);
+    if (data.rollingBase) {
+      if (p.causalBase === false) throw new Error("rolling Base requires causal replay");
+      p.causalBase = true;
+    }
     if (data.lanes !== undefined) processedLanes(data);
     p.processedStages = { ...checkedProcessedPolicy(data), ...(data.reportDetail && { reportDetail: data.reportDetail }),
       ...(data.lanes && { lanes: structuredClone(data.lanes) }),
-      ...(data.windowGrid && { windowGrid: checkedProcessedWindowGrid(data) }) };
+      ...(data.windowGrid && { windowGrid: checkedProcessedWindowGrid(data) }),
+      ...(data.rollingBase && { rollingBase: true }) };
   }
   if (p.processedWarmup === null || p.processedWarmup === false) p.processedWarmup = undefined;
   else if (p.processedWarmup !== undefined) {
@@ -13184,6 +13233,17 @@ export function strategyDataHours(s: CoreSettings, wf: WalkForwardOptions): numb
 }
 
 /** Additional physical history required for an explicitly bounded, offline modeled warmup. */
+/** Start the owned prehistory at the requested evaluation boundary, counting only complete modeled steps. */
+export function defaultProcessedWarmup(wf: Pick<WalkForwardOptions, "preH" | "stepH">,
+  u: Pick<ReturnType<typeof makeUniverse>, "startT" | "baseTf">, untilT: number): WalkForwardOptions["processedWarmup"] {
+  const stepMs = Math.max(wf.stepH * H, (u.baseTf ?? 60) * 60_000);
+  const availableFromT = Math.max(u.startT, untilT - wf.preH * H);
+  const steps = Math.floor((untilT - availableFromT) / stepMs);
+  if (steps < 1) return undefined;
+  const fromT = untilT - steps * stepMs;
+  return { fromT, baseCutT: fromT, untilT };
+}
+
 export function processedWarmupHours(wf: Pick<WalkForwardOptions, "processedWarmup">): number {
   const w = wf.processedWarmup;
   if (!w) return 0;

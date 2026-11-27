@@ -56,6 +56,7 @@ import {
   ownSlFloor,
 } from "../minimal-coord.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
+import { microAdxPullback } from "../indications/micro-adx-pullback.ts";
 import { INVERSE_TIMEFRAMES, isInverseInd } from "../indications/inverse-config.ts";
 import {
   isMicroCalculationInd as isMicroFamilyInd,
@@ -426,6 +427,8 @@ export function allCombos(
   const off = new Set(disabledKinds ?? []);
   const focusedReversal = new Set((focus ?? []).filter(pair => pair.startsWith("follow|trend-reversal-"))
     .map(pair => laneOf(pair.slice("follow|".length)).base));
+  const adxFocus = `follow|${microAdxPullback.id}`;
+  const focusedAdx = focus?.includes(adxFocus) || focus?.includes(`${adxFocus}@m1`);
   const plain: Combo[] = [];
   for (const b of BOTS) {
     if (b.type !== "follow" && b.type !== "revert") plain.push({ bot: b.type, ind: "none" });
@@ -435,6 +438,7 @@ export function allCombos(
       if (!off.has(ind.kind) && !ind.id.startsWith("sig-") && !ind.id.startsWith("s2-") &&
           (!isLowRangeInd(ind.id) || (lowRangeEnabled && b.type === "follow")) &&
           (!isInverseInd(ind.id) || b.type === "follow") &&
+          (ind !== microAdxPullback || (b.type === "follow" && focusedAdx)) &&
           (ind.kind !== "trend-reversal" || (b.type === "follow" && focusedReversal.has(ind.id))))
         plain.push({ bot: b.type, ind: ind.id });
   }

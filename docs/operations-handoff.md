@@ -12,9 +12,10 @@ The first five days settled two losing orders. The second settled 54 at PF 2.182
 matrix measured 206 profiles against the same 0.176% round-trip cost. Zero candidates met the
 chronological default-selection rule. This research lane is enabled through an explicit focus.
 
-The native accounting reconciliation passed 59 checks. The exact rolling Base simulation uses the
-previous stage-replay review baseline. Exchange fills were outside the replay. See the
-[study notes](micro-10d-study-20261127.md).
+The Stable-04 candidate reproduced the study’s 56 funded orders, gates and 240 hourly rows with the
+opt-in offline rolling Base path. Native accounting reconciliation passed 59 checks. With fixed Base,
+0/1 pooled pairs passed, no exact contexts qualified and no orders opened. Exchange fills were outside
+the replay. See the [study notes](micro-10d-study-20261127.md).
 
 ## 2026-11-27 — October Last-N archive restored
 

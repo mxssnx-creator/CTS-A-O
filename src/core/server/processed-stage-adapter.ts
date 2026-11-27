@@ -66,7 +66,7 @@ export class NativeProcessedStageAdapter {
   private readonly settled: Set<string>;
 
   constructor(policy: ProcessedReplayPolicy, cost: number, snapshot?: NativeProcessedSnapshot) {
-    if (policy.windowGrid) throw new Error("processed window grids require offline replay");
+    if (policy.windowGrid || policy.rollingBase) throw new Error("processed window grids and rolling Base require offline replay");
     this.policy = checkedPolicy(policy);
     this.revision = nativeProcessedRevision(this.policy, cost);
     // The native paper entry receives the Base side's price path. A negative Main lane needs a separate
