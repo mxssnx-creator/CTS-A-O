@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { DEFAULT_SETTINGS } from "../src/core/config.ts";
 import { checkSettings } from "../src/core/settings-check.ts";
-import { DEFAULT_SIGNALS } from "../src/core/signal-config.ts";
+import { DEFAULT_SIGNALS, SIGNAL_SOURCES } from "../src/core/signal-config.ts";
 import { INDICATIONS } from "../src/core/indications/registry.ts";
 
 const [marketManifest, end = "2026-11-27T00:00:00Z", rolling] = process.argv.slice(2);
@@ -30,6 +30,10 @@ const focused = [
 ];
 const names = new Set(INDICATIONS.map(x=>x.id));
 const focus = focused.filter(([,id])=>names.has(id)).flatMap(([bot,id,tfs])=>tfs.map(tf=>[bot,id+"@m"+tf].join("|")));
+const signalSources = ["ema-cross", "macd-cross", "rsi-reversal", "bollinger", "trend-reversal-reclaim-10",
+  "trend-reversal-structure-10", "trend-reversal-psar-10", "trend-reversal-rsi-10"];
+const signalSourceNames = new Set(SIGNAL_SOURCES.map(source => source.name));
+for (const source of signalSources) assert.ok(signalSourceNames.has(source), `Unknown Signals source ${source}`);
 const grid = {
   tp:[], minimalPlus:false, short:false, general:false, long:false, baseCells:true, baseTrailCells:true,
   trailingOnly:true, holdH:[.5,1.5], rangeFit:{enabled:false}, baseBest:true,
@@ -47,8 +51,7 @@ const settings = {
   exitStrategy:{enabled:false},
   signals:{
     enabled:true, sourcesMode:"allow", lanes:[1,5,15],
-    sources:Object.fromEntries(["ema-cross","macd-cross","rsi-reversal","psar","bb-break","trend-reversal-structure-10",
-      "trend-reversal-psar-10-s","trend-reversal-rsi-10-s"].filter(x=>x).map(k=>[k,true])),
+    sources:Object.fromEntries(signalSources.map(source => [source,true])),
     coordination:{...DEFAULT_SIGNALS.coordination, strategyOnly:true, minSources:2},
     holdH:1.5, exits:"pct", normal:{tp:[.006,.01,.015],slOfTp:[.75,1.25]},
     trailing:{tp:[.01],trailOfTp:[.4,.6],slOfTp:1}, trailRatios:[1],

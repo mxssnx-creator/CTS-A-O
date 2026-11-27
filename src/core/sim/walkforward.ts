@@ -8263,8 +8263,7 @@ export function* walkForwardGen(
   const processed = processedPolicy?.windowGrid ? new ProcessedWindowGridReplay(processedPolicy)
     : processedPolicy ? new ProcessedLaneReplay(processedPolicy, o.cost) : null;
   const ownedWindowGrid = !!processedPolicy?.windowGrid;
-  const rankedSignals = o.signalRank && (!ownedWindowGrid || o.signalRank.count > 0 ||
-    o.signalRank.coordination.count > 0 || o.coord?.hedge) ? o.signalRank : undefined;
+  const rankedSignals = o.signalRank;
   // Settings are frozen for this replay; do not clone and validate the same volume policy for every candidate.
   const relationalFactor = prepareRelationalVolumeFactor(o.relationalVolumeRatios);
   const processedOpen = new Map<Trade, ReturnType<ProcessedLaneReplay["enter"]> | ReturnType<ProcessedWindowGridReplay["enter"]>>();
@@ -8503,9 +8502,7 @@ export function* walkForwardGen(
     const passed = o.signalBasePassed;
     if (passed) sigIdx = sigIdx.filter((g) => passed.has(g.pair));
   }
-  const entryOptions = () => ownedWindowGrid && o.signalRank && !rankedSignals
-    ? { ...o, signalActive: undefined } : o;
-  let stepOpts: WalkForwardOptions = entryOptions();
+  let stepOpts: WalkForwardOptions = o;
   const signalActivation = rankedSignals && sigIdx.length
     ? new SignalActivationBook(sigIdx, rankedSignals, signalHistoryHours(o), o) : null;
   const recordSignalStep = (t: number, keys: Set<string>) => {
@@ -8567,7 +8564,7 @@ export function* walkForwardGen(
       selTapes = validatedTapes(allEngine, validatedIds, o);
       groups = modeGroups(selTapes, o);
     }
-    stepOpts = entryOptions();
+    stepOpts = o;
     // every order closed before the step counts for this step's decisions (hedge hours, coordination state)
     yield* settle(t);
     if (rankedSignals && sigTapes.length) {
