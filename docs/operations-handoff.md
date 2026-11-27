@@ -1,3 +1,53 @@
+## 2026-11-27 — Exact Last-N handoffs and 50-symbol replay
+
+Tested code is `780b9f8f1c0710c2fee4d3f79b0b8d8b9c17a6f2` with tree
+`0b096f378bd3f1076cbfc3ff3264f4c41862aa81`. Each configured stage has its own Set and
+order receipt linked to the immediate parent. Paper restoration checks that retained child receipts
+match the exact parent settlement. Shared portfolio caps, the account hour guard and exposure conflicts
+can defer Exec while retaining the otherwise eligible Real model settlement. Stage reports require a
+currently qualifying parent to count a child window. A loss after admission stays in the funded cohort.
+
+The offline grid evaluates every configured Cartesian path lazily from the actual history of its parent.
+The 50-symbol grid used 400 Base windows, 80 Main windows and 160 windows each at Real and Exec.
+A separately priced mirror uses the original Base configuration's proof and supplies its own price and
+settlement on the same onset. An unfunded mirror source needs a valid admission before it can enter
+shared histories. The native Paper adapter still withholds negative Main when its opposite path is unavailable.
+
+All times below are Europe/Vienna. Readiness PF pools the returns from historical passing windows.
+Settled PF follows the subsequent funded model orders after costs. Counts show opened, settled or closed,
+and held.
+
+| Study | Post-Base passed and PF | Later funded PF | Positions | Orders | Positive hours | Equity drawdown |
+|---|---:|---:|---:|---:|---:|---:|
+| 50 symbols, full grid, 26 Nov 01:00–27 Nov 01:00 | 12,774/1,603,200,000 (0.000797%), PF 1.991 | 0.000 | 4/4/0 | 4/4/0 | 0/24 | 0.0054% |
+| 50 symbols, fixed Main/Real/Exec 6/4/4, same window | 19/11,000 (0.173%), PF 3.186 | 1.234 | 12/11/1 | 13/12/1 | 9/24 | 0.0702% |
+| 50 symbols, fixed 6/4/4, 22 Nov 01:00–23 Nov 01:00 | 13/12,900 (0.101%), PF 3.995 | Six wins, zero losses | 8/6/2 | 8/6/2 | 6/24 | 0.0150% |
+| 32 symbols, 25 Nov 13:00–26 Nov 01:00, all five Auto PF variants | 136/9,728 (1.40%), PF 3.837 | 0.372 | 36/32/4 | 48/43/5 | 4/12 | 0.2017% |
+| 32 symbols, 22 Nov 13:00–23 Nov 01:00, all five Auto PF variants | 8/13,632 (0.059%), PF 1.690 | 0.000 | 1/1/0 | 1/1/0 | 0/12 | 0.0053% |
+| Archived source families with time gates, 9 Oct 02:00–14:00, 8 symbols | 8/46 (17.39%), PF 5.637 at start | 3.273 | 21/13/8 | 400/382/18 | 9/12 | 0.6026% |
+
+Each 50-symbol study used 12 hours of indicator warmup, 12 hours of initial evaluation, 24 hours of stage
+warmup and 24 hours of trading. The mirror sources yielded 1,179 opposite Main admissions.
+No opposite entry reached Exec in the full-grid market sample. Missing opposite-source paths declined
+from 20,036 to 8,551. The four funded closes matched their previous exact identifiers and unit returns.
+The 32-symbol Auto PF variants produced identical funded close identifiers and returns within each window.
+
+The original October benchmark settled 294 long orders at PF 3.596 using time-based gates. The current
+focused time-gate replay preserved all 382 close identifiers from its own earlier repeat and matched
+unit returns to within 7e-18. The exact-context Last-N version built zero eligible tapes at the same
+October entry boundary. The archive and current executions therefore provide distinct cohort evidence.
+The two historic source families yielded three losses on one November window and two wins without a
+settled loss on the other. This evidence covers finite samples and leaves stable high PF and high order
+volume open.
+
+The focused verification ran 235 passing tests plus one matching CTS-X opposite-price test. TypeScript
+and the production build with its packaged core worker passed. The paired 50-symbol grid runs each
+passed 65 session checks, and both fixed 50-symbol runs passed 76. The indexed benchmark reproduced
+120,000 gate decisions per iteration. Median time was 20.3 ms indexed and 1,515.7 ms direct. Cold model
+compute was 47.4 seconds for the full mirror grid and 7.1–7.7 seconds for the fixed profile. Representative
+warmed foreground latency, native opposite-source admission, x02 verification and venue PF remain open.
+This checkpoint keeps the full grid and mirror pricing offline. No hosted service was changed.
+
 ## 2026-11-27 — Trend-Reversal and independent Signals
 
 Trend-Reversal adds failed-break reclaim, swing break, relative volume impulse, reversal into trend, RSI recovery, PSAR, and trend/RSI confluence. Lookbacks of 6, 10 and 16 closed bars remain independent within each timeframe. Ordinary sources run through explicit Follow focus. The new Signal sources need their own toggle and keep their Signal-specific validation, protection and cost settings.
