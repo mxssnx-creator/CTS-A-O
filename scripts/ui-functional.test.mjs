@@ -52,6 +52,7 @@ const FIXTURE_SETTINGS = {
   },
   grid: {
     tp: [0.02],
+    fixedSlBands: { short: [], long: [2] },
     slOfTp: [1],
     trailOfTp: [0, 0.5],
     holdH: [4],
