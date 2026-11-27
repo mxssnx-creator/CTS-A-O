@@ -1,3 +1,11 @@
+## 2026-11-27 — Trend-Reversal and independent Signals
+
+Trend-Reversal adds failed-break reclaim, swing break, relative volume impulse, reversal into trend, RSI recovery, PSAR, and trend/RSI confluence. Lookbacks of 6, 10 and 16 closed bars remain independent within each timeframe. Ordinary sources run through explicit Follow focus. The new Signal sources need their own toggle and keep their Signal-specific validation, protection and cost settings.
+
+The 12-symbol BingX study used 24 hours of prehistory and 48 hours of trading from 24 November 01:00 until 26 November 01:00 Vienna time. Ordinary Base passed 2 of 108 protection cells. At cutoff, 13 of 48 Main contexts passed (27.08%) at passing-window mean return PF 2.602. Real passed 1 of 48 (2.08%, PF 1.910). The full later Exec cohort opened 20 positions and 20 orders. It settled 19 of each at after-cost PF 0.534 and held one of each. The separately tested Signals grid passed 0 of 108 Base cells, leaving post-Base validation and PF unavailable and all execution counts zero.
+
+Engineering checks covered causal closed-bar evaluation, gap handling and independent source and Signal IDs. Shared research compared 28,224 parameter combinations with the two-day forward cohort frozen separately. The sample did not justify enabling a default or establishing high Exec throughput. No venue orders were placed.
+
 ## 2026-11-26 — Signed Last-N and Auto PF strength
 
 Strategy Settings accept an integer Auto PF strength from 1 to 10, with default 4. Negative Short requires a loss-to-gain ratio at the applicable threshold. Last remains a signed trigger. Axis omits a Wide ladder when it has no protection cell.

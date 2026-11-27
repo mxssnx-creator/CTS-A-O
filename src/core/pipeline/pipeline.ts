@@ -403,6 +403,8 @@ export function allCombos(
   lowRangeMinTf = 0,
 ): Combo[] {
   const off = new Set(disabledKinds ?? []);
+  const focusedReversal = new Set((focus ?? []).filter(pair => pair.startsWith("follow|trend-reversal-"))
+    .map(pair => laneOf(pair.slice("follow|".length)).base));
   const plain: Combo[] = [];
   for (const b of BOTS) {
     if (b.type !== "follow" && b.type !== "revert") plain.push({ bot: b.type, ind: "none" });
@@ -411,7 +413,8 @@ export function allCombos(
     for (const ind of INDICATIONS)
       if (!off.has(ind.kind) && !ind.id.startsWith("sig-") && !ind.id.startsWith("s2-") &&
           (!isLowRangeInd(ind.id) || (lowRangeEnabled && b.type === "follow")) &&
-          (!isInverseInd(ind.id) || b.type === "follow"))
+          (!isInverseInd(ind.id) || b.type === "follow") &&
+          (ind.kind !== "trend-reversal" || (b.type === "follow" && focusedReversal.has(ind.id))))
         plain.push({ bot: b.type, ind: ind.id });
   }
   const out = tfs?.length
