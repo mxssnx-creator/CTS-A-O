@@ -120,7 +120,13 @@ export class ProcessedWindowGridReplay {
     this.directExec = policy.directExec === true;
     const grid = checkedProcessedWindowGrid(policy);
     this.negative = negativeLastN(policy.negativeFilter);
-    this.levels = stages.map(stage => grid[stage].map((block, i) => ({ block, key: blockPolicyKey(block),
+    const windowsFor = (stage: typeof stages[number]): readonly BlockPolicy[] => {
+      if (this.directExec && (stage === "validation" || stage === "real")) return [];
+      if (stage === "base") return grid.base;
+      if (stage === "exec") return grid.exec;
+      return "validation" in grid ? grid[stage] : [];
+    };
+    this.levels = stages.map(stage => windowsFor(stage).map((block, i) => ({ block, key: blockPolicyKey(block),
       size: blockRequired(block), bit: 1n << BigInt(i), opposite:
         stage === "validation" && isOppositeMainWindow(block),
     })).sort((a, b) => a.size - b.size));

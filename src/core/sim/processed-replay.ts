@@ -32,7 +32,10 @@ export interface ProcessedReplayPolicy extends Omit<ProcessedPolicy, "minPf" | "
   /** Optional floor for the direct Base→Exec gate; the Base floor still comes from the replay settings. */
   directExecMinPf?: number;
 }
-export type ProcessedWindowGrid = Record<"base" | "validation" | "real" | "exec", readonly BlockPolicy[]>;
+export type ProcessedWindowGrid =
+  | Record<"base" | "validation" | "real" | "exec", readonly BlockPolicy[]>
+  /** Direct Base→Exec research has no Main/Real policies. */
+  | { base: readonly BlockPolicy[]; exec: readonly BlockPolicy[] };
 type SinglePolicy = Omit<ProcessedReplayPolicy, "lanes" | "windowGrid" | "reportDetail">;
 type ProcessedLaneOptions = Partial<Omit<SinglePolicy, "baseScope" | "autoBase">> & { id: string };
 
@@ -56,7 +59,8 @@ export function checkedProcessedWindowGrid(policy: ProcessedReplayPolicy): Proce
     throw new RangeError("a window grid requires summary replay, four independent stages and separate Auto PF");
   if (policy.directExec && (!grid || policy.lanes || policy.blocks || policy.baseBlock || policy.reportDetail !== "summary"))
     throw new RangeError("direct Exec requires an offline summary window grid");
-  for (const stage of ["base", "validation", "real", "exec"] as const) {
+  const stages = policy.directExec ? ["base", "exec"] as const : ["base", "validation", "real", "exec"] as const;
+  for (const stage of stages) {
     const windows = grid[stage];
     if (!Array.isArray(windows) || !windows.length) throw new RangeError("processed window grid is empty at " + stage);
     const keys = new Set<string>();
@@ -68,9 +72,14 @@ export function checkedProcessedWindowGrid(policy: ProcessedReplayPolicy): Proce
       keys.add(key);
     }
   }
-  if (!Number.isSafeInteger(grid.base.length * grid.validation.length * grid.real.length * grid.exec.length))
+  const choices = policy.directExec
+    ? grid.base.length * grid.exec.length
+    : grid.base.length * grid.validation.length * grid.real.length * grid.exec.length;
+  if (!Number.isSafeInteger(choices))
     throw new RangeError("processed window grid has too many distinct paths to count accurately");
-  return structuredClone(grid);
+  return policy.directExec
+    ? { base: structuredClone(grid.base), exec: structuredClone(grid.exec) }
+    : structuredClone(grid as Record<"base" | "validation" | "real" | "exec", readonly BlockPolicy[]>);
 }
 
 /** Canonical persisted economics. Reporting detail never changes the qualifying lane's identity. */
@@ -190,7 +199,7 @@ export interface ProcessedReplaySummary {
   validation: ProcessedReplayCoverage;
   real: ProcessedReplayCoverage;
   exec?: ProcessedReplayCoverage;
-  windowGrid?: { choices: Record<keyof ProcessedWindowGrid, number>; oppositeSourceMissing: number;
+  windowGrid?: { choices: Record<"base" | "validation" | "real" | "exec", number>; oppositeSourceMissing: number;
     inverseEntries: number; inverseExecEntries: number; directExec?: true; directBaseMinPf?: number; directExecMinPf?: number };
   /** Aggregated funded modeled-order cohorts for every direct Base×Exec policy pair. */
   directExecDetails?: Array<{ base: BlockPolicy; exec: BlockPolicy; openedOrders: number; settledOrders: number;

@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import type { OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
 import { ProcessedSetBook } from "./processed-set.ts";
-import { ownedProcessedPolicy, processedLanes, ProcessedReplay } from "./processed-replay.ts";
+import { checkedProcessedWindowGrid, ownedProcessedPolicy, processedLanes, ProcessedReplay } from "./processed-replay.ts";
 import { defaultWalkForward, execDecision, makeTape, packTapes, walkForward,
   type WalkForwardOptions, type WalkForwardResult } from "./walkforward.ts";
 import { retireOwnedIdleWorkers, runOnWorkers } from "../server/pool.server.ts";
@@ -547,14 +547,18 @@ test("direct Base→Exec replay keeps its Base history and evaluates signed Exec
   const f = fixture([.03, .03, -.01, -.01, .03, .03], { processedStages: {
     validationN: 1, realN: 1, execN: 1, baseScope: "context", reportDetail: "summary",
     directExec: true, directBaseMinPf: 2.5, directExecMinPf: 2,
-    windowGrid: { base: [base], validation: [endPositive], real: [endPositive], exec: [endPositive, endNegative] },
+    windowGrid: { base: [base], exec: [endPositive, endNegative] },
   } });
   const summary = f.result.processedStageSummary!;
+  assert.deepEqual(Object.keys(checkedProcessedWindowGrid(f.options.processedStages!)).sort(), ["base", "exec"],
+    "direct research stores only the stages it evaluates");
   assert.equal(summary.windowGrid?.directExec, true);
   assert.equal(summary.windowGrid?.directBaseMinPf, 2.5);
   assert.equal(summary.validation.contexts, 0, "Main is bypassed by the direct research policy");
   assert.equal(summary.real.contexts, 0, "Real is bypassed by the direct research policy");
   assert.equal(summary.windowGrid?.choices.base, 1);
+  assert.equal(summary.windowGrid?.choices.validation, 0);
+  assert.equal(summary.windowGrid?.choices.real, 0);
   assert.equal(summary.windowGrid?.choices.exec, 2);
   assert.ok(f.result.trades.length > 0, JSON.stringify(f.result.skips));
   assert.equal(f.result.trades[0].entryT, T + M, "Exec starts from this Base lane's validated historical positions");
@@ -573,7 +577,7 @@ test("direct negative Exec evaluates its own signed lane without borrowing an op
   const f = fixture(Array.from({ length: 310 }, (_, i) => i % 9 === 4 ? -.005 : .02), { processedStages: {
     validationN: 1, realN: 1, execN: 1, baseScope: "context", reportDetail: "summary",
     directExec: true, directBaseMinPf: 2, directExecMinPf: 2,
-    windowGrid: { base: [base], validation: [negativeEnd], real: [negativeEnd], exec: [negativeEnd] },
+    windowGrid: { base: [base], exec: [negativeEnd] },
   } });
   const historical = Array.from({ length: 160 }, (_, i) =>
     trade(i === 159 ? -.02 : .02, T - 11 * H + i * 2 * M));

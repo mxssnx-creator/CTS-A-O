@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CTS-A-O · 50-symbol 3-day replay audit</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#121d2e;--line:#26364b;--text:#e6edf6;--muted:#9eb0c6;--accent:#55d6a2;--warn:#ffcc66;--bad:#ff7b83}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:1280px;margin:auto;padding:24px}h1{font-size:27px;margin:10px 0}h2{font-size:19px;margin:28px 0 10px}.badge{display:inline-block;border:1px solid var(--warn);color:var(--warn);border-radius:999px;padding:3px 10px;font-size:12px}p,li{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin:18px 0}.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}.card span{display:block;color:var(--muted);font-size:12px}.card b{font-size:20px}.warning{border-left:3px solid var(--warn);padding:12px;background:#211b12;color:#f6dfb2;border-radius:5px}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:9px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:9px;border-bottom:1px solid var(--line);vertical-align:top}th{background:#19273b}td.na{color:var(--warn)}code{color:#b5dcff}a{color:#87c7ff}.muted{color:var(--muted)}footer{margin-top:28px;border-top:1px solid var(--line);padding-top:15px;color:var(--muted)}
+</style>
+</head>
+<body><main>
+<span class="badge">BLOCKED BEFORE SCORING · NO FRESH REPLAY METRICS</span>
+<h1>50-symbol, 3-day direct post-Base replay</h1>
+<p>Audit date: 27 November 2026. This page records the requested configuration matrix and the data/venue limits. It does not replace missing candle data with a smaller or synthetic sample.</p>
+
+<div class="grid">
+  <div class="card"><span>Requested market window</span><b>50 symbols · 120 hours</b><div class="muted">48 h prehistory + 72 h trading · 1-minute candles</div></div>
+  <div class="card"><span>Base×Exec grid per profile</span><b>24,000 paths</b><div class="muted">400 Base policies × 60 end policies</div></div>
+  <div class="card"><span>Profiles requested</span><b>16</b><div class="muted">6 PF pairs × 2 main profiles + 4 Axis/Block profiles</div></div>
+  <div class="card"><span>Fresh 50-symbol results</span><b>Unavailable</b><div class="muted">No matching feed was present in the workspace.</div></div>
+</div>
+
+<div class="warning"><b>Interpretation:</b> “Not evaluated” means the replay never reached scoring. It is not a zero-pass result, and no PF, validation rate, order count or hour-success rate is inferred.</div>
+
+<h2>Requested independent Last-N lanes</h2>
+<div class="panel">
+<p><b>Base:</b> Long 10/20/30/40/50; Short 4/8/12/16 with positive and negative signs; Last 1/2/3/4/5 with positive and negative signs. This gives 5 × 4 × 5 × 2 × 2 = 400 Base policies.</p>
+<p><b>Post-Base direct evaluation:</b> positive Short 8/12/16/20; negative Short 8/12; Last 1/2/3/4/5 with positive and negative signs. This gives (4 + 2) × 5 × 2 = 60 end policies.</p>
+<p><b>PF thresholds:</b> Base 1.5, 2.0 and 2.5 crossed with end-evaluation 2.0 and 2.5. Axis/Block comparisons are listed in the profile table.</p>
+</div>
+
+<h2>Per-profile results</h2>
+<div class="tablewrap"><table>
+<thead><tr><th>Profile</th><th>Axis</th><th>Block</th><th>Axis factor</th><th>Base PF</th><th>End PF</th><th>Paths</th><th>Base pass/evaluated</th><th>Post-Base pass/evaluated</th><th>Orders</th><th>Exec PF</th><th>Positive hours</th></tr></thead>
+<tbody>
+<tr><td>Baseline</td><td>Off</td><td>Off</td><td>—</td><td>1.5</td><td>2.0</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Baseline</td><td>Off</td><td>Off</td><td>—</td><td>1.5</td><td>2.5</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Baseline</td><td>Off</td><td>Off</td><td>—</td><td>2.0</td><td>2.0</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Baseline</td><td>Off</td><td>Off</td><td>—</td><td>2.0</td><td>2.5</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Baseline</td><td>Off</td><td>Off</td><td>—</td><td>2.5</td><td>2.0</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Baseline</td><td>Off</td><td>Off</td><td>—</td><td>2.5</td><td>2.5</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Axis + Block</td><td>On</td><td>On</td><td>1.0</td><td>1.5</td><td>2.0</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Axis + Block</td><td>On</td><td>On</td><td>1.0</td><td>1.5</td><td>2.5</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Axis + Block</td><td>On</td><td>On</td><td>1.0</td><td>2.0</td><td>2.0</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Axis + Block</td><td>On</td><td>On</td><td>1.0</td><td>2.0</td><td>2.5</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Axis + Block</td><td>On</td><td>On</td><td>1.0</td><td>2.5</td><td>2.0</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Axis + Block</td><td>On</td><td>On</td><td>1.0</td><td>2.5</td><td>2.5</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Axis only</td><td>On</td><td>Off</td><td>1.0</td><td>2.5</td><td>2.5</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Block only</td><td>Off</td><td>On</td><td>—</td><td>2.5</td><td>2.5</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Axis only</td><td>On</td><td>Off</td><td>0.1</td><td>2.5</td><td>2.5</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+<tr><td>Axis + Block</td><td>On</td><td>On</td><td>0.1</td><td>2.5</td><td>2.5</td><td>24,000</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Not evaluated</td><td class="na">Unavailable</td><td class="na">Not evaluated</td></tr>
+</tbody></table></div>
+
+<h2>Live and exchange audit</h2>
+<div class="panel"><p>The direct grid is offline research and bypasses Main and Real. It is not the persistent production Session→Execute adapter. The native adapter fails closed on the unsupported direct policy; this guard remains in place until direct-session ownership, order/fill reconciliation, restart recovery and venue parity are implemented and verified.</p><p>Focused exchange/runtime checks ran against mocks and offline fixtures only. No connected BingX account, live balances, fills, control-order lifecycle, reconnect recovery or venue PF were verified. No venue order was placed.</p></div>
+
+<h2>Evidence and next input</h2>
+<ul><li>The workspace lacked a matching 50-symbol, 120-hour candle feed; the available archived feeds are smaller or shorter.</li><li>The earlier isolated verification passed 58 focused processing checks and 64 offline exchange/runtime checks. The two direct Base→Exec regression cases also passed in isolation.</li><li>The replay runner and both full and targeted TypeScript checks encountered the workspace memory limit (exit 137), so full typechecking remains incomplete.</li><li>To score the 16 profiles, provide a 50-symbol 1-minute feed covering both 48-hour prehistory and 72-hour evaluation, in the session runner's <code>--feed</code> format.</li></ul>
+<p>See the <a href="./50-symbol-3d-replay-audit.md">written audit</a> for the full test and scope notes. The earlier <a href="./index.html">8-symbol, 12-hour matrix</a> is a separate historical reference, not a result for this request.</p>
+<footer>CTS-A-O · 27 November 2026 · Offline audit only · No live trading action performed</footer>
+</main></body></html>
