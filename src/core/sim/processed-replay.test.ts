@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import type { OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
 import { ProcessedSetBook } from "./processed-set.ts";
-import { ownedProcessedPolicy, processedLanes, ProcessedReplay } from "./processed-replay.ts";
+import { ownedProcessedPolicy, processedLanes, ProcessedReplay, type ProcessedGridWindowCoverage } from "./processed-replay.ts";
 import { defaultWalkForward, execDecision, makeTape, packTapes, walkForward,
   type WalkForwardOptions, type WalkForwardResult } from "./walkforward.ts";
 import { retireOwnedIdleWorkers, runOnWorkers } from "../server/pool.server.ts";
@@ -522,7 +522,7 @@ test("a window grid preserves the Cartesian owned path results without copying e
     assert.equal(a[stage]!.contexts * downstream, b[stage]!.contexts);
     assert.equal(a[stage]!.qualified * downstream, b[stage]!.qualified);
     assert.equal(a[stage]!.full * downstream, b[stage]!.full);
-    const windows = a.windowGrid!.windows![stage]!;
+    const windows: ProcessedGridWindowCoverage[] = a.windowGrid!.windows![stage]!;
     assert.equal(windows.reduce((sum, row) => sum + row.contexts, 0), a[stage]!.contexts);
     assert.equal(windows.reduce((sum, row) => sum + row.qualified, 0), a[stage]!.qualified);
   }
