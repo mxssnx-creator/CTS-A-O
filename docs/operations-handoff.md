@@ -1,3 +1,22 @@
+## 2026-11-27 — Micro 50-symbol, ten-day replay
+
+Applied Micro source commit `b9de779e3fbb2c54b074a91d7720a1f879a907a4`. The selectable 1m ADX pullback and the immutable
+completed-bar minute clock were checked with 59 focused tests. A separate 1,440-projection benchmark
+moved median time from 219.4 ms to 10.2 ms with all 108 parity checks passing.
+
+The 50-symbol model used four evaluated prehistory days and ten scored days, ending 27 November
+01:00 Vienna time. The selective ADX 30m hold and 4/2/2 policy recorded post-Base PF 5.392 with
+3/2,400 contexts passing (0.125%). It opened and closed 11 modeled positions and settled all 56
+funded modeled orders at PF 1.648, with 4/240 positive hours and 0.000973% marked equity drawdown.
+The first five days settled two losing orders. The second settled 54 at PF 2.182. The full market
+matrix measured 206 profiles against the same 0.176% round-trip cost. Zero candidates met the
+chronological default-selection rule. This research lane is enabled through an explicit focus.
+
+The Stable-04 candidate reproduced the study’s 56 funded orders, gates and 240 hourly rows with the
+opt-in offline rolling Base path. Native accounting reconciliation passed 59 checks. With fixed Base,
+0/1 pooled pairs passed, no exact contexts qualified and no orders opened. Exchange fills were outside
+the replay. See the [study notes](micro-10d-study-20261127.md).
+
 ## 2026-11-27 — October Last-N archive restored
 
 The exact October replay ran at the original eight symbols and 9 October 02:00–14:00 Vienna trading

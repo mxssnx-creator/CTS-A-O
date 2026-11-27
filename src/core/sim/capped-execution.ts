@@ -15,7 +15,13 @@ export function stampCappedOpen(open: OpenPosition | null | undefined, view: Cap
   open.executionTfMin = view.bars.tfMin;
   open.holdEndT = open.entryT + view.protect.hold * view.bars.tfMin * M;
 }
+interface ExecutionClock {
+  /** Source bar index to the minute index that completes it. A missing minute is −1. */
+  closedAt: Int32Array;
+  series: Projection["series"];
+}
 const minuteBooks = new WeakMap<Universe, Map<string, Bars>>();
+const executionClocks = new WeakMap<Universe, WeakMap<Bars, ExecutionClock>>();
 const projections = new WeakMap<Universe, WeakMap<Int8Array, Projection>>();
 /** Job/pair boundaries release expanded signal/ATR arrays; immutable price inputs stay shared. */
 export const clearCappedProjections = (u: Universe): void => { projections.delete(u); };
@@ -47,6 +53,42 @@ export function cappedPriceStart(u: Universe, sourceIndices: readonly number[]):
   return first;
 }
 
+function executionClock(u: Universe, source: Bars, prices: Bars): ExecutionClock {
+  let clocks = executionClocks.get(u);
+  if (!clocks) {
+    clocks = new WeakMap();
+    executionClocks.set(u, clocks);
+  }
+  const previous = clocks.get(source);
+  if (previous) return previous;
+  const minuteToSource = new Int32Array(prices.n);
+  const closedAt = new Int32Array(source.n).fill(-1);
+  const duration = source.tfMin * M;
+  let j = -1;
+  for (let i = 0; i < prices.n; i++) {
+    const closeT = prices.t[i] + M;
+    while (j + 1 < source.n && source.t[j + 1] + duration <= closeT) j++;
+    minuteToSource[i] = j;
+    if (j >= 0 && source.t[j] + duration === closeT) closedAt[j] = i;
+  }
+  const numeric = new WeakMap<Float64Array, Float64Array>();
+  const clock: ExecutionClock = {
+    closedAt,
+    series(values) {
+      if (values.length !== source.n) throw new Error("source numeric series/price length mismatch");
+      let out = numeric.get(values);
+      if (!out) {
+        out = new Float64Array(prices.n).fill(NaN);
+        for (let i = 0; i < prices.n; i++) if (minuteToSource[i] >= 0) out[i] = values[minuteToSource[i]];
+        numeric.set(values, out);
+      }
+      return out;
+    },
+  };
+  clocks.set(source, clock);
+  return clock;
+}
+
 /** Minute caps use completed indication bars but independent minute execution prices. Native research stays explicit. */
 export function cappedExecution(u: Universe, sourceIndex: number, signal: Int8Array, p: Protect, cooldown = 0): CappedExecution {
   const source = u.bars[sourceIndex];
@@ -65,26 +107,10 @@ export function cappedExecution(u: Universe, sourceIndex: number, signal: Int8Ar
   let view = cache.get(signal);
   if (view && (view.bars !== prices || view.source !== source)) throw new Error("source signal reused across execution contexts");
   if (!view) {
-    const map = new Int32Array(prices.n).fill(-1), projected = new Int8Array(prices.n);
-    let j = -1;
-    for (let i = 0; i < prices.n; i++) {
-      const closeT = prices.t[i] + M;
-      while (j + 1 < source.n && source.t[j + 1] + source.tfMin * M <= closeT) j++;
-      map[i] = j;
-      if (j >= 0 && source.t[j] + source.tfMin * M === closeT) projected[i] = signal[j];
-    }
-    const numeric = new WeakMap<Float64Array, Float64Array>();
-    view = { source, bars: prices, signal: projected, sourceTfMin: source.tfMin,
-      series(values) {
-        if (values.length !== source.n) throw new Error("source numeric series/price length mismatch");
-        let out = numeric.get(values);
-        if (!out) {
-          out = new Float64Array(prices.n).fill(NaN);
-          for (let i = 0; i < prices.n; i++) if (map[i] >= 0) out[i] = values[map[i]];
-          numeric.set(values, out);
-        }
-        return out;
-      } };
+    const { closedAt, series } = executionClock(u, source, prices);
+    const projected = new Int8Array(prices.n);
+    for (let j = 0; j < source.n; j++) if (closedAt[j] >= 0) projected[closedAt[j]] = signal[j];
+    view = { source, bars: prices, signal: projected, sourceTfMin: source.tfMin, series };
     cache.set(signal, view);
   }
   return { ...view, protect: { ...p, hold: Math.floor(p.maxHoldMin) },

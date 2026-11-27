@@ -55,6 +55,21 @@ test("a Signal validated between report hours executes on its next minute onset"
   assert.ok(run.signalSteps!.every(s => [...s.keys].every(k => activeSignalsAt([tp], s.t, sig, 150, wf).has(k))));
 });
 
+test("an unlimited Signal count still applies minute-level qualification in a processed window grid", () => {
+  const { tp, wf, sig, due, u } = fixture();
+  assert.equal(sig.count, 0);
+  assert.equal(sig.coordination.count, 0);
+  const block = { long: 1, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const grid = { base: [block], validation: [block], real: [block], exec: [block] };
+  const run = walkForward(u, [tp], { ...wf, processedStages: {
+    validationN: 3, realN: 3, execN: 3, reportDetail: "summary", windowGrid: grid,
+  } });
+  const key = sigActiveKey(tp.bot, tp.ind, "ADA-USDT", -1, tp.kind, tp.id);
+  assert.equal(signalSetAt(run.signalSteps!, start)?.has(key), false);
+  assert.equal(signalSetAt(run.signalSteps!, due.entryT)?.has(key), true);
+  assert.ok(run.signalActiveEnd?.includes(key));
+});
+
 function drain<T>(g: Generator<number, T>): T {
   for (;;) { const r = g.next(); if (r.done) return r.value; }
 }

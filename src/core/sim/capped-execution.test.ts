@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { Protect } from "../domain/types.ts";
 import { barsFromCandles } from "../market/bars.ts";
 import type { Universe } from "../pipeline/pipeline.ts";
-import { cappedExecution } from "./capped-execution.ts";
+import { cappedExecution, clearCappedProjections } from "./capped-execution.ts";
 
 const M = 60_000, T = Date.UTC(2026, 9, 9);
 const bars = (sym: string, tf: number, n: number) => barsFromCandles(sym, tf, Array.from({ length: n }, (_, i) =>
@@ -31,6 +31,20 @@ test("missing sibling, stale or gapped minute prices cannot silently become a di
   assert.throws(() => cappedExecution(universe(bars("A", 1, 4)), 1, Int8Array.of(1), p), /stale minute/);
   const gapped = bars("A", 1, 8); gapped.t[6] += M;
   assert.throws(() => cappedExecution(universe(gapped), 1, Int8Array.of(1), p), /invalid minute/);
+});
+
+test("the completed-bar clock shares prices and keeps candidate signals independent across a source gap", () => {
+  const source = bars("A", 5, 2);
+  source.t[1] += 5 * M;
+  const u = universe(bars("A", 1, 17), source);
+  const values = Float64Array.of(11, 22);
+  const long = cappedExecution(u, 1, Int8Array.of(1, 0), p);
+  clearCappedProjections(u);
+  const short = cappedExecution(u, 1, Int8Array.of(0, -1), p);
+  assert.deepEqual(Array.from(long.signal).flatMap((side, i) => side ? [[i, side]] : []), [[4, 1]]);
+  assert.deepEqual(Array.from(short.signal).flatMap((side, i) => side ? [[i, side]] : []), [[14, -1]]);
+  assert.deepEqual(Array.from(short.series(values).slice(4)), [...Array(10).fill(11), 22, 22, 22]);
+  assert.equal(short.series(values), long.series(values));
 });
 
 test("native controls stay native; genuine minute caps resolve independently of source-bar count", () => {

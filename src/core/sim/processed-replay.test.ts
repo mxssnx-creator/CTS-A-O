@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import type { OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
 import { ProcessedSetBook } from "./processed-set.ts";
-import { ownedProcessedPolicy, processedLanes, ProcessedReplay } from "./processed-replay.ts";
+import { ownedProcessedPolicy, processedLanes, ProcessedReplay, type ProcessedGridWindowCoverage } from "./processed-replay.ts";
 import { defaultWalkForward, execDecision, makeTape, packTapes, walkForward,
   type WalkForwardOptions, type WalkForwardResult } from "./walkforward.ts";
 import { retireOwnedIdleWorkers, runOnWorkers } from "../server/pool.server.ts";
@@ -522,7 +522,12 @@ test("a window grid preserves the Cartesian owned path results without copying e
     assert.equal(a[stage]!.contexts * downstream, b[stage]!.contexts);
     assert.equal(a[stage]!.qualified * downstream, b[stage]!.qualified);
     assert.equal(a[stage]!.full * downstream, b[stage]!.full);
+    const windows: ProcessedGridWindowCoverage[] = a.windowGrid!.windows![stage]!;
+    assert.equal(windows.reduce((sum, row) => sum + row.contexts, 0), a[stage]!.contexts);
+    assert.equal(windows.reduce((sum, row) => sum + row.qualified, 0), a[stage]!.qualified);
   }
+  assert.equal(a.windowGrid!.windows!.base!.length, 2);
+  assert.ok(a.windowGrid!.windows!.base!.every(row => row.contexts === symbols.length * 2));
   assert.ok(replay.trades.some(t => t.r < 0), "economic history includes every admitted loss");
 });
 
@@ -562,4 +567,45 @@ test("negative Main uses a priced mirror without granting that mirror its own Ba
   assert.ok(result.trades.every(t => t.cfg === oppositeId && t.side === -1 && t.unitR === .008));
   assert.equal(result.feed.filter(t => t.cfg === oppositeId).length, grid.inverseEntries,
     "a mirror price sample feeds no strategy or shared record until the original path actually admits it");
+});
+
+test("a cold exact context learns real prehistory entries and keeps them out of the scored account", () => {
+  const block = { long: 1, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const f = fixture(Array.from({ length: 40 }, (_, i) => i < 5 ? -.006 : .02));
+  const tape = makeTape(id, "follow", ind, protect, "normal", symbols, f.future, [], []);
+  const startT = T + H;
+  const options = { ...f.options, causalBase: true, basePassed: new Set<string>(), basePassedRanges: {},
+    startT, simH: 11, processedWarmup: { fromT: T, baseCutT: T, untilT: startT } } as const;
+  const fixed = { validationN: 3, realN: 3, execN: 3, baseScope: "context", reportDetail: "summary" } as const;
+  const grid = { base: [block], validation: [block], real: [block], exec: [block] };
+  for (const policy of [{ ...fixed, baseBlock: block }, { ...fixed, windowGrid: grid }]) {
+    const frozen = walkForward(f.universe, [tape], { ...options, processedStages: policy });
+    assert.equal(frozen.processedWarmupActivity?.entries.base, 0);
+    assert.equal(frozen.trades.length, 0);
+
+    const result = walkForward(f.universe, [tape], { ...options, processedStages: { ...policy, rollingBase: true } });
+    const { entries, closedBeforeScore } = result.processedWarmupActivity!;
+    assert.ok(result.processedWarmupActivity!.pricedCandidates > entries.base);
+    assert.ok(entries.base > entries.main && entries.main > entries.real && entries.real > entries.exec);
+    assert.ok(closedBeforeScore.exec > 0);
+    assert.equal(entries.exec - closedBeforeScore.exec, 1, "the close at the score boundary is not strictly earlier");
+    assert.ok(result.trades.length > 0);
+    assert.ok(result.trades.every(row => row.entryT >= startT && row.unitR === .02));
+    assert.equal(result.processedStageSummary!.exec!.qualified, 1,
+      "the never-observed opposite direction cannot qualify");
+  }
+});
+
+test("cutoff coverage drops a stale Base parent while retaining its earlier modeled results", () => {
+  const block = { long: 1, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const fixtureReturns = [...Array(35).fill(.02), -.1];
+  for (const policy of [{ baseBlock: block, blocks: { validation: block, real: block, exec: block } },
+    { windowGrid: { base: [block], validation: [block], real: [block], exec: [block] } }]) {
+    const { result } = fixture(fixtureReturns, { processedStages: {
+      baseScope: "context", validationN: 3, realN: 3, execN: 3, reportDetail: "summary", ...policy,
+    } });
+    assert.ok(result.trades.length > 0);
+    assert.equal(result.processedStageSummary!.validation.qualified, 0);
+    assert.ok(result.processedStageSummary!.validation.parentBlocked);
+  }
 });
