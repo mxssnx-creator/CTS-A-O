@@ -4319,7 +4319,7 @@ export function processedBaseCheck(tp: ConfigTape, o: WalkForwardOptions, sym: s
     const gates = baseSetsGates(baseGates);
     const n = block ? blockRequired(block) : baseLastNForRange(gates, tag, tp.id) || Math.max(1, gates.minTrades);
     const partial = block ? 0 : partialFloorOf(gates.positionWindows, gates.lastNFloor);
-    if (end < (partial || n)) return false;
+    if (end < Math.min(n, partial || n)) return false;
     const rules = o.gates.stepPf;
     const autoPf = rules?.enabled && (rules.mode ?? "auto") === "auto" && configuredAuto || undefined;
     const key = `${block ? blockPolicyKey(block) : "count"}|${autoPf?.ratio ?? 0}|${scope ?? ""}|${baseGates === o.gates}`;

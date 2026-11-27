@@ -124,6 +124,13 @@ test("a passing Base symbol and direction survives wider discovery without quali
       processedBaseCheck(tape, scopedOptions, sym, side, u.nowT)(block, undefined, "context")));
     assert.equal(passing, expected);
   }
+
+  const symbol = tape.syms[0];
+  const small = makeTape(run.id, "follow", ind, run.protect, "normal", [symbol], run.trades.slice(0, 2)
+    .map(t => ({ ...t, sym: symbol, side: 1 as const, r: .01 })), [], []);
+  const shortWindow = { ...windows, base: 2, strictCounts: false };
+  assert.equal(processedBaseCheck(small, { ...options, gates: { ...gates, positionWindows: shortWindow, lastNFloor: 9 } },
+    symbol, 1, u.nowT)(undefined, undefined, "context"), true);
 });
 
 test("Base last-40 rejects recent losses despite a profitable full history", () => {
