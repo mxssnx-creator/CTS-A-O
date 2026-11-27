@@ -80,6 +80,23 @@ test("a shared paper opening restores both independent lanes and settles each ex
   assert.equal(adapter.snapshot().book.open.length, 0);
 });
 
+test("a negative Main policy does not use the Base side's native orders or block a direct sibling", () => {
+  const inverse = { id: "inverse", blocks: { validation: { long: 3, short: 2, minimal: 1,
+    shortPolarity: "negative" as const, minimalPolarity: "negative" as const } } };
+  const supported = new NativeProcessedStageAdapter({ ...policy, execN: 1, lanes: [inverse, { id: "direct" }] }, .0015);
+  for (let i = 0; i < 5; i++) {
+    const order = supported.enter(tp, "OWN-USDT", 1, 2*i, 1.25);
+    if (i === 4) assert.equal(order.stage, "active");
+    assert.equal(JSON.parse(order.identity.lane).at(-1), "direct");
+    supported.settle(order.entryId, 2*i+1, .02);
+  }
+  const unsupported = new NativeProcessedStageAdapter({ ...policy, execN: 1, lanes: [inverse] }, .0015);
+  assert.equal(unsupported.hasNativeSource, false);
+  assert.equal(unsupported.preview(tp,"OWN-USDT",1,12,1.25), null);
+  assert.equal(unsupported.preview(tp,"OWN-USDT",-1,12,1.25), null);
+  assert.throws(() => unsupported.enter(tp,"OWN-USDT",1,12,1.25), /no Base-qualified/);
+});
+
 test("large disjoint policy retains every required parent close across a legacy checkpoint", () => {
   const wide = {...policy, blocks:{validation:{long:500,short:200,minimal:5,shortPolarity:"negative" as const,minimalPolarity:"negative" as const}}};
   const previous=new NativeProcessedStageAdapter(policy,0.001);

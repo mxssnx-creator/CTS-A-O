@@ -57,7 +57,7 @@ import {
 import { RANGE_LABEL, RANGE_OWN_BASE } from "@/core/minimal-coord";
 import { DEFAULT_PRICE_DISTANCE_GRID, PRICE_DISTANCE_RANGES, type PriceDistanceGrid } from "@/core/price-distance-grid";
 import { blockRatioOf, blockStackCap, stepRaise } from "@/core/sim/block";
-import { processedLanes, type ProcessedReplayPolicy } from "@/core/sim/processed-replay";
+import { processedLanes, requiresOppositeMainSource, type ProcessedReplayPolicy } from "@/core/sim/processed-replay";
 import { DEFAULT_AUTO_PF_RATIO } from "@/core/step-pf";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES, signalSourceEnabled } from "@/core/signal-config";
 import { SIGNAL_COORDINATION_RATIOS } from "@/core/signal-coordination";
@@ -1687,6 +1687,9 @@ export function ProcessedStageSettings(props: {
   };
   const put = (key: "validationN" | "realN" | "execN", value: number) =>
     props.onChange({ ...policy, [key]: Math.round(value) });
+  const needsOppositeSource = policy.lanes?.some(lane => requiresOppositeMainSource({
+    ...policy, ...lane, execN: lane.execN ?? policy.execN ?? policy.realN, blocks: { ...policy.blocks, ...lane.blocks },
+  })) ?? requiresOppositeMainSource(policy);
   return (
     <Panel
       title="Persistent own-stage progression"
@@ -1760,6 +1763,7 @@ export function ProcessedStageSettings(props: {
                 }
               }} />
             {laneError && <span role="alert" className="v2-warn">{laneError}</span>}
+            {needsOppositeSource && <span className="v2-warn">Negative Main lanes are available for replay. Native orders require an opposite-side source.</span>}
           </Field>
         </div>
       )}

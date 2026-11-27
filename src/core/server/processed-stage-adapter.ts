@@ -1,5 +1,5 @@
 import { frozenProcessedPolicy, furthestProcessedDecision, processedLaneKey, processedLanes,
-  qualifiesProcessedBase, requiresProcessedBaseCheck,
+  qualifiesProcessedBase, requiresOppositeMainSource, requiresProcessedBaseCheck,
   type ProcessedBaseCheck, type ProcessedReplayContext, type ProcessedReplayPolicy } from "../sim/processed-replay.ts";
 import {
   processedPolicyCapacity,
@@ -58,6 +58,7 @@ export class NativeProcessedStageAdapter {
   /** Exact processed-stage policy and modeled-cost identity frozen into every admitted parent. */
   readonly revision: string;
   readonly checksBase: boolean;
+  readonly hasNativeSource: boolean;
   private readonly lanes: Array<ReturnType<typeof processedLanes>[number] & { revision: string }>;
   private readonly open = new Map<string, ProcessedOpen[]>();
   private readonly settledQueue: string[];
@@ -66,8 +67,12 @@ export class NativeProcessedStageAdapter {
   constructor(policy: ProcessedReplayPolicy, cost: number, snapshot?: NativeProcessedSnapshot) {
     this.policy = checkedPolicy(policy);
     this.revision = nativeProcessedRevision(this.policy, cost);
-    this.lanes = processedLanes(this.policy).map(l => ({ ...l, revision: nativeProcessedRevision(l.policy, cost) }));
+    // The native paper entry receives the Base side's price path. A negative Main lane needs a separate
+    // opposite-side source and cannot use this parent's same-side receipt to create fresh exposure.
+    this.lanes = processedLanes(this.policy).filter(l => !requiresOppositeMainSource(l.policy))
+      .map(l => ({ ...l, revision: nativeProcessedRevision(l.policy, cost) }));
     this.checksBase = this.lanes.some(l => requiresProcessedBaseCheck(l.policy));
+    this.hasNativeSource = this.lanes.length > 0;
     if (snapshot) {
       if (
         snapshot.version !== 1 ||
@@ -112,7 +117,7 @@ export class NativeProcessedStageAdapter {
     minPf: number,
     lane = this.lanes[0],
   ): ProcessedSetIdentity {
-    if (!tp.id || !tp.kind || !tp.ind || !symbol || !Number.isFinite(minPf) || minPf <= 1)
+    if (!lane || !tp.id || !tp.kind || !tp.ind || !symbol || !Number.isFinite(minPf) || minPf <= 1)
       throw new RangeError("invalid native processed-stage identity");
     return {
       baseConfigId: tp.id,

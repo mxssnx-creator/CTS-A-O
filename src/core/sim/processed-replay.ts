@@ -91,6 +91,13 @@ export const processedLaneKey = (tp: ProcessedReplayContext, policy: SinglePolic
   JSON.stringify([tp.ind, policy.validationN, policy.realN, minPf, ...(id ? [id] : [])]);
 export type ProcessedBaseCheck = (block?: BlockPolicy, autoPf?: SinglePolicy["autoPf"], scope?: "context") => boolean;
 export const requiresProcessedBaseCheck = (policy: SinglePolicy) => !!(policy.baseBlock || policy.baseScope);
+/** A negative Main trigger requires a separately priced order on the other side. */
+export function requiresOppositeMainSource(policy: SinglePolicy): boolean {
+  const block = policy.blocks?.validation;
+  return policy.execN !== undefined && !!block &&
+    ((block.short > 0 && block.shortPolarity === "negative") ||
+     (block.minimal > 0 && block.minimalPolarity === "negative"));
+}
 export const qualifiesProcessedBase = (policy: SinglePolicy, check?: ProcessedBaseCheck) =>
   !requiresProcessedBaseCheck(policy) || check?.(policy.baseBlock, policy.autoBase === false ? undefined : policy.autoPf,
     policy.baseScope) === true;

@@ -10405,6 +10405,10 @@ export class CoreRuntime {
           pSkip(`${pre}exec:processedUnavailable`);
           continue;
         }
+        if (!nativeStages.hasNativeSource) {
+          pSkip(`${pre}exec:oppositeMainSourceUnavailable`);
+          continue;
+        }
         try {
           const minProcessedPf = processedMinPfForTape(tp, this.wf);
           const side = op.side > 0 ? 1 : -1;
