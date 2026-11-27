@@ -152,7 +152,8 @@ export class ProcessedWindowGridReplay {
       type HistoryIndex = Map<readonly ProcessedHistoryRow[], { view: ProcessedWindowIndex; scans: StageScan[] }>;
       const indexes = new Map<number, HistoryIndex>();
       const decide = (depth: number, parent: Group, path: ProcessedVerdict[], multiplicity: number) => {
-        if (parent.history.length < levels[depth][0].size) return undefined;
+        const terminal = depth === levels.length - 1;
+        if ((terminal && deepest === depth) || parent.history.length < levels[depth][0].size) return undefined;
         const floor = floors[depth];
         let byHistory = indexes.get(floor);
         if (!byHistory) indexes.set(floor, byHistory = new Map());
@@ -162,6 +163,18 @@ export class ProcessedWindowGridReplay {
           byHistory.set(parent.history, indexed);
         }
         const { view, scans } = indexed;
+        if (terminal) {
+          // Exec has no child history. Select the first qualified receipt in the
+          // same order, and evaluate all terminal siblings separately for coverage.
+          for (const window of levels[depth]) {
+            if (window.size > view.size) break;
+            if (!view.qualifies(window.block, window.key)) continue;
+            deepest = depth;
+            result.best = { stage: "active", validation: path[0], real: path[1], exec: view.evaluate(window.block, window.key) };
+            break;
+          }
+          return undefined;
+        }
         let scan = scans[depth];
         if (!scan) {
           scan = { mask: 0n, missing: 0 };
@@ -176,15 +189,6 @@ export class ProcessedWindowGridReplay {
         }
         result.oppositeSourceMissing += scan.missing * multiplicity;
         if (!scan.mask) return undefined;
-        if (depth === levels.length - 1) {
-          // Exec has no child to update. Only the qualifying receipt is needed for funding.
-          if (depth > deepest) {
-            const sample = levels[depth].find(window => (window.bit & scan.mask) !== 0n)!;
-            deepest = depth;
-            result.best = { stage: "active", validation: path[0], real: path[1], exec: view.evaluate(sample.block, sample.key) };
-          }
-          return undefined;
-        }
         const children: Accepted[] = [];
         for (const group of parent.children ?? initial[depth]) {
           const mask = group.mask & scan.mask;

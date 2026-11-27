@@ -8301,7 +8301,15 @@ export function* walkForwardGen(
   const processedOpen = new Map<Trade, ReturnType<ProcessedLaneReplay["enter"]> | ReturnType<ProcessedWindowGridReplay["enter"]>>();
   const activePosition = (position: Trade) => processedOpen.get(position)?.stage === "active" && !historicalActive.has(position);
   const warmupPosition = (position: Trade) => processedOpen.get(position)?.stage !== "active";
-  const processedFloor = (tp: ConfigTape) => processedMinPfForTape(tp, o);
+  const processedFloors = new Map<ConfigTape, number>();
+  const processedFloor = (tp: ConfigTape) => {
+    let floor = processedFloors.get(tp);
+    if (floor === undefined) {
+      floor = processedMinPfForTape(tp, o);
+      processedFloors.set(tp, floor);
+    }
+    return floor;
+  };
   const byId = new Map<string, ConfigTape>(), indicationVolumeFactors = new Map<string, number>();
   let indexed = 0, indexedAt = performance.now();
   for (const tp of tapes) {
@@ -8340,12 +8348,20 @@ export function* walkForwardGen(
       if ((i + 1) % 512 === 0) yield -1;
     }
   }
-  if (processed instanceof ProcessedWindowGridReplay && processed.usesOppositeSource) {
+  const pricesOpposite = processed instanceof ProcessedWindowGridReplay && processed.usesOppositeSource;
+  const oppositeIds = new Map<ConfigTape, string>(), oppositeSources = new Set<ConfigTape>();
+  if (pricesOpposite) {
     for (const id of processedEntries) {
       const mate = mirrorId(id);
       if (!mate || processedEntries.has(mate)) continue;
       const source = byId.get(mate);
       if (source && !source.heldOnly && !source.carried && tapeExecutable(source, o)) oppositeOnly.add(mate);
+    }
+    for (const tp of tapes) {
+      const mate = mirrorId(tp.id);
+      if (!mate || !byId.has(mate)) continue;
+      oppositeIds.set(tp, mate);
+      if (oppositeOnly.has(tp.id) || processedBaseTapeEligible(tp, o)) oppositeSources.add(tp);
     }
   }
   const newValidationRecord = (): { summary: ValidationSummary; checks?: ValidationCheck[] } | undefined => o.recordValidation ? {
@@ -8774,12 +8790,13 @@ export function* walkForwardGen(
       );
       yield -8;
       let ci = 0;
-      const pricedByOnset = processed instanceof ProcessedWindowGridReplay && processed.usesOppositeSource
-        ? new Map(cands.flatMap(item => {
-            const mate = mirrorId(item.tp.id);
-            return mate && byId.has(mate) && (oppositeOnly.has(item.tp.id) || processedBaseTapeEligible(item.tp, o))
-              ? [[JSON.stringify([item.tp.id, item.tr.sym, item.tr.side, item.tr.entryT]), item] as const] : [];
-          })) : null;
+      const pricedByOnset = pricesOpposite ? new Map<string, (typeof cands)[number]>() : null;
+      if (pricedByOnset) for (const item of cands) {
+        if (oppositeSources.has(item.tp)) {
+          const { sym, side, entryT } = item.tr;
+          pricedByOnset.set(JSON.stringify([item.tp.id, sym, side, entryT]), item);
+        }
+      }
       for (const { tr } of cands) rangeRow(stepRange(tr.cfg)).candidates++;
       for (const { tr, tp } of cands) {
         if (warmupActivity && tr.entryT < startT) warmupActivity.pricedCandidates++;
@@ -8838,7 +8855,7 @@ export function* walkForwardGen(
         const caps = capsOf(o, cls);
         // A predecessor is only a modeled sample; it cannot reserve or conflict with an Active slot.
         const baseCheck = processed?.checksBase && !isOppositeOnly ? processedBaseCheck(tp, o, tr.sym, tr.side, tr.entryT) : undefined;
-        const mate = pricedByOnset && mirrorId(tp.id);
+        const mate = oppositeIds.get(tp);
         const parent = mate ? pricedByOnset!.get(JSON.stringify([mate, tr.sym, -tr.side, tr.entryT])) : undefined;
         const counterpart: OppositeProcessedSource | undefined = parent && {
           tp: parent.tp, symbol: tr.sym, side: parent.tr.side, minPf: processedFloor(parent.tp),
