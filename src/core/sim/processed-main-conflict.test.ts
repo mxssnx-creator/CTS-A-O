@@ -122,6 +122,6 @@ test("persistent owned paper Main → Real freezes entry stage and survives rest
   assert.equal(native.settle(active.entryId, 15, -.03), "already-settled", "checkpoint replay is idempotent");
   const afterLoss = native.enter(tp, sym, 1, 16, minPf);
   assert.equal(afterLoss.stage, "postBase", "the settled loss blocks only later admission");
-  assert.equal(native.preview(tp, "SIBLING-USDT", 1, 16, minPf).stage, "postBase",
+  assert.equal(native.preview(tp, "SIBLING-USDT", 1, 16, minPf)!.stage, "postBase",
     "another symbol cannot borrow the owned parent window");
 });

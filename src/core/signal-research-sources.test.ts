@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { DEFAULT_SIGNALS, SIGNAL_SOURCES, signalId, signalSettings } from "./signal-config.ts";
+import { DEFAULT_SIGNALS, SIGNAL_SOURCES, signalId, signalSettings, signalSourceEnabled } from "./signal-config.ts";
 import { INDICATION_BY_ID, signalSourceOf } from "./indications/registry.ts";
 import { signalCombos, signalProtects } from "./signals.ts";
 import { SeriesCache } from "./indications/cache.ts";
@@ -14,12 +14,12 @@ const NAMES = ["r-laguerre", "r-chand", "r-klinger", "r-rvi"];
 const at = Date.UTC(2026, 9, 1);
 
 describe("four frozen research Signal catalog candidates", () => {
-  it("keeps all original identities and includes all 103 sources in the expanded evaluation catalog", () => {
-    assert.equal(SIGNAL_SOURCES.length, 103, "96 original, four frozen candidates and three later independent sources");
+  it("keeps 103 default sources and 14 opt-in reversal sources in the evaluation catalog", () => {
+    assert.equal(SIGNAL_SOURCES.length, 117);
     for (const name of ["r-apz-reclaim", "r-frama-pullback", "r-st-pullback"])
       assert.notEqual(DEFAULT_SIGNALS.sources[name], false, `${name} included for independent evaluation`);
     assert.equal(
-      SIGNAL_SOURCES.filter((s) => DEFAULT_SIGNALS.sources[s.name] !== false).length,
+      SIGNAL_SOURCES.filter((s) => signalSourceEnabled(DEFAULT_SIGNALS, s.name)).length,
       103,
     );
     const enabled = signalCombos(signalSettings({}), [1, 5, 15, 30]);

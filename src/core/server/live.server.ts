@@ -51,6 +51,7 @@ import { promotionStatus, type LiveGate } from "../live-validation.ts";
 import { isolateNewParents } from "./live-parent-isolation.ts";
 import { nativeProcessedRevision } from "./processed-stage-adapter.ts";
 import { ownedProcessedPolicy } from "../sim/processed-replay.ts";
+import type { ProcessedStage } from "../sim/processed-set.ts";
 import { observedUnlinkedExits, orphanCancelledZero, orphanFilled, orphanFenceId, orphanFenceKeys, orphanObservationId,
   type OrphanExitFence } from "./orphan-exit-fence.ts";
 import {
@@ -114,7 +115,7 @@ type LiveEntryParent = {
   cfg: string;
   sym: string;
   side: 1 | -1;
-  processedStage?: "postBase" | "validated" | "active";
+  processedStage?: ProcessedStage;
   processedPolicy?: string;
 };
 type LiveEntryAllocation = { key: string; at: number; parents: LiveEntryParent[] };

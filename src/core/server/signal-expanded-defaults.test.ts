@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { afterEach, it } from "node:test";
-import { DEFAULT_SIGNALS, PRE_EXPANDED_SIGNAL_SOURCES, SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
+import { DEFAULT_SIGNALS, PRE_EXPANDED_SIGNAL_SOURCES, SIGNAL_SOURCES, signalSettings, signalSourceEnabled } from "../signal-config.ts";
 import { signalCombos, signalProtects } from "../signals.ts";
 import { minimumStopFraction } from "../protection-policy.ts";
 import { DEFAULT_SIGNAL_AUTO_SL, SIGNAL_SL_RATIOS } from "../sl-ratios.ts";
@@ -59,7 +59,10 @@ it("fresh Expanded defaults preserve the catalog and current independent Signal 
   assert.equal(DEFAULT_SIGNALS.combinedVolumeFactors["low-range"], 1);
   assert.equal(rt.settings.signals.combinedVolumeFactors["low-range"], 1);
   expected.combinedVolumeFactors["low-range"] = 1; // New indication kind; retain exact archived values for every prior kind.
-  const normalized = { ...rt.settings.signals, sourcesMode: "allow", sources: Object.fromEntries(SIGNAL_SOURCES.map(s => [s.name, true])) };
+  assert.equal(rt.settings.signals.combinedVolumeFactors["trend-reversal"], 1);
+  expected.combinedVolumeFactors["trend-reversal"] = 1;
+  const normalized = { ...rt.settings.signals, sourcesMode: "allow", sources: Object.fromEntries(SIGNAL_SOURCES
+    .filter(s => signalSourceEnabled(rt.settings.signals, s.name)).map(s => [s.name, true])) };
   assert.deepEqual(normalized, expected);
   assert.deepEqual(signalCombos(rt.settings.signals, rt.settings.tfs), signalCombos(expected, recorded.actualSettings.tfs));
   assert.deepEqual(signalProtects(rt.settings.signals), signalProtects(expected));

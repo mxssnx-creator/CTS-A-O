@@ -811,6 +811,8 @@ export interface EvalResult {
 }
 
 export interface Gates {
+  /** Base tape discovery keeps a cell when at least one exact symbol and side qualifies. */
+  baseContext?: { defaultWindow: boolean; blocks: readonly import("../../../shared/cts-lastn/blocks.ts").BlockPolicy[] };
   /** Primary samples are complete positions per exact configuration. Null is retained for historical reproductions. */
   positionWindows?: import("../position-windows.ts").PositionWindows | null;
   /** Optional manual step floor, shared across Base and downstream windows; stricter range floors remain. */

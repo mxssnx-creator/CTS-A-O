@@ -1,29 +1,99 @@
-import {blockRequired,checkBlockPolicy,type BlockPolicy} from "../../../shared/cts-lastn/blocks.ts";
+import { checkBlockPolicy, type BlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
 import { negativeLastN, type NegativeLastN } from "../negative-last-n.ts";
 import type { PositionWindows } from "../position-windows.ts";
-import { addValidatedSetPf, emptyValidatedSetPf } from "../validated-set-pf.ts";
+import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf } from "../validated-set-pf.ts";
 import type { ValidationSummary } from "./walkforward.ts";
-import { appendProcessedHistory, assertProcessedSetIdentity, processedWindowEconomics, processedWindowVerdict,
+import { appendProcessedHistory, assertProcessedSetIdentity, checkProcessedAutoPf, processedGateSize,
+  processedGateVerdict, processedPolicyCapacity, processedStageDecision, processedWindowEconomics,
   ProcessedSetBook, type ProcessedHistoryRow, type ProcessedOpen, type ProcessedSetIdentity,
-  type ProcessedSetSnapshot, type ProcessedSetSummary, type ProcessedVerdict } from "./processed-set.ts";
+  type ProcessedPolicy, type ProcessedSetSnapshot, type ProcessedSetSummary, type ProcessedStageDecision,
+  type ProcessedVerdict } from "./processed-set.ts";
 
 /** Opt-in modeled progression. Native paper/venue admission requires its own persistent adapter. */
-export interface ProcessedReplayPolicy {
-  blocks?: {validation?:BlockPolicy;real?:BlockPolicy};
-  validationN: number;
-  realN: number;
+export interface ProcessedReplayPolicy extends Omit<ProcessedPolicy, "minPf" | "negativeFilter"> {
   negativeFilter?: NegativeLastN;
+  /** Optional exact side/config Base window in addition to the engine's published Base proof. */
+  baseBlock?: BlockPolicy;
+  /** Discover and admit Base samples on the exact symbol and side. */
+  baseScope?: "context";
+  /** Use the manual Base floor while leaving Main, Real and Exec Auto PF enabled. */
+  autoBase?: false;
   /** Summary mode omits the modeled per-set checkpoint from this replay result; economic decisions are unchanged. */
   reportDetail?: "summary";
+  /** Each named policy gets the entire causal stage chain and its own Short and Last signs. */
+  lanes?: readonly ProcessedLaneOptions[];
 }
+type SinglePolicy = Omit<ProcessedReplayPolicy, "lanes" | "reportDetail">;
+type ProcessedLaneOptions = Partial<Omit<SinglePolicy, "baseScope" | "autoBase">> & { id: string };
 
 export function ownedProcessedPolicy(policy: ProcessedReplayPolicy, windows?: PositionWindows | null): ProcessedReplayPolicy {
   const validation = policy.blocks?.validation ?? windows?.blocks?.main;
   const real = policy.blocks?.real ?? windows?.blocks?.real;
-  return validation || real ? {...policy, blocks: {
-    ...(validation && {validation}), ...(real && {real}),
-  }} : policy;
+  const exec = policy.execN !== undefined ? policy.blocks?.exec ?? windows?.blocks?.entry : undefined;
+  const baseBlock = policy.baseBlock ?? (policy.execN !== undefined ? windows?.blocks?.base : undefined);
+  return { ...policy, ...(baseBlock && { baseBlock }), ...((validation || real || exec) && { blocks: {
+    ...(validation && {validation}), ...(real && {real}), ...(exec && {exec}),
+  } }) };
 }
+
+/** Canonical persisted economics. Reporting detail never changes the qualifying lane's identity. */
+export function checkedProcessedPolicy(policy: SinglePolicy): SinglePolicy {
+  if (!policy || ![policy.validationN, policy.realN, ...(policy.execN === undefined ? [] : [policy.execN])].every(n =>
+    Number.isSafeInteger(n) && n >= 1 && n <= 200)) throw new RangeError("invalid processed-stage policy counts");
+  for (const [stage, block] of Object.entries(policy.blocks ?? {})) {
+    if (!(stage === "validation" || stage === "real" || (stage === "exec" && policy.execN !== undefined)))
+      throw new RangeError("invalid processed signed block stage");
+    checkBlockPolicy(block);
+  }
+  if (policy.baseBlock !== undefined) checkBlockPolicy(policy.baseBlock);
+  if (policy.baseScope !== undefined && policy.baseScope !== "context") throw new RangeError("invalid processed Base scope");
+  if (policy.autoBase !== undefined && policy.autoBase !== false) throw new RangeError("invalid processed Base PF selection");
+  if (policy.autoPf !== undefined) checkProcessedAutoPf(policy.autoPf);
+  const negativeFilter = negativeLastN(policy.negativeFilter);
+  return { validationN: policy.validationN, realN: policy.realN,
+    ...(policy.blocks && { blocks: structuredClone(policy.blocks) }),
+    ...(negativeFilter && { negativeFilter }),
+    ...(policy.execN !== undefined && { execN: policy.execN }),
+    ...(policy.autoPf && { autoPf: { mode: policy.autoPf.mode, ratio: policy.autoPf.ratio } }),
+    ...(policy.baseBlock && { baseBlock: structuredClone(policy.baseBlock) }),
+    ...(policy.baseScope && { baseScope: policy.baseScope }),
+    ...(policy.autoBase === false && { autoBase: false }),
+  };
+}
+
+export function processedLanes(policy: ProcessedReplayPolicy) {
+  const base = checkedProcessedPolicy(policy);
+  if (policy.lanes === undefined) return [{ id: "", policy: base }];
+  if (!Array.isArray(policy.lanes) || !policy.lanes.length)
+    throw new RangeError("processed lanes require at least one named policy");
+  const ids = new Set<string>();
+  return policy.lanes.map(({ id, ...patch }) => {
+    if (typeof id !== "string" || !id.trim() || ids.has(id)) throw new RangeError("invalid or duplicate processed lane ID");
+    ids.add(id);
+    const blocks = patch.blocks ? { ...base.blocks, ...patch.blocks } : base.blocks;
+    return { id, policy: checkedProcessedPolicy({ ...base, execN: base.execN ?? base.realN, ...patch, blocks,
+      baseScope: base.baseScope, autoBase: base.autoBase }) };
+  });
+}
+
+export function frozenProcessedPolicy(policy: ProcessedReplayPolicy): ProcessedReplayPolicy {
+  const base = checkedProcessedPolicy(policy);
+  const lanes = policy.lanes && processedLanes(policy).map(({ id, policy }) => ({ id, ...policy }));
+  return { ...base, ...(lanes && { lanes }) };
+}
+
+export function furthestProcessedDecision<T extends ProcessedStageDecision>(lanes: readonly T[]): T {
+  const rank = { postBase: 0, validated: 1, real: 2, active: 3 };
+  return lanes.reduce((a, b) => rank[b.stage] > rank[a.stage] ? b : a);
+}
+
+export const processedLaneKey = (tp: ProcessedReplayContext, policy: SinglePolicy, minPf: number, id: string) =>
+  JSON.stringify([tp.ind, policy.validationN, policy.realN, minPf, ...(id ? [id] : [])]);
+export type ProcessedBaseCheck = (block?: BlockPolicy, autoPf?: SinglePolicy["autoPf"], scope?: "context") => boolean;
+export const requiresProcessedBaseCheck = (policy: SinglePolicy) => !!(policy.baseBlock || policy.baseScope);
+export const qualifiesProcessedBase = (policy: SinglePolicy, check?: ProcessedBaseCheck) =>
+  !requiresProcessedBaseCheck(policy) || check?.(policy.baseBlock, policy.autoBase === false ? undefined : policy.autoPf,
+    policy.baseScope) === true;
 
 /** Stable economic-policy identity carried from modeled admission through paper and venue ownership. */
 export function processedReplayRevision(policy: ProcessedReplayPolicy, cost: number): string {
@@ -36,7 +106,7 @@ export interface ProcessedReplayContext {
   ind: string;
 }
 /** The offline summary walker only needs the frozen admission decision while an order is open. */
-export type ProcessedSummaryOpen = Pick<ProcessedOpen, "stage" | "validation" | "real">;
+export type ProcessedSummaryOpen = ProcessedStageDecision;
 export interface ProcessedReplayCoverage {
   contexts: number;
   full: number;
@@ -56,6 +126,9 @@ export interface ProcessedReplaySummary {
   seededFromCandidates: false;
   validation: ProcessedReplayCoverage;
   real: ProcessedReplayCoverage;
+  exec?: ProcessedReplayCoverage;
+  lanes?: Array<{ id: string; policy: SinglePolicy; validation: ProcessedReplayCoverage;
+    real: ProcessedReplayCoverage; exec?: ProcessedReplayCoverage }>;
 }
 export interface ProcessedReplayReport extends ProcessedReplaySummary {
   sets: ProcessedSetSummary[];
@@ -96,26 +169,22 @@ export class ProcessedReplay {
   readonly policy: ProcessedReplayPolicy;
   private readonly revision: string;
   private readonly compactEntryIds: boolean;
+  private readonly laneId: string;
 
-  constructor(policy: ProcessedReplayPolicy, cost: number) {
-    if (!policy || ![policy.validationN, policy.realN].every(n => Number.isSafeInteger(n) && n >= 1 && n <= 200) ||
-      !Number.isFinite(cost) || cost < 0) throw new RangeError("invalid processed replay policy");
-    if(policy.blocks)for(const b of Object.values(policy.blocks))checkBlockPolicy(b);
-    const negativeFilter = negativeLastN(policy.negativeFilter);
+  constructor(policy: ProcessedReplayPolicy, cost: number, laneId = "") {
+    this.laneId = laneId;
+    this.policy = checkedProcessedPolicy(policy);
     // Summary-only model replays never emit a checkpoint. Identity already owns config/symbol/side,
     // so the onset timestamp is a unique compact parent ID within that identity.
     this.compactEntryIds = policy.reportDetail === "summary";
-    this.policy = { validationN: policy.validationN, realN: policy.realN,
-      ...(policy.blocks?{blocks:structuredClone(policy.blocks)}:{}),
-      ...(negativeFilter ? { negativeFilter } : {}) };
     this.revision = processedReplayRevision(this.policy, cost);
-    this.book = new ProcessedSetBook("model", Math.max(policy.validationN, policy.realN, ...Object.values(policy.blocks??{}).map(blockRequired), ...negativeFilter?.windows ?? []));
+    this.book = new ProcessedSetBook("model", processedPolicyCapacity(this.policy));
   }
 
   identity(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, minPf: number): ProcessedSetIdentity {
     if (!Number.isFinite(minPf) || minPf <= 1) throw new RangeError("processed PF floor must exceed one");
     return { baseConfigId: tp.id, symbol, side, kind: tp.kind,
-      lane: JSON.stringify([tp.ind, this.policy.validationN, this.policy.realN, minPf]), economicRevision: this.revision };
+      lane: processedLaneKey(tp, this.policy, minPf, this.laneId), economicRevision: this.revision };
   }
 
   enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number): ProcessedOpen {
@@ -138,16 +207,20 @@ export class ProcessedReplay {
   *reportGen(at: number, contexts: Iterable<{ identity: ProcessedSetIdentity; minPf: number }>,
     detail: "full" | "summary" = "full"): Generator<number, ProcessedReplaySummary | ProcessedReplayReport> {
     const validation = coverage(), real = coverage(), sets: ProcessedSetSummary[] = [];
-    const mainN = this.policy.blocks?.validation ? blockRequired(this.policy.blocks.validation) : this.policy.validationN;
-    const realN = this.policy.blocks?.real ? blockRequired(this.policy.blocks.real) : this.policy.realN;
+    const exec = this.policy.execN !== undefined ? coverage() : undefined;
     let scanned = 0, lastYield = performance.now();
     for (const { identity, minPf } of contexts) {
-      count(validation, this.book.verdict(identity, "postBase", this.policy.validationN, minPf, at,
-        this.policy.negativeFilter, this.policy.blocks?.validation), mainN,
+      const p = { ...this.policy, minPf }, mainN = processedGateSize(p, "validation"), realN = processedGateSize(p, "real");
+      const main = this.book.gate(identity, "postBase", p, "validation", at);
+      count(validation, main, mainN,
         () => this.book.windowEconomics(identity, "postBase", mainN, at));
-      count(real, this.book.verdict(identity, "validated", this.policy.realN, minPf, at,
-        this.policy.negativeFilter, this.policy.blocks?.real), realN,
+      count(real, this.book.gate(identity, "validated", p, "real", at, main), realN,
         () => this.book.windowEconomics(identity, "validated", realN, at));
+      if (exec) {
+        const n = processedGateSize(p, "exec");
+        count(exec, this.book.gate(identity, "real", p, "exec", at, main), n,
+          () => this.book.windowEconomics(identity, "real", n, at));
+      }
       if (detail === "full") {
         const summary = this.book.summary(identity);
         if (summary) sets.push(summary);
@@ -159,8 +232,9 @@ export class ProcessedReplay {
     }
     finishCoverage(validation);
     finishCoverage(real);
+    if (exec) finishCoverage(exec);
     const result: ProcessedReplaySummary = { basis: "model", at, coverageScope: "visible-config-symbol-direction",
-      seededFromCandidates: false, validation, real };
+      seededFromCandidates: false, validation, real, ...(exec && { exec }) };
     return detail === "summary" ? result : { ...result, sets, snapshot: this.book.snapshot() };
   }
 
@@ -173,6 +247,7 @@ export class ProcessedReplay {
 interface SummaryRows {
   postBase: ProcessedHistoryRow[];
   validated?: ProcessedHistoryRow[];
+  real?: ProcessedHistoryRow[];
   lastEntryT: number;
 }
 interface SummaryConfig {
@@ -203,8 +278,10 @@ export class ProcessedSummaryReplay {
   // current chronological timestamp, and bound the cache even when every return is different.
   private readonly closeRows = new Map<number | null | symbol, ProcessedHistoryRow>();
   private closeRowsT = -1;
+  private readonly laneId: string;
 
-  constructor(policy: ProcessedReplayPolicy, cost: number) {
+  constructor(policy: ProcessedReplayPolicy, cost: number, laneId = "") {
+    this.laneId = laneId;
     if (policy.reportDetail !== "summary") throw new Error("compact replay requires summary-only reporting");
     const validated = new ProcessedReplay(policy, cost);
     this.policy = validated.policy;
@@ -215,7 +292,7 @@ export class ProcessedSummaryReplay {
   identity(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, minPf: number): ProcessedSetIdentity {
     if (!Number.isFinite(minPf) || minPf <= 1) throw new RangeError("processed PF floor must exceed one");
     return { baseConfigId: tp.id, symbol, side, kind: tp.kind,
-      lane: JSON.stringify([tp.ind, this.policy.validationN, this.policy.realN, minPf]), economicRevision: this.economicRevision };
+      lane: processedLaneKey(tp, this.policy, minPf, this.laneId), economicRevision: this.economicRevision };
   }
 
   private rows(identity: ProcessedSetIdentity, create: boolean): SummaryRows | undefined {
@@ -258,14 +335,9 @@ export class ProcessedSummaryReplay {
     assertProcessedSetIdentity(identity);
     if (!Number.isFinite(entryT) || entryT < 0 || entryT < this.clock)
       throw new RangeError("invalid processed-set policy or decision time");
-    const rows = this.rows(identity, false), p = this.policy, cap = this.capacity;
-    const validation = processedWindowVerdict(rows?.postBase ?? this.empty, cap, p.validationN, minPf, entryT,
-      p.negativeFilter, p.blocks?.validation);
-    const real = validation.state === "qualified"
-      ? processedWindowVerdict(rows?.validated ?? this.empty, cap, p.realN, minPf, entryT,
-        p.negativeFilter, p.blocks?.real) : null;
-    const stage = validation.state !== "qualified" ? "postBase" : real?.state === "qualified" ? "active" : "validated";
-    return { stage, validation, real } as const;
+    const rows = this.rows(identity, false);
+    return processedStageDecision(stage => stage === "active" ? this.empty : rows?.[stage] ?? this.empty,
+      this.capacity, { ...this.policy, minPf }, entryT);
   }
 
   preview(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, entryT: number, minPf: number) {
@@ -316,29 +388,141 @@ export class ProcessedSummaryReplay {
       own.rows.validated ??= [];
       appendProcessedHistory(own.rows.validated, row, this.capacity);
     }
+    if (this.policy.execN !== undefined && (own.stage === "active" || own.stage === "real")) {
+      own.rows.real ??= [];
+      appendProcessedHistory(own.rows.real, row, this.capacity);
+    }
     this.held.delete(open);
   }
 
   *reportGen(at: number, contexts: Iterable<{ identity: ProcessedSetIdentity; minPf: number }>,
     detail: "full" | "summary" = "full"): Generator<number, ProcessedReplaySummary | ProcessedReplayReport> {
     if (detail !== "summary") throw new Error("summary-only replay has no modeled checkpoint");
-    const validation = coverage(), real = coverage(), p = this.policy, cap = this.capacity;
-    const mainN = p.blocks?.validation ? blockRequired(p.blocks.validation) : p.validationN;
-    const realN = p.blocks?.real ? blockRequired(p.blocks.real) : p.realN;
+    const validation = coverage(), real = coverage(), cap = this.capacity;
+    const exec = this.policy.execN !== undefined ? coverage() : undefined;
     let scanned = 0, lastYield = performance.now();
     for (const { identity, minPf } of contexts) {
       if (at < this.clock) throw new RangeError("invalid processed-set policy or decision time");
       assertProcessedSetIdentity(identity);
+      const p = { ...this.policy, minPf }, mainN = processedGateSize(p, "validation"), realN = processedGateSize(p, "real");
       const rows = this.rows(identity, false), main = rows?.postBase ?? this.empty, later = rows?.validated ?? this.empty;
-      count(validation, processedWindowVerdict(main, cap, p.validationN, minPf, at, p.negativeFilter, p.blocks?.validation),
+      const mainVerdict = processedGateVerdict(main, cap, p, "validation", at);
+      count(validation, mainVerdict,
         mainN, () => processedWindowEconomics(main, mainN, at));
-      count(real, processedWindowVerdict(later, cap, p.realN, minPf, at, p.negativeFilter, p.blocks?.real),
+      count(real, processedGateVerdict(later, cap, p, "real", at, mainVerdict),
         realN, () => processedWindowEconomics(later, realN, at));
+      if (exec) {
+        const n = processedGateSize(p, "exec"), history = rows?.real ?? this.empty;
+        count(exec, processedGateVerdict(history, cap, p, "exec", at, mainVerdict),
+          n, () => processedWindowEconomics(history, n, at));
+      }
       if (++scanned % 64 === 0 && performance.now() - lastYield >= 8) { yield -15; lastYield = performance.now(); }
     }
     finishCoverage(validation);
     finishCoverage(real);
+    if (exec) finishCoverage(exec);
     return { basis: "model", at, coverageScope: "visible-config-symbol-direction",
-      seededFromCandidates: false, validation, real };
+      seededFromCandidates: false, validation, real, ...(exec && { exec }) };
+  }
+}
+
+type ReplayLedger = ProcessedReplay | ProcessedSummaryReplay;
+type ReplayContext = { tp: ProcessedReplayContext; symbol: string; side: 1 | -1; minPf: number };
+type ReplayEntry = ProcessedSummaryOpen & { lanes: Array<{ index: number; open: ProcessedOpen | ProcessedSummaryOpen }> };
+
+function combineCoverage(rows: readonly ProcessedReplayCoverage[]): ProcessedReplayCoverage {
+  const result = coverage(), passing = result.passingWindows;
+  for (const row of rows) {
+    for (const key of ["contexts", "full", "qualified", "insufficient", "unknown", "failed"] as const)
+      result[key] += row[key];
+    for (const key of ["evaluated", "passed", "closes", "gp", "gl"] as const) passing[key] += row.passingWindows[key];
+    mergeValidatedSetPf(passing.setPf!, row.passingWindows.setPf!);
+  }
+  finishCoverage(result);
+  return result;
+}
+
+/**
+ * Named Last-N lanes each advance their own predecessor sets. A physical candidate
+ * can satisfy several lanes but is admitted to the account at most once.
+ */
+export class ProcessedLaneReplay {
+  readonly checksBase: boolean;
+  private readonly ledgers: Array<{ id: string; ledger: ReplayLedger }>;
+  private readonly policy: ProcessedReplayPolicy;
+
+  constructor(policy: ProcessedReplayPolicy, cost: number) {
+    this.policy = policy;
+    this.ledgers = processedLanes(policy).map(({ id, policy: p }) => ({
+      id, ledger: policy.reportDetail === "summary"
+        ? new ProcessedSummaryReplay({ ...p, reportDetail: "summary" }, cost, id)
+        : new ProcessedReplay(p, cost, id),
+    }));
+    this.checksBase = this.ledgers.some(x => requiresProcessedBaseCheck(x.ledger.policy));
+  }
+
+  private eligible(base?: ProcessedBaseCheck) {
+    return this.ledgers.flatMap(({ ledger }, index) => {
+      return qualifiesProcessedBase(ledger.policy, base) ? [{ ledger, index }] : [];
+    });
+  }
+
+  preview(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, at: number, minPf: number,
+    base?: ProcessedBaseCheck): ProcessedStageDecision | null {
+    const ledgers = this.ledgers;
+    if (ledgers.length === 1 && !this.checksBase)
+      return ledgers[0].ledger.preview(tp, symbol, side, at, minPf);
+    const eligible = this.eligible(base);
+    return eligible.length ? furthestProcessedDecision(eligible.map(({ ledger }) =>
+      ledger.preview(tp, symbol, side, at, minPf))) : null;
+  }
+
+  enter(tp: ProcessedReplayContext, symbol: string, side: 1 | -1, at: number, minPf: number, base?: ProcessedBaseCheck):
+    ProcessedOpen | ProcessedSummaryOpen | ReplayEntry {
+    const enter = (ledger: ReplayLedger) => ledger instanceof ProcessedSummaryReplay
+      ? ledger.enterCompact(tp, symbol, side, at, minPf) : ledger.enter(tp, symbol, side, at, minPf);
+    const ledgers = this.ledgers;
+    if (ledgers.length === 1 && !this.checksBase) return enter(ledgers[0].ledger);
+    const lanes = this.eligible(base).map(({ ledger, index }) => ({ index, open: enter(ledger) }));
+    if (!lanes.length) throw new Error("no Base-qualified processed lane");
+    const { stage, validation, real, exec } = furthestProcessedDecision(lanes.map(l => l.open));
+    return { stage, validation, real, ...(exec !== undefined && { exec }), lanes };
+  }
+
+  settle(entry: ProcessedOpen | ProcessedSummaryOpen | ReplayEntry, at: number, r: number | null): void {
+    const entries = "lanes" in entry ? entry.lanes : [{ index: 0, open: entry }];
+    for (const { index, open } of entries) {
+      const book = this.ledgers[index].ledger;
+      if (book instanceof ProcessedSummaryReplay) book.settle(open, at, r);
+      else if ("identity" in open) book.settle(open, at, r);
+      else throw new Error("processed open does not belong to its ledger");
+    }
+  }
+
+  *reportGen(at: number, contexts: () => Iterable<ReplayContext>): Generator<number, ProcessedReplaySummary | ProcessedReplayReport> {
+    const reports: Array<ProcessedReplaySummary | ProcessedReplayReport> = [];
+    const detail = this.policy.reportDetail ?? "full";
+    for (const { ledger } of this.ledgers) {
+      reports.push(yield* ledger.reportGen(at, (function* () {
+        for (const { tp, symbol, side, minPf } of contexts())
+          yield { identity: ledger.identity(tp, symbol, side, minPf), minPf };
+      })(), detail));
+    }
+    if (!this.policy.lanes) return reports[0];
+    const lanes = reports.map(({ validation, real, exec }, i) => ({
+      id: this.ledgers[i].id, policy: this.ledgers[i].ledger.policy, validation, real, ...(exec && { exec }),
+    }));
+    const exec = lanes.flatMap(l => l.exec ? [l.exec] : []);
+    const result: ProcessedReplaySummary = { basis: "model", at, coverageScope: "visible-config-symbol-direction",
+      seededFromCandidates: false, validation: combineCoverage(lanes.map(l => l.validation)),
+      real: combineCoverage(lanes.map(l => l.real)), ...(exec.length && { exec: combineCoverage(exec) }), lanes };
+    if (detail === "summary") return result;
+    const full = reports as ProcessedReplayReport[];
+    const clock = Math.max(...full.map(r => r.snapshot.clock));
+    return { ...result, sets: full.flatMap(r => r.sets), snapshot: {
+      version: 3, basis: "model", clock, capacity: Math.max(...full.map(r => r.snapshot.capacity)),
+      sets: full.flatMap(r => r.snapshot.sets), open: full.flatMap(r => r.snapshot.open),
+      seenAtClock: full.flatMap(r => r.snapshot.clock === clock ? r.snapshot.seenAtClock : []),
+    } };
   }
 }

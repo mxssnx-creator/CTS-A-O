@@ -8,6 +8,8 @@ const drain = <T>(g: Generator<number, T>): T => { for (let r = g.next(); ; r = 
 
 const scenarios: Array<[string, Partial<ProcessedReplayPolicy>]> = [
   ["ordinary", {}],
+  ["independent Auto PF through Exec", { execN: 3, autoPf: { mode: "independent", ratio: 4 } }],
+  ["Main Auto PF reuse through Exec", { execN: 3, autoPf: { mode: "main", ratio: 4 } }],
   ["negative windows", { negativeFilter: { windows: [1, 3], mode: "any", maxPf: 1 } }],
   ["signed blocks", { blocks: { validation: { long: 2, short: 0, minimal: 1,
     shortPolarity: "positive" as const, minimalPolarity: "negative" as const },

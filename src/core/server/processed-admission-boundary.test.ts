@@ -78,7 +78,7 @@ for (const mode of ["full", "fast"] as const) test(`${mode}: native stage policy
     }
     const entryT = T + 40;
     const future = { cfg: CFG, sym: SYM, side: 1, entryT };
-    assert.equal(native.preview(tp, SYM, 1, entryT, minPf).stage, "active");
+    assert.equal(native.preview(tp, SYM, 1, entryT, minPf)!.stage, "active");
     const unadmitted = rt.livePromotionGate(future, entryT);
     assert.equal(unadmitted.ok, false);
     assert.deepEqual(unadmitted.processed, { stage: null, state: "unknown", n: 0, pf: null });

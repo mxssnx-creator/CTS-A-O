@@ -2,13 +2,13 @@ import { slRatiosOf } from "../sl-ratios.ts";
 import { slWithinBounds, type SlBounds } from "../sl-calibration.ts";
 import {partialFloorOf, positionStageStats} from "../position-windows.ts";
 import { simulationClock } from "../progress.ts";
-import {blockRequired} from "../../../shared/cts-lastn/blocks.ts";
+import { blockPolicyKey, blockRequired } from "../../../shared/cts-lastn/blocks.ts";
 import { positionCounts, positionStats, positionTapeValid, type PositionWindows } from "../position-windows.ts";
 import {prepareRelationalVolumeFactor} from "../../../shared/cts-volume/ratios.ts";
 import { RT_COST } from "../model-cost.ts";
 import { EVALUATION_HISTORY_H, PRECALC_HISTORY_H } from "../market/history-requirements.ts";
-import { ProcessedReplay, ProcessedSummaryReplay, ownedProcessedPolicy, type ProcessedReplayPolicy, type ProcessedReplayReport, type ProcessedReplaySummary, type ProcessedSummaryOpen } from "./processed-replay.ts";
-import type { ProcessedOpen } from "./processed-set.ts";
+import { ProcessedLaneReplay, ownedProcessedPolicy, type ProcessedBaseCheck, type ProcessedReplayPolicy, type ProcessedReplayReport, type ProcessedReplaySummary } from "./processed-replay.ts";
+import { PROCESSED_AUTO_PF_SAMPLES, processedGateVerdict } from "./processed-set.ts";
 import { minimumStopFraction } from "../protection-policy.ts";
 import { protectSlRatio, protectStepPct } from "../step-pf.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf, type ValidatedSetPfAccumulator } from "../validated-set-pf.ts";
@@ -68,10 +68,13 @@ import {
   protectKind,
   laneProtect,
   protectCellKey,
+  baseSetsGates,
+  passesBase,
   REF_TF,
   seriesOf,
 } from "../pipeline/pipeline.ts";
 import type { SymStat, Universe } from "../pipeline/pipeline.ts";
+import { baseLastNForRange } from "../pipeline/base-lastn.ts";
 import { entrySignal } from "../bots/bots.ts";
 import { tacticCooldown } from "../indications/filters.ts";
 import type { BaseConfigCounter } from "../base-config-counts.ts";
@@ -4295,6 +4298,63 @@ function positionEvaluationInput(tp: ConfigTape, t: number) {
     returns: tp.r,
   };
 }
+
+/** The Base proof belongs to the exact config, symbol and direction's strictly earlier closes. */
+export function processedBaseCheck(tp: ConfigTape, o: WalkForwardOptions, sym: string, side: number, at: number): ProcessedBaseCheck {
+  let own: Uint32Array | undefined, end = 0, loaded = false;
+  const verdicts = new Map<string, boolean>();
+  return (block, configuredAuto, scope) => {
+    if (!loaded) {
+      loaded = true;
+      const source = positionEvaluationInput(tp, at), symbol = tp.syms.indexOf(sym);
+      if (source && symbol >= 0 && (side === 1 || side === -1)) {
+        own = source.contexts.get(symbol * 2 + (side > 0 ? 1 : 0));
+        end = own ? lowerBound(own, source.before) : 0;
+      }
+    }
+    if (!own || !end) return false;
+    const tag = isSignalInd(tp.ind) ? "sig" : tp.kind === "exit" ? "exit" : tp.protect.tag ?? "wide";
+    const baseGates = scope === "context" && !configuredAuto && o.gates.stepPf
+      ? { ...o.gates, stepPf: { ...o.gates.stepPf, mode: "manual" as const } } : o.gates;
+    const gates = baseSetsGates(baseGates);
+    const n = block ? blockRequired(block) : baseLastNForRange(gates, tag, tp.id) || Math.max(1, gates.minTrades);
+    const partial = block ? 0 : partialFloorOf(gates.positionWindows, gates.lastNFloor);
+    if (end < (partial || n)) return false;
+    const rules = o.gates.stepPf;
+    const autoPf = rules?.enabled && (rules.mode ?? "auto") === "auto" && configuredAuto || undefined;
+    const key = `${block ? blockPolicyKey(block) : "count"}|${autoPf?.ratio ?? 0}|${scope ?? ""}|${baseGates === o.gates}`;
+    const cached = verdicts.get(key);
+    if (cached !== undefined) return cached;
+    const capacity = n + (autoPf ? PROCESSED_AUTO_PF_SAMPLES : 0);
+    const history = [];
+    for (let j = Math.max(0, end - capacity); j < end; j++) {
+      const i = own[j];
+      history.push({ exitT: tp.exitT[i], unitReturn: tp.r[i] });
+    }
+    const minPf = Math.max(minPfForTape(tp, { ...o, gates: baseGates }),
+      minPfOf(gates, tag, tp.ind, protectStepPct(tp.protect), protectSlRatio(tp.protect)));
+    const sampleN = Math.min(end, n);
+    let passed = processedGateVerdict(history, capacity, { validationN: sampleN, realN: sampleN,
+      minPf, ...(block && { blocks: { validation: block } }), autoPf }, "validation", at).state === "qualified";
+    if (passed && scope === "context") {
+      const returns = history.slice(-sampleN).map(row => row.unitReturn);
+      const own = positionStats(returns, n, partial);
+      // The signed lane defines its own Base length. Preserve the same risk, cost and minimum sample rules.
+      const positionWindows = gates.positionWindows && block ? {
+        ...gates.positionWindows, blocks: { ...gates.positionWindows.blocks, base: block },
+      } : gates.positionWindows;
+      passed = own.known && passesBase({ n: own.n, pf: profitFactor(own.gp, own.gl), net: own.net * 100,
+        mdd: own.mdd * 100, configId: tp.id, rangeTag: tag, baseLast: {
+          requested: n, n: own.n, gp: own.gp * 100, gl: own.gl * 100,
+          stop: Math.max(0, tp.protect.sl) * 100, mdd: own.mdd * 100,
+          ...(block && { signedReturns: returns }),
+        } }, { ...gates, positionWindows, baseLastN: block ? 0 : gates.baseLastN,
+        maxDdr: maxDdrForTape(tp, o), minPf });
+    }
+    verdicts.set(key, passed);
+    return passed;
+  };
+}
 function positionContextEval(
   tp: ConfigTape,
   o: WalkForwardOptions,
@@ -6562,6 +6622,11 @@ export function execDecision(
   };
   if (tp.heldOnly) return { ok: false, why: "heldOnly" };
   const pair = `${tp.bot}|${tp.ind}`;
+  if (o.processedStages?.execN !== undefined || o.processedStages?.lanes) {
+    const proof = tp.kind === "exit" ? o.exitBasePassed :
+      isSignalInd(tp.ind) ? o.signalBasePassed : o.basePassed;
+    if (!proof?.has(o.invertSeats ? mirrorId(pair) ?? pair : pair)) return { ok: false, why: "processedBaseUnavailable" };
+  }
   if (
     (!isSignalInd(tp.ind) || tp.kind === "exit") &&
     !baseAllowsTape(tp, o, o.invertSeats ? (mirrorId(pair) ?? pair) : pair)
@@ -8129,11 +8194,10 @@ export function* walkForwardGen(
   o: WalkForwardOptions,
 ): Generator<number, WalkForwardResult> {
   const processedPolicy = o.processedStages && ownedProcessedPolicy(o.processedStages, o.gates.positionWindows);
-  const processed = processedPolicy ? processedPolicy.reportDetail === "summary"
-    ? new ProcessedSummaryReplay(processedPolicy, o.cost) : new ProcessedReplay(processedPolicy, o.cost) : null;
+  const processed = processedPolicy ? new ProcessedLaneReplay(processedPolicy, o.cost) : null;
   // Settings are frozen for this replay; do not clone and validate the same volume policy for every candidate.
   const relationalFactor = prepareRelationalVolumeFactor(o.relationalVolumeRatios);
-  const processedOpen = new Map<Trade, ProcessedOpen | ProcessedSummaryOpen>();
+  const processedOpen = new Map<Trade, ReturnType<ProcessedLaneReplay["enter"]>>();
   const activePosition = (position: Trade) => processedOpen.get(position)?.stage === "active" && !historicalActive.has(position);
   const warmupPosition = (position: Trade) => processedOpen.get(position)?.stage !== "active";
   const processedFloor = (tp: ConfigTape) => processedMinPfForTape(tp, o);
@@ -8304,9 +8368,7 @@ export function* walkForwardGen(
       if (owned) {
         // An endpoint mark is held exposure, never a completed Last-N observation.
         if (!x.markedOpen) {
-          if (processed instanceof ProcessedSummaryReplay) processed.settle(owned, x.exitT, unitReturn(x));
-          else if (processed instanceof ProcessedReplay && "identity" in owned) processed.settle(owned, x.exitT, unitReturn(x));
-          else throw new Error("processed open does not belong to its ledger");
+          processed!.settle(owned, x.exitT, unitReturn(x));
         }
         processedOpen.delete(x);
         if (owned.stage !== "active") {
@@ -8648,7 +8710,14 @@ export function* walkForwardGen(
         const ownS2 = s2For(tr.cfg, tr.kind);
         const caps = capsOf(o, cls);
         // A predecessor is only a modeled sample; it cannot reserve or conflict with an Active slot.
-        const preview = processed?.preview(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp));
+        const baseCheck = processed?.checksBase ? processedBaseCheck(tp, o, tr.sym, tr.side, tr.entryT) : undefined;
+        const preview = processed?.preview(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp), baseCheck);
+        if (processed && !preview) {
+          skipped++;
+          skip(skipName("processed:base:failed"), tr.side, tr.cfg);
+          skipR(skipName("processed:base:failed"), tr.r);
+          continue;
+        }
         const warmup = !!preview && preview.stage !== "active";
         const historical = tr.entryT < startT;
         const admissionCounts = warmup ? warmupCounts : historical ? historicalActiveCounts : counts;
@@ -8756,14 +8825,12 @@ export function* walkForwardGen(
           continue;
         }
         // Only actual Base-processed admissions enter this book. Conflict/cap/strategy rejects never lend proof.
-        const stage = processed instanceof ProcessedSummaryReplay
-          ? processed.enterCompact(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp))
-          : processed?.enter(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp));
+        const stage = processed?.enter(tp, tr.sym, tr.side, tr.entryT, processedFloor(tp), baseCheck);
         if (stage && stage.stage !== preview?.stage) throw new Error("processed admission changed during entry");
         const active = !stage || stage.stage === "active";
-        // Accepted Real feedback excludes warm-up orders that have not cleared both processed windows.
-        fx.accepted = active;
-        if (active && book?.acceptedOnly && !book.processedOnly) book.stampEntry(fx);
+        // Accepted Real feedback belongs to Real, even when its distinct Exec gate needs more evidence.
+        fx.accepted = active || stage?.stage === "real";
+        if (fx.accepted && book?.acceptedOnly && !book.processedOnly) book.stampEntry(fx);
         delete fx.relateShadow;
         if (dec.blockAttribution) fx.blockAttribution = dec.blockAttribution;
         // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
@@ -8827,8 +8894,8 @@ export function* walkForwardGen(
           net += x.r * 100;
         } else if (!active) {
           // Keep processing the predecessor after a failed/short window so it can causally recover.
-          const reason = stage!.validation.state !== "qualified"
-            ? `processed:validation:${stage!.validation.state}` : `processed:real:${stage!.real!.state}`;
+          const reason = stage!.stage === "postBase" ? `processed:validation:${stage!.validation.state}`
+            : stage!.stage === "real" ? `processed:exec:${stage!.exec!.state}` : `processed:real:${stage!.real!.state}`;
           skipped++;
           skip(skipName(reason), tr.side, tr.cfg);
           skipR(skipName(reason), tr.r);
@@ -8943,17 +9010,17 @@ export function* walkForwardGen(
       : []
     : undefined;
   const processedSummaryOnly = o.processedStages?.reportDetail === "summary";
-  const processedResult = processed ? yield* processed.reportGen(stopT, (function* () {
+  const processedResult = processed ? yield* processed.reportGen(stopT, function* () {
       for (const tp of [...allEngine, ...sigTapes]) {
         if (tp.heldOnly || tp.carried) continue;
         if (isSignalInd(tp.ind) && tp.kind !== "exit") {
           if (o.signalBasePassed && !o.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) continue;
         } else if (!baseAllowsTape(tp, o)) continue;
         const minPf = processedFloor(tp);
-        for (const sym of new Set(tp.syms)) for (const side of [1, -1] as const)
-          yield { identity: processed.identity(tp, sym, side, minPf), minPf };
+        for (const symbol of new Set(tp.syms)) for (const side of [1, -1] as const)
+          yield { tp, symbol, side, minPf };
       }
-    })(), processedSummaryOnly ? "summary" : "full") : undefined;
+    }) : undefined;
   return {
     startT,
     ...(warmup ? { processedWarmup: { fromT: replayStartT, untilT: startT, baseCutT: warmup.baseCutT } } : {}),

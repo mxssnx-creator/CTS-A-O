@@ -33,7 +33,7 @@ import { runtimeFixtureGrid } from "./test-support.ts";
 
 // Preserve historical clock/Last-N compatibility cases; complete count admission is tested independently.
 const DEFAULT_SETTINGS = { ...FACTORY_SETTINGS, gates: { ...FACTORY_SETTINGS.gates, positionWindows: null } };
-import { signalRangeOf } from "./signal-config.ts";
+import { signalRangeOf, signalSourceEnabled } from "./signal-config.ts";
 import {
   capsOf,
   configEval,
@@ -63,7 +63,7 @@ const on = signalSettings({ enabled: true, trailRatios: [1] });
 const why = (d: object) => ("why" in d ? d.why : "");
 
 /** Expanded calculates every source; independent qualification still determines execution. */
-const ENABLED = SIGNAL_SOURCES.filter((x) => DEFAULT_SIGNALS.sources[x.name] !== false).length;
+const ENABLED = SIGNAL_SOURCES.filter((x) => signalSourceEnabled(DEFAULT_SIGNALS, x.name)).length;
 const runtimes: CoreRuntime[] = [];
 afterEach(() => { for (const rt of runtimes.splice(0)) rt.dispose(); });
 

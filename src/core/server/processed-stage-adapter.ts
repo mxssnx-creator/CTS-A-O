@@ -1,19 +1,22 @@
-import { blockRequired, checkBlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
-import { negativeLastN } from "../negative-last-n.ts";
-import type { ProcessedReplayContext, ProcessedReplayPolicy } from "../sim/processed-replay.ts";
+import { frozenProcessedPolicy, furthestProcessedDecision, processedLaneKey, processedLanes,
+  qualifiesProcessedBase, requiresProcessedBaseCheck,
+  type ProcessedBaseCheck, type ProcessedReplayContext, type ProcessedReplayPolicy } from "../sim/processed-replay.ts";
 import {
+  processedPolicyCapacity,
+  PROCESSED_AUTO_PF_SAMPLES,
   ProcessedSetBook,
+  processedSetKey,
   type ProcessedOpen,
   type ProcessedSetIdentity,
   type ProcessedSetSnapshot,
   type ProcessedStage,
-  type ProcessedVerdict,
+  type ProcessedStageDecision,
 } from "../sim/processed-set.ts";
 
 const STANDARD_CAPACITY = 500;
-const MAX_BLOCK_CAPACITY = 500 + 200 + 5;
+const MAX_BLOCK_CAPACITY = 500 + 200 + 5 + PROCESSED_AUTO_PF_SAMPLES;
 function capacityFor(policy: ProcessedReplayPolicy): number {
-  return Math.max(STANDARD_CAPACITY, ...Object.values(policy.blocks ?? {}).map(blockRequired));
+  return Math.max(STANDARD_CAPACITY, ...processedLanes(policy).map(l => processedPolicyCapacity(l.policy)));
 }
 const SETTLED_LIMIT = 20_000;
 
@@ -24,36 +27,15 @@ export interface NativeProcessedSnapshot {
   settled: string[];
 }
 
-export interface NativeProcessedDecision {
-  stage: ProcessedStage;
-  validation: ProcessedVerdict;
-  real: ProcessedVerdict | null;
-}
+export type NativeProcessedDecision = ProcessedStageDecision;
 
 const entryId = (cfg: string, sym: string, side: number, entryT: number) =>
   `${cfg}|${sym}|${side > 0 ? 1 : -1}|${entryT}`;
 
 function checkedPolicy(policy: ProcessedReplayPolicy): ProcessedReplayPolicy {
-  if (
-    !policy ||
-    ![policy.validationN, policy.realN].every((n) => Number.isSafeInteger(n) && n >= 1 && n <= 200)
-  )
-    throw new RangeError("invalid native processed-stage policy");
-  if (policy.blocks) for (const block of Object.values(policy.blocks)) checkBlockPolicy(block);
-  const negativeFilter = negativeLastN(policy.negativeFilter);
-  const required = Math.max(
-    policy.validationN,
-    policy.realN,
-    ...Object.values(policy.blocks ?? {}).map(blockRequired),
-    ...(negativeFilter?.windows ?? []),
-  );
-  if (required > MAX_BLOCK_CAPACITY) throw new RangeError("native processed-stage window exceeds capacity");
-  return {
-    validationN: policy.validationN,
-    realN: policy.realN,
-    ...(policy.blocks ? { blocks: structuredClone(policy.blocks) } : {}),
-    ...(negativeFilter ? { negativeFilter } : {}),
-  };
+  const checked = frozenProcessedPolicy(policy);
+  if (capacityFor(checked) > MAX_BLOCK_CAPACITY) throw new RangeError("native processed-stage window exceeds capacity");
+  return checked;
 }
 
 /** Stable native paper/venue stage identity for the exact windows, filters, blocks and modeled cost. */
@@ -64,7 +46,7 @@ export function nativeProcessedRevision(policy: ProcessedReplayPolicy, cost: num
 }
 
 /**
- * Durable paper-stage bridge for the native Base -> Main -> Real pipeline.
+ * Durable paper-stage bridge for the native Base -> Main -> Real -> Exec pipeline.
  *
  * It never imports candidate history. Only entries that survived the runtime's ordinary execution controls are
  * admitted, and only their exact terminal paper result settles the parent. The entry-time verdict is frozen in the
@@ -75,13 +57,17 @@ export class NativeProcessedStageAdapter {
   readonly policy: ProcessedReplayPolicy;
   /** Exact processed-stage policy and modeled-cost identity frozen into every admitted parent. */
   readonly revision: string;
-  private readonly open = new Map<string, ProcessedOpen>();
+  readonly checksBase: boolean;
+  private readonly lanes: Array<ReturnType<typeof processedLanes>[number] & { revision: string }>;
+  private readonly open = new Map<string, ProcessedOpen[]>();
   private readonly settledQueue: string[];
   private readonly settled: Set<string>;
 
   constructor(policy: ProcessedReplayPolicy, cost: number, snapshot?: NativeProcessedSnapshot) {
     this.policy = checkedPolicy(policy);
     this.revision = nativeProcessedRevision(this.policy, cost);
+    this.lanes = processedLanes(this.policy).map(l => ({ ...l, revision: nativeProcessedRevision(l.policy, cost) }));
+    this.checksBase = this.lanes.some(l => requiresProcessedBaseCheck(l.policy));
     if (snapshot) {
       if (
         snapshot.version !== 1 ||
@@ -107,9 +93,15 @@ export class NativeProcessedStageAdapter {
         item.identity.side,
         item.entryT,
       );
-      if (key !== item.entryId || this.open.has(key) || this.settled.has(key))
+      const laneKey: unknown = JSON.parse(item.identity.lane);
+      if (!Array.isArray(laneKey) || (laneKey.length !== 4 && laneKey.length !== 5) ||
+        (laneKey.length === 5 && typeof laneKey[4] !== "string"))
+        throw new TypeError("invalid native processed-stage lane");
+      const group = this.open.get(key);
+      if (key !== item.entryId || this.settled.has(key) ||
+        group?.some(o => processedSetKey(o.identity) === processedSetKey(item.identity)))
         throw new TypeError("invalid native processed-stage ownership");
-      this.open.set(key, item);
+      if (group) group.push(item); else this.open.set(key, [item]);
     }
   }
 
@@ -118,6 +110,7 @@ export class NativeProcessedStageAdapter {
     symbol: string,
     side: 1 | -1,
     minPf: number,
+    lane = this.lanes[0],
   ): ProcessedSetIdentity {
     if (!tp.id || !tp.kind || !tp.ind || !symbol || !Number.isFinite(minPf) || minPf <= 1)
       throw new RangeError("invalid native processed-stage identity");
@@ -126,8 +119,8 @@ export class NativeProcessedStageAdapter {
       symbol,
       side,
       kind: tp.kind,
-      lane: JSON.stringify([tp.ind, this.policy.validationN, this.policy.realN, minPf]),
-      economicRevision: this.revision,
+      lane: processedLaneKey(tp, lane.policy, minPf, lane.id),
+      economicRevision: lane.revision,
     };
   }
 
@@ -137,9 +130,11 @@ export class NativeProcessedStageAdapter {
     side: 1 | -1,
     at: number,
     minPf: number,
-  ): NativeProcessedDecision {
-    const identity = this.identity(tp, symbol, side, minPf);
-    return this.book.preview(identity, at, { ...this.policy, minPf });
+    base?: ProcessedBaseCheck,
+  ): NativeProcessedDecision | null {
+    const lanes = this.lanes.filter(({ policy: p }) => qualifiesProcessedBase(p, base));
+    return lanes.length ? furthestProcessedDecision(lanes.map(lane =>
+      this.book.preview(this.identity(tp, symbol, side, minPf, lane), at, { ...lane.policy, minPf }))) : null;
   }
 
   enter(
@@ -148,24 +143,36 @@ export class NativeProcessedStageAdapter {
     side: 1 | -1,
     at: number,
     minPf: number,
+    base?: ProcessedBaseCheck,
   ): ProcessedOpen {
     const id = entryId(tp.id, symbol, side, at);
     if (this.open.has(id) || this.settled.has(id))
       throw new Error("duplicate native processed-stage parent");
-    const identity = this.identity(tp, symbol, side, minPf);
-    const opened = this.book.acceptPostBase(identity, id, at, { ...this.policy, minPf });
+    const set = this.lanes.filter(({ policy: p }) => qualifiesProcessedBase(p, base)).map(lane => ({
+      identity: this.identity(tp, symbol, side, minPf, lane), policy: { ...lane.policy, minPf },
+    }));
+    if (!set.length) throw new Error("no Base-qualified native processed lane");
+    for (const own of set) this.book.preview(own.identity, at, own.policy);
+    const opened = set.map(own => this.book.acceptPostBase(own.identity, id, at, own.policy));
     this.open.set(id, opened);
-    return structuredClone(opened);
+    return structuredClone(furthestProcessedDecision(opened));
   }
 
   stageFor(id: string): ProcessedStage | null {
-    return this.open.get(id)?.stage ?? null;
+    const opened = this.open.get(id);
+    return opened ? furthestProcessedDecision(opened).stage : null;
   }
 
   decisionFor(id: string): NativeProcessedDecision | null {
-    const opened = this.open.get(id);
+    const current = this.open.get(id)?.filter(o => {
+      const laneKey = JSON.parse(o.identity.lane) as unknown[];
+      const laneId = laneKey[4] ?? "";
+      return this.lanes.some(l => l.id === laneId && l.revision === o.identity.economicRevision);
+    });
+    const opened = current?.length ? furthestProcessedDecision(current) : undefined;
     return opened
-      ? structuredClone({ stage: opened.stage, validation: opened.validation, real: opened.real })
+      ? structuredClone({ stage: opened.stage, validation: opened.validation, real: opened.real,
+          ...(opened.exec !== undefined && { exec: opened.exec }) })
       : null;
   }
 
@@ -173,10 +180,10 @@ export class NativeProcessedStageAdapter {
     if (this.settled.has(id)) return "already-settled";
     const opened = this.open.get(id);
     if (!opened) throw new Error("native processed-stage parent is not open");
-    this.book.close(
-      opened.identity,
-      opened.entryId,
-      opened.entryT,
+    for (const order of opened) this.book.close(
+      order.identity,
+      order.entryId,
+      order.entryT,
       "final",
       exitT,
       unitReturn !== null && Number.isFinite(unitReturn) ? unitReturn : null,
@@ -194,7 +201,7 @@ export class NativeProcessedStageAdapter {
   reconcile(knownOpenIds: ReadonlySet<string>, at: number): number {
     const missing = [...this.open]
       .filter(([id]) => !knownOpenIds.has(id))
-      .sort((a, b) => a[1].entryT - b[1].entryT);
+      .sort((a, b) => a[1][0].entryT - b[1][0].entryT);
     if (!missing.length) return 0;
     const clock = this.book.snapshot().clock;
     const exitT = Math.max(at, clock);

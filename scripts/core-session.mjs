@@ -1565,6 +1565,8 @@ async function runEngine() {
       reportDetail: sim.processedStageSummary ? "summary-only" : "full-result-aggregate",
       seededFromCandidates: processedStageEvidence.seededFromCandidates,
       validation: processedStageEvidence.validation, real: processedStageEvidence.real,
+      ...(processedStageEvidence.exec && { exec: processedStageEvidence.exec }),
+      ...(processedStageEvidence.lanes && { lanes: processedStageEvidence.lanes }),
     } : null,
     // every step per range: tapes, configs validated, candidates, orders taken (the continuity of each range)
     stepsByRange: (sim.steps ?? []).map((x) => ({ t: x.t, byRange: x.byRange ?? null })),
@@ -3928,7 +3930,7 @@ const stageCoverageText = (label, c) => {
   return `${label}: ${c.qualified} / ${c.contexts} contexts qualified (${percent}); insufficient ${c.insufficient}, failed ${c.failed}, unknown ${c.unknown}; finite passing-window mean PF ${pf}, no-loss contexts ${m?.setPf?.noLossSets ?? "unavailable"}`;
 };
 const ownedStagesText = !ownedStagesEnabled ? "" : ownedStages
-  ? `End-of-run owned modeled stages — ${stageCoverageText("Validation", ownedStages.validation)}; ${stageCoverageText("Real", ownedStages.real)}. These are separate from funded execution and are not hourly snapshots.${ownedStages.warmup ? ` Modeled stage warmup ran from ${new Date(ownedStages.warmup.fromT).toISOString()} to ${new Date(ownedStages.warmup.untilT).toISOString()} against a Base snapshot cut at ${new Date(ownedStages.warmup.baseCutT).toISOString()}; historical positions do not spend the reported funded account.` : ""}${ownedStages.reportDetail === "summary-only" ? " The modeled per-set checkpoint was not retained in this summary-only run." : ""}`
+  ? `End-of-run owned modeled stages — ${stageCoverageText("Main", ownedStages.validation)}; ${stageCoverageText("Real", ownedStages.real)}${ownedStages.exec ? `; ${stageCoverageText("Exec", ownedStages.exec)}` : ""}. Funded execution and hourly results have their own cohorts.${ownedStages.warmup ? ` Modeled stage warmup ran from ${new Date(ownedStages.warmup.fromT).toISOString()} to ${new Date(ownedStages.warmup.untilT).toISOString()} against a Base snapshot cut at ${new Date(ownedStages.warmup.baseCutT).toISOString()}; historical positions do not spend the reported funded account.` : ""}${ownedStages.reportDetail === "summary-only" ? " The modeled per-set checkpoint was not retained in this summary-only run." : ""}`
   : "Owned modeled-stage aggregates were not retained in this archived session; do not infer them from the historical configuration checks.";
 const lines = [
   `# Simulated trading session — ${symText}, ${preH} h pre-historic + ${runH} h run (${tacticsLabel}, signals ${sigOn ? "on" : "off"})`,

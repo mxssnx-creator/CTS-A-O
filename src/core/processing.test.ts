@@ -188,6 +188,11 @@ describe("every indication works", () => {
     for (const x of engine) {
       if (x.id.startsWith("s2-")) continue; // Stable-02 ports run as signal sources only
       const got = lanesOf.get(x.id);
+      if (x.kind === "trend-reversal") {
+        assert.equal(got, undefined, `${x.id} is enabled by explicit focus`);
+        assert.ok(allCombos([`follow|${x.id}`], [], tfs).length, `${x.id} builds its opt-in lanes`);
+        continue;
+      }
       if (!got) missing.push(`${x.id}: no lane`);
       else if (isRelateInd(x.id) || isBreakRelInd(x.id) || isMicroFamilyInd(x.id)) {
         const isBreak = isBreakRelInd(x.id);

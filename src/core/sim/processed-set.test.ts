@@ -1,11 +1,58 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ProcessedSetBook, processedSetKey, type ProcessedSetIdentity } from "./processed-set.ts";
+import { ProcessedSetBook, processedGateVerdict, processedSetKey, processedStageDecision, type ProcessedSetIdentity } from "./processed-set.ts";
 import { negativeLastN } from "../negative-last-n.ts";
 
 const identity: ProcessedSetIdentity = { baseConfigId: "follow|ema|short|normal|tp1|sl1", symbol: "A-USDT",
   side: 1, kind: "normal", lane: "independent", economicRevision: "cost-and-settings-v1" };
 const policy = { validationN: 9, realN: 9, minPf: 1.1 };
+
+test("Exec requires its own Real terminal positions and the original receipt survives partials and restart", () => {
+  const p = { validationN: 2, realN: 2, execN: 2, minPf: 1.1 };
+  let book = new ProcessedSetBook("paper", 8);
+  for (let i = 0; i < 5; i++) {
+    const own = book.acceptPostBase(identity, String(i), i * 4, p);
+    assert.equal(own.stage, ["postBase", "postBase", "validated", "validated", "real"][i]);
+    book.close(identity, own.entryId, own.entryT, "done", i * 4 + 1, .02, true);
+  }
+  book.acceptPostBase(identity, "partial", 20, p);
+  book.close(identity, "partial", 20, "a", 21, .015, false);
+  assert.equal(book.preview(identity, 22, p).exec?.n, 1);
+  book.close(identity, "partial", 20, "b", 22, .005, true);
+  assert.equal(book.preview(identity, 22, p).stage, "real", "equal-clock terminal fills cannot authorize a decision");
+  const admitted = book.acceptPostBase(identity, "exec", 23, p);
+  assert.equal(admitted.stage, "active");
+  assert.equal(admitted.exec?.state, "qualified");
+  const snapshot = JSON.parse(JSON.stringify(book.snapshot()));
+  const forged = structuredClone(snapshot);
+  forged.open[0].exec.state = "insufficient";
+  assert.throws(() => ProcessedSetBook.restore(forged), /invalid processed open entry/);
+  book = ProcessedSetBook.restore(snapshot);
+  book.close(identity, "exec", 23, "done", 24, -.05, true);
+  assert.equal(book.summary(identity)?.stages.active.grossLoss, .05);
+  assert.equal(book.summary(identity)?.stages.real?.closedOrders, 3);
+  assert.equal(book.summary(identity)?.stages.active.closedOrders, 1);
+  assert.equal(book.preview(identity, 25, p).stage, "postBase", "later losses stay in each admitted cohort");
+});
+
+test("Auto PF consumes disjoint prior closes, and Main reuse preserves the exact earlier decision floor", () => {
+  const series = (priorProfit: number) => [...Array.from({ length: 24 }, (_, i) => i % 2 ? -.01 : priorProfit),
+    .018, -.01, 100].map((unitReturn, exitT) => ({ unitReturn, exitT }));
+  const p = { validationN: 2, realN: 2, execN: 2, minPf: 1.1, autoPf: { mode: "independent", ratio: 4 } } as const;
+  const main = series(.03), real = series(.005);
+  const history = (stage: string) => stage === "postBase" ? main : real;
+  const independent = processedStageDecision(history, 26, p, 26);
+  assert.equal(independent.stage, "active");
+  assert.deepEqual(independent.validation.autoPf, { floor: 1.6, source: "own" });
+  assert.deepEqual(independent.exec?.autoPf, { floor: 1.1, source: "own" });
+  const shared = processedStageDecision(history, 26, { ...p, autoPf: { ...p.autoPf, mode: "main" } }, 26);
+  assert.deepEqual(shared.exec?.autoPf, { floor: 1.6, source: "main" });
+  assert.deepEqual(shared.real?.autoPf, shared.exec?.autoPf);
+  const withHole = main.map((row, i) => i === 3 ? { ...row, unitReturn: null } : row);
+  assert.deepEqual(processedGateVerdict(withHole, 26, p, "validation", 26).autoPf, { floor: 1.1, source: "fallback" });
+  assert.equal(processedGateVerdict(main, 26, p, "validation", 26).n, 2);
+});
+
 const enterAndClose = (book: ProcessedSetBook, i: ProcessedSetIdentity, at: number, r: number | null) => {
   const id = `order-${at}`;
   const admission = book.acceptPostBase(i, id, at, policy);

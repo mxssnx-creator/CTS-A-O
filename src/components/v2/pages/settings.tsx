@@ -57,6 +57,8 @@ import {
 import { RANGE_LABEL, RANGE_OWN_BASE } from "@/core/minimal-coord";
 import { DEFAULT_PRICE_DISTANCE_GRID, PRICE_DISTANCE_RANGES, type PriceDistanceGrid } from "@/core/price-distance-grid";
 import { blockRatioOf, blockStackCap, stepRaise } from "@/core/sim/block";
+import { processedLanes, type ProcessedReplayPolicy } from "@/core/sim/processed-replay";
+import { DEFAULT_AUTO_PF_RATIO } from "@/core/step-pf";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES, signalSourceEnabled } from "@/core/signal-config";
 import { SIGNAL_COORDINATION_RATIOS } from "@/core/signal-coordination";
 import { Confirm, downloadFile, Empty, ErrorNote, fmt, Panel, Pill, Switch, usePoll } from "../ui";
@@ -1672,20 +1674,23 @@ export function PositionWindowSettings(props: {
 }
 
 export function ProcessedStageSettings(props: {
-  value?: { validationN?: number; realN?: number } | null;
-  onChange: (value: { validationN: number; realN: number } | null) => void;
+  value?: ProcessedReplayPolicy | null;
+  onChange: (value: ProcessedReplayPolicy | null) => void;
 }) {
   const enabled = !!props.value;
-  const policy = {
-    validationN: Math.round(props.value?.validationN ?? 12),
-    realN: Math.round(props.value?.realN ?? 12),
+  const [laneDraft, setLaneDraft] = useState(JSON.stringify(props.value?.lanes ?? [], null, 2));
+  const [laneError, setLaneError] = useState("");
+  useEffect(() => setLaneDraft(JSON.stringify(props.value?.lanes ?? [], null, 2)), [props.value?.lanes]);
+  const policy: ProcessedReplayPolicy = props.value ?? {
+    validationN: 12, realN: 12, execN: 12, baseScope: "context",
+    autoPf: { mode: "independent", ratio: DEFAULT_AUTO_PF_RATIO },
   };
-  const put = (key: "validationN" | "realN", value: number) =>
+  const put = (key: "validationN" | "realN" | "execN", value: number) =>
     props.onChange({ ...policy, [key]: Math.round(value) });
   return (
     <Panel
       title="Persistent own-stage progression"
-      sub="Base-qualified configurations can collect their own paper results while Main and Real warm up. Only settled orders from the exact predecessor can qualify the next stage."
+      sub="Each configuration uses settled paper results from its own preceding set to qualify Main, Real and Exec."
     >
       <Switch
         label="Use persistent processed stages"
@@ -1694,6 +1699,8 @@ export function ProcessedStageSettings(props: {
       />
       {enabled && (
         <div className="v2-grid v2-cols-2" style={{ marginTop: 12 }}>
+          <Switch label="Independent Base symbols and directions" checked={policy.baseScope === "context"}
+            onChange={on => props.onChange({ ...policy, baseScope: on ? "context" : undefined })} />
           <Field
             label="Main predecessor closes"
             hint="Accepted post-Base parent closes required for the independent Main decision · 1–200"
@@ -1702,16 +1709,60 @@ export function ProcessedStageSettings(props: {
           </Field>
           <Field
             label="Real predecessor closes"
-            hint="Validated Main parent closes required before the exact config becomes Active · 1–200"
+            hint="Settled Main positions required for the Real decision · 1–200"
           >
             <Num int min={1} max={200} value={policy.realN} onChange={(v) => put("realN", v)} />
           </Field>
+          {policy.execN === undefined ? (
+            <button type="button" className="v2-btn" onClick={() => put("execN", policy.realN)}>
+              Enable independent Exec gate
+            </button>
+          ) : (
+            <Field label="Exec predecessor closes" hint="Settled Real positions required for the Exec decision · 1–200">
+              <Num int min={1} max={200} value={policy.execN} onChange={(v) => put("execN", v)} />
+            </Field>
+          )}
+          <Field label="Processed-stage PF">
+            <select aria-label="Processed-stage PF" className="v2-select" value={policy.autoPf?.mode ?? "manual"}
+              onChange={(e) => {
+                const mode = e.target.value === "main" ? "main" : "independent";
+                props.onChange({ ...policy, autoPf: e.target.value === "manual" ? undefined
+                  : { mode, ratio: policy.autoPf?.ratio ?? DEFAULT_AUTO_PF_RATIO } });
+              }}>
+              <option value="manual">Configured minimum PF</option>
+              <option value="independent">Auto PF at each stage</option>
+              <option value="main">Reuse Main Auto PF</option>
+            </select>
+          </Field>
+          {policy.autoPf && (
+            <>
+              <Switch label="Apply Auto PF at Base" checked={policy.autoBase !== false}
+                onChange={on => props.onChange({ ...policy, autoBase: on ? undefined : false })} />
+              <Field label="Processed Auto PF ratio" hint="Strength of the threshold adjustment from older closes · 1–10">
+                <Num int min={1} max={10} value={policy.autoPf.ratio}
+                  onChange={(v) => props.onChange({ ...policy, autoPf: { mode: policy.autoPf!.mode, ratio: Math.round(v) } })} />
+              </Field>
+            </>
+          )}
+          <Field label="Independent lane policies" hint="Each named lane can set its own Base, Main, Real and Exec windows. Leave empty for a single lane.">
+            <textarea aria-label="Independent lane policies" aria-invalid={!!laneError}
+              className="v2-input" rows={4} value={laneDraft} onChange={e => setLaneDraft(e.target.value)}
+              onBlur={() => {
+                try {
+                  const lanes: ProcessedReplayPolicy["lanes"] = JSON.parse(laneDraft);
+                  if (!Array.isArray(lanes)) throw new TypeError("Enter a JSON array of lane policies");
+                  const changed = { ...policy, lanes: lanes.length ? lanes : undefined };
+                  processedLanes(changed);
+                  props.onChange(changed);
+                  setLaneError("");
+                } catch (error) {
+                  setLaneError(error instanceof Error ? error.message : "Invalid lane policies");
+                }
+              }} />
+            {laneError && <span role="alert" className="v2-warn">{laneError}</span>}
+          </Field>
         </div>
       )}
-      <div className="v2-muted" style={{ marginTop: 10, fontSize: "var(--v-fs-xs)" }}>
-        Enabling this policy does not manufacture history or waive Live proof, risk, ownership, fee or venue checks.
-        Disabling it removes the policy on Save; existing positions remain protected and reconcilable.
-      </div>
     </Panel>
   );
 }

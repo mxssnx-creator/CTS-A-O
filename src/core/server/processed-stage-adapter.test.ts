@@ -23,11 +23,13 @@ test("a missing durable paper parent becomes unknown once and cannot qualify a s
   );
 
   const own = adapter.preview(tp, "OWN-USDT", 1, 13, 1.05);
+  assert.ok(own);
   assert.deepEqual(
     [own.stage, own.validation.state, own.validation.n, own.validation.pf],
     ["postBase", "unknown", 1, null],
   );
   const sibling = adapter.preview(tp, "SIBLING-USDT", 1, 13, 1.05);
+  assert.ok(sibling);
   assert.deepEqual(
     [sibling.stage, sibling.validation.state, sibling.validation.n],
     ["postBase", "insufficient", 0],
@@ -41,9 +43,9 @@ test("cost and direction revisions retain old evidence without lending it to a n
   const snapshot = JSON.parse(JSON.stringify(original.snapshot()));
 
   const repriced = new NativeProcessedStageAdapter(policy, 0.002, snapshot);
-  assert.equal(repriced.preview(tp, "OWN-USDT", 1, 12, 1.05).validation.state, "insufficient");
-  assert.equal(repriced.preview(tp, "OWN-USDT", -1, 12, 1.05).validation.state, "insufficient");
-  assert.equal(original.preview(tp, "OWN-USDT", 1, 12, 1.05).validation.state, "qualified");
+  assert.equal(repriced.preview(tp, "OWN-USDT", 1, 12, 1.05)!.validation.state, "insufficient");
+  assert.equal(repriced.preview(tp, "OWN-USDT", -1, 12, 1.05)!.validation.state, "insufficient");
+  assert.equal(original.preview(tp, "OWN-USDT", 1, 12, 1.05)!.validation.state, "qualified");
 });
 
 test("malformed durable ownership fails restore instead of starting a clean stage book", () => {
@@ -57,6 +59,27 @@ test("malformed durable ownership fails restore instead of starting a clean stag
   );
 });
 
+test("a shared paper opening restores both independent lanes and settles each exact receipt once", () => {
+  const lanes = { ...policy, execN: 1, lanes: [{id:"fast"}, {id:"slow", execN:2}] };
+  let adapter = new NativeProcessedStageAdapter(lanes, .0015);
+  for (let i = 0; i < 3; i++) {
+    const order = adapter.enter(tp, "OWN-USDT", 1, i*4, 1.05);
+    adapter.settle(order.entryId, i*4+1, .02);
+  }
+  const fast = adapter.enter(tp, "OWN-USDT", 1, 12, 1.05);
+  assert.equal(fast.stage, "active");
+  const snapshot = JSON.parse(JSON.stringify(adapter.snapshot()));
+  assert.deepEqual(snapshot.book.open.map((o: {stage: string}) => o.stage), ["active", "real"]);
+  adapter = new NativeProcessedStageAdapter(lanes, .0015, snapshot);
+  assert.equal(adapter.decisionFor(fast.entryId)?.exec?.state, "qualified");
+  const changed = new NativeProcessedStageAdapter({ ...lanes, lanes: [{id:"new"}] }, .0015, snapshot);
+  assert.equal(changed.decisionFor(fast.entryId), null);
+  assert.equal(changed.settle(fast.entryId, 13, -.02), "settled");
+  assert.equal(adapter.settle(fast.entryId, 13, .02), "settled");
+  assert.equal(adapter.settle(fast.entryId, 14, -.01), "already-settled");
+  assert.equal(adapter.snapshot().book.open.length, 0);
+});
+
 test("large disjoint policy retains every required parent close across a legacy checkpoint", () => {
   const wide = {...policy, blocks:{validation:{long:500,short:200,minimal:5,shortPolarity:"negative" as const,minimalPolarity:"negative" as const}}};
   const previous=new NativeProcessedStageAdapter(policy,0.001);
@@ -68,6 +91,6 @@ test("large disjoint policy retains every required parent close across a legacy 
     adapter.settle(entry.entryId,3+i*2,i<500?.02:-.01);
   }
   const restored=new NativeProcessedStageAdapter(wide,.001,JSON.parse(JSON.stringify(adapter.snapshot())));
-  assert.equal(restored.preview(tp,"OWN-USDT",1,1414,1.05).validation.state,"qualified");
-  assert.equal(restored.preview(tp,"OWN-USDT",-1,1414,1.05).validation.state,"insufficient");
+  assert.equal(restored.preview(tp,"OWN-USDT",1,1414,1.05)!.validation.state,"qualified");
+  assert.equal(restored.preview(tp,"OWN-USDT",-1,1414,1.05)!.validation.state,"insufficient");
 });

@@ -37,6 +37,50 @@ function fixture(values: number[], overrides: Partial<WalkForwardOptions> = {}, 
   return { result, tape, options, future, universe };
 }
 
+test("every named signed lane produces only its own immediate predecessor sets", () => {
+  const block = (shortPolarity: "positive" | "negative", minimalPolarity: "positive" | "negative") =>
+    ({ long: 2, short: 1, minimal: 1, shortPolarity, minimalPolarity });
+  const base = { validationN: 4, realN: 4, execN: 4 };
+  const profiles = (["positive", "negative"] as const).flatMap(short => (["positive", "negative"] as const).map(last => {
+    const b = block(short, last);
+    return { id: `${short}/${last}`, blocks: { validation: b, real: b, exec: b } };
+  }));
+  let seed = 73;
+  const values = Array.from({ length: 310 }, () => {
+    seed = (Math.imul(seed, 1_664_525) + 1_013_904_223) >>> 0;
+    return seed % 7 < 5 ? .022 : -.004;
+  });
+  const both = fixture(values, { processedStages: { ...base, lanes: profiles } }).result;
+  const full = both.processedStages!;
+  const observed = new Set<number>();
+  assert.equal(full.lanes?.length, 4);
+  for (const profile of profiles) {
+    const result = fixture(values, { processedStages: { ...base, blocks: profile.blocks } }).result;
+    const own = full.sets.find(x => JSON.parse(x.identity.lane).at(-1) === profile.id)!;
+    assert.deepEqual(own.stages, result.processedStages!.sets[0].stages);
+    assert.deepEqual(own.evaluations, result.processedStages!.sets[0].evaluations);
+    for (let i = 1; i < own.lineage!.length; i++) assert.equal(own.lineage![i].parentSetId, own.lineage![i - 1].setId);
+    result.trades.forEach(x => observed.add(x.entryT));
+  }
+  assert.deepEqual(new Set(both.trades.map(x => x.entryT)), observed);
+  assert.equal(both.trades.length, observed.size, "simultaneous qualifying lanes fund one market parent");
+  assert.doesNotThrow(() => ProcessedSetBook.restore(full.snapshot));
+});
+
+test("a signed Base sibling cannot fill Main or use the opposite direction's source rows", () => {
+  const positive = { long: 2, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const negativeLast = { ...positive, minimalPolarity: "negative" } as const;
+  const { result } = fixture(Array(12).fill(.02), { processedStages: {
+    validationN: 2, realN: 2, execN: 2,
+    lanes: [{ id:"positive", baseBlock:positive }, { id:"negative-last", baseBlock:negativeLast }],
+  } });
+  const sets = result.processedStages!.sets;
+  assert.deepEqual(sets.map(s => JSON.parse(s.identity.lane).at(-1)), ["positive"]);
+  assert.ok(sets[0].stages.real!.closedOrders > 0);
+  assert.ok(sets[0].stages.active.closedOrders > 0);
+  assert.equal(result.processedStages!.lanes!.find(l => l.id === "negative-last")!.validation.qualified, 0);
+});
+
 test("native replay advances through two own processed windows, retains losses and recovers", () => {
   const values = [.02, .02, .02, .02, .02, -.04, -.04, -.04, .02, .02, .02, .02, .02, .02];
   const f = fixture(values), report = f.result.processedStages!;

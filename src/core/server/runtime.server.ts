@@ -277,6 +277,7 @@ import {
   rangeVolumeFactorFor,
   kindOfInd,
   processedMinPfForTape,
+  processedBaseCheck,
   freshEntry,
   seatedForEntry,
   stepSeats,
@@ -289,7 +290,9 @@ import {
   mirrorId,
 } from "../sim/walkforward.ts";
 import { NativeProcessedStageAdapter, type NativeProcessedSnapshot } from "./processed-stage-adapter.ts";
-import { ownedProcessedPolicy } from "../sim/processed-replay.ts";
+import { blockPolicyKey, blockRequired } from "../../../shared/cts-lastn/blocks.ts";
+import { checkedProcessedPolicy, ownedProcessedPolicy, processedLanes, type ProcessedReplayPolicy } from "../sim/processed-replay.ts";
+import type { ProcessedStage } from "../sim/processed-set.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
   ENGINE_PROOF_PF,
@@ -903,7 +906,7 @@ export interface PaperBook {
       /** when the paper book first held this position (its entry delay is heldAt − entryT) */
       heldAt?: number;
       /** Entry-time native Base -> Main -> Real result. It stays frozen while this parent remains held. */
-      processedStage?: "postBase" | "validated" | "active";
+      processedStage?: ProcessedStage;
       /** Exact processed-stage windows and modeled-cost revision frozen with processedStage. */
       processedPolicy?: string;
       /**
@@ -4401,8 +4404,8 @@ export class CoreRuntime {
     this.touchPrehist();
     this.loop.reset();
     // Snapshot: a material settings change cancels this attempt and schedules its own revision.
-    const s = this.settings;
-    const computeRevision = computeKey(s, this.wf);
+    const s = processedBaseDiscoverySettings(this.settings, this.wf.processedStages);
+    const computeRevision = computeKey(this.settings, this.wf);
     // Result counters describe the last published cohort, not an unfinished attempt. Progress has its own stage.
     const nextStatus: Pick<
       RuntimeStatus,
@@ -5949,7 +5952,14 @@ export class CoreRuntime {
     // simH / stepH, which ran the bar past 100 %)
     const steps = Math.max(1, walkForwardSteps(wu, wf));
     const positionPolicy = wf.gates?.positionWindows;
-    const validationDetail = positionPolicy
+    const stagePolicies = wf.processedStages && processedLanes(ownedProcessedPolicy(wf.processedStages, positionPolicy));
+    const stages = stagePolicies?.[0].policy;
+    const validationDetail = stages
+      ? stagePolicies.length > 1 ? `${stagePolicies.length} independent Last-N stage policies`
+        : `predecessor closes Main ${stages.blocks?.validation ? blockRequired(stages.blocks.validation) : stages.validationN}` +
+          ` / Real ${stages.blocks?.real ? blockRequired(stages.blocks.real) : stages.realN}` +
+          (stages.execN === undefined ? "" : ` / Exec ${stages.blocks?.exec ? blockRequired(stages.blocks.exec) : stages.execN}`)
+      : positionPolicy
       ? `positions Main / Real / Entry ${positionPolicy.main} / ${positionPolicy.real} / ${positionPolicy.entry} · own range/config overrides apply`
       : `engine ${wf.preH}h pre / Last-${wf.validLastN ?? 0}${sig.enabled ? ` · Signals ${signalHistoryHours(wf)}h / Last-${wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN ?? 0}` : ""} · entry Last-${wf.lastN}`;
     const validationProgress = validationDetail + (wf.processedWarmup
@@ -7832,9 +7842,11 @@ export class CoreRuntime {
     if (!decision)
       return { ...gate, ok: false, state: "unknown", unknown: Math.max(1, gate.unknown ?? 0),
         processed: { stage: null, state: "unknown", n: 0, pf: null } };
-    if (decision.stage === "active") return { ...gate,
-      processed: { stage: "active", state: "qualified", n: decision.real?.n ?? 0, pf: decision.real?.pf ?? null } };
-    const verdict = decision.stage === "postBase" ? decision.validation : decision.real;
+    if (decision.stage === "active") {
+      const proof = decision.exec ?? decision.real;
+      return { ...gate, processed: { stage: "active", state: "qualified", n: proof?.n ?? 0, pf: proof?.pf ?? null } };
+    }
+    const verdict = decision.stage === "postBase" ? decision.validation : decision.stage === "real" ? decision.exec : decision.real;
     const state = verdict?.state ?? "unknown";
     return { ...gate, ok: false,
       state: state === "failed" ? "model-failed" : state === "unknown" ? "unknown" : "model-insufficient",
@@ -8302,16 +8314,18 @@ export class CoreRuntime {
   ) {
     this.checkBacktest(job);
     const patch = presetSettings(p.settings);
-    const s = mergeSettings(this.settings, {
+    const settings = mergeSettings(this.settings, {
       ...patch,
       tactics: { ...DEFAULT_SETTINGS.tactics, ...(patch.tactics ?? {}) },
       focus: patch.focus ?? [],
     });
+    const policy = sanitizeWf(p.wf as never);
+    const s = processedBaseDiscoverySettings(settings, policy.processedStages);
     checkGridVariantBudget(s.grid, s.cost);
     const wf: WalkForwardOptions = {
       ...defaultWalkForward(s),
-      ...sanitizeWf(p.wf as never),
-      gates: s.gates,
+      ...policy,
+      gates: settings.gates,
       cost: s.cost,
       toggles: s.toggles,
       block: s.block,
@@ -9688,7 +9702,7 @@ export class CoreRuntime {
       entryT: number;
       stopHit?: number;
       kind?: string;
-      processedStage?: "postBase" | "validated" | "active";
+      processedStage?: ProcessedStage;
     }>,
     srcClosed: ReadonlyMap<string, Array<{ exitT: number; r: number }>>,
     confirmPool?: ConfirmPool | null,
@@ -9903,7 +9917,7 @@ export class CoreRuntime {
         legs?: Partial<Record<string, number>>;
         heldAt?: number;
         heldPx?: number;
-        processedStage?: "postBase" | "validated" | "active";
+        processedStage?: ProcessedStage;
         processedPolicy?: string;
       }
     > = [];
@@ -10281,7 +10295,8 @@ export class CoreRuntime {
           nativeStages ? () => {
             try {
               return nativeStages.preview(tp, op.sym, op.side > 0 ? 1 : -1, op.entryT,
-                processedMinPfForTape(tp, this.wf)).stage === "active";
+                processedMinPfForTape(tp, this.wf), nativeStages.checksBase
+                  ? processedBaseCheck(tp, this.wf, op.sym, op.side, op.entryT) : undefined)?.stage === "active";
             } catch {
               return true;
             }
@@ -10392,7 +10407,13 @@ export class CoreRuntime {
         }
         try {
           const minProcessedPf = processedMinPfForTape(tp, this.wf);
-          processedStage = nativeStages.enter(tp, op.sym, op.side > 0 ? 1 : -1, op.entryT, minProcessedPf).stage;
+          const side = op.side > 0 ? 1 : -1;
+          const baseCheck = nativeStages.checksBase ? processedBaseCheck(tp, this.wf, op.sym, side, op.entryT) : undefined;
+          if (baseCheck && !nativeStages.preview(tp, op.sym, side, op.entryT, minProcessedPf, baseCheck)) {
+            pSkip(`${pre}exec:processedBase`);
+            continue;
+          }
+          processedStage = nativeStages.enter(tp, op.sym, side, op.entryT, minProcessedPf, baseCheck).stage;
           processedPolicy = nativeStages.revision;
           if (!this.persistNativeProcessedStages()) {
             pSkip(`${pre}exec:processedUnavailable`);
@@ -11367,13 +11388,15 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     p.processedStages = undefined;
   } else if (p.processedStages !== undefined) {
     const raw = p.processedStages as Record<string, unknown>;
-    const validationN = Number(raw?.validationN), realN = Number(raw?.realN);
-    if (!raw || !Number.isSafeInteger(validationN) || validationN < 1 || validationN > 200 ||
-      !Number.isSafeInteger(realN) || realN < 1 || realN > 200)
-      throw new Error("processedStages requires validationN and realN in 1–200");
+    if (!raw || typeof raw !== "object") throw new Error("processedStages requires a policy object");
+    const validationN = Number(raw.validationN), realN = Number(raw.realN);
+    const execN = raw.execN === undefined ? undefined : Number(raw.execN);
     if (raw.reportDetail !== undefined && raw.reportDetail !== "summary")
       throw new Error("processedStages reportDetail must be summary when specified");
-    p.processedStages = { ...raw, validationN, realN };
+    const data = { ...raw, validationN, realN, execN } as ProcessedReplayPolicy;
+    if (data.lanes !== undefined) processedLanes(data);
+    p.processedStages = { ...checkedProcessedPolicy(data), ...(data.reportDetail && { reportDetail: data.reportDetail }),
+      ...(data.lanes && { lanes: structuredClone(data.lanes) }) };
   }
   if (p.processedWarmup === null || p.processedWarmup === false) p.processedWarmup = undefined;
   else if (p.processedWarmup !== undefined) {
@@ -12506,6 +12529,18 @@ function pickWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
 export function computeKey(s: CoreSettings, wf: Partial<WalkForwardOptions>): string {
   const { live: _live, cycleMs: _cycle, tickMs: _tick, ...rest } = s;
   return JSON.stringify([rest, pickWf(wf)]);
+}
+
+function processedBaseDiscoverySettings(s: CoreSettings, policy?: ProcessedReplayPolicy): CoreSettings {
+  if (policy?.baseScope !== "context") return s;
+  const lanes = processedLanes(ownedProcessedPolicy(policy, s.gates.positionWindows));
+  const everyLaneUsesAuto = policy.autoBase !== false && lanes.every(lane => lane.policy.autoPf);
+  const stepPf = !everyLaneUsesAuto && s.gates.stepPf ? { ...s.gates.stepPf, mode: "manual" as const } : s.gates.stepPf;
+  const byWindow = new Map(lanes.flatMap(({ policy }) => policy.baseBlock
+    ? [[blockPolicyKey(policy.baseBlock), policy.baseBlock] as const] : []));
+  return { ...s, gates: { ...s.gates, stepPf, baseContext: {
+    defaultWindow: lanes.some(lane => !lane.policy.baseBlock), blocks: [...byWindow.values()],
+  } } };
 }
 
 export interface MarketFeed {

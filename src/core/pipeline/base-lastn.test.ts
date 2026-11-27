@@ -4,7 +4,7 @@ import { baseLastNForRange, baseLastNOf, passesBaseLastN } from "./base-lastn.ts
 import { BaseCellAccumulator } from "./base-cell-stats.ts";
 import { basePassTags, baseRangeCounts, baseRangeWhy, cellStats, makeUniverse, passesBase, rangeBaseStats, rangeCellPass, runCombo } from "./pipeline.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
-import { lastNOk, makeTape } from "../sim/walkforward.ts";
+import { defaultWalkForward, lastNOk, makeTape, processedBaseCheck } from "../sim/walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { checkSettings } from "../settings-check.ts";
 import { statsOf } from "../metrics/stats.ts";
@@ -80,6 +80,49 @@ test("actual range Base cells calculate their own requested windows", () => {
     const n = p.tag === "sh" ? 40 : 30;
     assert.equal(out[p.tag].baseLast?.requested, n);
     assert.deepEqual(out[p.tag].baseLast, cellStats(u, "follow", ind, p, DEFAULT_SETTINGS.cost, tactics, undefined, n)!.baseLast);
+  }
+});
+
+test("a passing Base symbol and direction survives wider discovery without qualifying siblings", () => {
+  const bars = Array.from({ length: 6 }, (_, i) => barsFromCandles(`R${i}`, 1,
+    syntheticCandles(`R${i}`, 1, 2500, Date.UTC(2026, 9, 17), 28 + i)));
+  const u = makeUniverse(bars), ind = "ema-9-21@m1", cost = .00176;
+  const protect = { tp: .008, sl: .008, trail: 0, hold: 10, tag: "mn", priceDistance: true } as const;
+  const windows = { base: 10, main: 12, real: 12, entry: 12, maxDrawdownPositions: 40, strictCounts: true };
+  const gates = { ...DEFAULT_SETTINGS.gates, minPf: 1.25, baseSetsMinPf: 1.25, rangeMinPf: {},
+    stepPf: { enabled: false, ratio: .2, max: 2 }, maxDdr: 0, positionWindows: windows };
+  const tactics = { ...DEFAULT_SETTINGS.tactics, session: false, volRegime: false, trendStrength: false, cooldown: false };
+  const pass = rangeCellPass(gates, ind);
+  const pooled = cellStats(u, "follow", ind, protect, cost, tactics, undefined, 0, windows)!;
+  const scoped = cellStats(u, "follow", ind, protect, cost, tactics, undefined, 0, windows, st => pass("mn", st))!;
+  assert.equal(pass("mn", pooled), false);
+  assert.equal(pass("mn", scoped), true);
+  const run = runCombo(u, "follow", ind, protect, cost, 2, tactics)!;
+  const tape = makeTape(run.id, "follow", ind, run.protect, "normal", bars.map(b => b.sym), run.trades, run.open, run.pending);
+  const options = defaultWalkForward({ ...DEFAULT_SETTINGS, cost, gates, tactics });
+  for (const sym of tape.syms) for (const side of [1, -1] as const) {
+    const acc = new BaseCellAccumulator();
+    for (const t of run.trades) if (t.sym === sym && t.side === side && t.exitT < u.nowT) acc.push(t.r, t.entryT, t.exitT);
+    const own = acc.stats(windows.base, protect.sl * 100);
+    assert.equal(processedBaseCheck(tape, options, sym, side, u.nowT)(undefined, undefined, "context"),
+      passesBase(own, gates), `${sym} ${side}`);
+  }
+
+  const negative = { long: 4, short: 2, minimal: 1, shortPolarity: "negative", minimalPolarity: "negative" } as const;
+  const positive = { ...negative, minimalPolarity: "positive" } as const;
+  const signedWindows = { ...windows, base: 60 };
+  for (const [block, expected] of [[negative, true], [positive, false]] as const) {
+    const baseContext = { defaultWindow: false, blocks: [block] };
+    const scopedGates = { ...gates, positionWindows: signedWindows, baseContext };
+    const pass = rangeCellPass(scopedGates, ind);
+    const stat = cellStats(u, "follow", ind, protect, cost, tactics, undefined, 0, signedWindows,
+      st => pass("mn", st), baseContext)!;
+    assert.equal(stat.baseLast?.requested, 7);
+    assert.equal(pass("mn", stat), expected);
+    const scopedOptions = { ...options, gates: scopedGates };
+    const passing = tape.syms.some(sym => [1, -1].some(side =>
+      processedBaseCheck(tape, scopedOptions, sym, side, u.nowT)(block, undefined, "context")));
+    assert.equal(passing, expected);
   }
 });
 

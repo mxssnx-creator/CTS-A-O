@@ -6,6 +6,7 @@ import type { ExchangeClient } from "./server/live.server.ts";
 import { DEFAULT_SETTINGS, type CoreSettings } from "./config.ts";
 import { ExchangeRejected, type AccountSnapshot } from "./exchange/bingx.server.ts";
 import type { Trade } from "./domain/types.ts";
+import type { ProcessedStage } from "./sim/processed-set.ts";
 import { unitStatsOf } from "./metrics/stats.ts";
 import { minPfOf, rangeOfId } from "./minimal-coord.ts";
 import { isSignalInd } from "./indications/registry.ts";
@@ -493,7 +494,7 @@ export type FakePaperPosition = {
   level?: number;
   legs?: Partial<Record<"config" | "overall" | "symbol" | "direction" | "indication" | "type", number>>;
   entryT?: number;
-  processedStage?: "postBase" | "validated" | "active";
+  processedStage?: ProcessedStage;
   processedPolicy?: string;
   /** the lane's target price (unset: none) */
   target?: number;
