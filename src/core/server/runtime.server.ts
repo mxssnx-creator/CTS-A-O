@@ -4789,7 +4789,7 @@ export class CoreRuntime {
       pairTrailingOnlyCells,
       added: baseBuilt,
       addedKeys,
-    } = basePass(engineS1, s, applies, famNarrow ? evalFams : null);
+    } = basePass(engineS1, s, applies, famNarrow ? evalFams : null, wf.processedStages?.rollingBase === true);
     // the count of pairs that passed Base (validated); the pairs grid.allSets adds for measurement are reported apart
     nextStatus.basePassed = qualified.length + exitBase.passed.size;
     nextStatus.baseBuilt = baseBuilt;
@@ -11456,7 +11456,9 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     if (data.lanes !== undefined) processedLanes(data);
     p.processedStages = { ...checkedProcessedPolicy(data), ...(data.reportDetail && { reportDetail: data.reportDetail }),
       ...(data.lanes && { lanes: structuredClone(data.lanes) }),
-      ...(data.windowGrid && { windowGrid: checkedProcessedWindowGrid(data) }) };
+      ...(data.windowGrid && { windowGrid: checkedProcessedWindowGrid(data) }),
+      ...(data.windowGrid && data.rollingBase && { rollingBase: true }) };
+    if (data.rollingBase && !data.windowGrid) throw new Error("rolling Base requires a processed window grid");
   }
   if (p.processedWarmup === null || p.processedWarmup === false) p.processedWarmup = undefined;
   else if (p.processedWarmup !== undefined) {
@@ -12816,6 +12818,7 @@ export function basePass(
   applies: Parameters<typeof rangeAppliesTo>[2] = baseRangeRules(s).applies,
   /** evaluation families (CTS_CORE_FAMILY): only their bots and ranges pass; null = every family (the desk) */
   evalFams: readonly EvalFamily[] | null = null,
+  rollingBase = false,
 ): {
   /** Pairs built, including optional diagnostic-only allSets additions. */
   passed: ComboRun[];
@@ -12918,12 +12921,12 @@ export function basePass(
   // (`added`: the pairs allSets builds for measurement that did not pass Base — never counted as passed)
   let added = 0;
   const addedKeys = new Set<string>();
-  if (s.grid?.allSets === true) {
+  if (s.grid?.allSets === true || rollingBase) {
     const best = new Map<string, ComboRun>();
     for (const r of s1) {
       if (isSignalInd(r.ind)) continue;
       if (!["", ...ALL_RANGE_TAGS].some((t) => rangeAppliesTo(r.ind, t, applies))) continue;
-      const b = laneOf(r.ind).base;
+      const b = rollingBase ? `${r.bot}|${r.ind}` : laneOf(r.ind).base;
       const x = best.get(b);
       if (!x || r.score > x.score) best.set(b, r);
     }

@@ -4,7 +4,8 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import type { OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
 import { ProcessedSetBook } from "./processed-set.ts";
-import { ownedProcessedPolicy, processedLanes, ProcessedReplay } from "./processed-replay.ts";
+import { ownedProcessedPolicy, processedLanes, ProcessedLaneReplay, ProcessedReplay } from "./processed-replay.ts";
+import { ProcessedWindowGridReplay } from "./processed-window-grid.ts";
 import { defaultWalkForward, execDecision, makeTape, packTapes, walkForward,
   type WalkForwardOptions, type WalkForwardResult } from "./walkforward.ts";
 import { retireOwnedIdleWorkers, runOnWorkers } from "../server/pool.server.ts";
@@ -540,6 +541,33 @@ test("the window grid evaluates a negative Main trigger but requires independent
   assert.equal(result.processedStageSummary?.real.full, 0);
 });
 
+test("current Base proof gates stage readiness without erasing settled descendants", () => {
+  const block = { long: 1, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const tp = { id, ind, kind: "normal" }, symbol = symbols[0], minPf = 1.1;
+  const policy = { validationN: 3, realN: 3, execN: 3, reportDetail: "summary" as const };
+  const grid = { base: [block], validation: [block], real: [block], exec: [block] };
+  for (const replay of [new ProcessedWindowGridReplay({ ...policy, windowGrid: grid }),
+    new ProcessedLaneReplay({ ...policy, baseBlock: block, blocks: { validation: block, real: block, exec: block } }, 0.00176)]) {
+    for (let i = 0; i < 12; i++) {
+      const at = 2 * i;
+      if (replay instanceof ProcessedWindowGridReplay) replay.settle(replay.enter(tp, symbol, 1, at, minPf, () => true), at + 1, .02);
+      else replay.settle(replay.enter(tp, symbol, 1, at, minPf, () => true), at + 1, .02);
+    }
+    const snapshot = (valid: boolean) => {
+      const gen = replay.reportGen(25, () => [{ tp, symbol, side: 1, minPf, baseAt: () => () => valid }]);
+      for (let r = gen.next(); ; r = gen.next()) if (r.done) return r.value;
+    };
+    assert.equal(snapshot(true).exec?.qualified, 1);
+    const blocked = snapshot(false);
+    for (const gate of [blocked.validation, blocked.real, blocked.exec!]) {
+      assert.equal(gate.contexts, 1);
+      assert.equal(gate.qualified, 0);
+      assert.equal(gate.parentBlocked, 1);
+    }
+    assert.equal(snapshot(true).exec?.qualified, 1, "the readiness check does not clear an owned book");
+  }
+});
+
 test("negative Main uses a priced mirror without granting that mirror its own Base qualification", () => {
   const block = { long: 2, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
   const negativeLast = { ...block, minimalPolarity: "negative" } as const;
@@ -562,4 +590,17 @@ test("negative Main uses a priced mirror without granting that mirror its own Ba
   assert.ok(result.trades.every(t => t.cfg === oppositeId && t.side === -1 && t.unitR === .008));
   assert.equal(result.feed.filter(t => t.cfg === oppositeId).length, grid.inverseEntries,
     "a mirror price sample feeds no strategy or shared record until the original path actually admits it");
+});
+
+test("rolling Base can recover a previously rejected cell only from its own causal prices", () => {
+  const block = { long: 1, short: 1, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const processedStages = { validationN: 3, realN: 3, execN: 3, reportDetail: "summary" as const,
+    windowGrid: { base: [block], validation: [block], real: [block], exec: [block] } };
+  const opts = { basePassed: new Set<string>(), basePassedRanges: {}, causalBase: true, processedStages };
+  const rows = Array.from({ length: 310 }, (_, i) => i < 12 ? -.005 : .012);
+  assert.equal(fixture(rows, opts).result.trades.length, 0);
+  const { result, future } = fixture(rows, { ...opts, processedStages: { ...processedStages, rollingBase: true } });
+  assert.ok(result.trades.length > 0);
+  assert.ok(result.trades[0].entryT > future[12].entryT);
+  assert.ok(result.trades.every(t => t.unitR === .012));
 });

@@ -673,6 +673,11 @@ export class ProcessedSetBook {
     return [...this.open.values()].filter((x) => x.stage === "active").map((x) => structuredClone(x));
   }
 
+  /** Rebuild pending ownership without materializing every settled Set's history. */
+  openPositions(): ProcessedOpen[] {
+    return Array.from(this.open.values(), item => structuredClone(item));
+  }
+
   /** Whole-book return PF and order counts; rolling gate windows remain separate in verdict(). */
   summary(identity: ProcessedSetIdentity): ProcessedSetSummary | undefined {
     const identityKey = processedSetKey(identity);

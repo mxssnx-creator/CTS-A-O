@@ -37,6 +37,7 @@ import {
 import type { CandleSeries } from "../market/candle-series.ts";
 import {
   coveredLanes,
+  dispatchLaneActions,
   goneOrderOf,
   planLaneOrders,
   type LaneAction,
@@ -4357,7 +4358,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const fresh = await ex.book({ notBefore: Date.now(), maxAgeMs: 0 });
       checkAccount();
       const stillVisible = fresh.orders.some((o) => o.venueSymbol === x.sym && exactVenueOrderId(o.id) === x.oid);
-      if (stillVisible) return { dispatched, cancelError, result: { status: "unknown" } as const };
+      if (fresh.ordersAt !== undefined || stillVisible)
+        return { dispatched, cancelError, result: { status: "unknown" } as const };
       // A zero-fill cancellation can be retired here. A terminal fill is no longer live, but its position effect
       // still has to be booked by the lane/aggregate reconciliation path before the reservation is released.
       if (result.status === "cancelled") retireConfirmedOrphanExit(x.sym, x.coid, x.oid, x.side, x.which);
@@ -7370,45 +7372,23 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             return false;
           }
         };
-        const run = async (x: (typeof acts)[number]) => {
+        const run = async (x: LaneAction): Promise<boolean> => {
           const lo = laneMap[x.lane];
-          if (!lo) return;
+          if (!lo || laneBusy.has(lo.key) || orphanBlocked(lo.key)) return false;
           const which = x.kind === "placeStop" || x.kind === "moveStop" ? "s" : "t";
           if (x.kind === "moveStop" || x.kind === "moveTarget" || x.kind === "dropTarget") {
-            const o = lo[which];
-            if (!o) return;
-            const oid = o.oid ?? ids2.get(o.coid.toUpperCase());
-            if (oid && !(await ex.cancel(lo.sym, oid))) {
-              // gone already: a fill is the lane's exit (booked next step, from the book); otherwise placed anew
-              const g = await goneOf(lo.sym, oid, { coid: o.coid, side: lo.side, which, filledQty: o.filledQty });
-              if (g.status !== "cancelled") return;
-              retireConfirmedOrphanExit(lo.sym, o.coid, oid, lo.side, which);
-            } else if (oid) {
-              status.cancelled++;
-              laneStat.cancelled++;
-              const g = await goneOf(lo.sym, oid, { coid: o.coid, side: lo.side, which, filledQty: o.filledQty });
-              if (g.status !== "cancelled") return;
-              retireConfirmedOrphanExit(lo.sym, o.coid, oid, lo.side, which);
-            }
-            delete lo[which];
-            if (x.kind === "dropTarget") return;
+            if (!lo[which] || !(await cancelLaneOrder(lo, which, ids2))) return false;
+            persistLaneState();
+            if (x.kind === "dropTarget") return true;
           }
-          if (await placeLane(lo, which, x.px)) {
-            if (x.kind === "moveStop" || x.kind === "moveTarget") laneStat.moved++;
-            else laneStat.placed++;
-          }
+          // An unresolved client ID still owns its slot when a snapshot temporarily omits it.
+          if (lo[which] || !alive() || orphanBlocked(lo.key) || !(await placeLane(lo, which, x.px))) return false;
+          if (x.kind === "moveStop" || x.kind === "moveTarget") laneStat.moved++;
+          else laneStat.placed++;
+          return true;
         };
-        // different lanes side by side; one lane's actions (its stop, its take-profit) never in the same batch
-        for (let i = 0; i < acts.length; ) {
-          if (!alive() || bx.blockingBanUntil() || capHit || budgetHit) break;
-          const batch: typeof acts = [];
-          const lanesIn = new Set<string>();
-          while (i < acts.length && batch.length < LANE_ORDER_CONCURRENCY && !lanesIn.has(acts[i].lane)) {
-            lanesIn.add(acts[i].lane);
-            batch.push(acts[i++]);
-          }
-          await Promise.all(batch.map(run));
-        }
+        await dispatchLaneActions(acts, LANE_ORDER_CONCURRENCY,
+          () => alive() && !bx.blockingBanUntil() && !capHit && !budgetHit, run);
         laneStat.onExchange = Object.values(laneMap).filter((lo) => lo.qty > 0 && (qtyOn.get(lo.key) ?? 0) > 0).length;
         const pendingIds = new Set(covered.filter((w) => {
           const lo = laneMap[w.id];

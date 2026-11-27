@@ -34,6 +34,10 @@ interface EntryPlan {
   best: ProcessedStageDecision;
   oppositeSourceMissing: number;
 }
+interface StageScan {
+  mask: bigint;
+  missing: number;
+}
 interface Context {
   groups?: Group[];
   directT?: number;
@@ -92,71 +96,89 @@ export class ProcessedWindowGridReplay {
       (policy.autoPf ? PROCESSED_AUTO_PF_SAMPLES : 0);
   }
 
+  private baseMask(base?: ProcessedBaseCheck): bigint {
+    if (!base) return 0n;
+    const auto = this.policy.autoBase === false ? undefined : this.policy.autoPf;
+    const available = base.available?.() ?? Infinity;
+    const windows = this.levels[0];
+    if (available < windows[0].size) return 0n;
+    const capacity = windows.at(-1)!.size + (auto ? PROCESSED_AUTO_PF_SAMPLES : 0);
+    const check = base.prepare?.(capacity, auto);
+    let root = 0n;
+    for (const window of windows) {
+      if (window.size > available) break;
+      if (check ? check(window.block, window.key) : base(window.block, auto, "context")) root |= window.bit;
+    }
+    return root;
+  }
+
   private plan(key: string, at: number, minPf: number, base: ProcessedBaseCheck | undefined,
     inverse: boolean, oppositeAvailable: boolean): EntryPlan | null {
-    let root = 0n;
-    if (base) {
-      const auto = this.policy.autoBase === false ? undefined : this.policy.autoPf;
-      const available = base.available?.() ?? Infinity;
-      const maxBase = this.levels[0].at(-1)!.size;
-      if (available >= this.levels[0][0].size) {
-        const check = base.prepare?.(maxBase + (auto ? PROCESSED_AUTO_PF_SAMPLES : 0), auto);
-        for (const window of this.levels[0]) {
-          if (window.size > available) break;
-          if (check ? check(window.block, window.key) : base(window.block, auto, "context")) root |= window.bit;
-        }
-      }
-    }
+    const existing = this.contexts.get(key)?.groups;
+    // An opposite order can only open a Main child. It cannot warm up a cold Base parent.
+    if (inverse && !existing) return null;
+    const root = this.baseMask(base);
     let plan: EntryPlan | null = null;
     if (root) {
       const result: EntryPlan = { accepted: [], best: { stage: "postBase", validation: insufficient, real: null, exec: null },
         oppositeSourceMissing: 0 };
       let deepest = 0;
-      const indexes = new Map<readonly ProcessedHistoryRow[], ProcessedWindowIndex>();
+      const indexes = new Map<readonly ProcessedHistoryRow[], { view: ProcessedWindowIndex; scans: StageScan[] }>();
       const decide = (depth: number, parent: Group, path: ProcessedVerdict[], multiplicity: number) => {
-        if (!parent.history.length || depth >= this.levels.length) return undefined;
-        let view = indexes.get(parent.history);
-        if (!view) {
-          view = new ProcessedWindowIndex(parent.history, at, this.capacity, minPf, this.policy.autoPf, this.negative);
-          indexes.set(parent.history, view);
+        if (!parent.history.length) return undefined;
+        let indexed = indexes.get(parent.history);
+        if (!indexed) {
+          indexed = { view: new ProcessedWindowIndex(parent.history, at, this.capacity, minPf, this.policy.autoPf, this.negative), scans: [] };
+          indexes.set(parent.history, indexed);
         }
-        let passed = 0n;
-        let receipt: ProcessedVerdict | undefined;
-        for (const window of this.levels[depth]) {
-          if (window.size > view.size) break;
-          if (!view.qualifies(window.block, window.key)) continue;
-          if (depth === 1 && window.opposite !== inverse) {
-            if (!inverse && !oppositeAvailable) result.oppositeSourceMissing += multiplicity;
-            continue;
+        const { view, scans } = indexed;
+        let scan = scans[depth];
+        if (!scan) {
+          scan = { mask: 0n, missing: 0 };
+          for (const window of this.levels[depth]) {
+            if (window.size > view.size) break;
+            if (!view.qualifies(window.block, window.key)) continue;
+            if (depth === 1 && window.opposite !== inverse) {
+              if (!inverse && !oppositeAvailable) scan.missing++;
+            } else scan.mask |= window.bit;
           }
-          receipt ??= view.evaluate(window.block, window.key);
-          passed |= window.bit;
+          scans[depth] = scan;
         }
-        if (!receipt) return undefined;
+        result.oppositeSourceMissing += scan.missing * multiplicity;
+        if (!scan.mask) return undefined;
+        if (depth === this.levels.length - 1) {
+          // Exec has no child to update. Only the qualifying receipt is needed for funding.
+          if (depth > deepest) {
+            const sample = this.levels[depth].find(window => (window.bit & scan.mask) !== 0n)!;
+            deepest = depth;
+            result.best = { stage: "active", validation: path[0], real: path[1], exec: view.evaluate(sample.block, sample.key) };
+          }
+          return undefined;
+        }
         const children: Accepted[] = [];
         for (const group of parent.children ?? this.initial[depth]) {
-          const mask = group.mask & passed;
+          const mask = group.mask & scan.mask;
           if (!mask) continue;
-          // Each direct sibling uses the same stage floor policy. Window receipts are
-          // materialized here for the reported furthest stage, never used as another gate's input.
-          const sample = this.levels[depth].find(window => (window.bit & mask) !== 0n)!;
-          const own = receipt.blockPolicyKey === sample.key ? receipt : view.evaluate(sample.block, sample.key);
-          path.push(own);
+          const needReceipt = deepest < this.levels.length - 1;
+          if (needReceipt) {
+            const sample = this.levels[depth].find(window => (window.bit & mask) !== 0n)!;
+            path.push(view.evaluate(sample.block, sample.key));
+          }
           if (depth > deepest) {
             deepest = depth;
             result.best = { stage: ownedStage[depth], validation: path[0],
               real: path[1] ?? insufficient, exec: path[2] ?? (depth === 2 ? insufficient : null) };
           }
-          const next = decide(depth + 1, group, path, multiplicity * popcount(mask));
+          const next = decide(depth + 1, group, path, multiplicity * (mask === group.mask ? group.count : popcount(mask)));
           children.push({ mask, children: next });
-          path.pop();
+          if (needReceipt) path.pop();
         }
         return children;
       };
-      for (const group of this.contexts.get(key)?.groups ?? this.initial[0]) {
+      for (const group of existing ?? this.initial[0]) {
         const mask = group.mask & root;
         if (!mask) continue;
-        const children = decide(1, group, [], popcount(mask));
+        const children = decide(1, group, [], mask === group.mask ? group.count : popcount(mask));
         if (!inverse || children?.length) result.accepted.push({ mask, children });
       }
       if (result.accepted.length) plan = result;
@@ -266,7 +288,7 @@ export class ProcessedWindowGridReplay {
     const byDepth = [1];
     for (const level of this.levels) byDepth.push(byDepth.at(-1)! * level.length);
     let countContexts = 0, yieldedAt = performance.now();
-    for (const { tp, symbol, side, minPf } of contexts()) {
+    for (const { tp, symbol, side, minPf, baseAt } of contexts()) {
       countContexts++;
       const rows = this.contexts.get(contextKey(tp, symbol, side, minPf));
       const visit = (depth: number, groups: Group[] | undefined, multiplicity: number, eligible: bigint) => {
@@ -287,7 +309,11 @@ export class ProcessedWindowGridReplay {
           visit(depth + 1, group.children, represented, pass);
         }
       };
-      visit(0, rows?.groups, 1, this.initial[0][0].mask);
+      if (rows?.groups) {
+        const eligible = baseAt ? this.baseMask(baseAt()) : this.initial[0][0].mask;
+        if (baseAt) countBlockedParent(gates[0], (this.levels[0].length - popcount(eligible)) * this.levels[1].length);
+        visit(0, rows.groups, 1, eligible);
+      }
       if (countContexts % 32 === 0 && performance.now() - yieldedAt > 8) { yield -15; yieldedAt = performance.now(); }
     }
     for (let i = 0; i < gates.length; i++) {

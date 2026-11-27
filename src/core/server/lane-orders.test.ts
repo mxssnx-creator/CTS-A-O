@@ -9,7 +9,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoreDb } from "./db.server.ts";
 import { flushLiveKv, liveKv, resetLiveBackoff, stepLive, type ControlStatus } from "./live.server.ts";
-import { coveredLanes, goneOrderOf, planLaneOrders, swapCount, trimLaneOrders, type LaneOrder, type LaneWant } from "./lane-orders.ts";
+import { coveredLanes, dispatchLaneActions, goneOrderOf, planLaneOrders, swapCount, trimLaneOrders,
+  type LaneAction, type LaneOrder, type LaneWant } from "./lane-orders.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { configId } from "../pipeline/pipeline.ts";
@@ -168,6 +169,39 @@ async function seedLegacy(rt: ReturnType<typeof rtOf>["rt"], ex: Venue, position
   rt.db.kvSet("liveBoundedSince", at - 1);
   ex.log.length = 0;
 }
+
+describe("lane order dispatch", () => {
+  const stop = (lane: string): LaneAction => ({ kind: "placeStop", lane, px: 99 });
+  const target = (lane: string): LaneAction => ({ kind: "placeTarget", lane, px: 101 });
+
+  it("fills a batch with independent lanes and defers actions behind an unresolved predecessor", async () => {
+    const sent: string[] = [];
+    await dispatchLaneActions([stop("a"), target("a"), stop("b"), target("b"), stop("c")], 3, () => true, async a => {
+      sent.push(`${a.lane}:${a.kind}`);
+      return a.lane !== "a";
+    });
+    assert.deepEqual(sent, ["a:placeStop", "b:placeStop", "c:placeStop", "b:placeTarget"]);
+  });
+
+  it("drains sibling requests before releasing a failed step", async () => {
+    let release!: () => void, started!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const ready = new Promise<void>(resolve => { started = resolve; });
+    let finished = false;
+    const running = dispatchLaneActions([stop("a"), stop("b"), stop("c")], 2, () => true, async a => {
+      if (a.lane === "a") throw new Error("journal failed");
+      assert.equal(a.lane, "b");
+      started();
+      await held;
+      return true;
+    }).finally(() => { finished = true; });
+    await ready;
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(finished, false);
+    release();
+    await assert.rejects(running, /journal failed/);
+  });
+});
 
 describe("lane orders: the planner (pure)", () => {
   const w = (id: string, entryT: number, stop = 9.5, target?: number): LaneWant => ({

@@ -58,6 +58,34 @@ export type LaneAction =
   | { kind: "moveTarget"; lane: string; from: number; px: number }
   | { kind: "dropTarget"; lane: string };
 
+/** Dispatch independent lanes together. Keep one lane's actions in order and drain in-flight
+ * requests before leaving the control step, including when a request throws. */
+export async function dispatchLaneActions(actions: readonly LaneAction[], concurrency: number,
+  canDispatch: () => boolean, run: (action: LaneAction) => Promise<boolean>): Promise<void> {
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1) throw new RangeError("invalid lane order concurrency");
+  const deferred = new Set<string>();
+  let pending = actions;
+  while (pending.length && canDispatch()) {
+    const batch: LaneAction[] = [], next: LaneAction[] = [];
+    const lanes = new Set<string>();
+    for (const action of pending) {
+      if (deferred.has(action.lane)) continue;
+      if (batch.length === concurrency || lanes.has(action.lane)) {
+        next.push(action);
+        continue;
+      }
+      lanes.add(action.lane);
+      batch.push(action);
+    }
+    const replies = await Promise.allSettled(batch.map(async action => run(action)));
+    for (const [i, reply] of replies.entries()) {
+      if (reply.status === "rejected") throw reply.reason;
+      if (!reply.value) deferred.add(batch[i].lane);
+    }
+    pending = next;
+  }
+}
+
 /**
  * The lanes of one key the position covers: the ones already on the exchange first (oldest first), then new ones
  * (by entry time) — as long as their quantities fit into the held quantity. A lane on the exchange counts with the

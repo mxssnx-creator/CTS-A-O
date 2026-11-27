@@ -3093,9 +3093,18 @@ export function baseAllowsTape(
   return (!targets || targets.includes(tp.protect.tp)) && cellAllowed(tp, o, pair);
 }
 
+function rollingBaseTape(tp: ConfigTape, o: WalkForwardOptions): boolean {
+  return o.causalBase === true && o.processedStages?.rollingBase === true && !!o.processedStages.windowGrid &&
+    tp.kind !== "exit" && !isSignalInd(tp.ind) && !tp.heldOnly && !tp.carried &&
+    (o.wideEnabled !== false || !!tp.protect.tag) &&
+    (!o.bots.length || o.bots.includes(tp.bot)) &&
+    !o.excludeRanges?.includes(tp.protect.tag ?? "wide") && tapeExecutable(tp, o);
+}
+
 /** Base-built engine configurations can collect their own processed closes before any raw tape earns a seat. */
 export function processedBaseTapeEligible(tp: ConfigTape, o: WalkForwardOptions): boolean {
   if (!o.processedStages || tp.heldOnly || tp.carried || isSignalInd(tp.ind)) return false;
+  if (rollingBaseTape(tp, o)) return true;
   const pair = `${tp.bot}|${tp.ind}`;
   const proof = tp.kind === "exit" ? o.exitBasePassed : o.basePassed;
   return !!proof?.has(pair) &&
@@ -6678,13 +6687,14 @@ export function execDecision(
   const pair = `${tp.bot}|${tp.ind}`;
   const sourcePair = o.processedStages?.windowGrid && ctx?.processedParentPair === mirrorId(pair)
     ? ctx.processedParentPair : o.invertSeats ? mirrorId(pair) ?? pair : pair;
-  if (o.processedStages?.execN !== undefined || o.processedStages?.lanes) {
+  const rolling = ctx?.processedBase && rollingBaseTape(tp, o);
+  if (!rolling && (o.processedStages?.execN !== undefined || o.processedStages?.lanes)) {
     const proof = tp.kind === "exit" ? o.exitBasePassed :
       isSignalInd(tp.ind) ? o.signalBasePassed : o.basePassed;
     if (!proof?.has(sourcePair)) return { ok: false, why: "processedBaseUnavailable" };
   }
   if (
-    (!isSignalInd(tp.ind) || tp.kind === "exit") &&
+    !rolling && (!isSignalInd(tp.ind) || tp.kind === "exit") &&
     !baseAllowsTape(tp, o, sourcePair)
   )
     return { ok: false, why: "base" };
@@ -9130,10 +9140,11 @@ export function* walkForwardGen(
         if (tp.heldOnly || tp.carried) continue;
         if (isSignalInd(tp.ind) && tp.kind !== "exit") {
           if (o.signalBasePassed && !o.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) continue;
-        } else if (!baseAllowsTape(tp, o)) continue;
+        } else if (!rollingBaseTape(tp, o) && !baseAllowsTape(tp, o)) continue;
         const minPf = processedFloor(tp);
         for (const symbol of new Set(tp.syms)) for (const side of [1, -1] as const)
-          yield { tp, symbol, side, minPf };
+          yield { tp, symbol, side, minPf,
+            ...(processed.checksBase && { baseAt: () => processedBaseCheck(tp, o, symbol, side, stopT) }) };
       }
     }) : undefined;
   return {

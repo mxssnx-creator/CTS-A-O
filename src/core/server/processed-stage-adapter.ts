@@ -94,7 +94,7 @@ export class NativeProcessedStageAdapter {
       this.settledQueue = [];
     }
     this.settled = new Set(this.settledQueue);
-    for (const item of this.book.snapshot().open) {
+    for (const item of this.book.openPositions()) {
       const key = entryId(
         item.identity.baseConfigId,
         item.identity.symbol,
