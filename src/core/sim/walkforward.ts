@@ -1,3 +1,4 @@
+import { fixedProtects } from "../fixed-stop-grid.ts";
 import { slRatiosOf } from "../sl-ratios.ts";
 import { slWithinBounds, type SlBounds } from "../sl-calibration.ts";
 import {partialFloorOf, positionStageStats} from "../position-windows.ts";
@@ -797,6 +798,7 @@ export const DEFAULT_GRID: ProtectGridSpec = {
 
 /** Upper bound on protect variants at the effective modeled cost. Dedup can only make it smaller. */
 export function gridVariants(g: ProtectGridSpec, cost?: number): number {
+  if (g.fixedSlBands) return protectGrid(REF_TF, g, cost).length;
   if (g.trailingOnly || g.priceDistances?.enabled) return protectGrid(REF_TF, g, cost).length;
   const hold = g.holdH.length || 1;
   const main = g.tp.length * slRatiosOf(g).length * g.trailOfTp.length * hold;
@@ -943,6 +945,10 @@ export function protectGrid(
         });
   }
   const lowRange = (lowRangeEnabled(g) ? lowRangeGridProtects(g.lowRange, cost, tfMin, g.lowRange?.minSlDistancePct ?? .1, ownSlFloor(g.lowRange, cost ?? RT_COST) ?? slFloor) : []);
+  if (g.fixedSlBands) {
+    const priced = fixedProtects(applyTrailingGapBasis([...out,...lowRange], g.trailGapBasis), g, cost ?? RT_COST, GRID_VARIANTS_MAX);
+    return g.trailingOnly ? [...priced, ...trailingOnlyProtects(priced)] : priced;
+  }
   if (g.priceDistances?.enabled) {
     const priced = applyPriceDistanceGrid(applyTrailingGapBasis([...out, ...lowRange], g.trailGapBasis), g, cost ?? RT_COST, GRID_VARIANTS_MAX);
     return g.trailingOnly ? [...priced, ...trailingOnlyProtects(priced)] : priced;
@@ -1072,7 +1078,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     cost: s.cost,
     // with timeframe lanes the grid is expressed on the 15m reference and every lane scales it (laneProtect)
     protects: protectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.grid ?? DEFAULT_GRID, s.cost),
-    dcaProtects: dcaProtectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.dca, s.grid?.minSlEval),
+    dcaProtects: fixedProtects(dcaProtectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.dca, s.grid?.minSlEval), s.grid ?? DEFAULT_GRID, s.cost, GRID_VARIANTS_MAX),
   };
 }
 

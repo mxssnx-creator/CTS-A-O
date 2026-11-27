@@ -82,7 +82,7 @@ export function trailingOnlyProtects(protects: readonly Protect[]): Protect[] {
     const q = capTrailingOnlyProtect({ ...p, tp: 0, trailOnly: true, trailFree: false, trailMax: SIGNAL_STOP_LIMIT });
     // Reference-bar holds can coincide while their minute caps produce different faster-lane holds. Keep both
     // until laneProtect resolves each actual hold; only identical economic caps may share this candidate.
-    const key = `${q.sl}|${q.trail}|${q.trailStep}|${q.hold}|${q.maxHoldMin ?? ""}|${q.tag ?? ""}|${q.priceDistance ? "pd" : ""}|${q.trailFixed ? "entry" : "peak"}|${q.riskCaps?.sl ?? ""}|${q.riskCaps?.trail ?? ""}`;
+    const key = `${q.stopBand ?? ""}|${q.sl}|${q.trail}|${q.trailStep}|${q.hold}|${q.maxHoldMin ?? ""}|${q.tag ?? ""}|${q.priceDistance ? "pd" : ""}|${q.trailFixed ? "entry" : "peak"}|${q.riskCaps?.sl ?? ""}|${q.riskCaps?.trail ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(q);

@@ -760,7 +760,10 @@ async function runEngine() {
   let desk = null;
   if (deskFile) {
     desk = JSON.parse(readFileSync(deskFile, "utf8"));
-    rt.updateSettings(desk.settings ?? {});
+    const saved = desk.settings ?? {};
+    // An archived ratio-grid snapshot must replay the protection geometry that generated its proof.
+    const archivedGrid = saved.grid && !Object.hasOwn(saved.grid, "fixedSlBands") && Array.isArray(saved.grid.slOfTp);
+    rt.updateSettings(archivedGrid ? {...saved, grid:{...saved.grid, fixedSlBands:undefined}} : saved);
     wfAll = { ...wfAll, ...(desk.wf ?? {}) };
     // the session's own symbol count wins over the desk's (a desk file carries x01's 50: with the session now waiting
     // for the full universe, every "--symbols 12" run computed 50 symbols)

@@ -851,6 +851,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   // Short 9–14×, General 15–22×, Long 23–32× (step 1). They replace the wide targets (3 / 5 / 8 %), which General and
   // Long cover.
   grid: {
+    fixedSlBands: {},
+    maxStopLossRatio: 2.5,
     trailingOnly: true,
     // untagged Wide configs use the normal volume unless their own factor is changed
     volumeFactor: 1,

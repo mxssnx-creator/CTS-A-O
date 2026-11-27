@@ -1,3 +1,4 @@
+import {maxStopRatio, stopSelections} from "../../shared/cts-protection/fixed-stop-bands.ts";
 import { checkAutoSlRatios } from "./sl-ratios.ts";
 import { checkPositionWindows } from "./position-windows.ts";
 import { lowRangeHolds } from "./indications/low-range.ts";
@@ -727,6 +728,8 @@ export function checkSettings(s: Partial<CoreSettings> | SettingsPatch) {
     }
   }
   if (s.grid) {
+    if (s.grid.fixedSlBands !== undefined) stopSelections(s.grid.fixedSlBands);
+    if (s.grid.maxStopLossRatio !== undefined) maxStopRatio(s.grid.maxStopLossRatio);
     // a generous list length (operator: no working caps — the variant ceiling is the real guard)
     const list = (xs: unknown, lo: number, hi: number, name: string) => {
       if (xs === undefined) return;

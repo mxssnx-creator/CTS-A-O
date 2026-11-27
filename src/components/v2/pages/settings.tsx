@@ -1,3 +1,4 @@
+import { STOP_BANDS } from "../../../../shared/cts-protection/fixed-stop-bands.ts";
 import { DEFAULT_AUTO_SL, DEFAULT_FINE_AUTO_SL, DEFAULT_SIGNAL_AUTO_SL, slRatioCandidates, type AutoSlRatios } from "@/core/sl-ratios";
 import {BlockPolicyFields} from "../../../../shared/cts-lastn/fields";
 import { DEFAULT_POSITION_WINDOWS, checkPositionWindows, type PositionWindows } from "@/core/position-windows";
@@ -4925,8 +4926,16 @@ export function SettingsPage() {
               hint="empty = no wide targets (the position-cost ranges cover them; the default)"
             >
               <List pct allowEmpty value={s.grid.tp} onChange={(v) => set(["grid", "tp"], v)} />
+              {(["short","long"] as const).map(band => <div key={band}>
+                <label>Fixed SL percentages for TP {STOP_BANDS[band].minTpPct}–{STOP_BANDS[band].maxTpPct}%</label>
+                <List allowEmpty value={[...(s.grid.fixedSlBands?.[band] ?? STOP_BANDS[band].stops)]}
+                  onChange={values => set(["grid","fixedSlBands"], {...s.grid.fixedSlBands, [band]:values})} />
+              </div>)}
             </Field>
-            <SlRatioEditor title="Wide" spec={s.grid} set={(field,value)=>set(["grid",field],value)}/>
+            <Field label="Maximum SL / TP ratio" hint="Default 2.5. Only fixed stops within the configured multiple of the target are eligible.">
+              <Num value={s.grid.maxStopLossRatio ?? 2.5} min={0.01} max={5} step={0.01}
+                onChange={value => set(["grid","maxStopLossRatio"],value)} />
+            </Field>
             <Field label="Trail share of TP (0 = off)">
               <List value={s.grid.trailOfTp} onChange={(v) => set(["grid", "trailOfTp"], v)} />
             </Field>
