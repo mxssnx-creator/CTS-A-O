@@ -1,4 +1,4 @@
-import { blockPolicyKey, checkBlockPolicy, type BlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
+import { blockPolicyKey, checkBlockPolicy, MINIMAL_COUNTS, type BlockPolicy } from "../../../shared/cts-lastn/blocks.ts";
 import { negativeLastN, type NegativeLastN } from "../negative-last-n.ts";
 import type { PositionWindows } from "../position-windows.ts";
 import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf } from "../validated-set-pf.ts";
@@ -25,12 +25,17 @@ export interface ProcessedReplayPolicy extends Omit<ProcessedPolicy, "minPf" | "
   lanes?: readonly ProcessedLaneOptions[];
   /** Separate window choices for each stage, evaluated lazily under their immediate parent during replay. */
   windowGrid?: ProcessedWindowGrid;
+  /** Discover exact Base contexts continuously during an unconnected historical replay. */
+  rollingBase?: true;
 }
 export type ProcessedWindowGrid = Record<"base" | "validation" | "real" | "exec", readonly BlockPolicy[]>;
-type SinglePolicy = Omit<ProcessedReplayPolicy, "lanes" | "windowGrid" | "reportDetail">;
+type SinglePolicy = Omit<ProcessedReplayPolicy, "lanes" | "windowGrid" | "rollingBase" | "reportDetail">;
 type ProcessedLaneOptions = Partial<Omit<SinglePolicy, "baseScope" | "autoBase">> & { id: string };
 
 export function ownedProcessedPolicy(policy: ProcessedReplayPolicy, windows?: PositionWindows | null): ProcessedReplayPolicy {
+  if (policy.rollingBase !== undefined &&
+      (policy.rollingBase !== true || (!policy.windowGrid && policy.baseScope !== "context")))
+    throw new RangeError("rolling Base requires an exact context policy or a processed window grid");
   if (policy.windowGrid) return policy;
   const validation = policy.blocks?.validation ?? windows?.blocks?.main;
   const real = policy.blocks?.real ?? windows?.blocks?.real;
@@ -41,6 +46,22 @@ export function ownedProcessedPolicy(policy: ProcessedReplayPolicy, windows?: Po
     ...(baseBlock && { baseBlock }), ...((validation || real || exec) && { blocks: {
     ...(validation && {validation}), ...(real && {real}), ...(exec && {exec}),
   } }) };
+}
+
+/** The standard signed window lengths from the window-lane settings. Last is the minimal block. */
+export function defaultProcessedWindowGrid(): ProcessedWindowGrid {
+  const short = [4, 8, 12, 16];
+  const extended = [...short, 20, 24, 28, 30];
+  const signs = ["positive", "negative"] as const;
+  const choices = (longs: readonly number[], shorts: readonly number[]) =>
+    longs.flatMap(long => shorts.flatMap(short => MINIMAL_COUNTS.flatMap(minimal =>
+      signs.flatMap(shortPolarity => signs.map(minimalPolarity => ({ long, short, minimal, shortPolarity, minimalPolarity }))))));
+  return {
+    base: choices([10, 20, 30, 40, 50], short),
+    validation: choices([0], short),
+    real: choices([0], extended),
+    exec: choices([0], extended),
+  };
 }
 
 export function checkedProcessedWindowGrid(policy: ProcessedReplayPolicy): ProcessedWindowGrid {
@@ -137,6 +158,7 @@ export interface ProcessedReplayContext {
   kind: string;
   ind: string;
 }
+type CoverageContext = { identity: ProcessedSetIdentity; minPf: number; baseValid?: () => boolean };
 /** The offline summary walker only needs the frozen admission decision while an order is open. */
 export type ProcessedSummaryOpen = ProcessedStageDecision;
 export interface ProcessedReplayCoverage {
@@ -154,6 +176,14 @@ export interface ProcessedReplayCoverage {
   qualifiedPct: number | null;
   passingWindows: ValidationSummary;
 }
+export interface ProcessedGridWindowCoverage {
+  block: BlockPolicy;
+  contexts: number;
+  qualified: number;
+  /** Net-of-cost unit economics pooled over qualified paths, when measured. */
+  passingGrossProfit?: number;
+  passingGrossLoss?: number;
+}
 export interface ProcessedReplaySummary {
   basis: "model";
   at: number;
@@ -163,8 +193,13 @@ export interface ProcessedReplaySummary {
   validation: ProcessedReplayCoverage;
   real: ProcessedReplayCoverage;
   exec?: ProcessedReplayCoverage;
-  windowGrid?: { choices: Record<keyof ProcessedWindowGrid, number>; oppositeSourceMissing: number;
-    inverseEntries: number; inverseExecEntries: number };
+  windowGrid?: {
+    choices: Record<keyof ProcessedWindowGrid, number>;
+    oppositeSourceMissing: number;
+    inverseEntries: number;
+    inverseExecEntries: number;
+    windows?: Partial<Record<keyof ProcessedWindowGrid, ProcessedGridWindowCoverage[]>>;
+  };
   lanes?: Array<{ id: string; policy: SinglePolicy; validation: ProcessedReplayCoverage;
     real: ProcessedReplayCoverage; exec?: ProcessedReplayCoverage }>;
 }
@@ -253,17 +288,18 @@ export class ProcessedReplay {
   }
 
   /** Yield during large coverage scans; summary mode avoids copying per-set details or the modeled checkpoint. */
-  *reportGen(at: number, contexts: Iterable<{ identity: ProcessedSetIdentity; minPf: number }>,
+  *reportGen(at: number, contexts: Iterable<CoverageContext>,
     detail: "full" | "summary" = "full"): Generator<number, ProcessedReplaySummary | ProcessedReplayReport> {
     const validation = coverage(), real = coverage(), sets: ProcessedSetSummary[] = [];
     const exec = this.policy.execN !== undefined ? coverage() : undefined;
     let scanned = 0, lastYield = performance.now();
-    for (const { identity, minPf } of contexts) {
+    for (const { identity, minPf, baseValid } of contexts) {
       const p = { ...this.policy, minPf }, mainN = processedGateSize(p, "validation"), realN = processedGateSize(p, "real");
       const main = this.book.gate(identity, "postBase", p, "validation", at);
-      count(validation, main, mainN,
-        () => this.book.windowEconomics(identity, "postBase", mainN, at));
-      const realVerdict = main.state === "qualified" ? this.book.gate(identity, "validated", p, "real", at, main) : null;
+      const blocked = main.n > 0 && baseValid?.() === false;
+      if (blocked) countBlockedParent(validation);
+      else count(validation, main, mainN, () => this.book.windowEconomics(identity, "postBase", mainN, at));
+      const realVerdict = !blocked && main.state === "qualified" ? this.book.gate(identity, "validated", p, "real", at, main) : null;
       if (realVerdict) count(real, realVerdict, realN, () => this.book.windowEconomics(identity, "validated", realN, at));
       else countBlockedParent(real);
       if (exec) {
@@ -450,21 +486,22 @@ export class ProcessedSummaryReplay {
     this.held.delete(open);
   }
 
-  *reportGen(at: number, contexts: Iterable<{ identity: ProcessedSetIdentity; minPf: number }>,
+  *reportGen(at: number, contexts: Iterable<CoverageContext>,
     detail: "full" | "summary" = "full"): Generator<number, ProcessedReplaySummary | ProcessedReplayReport> {
     if (detail !== "summary") throw new Error("summary-only replay has no modeled checkpoint");
     const validation = coverage(), real = coverage(), cap = this.capacity;
     const exec = this.policy.execN !== undefined ? coverage() : undefined;
     let scanned = 0, lastYield = performance.now();
-    for (const { identity, minPf } of contexts) {
+    for (const { identity, minPf, baseValid } of contexts) {
       if (at < this.clock) throw new RangeError("invalid processed-set policy or decision time");
       assertProcessedSetIdentity(identity);
       const p = { ...this.policy, minPf }, mainN = processedGateSize(p, "validation"), realN = processedGateSize(p, "real");
       const rows = this.rows(identity, false), main = rows?.postBase ?? this.empty, later = rows?.validated ?? this.empty;
       const mainVerdict = processedGateVerdict(main, cap, p, "validation", at);
-      count(validation, mainVerdict,
-        mainN, () => processedWindowEconomics(main, mainN, at));
-      const realVerdict = mainVerdict.state === "qualified" ? processedGateVerdict(later, cap, p, "real", at, mainVerdict) : null;
+      const blocked = mainVerdict.n > 0 && baseValid?.() === false;
+      if (blocked) countBlockedParent(validation);
+      else count(validation, mainVerdict, mainN, () => processedWindowEconomics(main, mainN, at));
+      const realVerdict = !blocked && mainVerdict.state === "qualified" ? processedGateVerdict(later, cap, p, "real", at, mainVerdict) : null;
       if (realVerdict) count(real, realVerdict, realN, () => processedWindowEconomics(later, realN, at));
       else countBlockedParent(real);
       if (exec) {
@@ -485,7 +522,8 @@ export class ProcessedSummaryReplay {
 }
 
 type ReplayLedger = ProcessedReplay | ProcessedSummaryReplay;
-export type ReplayContext = { tp: ProcessedReplayContext; symbol: string; side: 1 | -1; minPf: number };
+export type ReplayContext = { tp: ProcessedReplayContext; symbol: string; side: 1 | -1; minPf: number;
+  baseAt?: () => ProcessedBaseCheck };
 export type ReplayEntry = ProcessedSummaryOpen & { lanes: Array<{ index: number; open: ProcessedOpen | ProcessedSummaryOpen }> };
 
 function combineCoverage(rows: readonly ProcessedReplayCoverage[]): ProcessedReplayCoverage {
@@ -565,9 +603,11 @@ export class ProcessedLaneReplay {
     const reports: Array<ProcessedReplaySummary | ProcessedReplayReport> = [];
     const detail = this.policy.reportDetail ?? "full";
     for (const { ledger } of this.ledgers) {
+      const checksBase = requiresProcessedBaseCheck(ledger.policy);
       reports.push(yield* ledger.reportGen(at, (function* () {
-        for (const { tp, symbol, side, minPf } of contexts())
-          yield { identity: ledger.identity(tp, symbol, side, minPf), minPf };
+        for (const { tp, symbol, side, minPf, baseAt } of contexts())
+          yield { identity: ledger.identity(tp, symbol, side, minPf), minPf,
+            ...(checksBase && baseAt && { baseValid: () => qualifiesProcessedBase(ledger.policy, baseAt()) }) };
       })(), detail));
     }
     if (!this.policy.lanes) return reports[0];
