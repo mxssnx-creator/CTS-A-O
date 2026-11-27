@@ -1,3 +1,9 @@
+## 2026-11-27 — Signals PF and inherited Long branches
+
+Signed Last-N Settings can evaluate each continuation with its exact Base Long count, without Long, or both. Each variant retains its own exact parent receipts and Auto PF. The default Signals minimum is 1.55. Source filtering considers every measured protection sibling before removing a source.
+
+The modeled Signals replay used 30 Binance USD-M symbols, 24 hours of prehistory, and 72 scored hours ending 26 November at 01:00 Vienna time. Base passed 0 of 24 tested Trend-Reversal protection cells. Main had no evaluated contexts, so the post-Base validation percentage and mean valid PF are unavailable. Opened, closed and held modeled positions and orders were 0. Funded and venue PF are unavailable. The pre-change Stable-04 checkpoint is `5a5d90c3e931840dde7126aefe91720132e52198` and has a remote backup branch. TypeScript and 99 focused stage, signals and source tests passed. Broker and deployment state were outside this replay.
+
 ## 2026-11-27 — Trend-Reversal and independent Signals
 
 Trend-Reversal adds failed-break reclaim, swing break, relative volume impulse, reversal into trend, RSI recovery, PSAR, and trend/RSI confluence. Lookbacks of 6, 10 and 16 closed bars remain independent within each timeframe. Ordinary sources run through explicit Follow focus. The new Signal sources need their own toggle and keep their Signal-specific validation, protection and cost settings.

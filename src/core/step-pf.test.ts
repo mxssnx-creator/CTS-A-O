@@ -57,7 +57,7 @@ it("auto PF covers every 0.1% step through the configured maximum and manual mod
 it("applies step and stop floors to Signals without borrowing an ordinary range floor", () => {
  const gates={minPf:1.05,rangeMinPf:{short:2},stepPf:{...DEFAULT_STEP_PF,ratio:.4}};
  assert.equal(minPfOf(gates,"sh","sig-test-s@m1",2),1.8);
- assert.equal(minPfOf(gates,"sh","sig-test-s@m1",.2),1.5);
+ assert.equal(minPfOf(gates,"sh","sig-test-s@m1",.2),1.55);
  assert.equal(minPfOf({...gates,stepPf:{...gates.stepPf,bySlRatio:{"0.5":1.9}}},"sh","sig-test-s@m1",2,.5),1.9);
 });
 
@@ -72,5 +72,5 @@ it("historic Signal fitting applies the same effective per-config step floor", (
  const gates = { ...DEFAULT_SETTINGS.gates, stepPf: { ...DEFAULT_STEP_PF, ratio: .4 } };
  const v = signalHistValidationOf(.001, gates, 15);
  assert.equal(signalHistMinPf(v, {tp:.02,sl:.01,trail:0,hold:4}), 1.8);
- assert.equal(signalHistMinPf(v, {tp:.005,sl:.005,trail:0,hold:4}), 1.5);
+ assert.equal(signalHistMinPf(v, {tp:.005,sl:.005,trail:0,hold:4}), 1.55);
 });

@@ -5,7 +5,7 @@ import { addValidatedSetPf, emptyValidatedSetPf, mergeValidatedSetPf } from "../
 import type { ValidationSummary } from "./walkforward.ts";
 import { appendProcessedHistory, assertProcessedSetIdentity, checkProcessedAutoPf, processedGateSize,
   processedGateVerdict, processedPolicyCapacity, processedStageDecision, processedWindowEconomics,
-  ProcessedSetBook, type ProcessedHistoryRow, type ProcessedOpen, type ProcessedSetIdentity,
+  ProcessedSetBook, type ProcessedGate, type ProcessedHistoryRow, type ProcessedOpen, type ProcessedSetIdentity,
   type ProcessedPolicy, type ProcessedSetSnapshot, type ProcessedSetSummary, type ProcessedStageDecision,
   type ProcessedVerdict } from "./processed-set.ts";
 
@@ -22,9 +22,12 @@ export interface ProcessedReplayPolicy extends Omit<ProcessedPolicy, "minPf" | "
   reportDetail?: "summary";
   /** Each named policy gets the entire causal stage chain and its own Short and Last signs. */
   lanes?: readonly ProcessedLaneOptions[];
+  /** At each continuation, choose whether its own window includes the originating Base Long count. */
+  longModes?: Partial<Record<ProcessedGate, "inherit" | "none" | "both">>;
 }
-type SinglePolicy = Omit<ProcessedReplayPolicy, "lanes" | "reportDetail">;
+type SinglePolicy = Omit<ProcessedReplayPolicy, "lanes" | "reportDetail" | "longModes">;
 type ProcessedLaneOptions = Partial<Omit<SinglePolicy, "baseScope" | "autoBase">> & { id: string };
+const continuationGates = ["validation", "real", "exec"] as const;
 
 export function ownedProcessedPolicy(policy: ProcessedReplayPolicy, windows?: PositionWindows | null): ProcessedReplayPolicy {
   const validation = policy.blocks?.validation ?? windows?.blocks?.main;
@@ -63,22 +66,53 @@ export function checkedProcessedPolicy(policy: SinglePolicy): SinglePolicy {
 
 export function processedLanes(policy: ProcessedReplayPolicy) {
   const base = checkedProcessedPolicy(policy);
-  if (policy.lanes === undefined) return [{ id: "", policy: base }];
-  if (!Array.isArray(policy.lanes) || !policy.lanes.length)
+  if (policy.lanes !== undefined && (!Array.isArray(policy.lanes) || !policy.lanes.length))
     throw new RangeError("processed lanes require at least one named policy");
   const ids = new Set<string>();
-  return policy.lanes.map(({ id, ...patch }) => {
+  const lanes = policy.lanes?.map(({ id, ...patch }) => {
     if (typeof id !== "string" || !id.trim() || ids.has(id)) throw new RangeError("invalid or duplicate processed lane ID");
     ids.add(id);
     const blocks = patch.blocks ? { ...base.blocks, ...patch.blocks } : base.blocks;
     return { id, policy: checkedProcessedPolicy({ ...base, execN: base.execN ?? base.realN, ...patch, blocks,
       baseScope: base.baseScope, autoBase: base.autoBase }) };
+  }) ?? [{ id: "", policy: base }];
+  const modes = policy.longModes;
+  if (modes === undefined) return lanes;
+  if (!modes || typeof modes !== "object" || Array.isArray(modes) ||
+      Object.entries(modes).some(([stage, mode]) => !continuationGates.includes(stage as ProcessedGate) ||
+        !["inherit", "none", "both"].includes(mode)))
+    throw new RangeError("invalid processed Long choices");
+  const stages = continuationGates.filter(stage => modes[stage] !== undefined);
+  if (!stages.length) return lanes;
+  return lanes.flatMap(({ id, policy: original }) => {
+    const baseLong = original.baseBlock?.long ?? 0;
+    let paths: { signature: (readonly [ProcessedGate, number])[]; blocks: NonNullable<SinglePolicy["blocks"]> }[] = [
+      { signature: [], blocks: { ...original.blocks } },
+    ];
+    for (const stage of stages) {
+      const count = { validation: original.validationN, real: original.realN, exec: original.execN }[stage];
+      if (count === undefined) throw new RangeError("Enable Exec before choosing its Long modes");
+      const mode = modes[stage];
+      if (mode !== "none" && !baseLong) throw new RangeError("Set a positive Base Long count before inheriting it");
+      const choices = mode === "both" ? [baseLong, 0] : [mode === "inherit" ? baseLong : 0];
+      const block = original.blocks?.[stage];
+      paths = paths.flatMap(path => choices.map(long => {
+        const window: BlockPolicy = block ? { ...block, long } : {
+          long, short: count, minimal: 0, shortPolarity: "positive", minimalPolarity: "positive",
+        };
+        checkBlockPolicy(window);
+        return { signature: [...path.signature, [stage, long] as const], blocks: { ...path.blocks, [stage]: window } };
+      }));
+    }
+    return paths.map(({ signature, blocks }) => ({
+      id: JSON.stringify(["related-long", id, signature]), policy: { ...original, blocks },
+    }));
   });
 }
 
 export function frozenProcessedPolicy(policy: ProcessedReplayPolicy): ProcessedReplayPolicy {
   const base = checkedProcessedPolicy(policy);
-  const lanes = policy.lanes && processedLanes(policy).map(({ id, policy }) => ({ id, ...policy }));
+  const lanes = (policy.lanes || policy.longModes) && processedLanes(policy).map(({ id, policy }) => ({ id, ...policy }));
   return { ...base, ...(lanes && { lanes }) };
 }
 
@@ -515,7 +549,7 @@ export class ProcessedLaneReplay {
           yield { identity: ledger.identity(tp, symbol, side, minPf), minPf };
       })(), detail));
     }
-    if (!this.policy.lanes) return reports[0];
+    if (!this.policy.lanes && !this.policy.longModes) return reports[0];
     const lanes = reports.map(({ validation, real, exec }, i) => ({
       id: this.ledgers[i].id, policy: this.ledgers[i].ledger.policy, validation, real, ...(exec && { exec }),
     }));

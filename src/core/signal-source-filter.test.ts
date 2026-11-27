@@ -10,6 +10,14 @@ const run = (ind: string, bySym: Record<string, { n: number }>, full = { n: 40, 
 const sig = { enabled: true, baseGate: false, minTrades: 3, minPerDay: 2, dropLosing: true };
 const days = () => 4;
 
+it("a losing protection sibling cannot remove a viable configuration of the same source", () => {
+  const weak = run("sig-a@m5", { A: { n: 12 } }, { n: 12, net: -1, pf: 0.6 });
+  const viable = run("sig-a@m5", { A: { n: 12 } }, { n: 12, net: 1, pf: 1.8 });
+  const pairs = new Set(["follow|sig-a@m5"]);
+  assert.equal(signalSourcesToDrop([weak], pairs, sig, days).size, 1);
+  for (const rows of [[weak, viable], [viable, weak]]) assert.equal(signalSourcesToDrop(rows, pairs, sig, days).size, 0);
+});
+
 it("defaults: two signals a day per symbol, losing sources dropped, both settings validated", () => {
   assert.equal(DEFAULT_SIGNALS.minPerDay, 2);
   assert.equal(DEFAULT_SIGNALS.dropLosing, true);

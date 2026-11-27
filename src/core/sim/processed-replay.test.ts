@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import type { OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { configId } from "../pipeline/pipeline.ts";
 import { ProcessedSetBook } from "./processed-set.ts";
-import { ProcessedReplay } from "./processed-replay.ts";
+import { frozenProcessedPolicy, processedLanes, ProcessedReplay, type ProcessedReplayPolicy } from "./processed-replay.ts";
 import { defaultWalkForward, execDecision, makeTape, packTapes, walkForward,
   type WalkForwardOptions, type WalkForwardResult } from "./walkforward.ts";
 import { retireOwnedIdleWorkers, runOnWorkers } from "../server/pool.server.ts";
@@ -36,6 +36,25 @@ function fixture(values: number[], overrides: Partial<WalkForwardOptions> = {}, 
   const result = walkForward(universe, [tape], options);
   return { result, tape, options, future, universe };
 }
+
+test("each continuation combines its own no-Long and inherited Base Long alternatives", () => {
+  const short = { long: 2, short: 2, minimal: 1, shortPolarity: "positive", minimalPolarity: "positive" } as const;
+  const policy: ProcessedReplayPolicy = {
+    validationN: 3, realN: 3, execN: 3, baseBlock: short,
+    blocks: { validation: short, real: short, exec: short },
+    longModes: { validation: "both", real: "both", exec: "both" },
+  };
+  const lanes = processedLanes(policy);
+  assert.equal(lanes.length, 8);
+  assert.equal(new Set(lanes.map(l => l.id)).size, 8);
+  assert.deepEqual(processedLanes(frozenProcessedPolicy(policy)), lanes);
+  const withParentLong = lanes.find(l => l.policy.blocks?.validation?.long === 0 && l.policy.blocks?.real?.long === 2);
+  assert.ok(withParentLong);
+  const results = fixture(Array.from({ length: 66 }, () => .02), { processedStages: policy }).result;
+  assert.equal(results.processedStages?.lanes?.length, 8);
+  assert.ok(results.processedStages?.lanes?.every(lane => lane.validation.qualified && lane.real.qualified && lane.exec?.qualified));
+  assert.throws(() => processedLanes({ ...policy, baseBlock: undefined }), /Base Long/);
+});
 
 test("every named signed lane produces only its own immediate predecessor sets", () => {
   const block = (shortPolarity: "positive" | "negative", minimalPolarity: "positive" | "negative") =>

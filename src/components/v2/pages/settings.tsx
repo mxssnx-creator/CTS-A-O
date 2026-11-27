@@ -1675,6 +1675,7 @@ export function PositionWindowSettings(props: {
 
 export function ProcessedStageSettings(props: {
   value?: ProcessedReplayPolicy | null;
+  positionWindows?: PositionWindows;
   onChange: (value: ProcessedReplayPolicy | null) => void;
 }) {
   const enabled = !!props.value;
@@ -1685,6 +1686,12 @@ export function ProcessedStageSettings(props: {
     validationN: 12, realN: 12, execN: 12, baseScope: "context",
     autoPf: { mode: "independent", ratio: DEFAULT_AUTO_PF_RATIO },
   };
+  const baseBlock = policy.baseBlock ?? props.positionWindows?.blocks?.base ?? {
+    long: props.positionWindows?.base ?? DEFAULT_POSITION_WINDOWS.base,
+    short: 0, minimal: 0, shortPolarity: "positive" as const, minimalPolarity: "positive" as const,
+  };
+  const stageLabels = { validation: "Main", real: "Real", exec: "Exec" };
+  const gates = policy.execN === undefined ? ["validation", "real"] as const : ["validation", "real", "exec"] as const;
   const put = (key: "validationN" | "realN" | "execN", value: number) =>
     props.onChange({ ...policy, [key]: Math.round(value) });
   const needsOppositeSource = policy.lanes?.some(lane => requiresOppositeMainSource({
@@ -1725,6 +1732,30 @@ export function ProcessedStageSettings(props: {
               <Num int min={1} max={200} value={policy.execN} onChange={(v) => put("execN", v)} />
             </Field>
           )}
+          {gates.map(gate => <Field key={gate} label={stageLabels[gate] + " Long lanes"}
+            hint="Each lane checks its own preceding Set. Inherited Long uses the Base count.">
+            <select className="v2-select" aria-label={stageLabels[gate] + " Long lanes"} value={policy.longModes?.[gate] ?? "configured"}
+              onChange={event => {
+                const value = event.target.value as "configured" | "both" | "inherit" | "none";
+                const longModes = { ...policy.longModes };
+                if (value === "configured") delete longModes[gate];
+                else longModes[gate] = value;
+                const changed = { ...policy, longModes,
+                  ...(Object.values(longModes).some(mode => mode !== "none") && { baseBlock }) };
+                try {
+                  processedLanes(changed);
+                  props.onChange(changed);
+                  setLaneError("");
+                } catch (error) {
+                  setLaneError(error instanceof Error ? error.message : "Invalid Long lanes");
+                }
+              }}>
+              <option value="configured">Use configured windows</option>
+              <option value="both">With and without Base Long</option>
+              <option value="inherit">With Base Long</option>
+              <option value="none">Without Long</option>
+            </select>
+          </Field>)}
           <Field label="Processed-stage PF">
             <select aria-label="Processed-stage PF" className="v2-select" value={policy.autoPf?.mode ?? "manual"}
               onChange={(e) => {
@@ -5079,7 +5110,7 @@ export function SettingsPage() {
 
       <div className="v2-grid v2-cols-2">
         <Panel title="Real stage (walk-forward)" sub="Completed-position samples and independent replay/book limits">
-          <ProcessedStageSettings value={wf.processedStages} onChange={(value) => setW("processedStages", value)} />
+          <ProcessedStageSettings value={wf.processedStages} positionWindows={s.gates.positionWindows} onChange={(value) => setW("processedStages", value)} />
           <div className="v2-grid v2-cols-3">
             <Field hidden={!!s.gates.positionWindows} label="Pre-calc (h)" hint="Legacy evaluation window">
               <Num value={wf.preH} min={1} max={240} onChange={(v) => setW("preH", v)} />

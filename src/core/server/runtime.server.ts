@@ -11398,9 +11398,10 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     if (raw.reportDetail !== undefined && raw.reportDetail !== "summary")
       throw new Error("processedStages reportDetail must be summary when specified");
     const data = { ...raw, validationN, realN, execN } as ProcessedReplayPolicy;
-    if (data.lanes !== undefined) processedLanes(data);
+    if (data.lanes !== undefined || data.longModes !== undefined) processedLanes(data);
     p.processedStages = { ...checkedProcessedPolicy(data), ...(data.reportDetail && { reportDetail: data.reportDetail }),
-      ...(data.lanes && { lanes: structuredClone(data.lanes) }) };
+      ...(data.lanes && { lanes: structuredClone(data.lanes) }),
+      ...(data.longModes && { longModes: { ...data.longModes } }) };
   }
   if (p.processedWarmup === null || p.processedWarmup === false) p.processedWarmup = undefined;
   else if (p.processedWarmup !== undefined) {
